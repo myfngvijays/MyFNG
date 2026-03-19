@@ -69,16 +69,22 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100', 10) || 100, 1), 500);
+    const phoneFilter = (searchParams.get('phone') || '').replace(/\D/g, '');
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
-    const { data: rows, error } = await db
+    let query = db
       .from('Razorpay_Direct_pay_RSA')
       .select('order_id, payment_id, amount, customer_name, customer_phone, customer_email, status, notes, created_at, updated_at')
       .gte('created_at', since)
-      .order('created_at', { ascending: false })
-      .limit(1000);
+      .order('created_at', { ascending: false });
+
+    if (phoneFilter) {
+      query = query.eq('customer_phone', phoneFilter);
+    }
+
+    const { data: rows, error } = await query.limit(1000);
 
     if (error) {
       return NextResponse.json({ error: error.message || 'Failed to fetch payment links' }, { status: 500 });
@@ -86,6 +92,7 @@ export async function GET(request: NextRequest) {
 
     const out = (rows || [])
       .filter((row: any) => {
+        if (phoneFilter) return true;
         const notes = row?.notes && typeof row.notes === 'object' ? row.notes : {};
         return String((notes as any)?.generated_by_profile_id || '') === String(profile.id || '');
       })

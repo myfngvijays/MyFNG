@@ -394,10 +394,11 @@ export default function TelecallerRSAPage() {
   const [waPreviewOpen, setWaPreviewOpen] = useState(false);
   const [waPreviewPhone, setWaPreviewPhone] = useState('');
   const [waPreviewMessage, setWaPreviewMessage] = useState('');
+  const [waPreviewCustomerName, setWaPreviewCustomerName] = useState('');
   const [waQuickPhone, setWaQuickPhone] = useState('');
 
   const groupedCalls = useMemo(() => groupCallsByCustomer(calls), [calls]);
-  const openWhatsAppPreview = (phone: string | null | undefined, row?: SarvCallRow | null) => {
+  const openWhatsAppPreview = (phone: string | null | undefined, row?: SarvCallRow | null, custName?: string) => {
     const value = normalizePhone(phone);
     if (!value) return;
     const summary = String(row?.summary || '').trim();
@@ -409,6 +410,10 @@ export default function TelecallerRSAPage() {
     setWaPreviewMessage(suggested);
     setWaPreviewOpen(true);
     setWaQuickPhone(value);
+    const nameFromPayments = generatedPayments.find(
+      (p) => normalizePhone(p.customer_phone) === value && p.customer_name
+    )?.customer_name || '';
+    setWaPreviewCustomerName(custName || nameFromPayments || '');
   };
   const [sarvOpen, setSarvOpen] = useState(false);
   const [sarvLead, setSarvLead] = useState<any | null>(null);
@@ -1185,16 +1190,25 @@ export default function TelecallerRSAPage() {
     [generatedPayments]
   );
 
+  const hasPendingPayments = useMemo(
+    () => generatedPayments.some((row) => {
+      const s = String(row.status || '').toUpperCase();
+      return !['PAID', 'SUCCESS', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'EXPIRED', 'FAILED'].includes(s);
+    }),
+    [generatedPayments]
+  );
+
   useEffect(() => {
     if (tab !== 'collect_payment') return;
     if (!generatedPaymentRefsKey) return;
     refreshGeneratedPaymentStatuses();
+    if (!hasPendingPayments) return;
     const timer = window.setInterval(() => {
       refreshGeneratedPaymentStatuses();
-    }, 5000);
+    }, 30000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, generatedPaymentRefsKey]);
+  }, [tab, generatedPaymentRefsKey, hasPendingPayments]);
 
   return (
     <DashboardLayout role="telecaller">
@@ -3389,6 +3403,7 @@ export default function TelecallerRSAPage() {
       <WhatsAppMobilePreviewModal
         isOpen={waPreviewOpen}
         phoneNumber={waPreviewPhone}
+        customerName={waPreviewCustomerName}
         title="WhatsApp Chat"
         previewMessage={waPreviewMessage}
         onClose={() => setWaPreviewOpen(false)}

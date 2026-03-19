@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
-import PublicPillNav, { type PublicPillNavTab } from '../components/PublicPillNav';
+import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 
 type Props = { navigation: any };
 
@@ -912,11 +912,14 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
         </ScrollView>
 
         <PublicPillNav
-          activeTab="ai"
+          activeTab="services"
           onPressTab={(tab: PublicPillNavTab) => {
+            if (tab === 'home') navigation.navigate('PublicHome');
+            if (tab === 'services') navigation.navigate('PublicServicePackages', { city: form.city?.name || undefined });
             if (tab === 'ai') navigation.navigate('AIBooking', { city: form.city?.name || undefined });
-            if (tab === 'search') navigation.navigate('PublicWorkshopLocator', { city: form.city?.name || undefined });
-            if (tab === 'profile') navigation.navigate('Login');
+            if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city: form.city?.name || undefined });
+            if (tab === 'account') navigation.navigate('Settings');
+            if (tab === 'profile') navigation.navigate('Settings');
             if (tab === 'settings') Alert.alert('Support', 'Use AI booking or call support from the home screen.');
           }}
         />

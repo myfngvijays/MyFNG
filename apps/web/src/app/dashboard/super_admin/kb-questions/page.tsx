@@ -57,6 +57,14 @@ type ChatSession = {
   history: ChatMessage[];
 };
 
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function getSessionActivityTime(expiresAt: string) {
+  const expiresMs = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expiresMs)) return null;
+  return new Date(expiresMs - SESSION_TTL_MS);
+}
+
 function fmt(dt: string) {
   try {
     return new Date(dt).toLocaleString('en-IN', {
@@ -83,6 +91,18 @@ function timeAgo(dt: string) {
   } catch {
     return '';
   }
+}
+
+function sessionLastActiveAgo(expiresAt: string) {
+  const activityAt = getSessionActivityTime(expiresAt);
+  if (!activityAt) return '';
+  return timeAgo(activityAt.toISOString());
+}
+
+function sessionLastActiveLabel(expiresAt: string) {
+  const activityAt = getSessionActivityTime(expiresAt);
+  if (!activityAt) return '';
+  return fmt(activityAt.toISOString());
 }
 
 // ──────────────────────────────────────
@@ -191,7 +211,7 @@ function ChatConversationsTab() {
                       </p>
                     </div>
                     <div className="flex flex-col items-end shrink-0">
-                      <span className="text-[10px] text-gray-400">{timeAgo(s.expires_at)}</span>
+                      <span className="text-[10px] text-gray-400">{sessionLastActiveAgo(s.expires_at)}</span>
                       <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-gray-500">
                         <MessageSquare className="w-3 h-3" />
                         {s.message_count}
@@ -264,7 +284,7 @@ function ChatConversationsTab() {
               <div className="text-right shrink-0">
                 <span className="text-[10px] text-gray-400 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {fmt(selected.expires_at)}
+                  {sessionLastActiveLabel(selected.expires_at)}
                 </span>
                 <p className="text-[10px] text-gray-500 mt-0.5">{selected.message_count} messages</p>
               </div>

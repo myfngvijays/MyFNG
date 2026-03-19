@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator,
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -249,13 +248,14 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={COLORS.primaryDark} />
+            <Ionicons name="arrow-back" size={20} color={COLORS.secondary} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Chat & Book with AI</Text>
-            <Text style={styles.headerSub}>
-              {city ? `City: ${city} • ` : ''}Booking in minutes. No forms.
-            </Text>
+          <View style={styles.botAvatar}>
+            <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+          </View>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.headerTitle}>MyFNG AI Assistant</Text>
+            <Text style={styles.headerSub}>{city ? `City: ${city}` : 'Ask anything about your car service'}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
             <Text style={styles.loginBtnText}>Login</Text>
@@ -369,8 +369,9 @@ export default function AIBookingScreen({ navigation, route }: Props) {
 
           {chatLoading ? (
             <View style={styles.typingRow}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-              <Text style={styles.typingText}>Typing…</Text>
+              <View style={styles.typingDot} />
+              <View style={styles.typingDot} />
+              <View style={styles.typingDot} />
             </View>
           ) : null}
         </ScrollView>
@@ -379,7 +380,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="Type your message…"
+            placeholder="Type your request..."
             style={styles.input}
             returnKeyType="send"
             onSubmitEditing={onSend}
@@ -399,48 +400,61 @@ export default function AIBookingScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.gray[50] },
+  safe: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingVertical: 12,
     gap: SPACING.sm,
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fff',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
+    borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  botAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTextWrap: {
+    flex: 1,
+  },
   headerTitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: 18,
     fontWeight: '900',
-    color: COLORS.primaryDark,
+    color: '#111827',
   },
   headerSub: {
     marginTop: 2,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '600',
     color: COLORS.gray[600],
   },
   loginBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: '#EEF6FF',
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: 'rgba(0,136,232,0.16)',
+    borderColor: '#E5E7EB',
   },
   loginBtnText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: '900',
-    color: COLORS.primaryDark,
+    color: COLORS.primary,
   },
   chat: {
     paddingHorizontal: SPACING.md,
@@ -459,7 +473,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.08)',
+    borderColor: '#E5E7EB',
   },
   chipTitle: {
     fontSize: FONT_SIZES.sm,
@@ -508,37 +522,43 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   bubble: {
-    maxWidth: '92%',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    maxWidth: '80%',
+    padding: 16,
     borderRadius: 16,
   },
   bubbleBot: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
+    borderColor: '#E5E7EB',
+    borderTopLeftRadius: 6,
   },
   bubbleUser: {
     backgroundColor: COLORS.primary,
+    borderTopRightRadius: 6,
   },
   bubbleText: {
     fontSize: FONT_SIZES.sm,
     fontWeight: '700',
-    color: COLORS.primaryDark,
+    color: '#111827',
     lineHeight: 18,
   },
   bubbleTextUser: {
     color: '#fff',
   },
-  typingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  typingText: { fontSize: 12, color: COLORS.gray[600], fontWeight: '700' },
+  typingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginLeft: 6 },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#9CA3AF',
+  },
 
   composer: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(17,24,39,0.06)',
-    backgroundColor: '#fff',
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
@@ -547,13 +567,13 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderRadius: 16,
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.08)',
+    borderColor: '#E5E7EB',
     paddingHorizontal: 12,
     fontSize: FONT_SIZES.sm,
     fontWeight: '700',
-    color: COLORS.primaryDark,
+    color: '#111827',
   },
   sendBtn: {
     width: 44,

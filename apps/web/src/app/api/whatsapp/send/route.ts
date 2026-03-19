@@ -78,6 +78,7 @@ async function parseIncomingBody(request: NextRequest): Promise<ParsedSendBody> 
       template_name: form.get('template_name') ? String(form.get('template_name')) : '',
       language: form.get('language') ? String(form.get('language')) : '',
       template_params: form.get('template_params') ? String(form.get('template_params')) : '',
+      button_url_params: form.get('button_url_params') ? String(form.get('button_url_params')) : '',
       __file: fileEntry instanceof File ? fileEntry : null,
     };
     return body;
@@ -284,6 +285,14 @@ export async function POST(request: NextRequest) {
             .map((v: string) => String(v || '').trim())
             .filter(Boolean)
         : [];
+      const buttonUrlParams = Array.isArray(body?.button_url_params)
+        ? body.button_url_params.map((v: unknown) => String(v ?? ''))
+        : typeof body?.button_url_params === 'string'
+        ? body.button_url_params
+            .split(',')
+            .map((v: string) => String(v || '').trim())
+            .filter(Boolean)
+        : [];
       if (!templateName) {
         return NextResponse.json({ error: 'template_name is required for template type' }, { status: 400 });
       }
@@ -293,13 +302,18 @@ export async function POST(request: NextRequest) {
         template_name: templateName,
         language: languageCode,
         template_params: templateParams,
+        button_url_params: buttonUrlParams,
       };
       result = await sendTemplateMessage({
         phoneNumber: recipientPhone,
         templateName,
         templateParams,
+        buttonUrlParams,
         languageCode,
       });
+      if (!result.success) {
+        console.error('[WA Template Send] Failed:', { templateName, paramsCount: templateParams.length, error: result.error, raw: result.raw });
+      }
     }
 
     const now = new Date().toISOString();

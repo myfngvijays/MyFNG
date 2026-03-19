@@ -8,8 +8,11 @@ import PublicHomeScreen from './src/screens/PublicHomeScreen';
 import AIBookingScreen from './src/screens/AIBookingScreen';
 import PublicServicePackagesScreen from './src/screens/PublicServicePackagesScreen';
 import PublicWorkshopLocatorScreen from './src/screens/PublicWorkshopLocatorScreen';
+import RoadsideAssistanceScreen from './src/screens/RoadsideAssistanceScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
+import SplashScreen from './src/screens/SplashScreen';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
@@ -20,6 +23,7 @@ import { clearCustomerSessionToken, getCustomerSessionToken } from './src/lib/cu
 const Stack = createNativeStackNavigator();
 
 function AppContent() {
+  const [showSplash, setShowSplash] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -149,10 +153,14 @@ function AppContent() {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0088E8" />
+        <ActivityIndicator size="large" color="#004AAD" />
         <Text style={styles.loadingText}>Loading MyFNG...</Text>
       </View>
     );
+  }
+
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
   return (
@@ -167,6 +175,8 @@ function AppContent() {
             <Stack.Screen name="AIBooking" component={AIBookingScreen} />
             <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
             <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
+            <Stack.Screen name="RoadsideAssistance" component={RoadsideAssistanceScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Login">
               {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
             </Stack.Screen>
@@ -215,7 +225,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F0F7FF',
   },
   loadingText: {
     marginTop: 15,

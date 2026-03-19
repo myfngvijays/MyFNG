@@ -1,14 +1,14 @@
 // MyFNG Brand Colors
 export const COLORS = {
   // Brand Primary Colors (MyFNG Official)
-  primary: '#0088E8',        // Primary Blue (fng)
-  primaryDark: '#023D95',    // Dark Blue (my)
-  primaryHover: '#0367C4',   // Hover Blue
-  secondary: '#023D95',      // Secondary (my blue)
+  primary: '#004AAD',        // Reference Primary Blue
+  primaryDark: '#003A88',    // Darker Primary variant
+  primaryHover: '#0A57BF',   // Hover Blue
+  secondary: '#1A1A1A',      // Reference Secondary (dark)
   
   // Background Colors
   white: '#FFFFFF',
-  background: '#F5F7FA',     // Light Grey
+  background: '#F0F7FF',     // Reference Light Blue
   
   // Text Colors (MyFNG Brand)
   text: '#3A3F45',          // Body text
@@ -21,11 +21,11 @@ export const COLORS = {
   textBody: '#3A3F45',      // Body text
   textSecondary: '#6B7280',
   textLight: '#6B7280',
-  link: '#0088E8',          // Links
+  link: '#004AAD',          // Links
   
   // UI Colors
   border: '#E5E7EB',
-  accent: '#14B8A6',
+  accent: '#FF6B00',         // Reference Accent Orange
   
   // Status Colors
   success: '#10B981',
@@ -33,11 +33,11 @@ export const COLORS = {
   yellow: '#F59E0B',
   danger: '#EF4444',
   error: '#EF4444',
-  info: '#0088E8',
+  info: '#004AAD',
   
   // Extended colors for UI variety
-  blue: '#0088E8',
-  darkBlue: '#023D95',
+  blue: '#004AAD',
+  darkBlue: '#003A88',
   green: '#10B981',
   red: '#EF4444',
   orange: '#F59E0B',
@@ -128,5 +128,6 @@ export const SHADOWS = {
 };
 
 export const FONTS = {
-  family: 'Poppins', // Brand recommended font
+  family: 'Poppins',
+  display: 'Outfit',
 };

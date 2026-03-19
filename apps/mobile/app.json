@@ -4,12 +4,13 @@
     "slug": "myfng-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "primaryColor": "#004AAD",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0088E8"
+      "backgroundColor": "#004AAD"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -20,8 +21,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0088E8"
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#004AAD"
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
@@ -34,7 +35,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/icon.png"
+      "favicon": "./assets/logo.png"
     },
     "plugins": []
   }

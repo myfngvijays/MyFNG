@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id')
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, workshops(name)')
     .eq('customer_phone', customer.phone)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -144,10 +144,13 @@ export async function GET(request: Request) {
               ? estimatedAmount
               : null;
 
+    const workshopName = r.workshops?.name || '';
+
     return {
       ...r,
       service_display: resolvedServiceType,
       amount_display: displayAmount,
+      workshop_name: workshopName,
     };
   });
 

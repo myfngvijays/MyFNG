@@ -34,6 +34,7 @@ import { createClient } from '@/lib/supabase/client';
 interface WhatsAppMobilePreviewModalProps {
   isOpen: boolean;
   phoneNumber: string;
+  customerName?: string;
   title?: string;
   previewMessage?: string;
   leadId?: string | null;
@@ -191,6 +192,68 @@ function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | 
   return fuzzy ? String(fuzzy.template_name || '').trim() || null : null;
 }
 
+function resolvePaymentTemplateName(rows: TemplateOption[]): string | null {
+  const exactNames = new Set([
+    'payment_collect',
+    'collect_payment',
+    'payment_request',
+    'payment_link',
+    'pay_now_link',
+    'pay_now',
+  ]);
+  const exact = rows.find((row) => {
+    const name = String(row.template_name || '').trim().toLowerCase();
+    return exactNames.has(name);
+  });
+  if (exact) return String(exact.template_name || '').trim() || null;
+  const fuzzy = rows.find((row) => {
+    const name = String(row.template_name || '').trim().toLowerCase();
+    return name.includes('payment') && (name.includes('link') || name.includes('collect') || name.includes('request'));
+  });
+  return fuzzy ? String(fuzzy.template_name || '').trim() || null : null;
+}
+
+function paymentTemplateLikely(row: TemplateOption): boolean {
+  const haystack = [
+    String(row.template_name || '').toLowerCase(),
+    String(row.display_name || '').toLowerCase(),
+    String(row.body_text || '').toLowerCase(),
+  ].join(' ');
+  return haystack.includes('payment') || haystack.includes('pay now') || haystack.includes('collect payment');
+}
+
+function templateHasUrlButton(row: TemplateOption | null): boolean {
+  if (!row?.meta || typeof row.meta !== 'object') return false;
+  const meta = row.meta as Record<string, any>;
+  const rawComponents = meta?.raw?.components || meta?.components || [];
+  if (!Array.isArray(rawComponents)) return false;
+  return rawComponents.some((c: any) => {
+    const t = String(c?.type || '').toUpperCase();
+    const sub = String(c?.sub_type || c?.subType || '').toUpperCase();
+    return t === 'BUTTONS' || (t === 'BUTTON' && sub === 'URL');
+  });
+}
+
+function buildPaymentTemplateParams(
+  row: TemplateOption | null,
+  data: { customerName: string; displayAmount: string; link: string; noteText: string }
+): string[] {
+  const fallback = [data.customerName, data.displayAmount, data.link];
+  if (data.noteText) fallback.push(data.noteText);
+  const keys = Array.isArray(row?.variable_keys)
+    ? row!.variable_keys.map((k) => String(k || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (keys.length === 0) return fallback;
+  const mapped = keys.map((key) => {
+    if (key.includes('amount') || key.includes('price')) return data.displayAmount;
+    if (key.includes('name') || key.includes('customer')) return data.customerName;
+    if (key.includes('link') || key.includes('url') || key.includes('pay')) return data.link;
+    if (key.includes('note') || key.includes('remark') || key.includes('reason')) return data.noteText || '-';
+    return data.link;
+  });
+  return mapped;
+}
+
 function sortMessagesAsc(rows: any[]): any[] {
   return [...rows].sort((a, b) => {
     const ta = new Date(a?.created_at || a?.status_at || 0).getTime();
@@ -232,13 +295,14 @@ function resolveTemplateImageUrl(template?: TemplateOption | null): string | nul
   return null;
 }
 
-function fillTemplateBody(template?: TemplateOption | null, paramsRaw?: string): string {
+function fillTemplateBody(template?: TemplateOption | null, paramsRaw?: string | string[]): string {
   const body = String(template?.body_text || '').trim();
   if (!body) return 'Template body preview not available.';
-  const params = String(paramsRaw || '')
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
+  const params = Array.isArray(paramsRaw)
+    ? paramsRaw.map((v) => String(v ?? '').trim())
+    : String(paramsRaw || '')
+        .split(',')
+        .map((v) => v.trim());
   const fallbackExamples = Array.isArray(template?.example_values) ? template!.example_values : [];
   return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, indexRaw: string) => {
     const idx = Math.max(0, Number(indexRaw) - 1);
@@ -250,7 +314,71 @@ function fillTemplateBodyFromArray(template?: TemplateOption | null, paramsInput
   const params = Array.isArray(paramsInput)
     ? paramsInput.map((v) => String(v ?? '').trim()).filter(Boolean)
     : [];
-  return fillTemplateBody(template, params.join(','));
+  return fillTemplateBody(template, params);
+}
+
+function getTemplateVariableCount(template?: TemplateOption | null): number {
+  const body = String(template?.body_text || '');
+  const matches = body.match(/\{\{\s*\d+\s*\}\}/g) || [];
+  const indexes = new Set(matches.map((m) => Number(m.replace(/[^\d]/g, ''))));
+  return indexes.size;
+}
+
+const TEMPLATE_SERVICE_TYPE_OPTIONS = [
+  { value: 'Breakdown', label: 'Breakdown' },
+  { value: 'Flat Tire', label: 'Flat Tire' },
+  { value: 'Battery Jumpstart', label: 'Battery Jumpstart' },
+  { value: 'Fuel Delivery', label: 'Fuel Delivery' },
+  { value: 'Towing', label: 'Towing' },
+  { value: 'Key Lockout', label: 'Key Lockout' },
+  { value: 'RSA Service', label: 'RSA Service' },
+  { value: 'Car Service', label: 'Car Service' },
+  { value: 'Other', label: 'Other' },
+] as const;
+
+function isServiceTypeVariable(template: TemplateOption | null, index: number): boolean {
+  const examples = Array.isArray(template?.example_values) ? template!.example_values : [];
+  const ex = String(examples[index] || '').trim().toLowerCase();
+  const keys = Array.isArray(template?.variable_keys) ? template!.variable_keys : [];
+  const key = String(keys[index] || '').trim().toLowerCase();
+  const serviceHints = ['service', 'towing', 'breakdown', 'rsa'];
+  return serviceHints.some((h) => ex.includes(h) || key.includes(h));
+}
+
+function isAutoFilledVariable(template: TemplateOption | null, index: number): boolean {
+  const examples = Array.isArray(template?.example_values) ? template!.example_values : [];
+  const ex = String(examples[index] || '').trim();
+  if (/^https?:\/\//i.test(ex)) return true;
+  const keys = Array.isArray(template?.variable_keys) ? template!.variable_keys : [];
+  const key = String(keys[index] || '').trim().toLowerCase();
+  if (/^(pay|ref|lnk|txn)[_-]/i.test(ex)) return true;
+  if (['ref', 'reference', 'payment_ref', 'link_ref', 'txn_id', 'transaction_id'].includes(key)) return true;
+  return false;
+}
+
+function isNameVariable(template: TemplateOption | null, index: number): boolean {
+  const keys = Array.isArray(template?.variable_keys) ? template!.variable_keys : [];
+  const key = String(keys[index] || '').trim().toLowerCase();
+  if (['name', 'customer_name', 'customer', 'cust_name'].includes(key)) return true;
+  const examples = Array.isArray(template?.example_values) ? template!.example_values : [];
+  const ex = String(examples[index] || '').trim();
+  if (/^[A-Z][a-z]+$/i.test(ex) && !isServiceTypeVariable(template, index) && !/^\d/.test(ex)) return true;
+  return false;
+}
+
+function getTemplateVariableLabel(template: TemplateOption | null, index: number): string {
+  const keys = Array.isArray(template?.variable_keys) ? template!.variable_keys : [];
+  const key = String(keys[index] || '').trim();
+  if (key && key !== `variable_${index + 1}`) {
+    return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  const examples = Array.isArray(template?.example_values) ? template!.example_values : [];
+  const ex = String(examples[index] || '').trim();
+  if (ex) {
+    if (/^\d+(\.\d+)?$/.test(ex)) return 'Amount';
+    if (ex.length <= 30) return ex;
+  }
+  return `Variable ${index + 1}`;
 }
 
 function extractTemplateButtons(template?: TemplateOption | null): Array<{ text: string; type: string }> {
@@ -502,6 +630,7 @@ function createPaymentLinkRef() {
 export default function WhatsAppMobilePreviewModal({
   isOpen,
   phoneNumber,
+  customerName: customerNameProp,
   title,
   previewMessage,
   leadId,
@@ -509,6 +638,24 @@ export default function WhatsAppMobilePreviewModal({
   onBack,
 }: WhatsAppMobilePreviewModalProps) {
   const waPhone = normalizePhone(phoneNumber);
+
+  const [resolvedCustomerName, setResolvedCustomerName] = useState('');
+  const customerName = (customerNameProp || resolvedCustomerName || '').trim();
+
+  useEffect(() => {
+    if (customerNameProp || !waPhone || !isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/telecaller/direct-pay-links?limit=5&phone=${encodeURIComponent(waPhone)}`);
+        const json = await res.json().catch(() => ({}));
+        const rows = Array.isArray(json?.rows) ? json.rows : [];
+        const name = rows.find((r: any) => r.customer_name)?.customer_name || '';
+        if (!cancelled && name) setResolvedCustomerName(name);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [waPhone, isOpen, customerNameProp]);
 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
@@ -518,13 +665,15 @@ export default function WhatsAppMobilePreviewModal({
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
   const [caption, setCaption] = useState('');
   const [templateName, setTemplateName] = useState('');
-  const [templateParams, setTemplateParams] = useState('');
+  const [templateParams, setTemplateParams] = useState<string[]>([]);
+  const [templateStep, setTemplateStep] = useState<1 | 2>(1);
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentGenerating, setPaymentGenerating] = useState(false);
+  const [selectedPaymentTemplateName, setSelectedPaymentTemplateName] = useState('');
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<ChatAssigneeOption[]>([]);
@@ -583,6 +732,62 @@ export default function WhatsAppMobilePreviewModal({
   const connectedAtRef = useRef<number | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
 
+  // Draggable modal state
+  const DRAG_STORAGE_KEY = 'wa_chat_modal_pos';
+  const phoneRef = useRef<HTMLDivElement | null>(null);
+  const dragState = useRef<{ dragging: boolean; startX: number; startY: number; origX: number; origY: number }>({
+    dragging: false, startX: 0, startY: 0, origX: 0, origY: 0,
+  });
+  const [modalPos, setModalPos] = useState<{ x: number; y: number } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem(DRAG_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') return parsed;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    if (!phoneRef.current) return;
+    const rect = phoneRef.current.getBoundingClientRect();
+    dragState.current = {
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: rect.left,
+      origY: rect.top,
+    };
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      if (!dragState.current.dragging) return;
+      const dx = e.clientX - dragState.current.startX;
+      const dy = e.clientY - dragState.current.startY;
+      setModalPos({ x: dragState.current.origX + dx, y: dragState.current.origY + dy });
+    };
+    const handleUp = () => {
+      if (!dragState.current.dragging) return;
+      dragState.current.dragging = false;
+      setModalPos((prev) => {
+        if (prev) {
+          try { localStorage.setItem(DRAG_STORAGE_KEY, JSON.stringify(prev)); } catch { /* ignore */ }
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, []);
+
   // Multi-select forward state
   const [selectMode, setSelectMode] = useState(false);
   const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
@@ -604,6 +809,34 @@ export default function WhatsAppMobilePreviewModal({
       ) || null,
     [templateOptions, templateName]
   );
+  const templateVarCount = useMemo(
+    () => getTemplateVariableCount(selectedTemplate),
+    [selectedTemplate]
+  );
+  const visibleVarCount = useMemo(() => {
+    let count = 0;
+    for (let i = 0; i < templateVarCount; i++) {
+      if (!isAutoFilledVariable(selectedTemplate, i)) count++;
+    }
+    return count;
+  }, [selectedTemplate, templateVarCount]);
+  useEffect(() => {
+    const examples = Array.isArray(selectedTemplate?.example_values) ? selectedTemplate!.example_values : [];
+    setTemplateParams(() => {
+      if (templateVarCount === 0) return [];
+      const arr = new Array(templateVarCount).fill('');
+      for (let i = 0; i < templateVarCount; i++) {
+        const example = String(examples[i] || '').trim();
+        if (isAutoFilledVariable(selectedTemplate, i)) {
+          arr[i] = example || createPaymentLinkRef();
+        } else if (isNameVariable(selectedTemplate, i) && customerName) {
+          arr[i] = customerName;
+        }
+      }
+      return arr;
+    });
+    setTemplateStep(1);
+  }, [templateVarCount, templateName, selectedTemplate, customerName]);
   const filteredTemplateOptions = useMemo(() => {
     const q = templateSearch.trim().toLowerCase();
     if (!q) return templateOptions;
@@ -1005,6 +1238,25 @@ export default function WhatsAppMobilePreviewModal({
     () => resolveCallingPermissionTemplateName(templateOptions),
     [templateOptions]
   );
+  const paymentTemplateName = useMemo(
+    () => resolvePaymentTemplateName(templateOptions),
+    [templateOptions]
+  );
+  const paymentTemplateOptions = useMemo(
+    () => templateOptions.filter((row) => paymentTemplateLikely(row)),
+    [templateOptions]
+  );
+  const selectedPaymentTemplate = useMemo(
+    () =>
+      templateOptions.find(
+        (row) => row.template_name.trim().toLowerCase() === selectedPaymentTemplateName.trim().toLowerCase()
+      ) || null,
+    [templateOptions, selectedPaymentTemplateName]
+  );
+  useEffect(() => {
+    if (selectedPaymentTemplateName.trim()) return;
+    if (paymentTemplateName) setSelectedPaymentTemplateName(paymentTemplateName);
+  }, [paymentTemplateName, selectedPaymentTemplateName]);
   const callPermissionCooldownLeft = Math.max(
     0,
     Math.ceil((callPermissionCooldownUntil - callPermissionTick) / 1000)
@@ -1973,14 +2225,85 @@ export default function WhatsAppMobilePreviewModal({
         toast.error('Template name required');
         return;
       }
+
+      const finalParams = [...templateParams];
+
+      for (let i = 0; i < finalParams.length; i++) {
+        if (!isAutoFilledVariable(selectedTemplate, i)) continue;
+        const examples = Array.isArray(selectedTemplate?.example_values) ? selectedTemplate!.example_values : [];
+        const ex = String(examples[i] || '').trim();
+        if (/^https?:\/\//i.test(ex)) continue;
+        finalParams[i] = createPaymentLinkRef();
+      }
+
+      const urlVarIdx = finalParams.findIndex((_, i) => {
+        const examples = Array.isArray(selectedTemplate?.example_values) ? selectedTemplate!.example_values : [];
+        return /^https?:\/\//i.test(String(examples[i] || '').trim());
+      });
+      if (urlVarIdx !== -1) {
+        const amountVarIdx = finalParams.findIndex((_, i) => {
+          if (isAutoFilledVariable(selectedTemplate, i)) return false;
+          const ex = String(selectedTemplate?.example_values?.[i] || '').trim();
+          return /^\d+(\.\d+)?$/.test(ex);
+        });
+        const parsedAmount = amountVarIdx !== -1 ? Number(finalParams[amountVarIdx]) : 0;
+        if (parsedAmount > 0) {
+          setPaymentGenerating(true);
+          try {
+            const customerPhone = String(waPhone || '').trim();
+            const resolvedName = customerName || finalParams.find((v, i) => isNameVariable(selectedTemplate, i) && v) || customerPhone;
+            const linkRef = createPaymentLinkRef();
+            const refVarIdx = finalParams.findIndex((_, i) => {
+              if (!isAutoFilledVariable(selectedTemplate, i)) return false;
+              const examples = Array.isArray(selectedTemplate?.example_values) ? selectedTemplate!.example_values : [];
+              return !/^https?:\/\//i.test(String(examples[i] || '').trim());
+            });
+            if (refVarIdx !== -1) finalParams[refVarIdx] = linkRef;
+            const urlParams = new URLSearchParams();
+            urlParams.set('amount', String(parsedAmount));
+            urlParams.set('name', resolvedName);
+            urlParams.set('phone', customerPhone);
+            urlParams.set('ref', linkRef);
+            const envBaseUrl = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/$/, '');
+            const baseUrl = envBaseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+            const generatedLink = `${baseUrl}/pay-now?${urlParams.toString()}`;
+            finalParams[urlVarIdx] = generatedLink;
+
+            const linkRes = await fetch('/api/telecaller/direct-pay-links', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ref: linkRef,
+                link: generatedLink,
+                amount: parsedAmount,
+                customer_name: resolvedName,
+                customer_phone: customerPhone,
+                customer_email: '',
+              }),
+            });
+            const linkData = await linkRes.json().catch(() => ({}));
+            if (!linkRes.ok || !linkData?.success) {
+              toast.error(linkData?.error || 'Failed to generate payment link');
+              return;
+            }
+          } finally {
+            setPaymentGenerating(false);
+          }
+        }
+      }
+
+      const cleanedParams = finalParams.map((v) => v.trim());
+      const emptyIdx = cleanedParams.findIndex((v, i) => !v && !isAutoFilledVariable(selectedTemplate, i));
+      if (emptyIdx !== -1) {
+        toast.error(`Please fill variable "${getTemplateVariableLabel(selectedTemplate, emptyIdx)}"`);
+        return;
+      }
+
       payload = {
         ...payload,
         template_name: templateName.trim(),
         language: 'en',
-        template_params: templateParams
-          .split(',')
-          .map((v) => v.trim())
-          .filter(Boolean),
+        template_params: cleanedParams,
       };
     } else if (activeType === 'payment') {
       const amount = Number(paymentAmount);
@@ -1989,9 +2312,9 @@ export default function WhatsAppMobilePreviewModal({
         return;
       }
 
-      const customerName = String(phoneNumber || waPhone || '').trim();
+      const payCustomerName = customerName || String(phoneNumber || waPhone || '').trim();
       const customerPhone = String(waPhone || '').trim();
-      if (!customerName || !customerPhone) {
+      if (!payCustomerName || !customerPhone) {
         toast.error('Customer details missing for payment link');
         return;
       }
@@ -2000,7 +2323,7 @@ export default function WhatsAppMobilePreviewModal({
       try {
         const params = new URLSearchParams();
         params.set('amount', String(amount));
-        params.set('name', customerName);
+        params.set('name', payCustomerName);
         params.set('phone', customerPhone);
         const linkRef = createPaymentLinkRef();
         params.set('ref', linkRef);
@@ -2018,7 +2341,7 @@ export default function WhatsAppMobilePreviewModal({
             ref: linkRef,
             link,
             amount,
-            customer_name: customerName,
+            customer_name: payCustomerName,
             customer_phone: customerPhone,
             customer_email: '',
           }),
@@ -2031,14 +2354,28 @@ export default function WhatsAppMobilePreviewModal({
 
         const displayAmount = amount % 1 === 0 ? String(amount) : amount.toFixed(2);
         const noteText = paymentNote.trim();
-        const text = noteText
-          ? `${noteText}\nPayment link for INR ${displayAmount}: ${link}`
-          : `Payment link for INR ${displayAmount}: ${link}`;
-
+        const chosenTemplateName = selectedPaymentTemplateName.trim() || paymentTemplateName || '';
+        if (!chosenTemplateName) {
+          toast.error('No payment template found. Please create/approve payment template in Meta first.');
+          return;
+        }
+        const chosenTemplate =
+          templateOptions.find(
+            (row) => row.template_name.trim().toLowerCase() === chosenTemplateName.toLowerCase()
+          ) || null;
+        const templateParamsPayload = buildPaymentTemplateParams(chosenTemplate, {
+          customerName: payCustomerName,
+          displayAmount,
+          link,
+          noteText,
+        });
         payload = {
           ...payload,
-          message_type: 'text',
-          text,
+          message_type: 'template',
+          template_name: chosenTemplateName,
+          language: 'en',
+          template_params: templateParamsPayload,
+          button_url_params: templateHasUrlButton(chosenTemplate) ? [link] : [],
         };
       } finally {
         setPaymentGenerating(false);
@@ -2239,13 +2576,20 @@ export default function WhatsAppMobilePreviewModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-[372px] max-w-[95vw] h-[720px] max-h-[94vh] rounded-[2.6rem] bg-[#0f1f2e] p-2.5 shadow-[0_28px_70px_rgba(0,0,0,0.55)]">
+    <div className="fixed inset-0 z-[7000] bg-black/50" style={{ pointerEvents: 'auto' }}>
+      <div
+        ref={phoneRef}
+        className="w-[372px] max-w-[95vw] h-[720px] max-h-[94vh] rounded-[2.6rem] bg-[#0f1f2e] p-2.5 shadow-[0_28px_70px_rgba(0,0,0,0.55)]"
+        style={modalPos ? { position: 'fixed', left: modalPos.x, top: modalPos.y, margin: 0 } : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+      >
         <div className="relative h-full rounded-[2.1rem] bg-[#efeae2] overflow-hidden border border-black/25 flex flex-col">
-          <div className="h-6 bg-[#0f1f2e] flex items-center justify-center">
+          <div
+            className="h-6 bg-[#0f1f2e] flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={handleDragStart}
+          >
             <div className="h-1.5 w-24 rounded-full bg-[#2f3b43]" />
           </div>
-          <div className="bg-[#005c4b] text-white px-3.5 py-3 flex items-center justify-between shadow-sm">
+          <div className="bg-[#005c4b] text-white px-3.5 py-3 flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing" onMouseDown={handleDragStart}>
             <div className="flex items-center gap-2 min-w-0">
               {onBack && (
                 <button
@@ -2261,7 +2605,7 @@ export default function WhatsAppMobilePreviewModal({
                 <MessageCircle className="h-3.5 w-3.5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[14px] font-semibold truncate">{title || 'WhatsApp Chat'}</p>
+                <p className="text-[14px] font-semibold truncate">{customerName || title || 'WhatsApp Chat'}</p>
                 <p className="text-[11px] text-white/85 truncate">{phoneNumber || '—'}</p>
               </div>
             </div>
@@ -3135,75 +3479,154 @@ export default function WhatsAppMobilePreviewModal({
                   </button>
                 </div>
 
-                <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">Template library</p>
-                    <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
-                      {filteredTemplateOptions.length}/{templateOptions.length}
-                    </span>
-                  </div>
-                  <input
-                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
-                    value={templateSearch}
-                    onChange={(e) => setTemplateSearch(e.target.value)}
-                    placeholder="Search by template name..."
-                  />
-                  <div className="mt-2 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-[#e5e9ee] bg-[#fbfcfd] p-1.5">
-                    {templatesLoading ? (
-                      <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
-                    ) : null}
-                    {!templatesLoading && filteredTemplateOptions.length === 0 ? (
-                      <div className="px-2 py-3 text-[11px] text-[#667781]">No templates found</div>
-                    ) : null}
-                    {filteredTemplateOptions.map((row) => {
-                      const isSelected =
-                        row.template_name.trim().toLowerCase() === templateName.trim().toLowerCase();
-                      return (
-                        <button
-                          key={row.id}
-                          type="button"
-                          onClick={() => setTemplateName(row.template_name)}
-                          className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
-                            isSelected
-                              ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
-                              : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
-                          }`}
-                        >
-                          <p className="text-[11px] font-semibold text-[#111b21]">
-                            {row.display_name || row.template_name}
-                          </p>
-                          <p className="mt-0.5 line-clamp-1 text-[10px] text-[#667781]">
-                            {row.language_code.toUpperCase()} • {String(row.category || 'TEMPLATE').toUpperCase()}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                {templateStep === 1 ? (
+                  <>
+                    <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                          Step 1 — Choose Template
+                        </p>
+                        <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
+                          {filteredTemplateOptions.length}/{templateOptions.length}
+                        </span>
+                      </div>
+                      <input
+                        className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                        value={templateSearch}
+                        onChange={(e) => setTemplateSearch(e.target.value)}
+                        placeholder="Search by template name..."
+                      />
+                      <div className="mt-2 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-[#e5e9ee] bg-[#fbfcfd] p-1.5">
+                        {templatesLoading ? (
+                          <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
+                        ) : null}
+                        {!templatesLoading && filteredTemplateOptions.length === 0 ? (
+                          <div className="px-2 py-3 text-[11px] text-[#667781]">No templates found</div>
+                        ) : null}
+                        {filteredTemplateOptions.map((row) => {
+                          const isSelected =
+                            row.template_name.trim().toLowerCase() === templateName.trim().toLowerCase();
+                          return (
+                            <button
+                              key={row.id}
+                              type="button"
+                              onClick={() => setTemplateName(row.template_name)}
+                              className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                                isSelected
+                                  ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
+                                  : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
+                              }`}
+                            >
+                              <p className="text-[11px] font-semibold text-[#111b21]">
+                                {row.display_name || row.template_name}
+                              </p>
+                              <p className="mt-0.5 line-clamp-1 text-[10px] text-[#667781]">
+                                {row.language_code.toUpperCase()} • {String(row.category || 'TEMPLATE').toUpperCase()}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                {templateName.trim() ? (
-                  <div className="mt-2 rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
-                    <p className="font-semibold">Selected: {selectedTemplate?.display_name || templateName}</p>
-                    <p className="mt-1 text-[#1b6f5f] line-clamp-2 whitespace-pre-wrap">
-                      {selectedTemplate ? fillTemplateBody(selectedTemplate, templateParams) : 'Template selected'}
+                    {templateName.trim() ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
+                          <p className="font-semibold">{selectedTemplate?.display_name || templateName}</p>
+                          <p className="mt-0.5 text-[#1b6f5f] line-clamp-1 whitespace-pre-wrap">
+                            {String(selectedTemplate?.body_text || '').slice(0, 60)}...
+                          </p>
+                        </div>
+                        {visibleVarCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setTemplateStep(2)}
+                            className="shrink-0 rounded-lg bg-[#25D366] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#1da851]"
+                          >
+                            Fill Variables →
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-[#d5dbe1] bg-white p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTemplateStep(1)}
+                        className="flex items-center gap-1 text-[11px] font-semibold text-[#128c7e] hover:text-[#0d6e52]"
+                      >
+                        ← Change Template
+                      </button>
+                      <span className="rounded-full bg-[#e7f7ef] px-2 py-0.5 text-[10px] font-semibold text-[#128c7e]">
+                        Step 2 of 2
+                      </span>
+                    </div>
+
+                    <div className="mb-3 rounded-lg border border-[#bdebd2] bg-[#f2fcf6] px-2.5 py-2">
+                      <p className="text-[10px] font-semibold text-[#128c7e]">
+                        {selectedTemplate?.display_name || templateName}
+                      </p>
+                      <p className="mt-1 text-[10px] text-[#1b6f5f] whitespace-pre-wrap line-clamp-3">
+                        {fillTemplateBody(selectedTemplate, templateParams)}
+                      </p>
+                    </div>
+
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                      Fill Variables ({visibleVarCount})
                     </p>
+                    <div className="space-y-2.5">
+                      {templateParams.map((val, idx) => {
+                        if (isAutoFilledVariable(selectedTemplate, idx)) return null;
+                        const label = getTemplateVariableLabel(selectedTemplate, idx);
+                        const example = selectedTemplate?.example_values?.[idx] || '';
+                        const isServiceField = isServiceTypeVariable(selectedTemplate, idx);
+                        return (
+                          <div key={idx}>
+                            <label className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[#344054]">
+                              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#25D366] text-[10px] font-bold text-white">
+                                {idx + 1}
+                              </span>
+                              {isServiceField ? 'Service Type' : label}
+                            </label>
+                            {isServiceField ? (
+                              <select
+                                className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-3 py-2 text-[12px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#25D366]/30"
+                                value={val}
+                                onChange={(e) => {
+                                  setTemplateParams((prev) => {
+                                    const next = [...prev];
+                                    next[idx] = e.target.value;
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <option value="">Select Service Type</option>
+                                {TEMPLATE_SERVICE_TYPE_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-3 py-2 text-[12px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#25D366]/30"
+                                value={val}
+                                onChange={(e) => {
+                                  setTemplateParams((prev) => {
+                                    const next = [...prev];
+                                    next[idx] = e.target.value;
+                                    return next;
+                                  });
+                                }}
+                                placeholder={example || `Enter ${label.toLowerCase()}`}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                ) : null}
-
-                <div className="mt-2 rounded-xl border border-[#d5dbe1] bg-white p-2">
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
-                    Template params
-                  </label>
-                  <input
-                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
-                    value={templateParams}
-                    onChange={(e) => setTemplateParams(e.target.value)}
-                    placeholder="Comma separated values (e.g. Rahul, 20 min)"
-                  />
-                  <p className="mt-1 text-[10px] text-[#667781]">
-                    Tip: params order should match approved template variables.
-                  </p>
-                </div>
+                )}
               </div>
             ) : null}
             {activeType === 'payment' ? (
@@ -3248,6 +3671,26 @@ export default function WhatsAppMobilePreviewModal({
                     onChange={(e) => setPaymentNote(e.target.value)}
                     placeholder="e.g. RSA advance fee"
                   />
+                  <label className="mb-1 mt-2 block text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
+                    Payment template
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] focus:border-[#25D366] focus:bg-white focus:outline-none"
+                    value={selectedPaymentTemplateName}
+                    onChange={(e) => setSelectedPaymentTemplateName(e.target.value)}
+                  >
+                    <option value="">Select payment template</option>
+                    {paymentTemplateOptions.map((row) => (
+                      <option key={row.id} value={row.template_name}>
+                        {row.display_name || row.template_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[10px] text-[#667781]">
+                    {selectedPaymentTemplateName
+                      ? `Will send using official template: ${selectedPaymentTemplateName}`
+                      : 'No payment template selected. Create/approve template in Meta first.'}
+                  </p>
 
                   <button
                     type="button"

@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import crypto from 'crypto';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import { sendTemplateMessage, normalizePhoneNumber } from '@/lib/services/whatsappService';
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
@@ -381,6 +382,71 @@ export async function POST(request: Request) {
       } else {
         directPayError = adminErr || 'Supabase admin not configured';
       }
+    }
+
+    // Auto-send payment_success WhatsApp notification
+    try {
+      const { supabaseAdmin: adminForNotif } = getSupabaseAdmin();
+      const dbNotif = adminForNotif as any;
+      if (dbNotif && orderId) {
+        const { data: payRow } = await dbNotif
+          .from('Razorpay_Direct_pay_RSA')
+          .select('customer_name, customer_phone, amount, notes')
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+        const custPhone = payRow?.customer_phone
+          || paymentDetails?.notes?.customer_phone
+          || paymentDetails?.contact
+          || '';
+        const custName = payRow?.customer_name
+          || paymentDetails?.notes?.customer_name
+          || 'Customer';
+        const amt = payRow?.amount || (paymentDetails.amount ? parseFloat(paymentDetails.amount) / 100 : 0);
+
+        console.log('[Verify] WhatsApp notification lookup:', {
+          orderId,
+          payRowFound: !!payRow,
+          custPhone,
+          custName,
+          amt,
+        });
+
+        const normalized = normalizePhoneNumber(custPhone);
+        if (normalized) {
+          const amtStr = Number(amt) % 1 === 0 ? String(Number(amt)) : Number(amt).toFixed(2);
+          const result = await sendTemplateMessage({
+            phoneNumber: custPhone,
+            templateName: 'payment_success',
+            templateParams: [custName, amtStr, paymentId || orderId, 'MyFNG Service'],
+            languageCode: 'en',
+          });
+          console.log('[Verify] WhatsApp payment_success result:', {
+            success: result?.success,
+            messageId: result?.messageId,
+            error: result?.error,
+          });
+          const now = new Date().toISOString();
+          await dbNotif.from('whatsapp_messages').insert({
+            provider_message_id: result.messageId || null,
+            direction: 'OUTBOUND',
+            message_type: 'TEMPLATE',
+            recipient_phone: normalized,
+            template_name: 'payment_success',
+            template_language: 'en',
+            status: result.success ? 'SENT' : 'FAILED',
+            status_at: now,
+            error_message: result.success ? null : result.error || null,
+            payload: { request: { type: 'payment_success', customer: custName, amount: amt, phone: custPhone }, response: result.raw || null },
+            meta: { source: 'payment_verify_auto' },
+            updated_at: now,
+          });
+        } else {
+          console.warn('[Verify] No valid phone for WhatsApp notification:', custPhone);
+        }
+      }
+    } catch (e) {
+      console.error('[Verify] Failed to send payment_success WhatsApp:', e);
     }
 
     // Payment verified successfully

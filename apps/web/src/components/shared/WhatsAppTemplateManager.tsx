@@ -275,11 +275,10 @@ export default function WhatsAppTemplateManager() {
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to sync templates');
-      toast.success(
-        data?.synced != null
-          ? `Synced ${data.synced} templates from Meta`
-          : 'Templates synced from Meta successfully'
-      );
+      const parts: string[] = [];
+      if (data?.synced != null) parts.push(`Synced ${data.synced} templates`);
+      if (data?.deleted) parts.push(`Deleted ${data.deleted} stale`);
+      toast.success(parts.length > 0 ? parts.join(', ') : 'Templates synced from Meta successfully');
       await loadTemplates();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to sync templates');

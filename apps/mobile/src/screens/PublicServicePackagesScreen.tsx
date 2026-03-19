@@ -1,394 +1,301 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Pressable, Linking, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Image,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
-import PublicPillNav, { type PublicPillNavTab } from '../components/PublicPillNav';
-import { supabase } from '../lib/supabase';
+import { COLORS } from '../constants/theme';
+import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
+import ReferAndFooter from '../components/ReferAndFooter';
 
 type Props = {
   navigation: any;
   route: any;
 };
 
+type ServiceCategory = {
+  id: string;
+  name: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bg: string;
+  desc: string;
+};
+
+const SERVICE_CATEGORIES: ServiceCategory[] = [
+  { id: '1', name: 'Periodic Service', icon: 'construct', color: '#2563EB', bg: '#EFF6FF', desc: 'Complete maintenance check with oil & filter change, brake inspection, and 60-point health check.' },
+  { id: '2', name: 'AC Service', icon: 'snow', color: '#06B6D4', bg: '#ECFEFF', desc: 'Gas top-up, filter cleaning, and cooling system check for a chilled cabin.' },
+  { id: '3', name: 'Brakes Service', icon: 'warning', color: '#EF4444', bg: '#FEF2F2', desc: 'Brake pad replacement, disc resurfacing, and fluid check for maximum safety.' },
+  { id: '4', name: 'Engine Services', icon: 'speedometer', color: '#EA580C', bg: '#FFF7ED', desc: 'Expert engine diagnostics, tuning, and major repairs to ensure peak performance.' },
+  { id: '5', name: 'Clutch Service', icon: 'cog', color: '#7C3AED', bg: '#F5F3FF', desc: 'Clutch plate replacement, cable adjustment, and smooth gear shifting support.' },
+  { id: '6', name: 'Battery Services', icon: 'battery-charging', color: '#CA8A04', bg: '#FEFCE8', desc: 'Battery testing, terminal cleaning, and instant replacement with top brands.' },
+  { id: '7', name: 'Tyre and Wheels', icon: 'radio-button-off', color: '#525252', bg: '#F5F5F5', desc: 'Wheel alignment, balancing, and tyre rotation for a stable ride.' },
+  { id: '8', name: 'Detailing Service', icon: 'car-sport', color: '#EC4899', bg: '#FDF2F8', desc: 'Ceramic coating, interior deep cleaning, and exterior polishing for a showroom shine.' },
+  { id: '9', name: 'Denting & Painting', icon: 'color-palette', color: '#059669', bg: '#ECFDF5', desc: 'High-quality body work with premium paint matching and dent removal.' },
+];
+
+const SERVICE_FAQS: Record<string, Array<{ q: string; a: string }>> = {
+  '1': [
+    { q: 'How often should I get a periodic service?', a: 'Every 10,000 km or 1 year, whichever comes first.' },
+    { q: 'What is included in a 60-point check?', a: 'It covers engine, brakes, suspension, electricals, and more.' },
+    { q: 'Do you use genuine oil filters?', a: 'Yes, we only use OEM or OES genuine parts.' },
+    { q: 'Is pickup and drop free?', a: 'Yes, we offer free pickup and drop for all periodic services.' },
+    { q: 'How long does the service take?', a: 'Typically 4-6 hours depending on the car model.' },
+  ],
+  default: [
+    { q: 'Is there a warranty on services?', a: 'Yes, we provide a 1000km or 1-month warranty on all services.' },
+    { q: 'How can I track my service?', a: 'You can track live updates directly in the MyFNG app.' },
+    { q: 'Are the technicians certified?', a: 'All our technicians are MyFNG certified with 5+ years experience.' },
+    { q: 'What payment methods are accepted?', a: 'We accept all UPI, Cards, and Cash on delivery.' },
+    { q: 'Can I cancel my booking?', a: 'Yes, you can cancel up to 2 hours before the scheduled pickup.' },
+  ],
+};
+
+const LOAN_CARDS = [
+  { title: 'Loan Against Car', color: '#EA580C', btnText: 'GET LOAN', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=400', points: ['Starting at 11.49%* p.a', 'Flexible Tenures'] },
+  { title: 'Car Inspection', color: '#059669', btnText: 'CHECK NOW', image: 'https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?auto=format&fit=crop&q=80&w=400', points: ['200+ points check', 'Expert Report'] },
+  { title: 'Car Insurance', color: '#2563EB', btnText: 'INSURE NOW', image: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?auto=format&fit=crop&q=80&w=400', points: ['Save up to 80%', 'Renew in 2 mins'] },
+];
+
 export default function PublicServicePackagesScreen({ navigation, route }: Props) {
   const city: string | undefined = route?.params?.city;
+  const initialServiceId: string | null = route?.params?.selectedServiceId ?? '1';
+  const [selectedService, setSelectedService] = useState<string>(initialServiceId || '1');
+  const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
+  const [loanIdx, setLoanIdx] = useState(0);
   const [supportOpen, setSupportOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string>('ALL');
-  const [selectedServiceName, setSelectedServiceName] = useState<string | null>(null);
-  const [checklistExpanded, setChecklistExpanded] = useState(false);
-  const [checklistLoading, setChecklistLoading] = useState(false);
-  const [checklistError, setChecklistError] = useState<string | null>(null);
-  const [checklistTemplate, setChecklistTemplate] = useState<{
-    serviceTypeName: string;
-    title: string | null;
-    points: number | null;
-    items: Array<{ id?: string; name?: string; category?: string }>;
-  } | null>(null);
-
+  const [showComparison, setShowComparison] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const detailY = useRef(0);
   const supportPhone = '+919167779696';
   const supportEmail = 'support@myfng.in';
 
-  const packages = useMemo(
-    () => [
-      {
-        title: 'Periodic Service',
-        items: ['Basic service', 'Standard service', 'Premium service'],
-        icon: 'calendar',
-      },
-      {
-        title: 'AC Service',
-        items: ['AC checkup', 'Gas refill', 'Cooling issue diagnosis'],
-        icon: 'snow',
-      },
-      {
-        title: 'Repairs',
-        items: ['Brake service', 'Suspension', 'Engine diagnostics'],
-        icon: 'build',
-      },
-      {
-        title: 'Detailing',
-        items: ['Interior cleaning', 'Exterior polish', 'Ceramic coating'],
-        icon: 'sparkles',
-      },
-      {
-        title: 'Roadside Assistance',
-        items: ['Battery jumpstart', 'Towing', 'Tyre puncture support'],
-        icon: 'car-sport',
-      },
-    ],
-    []
-  );
-
-  const selectedPackage = useMemo(() => {
-    if (activeCategory === 'ALL') return null;
-    return packages.find((p) => p.title === activeCategory) ?? null;
-  }, [activeCategory, packages]);
+  useEffect(() => {
+    if (initialServiceId) setSelectedService(initialServiceId);
+  }, [initialServiceId]);
 
   useEffect(() => {
-    // Reset selection when category changes
-    setSelectedServiceName(null);
-    setChecklistExpanded(false);
-    setChecklistTemplate(null);
-    setChecklistError(null);
-  }, [activeCategory]);
+    const timer = setInterval(() => setLoanIdx((p) => (p + 1) % LOAN_CARDS.length), 4000);
+    return () => clearInterval(timer);
+  }, []);
 
-  useEffect(() => {
-    async function loadChecklist() {
-      if (!selectedPackage || !selectedServiceName) return;
-
-      setChecklistLoading(true);
-      setChecklistError(null);
-      setChecklistTemplate(null);
-
-      try {
-        // 1) Find the service_type row (DB)
-        const exactNeedle = selectedServiceName.trim();
-        const keywordNeedle = exactNeedle.split(' ')[0] || exactNeedle;
-
-        const tryFindServiceType = async (needle: string) => {
-          const { data } = await supabase
-            .from('service_types')
-            .select('id,name')
-            .eq('is_active', true)
-            .ilike('name', `%${needle}%`)
-            .order('name')
-            .limit(1)
-            .maybeSingle();
-          return data as any;
-        };
-
-        let st = await tryFindServiceType(exactNeedle);
-        if (!st && keywordNeedle && keywordNeedle !== exactNeedle) st = await tryFindServiceType(keywordNeedle);
-
-        if (!st?.id) {
-          setChecklistTemplate({
-            serviceTypeName: selectedServiceName,
-            title: null,
-            points: null,
-            items: [],
-          });
-          return;
-        }
-
-        // 2) Fetch customer checklist template for this service_type (DB)
-        const { data: tpl } = await supabase
-          .from('service_type_checklist_templates')
-          .select('title,points,checklist_items')
-          .eq('service_type_id', st.id)
-          .maybeSingle();
-
-        const serviceTypeName: string = String(st?.name || selectedServiceName);
-        const title: string | null = tpl?.title ? String(tpl.title) : null;
-        const points: number | null = Number.isFinite(Number(tpl?.points)) ? Number(tpl?.points) : null;
-        const itemsRaw = (tpl?.checklist_items || []) as any[];
-
-        setChecklistTemplate({
-          serviceTypeName,
-          title,
-          points,
-          items: Array.isArray(itemsRaw) ? itemsRaw : [],
-        });
-      } catch (e: any) {
-        setChecklistError(e?.message ? String(e.message) : 'Failed to load checklist');
-      } finally {
-        setChecklistLoading(false);
-      }
-    }
-
-    loadChecklist();
-  }, [selectedPackage, selectedServiceName]);
-
-  const derivedBadge = useMemo(() => {
-    const name = String(selectedServiceName || '').trim();
-    if (!name) return '';
-    return name.split(' ')[0]?.toUpperCase() || '';
-  }, [selectedServiceName]);
+  const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
+  const faqs = useMemo(() => SERVICE_FAQS[selectedService] || SERVICE_FAQS.default, [selectedService]);
+  const loanCard = LOAN_CARDS[loanIdx];
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
-            <Ionicons name="arrow-back" size={20} color={COLORS.primaryDark} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Service Packages</Text>
-            <Text style={styles.subTitle}>{city ? `City: ${city}` : 'Browse packages'}</Text>
-          </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
-            <Text style={styles.loginText}>Login</Text>
+    <SafeAreaView style={s.safe}>
+      <View style={s.screen}>
+        <View style={s.header}>
+          <Text style={s.headerTitle}>Our Services</Text>
+          <TouchableOpacity style={s.compareBtn} onPress={() => setShowComparison(true)}>
+            <Text style={s.compareBtnText}>Compare</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          <View style={styles.hero}>
-            <Text style={styles.heroTitle}>Transparent pricing. Verified workshops.</Text>
-            <Text style={styles.heroSub}>
-              You can browse as guest. For booking, start with AI — it recommends the right package.
-            </Text>
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() =>
-                navigation.navigate('AIBooking', { city, prefill: 'I want to view service packages and book.' })
-              }
-            >
-              <Ionicons name="chatbubbles" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>Chat & Book with AI</Text>
-            </TouchableOpacity>
+        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
+          {/* Loan Banner */}
+          <View style={s.loanBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.loanSubLabel}>GET A QUICK</Text>
+              <Text style={[s.loanTitle, { color: loanCard.color }]}>{loanCard.title}</Text>
+              {loanCard.points.map((p) => (
+                <View key={p} style={s.loanBullet}>
+                  <Ionicons name="checkmark-circle" size={14} color={loanCard.color} />
+                  <Text style={s.loanBulletText}>{p}</Text>
+                </View>
+              ))}
+              <TouchableOpacity style={s.loanBtn}>
+                <Text style={s.loanBtnText}>{loanCard.btnText}</Text>
+              </TouchableOpacity>
+            </View>
+            <Image source={{ uri: loanCard.image }} style={s.loanImage} resizeMode="cover" />
           </View>
 
-          {/* Categories strip (like market apps) */}
-          <View style={styles.categoriesWrap}>
-            <View style={styles.categoriesGrid}>
-              <TouchableOpacity
-                style={[styles.categoryTile, activeCategory === 'ALL' ? styles.categoryTileActive : null]}
-                activeOpacity={0.9}
-                onPress={() => setActiveCategory('ALL')}
-              >
-                <View style={[styles.categoryIconBox, styles.categoryAllBox]}>
-                  <Text style={styles.categoryAllText}>ALL</Text>
-                </View>
-                <Text style={styles.categoryLabel} numberOfLines={2}>
-                  All
-                </Text>
-              </TouchableOpacity>
-
-          {packages.map((p) => (
+          {/* Service Category Grid */}
+          <Text style={s.gridHeading}>Select Service Category</Text>
+          <View style={s.grid}>
+            {SERVICE_CATEGORIES.map((svc) => {
+              const active = svc.id === selectedService;
+              return (
                 <TouchableOpacity
-                  key={p.title}
-                  style={[styles.categoryTile, activeCategory === p.title ? styles.categoryTileActive : null]}
-                  activeOpacity={0.9}
-                  onPress={() => setActiveCategory(p.title)}
+                  key={svc.id}
+                  style={s.gridItem}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedService(svc.id);
+                    setOpenFaqIdx(null);
+                    setTimeout(() => scrollRef.current?.scrollTo({ y: detailY.current, animated: true }), 100);
+                  }}
                 >
-                  <View style={styles.categoryIconBox}>
-                    <Ionicons name={p.icon as any} size={22} color={COLORS.primaryDark} />
+                  <View style={[s.gridIcon, { borderColor: active ? '#2563EB' : '#E5E7EB' }, active ? s.gridIconActive : null]}>
+                    <Ionicons name={svc.icon as any} size={22} color={svc.color} />
                   </View>
-                  <Text style={styles.categoryLabel} numberOfLines={2}>
-                    {p.title}
-                  </Text>
+                  <Text style={[s.gridLabel, active ? s.gridLabelActive : s.gridLabelInactive]}>{svc.name}</Text>
                 </TouchableOpacity>
-              ))}
+              );
+            })}
+          </View>
+
+          {/* RSA Banner */}
+          <TouchableOpacity
+            style={s.rsaBanner}
+            activeOpacity={0.9}
+            onPress={() => navigation.navigate('RoadsideAssistance', { city })}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={s.rsaBannerTitle}>Roadside Assistance</Text>
+              <Text style={s.rsaBannerSub}>Emergency support & towing services</Text>
+            </View>
+            <View style={s.rsaBannerBadge}>
+              <Text style={s.rsaBannerBadgeText}>Get Help</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
+          </TouchableOpacity>
+
+          {/* Selected Service Detail */}
+          <View
+            style={s.detailCard}
+            onLayout={(e) => { detailY.current = e.nativeEvent.layout.y; }}
+          >
+            <View style={s.detailTop}>
+              <View style={[s.detailIcon, { backgroundColor: current.bg }]}>
+                <Ionicons name={current.icon as any} size={22} color={current.color} />
+              </View>
+              <Text style={s.detailTitle}>{current.name}</Text>
+            </View>
+            <Text style={s.detailDesc}>{current.desc}</Text>
+            <View style={s.detailBtns}>
+              <TouchableOpacity
+                style={s.bookNowBtn}
+                onPress={() => navigation.navigate('PublicBookServiceNow', { city })}
+              >
+                <Text style={s.bookNowBtnText}>Book Now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.phoneBtn}
+                onPress={() => Linking.openURL(`tel:${supportPhone}`)}
+              >
+                <Ionicons name="call" size={20} color="#6B7280" />
+              </TouchableOpacity>
             </View>
           </View>
 
-          {/* Selected category details */}
-          {selectedPackage ? (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardIcon}>
-                  <Ionicons name={selectedPackage.icon as any} size={18} color="#fff" />
-                </View>
-                <Text style={styles.cardTitle}>{selectedPackage.title}</Text>
-              </View>
-
-              <Text style={styles.serviceTypesTitle}>Select a service type</Text>
-              {selectedPackage.items.map((it) => {
-                const active = selectedServiceName === it;
-                return (
-                  <TouchableOpacity
-                    key={it}
-                    style={[styles.serviceTypeRow, active ? styles.serviceTypeRowActive : null]}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      setSelectedServiceName(it);
-                      setChecklistExpanded(true);
-                    }}
-                  >
-                    <View style={styles.serviceTypeLeft}>
-                      <Ionicons name={active ? 'radio-button-on' : 'radio-button-off'} size={18} color={COLORS.primary} />
-                      <Text style={[styles.serviceTypeText, active ? styles.serviceTypeTextActive : null]}>{it}</Text>
-                    </View>
-                    <Ionicons name="chevron-down" size={16} color={COLORS.gray[500]} />
-                  </TouchableOpacity>
-                );
-              })}
-
-              {/* Checklist details (DB-driven) */}
-              {selectedServiceName ? (
-                <View style={styles.checklistCard}>
-                  <View style={styles.checklistTopRow}>
-                    <View style={styles.checklistTopLeft}>
-                      {!!derivedBadge ? <Text style={styles.checklistBadge}>{derivedBadge}</Text> : null}
-                      <Text style={styles.checklistTitle} numberOfLines={2}>
-                        {checklistTemplate?.title || checklistTemplate?.serviceTypeName || selectedServiceName || 'Checklist'}
-                        {checklistTemplate?.points ? ` (${checklistTemplate.points} Points)` : ''}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => setChecklistExpanded((v) => !v)}
-                      activeOpacity={0.8}
-                      style={styles.checklistLinkBtn}
-                    >
-                      <Text style={styles.checklistLinkText}>{checklistExpanded ? 'Hide checklist' : 'View checklist'}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {!checklistExpanded ? (
-                    <Text style={styles.checklistEmptyText}>Tap “View checklist” to see details.</Text>
-                  ) : checklistLoading ? (
-                    <View style={styles.checklistLoading}>
-                      <ActivityIndicator size="small" color={COLORS.primary} />
-                      <Text style={styles.checklistLoadingText}>Loading checklist…</Text>
-                    </View>
-                  ) : checklistError ? (
-                    <Text style={styles.checklistErrorText}>{checklistError}</Text>
-                  ) : checklistTemplate && checklistTemplate.items.length ? (
-                    <View style={styles.checklistItems}>
-                      <View style={styles.checklistStatsRow}>
-                        {checklistTemplate.points ? (
-                          <View style={styles.checklistPill}>
-                            <Ionicons name="checkmark-done" size={14} color={COLORS.gray[700]} />
-                            <Text style={styles.checklistPillText}>{checklistTemplate.points} pts</Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      <View style={styles.checklistSectionHeader}>
-                        <Text style={styles.checklistSectionTitle}>What you get</Text>
-                        <Text style={styles.checklistSectionMeta}>Official</Text>
-                      </View>
-
-                      {checklistTemplate.items.slice(0, 12).map((ci, idx) => (
-                        <View key={String(ci.id || idx)} style={styles.checklistItemRow}>
-                          <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.checklistItemText}>{String(ci.name || '')}</Text>
-                            {ci.category ? <Text style={styles.checklistItemMeta}>{String(ci.category)}</Text> : null}
-                          </View>
-                        </View>
-                      ))}
-                      {checklistTemplate.items.length > 12 ? (
-                        <Text style={styles.checklistMoreText}>+ {checklistTemplate.items.length - 12} more points</Text>
-                      ) : null}
-                    </View>
-                  ) : (
-                    <Text style={styles.checklistEmptyText}>Checklist is not available for this service yet.</Text>
-                  )}
-                </View>
-              ) : null}
-
+          {/* Service FAQs */}
+          <Text style={s.faqHeading}>Service FAQs</Text>
+          {faqs.map((faq, idx) => (
+            <View key={faq.q} style={s.faqCard}>
               <TouchableOpacity
-                style={styles.cardCta}
-                onPress={() =>
-                  navigation.navigate('AIBooking', { city, prefill: `I want ${selectedPackage.title.toLowerCase()}.` })
-                }
+                style={s.faqHeader}
+                onPress={() => setOpenFaqIdx((prev) => (prev === idx ? null : idx))}
               >
-                <Text style={styles.cardCtaText}>Get AI recommendation</Text>
-                <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+                <Text style={s.faqQ}>{faq.q}</Text>
+                <Ionicons name={openFaqIdx === idx ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
               </TouchableOpacity>
+              {openFaqIdx === idx ? <Text style={s.faqA}>{faq.a}</Text> : null}
             </View>
-          ) : (
-            packages.map((p) => (
-              <View key={p.title} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.cardIcon}>
-                    <Ionicons name={p.icon as any} size={18} color="#fff" />
-                  </View>
-                  <Text style={styles.cardTitle}>{p.title}</Text>
-              </View>
+          ))}
 
-              {p.items.map((it) => (
-                <View key={it} style={styles.row}>
-                  <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                  <Text style={styles.rowText}>{it}</Text>
-                </View>
-              ))}
-
-              <TouchableOpacity
-                style={styles.cardCta}
-                onPress={() => navigation.navigate('AIBooking', { city, prefill: `I want ${p.title.toLowerCase()}.` })}
-              >
-                <Text style={styles.cardCtaText}>Get AI recommendation</Text>
-                <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-            ))
-          )}
-
-          <View style={styles.footerNote}>
-            <Ionicons name="shield-checkmark" size={18} color={COLORS.primary} />
-            <Text style={styles.footerText}>
-              MY FNG ensures quality-audited partner workshops and warranty-backed service.
-            </Text>
-          </View>
+          <ReferAndFooter />
+          <View style={{ height: 24 }} />
         </ScrollView>
 
         <PublicPillNav
-          activeTab="search"
+          activeTab="services"
           onPressTab={(tab: PublicPillNavTab) => {
+            if (tab === 'home') navigation.navigate('PublicHome');
+            if (tab === 'services') return;
             if (tab === 'ai') navigation.navigate('AIBooking', { city });
-            if (tab === 'search') navigation.navigate('PublicWorkshopLocator', { city });
-            if (tab === 'profile') navigation.navigate('Login');
+            if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city });
+            if (tab === 'account') navigation.navigate('Settings');
+            if (tab === 'profile') navigation.navigate('Settings');
             if (tab === 'settings') setSupportOpen(true);
           }}
         />
 
+        {/* Support Modal */}
         <Modal visible={supportOpen} transparent animationType="fade" onRequestClose={() => setSupportOpen(false)}>
-          <Pressable style={styles.modalOverlay} onPress={() => setSupportOpen(false)}>
-            <Pressable style={styles.modalCard} onPress={() => undefined}>
-              <Text style={styles.modalTitle}>Support</Text>
-              <TouchableOpacity style={styles.modalRow} onPress={() => navigation.navigate('AIBooking', { city, prefill: 'I need help.' })}>
-                <Text style={styles.modalRowText}>Chat with AI</Text>
+          <Pressable style={s.modalOverlay} onPress={() => setSupportOpen(false)}>
+            <Pressable style={s.modalCard} onPress={() => undefined}>
+              <Text style={s.modalTitle}>Support</Text>
+              <TouchableOpacity style={s.modalRow} onPress={() => navigation.navigate('AIBooking', { city, prefill: 'I need help.' })}>
+                <Text style={s.modalRowText}>Chat with AI</Text>
                 <Ionicons name="chatbubbles" size={18} color={COLORS.primary} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalRow} onPress={() => Linking.openURL(`tel:${supportPhone}`)}>
-                <Text style={styles.modalRowText}>Call Support</Text>
+              <TouchableOpacity style={s.modalRow} onPress={() => Linking.openURL(`tel:${supportPhone}`)}>
+                <Text style={s.modalRowText}>Call Support</Text>
                 <Ionicons name="call" size={18} color={COLORS.primary} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalRow} onPress={() => Linking.openURL(`mailto:${supportEmail}`)}>
-                <Text style={styles.modalRowText}>Email</Text>
+              <TouchableOpacity style={s.modalRow} onPress={() => Linking.openURL(`mailto:${supportEmail}`)}>
+                <Text style={s.modalRowText}>Email</Text>
                 <Ionicons name="mail" size={18} color={COLORS.primary} />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalLoginBtn}
-                onPress={() => {
-                  setSupportOpen(false);
-                  navigation.navigate('Login');
-                }}
-              >
-                <Text style={styles.modalLoginText}>Login</Text>
-              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Package Comparison Modal */}
+        <Modal visible={showComparison} transparent animationType="fade" onRequestClose={() => setShowComparison(false)}>
+          <Pressable style={s.compareOverlay} onPress={() => setShowComparison(false)}>
+            <Pressable style={s.compareSheet} onPress={() => undefined}>
+              <View style={s.compareHeader}>
+                <Text style={s.compareTitle}>Compare Packages</Text>
+                <TouchableOpacity style={s.compareClose} onPress={() => setShowComparison(false)}>
+                  <Ionicons name="close" size={20} color="#111827" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} style={s.compareBody}>
+                {/* Column Headers */}
+                <View style={s.compareRow}>
+                  <View style={s.compareLabel} />
+                  {(['Basic', 'Standard', 'Comprehensive'] as const).map((n) => (
+                    <View key={n} style={s.compareCol}>
+                      <Text style={s.compareColName}>{n}</Text>
+                      <Text style={s.compareColPrice}>{n === 'Basic' ? '₹1,999' : n === 'Standard' ? '₹2,999' : '₹4,499'}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Feature Rows */}
+                {[
+                  { label: 'Engine Oil Change', vals: [true, true, true] },
+                  { label: 'Oil Filter Change', vals: [true, true, true] },
+                  { label: 'Health Checkup', vals: ['30-Point', '60-Point', '90-Point'] },
+                  { label: 'Car Wash & Wax', vals: [true, true, true] },
+                  { label: 'Computer Scanning', vals: [false, true, true] },
+                  { label: 'Wheel Alignment', vals: [false, false, true] },
+                ].map((feat) => (
+                  <View key={feat.label} style={s.compareFeatureRow}>
+                    <View style={s.compareLabel}>
+                      <Text style={s.compareFeatureLabel}>{feat.label}</Text>
+                    </View>
+                    {feat.vals.map((v, i) => (
+                      <View key={i} style={s.compareCol}>
+                        {typeof v === 'boolean' ? (
+                          <View style={[s.compareDot, { backgroundColor: v ? '#10B981' : '#E5E7EB' }]}>
+                            <Ionicons name={v ? 'checkmark' : 'close'} size={12} color={v ? '#FFFFFF' : '#9CA3AF'} />
+                          </View>
+                        ) : (
+                          <Text style={s.compareFeatureText}>{v}</Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ))}
+
+                <View style={s.compareNote}>
+                  <Text style={s.compareNoteText}>* Prices are indicative and may vary based on car model and engine capacity. Taxes extra as applicable.</Text>
+                </View>
+              </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
@@ -397,421 +304,139 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.gray[50] },
-  screen: { flex: 1, backgroundColor: COLORS.gray[50] },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#F0F7FF' },
+  screen: { flex: 1, backgroundColor: '#F0F7FF' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.gray[50],
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  subTitle: {
-    marginTop: 2,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '800',
-    color: COLORS.gray[600],
-  },
-  loginBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#EEF6FF',
-    borderWidth: 1,
-    borderColor: 'rgba(0,136,232,0.16)',
-  },
-  loginText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  container: {
-    paddingHorizontal: SPACING.md,
-    paddingBottom: 140,
-  },
-  hero: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(0,136,232,0.14)',
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  categoriesWrap: {
-    marginBottom: SPACING.md,
-  },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 14,
-    columnGap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  categoryTile: {
-    width: '31.5%',
-    alignItems: 'center',
-  },
-  categoryTileActive: {
-    transform: [{ scale: 1.02 }],
-  },
-  categoryIconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: '#EEF6FF',
+  headerTitle: { fontSize: 20, fontWeight: '900', color: '#111827' },
+  compareBtn: {
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryLabel: {
-    marginTop: 6,
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.gray[800],
-    textAlign: 'center',
-    lineHeight: 12,
-  },
-  categoryAllBox: {
-    backgroundColor: '#7C3AED',
-    borderColor: 'rgba(124,58,237,0.25)',
-  },
-  categoryAllText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  heroTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  heroSub: {
-    marginTop: 8,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '700',
-    color: COLORS.gray[600],
-    lineHeight: 18,
-  },
-  primaryBtn: {
-    marginTop: SPACING.md,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 10,
-  },
-  primaryBtnText: {
-    color: '#fff',
-    fontSize: FONT_SIZES.md,
-    fontWeight: '900',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-    marginBottom: SPACING.md,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: SPACING.md,
-  },
-  cardIcon: {
-    width: 34,
-    height: 34,
+    borderColor: '#DBEAFE',
     borderRadius: 12,
-    backgroundColor: COLORS.primaryDark,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  compareBtnText: { fontSize: 10, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase', letterSpacing: 1 },
+  content: { paddingHorizontal: 16, paddingBottom: 140 },
+
+  loanBanner: {
+    marginTop: 12,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    overflow: 'hidden',
+    flexDirection: 'row',
+    minHeight: 170,
+  },
+  loanSubLabel: { fontSize: 9, fontWeight: '800', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4, paddingLeft: 16, paddingTop: 16 },
+  loanTitle: { fontSize: 20, fontWeight: '900', paddingLeft: 16, marginBottom: 10 },
+  loanBullet: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 16, marginBottom: 4 },
+  loanBulletText: { fontSize: 11, fontWeight: '700', color: '#374151' },
+  loanBtn: { marginLeft: 16, marginTop: 10, marginBottom: 16, alignSelf: 'flex-start', backgroundColor: '#111827', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  loanBtnText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  loanImage: { width: '38%', height: '100%', opacity: 0.8 },
+
+  gridHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 12, paddingHorizontal: 2 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  gridItem: { width: '30.6%', alignItems: 'center' },
+  gridIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  cardTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  serviceTypesTitle: {
-    marginTop: 2,
-    marginBottom: 10,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '900',
-    color: COLORS.gray[600],
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  serviceTypeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFF',
-    borderWidth: 1,
-    borderColor: 'rgba(0,136,232,0.10)',
-    marginBottom: 10,
-  },
-  serviceTypeRowActive: {
-    backgroundColor: '#EEF6FF',
-    borderColor: 'rgba(0,136,232,0.22)',
-  },
-  serviceTypeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    paddingRight: 8,
-  },
-  serviceTypeText: {
-    flex: 1,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  serviceTypeTextActive: {
-    color: COLORS.primaryDark,
-  },
-  checklistCard: {
-    marginTop: 6,
-    borderRadius: 18,
-    padding: SPACING.md,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-  },
-  checklistTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  checklistTopLeft: {
-    flex: 1,
-  },
-  checklistBadge: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.gray[700],
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  checklistTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-    lineHeight: 22,
-  },
-  checklistLinkBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-  },
-  checklistLinkText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.primary,
-    textDecorationLine: 'underline',
-  },
-  checklistLoading: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  checklistLoadingText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '800',
-    color: COLORS.gray[600],
-  },
-  checklistErrorText: {
-    marginTop: 10,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '800',
-    color: COLORS.danger,
-  },
-  checklistEmptyText: {
-    marginTop: 10,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '800',
-    color: COLORS.gray[600],
-  },
-  checklistItems: {
-    marginTop: 12,
-  },
-  checklistStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  checklistPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-  },
-  checklistPillText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.gray[700],
-  },
-  checklistSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  checklistSectionTitle: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.gray[800],
-  },
-  checklistSectionMeta: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.success,
-  },
-  checklistItemRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(17,24,39,0.06)',
-  },
-  checklistItemText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  checklistItemMeta: {
-    marginTop: 2,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '800',
-    color: COLORS.gray[500],
-  },
-  checklistMoreText: {
-    marginTop: 10,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 6,
-  },
-  rowText: {
-    flex: 1,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '700',
-    color: COLORS.gray[700],
-  },
-  cardCta: {
-    marginTop: SPACING.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+  gridIconActive: { borderColor: '#2563EB', shadowColor: '#2563EB', shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+  gridLabel: { marginTop: 6, fontSize: 10, fontWeight: '800', textAlign: 'center', lineHeight: 13 },
+  gridLabelActive: { color: '#111827' },
+  gridLabelInactive: { color: '#111827', opacity: 0.5 },
+
+  rsaBanner: {
+    marginTop: 16,
     borderRadius: 16,
-    backgroundColor: '#F3F8FF',
-    borderWidth: 1,
-    borderColor: 'rgba(0,136,232,0.14)',
-  },
-  cardCtaText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
-  footerNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-  },
-  footerText: {
-    flex: 1,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '700',
-    color: COLORS.gray[600],
-    lineHeight: 18,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
-    padding: SPACING.md,
-  },
-  modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: SPACING.lg,
-  },
-  modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-    marginBottom: SPACING.md,
-  },
-  modalRow: {
+    backgroundColor: '#DC2626',
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(17,24,39,0.06)',
+    gap: 8,
+    shadowColor: '#DC2626',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  modalRowText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '800',
-    color: COLORS.black,
-  },
-  modalLoginBtn: {
-    marginTop: SPACING.md,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: '#F3F8FF',
+  rsaBannerTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
+  rsaBannerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 2 },
+  rsaBannerBadge: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  rsaBannerBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  detailCard: {
+    marginTop: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 32,
     borderWidth: 1,
-    borderColor: 'rgba(0,136,232,0.18)',
-    alignItems: 'center',
+    borderColor: '#F3F4F6',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  modalLoginText: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
-  },
+  detailTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  detailIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  detailTitle: { fontSize: 18, fontWeight: '900', color: '#111827', flex: 1 },
+  detailDesc: { fontSize: 13, color: '#6B7280', lineHeight: 20, marginBottom: 16 },
+  detailBtns: { flexDirection: 'row', gap: 10 },
+  bookNowBtn: { flex: 1, height: 50, borderRadius: 16, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center', shadowColor: '#2563EB', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  bookNowBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  phoneBtn: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+
+  faqHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 8, paddingHorizontal: 2 },
+  faqCard: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8, overflow: 'hidden' },
+  faqHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  faqQ: { flex: 1, fontSize: 13, color: '#111827', fontWeight: '700' },
+  faqA: { borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingHorizontal: 14, paddingVertical: 10, fontSize: 12, color: '#6B7280', lineHeight: 18 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end', padding: 16 },
+  modalCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '900', color: '#111827', marginBottom: 12 },
+  modalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  modalRowText: { fontSize: 14, fontWeight: '700', color: '#111827' },
+
+  compareOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  compareSheet: { width: '100%', maxHeight: '80%', backgroundColor: '#FFFFFF', borderRadius: 32, overflow: 'hidden' },
+  compareHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  compareTitle: { fontSize: 20, fontWeight: '900', color: '#111827' },
+  compareClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  compareBody: { padding: 20 },
+  compareRow: { flexDirection: 'row', marginBottom: 16 },
+  compareLabel: { flex: 1 },
+  compareCol: { flex: 1, alignItems: 'center' },
+  compareColName: { fontSize: 10, fontWeight: '900', color: '#2563EB', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 },
+  compareColPrice: { fontSize: 12, fontWeight: '800', color: '#111827' },
+  compareFeatureRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  compareFeatureLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280', lineHeight: 14 },
+  compareFeatureText: { fontSize: 10, fontWeight: '800', color: '#374151' },
+  compareDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  compareNote: { marginTop: 20, backgroundColor: '#EFF6FF', borderRadius: 16, borderWidth: 1, borderColor: '#DBEAFE', padding: 14 },
+  compareNoteText: { fontSize: 10, color: '#2563EB', lineHeight: 16 },
 });
-
-

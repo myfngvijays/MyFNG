@@ -9,10 +9,93 @@ import crypto from 'crypto';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { sendTemplateMessage, normalizePhoneNumber } from '@/lib/services/whatsappService';
 
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+
+async function sendPaymentWhatsAppNotification(opts: {
+  type: 'success' | 'failed';
+  customerPhone: string;
+  customerName: string;
+  amount: number;
+  paymentId?: string;
+  service?: string;
+  paymentLink?: string;
+}) {
+  const phone = normalizePhoneNumber(opts.customerPhone);
+  if (!phone) return;
+
+  const name = opts.customerName || 'Customer';
+  const amt = opts.amount.toFixed(2);
+  const service = opts.service || 'Vehicle Service';
+  const { supabaseAdmin } = getSupabaseAdmin();
+
+  try {
+    let result;
+    if (opts.type === 'success') {
+      result = await sendTemplateMessage({
+        phoneNumber: opts.customerPhone,
+        templateName: 'payment_success',
+        templateParams: [name, amt, opts.paymentId || 'N/A', service],
+        languageCode: 'en',
+      });
+    } else {
+      result = await sendTemplateMessage({
+        phoneNumber: opts.customerPhone,
+        templateName: 'payment_failed',
+        templateParams: [name, amt, service, opts.paymentLink || ''],
+        languageCode: 'en',
+      });
+    }
+
+    if (supabaseAdmin && result) {
+      const now = new Date().toISOString();
+      await supabaseAdmin.from('whatsapp_messages').insert({
+        provider_message_id: result.messageId || null,
+        direction: 'OUTBOUND',
+        message_type: 'TEMPLATE',
+        sender_phone: null,
+        recipient_phone: phone,
+        template_name: opts.type === 'success' ? 'payment_success' : 'payment_failed',
+        template_language: 'en',
+        text_body: null,
+        status: result.success ? 'SENT' : 'FAILED',
+        status_at: now,
+        error_message: result.success ? null : result.error || null,
+        payload: { request: { type: opts.type, ...opts }, response: result.raw || null },
+        meta: { source: 'razorpay_webhook_auto' },
+        updated_at: now,
+      });
+    }
+
+    console.log(`[Webhook] WhatsApp payment_${opts.type} sent to ${phone}:`, result?.success);
+  } catch (e) {
+    console.error(`[Webhook] Failed to send payment_${opts.type} WhatsApp:`, e);
+  }
+}
+
+async function lookupDirectPayRow(db: any, orderId?: string, paymentId?: string) {
+  if (!db) return null;
+  if (orderId) {
+    const { data } = await db
+      .from('Razorpay_Direct_pay_RSA')
+      .select('customer_name, customer_phone, amount, notes')
+      .eq('order_id', orderId)
+      .maybeSingle();
+    if (data) return data;
+  }
+  if (paymentId) {
+    const { data } = await db
+      .from('Razorpay_Direct_pay_RSA')
+      .select('customer_name, customer_phone, amount, notes')
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    if (data) return data;
+  }
+  return null;
+}
 
 async function updateDirectPayStatus(params: {
   orderId?: string | null;
@@ -616,6 +699,23 @@ async function handlePaymentSuccess(payload: any, supabase: any) {
         });
     }
   }
+
+  // Auto-send payment_success WhatsApp template to customer
+  const { supabaseAdmin: adminForLookup } = getSupabaseAdmin();
+  const dbLookup = (adminForLookup ?? supabase) as any;
+  const directPayRow = await lookupDirectPayRow(dbLookup, orderId, paymentId);
+  const customerPhone = directPayRow?.customer_phone || payment?.contact || '';
+  if (customerPhone) {
+    const notes = directPayRow?.notes && typeof directPayRow.notes === 'object' ? directPayRow.notes : {};
+    await sendPaymentWhatsAppNotification({
+      type: 'success',
+      customerPhone,
+      customerName: directPayRow?.customer_name || payment?.notes?.customer_name || 'Customer',
+      amount,
+      paymentId: paymentId || orderId,
+      service: (notes as any)?.purpose === 'PAY_NOW' ? 'MyFNG Service' : 'Vehicle Service',
+    });
+  }
 }
 
 async function handlePaymentFailed(payload: any, supabase: any) {
@@ -684,6 +784,25 @@ async function handlePaymentFailed(payload: any, supabase: any) {
         payment_id: paymentId,
         failure_reason: failureReason,
       },
+    });
+  }
+
+  // Auto-send payment_failed WhatsApp template with retry link
+  const { supabaseAdmin: adminForFailed } = getSupabaseAdmin();
+  const dbFailed = (adminForFailed ?? supabase) as any;
+  const failedRow = await lookupDirectPayRow(dbFailed, orderId, paymentId);
+  const failedPhone = failedRow?.customer_phone || payment?.contact || '';
+  if (failedPhone) {
+    const failedNotes = failedRow?.notes && typeof failedRow.notes === 'object' ? failedRow.notes : {};
+    const retryLink = String((failedNotes as any)?.link_url || '').trim();
+    const failedAmount = failedRow?.amount || (Number(payment?.amount || 0) / 100);
+    await sendPaymentWhatsAppNotification({
+      type: 'failed',
+      customerPhone: failedPhone,
+      customerName: failedRow?.customer_name || payment?.notes?.customer_name || 'Customer',
+      amount: failedAmount,
+      service: (failedNotes as any)?.purpose === 'PAY_NOW' ? 'MyFNG Service' : 'Vehicle Service',
+      paymentLink: retryLink,
     });
   }
 }

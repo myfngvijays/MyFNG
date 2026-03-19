@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { supabase } from '../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
-import PublicPillNav, { type PublicPillNavTab } from '../components/PublicPillNav';
+import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 type Props = {
@@ -418,13 +418,14 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
         </View>
 
         <PublicPillNav
-          activeTab="search"
+          activeTab="roadside"
           onPressTab={(tab: PublicPillNavTab) => {
+            if (tab === 'home') navigation.navigate('PublicHome');
+            if (tab === 'services') navigation.navigate('PublicServicePackages', { city });
             if (tab === 'ai') navigation.navigate('AIBooking', { city });
-            if (tab === 'search') {
-              // already here
-            }
-            if (tab === 'profile') navigation.navigate('Login');
+            if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city });
+            if (tab === 'account') navigation.navigate('Settings');
+            if (tab === 'profile') navigation.navigate('Settings');
             if (tab === 'settings') Alert.alert('Support', 'Use the home screen support option.');
           }}
         />

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
@@ -158,16 +159,30 @@ export async function POST() {
       .map((template) => normalizeTemplate(template, auth.userProfile.id))
       .filter((row) => Boolean(row.template_name));
 
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const adminDb = (supabaseAdmin ?? db) as any;
+
+    const metaTemplateNames = new Set(normalizedRows.map((r) => r.template_name));
+
     if (normalizedRows.length === 0) {
+      // No templates on Meta — delete all local templates
+      const { data: allLocal } = await adminDb
+        .from('whatsapp_templates')
+        .select('id, template_name');
+      const toDelete = (allLocal || []).map((r: any) => r.id).filter(Boolean);
+      if (toDelete.length > 0) {
+        await adminDb.from('whatsapp_templates').delete().in('id', toDelete);
+      }
       return NextResponse.json({
         success: true,
-        fetched: metaTemplates.length,
+        fetched: 0,
         synced: 0,
-        message: 'No templates found on Meta for sync.',
+        deleted: toDelete.length,
+        message: `No templates on Meta. Deleted ${toDelete.length} stale local templates.`,
       });
     }
 
-    const { error } = await db
+    const { error } = await adminDb
       .from('whatsapp_templates')
       .upsert(normalizedRows, { onConflict: 'template_name' });
 
@@ -175,11 +190,31 @@ export async function POST() {
       return NextResponse.json({ error: error.message || 'Failed to sync templates' }, { status: 500 });
     }
 
+    // Delete DB templates that no longer exist on Meta
+    const { data: allDbTemplates } = await adminDb
+      .from('whatsapp_templates')
+      .select('id, template_name');
+
+    const staleIds = (allDbTemplates || [])
+      .filter((r: any) => !metaTemplateNames.has(String(r.template_name || '').trim().toLowerCase()))
+      .map((r: any) => r.id)
+      .filter(Boolean);
+
+    let deletedCount = 0;
+    if (staleIds.length > 0) {
+      const { error: delError } = await adminDb
+        .from('whatsapp_templates')
+        .delete()
+        .in('id', staleIds);
+      if (!delError) deletedCount = staleIds.length;
+    }
+
     return NextResponse.json({
       success: true,
       fetched: metaTemplates.length,
       synced: normalizedRows.length,
-      message: 'Templates synced from Meta successfully.',
+      deleted: deletedCount,
+      message: `Synced ${normalizedRows.length} templates from Meta.${deletedCount > 0 ? ` Deleted ${deletedCount} stale templates.` : ''}`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
