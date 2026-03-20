@@ -445,8 +445,8 @@ export default function RsaLandingPage() {
                   </li>
                 </ul>
                 <div style={{ marginTop: 12 }}>
-                  <a className="btn primary" href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>
-                    Request Towing
+                  <a className="btn primary" href="tel:+919610448949" onClick={(e) => scrollToSection(e, 'contact')}>
+                    Call Now For Immediate Help
                   </a>
                 </div>
               </div>
