@@ -428,8 +428,7 @@ export default function RsaLandingPage() {
             <div className="pricing">
               <div className="price-card">
                 <h3>Towing</h3>
-                <div className="price">₹25/km <small>onwards</small> <br></><small>Base charge covers first dispatch & loading. Distance charges applicable after minimum km.
-</small></div>
+                <div className="price">₹25/km <small>onwards</small> <br /><small>Base charge covers first dispatch &amp; loading. Distance charges applicable after minimum km.</small></div>
                 <ul className="list">
                   <li>
                     <span className="tick">✓</span>
@@ -454,7 +453,7 @@ export default function RsaLandingPage() {
               <div className="price-card">
                 <h3>RSA Support</h3>
                 <div className="price">
-                  On Demand <small>as per service</small> <br><small>Final pricing may vary based on your location, vehicle type and service requirement.</small>
+                  On Demand <small>as per service</small> <br /><small>Final pricing may vary based on your location, vehicle type and service requirement.</small>
                 </div>
                 <ul className="list">
                   <li>

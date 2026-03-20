@@ -1229,7 +1229,7 @@ export default function HomePage() {
                 title: 'Verified Workshops Only',
                 desc: "We audit workshops. You don't have to.",
                 icon: Shield,
-                link: '/workshop-locator'
+                link: '/workshop-locator',
                 pill: 'bg-blue-600 text-white',
                 card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
                 glow: 'bg-blue-500/30',
