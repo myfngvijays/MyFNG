@@ -438,99 +438,26 @@ export default function BookServicePage() {
     }
   }
 
-  // Category mapping based on service names - Precise matching with exclusions
-  const getServiceCategory = (serviceName: string): string => {
-    const name = serviceName.toLowerCase().trim();
-    
-    // Helper: Check if service belongs to another specific category (exclusions)
-    const hasBrake = name.includes('brake') || name.includes('braking');
-    const hasClutch = name.includes('clutch');
-    const hasAC = name.match(/\bac\b/i) || name.includes('air conditioning') || name.includes('air conditioner');
-    const hasBattery = name.includes('battery') || name.includes('jump start');
-    const hasEngine = name.includes('engine') || name.includes('motor');
-    const hasTyreWheel = name.includes('tire') || name.includes('tyre') || name.includes('wheel');
-    const hasPaint = name.includes('paint') || name.includes('denting');
-    const hasCleaning = name.includes('cleaning') || name.includes('wash') || name.includes('detailing');
-    
-    // Periodic Service (Maintenance packages) - Check first
-    // Match exact service package patterns (only if not other specific categories)
-    if (!hasAC && !hasBrake && !hasClutch && !hasBattery && !hasEngine &&
-        (name.includes('basic service') || name.includes('general service') || 
-         name.includes('premium service') || name.includes('platinum service') ||
-         name.includes('periodic service') || name.match(/\d+\s*points?/i) ||
-         (name.includes('service') && (name.includes('point') || name.match(/\d+/))))) {
-      return 'PERIODIC SERVICE';
-    }
-    
-    // AC Service - Must have AC specifically, exclude brake/clutch
-    if (hasAC && !hasBrake && !hasClutch && !hasBattery) {
-      return 'AC SERVICE';
-    }
-    
-    // Battery Service - Check before engine
-    if (hasBattery) {
-      return 'BATTERY SERVICE';
-    }
-    
-    // Brake Service - Must be specific to brakes, exclude AC/clutch
-    if (hasBrake && !hasAC && !hasClutch) {
-      return 'BRAKE SERVICE';
-    }
-    
-    // Clutch Service - Must be specific to clutch, exclude AC/brake
-    if (hasClutch && !hasAC && !hasBrake) {
-      return 'CLUTCH SERVICE';
-    }
-    
-    // Tyre & Wheel Care - Specific wheel/tire services
-    if (hasTyreWheel && !hasBrake && !hasClutch && !hasAC) {
-      return 'TYRE & WHEEL CARE';
-    }
-    
-    // Denting Painting - Body work and paint (exclude cleaning/detailing)
-    if (hasPaint && !hasCleaning && 
-        (name.includes('denting') || 
-         name.includes('bonnet') ||
-         name.includes('antirust') ||
-         (name.includes('coating') && (name.includes('underbody') || name.includes('antirust') || name.includes('body'))))) {
-      return 'DENTING PAINTING';
-    }
-    
-    // Detailing Service - Cleaning, wash, polishing, wax
-    if (hasCleaning || 
-        name.includes('wax') || 
-        name.includes('polish') ||
-        name.includes('teflon') ||
-        (name.includes('3m') && (name.includes('cleaning') || name.includes('wax') || name.includes('polish')))) {
-      return 'DETAILING SERVICE';
-    }
-    
-    // Engine Service - Must be engine/oil specific
-    if (hasEngine && !hasAC && !hasBrake && !hasClutch) {
-      return 'ENGINE SERVICE';
-    }
-    // Oil change specifically
-    if (name.includes('oil change') || (name.includes('oil') && name.includes('change') && !hasCleaning)) {
-      return 'ENGINE SERVICE';
-    }
-    // Transmission service
-    if (name.includes('transmission')) {
-      return 'ENGINE SERVICE';
-    }
-    
-    // Default category for unmatched services
-    return 'OTHER SERVICES';
-  };
-
   async function fetchServiceTypes() {
     setLoadingServiceTypes(true);
     try {
       const supabase = createClient();
-      
-      // Fetch all active services with error handling
+
+      // Fetch categories from DB
+      const { data: catRows } = await supabase
+        .from('categories')
+        .select('uuid, category, category_icon')
+        .order('category');
+
+      const categoryMap: Record<string, { uuid: string; name: string; icon?: string }> = {};
+      (catRows || []).forEach((c: any) => {
+        categoryMap[c.uuid] = { uuid: c.uuid, name: c.category, icon: c.category_icon || undefined };
+      });
+
+      // Fetch all active services with category_uuid
       const { data: servicesData, error, status, statusText } = await supabase
         .from('service_types')
-        .select('id, name, description')
+        .select('id, name, description, category_uuid')
         .eq('is_active', true)
         .order('name');
       
@@ -552,19 +479,17 @@ export default function BookServicePage() {
         setServiceCategories([]);
       } else {
         const allServices = (servicesData || []).map((service: any) => {
-          // Extract points from service name if available
           const pointsMatch = service.name.match(/(\d+)\s*points?/i);
           const points = pointsMatch ? parseInt(pointsMatch[1]) : null;
-          
-          const category = getServiceCategory(service.name);
-          
-          // Debug logging for category assignment
-          console.log(`Service: "${service.name}" -> Category: "${category}"`);
-          
+
+          const catInfo = service.category_uuid ? categoryMap[service.category_uuid] : null;
+          const category = catInfo?.name?.toUpperCase() || 'OTHER SERVICES';
+
           return {
             ...service,
-            category: category,
-            points: points
+            category,
+            category_uuid: service.category_uuid || null,
+            points,
           };
         });
         
@@ -600,26 +525,32 @@ export default function BookServicePage() {
           // ignore (no template table / no permissions)
         }
         
-        // Extract unique categories
-        const categories = Array.from(new Set(allServices.map((s: any) => s.category)))
-          .map(category => {
-            const categoryServices = allServices.filter((s: any) => s.category === category);
-            return {
-              id: category,
-              name: category,
-              count: categoryServices.length
-            };
-          })
-          .sort((a, b) => {
-            // Sort: PERIODIC SERVICE first, then alphabetical
-            if (a.name === 'PERIODIC SERVICE') return -1;
-            if (b.name === 'PERIODIC SERVICE') return 1;
-            return a.name.localeCompare(b.name);
+        // Build categories from DB, only those that have active services
+        const usedCategoryNames = new Set(allServices.map((s: any) => s.category as string));
+        const categories = (catRows || [])
+          .filter((c: any) => usedCategoryNames.has(c.category.toUpperCase()))
+          .map((c: any) => {
+            const catName = c.category.toUpperCase();
+            const count = allServices.filter((s: any) => s.category === catName).length;
+            return { id: catName, name: catName, count };
           });
-        
+
+        const otherCount = allServices.filter((s: any) => s.category === 'OTHER SERVICES').length;
+        if (otherCount > 0) {
+          categories.push({ id: 'OTHER SERVICES', name: 'OTHER SERVICES', count: otherCount });
+        }
+
+        // Periodic category always first
+        categories.sort((a, b) => {
+          const aPeriodic = a.name.includes('PERIODIC');
+          const bPeriodic = b.name.includes('PERIODIC');
+          if (aPeriodic && !bPeriodic) return -1;
+          if (!aPeriodic && bPeriodic) return 1;
+          return 0;
+        });
+
         setServiceCategories(categories);
-        
-        // Auto-select first category if none selected
+
         if (!selectedCategory && categories.length > 0) {
           setSelectedCategory(categories[0].id);
         }
@@ -743,6 +674,23 @@ export default function BookServicePage() {
               .limit(1)
               .maybeSingle();
             
+            if (!error && data?.custom_price) {
+              price = parseFloat(data.custom_price);
+            }
+          }
+
+          // Priority 6: Any pricing for this service (no city/zone/class filter)
+          if (!price) {
+            const { data, error } = await supabase
+              .from('workshop_service_pricing')
+              .select('custom_price')
+              .eq('service_type_id', service.id)
+              .eq('is_active', true)
+              .gt('custom_price', 0)
+              .order('custom_price', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
             if (!error && data?.custom_price) {
               price = parseFloat(data.custom_price);
             }
@@ -1060,6 +1008,14 @@ export default function BookServicePage() {
       setOtpVerified(true);
       setOtpError(null);
       toast.success('Mobile number verified');
+      setTimeout(() => {
+        setIsAnimating(true);
+        setTimeout(() => {
+          setCurrentStep((prev) => prev + 1);
+          scrollToStepTop();
+          setIsAnimating(false);
+        }, 300);
+      }, 600);
     } catch (error: any) {
       setOtpVerified(false);
       const message = error?.message || 'OTP verification failed';
@@ -1701,7 +1657,7 @@ export default function BookServicePage() {
   }, [formData.selectedServices, couponMeta]);
 
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
-  const isPeriodicCategory = String(activeCategoryId || '').toUpperCase() === 'PERIODIC SERVICE';
+  const isPeriodicCategory = String(activeCategoryId || '').toUpperCase().includes('PERIODIC');
   const showReferencePlanUi = isPeriodicCategory;
   const activeCategoryServices = activeCategoryId ? serviceTypes.filter((s: any) => s.category === activeCategoryId) : [];
   const getOilTypeForService = (service: any): 'semi' | 'full' | 'unknown' => {
@@ -2205,10 +2161,10 @@ export default function BookServicePage() {
                     </div>
 
                     {/* Trust Badge */}
-                    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200/50 rounded-xl">
-                      <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
-                      <p className="text-sm font-medium text-purple-800">
-                        No login required. Book in under 2 minutes.
+                    <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200/50 rounded-xl">
+                      <Sparkles className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <p className="text-sm font-medium text-green-800">
+                        Book in under 60 seconds.
                       </p>
                     </div>
                     </div>
@@ -2619,18 +2575,7 @@ export default function BookServicePage() {
                                           onClick={() => {
                                             if (isLockedByOtherSelection) return;
                                             if (!isSelected) {
-                                              const targetService = serviceTypes.find((s: any) => String(s?.id) === String(service.id));
-                                              const nextSelectedServices = !targetService?.category
-                                                ? [...formData.selectedServices, service.id]
-                                                : [
-                                                    ...formData.selectedServices.filter((id) => {
-                                                      const selectedService = serviceTypes.find((it: any) => String(it?.id) === String(id));
-                                                      return String(selectedService?.category) !== String(targetService.category);
-                                                    }),
-                                                    service.id,
-                                                  ];
-                                              setFormData((prev) => ({ ...prev, selectedServices: nextSelectedServices }));
-                                              proceedToNext(nextSelectedServices);
+                                              handleServiceToggle(service.id);
                                               return;
                                             }
                                             handleNext();
@@ -3031,7 +2976,7 @@ export default function BookServicePage() {
                         <div className="relative group">
                           <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                             <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
-                              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
+                              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
                                 <Car className="w-4 h-4 text-white" />
                               </div>
                               Car Number
@@ -3046,12 +2991,12 @@ export default function BookServicePage() {
                               placeholder="e.g., MH12AB1234"
                               className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
                                 formData.vehicleNumber
-                                  ? 'border-orange-500 bg-orange-50/50 ring-2 ring-orange-200'
-                                  : 'border-gray-200 focus:border-orange-500 focus:ring-orange-200'
+                                  ? 'border-green-500 bg-green-50/50 ring-2 ring-green-200'
+                                  : 'border-gray-200 focus:border-green-500 focus:ring-green-200'
                               }`}
                             />
                             {formData.vehicleNumber && (
-                              <p className="mt-3 text-sm font-semibold text-orange-600 flex items-center gap-2">
+                              <p className="mt-3 text-sm font-semibold text-green-600 flex items-center gap-2">
                                 <CheckCircle className="w-4 h-4" />
                                 Vehicle: {formData.vehicleNumber}
                               </p>
@@ -3185,7 +3130,7 @@ export default function BookServicePage() {
                             <div className="relative group">
                               <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                                 <label className="block text-sm sm:text-base font-bold text-gray-800 mb-3 flex items-center gap-2.5">
-                                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
                                     <span className="text-white text-xs font-bold">#</span>
                                   </div>
                                   Flat / House Number
@@ -3198,8 +3143,8 @@ export default function BookServicePage() {
                                   placeholder="e.g., Flat 201, House No. 123"
                                   className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-base sm:text-lg font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all shadow-sm ${
                                     formData.flatNumber
-                                      ? 'border-orange-500 bg-gradient-to-br from-orange-50 to-orange-100/50 text-gray-900 shadow-md'
-                                      : 'border-gray-200 bg-white focus:border-orange-500 focus:ring-orange-500/20 hover:border-gray-300'
+                                      ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 text-gray-900 shadow-md'
+                                      : 'border-gray-200 bg-white focus:border-green-500 focus:ring-green-500/20 hover:border-gray-300'
                                   }`}
                                 />
                               </div>
@@ -3209,7 +3154,7 @@ export default function BookServicePage() {
                             <div className="relative group">
                               <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                                 <label className="block text-sm sm:text-base font-bold text-gray-800 mb-3 flex items-center gap-2.5">
-                                  <div className="w-8 h-8 bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg flex items-center justify-center shadow-md">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
                                     <MapPin className="w-4 h-4 text-white" />
                                   </div>
                                   Landmark
@@ -3223,8 +3168,8 @@ export default function BookServicePage() {
                                   placeholder="e.g., Near ABC Mall, Behind XYZ Bank"
                                   className={`w-full px-4 sm:px-5 py-3.5 sm:py-4 text-base sm:text-lg font-medium border-2 rounded-xl focus:ring-4 outline-none transition-all shadow-sm ${
                                     formData.landmark
-                                      ? 'border-pink-500 bg-gradient-to-br from-pink-50 to-pink-100/50 text-gray-900 shadow-md'
-                                      : 'border-gray-200 bg-white focus:border-pink-500 focus:ring-pink-500/20 hover:border-gray-300'
+                                      ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 text-gray-900 shadow-md'
+                                      : 'border-gray-200 bg-white focus:border-green-500 focus:ring-green-500/20 hover:border-gray-300'
                                   }`}
                                 />
                               </div>
@@ -3241,7 +3186,7 @@ export default function BookServicePage() {
                         <div className="relative group">
                           <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                             <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
-                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
                                 <Car className="w-4 h-4 text-white" />
                               </div>
                               Car Number
@@ -3256,12 +3201,12 @@ export default function BookServicePage() {
                               placeholder="e.g., MH12AB1234"
                               className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
                                 formData.vehicleNumber
-                                  ? 'border-purple-500 bg-purple-50/50 ring-2 ring-purple-200'
-                                  : 'border-gray-200 focus:border-purple-500 focus:ring-purple-200'
+                                  ? 'border-green-500 bg-green-50/50 ring-2 ring-green-200'
+                                  : 'border-gray-200 focus:border-green-500 focus:ring-green-200'
                               }`}
                             />
                             {formData.vehicleNumber && (
-                              <p className="mt-3 text-sm font-semibold text-purple-600 flex items-center gap-2">
+                              <p className="mt-3 text-sm font-semibold text-green-600 flex items-center gap-2">
                                 <CheckCircle className="w-4 h-4" />
                                 Vehicle: {formData.vehicleNumber}
                               </p>

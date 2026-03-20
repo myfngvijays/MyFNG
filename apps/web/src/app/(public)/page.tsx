@@ -340,7 +340,7 @@ export default function HomePage() {
         const supabase = createClient();
         const { data, error } = await supabase
           .from('workshops')
-          .select('id,name,latitude,longitude,map_link,is_verified')
+          .select('id,name,workshop_name,latitude,longitude,map_link,is_verified')
           .eq('is_verified', true)
           .limit(500);
         if (error) throw error;
@@ -349,6 +349,7 @@ export default function HomePage() {
         type Row = {
           id: string;
           name: string;
+          workshop_name: string | null;
           latitude: number | null;
           longitude: number | null;
           map_link: string | null;
@@ -369,7 +370,7 @@ export default function HomePage() {
           if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
           const km = haversineKm(user, { lat, lng });
           if (!Number.isFinite(km)) continue;
-          if (!best || km < best.km) best = { km, name: w.name };
+          if (!best || km < best.km) best = { km, name: w.workshop_name || w.name };
         }
 
         setNearestWorkshopKm(best ? Math.max(0, best.km) : null);

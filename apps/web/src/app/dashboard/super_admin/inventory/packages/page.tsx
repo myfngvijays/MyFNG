@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Package, Search, ChevronRight, Loader2, ListChecks } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
 export default function PackageListPage() {
   const router = useRouter();
@@ -12,6 +13,8 @@ export default function PackageListPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [categories, setCategories] = useState<{ uuid: string; name: string }[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Using service_types as packages
   const [newPackage, setNewPackage] = useState({
@@ -24,7 +27,21 @@ export default function PackageListPage() {
 
   useEffect(() => {
     fetchPackages();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('categories')
+        .select('uuid, category')
+        .order('category');
+      setCategories((data || []).map((c: any) => ({ uuid: c.uuid, name: c.category })));
+    } catch {
+      // ignore
+    }
+  };
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -105,10 +122,14 @@ export default function PackageListPage() {
     }
   };
 
-  const filteredPackages = packages.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.hsn_sac_code?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredPackages = packages.filter(p => {
+    const matchesSearch = !searchTerm ||
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.hsn_sac_code?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = !selectedCategory ||
+      (selectedCategory === '__uncategorized__' ? !p.category_uuid : p.category_uuid === selectedCategory);
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="p-6">
@@ -140,7 +161,7 @@ export default function PackageListPage() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="flex flex-col gap-3 mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input 
@@ -151,6 +172,49 @@ export default function PackageListPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        {categories.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
+                !selectedCategory
+                  ? 'bg-brand-primary text-white border-brand-primary'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              All ({packages.length})
+            </button>
+            {categories.map((cat) => {
+              const count = packages.filter(p => p.category_uuid === cat.uuid).length;
+              if (count === 0) return null;
+              return (
+                <button
+                  key={cat.uuid}
+                  onClick={() => setSelectedCategory(selectedCategory === cat.uuid ? null : cat.uuid)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
+                    selectedCategory === cat.uuid
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {cat.name} ({count})
+                </button>
+              );
+            })}
+            {packages.some(p => !p.category_uuid) && (
+              <button
+                onClick={() => setSelectedCategory(selectedCategory === '__uncategorized__' ? null : '__uncategorized__')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
+                  selectedCategory === '__uncategorized__'
+                    ? 'bg-brand-primary text-white border-brand-primary'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                Uncategorized ({packages.filter(p => !p.category_uuid).length})
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Grid */}
