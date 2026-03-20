@@ -193,8 +193,8 @@ export default function RsaLandingPage() {
     .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(12,24,52,.72)}
     .rsa-landing .nav-links a:hover{color:#0a3f95}
     .rsa-landing .nav-cta{display:flex;gap:10px;align-items:center}
-    .rsa-landing .btn{border:1px solid var(--border);background: rgba(255,255,255,.06);color:#fff;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
-    .rsa-landing .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.10)}
+    .rsa-landing .btn{border:1px solid var(--border);background: rgba(0,0,0);color:#00000;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
+    .rsa-landing .btn:hover{transform: translateY(-1px); background: rgba(0,0,0)}
     .rsa-landing .btn.primary{background: linear-gradient(135deg, var(--brand2), var(--brand));border: none;box-shadow: 0 16px 40px rgba(255,77,46,.22);color:#2a0a07}
     .rsa-landing .btn.whatsapp{background:linear-gradient(135deg,#25D366,#128C7E);box-shadow:0 16px 40px rgba(18,140,126,.28);color:#ffffff}
     .rsa-landing .btn.primary:hover{filter:brightness(1.05)}
@@ -209,7 +209,7 @@ export default function RsaLandingPage() {
     .rsa-landing .lead{color:rgba(255,255,255,.84);font-size:16px;line-height:1.55;margin:0 0 14px;max-width:590px}
     .rsa-landing .lead-location{display:inline}
     .rsa-landing .chips{display:flex;gap:8px;flex-wrap:wrap;margin: 10px 0 0}
-    .rsa-landing .chip{display:inline-flex;gap:7px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.18);font-size:12px;font-weight:700;color:rgba(255,255,255,.92)}
+    .rsa-landing .chip{display:inline-flex;gap:7px;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(0,0,0);background:rgba(255,255,255);font-size:12px;font-weight:700;color:rgba(0,0,0)}
     .rsa-landing .hero-actions{display:none}
     .rsa-landing .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
     .rsa-landing .stat{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);border-radius:14px;padding:12px}
@@ -227,7 +227,7 @@ export default function RsaLandingPage() {
     .rsa-landing .location-wrap{position:relative}
     .rsa-landing .location-wrap .input{padding-right:42px}
     .rsa-landing .loc-btn{position:absolute;right:7px;top:7px;height:28px;width:28px;border:1px solid rgba(255,255,255,.92);border-radius:8px;background:#ffffff;color:#ff4d2e;font-weight:800;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.2)}
-    .rsa-landing .send-btn{border:none;border-radius:11px;padding:12px 14px;background:linear-gradient(90deg,#ff960f 0%,#ff6f18 55%,#ff4d2e 100%);font-size:16px;font-weight:800;color:#1e0a07;cursor:pointer}
+    .rsa-landing .send-btn{border:none;border-radius:11px;padding:12px 14px;background:linear-gradient(135deg,#25D366,#128C7E);box-shadow:0 16px 40px rgba(18,140,126,.28);font-size:16px;font-weight:800;color:#fffff;cursor:pointer}
     .rsa-landing .send-btn:hover{filter:brightness(1.04)}
     .rsa-landing .note{margin-top:10px;font-size:12px;color:rgba(255,255,255,.70)}
     .rsa-landing section{padding: 46px 0;background:#070b14}
@@ -253,8 +253,8 @@ export default function RsaLandingPage() {
     .rsa-landing .terms-card h4{margin:0 0 8px;color:#ffffff}
     .rsa-landing .price-card{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: 22px;padding:18px}
     .rsa-landing .price-card h3{margin:0 0 8px;color:#ffffff}
-    .rsa-landing .price{font-size:34px;font-weight:900;letter-spacing:-.5px;margin:10px 0;color:#ffffff}
-    .rsa-landing .price small{font-size:14px;color:rgba(255,255,255,.70);font-weight:700}
+    .rsa-landing .price{font-size:34px;font-weight:900;letter-spacing:-.5px;margin:10px 0;color:#ffffff;line-height: 24px;}
+    .rsa-landing .price small{font-size:11px;color:rgba(255,255,255,.70);font-weight:700}
     .rsa-landing .list{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:8px}
     .rsa-landing .list li{display:flex;gap:10px;align-items:flex-start;color:rgba(255,255,255,.70);font-size:14px}
     .rsa-landing .tick{width:18px;height:18px;border-radius:50%;background: rgba(34,197,94,.18);border:1px solid rgba(34,197,94,.35);display:grid;place-items:center;color:#22c55e;flex:0 0 auto;margin-top:2px;font-size:12px;font-weight:900}
@@ -276,8 +276,8 @@ export default function RsaLandingPage() {
     .rsa-landing details p{color:rgba(255,255,255,.70);font-size:13px;line-height:1.7;margin:10px 0 0}
     .rsa-landing .faq-item{border:1px solid rgba(255,255,255,.10);background: rgba(255,255,255,.05);border-radius: var(--radius);padding:14px 16px}
     .rsa-landing .faq-item + .faq-item{margin-top:10px}
-    .rsa-landing .faq-question{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:none;background:transparent;color:#ffffff;font-weight:700;text-align:left;cursor:pointer;font-size:20px;padding:0}
-    .rsa-landing .faq-answer{color:rgba(255,255,255,.70);font-size:18px;line-height:1.7;margin:10px 0 0}
+    .rsa-landing .faq-question{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:none;background:transparent;color:#ffffff;font-weight:700;text-align:left;cursor:pointer;font-size:15px;padding:0}
+    .rsa-landing .faq-answer{color:rgba(255,255,255,.70);font-size:15px;line-height:1.7;margin:10px 0 0}
     .rsa-landing .faq-chevron{font-size:12px;opacity:.9;transition:transform .2s ease}
     .rsa-landing .faq-chevron.open{transform:rotate(180deg)}
     .rsa-landing footer{padding: 26px 0;border-top:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.65);font-size:13px;background:#070b14}
@@ -318,12 +318,13 @@ export default function RsaLandingPage() {
             <div className="hero-grid">
               <div className="hero-copy">
                 <div className="badge"><span className="dot" />24×7 Emergency Support • AI-Powered Emergency Dispatch</div>
-                <h1>Stuck on the Road?<br /><span className="gradient-text">We&apos;re Just a Tap Away!</span></h1>
+                <h1>24x7 Car Towing & On-Road Help<br /><span className="gradient-text">Live Tracking Available</span></h1>
                 <p className="lead">Car breakdown? Flat tyre? Battery dead? MYFNG roadside assistance connects you with verified technicians in <b>under 30 minutes</b> <span className="lead-location">(subject to location).</span></p>
                 <div className="chips">
-                  <div className="chip">⏱ Under 30 Min</div>
-                  <div className="chip">🛡 Trusted Technicians</div>
+                  <div className="chip">⏱️ Under 30 Min</div>
+                  <div className="chip">🛡️ Trusted Technicians</div>
                   <div className="chip">📍 Live Location Tracking</div>
+                  <div className="chip">🛡️ Trusted by 32,000+ Car Owners PAN India</div>
                 </div>
               </div>
               <aside className="card" id="contact">
@@ -403,14 +404,14 @@ export default function RsaLandingPage() {
           <div className="container">
             <div className="section-title"><div><h2>Roadside Assistance Services</h2><p>Quick on‑road solutions for every car emergency.</p></div></div>
             <div className="grid-4">
-              <div className="feature"><div className="icon">⚡</div><h4>Battery Jumpstart</h4><p>Instant battery start at your location.</p></div>
-              <div className="feature"><div className="icon">⛽</div><h4>Fuel Delivery</h4><p>Emergency petrol/diesel delivery.</p></div>
-              <div className="feature"><div className="icon">🚗</div><h4>Car Towing Services</h4><p>Safe towing to nearest workshop.</p></div>
-              <div className="feature"><div className="icon">🧯</div><h4>Accidental Car Towing</h4><p>Accident vehicle recovery & transport.</p></div>
-              <div className="feature"><div className="icon">🛠</div><h4>Roadside Assistance</h4><p>Minor on‑road repairs support.</p></div>
-              <div className="feature"><div className="icon">📍</div><h4>Car Tracking Services</h4><p>Live location and tracking support.</p></div>
-              <div className="feature"><div className="icon">🧰</div><h4>Periodic Car Service</h4><p>Doorstep periodic maintenance booking.</p></div>
-              <div className="feature"><div className="icon">🛞</div><h4>Flat Tyre Assistance</h4><p>Tyre change or puncture fix instantly.</p></div>
+              <div className="feature"><div className="icon">⚡</div><h4>Battery Jumpstart</h4><p>ETA: 10-30 Min</p><p>Instant battery start at your location.</p></div>
+              <div className="feature"><div className="icon">⛽</div><h4>Fuel Delivery</h4><p>ETA: 20-30 Min</p><p>Emergency petrol/diesel delivery.</p></div>
+              <div className="feature"><div className="icon">🚗</div><h4>Car Towing Services</h4><p>ETA: 20-30 Min</p><p>Safe towing to nearest workshop.</p></div>
+              <div className="feature"><div className="icon">🧯</div><h4>Accidental Car Towing</h4><p>ETA: 30-35 Min</p><p>Accident vehicle recovery & transport.</p></div>
+              <div className="feature"><div className="icon">🛠</div><h4>Roadside Assistance</h4><p>ETA: 10-20 Min</p><p>Minor on‑road repairs support.</p></div>
+              <div className="feature"><div className="icon">📍</div><h4>Car Tracking Services</h4><p>ETA: 20-30 Min</p><p>Live location and tracking support.</p></div>
+              <div className="feature"><div className="icon">🧰</div><h4>Periodic Car Service</h4><p>ETA: 60 Secs</p><p>Book periodic maintenance booking in Seconds.</p></div>
+              <div className="feature"><div className="icon">🛞</div><h4>Flat Tyre Assistance</h4><p>ETA: 15-30 Min</p><p>Tyre change or puncture fix instantly.</p></div>
             </div>
           </div>
         </section>
@@ -427,7 +428,8 @@ export default function RsaLandingPage() {
             <div className="pricing">
               <div className="price-card">
                 <h3>Towing</h3>
-                <div className="price">₹25/km <small>onwards</small></div>
+                <div className="price">₹25/km <small>onwards</small> <br></><small>Base charge covers first dispatch & loading. Distance charges applicable after minimum km.
+</small></div>
                 <ul className="list">
                   <li>
                     <span className="tick">✓</span>
@@ -443,8 +445,8 @@ export default function RsaLandingPage() {
                   </li>
                 </ul>
                 <div style={{ marginTop: 12 }}>
-                  <a className="btn primary" href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>
-                    Request Towing
+                  <a className="btn primary" href="tel:+919610448949" onClick={(e) => scrollToSection(e, 'contact')}>
+                    Call Now For Immediate Help
                   </a>
                 </div>
               </div>
@@ -452,7 +454,7 @@ export default function RsaLandingPage() {
               <div className="price-card">
                 <h3>RSA Support</h3>
                 <div className="price">
-                  On Demand <small>as per service</small>
+                  On Demand <small>as per service</small> <br><small>Final pricing may vary based on your location, vehicle type and service requirement.</small>
                 </div>
                 <ul className="list">
                   <li>

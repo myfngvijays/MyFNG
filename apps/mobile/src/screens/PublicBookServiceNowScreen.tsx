@@ -594,7 +594,7 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
 
                 <View style={styles.tip}>
                   <Ionicons name="sparkles" size={16} color={COLORS.purple} />
-                  <Text style={styles.tipText}>No login required. Book in under 2 minutes.</Text>
+                  <Text style={styles.tipText}>Book Your Service Under 60 Seconds</Text>
                 </View>
               </>
             ) : null}
