@@ -140,7 +140,7 @@ export default function Footer() {
                   <li key={item.href} className="mb-0">
                     <Link
                       href={item.href}
-                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                      className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {item.label}
                     </Link>
@@ -167,7 +167,7 @@ export default function Footer() {
                   <li key={item.href} className="mb-0">
                     <Link
                       href={item.href}
-                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                      className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {item.label}
                     </Link>
@@ -187,7 +187,7 @@ export default function Footer() {
                   <li key={brand} className="mb-0">
                     <Link
                       href={`/car-services/${brand.toLowerCase().replace(/\s+/g, '-')}-car-service`}
-                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                      className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {brand}
                     </Link>
@@ -214,7 +214,7 @@ export default function Footer() {
                   <li key={brand.slug} className="mb-0">
                     <Link
                       href={`/car-services/${brand.slug}-car-service`}
-                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                      className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {brand.label}
                     </Link>
@@ -238,7 +238,7 @@ export default function Footer() {
                   <li key={item.href} className="mb-0">
                     <Link
                       href={item.href}
-                      className="text-[#b8c7d1] text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
+                      className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {item.label}
                     </Link>
@@ -311,7 +311,7 @@ export default function Footer() {
                 <Link
                   key={loc.href + loc.label}
                   href={loc.href}
-                  className="block text-[#b8c7d1] text-[10px] font-bold no-underline hover:text-white transition-all duration-300"
+                  className="block text-white text-[10px] font-bold no-underline hover:text-white transition-all duration-300"
                 >
                   {loc.label}
                 </Link>
