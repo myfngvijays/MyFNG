@@ -345,11 +345,11 @@ export default function Footer() {
                 <div className="text-center md:text-left">
                   <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Contact Us</h4>
                   <div className="text-[11px] leading-[2] font-semibold text-gray-700">
-                    <div>Email: support@myfng.in</div>
-                    <div>Car Service: +91-9772215095</div>
-                    <div>Roadside Assistance: +91-9610448949</div>
-                    <div>Working Days: Monday – Saturday</div>
-                    <div>Hours: 09:30 AM - 06:30 PM</div>
+                    <div><span class="text-blue-800 font-bold">Email:</span> support@myfng.in</div>
+                    <div><span class="text-blue-800 font-bold">Car Service:</span> +91-9772215095</div>
+                    <div><span class="text-blue-800 font-bold">Roadside Assistance:</span> +91-9610448949</div>
+                    <div><span class="text-blue-800 font-bold">Working Days:</span> Monday – Saturday</div>
+                    <div><span class="text-blue-800 font-bold">Hours:</span> 09:30 AM - 06:30 PM</div>
                   </div>
                 </div>
 
