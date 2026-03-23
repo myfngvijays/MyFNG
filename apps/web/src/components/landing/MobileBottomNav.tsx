@@ -46,6 +46,7 @@ export default function MobileBottomNav() {
   }, [pathname]);
 
   if (isEmbed) return null;
+  if (pathname === '/book-service' || pathname.startsWith('/book-service/')) return null;
 
   return (
     <>

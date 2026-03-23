@@ -14,6 +14,11 @@ type GbpLocation = {
   maps_uri: string;
   website_uri: string;
   phone_number: string;
+  regular_hours?: { open_day: string; open_time: string; close_time: string }[];
+  description?: string;
+  primary_category?: string;
+  latlng?: { lat: number; lng: number } | null;
+  open_status?: string;
 };
 
 type LocationCacheItem = {
@@ -140,8 +145,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const forceRefresh = request.nextUrl.searchParams.get('refresh') === '1';
     const cached = locationCache.get(user.id);
-    if (cached && Date.now() - cached.fetchedAt < LOCATION_CACHE_TTL_MS) {
+    if (!forceRefresh && cached && Date.now() - cached.fetchedAt < LOCATION_CACHE_TTL_MS) {
       return NextResponse.json({
         success: true,
         count: cached.locations.length,
@@ -197,16 +203,10 @@ export async function GET(request: NextRequest) {
       if (!accountName) continue;
 
       const locUrl = new URL(`https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations`);
+      // Core fields + rich fields (profile, categories, latlng, openInfo are valid for the LIST endpoint)
       locUrl.searchParams.set(
         'readMask',
-        [
-          'title',
-          'storefrontAddress',
-          'phoneNumbers',
-          'websiteUri',
-          'metadata',
-          'regularHours',
-        ].join(',')
+        'name,title,storefrontAddress,phoneNumbers,websiteUri,metadata,regularHours,profile,categories,latlng,openInfo'
       );
       locUrl.searchParams.set('pageSize', '100');
 
@@ -219,22 +219,50 @@ export async function GET(request: NextRequest) {
       const locations: any[] = Array.isArray(locJson?.locations) ? locJson.locations : [];
 
       for (const loc of locations) {
+        // Ensure full resource name — API sometimes returns just "locations/{id}"
+        // without the "accounts/{id}/" prefix when name is in readMask
+        const rawName = String(loc?.name || '');
+        const resource_name = rawName.startsWith('accounts/')
+          ? rawName
+          : rawName
+          ? `${accountName}/${rawName}`
+          : '';
+
+        if (!resource_name) continue;
+
+        const periods: any[] = loc?.regularHours?.periods || [];
+        const regular_hours = periods.map((p: any) => ({
+          open_day: String(p?.openDay || ''),
+          open_time: `${String(p?.openTime?.hours ?? 0).padStart(2, '0')}:${String(p?.openTime?.minutes ?? 0).padStart(2, '0')}`,
+          close_time: `${String(p?.closeTime?.hours ?? 0).padStart(2, '0')}:${String(p?.closeTime?.minutes ?? 0).padStart(2, '0')}`,
+        }));
+
+        const latlngRaw = loc?.latlng;
         allLocations.push({
-          resource_name: String(loc?.name || ''), // accounts/{a}/locations/{l}
+          resource_name,
           title: String(loc?.title || ''),
           address: formatAddress(loc),
           place_id: String(loc?.metadata?.placeId || ''),
           maps_uri: String(loc?.metadata?.mapsUri || ''),
           website_uri: String(loc?.websiteUri || ''),
           phone_number: String(loc?.phoneNumbers?.primaryPhone || ''),
+          regular_hours: regular_hours.length > 0 ? regular_hours : undefined,
+          description: String(loc?.profile?.description || '') || undefined,
+          primary_category: String(loc?.categories?.primaryCategory?.displayName || '') || undefined,
+          latlng:
+            latlngRaw?.latitude != null && latlngRaw?.longitude != null
+              ? { lat: Number(latlngRaw.latitude), lng: Number(latlngRaw.longitude) }
+              : null,
+          open_status: String(loc?.openInfo?.status || '') || undefined,
         });
       }
     }
 
     const uniq = new Map<string, GbpLocation>();
-    for (const item of allLocations) {
-      const key = item.place_id || item.resource_name;
-      if (!key) continue;
+    for (let i = 0; i < allLocations.length; i++) {
+      const item = allLocations[i];
+      // resource_name is the most reliable unique key; fall back to place_id then index
+      const key = item.resource_name || item.place_id || `idx-${i}`;
       if (!uniq.has(key)) uniq.set(key, item);
     }
 

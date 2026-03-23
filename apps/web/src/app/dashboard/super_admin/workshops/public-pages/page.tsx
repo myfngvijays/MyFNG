@@ -15,6 +15,11 @@ type GbpLocationOption = {
   maps_uri: string;
   website_uri: string;
   phone_number: string;
+  regular_hours?: { open_day: string; open_time: string; close_time: string }[];
+  description?: string;
+  primary_category?: string;
+  latlng?: { lat: number; lng: number } | null;
+  open_status?: string;
 };
 
 export default function WorkshopPublicPagesPage() {
@@ -79,6 +84,7 @@ export default function WorkshopPublicPagesPage() {
   const [gbpLocations, setGbpLocations] = useState<GbpLocationOption[]>([]);
   const [loadingGbpLocations, setLoadingGbpLocations] = useState(false);
   const [selectedGbpLocation, setSelectedGbpLocation] = useState('');
+  const [syncingAll, setSyncingAll] = useState(false);
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -111,7 +117,7 @@ export default function WorkshopPublicPagesPage() {
     if (loadingGbpLocations) return;
     try {
       setLoadingGbpLocations(true);
-      const res = await fetch('/api/integrations/google-business/locations', { cache: 'no-store' });
+      const res = await fetch('/api/integrations/google-business/locations?refresh=1', { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error('Failed to load GBP locations:', json);
@@ -120,7 +126,19 @@ export default function WorkshopPublicPagesPage() {
         setGbpLocations([]);
         return;
       }
-      setGbpLocations(Array.isArray(json?.locations) ? json.locations : []);
+      const rawLocations = Array.isArray(json?.locations) ? json.locations : [];
+      const seenLocationKeys = new Set<string>();
+      const uniqueLocations = rawLocations.filter((loc: GbpLocationOption, index: number) => {
+        const dedupeKey = loc?.resource_name || loc?.place_id || `idx-${index}`;
+        if (seenLocationKeys.has(dedupeKey)) return false;
+        seenLocationKeys.add(dedupeKey);
+        return true;
+      });
+      setGbpLocations(uniqueLocations);
+      // Auto-select the only location so GBP path is always used when possible
+      if (uniqueLocations.length === 1 && uniqueLocations[0]?.resource_name) {
+        setSelectedGbpLocation(uniqueLocations[0].resource_name);
+      }
     } catch (e) {
       console.error('Failed to load GBP locations:', e);
       setGbpLocations([]);
@@ -150,6 +168,25 @@ export default function WorkshopPublicPagesPage() {
   const handleConnectGoogleBusiness = () => {
     const returnTo = '/dashboard/super_admin/workshops/public-pages';
     window.location.href = `/api/integrations/google-business/connect?return_to=${encodeURIComponent(returnTo)}`;
+  };
+
+  const handleSyncAll = async () => {
+    if (syncingAll) return;
+    setSyncingAll(true);
+    try {
+      const res = await fetch('/api/workshops/gmb/sync', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json?.error || 'Sync failed');
+        return;
+      }
+      toast.success(`Sync complete: ${json.synced} updated${json.failed ? `, ${json.failed} failed` : ''}`);
+      fetchPages();
+    } catch {
+      toast.error('Sync failed');
+    } finally {
+      setSyncingAll(false);
+    }
   };
 
   const fetchPages = async () => {
@@ -209,18 +246,192 @@ export default function WorkshopPublicPagesPage() {
     }
   };
 
+  // Core GMB fetch logic — called either by location select or manual button
+  const doFetchGmb = async (overrideLocationName?: string, overrideWorkshopId?: string) => {
+    const workshopId = overrideWorkshopId || formData.workshop_id;
+    const locationName = overrideLocationName || selectedGbpLocation || undefined;
+    const mapsUrl = formData.google_maps_url;
+
+    if (!locationName && !mapsUrl.trim()) {
+      toast.error('Please select a Google Business location or enter a Google Maps URL');
+      return;
+    }
+
+    setFetchingGmb(true);
+    setGmbPreview(null);
+    try {
+      const selectedWorkshop = workshops.find((w) => w.id === workshopId);
+      const effectiveGbpLoc =
+        gbpLocations.find((l) => l.resource_name === locationName) ||
+        (gbpConnected && gbpLocations.length > 0 ? gbpLocations[0] : undefined);
+
+      // Build prefetched details from listing data to skip the single-location GET (which returns 404)
+      const prefetchedLocation = effectiveGbpLoc
+        ? {
+            title: effectiveGbpLoc.title,
+            storefrontAddress: effectiveGbpLoc.address
+              ? { addressLines: [effectiveGbpLoc.address] }
+              : undefined,
+            phoneNumbers: effectiveGbpLoc.phone_number
+              ? { primaryPhone: effectiveGbpLoc.phone_number }
+              : undefined,
+            websiteUri: effectiveGbpLoc.website_uri || undefined,
+            metadata: {
+              placeId: effectiveGbpLoc.place_id || undefined,
+              mapsUri: effectiveGbpLoc.maps_uri || undefined,
+            },
+            regularHours: effectiveGbpLoc.regular_hours?.length
+              ? {
+                  periods: effectiveGbpLoc.regular_hours.map((p) => ({
+                    openDay: p.open_day,
+                    openTime: {
+                      hours: parseInt(p.open_time.split(':')[0], 10),
+                      minutes: parseInt(p.open_time.split(':')[1], 10),
+                    },
+                    closeTime: {
+                      hours: parseInt(p.close_time.split(':')[0], 10),
+                      minutes: parseInt(p.close_time.split(':')[1], 10),
+                    },
+                  })),
+                }
+              : undefined,
+            // Rich fields from listing (if available)
+            profile: effectiveGbpLoc.description ? { description: effectiveGbpLoc.description } : undefined,
+            categories: effectiveGbpLoc.primary_category
+              ? { primaryCategory: { displayName: effectiveGbpLoc.primary_category } }
+              : undefined,
+            latlng: effectiveGbpLoc.latlng
+              ? { latitude: effectiveGbpLoc.latlng.lat, longitude: effectiveGbpLoc.latlng.lng }
+              : undefined,
+            openInfo: effectiveGbpLoc.open_status ? { status: effectiveGbpLoc.open_status } : undefined,
+          }
+        : undefined;
+
+      const res = await fetch('/api/workshops/gmb/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          google_maps_url: mapsUrl || undefined,
+          place_id: effectiveGbpLoc?.place_id || undefined,
+          gmb_location_name: locationName || effectiveGbpLoc?.resource_name || undefined,
+          workshop_id: workshopId || undefined,
+          prefetched_location: prefetchedLocation,
+          workshop_context: selectedWorkshop
+            ? { name: selectedWorkshop.name, address: selectedWorkshop.address, city: selectedWorkshop.city, state: selectedWorkshop.state }
+            : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        if (json?.debug?.attempts?.length) {
+          toast.error(`${json?.error || 'Failed to fetch GMB data'} (${json.debug.attempts.join(', ')})`);
+        } else {
+          toast.error(json?.error || 'Failed to fetch GMB data');
+        }
+        return;
+      }
+      const gmb = json.data;
+      setGmbPreview(gmb);
+
+      // Parse business hours
+      const dayMap: Record<string, string> = {};
+      if (gmb.opening_hours) {
+        for (const line of gmb.opening_hours) {
+          const match = line.match(/^(\w+):\s*(.+)$/);
+          if (match) dayMap[match[1].toLowerCase()] = match[2].trim();
+        }
+      }
+
+      // Build services list from GBP categories + service_items
+      const gmbServices: string[] = [];
+      if (gmb.primary_category?.display_name) gmbServices.push(gmb.primary_category.display_name);
+      for (const cat of gmb.additional_categories || []) {
+        if (cat.display_name) gmbServices.push(cat.display_name);
+      }
+      for (const svc of gmb.service_items || []) {
+        if (svc.display_name) gmbServices.push(svc.display_name);
+      }
+
+      setFormData(prev => {
+        // Merge services: keep existing + add new GMB ones (deduplicated)
+        const existingServices = new Set(prev.services_offered.map(s => s.toLowerCase()));
+        const newServices = gmbServices.filter(s => !existingServices.has(s.toLowerCase()));
+
+        return {
+          ...prev,
+          business_hours: {
+            monday: dayMap['monday'] || prev.business_hours.monday,
+            tuesday: dayMap['tuesday'] || prev.business_hours.tuesday,
+            wednesday: dayMap['wednesday'] || prev.business_hours.wednesday,
+            thursday: dayMap['thursday'] || prev.business_hours.thursday,
+            friday: dayMap['friday'] || prev.business_hours.friday,
+            saturday: dayMap['saturday'] || prev.business_hours.saturday,
+            sunday: dayMap['sunday'] || prev.business_hours.sunday,
+          },
+          alternate_phone: gmb.phone_number || prev.alternate_phone,
+          website_url: gmb.website || prev.website_url,
+          short_description: prev.short_description || gmb.description || '',
+          google_maps_url: gmb.google_maps_uri || prev.google_maps_url,
+          services_offered: [...prev.services_offered, ...newServices],
+        };
+      });
+
+      const filledFields = ['hours', 'phone', 'website'];
+      if (gmb.description) filledFields.push('description');
+      if (gmbServices.length > 0) filledFields.push(`${gmbServices.length} services`);
+      toast.success(`GMB data fetched! Auto-filled: ${filledFields.join(', ')}.`);
+    } catch (err: any) {
+      console.error('GMB fetch error:', err);
+      toast.error('Failed to fetch GMB data');
+    } finally {
+      setFetchingGmb(false);
+    }
+  };
+
   const handleGbpLocationSelect = (resourceName: string) => {
     setSelectedGbpLocation(resourceName);
     const loc = gbpLocations.find((l) => l.resource_name === resourceName);
     if (!loc) return;
+
+    // Immediately pre-fill what we already have from the location listing
+    const DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const;
+    const hoursUpdate: Record<string, string> = {};
+    if (Array.isArray(loc.regular_hours) && loc.regular_hours.length > 0) {
+      const dayMap: Record<string, string> = {};
+      for (const p of loc.regular_hours) {
+        const day = String(p.open_day || '').toUpperCase();
+        if (DAY_ORDER.includes(day as typeof DAY_ORDER[number])) {
+          dayMap[day] = `${p.open_time} – ${p.close_time}`;
+        }
+      }
+      for (const day of DAY_ORDER) {
+        hoursUpdate[day.toLowerCase()] = dayMap[day] || 'Closed';
+      }
+    }
 
     setFormData((prev) => ({
       ...prev,
       google_maps_url: loc.maps_uri || prev.google_maps_url,
       alternate_phone: loc.phone_number || prev.alternate_phone,
       website_url: loc.website_uri || prev.website_url,
+      ...(Object.keys(hoursUpdate).length > 0
+        ? {
+            business_hours: {
+              monday: hoursUpdate['monday'] || prev.business_hours.monday,
+              tuesday: hoursUpdate['tuesday'] || prev.business_hours.tuesday,
+              wednesday: hoursUpdate['wednesday'] || prev.business_hours.wednesday,
+              thursday: hoursUpdate['thursday'] || prev.business_hours.thursday,
+              friday: hoursUpdate['friday'] || prev.business_hours.friday,
+              saturday: hoursUpdate['saturday'] || prev.business_hours.saturday,
+              sunday: hoursUpdate['sunday'] || prev.business_hours.sunday,
+            },
+          }
+        : {}),
     }));
     setGmbPreview(null);
+
+    // Auto-fetch full details (reviews, rating, complete hours) for the selected location
+    doFetchGmb(resourceName);
   };
 
   const handleAddService = () => {
@@ -310,80 +521,7 @@ export default function WorkshopPublicPagesPage() {
     }));
   };
 
-  const handleFetchGMB = async () => {
-    if (!formData.google_maps_url.trim()) {
-      toast.error('Please enter a Google Maps URL first');
-      return;
-    }
-    setFetchingGmb(true);
-    setGmbPreview(null);
-    try {
-      const selectedWorkshop = workshops.find((w) => w.id === formData.workshop_id);
-      const selectedLocation = gbpLocations.find((l) => l.resource_name === selectedGbpLocation);
-      const res = await fetch('/api/workshops/gmb/fetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          google_maps_url: formData.google_maps_url,
-          place_id: selectedLocation?.place_id || undefined,
-          gmb_location_name: selectedLocation?.resource_name || undefined,
-          workshop_id: formData.workshop_id || undefined,
-          workshop_context: selectedWorkshop
-            ? {
-                name: selectedWorkshop.name,
-                address: selectedWorkshop.address,
-                city: selectedWorkshop.city,
-                state: selectedWorkshop.state,
-              }
-            : undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        if (json?.debug?.attempts?.length) {
-          console.error('GMB debug:', json.debug);
-          toast.error(`${json?.error || 'Failed to fetch GMB data'} (${json.debug.attempts.join(', ')})`);
-        } else {
-          toast.error(json?.error || 'Failed to fetch GMB data');
-        }
-        return;
-      }
-      const gmb: GmbData = json.data;
-      setGmbPreview(gmb);
-
-      const dayMap: Record<string, string> = {};
-      if (gmb.opening_hours) {
-        for (const line of gmb.opening_hours) {
-          const match = line.match(/^(\w+):\s*(.+)$/);
-          if (match) {
-            dayMap[match[1].toLowerCase()] = match[2].trim();
-          }
-        }
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        business_hours: {
-          monday: dayMap['monday'] || prev.business_hours.monday,
-          tuesday: dayMap['tuesday'] || prev.business_hours.tuesday,
-          wednesday: dayMap['wednesday'] || prev.business_hours.wednesday,
-          thursday: dayMap['thursday'] || prev.business_hours.thursday,
-          friday: dayMap['friday'] || prev.business_hours.friday,
-          saturday: dayMap['saturday'] || prev.business_hours.saturday,
-          sunday: dayMap['sunday'] || prev.business_hours.sunday,
-        },
-        alternate_phone: gmb.phone_number || prev.alternate_phone,
-        website_url: gmb.website || prev.website_url,
-      }));
-
-      toast.success('GMB data fetched successfully! Form fields auto-filled.');
-    } catch (err: any) {
-      console.error('GMB fetch error:', err);
-      toast.error('Failed to fetch GMB data');
-    } finally {
-      setFetchingGmb(false);
-    }
-  };
+  const handleFetchGMB = () => doFetchGmb();
 
   const handleAddGalleryImage = () => {
     if (galleryInput.trim()) {
@@ -638,6 +776,17 @@ export default function WorkshopPublicPagesPage() {
           <p className="text-gray-600 mt-1">Manage public-facing workshop pages</p>
         </div>
         <div className="flex items-center gap-3">
+          {gbpConnected && (
+            <button
+              onClick={handleSyncAll}
+              disabled={syncingAll}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 disabled:opacity-60"
+              title="Re-sync GMB data for all linked workshop pages"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncingAll ? 'animate-spin' : ''}`} />
+              {syncingAll ? 'Syncing...' : 'Sync All GMB'}
+            </button>
+          )}
           <button
             onClick={handleConnectGoogleBusiness}
             disabled={checkingGbp}
@@ -821,24 +970,27 @@ export default function WorkshopPublicPagesPage() {
                     <div className="mb-3">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Google Business Location
+                        {fetchingGmb && selectedGbpLocation && (
+                          <span className="ml-2 text-xs text-blue-600 font-normal animate-pulse">Fetching details...</span>
+                        )}
                       </label>
                       <select
                         value={selectedGbpLocation}
                         onChange={(e) => handleGbpLocationSelect(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        disabled={loadingGbpLocations}
+                        disabled={loadingGbpLocations || fetchingGmb}
                       >
                         <option value="">
-                          {loadingGbpLocations ? 'Loading GMB locations...' : 'Select GMB from connected account'}
+                          {loadingGbpLocations ? 'Loading GMB locations...' : 'Select GMB location to auto-fill details'}
                         </option>
-                        {gbpLocations.map((loc) => (
-                          <option key={loc.resource_name} value={loc.resource_name}>
-                            {loc.title}{loc.address ? ` - ${loc.address}` : ''}
+                        {gbpLocations.map((loc, index) => (
+                          <option key={`${loc.resource_name || loc.place_id || 'gbp'}-${index}`} value={loc.resource_name}>
+                            {loc.title}{loc.address ? ` — ${loc.address}` : ''}
                           </option>
                         ))}
                       </select>
-                      {selectedGbpLocation && (
-                        <p className="text-xs text-gray-500 mt-1">Selected location will be remembered for this public page.</p>
+                      {selectedGbpLocation && !fetchingGmb && (
+                        <p className="text-xs text-green-700 mt-1">✓ GMB location linked — details auto-synced daily.</p>
                       )}
                     </div>
                   )}
@@ -858,37 +1010,76 @@ export default function WorkshopPublicPagesPage() {
                     <button
                       type="button"
                       onClick={handleFetchGMB}
-                      disabled={fetchingGmb || !formData.google_maps_url.trim()}
+                      disabled={fetchingGmb || (!formData.google_maps_url.trim() && !selectedGbpLocation && !gbpConnected)}
                       className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
                     >
                       <RefreshCw className={`w-4 h-4 ${fetchingGmb ? 'animate-spin' : ''}`} />
-                      {fetchingGmb ? 'Fetching...' : 'Fetch GMB Data'}
+                      {fetchingGmb ? 'Fetching...' : 'Re-sync GMB'}
                     </button>
                   </div>
 
                   {gmbPreview && (
-                    <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                    <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+                      {/* Header */}
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-green-900 text-sm">GMB Data Preview</h4>
-                        {gmbPreview.rating != null && (
-                          <span className="flex items-center gap-1 text-sm font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded">
-                            <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
-                            {gmbPreview.rating} ({gmbPreview.total_reviews || 0} reviews)
-                          </span>
+                        <div className="flex items-center gap-2">
+                          {(gmbPreview as any).open_status && (
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${(gmbPreview as any).open_status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {(gmbPreview as any).open_status === 'OPEN' ? 'Open' : (gmbPreview as any).open_status === 'CLOSED_PERMANENTLY' ? 'Closed Permanently' : 'Closed'}
+                            </span>
+                          )}
+                          {gmbPreview.rating != null && (
+                            <span className="flex items-center gap-1 text-sm font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded">
+                              <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
+                              {gmbPreview.rating} ({gmbPreview.total_reviews || 0} reviews)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Business info */}
+                      <div className="space-y-1">
+                        {gmbPreview.business_name && (
+                          <p className="text-sm text-gray-800"><span className="font-medium">Business:</span> {gmbPreview.business_name}</p>
+                        )}
+                        {(gmbPreview as any).primary_category?.display_name && (
+                          <p className="text-sm text-gray-800"><span className="font-medium">Category:</span> {(gmbPreview as any).primary_category.display_name}
+                            {(gmbPreview as any).additional_categories?.length > 0 && (
+                              <span className="text-gray-500"> + {(gmbPreview as any).additional_categories.map((c: any) => c.display_name).join(', ')}</span>
+                            )}
+                          </p>
+                        )}
+                        {gmbPreview.formatted_address && (
+                          <p className="text-sm text-gray-800"><span className="font-medium">Address:</span> {gmbPreview.formatted_address}</p>
+                        )}
+                        {gmbPreview.phone_number && (
+                          <p className="text-sm text-gray-800"><span className="font-medium">Phone:</span> {gmbPreview.phone_number}</p>
+                        )}
+                        {gmbPreview.website && (
+                          <p className="text-sm text-gray-800"><span className="font-medium">Website:</span> {gmbPreview.website}</p>
+                        )}
+                        {(gmbPreview as any).description && (
+                          <p className="text-sm text-gray-800"><span className="font-medium">Description:</span> {(gmbPreview as any).description}</p>
                         )}
                       </div>
-                      {gmbPreview.business_name && (
-                        <p className="text-sm text-gray-800"><span className="font-medium">Business:</span> {gmbPreview.business_name}</p>
+
+                      {/* Services */}
+                      {(gmbPreview as any).service_items?.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 mb-1">Services ({(gmbPreview as any).service_items.length}):</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(gmbPreview as any).service_items.slice(0, 12).map((s: any, i: number) => (
+                              <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{s.display_name}</span>
+                            ))}
+                            {(gmbPreview as any).service_items.length > 12 && (
+                              <span className="text-xs text-gray-500">+{(gmbPreview as any).service_items.length - 12} more</span>
+                            )}
+                          </div>
+                        </div>
                       )}
-                      {gmbPreview.formatted_address && (
-                        <p className="text-sm text-gray-800"><span className="font-medium">Address:</span> {gmbPreview.formatted_address}</p>
-                      )}
-                      {gmbPreview.phone_number && (
-                        <p className="text-sm text-gray-800"><span className="font-medium">Phone:</span> {gmbPreview.phone_number}</p>
-                      )}
-                      {gmbPreview.website && (
-                        <p className="text-sm text-gray-800"><span className="font-medium">Website:</span> {gmbPreview.website}</p>
-                      )}
+
+                      {/* Hours */}
                       {gmbPreview.opening_hours && gmbPreview.opening_hours.length > 0 && (
                         <div>
                           <p className="text-sm font-medium text-gray-800 mb-1">Hours:</p>
@@ -899,22 +1090,41 @@ export default function WorkshopPublicPagesPage() {
                           </div>
                         </div>
                       )}
+
+                      {/* Attributes */}
+                      {(gmbPreview as any).attributes?.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 mb-1">Attributes:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(gmbPreview as any).attributes.slice(0, 8).map((a: any, i: number) => (
+                              <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{a.display_name || a.name}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Reviews */}
                       {gmbPreview.reviews && gmbPreview.reviews.length > 0 && (
                         <div>
-                          <p className="text-sm font-medium text-gray-800 mb-1">Recent Reviews ({gmbPreview.reviews.length}):</p>
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                          <p className="text-sm font-medium text-gray-800 mb-1">Recent Reviews ({gmbPreview.total_reviews || gmbPreview.reviews.length}):</p>
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
                             {gmbPreview.reviews.map((r, i) => (
                               <div key={i} className="text-xs text-gray-600 bg-white p-2 rounded border border-green-100">
-                                <span className="font-medium">{r.author_name}</span>
-                                <span className="ml-1 text-yellow-600">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
-                                <span className="ml-1 text-gray-400">{r.relative_time}</span>
-                                {r.text && <p className="mt-0.5 line-clamp-2">{r.text}</p>}
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  {r.author_photo && <img src={r.author_photo} alt="" className="w-4 h-4 rounded-full" />}
+                                  <span className="font-medium">{r.author_name}</span>
+                                  <span className="text-yellow-500">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                                  {r.relative_time && <span className="text-gray-400 ml-auto">{r.relative_time}</span>}
+                                </div>
+                                {r.text && <p className="line-clamp-2 text-gray-600">{r.text}</p>}
+                                {(r as any).reply && <p className="mt-1 text-xs text-blue-600 border-l-2 border-blue-200 pl-2 line-clamp-1">Reply: {(r as any).reply}</p>}
                               </div>
                             ))}
                           </div>
                         </div>
                       )}
-                      <p className="text-xs text-green-700 mt-2">Business hours, phone, and website have been auto-filled below.</p>
+
+                      <p className="text-xs text-green-700">✓ Hours, phone, website, description & services auto-filled below.</p>
                     </div>
                   )}
                 </div>

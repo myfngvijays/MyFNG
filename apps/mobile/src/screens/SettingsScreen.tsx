@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -19,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { clearCustomerSessionToken, getCustomerSessionToken } from '../lib/customerSession';
 import { supabase } from '../lib/supabase';
 import {
@@ -59,6 +61,7 @@ const LEGAL_MENU: MenuItem[] = [
 
 export default function SettingsScreen({ navigation, route }: Props) {
   const [activeSubPage, setActiveSubPage] = useState<string | null>(route?.params?.initialSubPage ?? route?.params?.subPage ?? null);
+  const [vehicleEntryOnly, setVehicleEntryOnly] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
@@ -78,6 +81,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [carSearchLoading, setCarSearchLoading] = useState(false);
   const [selectedCar, setSelectedCar] = useState<any | null>(null);
   const [regDate, setRegDate] = useState('');
+  const [regDateValue, setRegDateValue] = useState<Date>(new Date());
+  const [showRegDatePicker, setShowRegDatePicker] = useState(false);
   const [fuelType, setFuelType] = useState<'Petrol' | 'Diesel' | 'CNG' | ''>('');
   const [carNumberParts, setCarNumberParts] = useState<string[]>(['', '', '', '']);
   const [carSearchFocused, setCarSearchFocused] = useState(false);
@@ -85,6 +90,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const [addresses, setAddresses] = useState<Array<{ id: string; label: string; value: string }>>([]);
   const [showAddAddress, setShowAddAddress] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [newAddrLabel, setNewAddrLabel] = useState<'Home' | 'Work' | 'Others'>('Home');
   const [newAddrLine1, setNewAddrLine1] = useState('');
   const [newAddrLine2, setNewAddrLine2] = useState('');
@@ -292,10 +298,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
         })
         .filter(Boolean) as Array<{ id: string; label: string; value: string }>;
 
-      const mergedAddresses = mappedAddresses.length > 0
-        ? mappedAddresses
-        : mappedLeadAddresses;
-      setAddresses(mergedAddresses);
+      const existingIds = new Set(mappedAddresses.map((a: { id: string }) => a.id));
+      const uniqueLeadAddresses = mappedLeadAddresses.filter((a: { id: string }) => !existingIds.has(a.id));
+      setAddresses([...mappedAddresses, ...uniqueLeadAddresses]);
       setVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
       setOrders(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []);
       setWalletBalance(Number(walletRes?.wallet?.current_balance || 0));
@@ -661,6 +666,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const handleMembershipUpgrade = async () => {
     if (!isLoggedIn) {
+      setVehicleEntryOnly(false);
       setActiveSubPage('My Profile');
       return;
     }
@@ -864,22 +870,41 @@ export default function SettingsScreen({ navigation, route }: Props) {
     try {
       setSaveAddressLoading(true);
 
-      try {
-        await apiFetch('/api/customer/addresses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(addressPayload),
-        });
-      } catch (_apiErr: any) {
-        if (!customerId) throw _apiErr;
-        const { error: sbErr } = await supabase
-          .from('customer_addresses')
-          .insert({ customer_id: customerId, ...addressPayload });
-        if (sbErr) throw new Error(sbErr.message);
+      if (editingAddressId) {
+        try {
+          await apiFetch('/api/customer/addresses', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: editingAddressId, ...addressPayload }),
+          });
+        } catch (_apiErr: any) {
+          if (!customerId) throw _apiErr;
+          const { error: sbErr } = await supabase
+            .from('customer_addresses')
+            .update(addressPayload)
+            .eq('id', editingAddressId)
+            .eq('customer_id', customerId);
+          if (sbErr) throw new Error(sbErr.message);
+        }
+      } else {
+        try {
+          await apiFetch('/api/customer/addresses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(addressPayload),
+          });
+        } catch (_apiErr: any) {
+          if (!customerId) throw _apiErr;
+          const { error: sbErr } = await supabase
+            .from('customer_addresses')
+            .insert({ customer_id: customerId, ...addressPayload });
+          if (sbErr) throw new Error(sbErr.message);
+        }
       }
 
       await hydrateCustomerData();
       setShowAddAddress(false);
+      setEditingAddressId(null);
       resetAddressForm();
     } catch (err: any) {
       Alert.alert('Save failed', err?.message || 'Unable to save address.');
@@ -946,8 +971,43 @@ export default function SettingsScreen({ navigation, route }: Props) {
     { icon: 'logo-twitter' as const, url: 'https://x.com/myfngcarservice', color: '#1DA1F2' },
   ];
 
+  const FUEL_COLOR_MAP: Record<'Petrol' | 'Diesel' | 'CNG', { bg: string; border: string; text: string }> = {
+    Petrol: { bg: '#2563EB', border: '#2563EB', text: '#2563EB' },
+    Diesel: { bg: '#D97706', border: '#D97706', text: '#D97706' },
+    CNG: { bg: '#16A34A', border: '#16A34A', text: '#16A34A' },
+  };
+
+  const formatDate = (date: Date): string => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear());
+    return `${day}-${month}-${year}`;
+  };
+
+  const onRegDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowRegDatePicker(false);
+    if (!selectedDate) return;
+    setRegDateValue(selectedDate);
+    setRegDate(formatDate(selectedDate));
+  };
+
+  const onPressAddVehicle = () => {
+    if (isLoggedIn) {
+      setVehicleEntryOnly(true);
+    } else {
+      setVehicleEntryOnly(false);
+    }
+    setActiveSubPage('My Profile');
+  };
+
+  useEffect(() => {
+    if (activeSubPage !== 'My Profile' && vehicleEntryOnly) {
+      setVehicleEntryOnly(false);
+    }
+  }, [activeSubPage, vehicleEntryOnly]);
+
   const renderMain = () => (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {isLoggedIn ? (
         <View style={styles.profileEditorCard}>
           <TouchableOpacity
@@ -1056,6 +1116,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
             </ScrollView>
           </View>
         ) : null}
+        <TouchableOpacity style={styles.addVehicleBtn} onPress={onPressAddVehicle} activeOpacity={0.85}>
+          <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+          <Text style={styles.addVehicleBtnText}>Add Your Vehicle</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.grid}>
@@ -1063,7 +1127,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
           <TouchableOpacity
             key={item.id}
             style={styles.gridCard}
-            onPress={() => setActiveSubPage(item.label)}
+            onPress={() => {
+              setVehicleEntryOnly(false);
+              setActiveSubPage(item.label);
+            }}
           >
             <Ionicons name={item.icon} size={18} color={COLORS.primary} />
             <Text style={styles.gridCardText}>{item.label}</Text>
@@ -1074,7 +1141,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
       <Text style={styles.sectionHeading}>Legal & Support</Text>
       <View style={styles.grid}>
         {LEGAL_MENU.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.gridCard} onPress={() => setActiveSubPage(item.label)}>
+          <TouchableOpacity
+            key={item.id}
+            style={styles.gridCard}
+            onPress={() => {
+              setVehicleEntryOnly(false);
+              setActiveSubPage(item.label);
+            }}
+          >
             <Ionicons name={item.icon} size={18} color={item.id === 'delete' ? '#DC2626' : COLORS.primary} />
             <Text style={[styles.gridCardText, item.id === 'delete' ? { color: '#DC2626' } : null]}>{item.label}</Text>
           </TouchableOpacity>
@@ -1085,7 +1159,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       <View style={styles.socialRow}>
         {SOCIAL_LINKS.map((s) => (
           <TouchableOpacity key={s.url} style={[styles.socialBtn, { borderColor: s.color }]} onPress={() => Linking.openURL(s.url)}>
-            <Ionicons name={s.icon} size={20} color={s.color} />
+            <Ionicons name={s.icon} size={18} color={s.color} />
           </TouchableOpacity>
         ))}
       </View>
@@ -1121,40 +1195,44 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 <Text style={styles.myProfileHeaderTitle}>{isLoggedIn ? (profileForm.name || 'MyFNG User') : 'Guest Login'}</Text>
                 <Text style={styles.myProfileHeaderSub}>
                   {isLoggedIn
-                    ? (profileForm.phone ? `+91 ${profileForm.phone}` : 'Complete profile details below')
+                    ? (vehicleEntryOnly ? 'Add your vehicle details below' : profileForm.phone ? `+91 ${profileForm.phone}` : 'Complete profile details below')
                     : 'Register now to unlock all features'}
                 </Text>
               </View>
             </View>
 
             <View style={styles.myProfileFormCard}>
-              <Text style={styles.subTitle}>FULL NAME</Text>
-              <TextInput
-                style={styles.input}
-                value={profileForm.name}
-                onChangeText={(text) => setProfileForm((prev) => ({ ...prev, name: text }))}
-                placeholder="Enter your full name"
-              />
+              {!vehicleEntryOnly ? (
+                <>
+                  <Text style={styles.subTitle}>FULL NAME</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={profileForm.name}
+                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, name: text }))}
+                    placeholder="Enter your full name"
+                  />
 
-              <Text style={styles.subTitle}>MOBILE NUMBER</Text>
-              <TextInput
-                style={[styles.input, styles.readOnlyInput]}
-                value={profileForm.phone ? `+91 ${profileForm.phone}` : ''}
-                placeholder="Mobile number"
-                editable={false}
-              />
+                  <Text style={styles.subTitle}>MOBILE NUMBER</Text>
+                  <TextInput
+                    style={[styles.input, styles.readOnlyInput]}
+                    value={profileForm.phone ? `+91 ${profileForm.phone}` : ''}
+                    placeholder="Mobile number"
+                    editable={false}
+                  />
 
-              <Text style={styles.subTitle}>EMAIL ADDRESS</Text>
-              <TextInput
-                style={styles.input}
-                value={profileForm.email}
-                onChangeText={(text) => setProfileForm((prev) => ({ ...prev, email: text }))}
-                placeholder="Enter email address"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+                  <Text style={styles.subTitle}>EMAIL ADDRESS</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={profileForm.email}
+                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, email: text }))}
+                    placeholder="Enter email address"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
 
-              <View style={styles.formDivider} />
+                  <View style={styles.formDivider} />
+                </>
+              ) : null}
               <Text style={styles.subTitle}>CAR DETAILS</Text>
 
               <Text style={styles.subTitle}>CAR MODEL</Text>
@@ -1167,7 +1245,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     setSelectedCar(null);
                   }}
                   onFocus={() => setCarSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setCarSearchFocused(false), 120)}
+                  onBlur={() => setTimeout(() => setCarSearchFocused(false), 400)}
                   placeholder="Search Brand/Model (e.g. Swift)"
                 />
                 {carSearchLoading ? (
@@ -1205,24 +1283,45 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
 
               <Text style={styles.subTitle}>REGISTRATION DATE OF CAR</Text>
-              <TextInput
-                style={styles.input}
-                value={regDate}
-                onChangeText={setRegDate}
-                placeholder="dd-mm-yyyy"
-              />
+              <TouchableOpacity style={styles.datePickerInput} onPress={() => setShowRegDatePicker(true)} activeOpacity={0.85}>
+                <Text style={[styles.datePickerText, !regDate ? styles.datePickerTextPlaceholder : null]}>
+                  {regDate || 'dd-mm-yyyy'}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+              </TouchableOpacity>
+              {showRegDatePicker ? (
+                <View style={styles.datePickerWrap}>
+                  <DateTimePicker
+                    value={regDateValue}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    maximumDate={new Date()}
+                    onChange={onRegDateChange}
+                  />
+                  {Platform.OS === 'ios' ? (
+                    <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowRegDatePicker(false)}>
+                      <Text style={styles.datePickerDoneText}>Done</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ) : null}
 
               <Text style={styles.subTitle}>FUEL TYPE</Text>
               <View style={styles.fuelPillRow}>
                 {(['Petrol', 'Diesel', 'CNG'] as const).map((fuel) => {
                   const active = fuelType === fuel;
+                  const colors = FUEL_COLOR_MAP[fuel];
                   return (
                     <TouchableOpacity
                       key={fuel}
-                      style={[styles.fuelPill, active ? styles.fuelPillActive : null]}
+                      style={[
+                        styles.fuelPill,
+                        { borderColor: colors.border },
+                        active ? { backgroundColor: colors.bg, borderColor: colors.bg } : null,
+                      ]}
                       onPress={() => setFuelType(fuel)}
                     >
-                      <Text style={[styles.fuelPillText, active ? styles.fuelPillTextActive : null]}>{fuel}</Text>
+                      <Text style={[styles.fuelPillText, { color: colors.text }, active ? styles.fuelPillTextActive : null]}>{fuel}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -1249,7 +1348,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
             </View>
 
             <TouchableOpacity style={styles.primaryBtn} onPress={handleRegisterSave}>
-              <Text style={styles.primaryBtnText}>{isLoggedIn ? 'Save Changes' : 'Register Now'}</Text>
+              <Text style={styles.primaryBtnText}>
+                {isLoggedIn ? (vehicleEntryOnly ? 'Save Vehicle' : 'Save Changes') : 'Register Now'}
+              </Text>
             </TouchableOpacity>
           </View>
         );
@@ -1264,12 +1365,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   onPress={() => {
                     setShowAddAddress((prev) => {
                       const next = !prev;
-                      if (!next) resetAddressForm();
+                      if (!next) { resetAddressForm(); setEditingAddressId(null); }
                       return next;
                     });
                   }}
                 >
-                  <Ionicons name="add-circle-outline" size={14} color={COLORS.primary} />
+                  <Ionicons name={showAddAddress ? 'close-circle-outline' : 'add-circle-outline'} size={14} color={COLORS.primary} />
                   <Text style={styles.addressAddNewText}>{showAddAddress ? 'Close' : 'Add New'}</Text>
                 </TouchableOpacity>
               ) : null}
@@ -1296,22 +1397,44 @@ export default function SettingsScreen({ navigation, route }: Props) {
               <>
                 {addresses.length === 0 ? (
                   <Text style={styles.rowSub}>No saved addresses found.</Text>
-                ) : addresses.map((a) => (
-                  <View key={a.id} style={styles.addressCard}>
-                    <View style={styles.addressIconWrap}>
-                      <Ionicons name="location" size={16} color="#FFFFFF" />
+                ) : addresses.map((a) => {
+                  const isLead = String(a.id).startsWith('lead-');
+                  return (
+                    <View key={a.id} style={styles.addressCard}>
+                      <View style={styles.addressIconWrap}>
+                        <Ionicons name="location" size={16} color="#FFFFFF" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.addressLabel}>{a.label}</Text>
+                        <Text style={styles.addressText}>{a.value}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={styles.addressEditBtn}
+                          onPress={() => {
+                            const parts = a.value.split(',').map((p) => p.trim());
+                            if (isLead) setEditingAddressId(null);
+                            else setEditingAddressId(a.id);
+                            setNewAddrLabel(a.label === 'Work' ? 'Work' : a.label === 'Others' ? 'Others' : 'Home');
+                            setNewAddrLine1(parts[0] || '');
+                            setNewAddrLine2(parts[1] || '');
+                            setNewAddrArea(parts[2] || '');
+                            setNewAddrCity(parts[3] || '');
+                            setNewAddrPincode(parts[parts.length - 1]?.match(/^\d{6}$/) ? parts[parts.length - 1] : '');
+                            setShowAddAddress(true);
+                          }}
+                        >
+                          <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+                        </TouchableOpacity>
+                        {!isLead ? (
+                          <TouchableOpacity style={styles.addressDeleteBtn} onPress={() => handleDeleteAddress(a.id)}>
+                            <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.addressLabel}>{a.label}</Text>
-                      <Text style={styles.addressText}>{a.value}</Text>
-                    </View>
-                    {!String(a.id).startsWith('lead-') ? (
-                      <TouchableOpacity style={styles.addressDeleteBtn} onPress={() => handleDeleteAddress(a.id)}>
-                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ))}
+                  );
+                })}
 
                 {showAddAddress ? (
                   <View style={styles.addressFormCard}>
@@ -1321,6 +1444,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         {locationLoading ? 'Fetching location...' : 'Fetch Current Location'}
                       </Text>
                     </TouchableOpacity>
+
+                    {editingAddressId ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primary }}>Editing Address</Text>
+                        <TouchableOpacity onPress={() => { setEditingAddressId(null); resetAddressForm(); }}>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#6B7280' }}>Clear & Add New</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
 
                     <Text style={styles.subTitle}>Nearby Area</Text>
                     <TextInput
@@ -1380,7 +1512,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </View>
 
                     <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveAddress}>
-                      <Text style={styles.primaryBtnText}>{saveAddressLoading ? 'Saving...' : 'Save Address'}</Text>
+                      <Text style={styles.primaryBtnText}>{saveAddressLoading ? 'Saving...' : editingAddressId ? 'Update Address' : 'Save Address'}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -2062,7 +2194,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     {String(selectedVehicle?.vehicle_number || 'DL01AB1234').toUpperCase()} • {String(selectedVehicle?.fuel_type || 'Petrol').toUpperCase()}
                   </Text>
                 </View>
-                <TouchableOpacity style={cstyles.changeChip} onPress={() => setActiveSubPage('My Profile')}>
+                <TouchableOpacity style={cstyles.changeChip} onPress={() => {
+                  setVehicleEntryOnly(false);
+                  setActiveSubPage('My Profile');
+                }}>
                   <Text style={cstyles.changeChipText}>Change</Text>
                 </TouchableOpacity>
               </View>
@@ -2569,9 +2704,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
         <View style={styles.iconCircleGhost} />
       </View>
       {activeSubPage ? (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {subPageContent}
-          <ReferAndFooter hideRefer={activeSubPage === 'Refer & Earn'} />
+          <ReferAndFooter hideRefer={activeSubPage === 'Refer & Earn' || activeSubPage === 'Cart' || activeSubPage === 'Order History'} />
         </ScrollView>
       ) : (
         renderMain()
@@ -2622,13 +2757,15 @@ const styles = StyleSheet.create({
   vehicleMiniCardActive: { borderColor: COLORS.primary, backgroundColor: '#EFF6FF' },
   vehicleMiniPlate: { fontSize: 10, fontWeight: '800', color: '#111827', textTransform: 'uppercase' },
   vehicleMiniModel: { marginTop: 4, fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  addVehicleBtn: { marginTop: 12, borderRadius: 12, backgroundColor: COLORS.primary, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 130, height: 90, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   gridCard: { width: '48.8%', backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   gridCardText: { fontSize: 12, fontWeight: '700', color: '#111827', flex: 1 },
-  socialRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  socialBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
+  socialBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   logoutBtn: { marginTop: 4, borderRadius: 16, backgroundColor: '#991B1B', paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   logoutText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   loginBtn: { marginTop: 4, borderRadius: 16, backgroundColor: COLORS.primary, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
@@ -2638,6 +2775,12 @@ const styles = StyleSheet.create({
   subWrapCompact: { padding: 16, gap: 12 },
   subTitle: { fontSize: 12, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
   input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', paddingHorizontal: 12, fontSize: 13, color: '#111827' },
+  datePickerInput: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  datePickerText: { fontSize: 13, color: '#111827' },
+  datePickerTextPlaceholder: { color: '#9CA3AF' },
+  datePickerWrap: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, backgroundColor: '#FFFFFF', paddingHorizontal: 6, paddingTop: 6 },
+  datePickerDoneBtn: { alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 8, marginBottom: 4 },
+  datePickerDoneText: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
   myProfileHeaderCard: { borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   myProfileHeaderTitle: { fontSize: 16, fontWeight: '900', color: '#111827' },
   myProfileHeaderSub: { marginTop: 2, fontSize: 11, fontWeight: '600', color: '#6B7280' },
@@ -2667,6 +2810,7 @@ const styles = StyleSheet.create({
   addressIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   addressLabel: { fontSize: 15, fontWeight: '800', color: '#111827', marginBottom: 3 },
   addressText: { fontSize: 12, fontWeight: '500', color: '#6B7280', lineHeight: 17 },
+  addressEditBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   addressDeleteBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   addressFormCard: { marginTop: 4, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', padding: 14, gap: 8 },
   addressDetectBtn: { borderRadius: 12, minHeight: 44, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },

@@ -86,12 +86,12 @@ export const CAR_BRANDS: PublicBrand[] = [
 ];
 
 export const SPARE_PART_BRANDS: PublicBrand[] = [
-  { name: 'Bosch', logo: 'https://cdn.worldvectorlogo.com/logos/bosch-2.svg' },
-  { name: 'TVS', logo: 'https://cdn.worldvectorlogo.com/logos/tvs-motor.svg' },
-  { name: 'Gabriel', logo: 'https://upload.wikimedia.org/wikipedia/en/4/40/Gabriel_India_logo.png' },
-  { name: 'Monroe', logo: 'https://cdn.worldvectorlogo.com/logos/monroe-4.svg' },
-  { name: 'Valeo', logo: 'https://cdn.worldvectorlogo.com/logos/valeo-1.svg' },
-  { name: 'OEM/OES', logo: '' },
+  { name: 'Bosch', logo: 'https://www.citypng.com/public/uploads/preview/hd-bosch-logo-transparent-background-701751694709021apdig4lrgg.png' },
+  { name: 'TVS', logo: 'https://upload.wikimedia.org/wikipedia/ta/7/79/TVS_Motor_Company_Logo.png' },
+  { name: 'Gabriel', logo: 'https://gabriel.co.za/images/thumbs/0000110_0001386.png' },
+  { name: 'Monroe', logo: 'https://www.drivparts.com/content/loc-na/loc-us/fmmp-corporate/en_US/brands/monroe/_jcr_content/brand-navigation.img.png/1651846285053.png' },
+  { name: 'Valeo', logo: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsVdSg5_GGwX8Rfa9yY4qw19DQggmZWcVlgg&s' },
+  { name: 'OEM/OES', logo: 'https://www.shutterstock.com/image-vector/original-equipment-manufacturer-stamp-oem-600nw-2468672291.jpg' },
 ];
 
 export const ADD_ON_SERVICES = [

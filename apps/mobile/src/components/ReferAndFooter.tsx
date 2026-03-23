@@ -94,7 +94,7 @@ const s = StyleSheet.create({
   headline: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 30,
     marginBottom: 18,

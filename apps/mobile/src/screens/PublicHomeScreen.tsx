@@ -4,6 +4,7 @@ import {
   Dimensions,
   Easing,
   Image,
+  ImageBackground,
   Linking,
   Modal,
   ScrollView,
@@ -41,6 +42,8 @@ type HeroBanner = {
   route: string;
   icon: keyof typeof Ionicons.glyphMap;
   colors: [string, string];
+  image: string;
+  overlay: string;
 };
 
 const HERO_BANNERS: HeroBanner[] = [
@@ -51,6 +54,9 @@ const HERO_BANNERS: HeroBanner[] = [
     route: 'PublicBookServiceNow',
     icon: 'construct',
     colors: ['#004AAD', '#0A57BF'],
+    image:
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/CarService.png',
+    overlay: 'rgba(0, 74, 173, 0.45)',
   },
   {
     id: 'rsa',
@@ -59,6 +65,9 @@ const HERO_BANNERS: HeroBanner[] = [
     route: 'PublicWorkshopLocator',
     icon: 'alert-circle',
     colors: ['#DC2626', '#991B1B'],
+    image:
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.png',
+    overlay: 'rgba(17, 24, 39, 0.42)',
   },
   {
     id: 'ai',
@@ -67,16 +76,39 @@ const HERO_BANNERS: HeroBanner[] = [
     route: 'AIBooking',
     icon: 'sparkles',
     colors: ['#2563EB', '#1E3A8A'],
+    image:
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/MyFNG-AI.png',
+    overlay: 'rgba(30, 58, 138, 0.45)',
   },
 ];
 
-const SERVICES = [
-  { id: '1', label: 'Periodic Service', icon: 'construct-outline' as const, color: '#2563EB', bg: '#EFF6FF' },
-  { id: '4', label: 'Engine Services', icon: 'speedometer-outline' as const, color: '#EA580C', bg: '#FFF7ED' },
-  { id: '8', label: 'Detailing Service', icon: 'car-sport-outline' as const, color: '#EC4899', bg: '#FDF2F8' },
-  { id: '9', label: 'Denting & Painting', icon: 'color-palette-outline' as const, color: '#059669', bg: '#ECFDF5' },
-  { id: '3', label: 'Brakes Service', icon: 'disc-outline' as const, color: '#EF4444', bg: '#FEF2F2' },
-  { id: 'all', label: 'View All', icon: 'arrow-forward' as const, color: COLORS.primary, bg: '#F3F4F6' },
+const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
+const PROMO_BANNERS = [
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.png`,
+];
+
+const DENTING_ICON = require('../../assets/service-icons/denting-painting.png');
+const TYRE_ICON = require('../../assets/service-icons/tyre-wheels.png');
+
+type ServiceItem = {
+  id: string;
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  image?: any;
+  color: string;
+  bg: string;
+};
+
+const SERVICES: ServiceItem[] = [
+  { id: '1', label: 'Periodic Service', icon: 'construct-outline', color: '#2563EB', bg: '#EFF6FF' },
+  { id: '4', label: 'Engine Services', icon: 'speedometer-outline', color: '#EA580C', bg: '#FFF7ED' },
+  { id: '8', label: 'Detailing Service', icon: 'car-sport-outline', color: '#EC4899', bg: '#FDF2F8' },
+  { id: '9', label: 'Denting & Painting', image: DENTING_ICON, color: '#059669', bg: '#ECFDF5' },
+  { id: '7', label: 'Tyre & Wheels', image: TYRE_ICON, color: '#525252', bg: '#F5F5F5' },
+  { id: 'all', label: 'View All', icon: 'arrow-forward', color: COLORS.primary, bg: '#F3F4F6' },
 ];
 
 const HOW_IT_WORKS = [
@@ -99,6 +131,7 @@ const FAQS = [
   { q: 'How do I pay?', a: 'You can pay online via UPI, Cards, or Cash on Delivery.' },
   { q: "What if I'm not satisfied?", a: 'We have a 100% satisfaction guarantee. Contact our support for any issues.' },
 ];
+const DEFAULT_FAQ_COUNT = 5;
 
 const REVIEWS = [
   { name: 'Rahul Sharma', car: 'Hyundai Creta', stars: 5, text: 'Excellent service! My Creta feels brand new after the comprehensive service. The live tracking was amazing.', date: 'Oct 2024' },
@@ -107,9 +140,9 @@ const REVIEWS = [
 ];
 
 const HEADLINES = [
-  { text: 'Book Your Car Service in 60 Seconds - ', highlight: 'Powered by AI' },
-  { text: "India's AI-Powered Car Service Booking Platform", highlight: null },
-  { text: 'Book Reliable Car Service Anytime, Anywhere', highlight: null },
+  { prefix: 'Book Your Car Service in 60 Seconds - ', highlight: 'Powered by AI', suffix: '' },
+  { prefix: "India's ", highlight: '#1 AI-Powered', suffix: ' Car Service Booking Platform' },
+  { prefix: 'Book Reliable Car Service ', highlight: 'Anytime, Anywhere', suffix: '' },
 ];
 
 export default function PublicHomeScreen({ navigation }: Props) {
@@ -132,6 +165,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const blinkAnim = useRef(new Animated.Value(1)).current;
   const heroFade = useRef(new Animated.Value(1)).current;
   const headlineFade = useRef(new Animated.Value(1)).current;
+  const loanFade = useRef(new Animated.Value(1)).current;
   const howFade = useRef(new Animated.Value(1)).current;
   const howSlide = useRef(new Animated.Value(0)).current;
 
@@ -231,10 +265,13 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setLoanIndex((prev) => (prev + 1) % 3);
+      Animated.timing(loanFade, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setLoanIndex((prev) => (prev + 1) % PROMO_BANNERS.length);
+        Animated.timing(loanFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      });
     }, 4000);
     return () => clearInterval(timer);
-  }, []);
+  }, [loanFade]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -295,27 +332,21 @@ export default function PublicHomeScreen({ navigation }: Props) {
           <Section>
             <Animated.View style={{ opacity: headlineFade }}>
               <Text style={styles.heroHeadline}>
-                {HEADLINES[headlineIndex].text}
-                {HEADLINES[headlineIndex].highlight ? (
-                  <Text style={styles.heroHeadlineBlue}>{HEADLINES[headlineIndex].highlight}</Text>
-                ) : null}
+                {HEADLINES[headlineIndex].prefix}
+                <Text style={styles.heroHeadlineBlue}>{HEADLINES[headlineIndex].highlight}</Text>
+                {HEADLINES[headlineIndex].suffix}
               </Text>
             </Animated.View>
             <Text style={styles.heroSubLine}>
               Genuine Parts • Expert Technicians • Free Pickup & Drop • Transparent Pricing
             </Text>
-            <Animated.View style={[styles.heroCard, { backgroundColor: activeHero.colors[0], opacity: heroFade }]}>
-              <View style={styles.heroIconWrap}>
-                <Ionicons name={activeHero.icon} size={23} color="#FFFFFF" />
-              </View>
-              <Text style={styles.heroCardTitle}>{activeHero.title}</Text>
-              <Text style={styles.heroCardDesc}>{activeHero.desc}</Text>
+            <Animated.View style={[styles.heroCard, { opacity: heroFade }]}>
               <TouchableOpacity
-                style={styles.heroCta}
+                activeOpacity={0.9}
                 onPress={() => navigation.navigate(activeHero.route as never)}
+                style={styles.heroTouchable}
               >
-                <Text style={styles.heroCtaText}>Book Now</Text>
-                <Ionicons name="arrow-forward" size={14} color="#111827" />
+                <Image source={{ uri: activeHero.image }} style={styles.heroFullImage} resizeMode="cover" />
               </TouchableOpacity>
               <View style={styles.heroDots}>
                 {HERO_BANNERS.map((banner, idx) => (
@@ -382,7 +413,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   }
                 >
                   <View style={[styles.serviceIconWrap, { backgroundColor: service.bg }]}>
-                    <Ionicons name={service.icon} size={20} color={service.color} />
+                    {service.image ? (
+                      <Image source={service.image} style={styles.serviceIconImage} resizeMode="contain" />
+                    ) : service.icon ? (
+                      <Ionicons name={service.icon} size={20} color={service.color} />
+                    ) : null}
                   </View>
                   <Text style={styles.serviceLabel}>{service.label}</Text>
                 </TouchableOpacity>
@@ -482,29 +517,18 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <View style={[styles.loanCard, { backgroundColor: '#EFF6FF' }]}>
-              <Text style={styles.loanSubLabel}>GET A QUICK</Text>
-              <Text style={[styles.loanHeading, { color: loanIndex === 0 ? '#EA580C' : loanIndex === 1 ? '#059669' : '#2563EB' }]}>
-                {loanIndex === 0 ? 'Loan Against Car' : loanIndex === 1 ? 'Car Inspection' : 'Car Insurance'}
-              </Text>
-              {[
-                loanIndex === 0
-                  ? ['Starting at 11.49%* p.a', 'Flexible Tenures', 'Quick Approval']
-                  : loanIndex === 1
-                    ? ['200+ points check', 'Before you buy', 'Expert Report']
-                    : ['Save up to 80%', 'Instant Policy', 'Renew in 2 mins'],
-              ][0].map((point) => (
-                <View key={point} style={styles.loanBullet}>
-                  <Ionicons name="checkmark-circle" size={14} color={loanIndex === 0 ? '#EA580C' : loanIndex === 1 ? '#059669' : '#2563EB'} />
-                  <Text style={styles.loanBulletText}>{point}</Text>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.loanButton}>
-                <Text style={styles.loanButtonText}>
-                  {loanIndex === 0 ? 'GET LOAN' : loanIndex === 1 ? 'CHECK NOW' : 'INSURE NOW'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <Animated.View style={[styles.loanCard, { opacity: loanFade }]}>
+              <Image
+                source={{ uri: PROMO_BANNERS[loanIndex % PROMO_BANNERS.length] }}
+                style={styles.loanBannerImage}
+                resizeMode="cover"
+              />
+              <View style={styles.loanDots}>
+                {PROMO_BANNERS.map((_, idx) => (
+                  <View key={idx} style={[styles.heroDot, idx === loanIndex % PROMO_BANNERS.length ? styles.heroDotActive : null]} />
+                ))}
+              </View>
+            </Animated.View>
           </Section>
 
           <Section>
@@ -512,14 +536,18 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {SPARE_PART_BRANDS.map((brand) => (
                 <View key={brand.name} style={styles.brandCard}>
-                  {brand.logo ? (
-                    <Image source={{ uri: brand.logo }} style={styles.brandLogo} resizeMode="contain" />
-                  ) : (
-                    <View style={styles.brandLogoPlaceholder}>
-                      <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
-                    </View>
-                  )}
-                  <Text style={styles.brandCardTitle}>{brand.name}</Text>
+                  <View style={styles.brandLogoWrap}>
+                    {brand.logo ? (
+                      <Image source={{ uri: brand.logo }} style={styles.brandLogo} resizeMode="contain" />
+                    ) : (
+                      <View style={styles.brandLogoPlaceholder}>
+                        <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.brandCardTitle} numberOfLines={1}>
+                    {brand.name}
+                  </Text>
                 </View>
               ))}
             </ScrollView>
@@ -700,7 +728,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section>
             <SectionTitle title="FAQs" />
-            {(showAllFaqs ? FAQS : FAQS.slice(0, 3)).map((faq, idx) => (
+            {FAQS.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
               <View key={faq.q} style={styles.faqCard}>
                 <TouchableOpacity
                   style={styles.faqHeader}
@@ -712,9 +740,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 {openFaqIndex === idx ? <Text style={styles.faqA}>{faq.a}</Text> : null}
               </View>
             ))}
-            {!showAllFaqs && (
+            {FAQS.length > DEFAULT_FAQ_COUNT && (
               <TouchableOpacity style={styles.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
-                <Text style={styles.showMoreBtnText}>Show More</Text>
+                <Text style={styles.showMoreBtnText}>Show More FAQs</Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
               </TouchableOpacity>
             )}
@@ -752,6 +780,29 @@ export default function PublicHomeScreen({ navigation }: Props) {
                         <Text style={styles.reviewCar}>{review.car} • {review.date}</Text>
                       </View>
                     </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+
+        <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
+          <TouchableOpacity style={styles.reviewModalOverlay} activeOpacity={1} onPress={() => setShowAllFaqs(false)}>
+            <TouchableOpacity style={styles.reviewModalSheet} activeOpacity={1} onPress={() => undefined}>
+              <View style={styles.reviewModalHandle} />
+              <Text style={styles.reviewModalTitle}>All FAQs</Text>
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.reviewModalScroll}>
+                {FAQS.map((faq, idx) => (
+                  <View key={faq.q} style={styles.faqCard}>
+                    <TouchableOpacity
+                      style={styles.faqHeader}
+                      onPress={() => setOpenFaqIndex((prev) => (prev === idx + 100 ? null : idx + 100))}
+                    >
+                      <Text style={styles.faqQ}>{faq.q}</Text>
+                      <Ionicons name={openFaqIndex === idx + 100 ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
+                    </TouchableOpacity>
+                    {openFaqIndex === idx + 100 ? <Text style={styles.faqA}>{faq.a}</Text> : null}
                   </View>
                 ))}
               </ScrollView>
@@ -842,10 +893,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroHeadline: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: '#111827',
-    lineHeight: 30,
+    lineHeight: 36,
   },
   heroHeadlineBlue: {
     color: COLORS.primary,
@@ -858,34 +909,22 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     marginTop: 12,
-    borderRadius: 32,
-    padding: 32,
-    minHeight: 192,
+    borderRadius: 20,
+    overflow: 'hidden',
     shadowColor: '#000000',
     shadowOpacity: 0.1,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
   },
-  heroIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-end',
+  heroTouchable: {
+    width: '100%',
+    aspectRatio: 16 / 8,
   },
-  heroCardTitle: {
-    marginTop: 12,
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  heroCardDesc: {
-    marginTop: 4,
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 12,
+  heroFullImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
   },
   heroCta: {
     marginTop: 16,
@@ -907,8 +946,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     position: 'absolute',
-    left: 24,
-    bottom: 18,
+    right: 16,
+    bottom: 12,
   },
   heroDot: {
     width: 7,
@@ -1050,6 +1089,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
+  },
+  serviceIconImage: {
+    width: 36,
+    height: 36,
   },
   serviceLabel: {
     marginTop: 8,
@@ -1276,15 +1319,20 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   loanCard: {
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    padding: 24,
-    shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    borderRadius: 0,
+    overflow: 'visible',
+    backgroundColor: 'transparent',
+  },
+  loanBannerImage: {
+    width: '100%',
+    aspectRatio: 1029 / 376,
+  },
+  loanDots: {
+    flexDirection: 'row',
+    gap: 6,
+    position: 'absolute',
+    right: 12,
+    bottom: 10,
   },
   loanSubLabel: {
     fontSize: 10,
@@ -1331,15 +1379,34 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   brandCard: {
-    width: 98,
-    height: 82,
+    width: 104,
+    height: 94,
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  brandLogoWrap: {
+    width: '100%',
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandCardTitle: {
+    marginTop: 6,
+    fontSize: 9,
+    color: '#4B5563',
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+  },
+  brandLogo: {
+    width: '92%',
+    height: '100%',
   },
   brandCarouselClip: {
     overflow: 'hidden',
@@ -1362,17 +1429,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
-  },
-  brandCardTitle: {
-    marginTop: 6,
-    fontSize: 9,
-    color: '#4B5563',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  brandLogo: {
-    width: '100%',
-    height: 28,
   },
   brandLogoLarge: {
     width: 60,

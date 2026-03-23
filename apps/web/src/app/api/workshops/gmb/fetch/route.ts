@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,6 +11,95 @@ const GOOGLE_API_KEY =
   process.env.GOOGLE_MAPS_API_KEY ||
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
   '';
+
+import { fetchFullGbpLocation } from '@/lib/gbp/parseLocation';
+
+// ─── GBP OAuth helpers ────────────────────────────────────────────────────────
+
+async function readGbpSettings(admin: any, keys: string[]) {
+  const { data, error } = await admin
+    .from('system_settings')
+    .select('setting_key, setting_value')
+    .in('setting_key', keys);
+  if (error) throw error;
+  const map = new Map<string, string>();
+  for (const row of data || []) {
+    map.set(String((row as any).setting_key), String((row as any).setting_value || ''));
+  }
+  return map;
+}
+
+async function upsertGbpSetting(admin: any, key: string, value: string) {
+  const { error } = await admin.from('system_settings').upsert(
+    {
+      setting_key: key,
+      setting_value: value,
+      setting_type: 'STRING',
+      category: 'INTEGRATIONS',
+      description: 'Google Business integration value',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'setting_key' }
+  );
+  if (error) throw error;
+}
+
+async function getGbpAccessToken(): Promise<string | null> {
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) return null;
+
+    const settings = await readGbpSettings(supabaseAdmin, [
+      'google_business_access_token',
+      'google_business_refresh_token',
+      'google_business_token_expiry',
+    ]);
+
+    const currentToken = settings.get('google_business_access_token') || '';
+    const refreshToken = settings.get('google_business_refresh_token') || '';
+    const expiry = settings.get('google_business_token_expiry') || '';
+    const expiryMs = expiry ? new Date(expiry).getTime() : 0;
+
+    if (currentToken && (!expiryMs || Date.now() < expiryMs - 60_000)) {
+      return currentToken;
+    }
+    if (!refreshToken) return null;
+
+    const clientId =
+      process.env.GOOGLE_OAUTH_CLIENT_ID ||
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+      '';
+    const clientSecret =
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '';
+    if (!clientId || !clientSecret) return null;
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }).toString(),
+      cache: 'no-store',
+    });
+    const tokenJson: any = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokenJson?.access_token) return null;
+
+    const nextToken = String(tokenJson.access_token);
+    const expiresIn = Number(tokenJson.expires_in || 3600);
+    const nextExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
+    await upsertGbpSetting(supabaseAdmin, 'google_business_access_token', nextToken);
+    await upsertGbpSetting(supabaseAdmin, 'google_business_token_expiry', nextExpiry);
+    return nextToken;
+  } catch {
+    return null;
+  }
+}
+
+
 
 const PLACE_DETAILS_FIELDS = [
   'name',
@@ -229,20 +319,99 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (!GOOGLE_API_KEY) {
-      return NextResponse.json(
-        { error: 'Google Maps API key not configured' },
-        { status: 500 }
-      );
-    }
-
     const body = await request.json().catch(() => ({}));
     const googleMapsUrl = String(body?.google_maps_url || '').trim();
     let placeId = String(body?.place_id || '').trim() || null;
     const workshopId = String(body?.workshop_id || '').trim() || null;
     const gmbLocationName = String(body?.gmb_location_name || '').trim() || null;
+    const prefetchedLocation = body?.prefetched_location || null;
     const workshopContext = body?.workshop_context || null;
     const attempts: string[] = [];
+
+    console.log(`[GMB fetch] requested location: ${gmbLocationName || 'none'}, url: ${googleMapsUrl || 'none'}`);
+
+    // ── Path A: GBP OAuth (preferred — no Places API billing needed) ──────────
+    // If no location name was passed, try to resolve one from the GBP account directly
+    // (handles the case where frontend state hasn't loaded locations yet)
+    const accessToken = await getGbpAccessToken();
+    let resolvedGbpLocationName = gmbLocationName;
+
+    if (!resolvedGbpLocationName && accessToken) {
+      try {
+        const locRes = await fetch(
+          'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
+          { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }, cache: 'no-store' }
+        );
+        const locJson: any = await locRes.json().catch(() => ({}));
+        const accounts: any[] = Array.isArray(locJson?.accounts) ? locJson.accounts : [];
+        outer: for (const acc of accounts) {
+          const accountName = String(acc?.name || '').trim();
+          if (!accountName) continue;
+          const lUrl = new URL(`https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations`);
+          lUrl.searchParams.set('readMask', 'name,metadata');
+          lUrl.searchParams.set('pageSize', '20');
+          const lRes = await fetch(lUrl.toString(), {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+            cache: 'no-store',
+          });
+          const lJson: any = await lRes.json().catch(() => ({}));
+          const locs: any[] = Array.isArray(lJson?.locations) ? lJson.locations : [];
+          if (locs.length > 0) {
+            // Prefer a location whose place_id matches the one extracted from the URL
+            const urlPlaceId = placeId || (googleMapsUrl ? extractPlaceIdFromUrl(googleMapsUrl) : null);
+            const matched = urlPlaceId
+              ? locs.find((l: any) => String(l?.metadata?.placeId || '') === urlPlaceId)
+              : null;
+            const rawName = String((matched || locs[0])?.name || '');
+            // Ensure full resource name (accounts/{id}/locations/{id})
+            resolvedGbpLocationName = rawName.startsWith('accounts/')
+              ? rawName
+              : rawName ? `${accountName}/${rawName}` : '';
+            if (resolvedGbpLocationName) break outer;
+          }
+        }
+        if (resolvedGbpLocationName) {
+          console.log(`[GMB fetch] auto-resolved location: ${resolvedGbpLocationName}`);
+          attempts.push(`gbp_location_auto_resolved:${resolvedGbpLocationName}`);
+        } else {
+          attempts.push('gbp_location_auto_resolve:no_locations');
+        }
+      } catch (e: any) {
+        attempts.push(`gbp_location_auto_resolve:failed(${e?.message || 'unknown'})`);
+      }
+    }
+
+    if (resolvedGbpLocationName && accessToken) {
+      try {
+        console.log(`[GMB fetch] fetching via GBP OAuth for location: ${resolvedGbpLocationName}`);
+        const gmbData = await fetchFullGbpLocation(resolvedGbpLocationName, accessToken, prefetchedLocation || undefined);
+        if (workshopId) {
+          await (supabase as any)
+            .from('workshop_public_pages')
+            .update({
+              gmb_place_id: gmbData.place_id || null,
+              gmb_data: { ...gmbData, gmb_location_name: resolvedGbpLocationName },
+              gmb_last_fetched_at: new Date().toISOString(),
+              gmb_location_name: resolvedGbpLocationName,
+            })
+            .eq('workshop_id', workshopId);
+        }
+        return NextResponse.json({ success: true, place_id: gmbData.place_id, data: gmbData, source: 'gbp' });
+      } catch (gbpErr: any) {
+        console.warn('GBP details fetch failed, falling back to Places API:', gbpErr?.message);
+        attempts.push(`gbp_api:failed(${gbpErr?.message || 'unknown'})`);
+      }
+    } else if (!accessToken) {
+      attempts.push('gbp_access_token:unavailable');
+    }
+
+    // ── Path B: Google Places API (fallback) ──────────────────────────────────
+    if (!GOOGLE_API_KEY) {
+      return NextResponse.json(
+        { error: 'Google Business location not found and Google Maps API key is not configured. Please select a GMB location from the dropdown.' },
+        { status: 500 }
+      );
+    }
 
     if (!googleMapsUrl && !placeId) {
       return NextResponse.json(
@@ -310,7 +479,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fallback: search using workshop name if provided
+    // Fallback: search using workshop name from DB
     if (!placeId && workshopId) {
       const { data: ws } = await supabase
         .from('workshops')
@@ -331,16 +500,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: 'Could not determine Place ID from the provided URL. Please use a business Google Maps share link (maps.app.goo.gl or google.com/maps/place/...).',
-          debug: {
-            resolved_url: resolvedUrl || null,
-            attempts,
-          },
+          debug: { resolved_url: resolvedUrl || null, attempts },
         },
         { status: 400 }
       );
     }
 
-    // Step 3: Fetch Place Details
+    // Step 3: Fetch Place Details via Places API
     const gmbData = await fetchPlaceDetails(placeId);
 
     // Step 4: Optionally store to DB
@@ -367,6 +533,7 @@ export async function POST(request: NextRequest) {
       success: true,
       place_id: gmbData.place_id,
       data: gmbData,
+      source: 'places',
     });
   } catch (e: any) {
     console.error('GMB fetch error:', e);

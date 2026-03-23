@@ -11,7 +11,7 @@ import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
   Wrench, DollarSign, Sparkles, Calendar, Clock, MapPin as AddressIcon,
-  X
+  X, Droplets, Home, Briefcase, MoreHorizontal
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -29,6 +29,7 @@ interface BookingFormData {
   pickupAddress: string; // Auto-detected: area, city, state, pincode
   flatNumber: string;
   landmark: string;
+  addressType: 'home' | 'work' | 'other';
   paymentMethod: string;
   paymentStatus: string; // 'PAY_NOW' | 'PAY_LATER'
 }
@@ -53,6 +54,7 @@ export default function BookServicePage() {
     pickupAddress: '', // Auto-detected address (area, city, state, pincode)
     flatNumber: '',
     landmark: '',
+    addressType: 'home',
     paymentMethod: 'CASH',
     paymentStatus: 'PAY_LATER'
   });
@@ -71,6 +73,10 @@ export default function BookServicePage() {
   const [showCarSuggestions, setShowCarSuggestions] = useState(false);
   const carDropdownRef = useRef<HTMLDivElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
+  const timeRef = useRef<HTMLDivElement>(null);
+  const carNumRef = useRef<HTMLDivElement>(null);
+  const addressRef = useRef<HTMLDivElement>(null);
+  const flatLandmarkRef = useRef<HTMLDivElement>(null);
 
   // Service Types & Pricing State
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
@@ -769,31 +775,37 @@ export default function BookServicePage() {
               if (response.ok) {
                 const data = await response.json();
                 const address = data.address || {};
-                const cityName = 
-                  address.city || 
-                  address.town || 
-                  address.village || 
-                  address.county || 
-                  null;
-                
-                if (cityName && cities.length > 0) {
-                  let matchedCity = cities.find(c => 
-                    c.name.toLowerCase() === cityName.toLowerCase()
-                  );
-      
-                  if (!matchedCity) {
-                    matchedCity = cities.find(c => 
-                      c.name.toLowerCase().includes(cityName.toLowerCase()) ||
-                      cityName.toLowerCase().includes(c.name.toLowerCase())
+
+                const candidates = [
+                  address.state_district,
+                  address.county,
+                  address.city,
+                  address.town,
+                  address.village,
+                ].filter(Boolean) as string[];
+
+                if (candidates.length > 0 && cities.length > 0) {
+                  let matchedCity: typeof cities[0] | undefined;
+
+                  for (const candidate of candidates) {
+                    matchedCity = cities.find(c =>
+                      c.name.toLowerCase() === candidate.toLowerCase()
                     );
+                    if (matchedCity) break;
+
+                    matchedCity = cities.find(c =>
+                      c.name.toLowerCase().includes(candidate.toLowerCase()) ||
+                      candidate.toLowerCase().includes(c.name.toLowerCase())
+                    );
+                    if (matchedCity) break;
                   }
-        
-        if (matchedCity) {
+
+                  if (matchedCity) {
                     setFormData(prev => ({ ...prev, city: matchedCity }));
                     localStorage.setItem('detected_city', matchedCity.name);
                   }
-        }
-      }
+                }
+              }
             } catch (error) {
               console.error('Reverse geocoding error:', error);
             } finally {
@@ -873,6 +885,7 @@ export default function BookServicePage() {
                 if (fullAddress) {
                   setFormData(prev => ({ ...prev, pickupAddress: fullAddress }));
                   toast.success('Address detected successfully! Please add flat number and landmark.');
+                  scrollToRef(flatLandmarkRef);
                 } else {
                   toast.error('Could not detect address. Please enter manually.');
                 }
@@ -930,6 +943,9 @@ export default function BookServicePage() {
 
   const handleInputChange = (field: keyof BookingFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'pickupDate' && value) scrollToRef(timeRef);
+    if (field === 'pickupTime' && value) scrollToRef(carNumRef);
+    if (field === 'pickupAddress' && value.trim()) scrollToRef(flatLandmarkRef);
   };
 
   const resetOtpState = () => {
@@ -1075,6 +1091,12 @@ export default function BookServicePage() {
     if (typeof window === 'undefined') return;
     const top = (formCardRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 84;
     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  };
+
+  const scrollToRef = (ref: React.RefObject<HTMLDivElement | null>) => {
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
   };
 
   const proceedToNext = (selectedServicesOverride?: string[]) => {
@@ -1597,8 +1619,8 @@ export default function BookServicePage() {
     return formatISTWithWeekday(dateStr);
   };
   
-  // Generate time slots: 10 AM to 9 PM (hourly) - Display as "hh:mm am/pm - hh:mm am/pm"
-  const timeSlots = Array.from({ length: 12 }, (_, i) => {
+  // Generate time slots: 10 AM to 4 PM (hourly)
+  const timeSlots = Array.from({ length: 6 }, (_, i) => {
     const hour = 10 + i;
     const time24 = `${hour.toString().padStart(2, '0')}:00`;
     const nextHour = hour + 1;
@@ -1658,7 +1680,7 @@ export default function BookServicePage() {
 
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
   const isPeriodicCategory = String(activeCategoryId || '').toUpperCase().includes('PERIODIC');
-  const showReferencePlanUi = isPeriodicCategory;
+  const showReferencePlanUi = true;
   const activeCategoryServices = activeCategoryId ? serviceTypes.filter((s: any) => s.category === activeCategoryId) : [];
   const getOilTypeForService = (service: any): 'semi' | 'full' | 'unknown' => {
     const text = `${String(service?.name || '')} ${String(service?.description || '')}`.toLowerCase();
@@ -1937,13 +1959,13 @@ export default function BookServicePage() {
       <Navbar />
 
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary pt-20 sm:pt-24 md:pt-28 pb-16 sm:pb-20 md:pb-24">
+      <div className="bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary pt-16 sm:pt-20 md:pt-22 pb-8 sm:pb-10 md:pb-12">
         <div className="container mx-auto px-4 sm:px-4 md:px-6">
           <div className="max-w-6xl mx-auto">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1 sm:mb-2">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-0.5">
               Book Service Now
             </h1>
-            <p className="text-sm sm:text-base text-white/80 mb-4 sm:mb-5">
+            <p className="text-xs sm:text-sm text-white/80 mb-2">
               {currentStepData.subtitle || 'Select your location and car model'}
             </p>
             <div className="flex items-center gap-2">
@@ -1960,7 +1982,7 @@ export default function BookServicePage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-3 sm:px-4 md:px-6 -mt-10 sm:-mt-14 md:-mt-16 pb-8 sm:pb-12 md:pb-16 relative z-10">
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 mt-2 pb-8 sm:pb-12 md:pb-16 relative z-10">
         <div className="max-w-6xl mx-auto">
           <div ref={formCardRef} className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
             {/* Progress Bar */}
@@ -1972,22 +1994,21 @@ export default function BookServicePage() {
             </div>
             
             {/* Form Content */}
-            <div className="p-4 sm:p-5 md:p-6 lg:p-8">
-              {/* Step Counter */}
-              <div className="text-right mb-3 sm:mb-4 md:mb-5">
-                <span className="text-xs sm:text-sm text-gray-500">
-                  Step {currentStep + 1} of {steps.length}
-                  </span>
-          </div>
+            <div className="p-3 sm:p-4 md:p-5 lg:p-6">
 
               {/* Step Content */}
-              <div className={`min-h-[250px] sm:min-h-[300px] flex flex-col justify-center ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
+              <div className={`flex flex-col ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} transition-all duration-300`}>
                 {/* Title & Subtitle */}
                 {currentStep !== 2 && (
                   <div className="mb-4 sm:mb-5 md:mb-6">
-                    <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1.5 sm:mb-2">
-                      {currentStepData.title}
-                    </h2>
+                    <div className="flex items-start justify-between gap-2 mb-1.5 sm:mb-2">
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
+                        {currentStepData.title}
+                      </h2>
+                      <span className="text-xs sm:text-sm text-gray-500 font-medium whitespace-nowrap mt-1">
+                        Step {currentStep + 1} of {steps.length}
+                      </span>
+                    </div>
                     {currentStepData.subtitle ? (
                       <p className="text-sm sm:text-base text-gray-600">
                         {currentStepData.subtitle}
@@ -2335,22 +2356,45 @@ export default function BookServicePage() {
                       </div>
                     ) : (
                       <>
-                        <div className="mb-2 sm:mb-3">
-                          <div className="text-base sm:text-lg font-bold text-gray-800">Choose your service</div>
-                        </div>
                         {showReferencePlanUi && (
-                          <div className="mb-2 sm:mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                            <div className="text-sm sm:text-base font-extrabold text-gray-900">Choose your plan</div>
-                            <div className="mt-1 text-xs sm:text-sm text-gray-600">
-                              {`${formData.carModel?.make || ''} ${formData.carModel?.model_name || ''}`.trim() || 'Your car'} in {formData.city?.name || 'selected city'}
+                          <div className="mb-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
+                            {/* Row 1: title + step */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <div className="text-sm sm:text-base font-extrabold text-gray-900">Choose your plan</div>
+                                <div className="text-xs sm:text-sm text-gray-600">
+                                  {`${formData.carModel?.make || ''} ${formData.carModel?.model_name || ''}`.trim() || 'Your car'} in {formData.city?.name || 'selected city'}
+                                </div>
+                              </div>
+                              <span className="text-xs sm:text-sm text-gray-500 font-medium whitespace-nowrap">
+                                Step {currentStep + 1} of {steps.length}
+                              </span>
                             </div>
+                            {/* Row 2: oil type small toggle */}
+                            {isPeriodicCategory && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className={`text-xs font-semibold ${selectedOilType === 'semi' ? 'text-gray-900' : 'text-gray-400'}`}>Semi</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedOilType(selectedOilType === 'semi' ? 'full' : 'semi')}
+                                  className="relative w-11 h-6 rounded-full bg-brand-primary transition-all flex-shrink-0"
+                                >
+                                  <div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow flex items-center justify-center transition-all ${
+                                    selectedOilType === 'full' ? 'left-[23px]' : 'left-[3px]'
+                                  }`}>
+                                    <Droplets className="w-2.5 h-2.5 text-brand-primary" />
+                                  </div>
+                                </button>
+                                <span className={`text-xs font-semibold ${selectedOilType === 'full' ? 'text-gray-900' : 'text-gray-400'}`}>Fully</span>
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {/* Category pills (horizontal) */}
                         {serviceCategories.length > 0 && (
-                          <div className="mb-4 sm:mb-6">
-                            <div className="flex gap-2 overflow-x-auto pb-2">
+                          <div className="mb-2">
+                            <div className="flex gap-2 overflow-x-auto pb-1">
                               {serviceCategories.map((category) => {
                                 const isSelected = activeCategoryId === category.id;
                                 return (
@@ -2361,10 +2405,10 @@ export default function BookServicePage() {
                                       setServiceSearchQuery('');
                                       setDetailsService(null);
                                     }}
-                                    className={`whitespace-nowrap px-4 py-2 rounded-full border transition-all text-sm font-semibold ${
+                                    className={`whitespace-nowrap px-3 py-1.5 rounded-full border transition-all text-xs font-bold ${
                                       isSelected
                                         ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
-                                        : 'border-gray-300 bg-white text-gray-700 hover:border-brand-primary/50'
+                                        : 'border-gray-200 bg-white text-gray-600 hover:border-brand-primary/50'
                                     }`}
                                   >
                                     {category.name}
@@ -2388,37 +2432,8 @@ export default function BookServicePage() {
                             ) : (
                           <>
                             {/* Plans */}
-                            <div className="mb-5 sm:mb-7">
-                              {showReferencePlanUi && (
-                                <div className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
-                                  <div className="text-base font-extrabold text-gray-900 mb-2">Select Oil Type</div>
-                                  <div className="grid grid-cols-2 rounded-full bg-white p-1 shadow-sm border border-gray-200 gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedOilType('semi')}
-                                        className={`rounded-full w-full px-3 py-2 text-xs font-bold transition-all ${
-                                          selectedOilType === 'semi'
-                                            ? 'bg-brand-primary text-white shadow'
-                                            : 'text-gray-600 hover:text-gray-800'
-                                        }`}
-                                      >
-                                        Semi-Synthetic
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedOilType('full')}
-                                        className={`rounded-full w-full px-3 py-2 text-xs font-bold transition-all ${
-                                          selectedOilType === 'full'
-                                            ? 'bg-brand-primary text-white shadow'
-                                            : 'text-gray-600 hover:text-gray-800'
-                                        }`}
-                                      >
-                                        Fully-Synthetic
-                                      </button>
-                                  </div>
-                                </div>
-                              )}
-                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-3 sm:gap-5`}>
+                            <div className="mb-2">
+                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-2 sm:gap-3`}>
                                 {planServices.map((service: any, idx: number) => {
                                   const isSelected = formData.selectedServices.includes(service.id);
                                   const isLockedByOtherSelection =
@@ -2426,7 +2441,7 @@ export default function BookServicePage() {
                                     !!selectedInActiveCategory &&
                                     String(selectedInActiveCategory.id) !== String(service.id);
                                   const price = servicePricing[service.id] || 0;
-                                  const checklist = showReferencePlanUi
+                                  const checklist = isPeriodicCategory
                                     ? getPeriodicChecklistPreview(service, planServices, 6)
                                     : getChecklistPreview(service, 6);
                                   const items = checklist.preview;
@@ -2445,9 +2460,9 @@ export default function BookServicePage() {
                                           : serviceNameLower.includes('platinum')
                                             ? 'Platinum Service'
                                             : service.name;
-                                  const displayTitle = showReferencePlanUi ? periodicTitleFromName : service.name;
+                                  const displayTitle = isPeriodicCategory ? periodicTitleFromName : service.name;
                                   const pointsValue = getActualServicePoints(service, checklist.points);
-                                  const newPointsCount = showReferencePlanUi
+                                  const newPointsCount = isPeriodicCategory
                                     ? getPeriodicNewPointsCount(service, planServices)
                                     : Number((checklist as any).newCount || 0);
                                   
@@ -2455,7 +2470,7 @@ export default function BookServicePage() {
                               <div
                                       key={service.id}
                                       className={`relative border-2 bg-white shadow-sm transition-all h-full flex flex-col ${
-                                        showReferencePlanUi ? 'rounded-3xl p-5 sm:p-6' : 'rounded-2xl p-5 sm:p-6'
+                                        showReferencePlanUi ? 'rounded-3xl p-3 sm:p-4' : 'rounded-2xl p-3 sm:p-4'
                                       } ${
                                         isSelected ? 'border-brand-primary shadow-lg' : 'border-gray-200 hover:border-brand-primary/50 hover:shadow-md'
                                       }`}
@@ -2475,6 +2490,11 @@ export default function BookServicePage() {
                                               <div className="text-lg sm:text-xl leading-[1.15] font-extrabold text-gray-900 break-words">{displayTitle}</div>
                                               <div className="mt-1 text-xs sm:text-sm font-bold text-brand-primary">
                                                 {pointsValue > 0 ? `${pointsValue} Activity Points` : 'Activity Points Included'}
+                                              </div>
+                                            </div>
+                                            <div className="text-right flex-shrink-0">
+                                              <div className="text-lg sm:text-xl font-extrabold text-gray-900">
+                                                {price > 0 ? `₹${price.toLocaleString('en-IN')}` : ''}
                                               </div>
                                             </div>
                                           </div>
@@ -2516,7 +2536,7 @@ export default function BookServicePage() {
                                         </div>
                                       )}
 
-                                      <div className="mt-4">
+                                      <div className="mt-2">
                                         {!showReferencePlanUi && (
                                           <div className="flex items-center justify-between mb-2">
                                             <div className="text-xs font-bold text-gray-700">What you get</div>
@@ -2527,7 +2547,7 @@ export default function BookServicePage() {
                                             )}
                                           </div>
                                         )}
-                                        <div className={`${showReferencePlanUi ? 'min-h-[164px] flex flex-col' : 'space-y-2'}`}>
+                                        <div className={`${showReferencePlanUi ? 'flex flex-col' : 'space-y-2'}`}>
                                   {visiblePointItems.length > 0 ? (
                                     <div className="space-y-2">
                                       {visiblePointItems.map((it: any, i: number) => (
@@ -2549,7 +2569,7 @@ export default function BookServicePage() {
                                             <button
                                               type="button"
                                               onClick={() => setDetailsService({ service, checklistTemplate: checklist, price })}
-                                              className="text-[13px] font-bold text-brand-primary hover:text-brand-secondary mt-auto pt-1"
+                                              className="text-[13px] font-bold text-brand-primary hover:text-brand-secondary pt-1 text-left"
                                             >
                                               View all points
                                             </button>
@@ -2557,12 +2577,8 @@ export default function BookServicePage() {
                                         </div>
                                 </div>
 
-                                <div className={`mt-auto pt-4 ${showReferencePlanUi ? 'flex flex-col items-start gap-2.5' : 'border-t border-gray-200 flex items-end justify-between gap-3'}`}>
-                                  {showReferencePlanUi ? (
-                                    <div className="text-2xl font-extrabold text-gray-900">
-                                      {price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'NA'}
-                                    </div>
-                                  ) : (
+                                <div className={`mt-2 pt-2 ${showReferencePlanUi ? 'flex items-center' : 'border-t border-gray-200 flex items-end justify-between gap-3'}`}>
+                                  {!showReferencePlanUi && (
                                     <div>
                                       <div className="text-xs text-gray-500">{`Total for ${formData.city?.name}`}</div>
                                       <div className="text-xl font-extrabold text-gray-900">
@@ -2773,11 +2789,8 @@ export default function BookServicePage() {
                               <h4 className={`font-bold text-sm sm:text-lg transition-all ${
                                 formData.pickupRequired ? 'text-indigo-700' : 'text-gray-500'
                               }`}>
-                                Pickup Required
+                                Pickup
                               </h4>
-                              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-tight">
-                                We&apos;ll pick up your vehicle
-                              </p>
                             </div>
                           </div>
                         </button>
@@ -2824,11 +2837,8 @@ export default function BookServicePage() {
                               <h4 className={`font-bold text-sm sm:text-lg transition-all ${
                                 !formData.pickupRequired ? 'text-green-700' : 'text-gray-500'
                               }`}>
-                                Self Come
+                                Visit
                               </h4>
-                              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-tight">
-                                Visit our workshop
-                              </p>
                             </div>
                             <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center transition-all ${
                               !formData.pickupRequired
@@ -2844,63 +2854,30 @@ export default function BookServicePage() {
                       </div>
                     </div>
 
-                    {/* Modern Progress Indicator */}
-                    <div className="flex items-center justify-between mb-6 sm:mb-8">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center shadow-lg">
-                          <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg sm:text-xl font-bold text-gray-900">Step 4 of 5</h3>
-                          <p className="text-xs sm:text-sm text-gray-500">
-                            {formData.pickupRequired ? 'Pickup Details' : 'Workshop Selection'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((step) => (
-                          <div
-                            key={step}
-                            className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full transition-all ${
-                              step <= 4
-                                ? 'bg-gradient-to-r from-brand-primary to-brand-secondary'
-                                : 'bg-gray-300'
-                            } ${step === 4 ? 'ring-2 ring-brand-primary/30 ring-offset-2' : ''}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
                     {/* Pickup Details - Only show when pickup required */}
                     {formData.pickupRequired && (
                       <>
                         {/* Pickup Date - With Current/Next/Next Buttons + Calendar Icon */}
                         <div className="relative group">
                           <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
-                            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                              <label className="block text-sm sm:text-base font-bold text-gray-800 flex items-center gap-2.5">
-                                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                                  <Calendar className="w-4 h-4 text-white" />
-                                </div>
-                                Pickup Date
-                                {formData.pickupDate && (
-                                  <span className="text-lg sm:text-xl font-bold text-blue-600 ml-2">
-                                    {formatDateDMY(formData.pickupDate)}
-                                  </span>
-                                )}
-                                <span className="text-red-500 text-lg">*</span>
+                            <div className="flex items-center gap-2.5 mb-3">
+                              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                                <Calendar className="w-4 h-4 text-white" />
+                              </div>
+                              <label className="text-sm sm:text-base font-bold text-gray-800">
+                                Pickup Date <span className="text-red-500">*</span>
                               </label>
                             </div>
                             
-                            {/* Date Quick Select Buttons */}
-                            <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
+                            {/* Date Quick Select: Today | Tomorrow | Calendar */}
+                            <div className="flex items-center gap-2 mb-4">
                               <button
                                 type="button"
                                 onClick={() => handleInputChange('pickupDate', getCurrentDate())}
-                                className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                className={`whitespace-nowrap px-4 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all ${
                                   formData.pickupDate === getCurrentDate()
-                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
-                                    : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-blue-300 hover:shadow-md'
+                                    ? 'bg-brand-primary text-white shadow-sm'
+                                    : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-primary/50'
                                 }`}
                               >
                                 {formatDateForButton(getCurrentDate())}
@@ -2908,27 +2885,16 @@ export default function BookServicePage() {
                               <button
                                 type="button"
                                 onClick={() => handleInputChange('pickupDate', getNextDate())}
-                                className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
+                                className={`whitespace-nowrap px-4 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all ${
                                   formData.pickupDate === getNextDate()
-                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
-                                    : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-blue-300 hover:shadow-md'
+                                    ? 'bg-brand-primary text-white shadow-sm'
+                                    : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-primary/50'
                                 }`}
                               >
                                 {formatDateForButton(getNextDate())}
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleInputChange('pickupDate', getNextNextDate())}
-                                className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-all ${
-                                  formData.pickupDate === getNextNextDate()
-                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
-                                    : 'bg-white border-2 border-gray-200 text-gray-700 hover:border-blue-300 hover:shadow-md'
-                                }`}
-                              >
-                                {formatDateForButton(getNextNextDate())}
-                              </button>
-                              
-                              {/* Date Picker Icon next to third button */}
+
+                              {/* Date picker icon / selected date display */}
                               <div className="relative">
                                 <input
                                   type="date"
@@ -2948,65 +2914,27 @@ export default function BookServicePage() {
                                 />
                                 <label
                                   htmlFor="date-picker-hidden"
-                                  className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md cursor-pointer hover:shadow-lg transition-all flex-shrink-0"
+                                  className={`h-9 rounded-full flex items-center justify-center shadow-sm cursor-pointer hover:shadow-md transition-all flex-shrink-0 ${
+                                    formData.pickupDate
+                                      ? 'bg-brand-primary text-white px-3 gap-1.5 min-w-9'
+                                      : 'bg-brand-primary w-9'
+                                  }`}
                                 >
-                                  <Calendar className="w-5 h-5 text-white" />
+                                  <Calendar className="w-4 h-4 text-white flex-shrink-0" />
+                                  {formData.pickupDate && (
+                                    <span className="text-xs font-bold whitespace-nowrap">
+                                      {new Date(formData.pickupDate + 'T00:00:00').getDate()}
+                                    </span>
+                                  )}
                                 </label>
                               </div>
-                              
-                              {/* Display selected date next to calendar icon */}
-                              {formData.pickupDate && (
-                                <div className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl">
-                                  <p className="text-xs sm:text-sm font-bold text-blue-700">
-                                    {formatDateDMY(formData.pickupDate)}
-                                  </p>
-                                </div>
-                              )}
                             </div>
-                            
-                            {formData.pickupDate && (
-                              <p className="mt-3 text-sm font-semibold text-blue-600">
-                                Selected: {formatDateDisplay(formData.pickupDate)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Car Number - Compulsory */}
-                        <div className="relative group">
-                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
-                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
-                              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
-                                <Car className="w-4 h-4 text-white" />
-                              </div>
-                              Car Number
-                              <span className="text-red-500 text-lg">*</span>
-                            </label>
-                            <input
-                              id="vehicle-number-step4"
-                              name="vehicleNumber"
-                              type="text"
-                              value={formData.vehicleNumber}
-                              onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
-                              placeholder="e.g., MH12AB1234"
-                              className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
-                                formData.vehicleNumber
-                                  ? 'border-green-500 bg-green-50/50 ring-2 ring-green-200'
-                                  : 'border-gray-200 focus:border-green-500 focus:ring-green-200'
-                              }`}
-                            />
-                            {formData.vehicleNumber && (
-                              <p className="mt-3 text-sm font-semibold text-green-600 flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4" />
-                                Vehicle: {formData.vehicleNumber}
-                              </p>
-                            )}
                           </div>
                         </div>
 
                         {/* Pickup Time - Hourly Slots (10 AM to 9 PM) */}
                         {formData.pickupDate ? (
-                          <div className="relative group">
+                          <div ref={timeRef} className="relative group">
                             <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                               <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
                                 <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
@@ -3050,16 +2978,78 @@ export default function BookServicePage() {
                           </div>
                         )}
 
-                        {/* Pickup Address - Auto Detect (Area, City, State, Pincode) */}
-                        {formData.pickupDate && formData.pickupTime ? (
+                        {/* Car Number - Show after time is selected */}
+                        {formData.pickupTime && (
+                        <div ref={carNumRef} className="relative group">
+                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
+                              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
+                                <Car className="w-4 h-4 text-white" />
+                              </div>
+                              Car Number
+                              <span className="text-red-500 text-lg">*</span>
+                            </label>
+                            <input
+                              id="vehicle-number-step4"
+                              name="vehicleNumber"
+                              type="text"
+                              value={formData.vehicleNumber}
+                              onChange={(e) => {
+                                const val = e.target.value.toUpperCase();
+                                handleInputChange('vehicleNumber', val);
+                                if (val.length >= 8) scrollToRef(addressRef);
+                              }}
+                              placeholder="e.g., MH12AB1234"
+                              className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
+                                formData.vehicleNumber
+                                  ? 'border-green-500 bg-green-50/50 ring-2 ring-green-200'
+                                  : 'border-gray-200 focus:border-green-500 focus:ring-green-200'
+                              }`}
+                            />
+                            {formData.vehicleNumber && (
+                              <p className="mt-3 text-sm font-semibold text-green-600 flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4" />
+                                Vehicle: {formData.vehicleNumber}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        )}
+
+                        {/* Pickup Address - Show after car number is filled */}
+                        {formData.pickupTime && formData.vehicleNumber.trim() ? (
+                          <div ref={addressRef}>
                           <div className="relative group">
                             <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                              {/* Address Type: Home / Work / Other */}
+                              <div className="flex items-center gap-2 mb-4">
+                                {([
+                                  { key: 'home' as const, label: 'Home', icon: Home },
+                                  { key: 'work' as const, label: 'Work', icon: Briefcase },
+                                  { key: 'other' as const, label: 'Other', icon: MoreHorizontal },
+                                ]).map(({ key, label, icon: Icon }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, addressType: key }))}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                                      formData.addressType === key
+                                        ? 'bg-brand-primary text-white shadow-sm'
+                                        : 'bg-white border border-gray-200 text-gray-600 hover:border-brand-primary/50'
+                                    }`}
+                                  >
+                                    <Icon className="w-3.5 h-3.5" />
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+
                               <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                                 <label className="block text-sm sm:text-base font-bold text-gray-800 flex items-center gap-2.5">
                                   <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
                                     <AddressIcon className="w-4 h-4 text-white" />
                                   </div>
-                                  Address (Auto-detected)
+                                  Address
                                   <span className="text-red-500 text-lg">*</span>
                                 </label>
                                 <button
@@ -3117,17 +3107,14 @@ export default function BookServicePage() {
                               </p>
                             </div>
                           </div>
-                        ) : (
-                          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm text-gray-600">
-                            Select a pickup time to enter your address.
                           </div>
-                        )}
+                        ) : null}
 
                         {/* Flat Number & Landmark - Only show when address is filled */}
                         {formData.pickupAddress.trim() && (
-                          <>
+                          <div ref={flatLandmarkRef}>
                             {/* Flat Number - Optional */}
-                            <div className="relative group">
+                            <div className="relative group mb-5 sm:mb-6">
                               <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                                 <label className="block text-sm sm:text-base font-bold text-gray-800 mb-3 flex items-center gap-2.5">
                                   <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
@@ -3174,7 +3161,7 @@ export default function BookServicePage() {
                                 />
                               </div>
                             </div>
-                          </>
+                          </div>
                         )}
                       </>
                     )}

@@ -7,6 +7,7 @@ export type GmbReview = {
   text: string;
   time: number;
   relative_time: string;
+  reply?: string;
 };
 
 export type GmbPhoto = {
@@ -15,18 +16,59 @@ export type GmbPhoto = {
   height: number;
 };
 
+export type GmbCategory = {
+  name: string;       // gcid:car_repair
+  display_name: string;
+};
+
+export type GmbServiceItem = {
+  display_name: string;
+  description?: string;
+  price?: string;
+};
+
+export type GmbAttribute = {
+  name: string;
+  display_name?: string;
+  values: (string | boolean | number)[];
+};
+
+export type GmbSpecialHour = {
+  date: string;        // YYYY-MM-DD
+  closed: boolean;
+  open_time?: string;
+  close_time?: string;
+};
+
 export type GmbData = {
+  // Core identifiers
   place_id?: string;
+  gmb_location_name?: string;
+  // Business info
   business_name?: string;
+  description?: string;
   formatted_address?: string;
-  rating?: number | null;
-  total_reviews?: number;
-  reviews?: GmbReview[];
-  opening_hours?: string[];
+  latlng?: { lat: number; lng: number } | null;
+  // Contact
   phone_number?: string;
   international_phone?: string;
   website?: string;
   google_maps_uri?: string;
+  // Ratings & reviews
+  rating?: number | null;
+  total_reviews?: number;
+  reviews?: GmbReview[];
+  // Hours
+  opening_hours?: string[];
+  special_hours?: GmbSpecialHour[];
+  open_status?: string;           // OPEN | CLOSED_PERMANENTLY | CLOSED_TEMPORARILY
+  // Categories & services
+  primary_category?: GmbCategory | null;
+  additional_categories?: GmbCategory[];
+  service_items?: GmbServiceItem[];
+  // Attributes (parking, wifi, etc.)
+  attributes?: GmbAttribute[];
+  // Photos
   photos?: GmbPhoto[];
 };
 

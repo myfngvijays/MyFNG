@@ -25,6 +25,7 @@ type ServiceCategory = {
   id: string;
   name: string;
   icon: keyof typeof Ionicons.glyphMap;
+  image?: any;
   color: string;
   bg: string;
   desc: string;
@@ -37,9 +38,9 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
   { id: '4', name: 'Engine Services', icon: 'speedometer', color: '#EA580C', bg: '#FFF7ED', desc: 'Expert engine diagnostics, tuning, and major repairs to ensure peak performance.' },
   { id: '5', name: 'Clutch Service', icon: 'cog', color: '#7C3AED', bg: '#F5F3FF', desc: 'Clutch plate replacement, cable adjustment, and smooth gear shifting support.' },
   { id: '6', name: 'Battery Services', icon: 'battery-charging', color: '#CA8A04', bg: '#FEFCE8', desc: 'Battery testing, terminal cleaning, and instant replacement with top brands.' },
-  { id: '7', name: 'Tyre and Wheels', icon: 'radio-button-off', color: '#525252', bg: '#F5F5F5', desc: 'Wheel alignment, balancing, and tyre rotation for a stable ride.' },
+  { id: '7', name: 'Tyre and Wheels', icon: 'radio-button-off', image: require('../../assets/service-icons/tyre-wheels.png'), color: '#525252', bg: '#F5F5F5', desc: 'Wheel alignment, balancing, and tyre rotation for a stable ride.' },
   { id: '8', name: 'Detailing Service', icon: 'car-sport', color: '#EC4899', bg: '#FDF2F8', desc: 'Ceramic coating, interior deep cleaning, and exterior polishing for a showroom shine.' },
-  { id: '9', name: 'Denting & Painting', icon: 'color-palette', color: '#059669', bg: '#ECFDF5', desc: 'High-quality body work with premium paint matching and dent removal.' },
+  { id: '9', name: 'Denting & Painting', icon: 'color-palette', image: require('../../assets/service-icons/denting-painting.png'), color: '#059669', bg: '#ECFDF5', desc: 'High-quality body work with premium paint matching and dent removal.' },
 ];
 
 const SERVICE_FAQS: Record<string, Array<{ q: string; a: string }>> = {
@@ -58,6 +59,7 @@ const SERVICE_FAQS: Record<string, Array<{ q: string; a: string }>> = {
     { q: 'Can I cancel my booking?', a: 'Yes, you can cancel up to 2 hours before the scheduled pickup.' },
   ],
 };
+const DEFAULT_FAQ_COUNT = 5;
 
 const LOAN_CARDS = [
   { title: 'Loan Against Car', color: '#EA580C', btnText: 'GET LOAN', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=400', points: ['Starting at 11.49%* p.a', 'Flexible Tenures'] },
@@ -70,6 +72,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   const initialServiceId: string | null = route?.params?.selectedServiceId ?? '1';
   const [selectedService, setSelectedService] = useState<string>(initialServiceId || '1');
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
+  const [showAllFaqs, setShowAllFaqs] = useState(false);
   const [loanIdx, setLoanIdx] = useState(0);
   const [supportOpen, setSupportOpen] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
@@ -137,7 +140,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
                   }}
                 >
                   <View style={[s.gridIcon, { borderColor: active ? '#2563EB' : '#E5E7EB' }, active ? s.gridIconActive : null]}>
-                    <Ionicons name={svc.icon as any} size={22} color={svc.color} />
+                    {svc.image ? (
+                      <Image source={svc.image} style={{ width: 28, height: 28 }} resizeMode="contain" />
+                    ) : (
+                      <Ionicons name={svc.icon as any} size={22} color={svc.color} />
+                    )}
                   </View>
                   <Text style={[s.gridLabel, active ? s.gridLabelActive : s.gridLabelInactive]}>{svc.name}</Text>
                 </TouchableOpacity>
@@ -191,7 +198,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
           {/* Service FAQs */}
           <Text style={s.faqHeading}>Service FAQs</Text>
-          {faqs.map((faq, idx) => (
+          {faqs.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
             <View key={faq.q} style={s.faqCard}>
               <TouchableOpacity
                 style={s.faqHeader}
@@ -203,6 +210,12 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               {openFaqIdx === idx ? <Text style={s.faqA}>{faq.a}</Text> : null}
             </View>
           ))}
+          {faqs.length > DEFAULT_FAQ_COUNT ? (
+            <TouchableOpacity style={s.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
+              <Text style={s.showMoreBtnText}>Show More FAQs</Text>
+              <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
 
           <ReferAndFooter />
           <View style={{ height: 24 }} />
@@ -295,6 +308,28 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
                 <View style={s.compareNote}>
                   <Text style={s.compareNoteText}>* Prices are indicative and may vary based on car model and engine capacity. Taxes extra as applicable.</Text>
                 </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
+          <Pressable style={s.modalOverlay} onPress={() => setShowAllFaqs(false)}>
+            <Pressable style={s.modalCard} onPress={() => undefined}>
+              <Text style={s.modalTitle}>All FAQs</Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {faqs.map((faq, idx) => (
+                  <View key={faq.q} style={s.faqCard}>
+                    <TouchableOpacity
+                      style={s.faqHeader}
+                      onPress={() => setOpenFaqIdx((prev) => (prev === idx + 100 ? null : idx + 100))}
+                    >
+                      <Text style={s.faqQ}>{faq.q}</Text>
+                      <Ionicons name={openFaqIdx === idx + 100 ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
+                    </TouchableOpacity>
+                    {openFaqIdx === idx + 100 ? <Text style={s.faqA}>{faq.a}</Text> : null}
+                  </View>
+                ))}
               </ScrollView>
             </Pressable>
           </Pressable>
@@ -415,6 +450,8 @@ const s = StyleSheet.create({
   faqHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   faqQ: { flex: 1, fontSize: 13, color: '#111827', fontWeight: '700' },
   faqA: { borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingHorizontal: 14, paddingVertical: 10, fontSize: 12, color: '#6B7280', lineHeight: 18 },
+  showMoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 2, marginBottom: 8, paddingVertical: 10 },
+  showMoreBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end', padding: 16 },
   modalCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },

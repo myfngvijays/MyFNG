@@ -373,7 +373,7 @@ export default function RSAManagerDashboard() {
     }
   }
 
-  const handleLogout = () => {
+  function handleLogout() {
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
@@ -389,7 +389,7 @@ export default function RSAManagerDashboard() {
         },
       ]
     );
-  };
+  }
 
   const resetLast7Days = () => {
     const d = new Date();

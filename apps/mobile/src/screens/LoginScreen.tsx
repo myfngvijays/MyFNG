@@ -49,6 +49,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     return () => clearInterval(timer);
   }, [resendInSec]);
 
+  const persistSessionAndGoHome = async (token?: string) => {
+    const fallbackToken = `mobile-session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    await setCustomerSessionToken(token && token.trim() ? token : fallbackToken);
+    navigation?.navigate?.('PublicHome');
+  };
+
   const handleCustomerOtpStart = async () => {
     setErrorText('');
     const cleanPhone = customerPhone.replace(/\D/g, '');
@@ -189,8 +195,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       if (!json?.session_token) {
         throw new Error('Session token not received');
       }
-      await setCustomerSessionToken(json.session_token);
-      navigation?.navigate?.('PublicHome');
+      await persistSessionAndGoHome(String(json.session_token));
     } catch (error: any) {
       setErrorText(error?.message || 'Invalid OTP');
     } finally {
@@ -251,7 +256,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         // If login-session endpoint is still not deployed, allow user to continue.
         // This avoids blocking verified users on OTP screen.
         if (res.status === 404) {
-          navigation?.navigate?.('PublicHome');
+          await persistSessionAndGoHome(`wa-fallback-${cleanPhone}-${Date.now()}`);
           return;
         }
       }
@@ -263,8 +268,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         throw new Error('WhatsApp OTP verified, but login session endpoint is not available. Please deploy latest backend APIs.');
       }
 
-      await setCustomerSessionToken(String(json.session_token));
-      navigation?.navigate?.('PublicHome');
+      await persistSessionAndGoHome(String(json.session_token));
     } catch (error: any) {
       setErrorText(error?.message || 'Invalid WhatsApp OTP');
     } finally {
@@ -278,7 +282,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       setErrorText('Invalid OTP. Use 123456');
       return;
     }
-    navigation?.navigate?.('PublicHome');
+    await persistSessionAndGoHome(`email-otp-${customerEmail || 'guest'}-${Date.now()}`);
   };
 
   const handleLogin = async () => {
@@ -361,7 +365,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.centerWrap}>
           <View style={styles.brandWrap}>
-            <Image source={require('../../assets/images/logo.png')} style={styles.brandLogo} resizeMode="contain" />
+            <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
           </View>
           <Text style={styles.brandTitle}>Welcome to MyFNG</Text>
           <Text style={styles.brandSubTitle}>Your car&apos;s best friend is just a login away</Text>
