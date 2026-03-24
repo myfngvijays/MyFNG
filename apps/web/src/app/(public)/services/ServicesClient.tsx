@@ -24,7 +24,7 @@ const INTERNAL_SLUG_TO_CAR_SERVICES: Record<string, string> = {
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 
 const SERVICE_DISPLAY_META: Record<string, { priceFrom: string; warranty?: string }> = {
-  'periodic-service': { priceFrom: '₹2,999', warranty: '1000 kms / 3 Months' },
+  'periodic-service': { priceFrom: '₹2,999', warranty: '1000 kms / 1 Months' },
   'engine-service': { priceFrom: '₹2,499', warranty: '1000 kms / 1 Month' },
   'ac-service': { priceFrom: '₹1,299', warranty: '1 Month' },
   'battery-service': { priceFrom: '₹899', warranty: 'Up to 24 Months' },
