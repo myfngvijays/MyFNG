@@ -123,22 +123,22 @@ export default function ContactPage() {
                   <div className="form-row">
                     <div className="form-group">
                       <label>First Name</label>
-                      <input type="text" placeholder="John" required />
+                      <input type="text" placeholder="My FNG" required />
                     </div>
                     <div className="form-group">
                       <label>Last Name</label>
-                      <input type="text" placeholder="Doe" required />
+                      <input type="text" placeholder="Autocare" required />
                     </div>
                   </div>
 
                   <div className="form-group">
                     <label>Email Address</label>
-                    <input type="email" placeholder="john@example.com" required />
+                    <input type="email" placeholder="info@myfng.in" required />
                   </div>
 
                   <div className="form-group">
                     <label>Mobile Number <span style={{ color: 'red' }}>*</span></label>
-                    <input type="tel" placeholder="9167779696" required />
+                    <input type="tel" placeholder="9152307030" required />
                   </div>
 
                   <div className="form-group">
@@ -146,6 +146,7 @@ export default function ContactPage() {
                     <select>
                       <option>General Inquiry</option>
                       <option>Service Support</option>
+                      <option>Partner With Us</option>
                       <option>Feedback</option>
                     </select>
                   </div>
