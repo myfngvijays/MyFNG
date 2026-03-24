@@ -133,7 +133,7 @@ export default function Footer() {
                   { href: '/privacy-policy', label: 'Privacy Policy' },
                   { href: '/terms-and-conditions', label: 'Terms & Conditions' },
                   { href: '/workshops', label: 'Workshop Locator' },
-                  { href: '/services', label: 'Offers' },
+                  { href: '/car-loan', label: 'Car Loans' },
                   { href: '/faqs', label: 'FAQs' },
                   { href: '/roadside-assistance', label: 'Roadside Assistance' },
                 ].map((item) => (
