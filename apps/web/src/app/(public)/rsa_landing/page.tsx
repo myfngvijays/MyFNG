@@ -193,12 +193,12 @@ export default function RsaLandingPage() {
     .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(12,24,52,.72)}
     .rsa-landing .nav-links a:hover{color:#0a3f95}
     .rsa-landing .nav-cta{display:flex;gap:10px;align-items:center}
-    .rsa-landing .btn{border:1px solid var(--border);background: rgba(0,0,0);color:#00000;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
+    .rsa-landing .btn{border:1px solid var(--border);background: rgba(204,41,0,1);color:#00000;padding:10px 14px;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;transition:.2s ease;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
     .rsa-landing .btn:hover{transform: translateY(-1px); background: rgba(0,0,0)}
     .rsa-landing .btn.primary{background: linear-gradient(135deg, var(--brand2), var(--brand));border: none;box-shadow: 0 16px 40px rgba(255,77,46,.22);color:#2a0a07}
     .rsa-landing .btn.whatsapp{background:linear-gradient(135deg,#25D366,#128C7E);box-shadow:0 16px 40px rgba(18,140,126,.28);color:#ffffff}
     .rsa-landing .btn.primary:hover{filter:brightness(1.05)}
-    .rsa-landing .btn.small{padding:9px 12px;border-radius:12px}
+    .rsa-landing .btn.small{padding:9px 12px;border-radius:12px;width:130px;font-size:16px}
     .rsa-landing .hero{position:relative;overflow:hidden;padding: 34px 0 28px;background: radial-gradient(600px 420px at 12% 25%, rgba(246, 84, 22, 0.24), transparent 70%),radial-gradient(560px 400px at 78% 40%, rgba(145, 26, 18, 0.26), transparent 75%),linear-gradient(110deg,#571008 0%,#63140a 34%,#6f180d 58%,#7d1b12 100%)}
     .rsa-landing .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.04),rgba(0,0,0,.18));pointer-events:none}
     .rsa-landing .hero-grid{position:relative;z-index:2;display:grid;grid-template-columns: 1.04fr .96fr;gap:20px;align-items:stretch}
@@ -306,8 +306,7 @@ export default function RsaLandingPage() {
                 <a href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>Contact</a>
               </nav>
               <div className="nav-cta">
-                <a className="btn small" href={`tel:+${RSA_WHATSAPP}`}>📞 Call</a>
-                <a className="btn small primary whatsapp" href={`https://wa.me/${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+                <a className="btn small" href={`tel:+${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">CALL NOW</a>
               </div>
             </div>
           </div>
