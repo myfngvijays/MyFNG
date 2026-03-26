@@ -689,6 +689,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/rsa_manager/rsa-sessions', icon: <Activity className="w-5 h-5" />, label: 'Active Aansh Sessions' },
         { href: '/dashboard/rsa_manager/payments', icon: <DollarSign className="w-5 h-5" />, label: 'Payment' },
         { href: '/dashboard/rsa_manager/mechanics', icon: <Wrench className="w-5 h-5" />, label: 'Manage Mechanics' },
+        { href: '/dashboard/rsa_manager/service-partners', icon: <Building2 className="w-5 h-5" />, label: 'Service Partners' },
         { href: '/dashboard/rsa_manager/membership-customer', icon: <Users className="w-5 h-5" />, label: 'Membership Customer' },
         { href: '/dashboard/rsa_manager/reports', icon: <BarChart3 className="w-5 h-5" />, label: 'Reports' },
         { href: '/dashboard/rsa_manager/settings', icon: <Settings className="w-5 h-5" />, label: 'Settings' },
