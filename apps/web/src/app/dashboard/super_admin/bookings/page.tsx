@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 type ServiceLead = Record<string, any>;
 type ChatbotBooking = Record<string, any>;
-type ActiveTab = 'service_leads' | 'chatbot_bookings';
+type CsvRow = Record<string, string>;
+type ActiveTab = 'service_leads' | 'chatbot_bookings' | 'upload_crm';
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
 
@@ -47,12 +49,139 @@ export default function SuperAdminBookingsPage() {
   const [detailItem, setDetailItem] = useState<Record<string, any> | null>(null);
   const [detailTitle, setDetailTitle] = useState('');
 
+  // CSV upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ inserted: number; skipped: number; total: number; errors?: string[] } | null>(null);
+
+  const CSV_COLUMNS = ['phone_no', 'name', 'address', 'regdate', 'car_number', 'make', 'model'] as const;
+
+  const splitCsvLine = (line: string, sep: string): string[] => {
+    const fields: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          current += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === sep) {
+          fields.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+    }
+    fields.push(current);
+    return fields;
+  };
+
+  const parseCsv = (text: string): CsvRow[] => {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return [];
+    const headerLine = lines[0];
+    const sep = headerLine.includes('\t') ? '\t' : ',';
+    const headers = splitCsvLine(headerLine, sep).map((h) => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+    const expectedCols = headers.length;
+
+    return lines.slice(1).map((line) => {
+      let values = splitCsvLine(line, sep);
+
+      // If there are extra columns (unquoted commas in data), merge overflow into the last known text column
+      if (sep === ',' && values.length > expectedCols) {
+        const phoneIdx = headers.indexOf('phone_no');
+        const nameIdx = headers.indexOf('name');
+        const addressIdx = headers.indexOf('address');
+        const mergeIdx = addressIdx >= 0 ? addressIdx : nameIdx >= 0 ? nameIdx : phoneIdx >= 0 ? phoneIdx + 1 : 1;
+        const overflow = values.length - expectedCols;
+        const merged = values.slice(mergeIdx, mergeIdx + overflow + 1).join(', ');
+        values = [...values.slice(0, mergeIdx), merged, ...values.slice(mergeIdx + overflow + 1)];
+      }
+
+      const row: CsvRow = {};
+      headers.forEach((h, i) => {
+        row[h] = (values[i] || '').trim();
+      });
+      return row;
+    });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadResult(null);
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const rows = parseCsv(text);
+      setCsvRows(rows);
+      if (rows.length === 0) toast.error('No data rows found in the file');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleUpload = async () => {
+    if (csvRows.length === 0) return;
+    setUploading(true);
+    setUploadResult(null);
+
+    const CHUNK = 2000;
+    let totalInserted = 0;
+    let totalSkipped = 0;
+    const allErrors: string[] = [];
+
+    try {
+      for (let i = 0; i < csvRows.length; i += CHUNK) {
+        const chunk = csvRows.slice(i, i + CHUNK);
+        const res = await fetch('/api/crm/enquiries/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: chunk }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Upload failed');
+        totalInserted += json.inserted || 0;
+        totalSkipped += json.skipped || 0;
+        if (json.errors) allErrors.push(...json.errors);
+      }
+
+      const result = { inserted: totalInserted, skipped: totalSkipped, total: csvRows.length, errors: allErrors.length > 0 ? allErrors : undefined };
+      setUploadResult(result);
+      toast.success(`${totalInserted} records uploaded successfully!`);
+    } catch (err: any) {
+      toast.error(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const clearCsv = () => {
+    setCsvRows([]);
+    setCsvFileName('');
+    setUploadResult(null);
+  };
+
   const activeData = useMemo(
     () => (activeTab === 'service_leads' ? serviceLeads : chatbotBookings),
     [activeTab, serviceLeads, chatbotBookings]
   );
 
   const fetchData = useCallback(async () => {
+    if (activeTab === 'upload_crm') return;
     setLoading(true);
     setError(null);
 
@@ -149,29 +278,143 @@ export default function SuperAdminBookingsPage() {
               <Bot className="w-4 h-4" />
               AI Bookings
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('upload_crm')}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition ${
+                activeTab === 'upload_crm'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <Upload className="w-4 h-4" />
+              Upload CRM Data
+            </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {STATUS_OPTIONS.map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setStatusFilter(status)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                  statusFilter === status
-                    ? 'bg-brand-primary text-white border-brand-primary'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
+          {activeTab !== 'upload_crm' && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {STATUS_OPTIONS.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                    statusFilter === status
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="px-4 sm:px-6 lg:px-8 py-5">
-        {loading ? (
+        {activeTab === 'upload_crm' ? (
+          <div className="space-y-5">
+            {/* Upload Area */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8">
+              <input ref={fileInputRef} type="file" accept=".csv,.tsv,.txt" onChange={handleFileChange} className="hidden" />
+
+              {csvRows.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center gap-3 hover:border-brand-primary hover:bg-blue-50/30 transition cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-10 h-10 text-gray-400" />
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-700">Click to upload CSV file</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Columns: phone_no, name, address, regdate, car_number, make, model
+                    </p>
+                  </div>
+                </button>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="w-5 h-5 text-brand-primary" />
+                      <span className="text-sm font-semibold text-gray-800">{csvFileName}</span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{csvRows.length} rows</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={clearCsv} className="px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                        Clear
+                      </button>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                        Change File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleUpload}
+                        disabled={uploading}
+                        className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                      >
+                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        {uploading ? 'Uploading...' : 'Upload to Database'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {uploadResult && (
+                    <div className={`flex items-start gap-3 p-4 rounded-xl mb-4 ${uploadResult.errors ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
+                      {uploadResult.errors ? (
+                        <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+                      )}
+                      <div className="text-sm">
+                        <p className="font-semibold text-gray-800">
+                          {uploadResult.inserted} / {uploadResult.total} records inserted
+                          {uploadResult.skipped > 0 && <span className="text-yellow-700"> ({uploadResult.skipped} skipped — missing phone_no)</span>}
+                        </p>
+                        {uploadResult.errors?.map((err, i) => (
+                          <p key={i} className="text-red-600 text-xs mt-1">{err}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Preview Table */}
+                  <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
+                          {CSV_COLUMNS.map((col) => (
+                            <th key={col} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {csvRows.slice(0, 100).map((row, idx) => (
+                          <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
+                            {CSV_COLUMNS.map((col) => (
+                              <td key={col} className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-[200px] truncate">
+                                {row[col] || <span className="text-gray-300">-</span>}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {csvRows.length > 100 && (
+                      <div className="text-center py-2 text-xs text-gray-500 bg-gray-50 border-t border-gray-200">
+                        Showing first 100 of {csvRows.length} rows
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ) : loading ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-10 flex flex-col items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-brand-primary" />
             <p className="text-sm text-gray-600 mt-3">Loading records...</p>

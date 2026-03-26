@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { AuditLog, AuditLogsResponse } from '@/shared/types/audit';
 import { Loader2, Shield, Filter, ChevronLeft, ChevronRight, Eye, Download, RefreshCw } from 'lucide-react';
