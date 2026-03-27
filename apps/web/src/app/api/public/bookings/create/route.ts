@@ -44,6 +44,23 @@ const EXTERNAL_AUTOUPDATE_BEARER =
 async function pushLeadToExternalApi(leadRow: Record<string, any>) {
   const phoneDigits = String(leadRow.customer_phone || '').replace(/\D/g, '').slice(-10);
   const serviceTypeIds = Array.isArray(leadRow.service_type_ids) ? leadRow.service_type_ids : [];
+  const meta = (leadRow?.meta && typeof leadRow.meta === 'object') ? leadRow.meta : {};
+  const utm = {
+    source: typeof meta?.utm_source === 'string' ? meta.utm_source.trim() : '',
+    medium: typeof meta?.utm_medium === 'string' ? meta.utm_medium.trim() : '',
+    campaign: typeof meta?.utm_campaign === 'string' ? meta.utm_campaign.trim() : '',
+    term: typeof meta?.utm_term === 'string' ? meta.utm_term.trim() : '',
+    content: typeof meta?.utm_content === 'string' ? meta.utm_content.trim() : '',
+  };
+  const utmNoteLines = [
+    utm.source ? `utm_source: ${utm.source}` : null,
+    utm.medium ? `utm_medium: ${utm.medium}` : null,
+    utm.campaign ? `utm_campaign: ${utm.campaign}` : null,
+    utm.term ? `utm_term: ${utm.term}` : null,
+    utm.content ? `utm_content: ${utm.content}` : null,
+  ].filter(Boolean) as string[];
+  const utmSystemNote = utmNoteLines.length > 0 ? `UTM Details\n${utmNoteLines.join('\n')}` : null;
+
   const payload = {
     fields: {
       // Core contact
@@ -86,12 +103,25 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>) {
       // Metadata
       CreatedFrom: leadRow.created_from || 'WEB',
       CreatedAt: leadRow.created_at || null,
+      utm_source: utm.source || null,
+      utm_medium: utm.medium || null,
+      utm_campaign: utm.campaign || null,
+      utm_term: utm.term || null,
+      utm_content: utm.content || null,
     },
     actions: [
       {
         type: 'SYSTEM_NOTE',
         text: 'Lead Source: delhi_service',
       },
+      ...(utmSystemNote
+        ? [
+            {
+              type: 'SYSTEM_NOTE',
+              text: utmSystemNote,
+            },
+          ]
+        : []),
     ],
   };
 

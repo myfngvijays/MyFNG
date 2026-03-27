@@ -96,6 +96,72 @@ export function getCurrentOrStoredUtmParams(search?: string): UtmParams {
   return getStoredUtmParams();
 }
 
+export function appendUtmToHref(href: string): string {
+  const utm = getStoredUtmParams();
+  const keys = Object.keys(utm) as UtmKey[];
+  if (keys.length === 0) return href;
+
+  try {
+    const url = new URL(href, window.location.origin);
+    keys.forEach((key) => {
+      const value = utm[key];
+      if (value && !url.searchParams.has(key)) {
+        url.searchParams.set(key, value);
+      }
+    });
+    if (url.origin === window.location.origin) {
+      return url.pathname + url.search + url.hash;
+    }
+    return url.toString();
+  } catch {
+    return href;
+  }
+}
+
+export function decorateInternalLinks(root: ParentNode = document): void {
+  const utm = getStoredUtmParams();
+  if (Object.keys(utm).length === 0) return;
+
+  const origin = window.location.origin;
+  const anchors = root.querySelectorAll<HTMLAnchorElement>('a[href]');
+
+  anchors.forEach((a) => {
+    const href = a.getAttribute('href');
+    if (!href) return;
+
+    const isInternal =
+      href.startsWith('/') ||
+      href.startsWith('#') ||
+      href.startsWith(origin);
+
+    if (!isInternal) return;
+    if (href.startsWith('#')) return;
+
+    try {
+      const url = new URL(href, origin);
+      let changed = false;
+
+      (Object.keys(utm) as UtmKey[]).forEach((key) => {
+        const value = utm[key];
+        if (value && !url.searchParams.has(key)) {
+          url.searchParams.set(key, value);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        const newHref =
+          url.origin === origin
+            ? url.pathname + url.search + url.hash
+            : url.toString();
+        a.setAttribute('href', newHref);
+      }
+    } catch {
+      // skip malformed hrefs
+    }
+  });
+}
+
 export function getLeadSourceFromUtm(utmSource?: string | null, utmMedium?: string | null): string {
   const source = String(utmSource || '').toLowerCase();
   const medium = String(utmMedium || '').toLowerCase();
