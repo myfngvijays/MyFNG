@@ -90,32 +90,17 @@ async function resolveAssignee(db: any, aanshIds: number[]) {
   return null;
 }
 
-type MatchedRsaLead = {
-  id: string;
-  customer_name: string | null;
-  contact_number: string | null;
-  pincode: string | null;
-  service_type: string | null;
-  vehicle_number: string | null;
-  vehicle_model: string | null;
-  customer_quoted_amount: number | null;
-  location_link: string | null;
-  lead_registered_at: string | null;
-};
-
-async function linkToRsaLead(db: any, sarvCallId: string, phone10: string): Promise<MatchedRsaLead | null> {
-  if (!phone10) return null;
+async function linkToRsaLead(db: any, sarvCallId: string, phone10: string) {
+  if (!phone10) return;
   const { data: leads } = await db
     .from('rsa_leads')
-    .select(
-      'id, customer_name, contact_number, pincode, service_type, vehicle_number, vehicle_model, customer_quoted_amount, location_link, lead_registered_at'
-    )
+    .select('id, contact_number, lead_registered_at')
     .ilike('contact_number', `%${phone10}`)
     .order('lead_registered_at', { ascending: false })
     .limit(5);
 
   const match = (leads || []).find((l: any) => digits10(l?.contact_number) === phone10);
-  if (!match?.id) return null;
+  if (!match?.id) return;
 
   await db
     .from('sarv_call_rsa_links')
@@ -127,25 +112,6 @@ async function linkToRsaLead(db: any, sarvCallId: string, phone10: string): Prom
       },
       { onConflict: 'sarv_call_id,rsa_lead_id' }
     );
-
-  return match as MatchedRsaLead;
-}
-
-async function lookupCityStateByPincode(db: any, pincode: string | null | undefined) {
-  const pin = String(pincode || '').trim();
-  if (!pin) return { city: null, state: null };
-
-  const { data } = await db
-    .from('pincode_city_state')
-    .select('district, state')
-    .eq('pincode', pin)
-    .limit(1)
-    .maybeSingle();
-
-  return {
-    city: data?.district || null,
-    state: data?.state || null,
-  };
 }
 
 async function generateTranscriptionAndSummary(recordingUrl: string) {
@@ -467,36 +433,25 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      let matchedRsaLead: MatchedRsaLead | null = null;
       try {
-        matchedRsaLead = await linkToRsaLead(db, callRow.id, phone10);
+        await linkToRsaLead(db, callRow.id, phone10);
       } catch (e: any) {
         results.push({ callid, status: 'error', error: e?.message || 'Lead link failed' });
         continue;
       }
 
-      // Write TeleCRM API audit row for every incoming call payload.
-      // If matching RSA complaint exists, enrich with lead details.
+      // Insert call-level data into telecrm_api.
+      // RSA lead details are filled later via DB trigger when complaint is registered/updated.
       try {
-        const { city, state } = await lookupCityStateByPincode(db, matchedRsaLead?.pincode);
-        const fallbackMobile = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
+        const mobile = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
         await db
           .from('telecrm_api')
           .insert({
-            name: matchedRsaLead?.customer_name || null,
-            mobile: fallbackMobile || null,
-            city,
-            pincode: matchedRsaLead?.pincode || null,
+            mobile: mobile || null,
             disposition: upsertPayload.disposition || null,
             disposition_category: upsertPayload.disposition_category || null,
-            service_type: matchedRsaLead?.service_type || null,
-            vehicle_number: matchedRsaLead?.vehicle_number || null,
-            state,
-            vehicle_model: matchedRsaLead?.vehicle_model || null,
-            customer_quoted_amount: matchedRsaLead?.customer_quoted_amount ?? null,
-            location_link: matchedRsaLead?.location_link || null,
-            recording_url: callRow.recording_url || null,
             disposition_note: upsertPayload.disposition_note || null,
+            recording_url: callRow.recording_url || null,
             api_response: payload ?? null,
             api_datetime: upsertPayload.sarv_created_at || now,
             updated_at: now,
