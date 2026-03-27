@@ -114,7 +114,7 @@ function RSALeadsListContent() {
   };
 
   const handleClaimLead = async (e: React.MouseEvent, leadId: string) => {
-    e.preventDefault(); // Prevent navigation
+    e.preventDefault();
     if (!user) return;
     
     try {
@@ -126,6 +126,15 @@ function RSALeadsListContent() {
       
       if (result.success) {
         alert('Lead claimed successfully!');
+        try {
+          fetch(`/api/rsa/leads/${encodeURIComponent(leadId)}/telecrm-push`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ lead_tag: 'BookedAssistance' }),
+          });
+        } catch (err) {
+          console.error('[TeleCRM push] failed:', err);
+        }
         fetchData();
       } else {
         alert(`Error: ${result.message}`);

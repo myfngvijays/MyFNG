@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import Footer from '@/components/landing/Footer';
+import { getCurrentOrStoredUtmParams } from '@/lib/utm';
 
-const RSA_WHATSAPP = '919610448949';
+const RSA_WHATSAPP = '919594996161';
 const RSA_SUBSCRIPTION_PLANS = [
   {
     key: 'basic',
@@ -113,7 +114,20 @@ function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   const dropLine = dropLocationLink
     ? `%0ADrop Location (Google Link): ${encodeURIComponent(dropLocationLink)}`
     : '';
-  const msg = `Hello MYFNG Team,%0A%0AI need Roadside Assistance (RSA).%0A%0AName: ${encodeURIComponent(name)}%0APhone: ${encodeURIComponent(phone)}%0ACity: ${encodeURIComponent(city)}%0AService: ${encodeURIComponent(service)}%0ALocation: ${encodeURIComponent(location)}${dropLine}%0A%0APlease dispatch help ASAP.`;
+  const utmParams = getCurrentOrStoredUtmParams();
+  const utmEntries: Array<[string, string | undefined]> = [
+    ['UTM Source', utmParams.utm_source],
+    ['UTM Medium', utmParams.utm_medium],
+    ['UTM Campaign', utmParams.utm_campaign],
+    ['UTM Term', utmParams.utm_term],
+    ['UTM Content', utmParams.utm_content],
+  ];
+  const utmLine = utmEntries
+    .filter(([, value]) => Boolean(value && value.trim()))
+    .map(([label, value]) => `${encodeURIComponent(label)}: ${encodeURIComponent(String(value))}`)
+    .join('%0A');
+  const utmSection = utmLine ? `%0A%0AUTM Details:%0A${utmLine}` : '';
+  const msg = `Hello MYFNG Team,%0A%0AI need Roadside Assistance (RSA).%0A%0AName: ${encodeURIComponent(name)}%0APhone: ${encodeURIComponent(phone)}%0ACity: ${encodeURIComponent(city)}%0AService: ${encodeURIComponent(service)}%0ALocation: ${encodeURIComponent(location)}${dropLine}${utmSection}%0A%0APlease dispatch help ASAP.`;
   window.open(`https://wa.me/${RSA_WHATSAPP}?text=${msg}`, '_blank');
   form.reset();
 }

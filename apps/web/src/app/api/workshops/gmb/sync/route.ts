@@ -9,6 +9,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const CRON_SECRET = process.env.CRON_SECRET || '';
+const GOOGLE_API_KEY =
+  process.env.GOOGLE_MAPS_API_KEY ||
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  '';
 
 async function refreshAccessToken(admin: any): Promise<string> {
   const { data } = await admin
@@ -60,7 +64,7 @@ async function fetchAndStoreGmbForLocation(
   accessToken: string,
   admin: any
 ): Promise<{ ok: boolean; error?: string }> {
-  const gmbData = await fetchFullGbpLocation(locationName, accessToken);
+  const gmbData = await fetchFullGbpLocation(locationName, accessToken, undefined, GOOGLE_API_KEY || undefined);
 
   const { error } = await admin
     .from('workshop_public_pages')

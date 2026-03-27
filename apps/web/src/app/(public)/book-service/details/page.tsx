@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
 import { 
   User, Phone, Car, ArrowRight, Loader2, CheckCircle, ArrowLeft
 } from 'lucide-react';
@@ -112,6 +113,8 @@ function BookingDetailsContent() {
     try {
       // Generate lead number
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+      const utmParams = getCurrentOrStoredUtmParams();
+      const leadSource = getLeadSourceFromUtm(utmParams.utm_source, utmParams.utm_medium);
 
       const response = await fetch('/api/public/bookings/create', {
         method: 'POST',
@@ -122,7 +125,7 @@ function BookingDetailsContent() {
             created_from: 'WEB',
             status: 'NEW',
             lead_type: 'NORMAL',
-            lead_source: 'Website',
+            lead_source: leadSource,
             customer_name: formData.customer_name || null,
             customer_phone: formData.customer_phone || null,
             city: selectedCity.name,
@@ -134,6 +137,7 @@ function BookingDetailsContent() {
             vehicle_variant: selectedCarModel.variant || null,
             lead_priority: 'NORMAL',
             created_at: new Date().toISOString(),
+            meta: utmParams,
           },
         }),
       });

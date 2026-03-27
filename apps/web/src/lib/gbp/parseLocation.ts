@@ -126,7 +126,7 @@ export function parseAttributes(details: any): GmbAttribute[] {
 
 export function parseReviews(reviewsJson: any): GmbReview[] {
   const raw: any[] = Array.isArray(reviewsJson?.reviews) ? reviewsJson.reviews : [];
-  return raw.slice(0, 10).map((rev: any) => ({
+  return raw.map((rev: any) => ({
     author_name: String(rev?.reviewer?.displayName || ''),
     author_photo: String(rev?.reviewer?.profilePhotoUrl || ''),
     rating: GBP_STAR_MAP[String(rev?.starRating || '')] ?? 0,
@@ -148,42 +148,114 @@ export function calcAverageRating(reviewsJson: any, reviews: GmbReview[]): numbe
 
 /**
  * Fetch reviews — tries GBP v4 first, then newer mybusinessreviews API as fallback.
+ * Paginates through ALL pages to get every review.
  */
 export async function fetchGbpReviews(
   resourceName: string,
   authHeaders: Record<string, string>
 ): Promise<{ reviews: GmbReview[]; averageRating: number | null; totalReviewCount: number }> {
-  const endpoints = [
-    `https://mybusiness.googleapis.com/v4/${resourceName}/reviews?pageSize=50&orderBy=updateTime+desc`,
-    `https://mybusinessreviews.googleapis.com/v1/${resourceName}/reviews?pageSize=50`,
+  const baseEndpoints = [
+    `https://mybusiness.googleapis.com/v4/${resourceName}/reviews`,
+    `https://mybusinessreviews.googleapis.com/v1/${resourceName}/reviews`,
   ];
 
-  for (const endpoint of endpoints) {
+  for (const baseEndpoint of baseEndpoints) {
     try {
-      const res = await fetch(endpoint, { headers: authHeaders, cache: 'no-store' });
-      const json: any = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const errMsg = String(json?.error?.message || json?.error?.status || 'unknown');
-        if (res.status === 403 && errMsg.toLowerCase().includes('has not been used')) {
-          console.warn(`[GBP reviews] API not enabled — enable "Google My Business API" at https://console.developers.google.com/apis/api/mybusiness.googleapis.com/overview?project=${json?.error?.details?.[0]?.metadata?.consumer?.replace('projects/', '') || 'YOUR_PROJECT_ID'}`);
-        } else {
-          console.warn(`[GBP reviews] ${endpoint} → ${res.status}: ${errMsg}`);
+      const allReviews: GmbReview[] = [];
+      let avgRating: number | null = null;
+      let totalCount = 0;
+      let pageToken: string | null = null;
+      let page = 0;
+      const MAX_PAGES = 20;
+
+      do {
+        const url = new URL(baseEndpoint);
+        url.searchParams.set('pageSize', '50');
+        if (baseEndpoint.includes('/v4/')) url.searchParams.set('orderBy', 'updateTime desc');
+        if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+        const res = await fetch(url.toString(), { headers: authHeaders, cache: 'no-store' });
+        const json: any = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const errMsg = String(json?.error?.message || json?.error?.status || 'unknown');
+          if (res.status === 403 && errMsg.toLowerCase().includes('has not been used')) {
+            console.warn(`[GBP reviews] API not enabled — enable "Google My Business API" at https://console.developers.google.com/apis/api/mybusiness.googleapis.com/overview?project=${json?.error?.details?.[0]?.metadata?.consumer?.replace('projects/', '') || 'YOUR_PROJECT_ID'}`);
+          } else {
+            console.warn(`[GBP reviews] ${baseEndpoint} → ${res.status}: ${errMsg}`);
+          }
+          break;
         }
-        continue;
+
+        const pageReviews = parseReviews(json);
+        allReviews.push(...pageReviews);
+
+        if (page === 0) {
+          avgRating = json?.averageRating != null ? Number(json.averageRating) : null;
+          totalCount = json?.totalReviewCount != null ? Number(json.totalReviewCount) : 0;
+        }
+
+        pageToken = json?.nextPageToken || null;
+        page++;
+
+        if (pageToken) await new Promise((r) => setTimeout(r, 200));
+      } while (pageToken && page < MAX_PAGES);
+
+      if (allReviews.length > 0 || page > 0) {
+        if (!totalCount) totalCount = allReviews.length;
+        if (avgRating == null) avgRating = calcAverageRating(null, allReviews);
+        console.log(`[GBP reviews] ${baseEndpoint} → ok, fetched=${allReviews.length}, total=${totalCount}, avg=${avgRating}, pages=${page}`);
+        return { reviews: allReviews, averageRating: avgRating, totalReviewCount: totalCount };
       }
-      const reviews = parseReviews(json);
-      console.log(`[GBP reviews] ${endpoint} → ok, count=${reviews.length}, avg=${json?.averageRating}`);
-      return {
-        reviews,
-        averageRating: calcAverageRating(json, reviews),
-        totalReviewCount: json?.totalReviewCount != null ? Number(json.totalReviewCount) : reviews.length,
-      };
     } catch (e: any) {
-      console.warn(`[GBP reviews] ${endpoint} threw: ${e?.message}`);
+      console.warn(`[GBP reviews] ${baseEndpoints[0]} threw: ${e?.message}`);
     }
   }
 
   return { reviews: [], averageRating: null, totalReviewCount: 0 };
+}
+
+/**
+ * Fetch reviews from Google Places API as fallback when GBP reviews fail.
+ */
+export async function fetchPlacesApiReviews(
+  placeId: string,
+  apiKey: string
+): Promise<{ reviews: GmbReview[]; averageRating: number | null; totalReviewCount: number }> {
+  if (!placeId || !apiKey) return { reviews: [], averageRating: null, totalReviewCount: 0 };
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=reviews,rating,user_ratings_total&key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json: any = await res.json().catch(() => ({}));
+
+    if (json?.status !== 'OK' || !json?.result) {
+      console.warn(`[Places reviews] failed: ${json?.status || 'unknown'} — ${json?.error_message || ''}`);
+      return { reviews: [], averageRating: null, totalReviewCount: 0 };
+    }
+
+    const r = json.result;
+    const reviews: GmbReview[] = Array.isArray(r.reviews)
+      ? r.reviews.map((rev: any) => ({
+          author_name: rev.author_name || '',
+          author_photo: rev.profile_photo_url || '',
+          rating: rev.rating || 0,
+          text: rev.text || '',
+          time: rev.time || 0,
+          relative_time: rev.relative_time_description || '',
+        }))
+      : [];
+
+    console.log(`[Places reviews] place_id=${placeId} → ${reviews.length} reviews, rating=${r.rating}, total=${r.user_ratings_total}`);
+    return {
+      reviews,
+      averageRating: r.rating ?? null,
+      totalReviewCount: r.user_ratings_total ?? reviews.length,
+    };
+  } catch (e: any) {
+    console.warn(`[Places reviews] failed: ${e?.message}`);
+    return { reviews: [], averageRating: null, totalReviewCount: 0 };
+  }
 }
 
 /**
@@ -234,12 +306,17 @@ export function parseLocationDetails(
  * location data (already available from the listing call) and only call the
  * reviews API which is a separate endpoint.
  *
+ * When GBP reviews APIs fail, falls back to Google Places API for reviews
+ * if a Google Maps API key is available.
+ *
  * @param prefetchedDetails - location data already loaded from the listing API
+ * @param googleMapsApiKey - optional API key for Places API review fallback
  */
 export async function fetchFullGbpLocation(
   resourceName: string,
   accessToken: string,
-  prefetchedDetails?: Record<string, any>
+  prefetchedDetails?: Record<string, any>,
+  googleMapsApiKey?: string
 ): Promise<GmbData> {
   const authHeaders = {
     Authorization: `Bearer ${accessToken}`,
@@ -248,9 +325,6 @@ export async function fetchFullGbpLocation(
 
   let details: any = prefetchedDetails || null;
 
-  // GBP listing returns name as "locations/{id}" (no accounts/ prefix).
-  // Single GET must use that path directly: v1/locations/{id}
-  // Fallback: also try v1/accounts/{accountId}/locations/{id} if the first fails.
   const locationIdPath = resourceName.includes('/locations/')
     ? `locations/${resourceName.split('/locations/')[1]}`
     : resourceName;
@@ -265,10 +339,8 @@ export async function fetchFullGbpLocation(
   };
 
   try {
-    // Try v1/locations/{id} first (the name as returned by the listing API)
     let result = await tryGet(locationIdPath);
 
-    // Fallback: try the full accounts/{id}/locations/{id} path
     if (!result.ok && locationIdPath !== resourceName) {
       result = await tryGet(resourceName);
     }
@@ -276,10 +348,9 @@ export async function fetchFullGbpLocation(
     if (result.ok) {
       details = result.data;
     } else {
-      const errMsg = result.data?.error?.message || result.status;
       console.warn(`[GBP details] GET failed (${result.status}) — using pre-fetched fallback`);
       if (!details) {
-        throw new Error(`GBP location details failed: ${errMsg}`);
+        throw new Error(`GBP location details failed: ${result.data?.error?.message || result.status}`);
       }
     }
   } catch (e: any) {
@@ -287,6 +358,16 @@ export async function fetchFullGbpLocation(
     console.warn(`[GBP details] fetch threw: ${e?.message} — using pre-fetched fallback`);
   }
 
-  const reviewsResult = await fetchGbpReviews(resourceName, authHeaders);
+  let reviewsResult = await fetchGbpReviews(resourceName, authHeaders);
+
+  // Fallback: if GBP reviews returned empty, try Places API
+  if (reviewsResult.reviews.length === 0 && googleMapsApiKey) {
+    const placeId = String(details?.metadata?.placeId || '');
+    if (placeId) {
+      console.log(`[GBP reviews] GBP reviews empty — falling back to Places API for place_id=${placeId}`);
+      reviewsResult = await fetchPlacesApiReviews(placeId, googleMapsApiKey);
+    }
+  }
+
   return parseLocationDetails(details, reviewsResult, resourceName);
 }

@@ -7,6 +7,7 @@ import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
 import { loadRazorpayScript } from '@/lib/services/paymentService';
 import { formatDateDMY, formatDateTime } from "@/lib/utils";
+import { getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
 import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
@@ -1247,6 +1248,8 @@ export default function BookServicePage() {
 
   const createLead = async (paymentData?: any) => {
     const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+    const utmParams = getCurrentOrStoredUtmParams();
+    const leadSource = getLeadSourceFromUtm(utmParams.utm_source, utmParams.utm_medium);
 
     // Combine address fields: pickupAddress (auto-detected) + flatNumber (optional) + landmark (mandatory)
     const addressParts = [formData.pickupAddress.trim()];
@@ -1262,7 +1265,7 @@ export default function BookServicePage() {
         created_from: 'WEB',
         status: 'NEW',
         lead_type: 'NORMAL',
-        lead_source: 'Website',
+        lead_source: leadSource,
         customer_name: formData.customerName?.trim() || `Customer_${formData.customerPhone.slice(-4)}`,
         customer_phone: formData.customerPhone,
         vehicle_number: formData.vehicleNumber || null,
@@ -1286,6 +1289,7 @@ export default function BookServicePage() {
         created_at: new Date().toISOString(),
         payment_mode: formData.paymentMethod || null,
         payment_status: formData.paymentStatus || null,
+        meta: utmParams,
       },
       coupon: couponMeta
         ? {

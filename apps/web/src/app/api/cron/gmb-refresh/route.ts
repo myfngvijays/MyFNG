@@ -50,7 +50,7 @@ async function fetchPlaceDetails(placeId: string) {
 
   const r = json.result;
   const reviews = Array.isArray(r.reviews)
-    ? r.reviews.slice(0, 5).map((rev: any) => ({
+    ? r.reviews.map((rev: any) => ({
         author_name: rev.author_name || '',
         author_photo: rev.profile_photo_url || '',
         rating: rev.rating || 0,

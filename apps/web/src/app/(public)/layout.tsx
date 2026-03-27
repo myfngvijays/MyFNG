@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import Script from 'next/script';
+import UtmCapture from './UtmCapture';
 
 const isProd = process.env.NODE_ENV === 'production';
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
     <>
+      <UtmCapture />
       {isProd && (
         <>
           <Script
