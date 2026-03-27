@@ -192,18 +192,6 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
     }
   };
 
-  const pushToTeleCRM = async (leadTag: string) => {
-    try {
-      await fetch(`/api/rsa/leads/${encodeURIComponent(String(params.id))}/telecrm-push`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lead_tag: leadTag }),
-      });
-    } catch (err) {
-      console.error('[TeleCRM push] failed:', err);
-    }
-  };
-
   const handleClaimLead = async () => {
     if (!user) return;
     
@@ -216,7 +204,6 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
       
       if (result.success) {
         alert('Lead claimed successfully!');
-        pushToTeleCRM('BookedAssistance');
         fetchLeadDetail();
         fetchTimeline();
       } else {
@@ -436,9 +423,6 @@ export function RSALeadDetailPageView({ embedded = false }: { embedded?: boolean
       
       if (result.success) {
         alert('Status updated successfully!');
-        if (statusToSet === 'completed') {
-          pushToTeleCRM('ConvertedAssistance');
-        }
         setShowUpdateStatus(false);
         setNewStatus('');
         setStatusNotes('');
