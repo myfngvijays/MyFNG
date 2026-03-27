@@ -442,6 +442,7 @@ export async function POST(request: NextRequest) {
 
       // Insert call-level data into telecrm_api.
       // RSA lead details are filled later via DB trigger when complaint is registered/updated.
+      // api_response & api_datetime are populated by the cron job that calls the TeleCRM API.
       try {
         const mobile = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
         await db
@@ -452,8 +453,6 @@ export async function POST(request: NextRequest) {
             disposition_category: upsertPayload.disposition_category || null,
             disposition_note: upsertPayload.disposition_note || null,
             recording_url: callRow.recording_url || null,
-            api_response: payload ?? null,
-            api_datetime: upsertPayload.sarv_created_at || now,
             updated_at: now,
           });
       } catch (telecrmErr: any) {
