@@ -94,7 +94,7 @@ export default function CarLoanPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [form]);
+  }, [form, utm]);
 
   return (
     <>
