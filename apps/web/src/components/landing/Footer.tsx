@@ -160,9 +160,9 @@ export default function Footer() {
                   { href: '/car-services/car-battery-service', label: 'Car Battery Service' },
                   { href: '/car-services/car-brake-service', label: 'Car Brake Service' },
                   { href: '/car-services/car-clutch-service', label: 'Car Clutch Service' },
-                  { href: '/car-services/car-detailing', label: 'Car Detailing' },
-                  { href: '/car-services/denting-painting', label: 'Denting & Painting' },
-                  { href: '/car-services/wheel-alignment-and-balancing', label: 'Wheel Alignment & Balancing' },
+                  { href: '/car-services/car-detailing-service', label: 'Car Detailing' },
+                  { href: '/car-services/car-denting-painting', label: 'Denting & Painting' },
+                  { href: '/car-services/tyre-wheel-care', label: 'Wheel Alignment & Balancing' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
                     <Link
