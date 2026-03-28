@@ -320,7 +320,7 @@ export default function RsaLandingPage() {
                 <a href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>Contact</a>
               </nav>
               <div className="nav-cta">
-                <a className="btn small" href={`tel:+${RSA_WHATSAPP}`} target="_blank" rel="noopener noreferrer">CALL NOW</a>
+                <a className="btn small" href={`tel:+919610448949`} rel="noopener noreferrer">CALL NOW</a>
               </div>
             </div>
           </div>

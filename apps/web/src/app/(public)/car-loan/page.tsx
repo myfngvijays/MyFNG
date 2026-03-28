@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 
@@ -25,10 +25,27 @@ interface E { pan?:string; mobile?:string; vehicle?:string; income?:string; occu
 
 export default function CarLoanPage() {
   const [form, setForm]           = useState<F>({ pan:'', mobile:'', vehicle:'', income:'', occupation:'' });
+  const [utm, setUtm] = useState({
+    utm_source: '',
+    utm_medium: '',
+    utm_campaign: '',
+    utm_term: '',
+    utm_content: ''
+  });
   const [errors, setErrors]       = useState<E>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState(false);
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
 
+  setUtm({
+    utm_source: params.get('utm_source') || '',
+    utm_medium: params.get('utm_medium') || '',
+    utm_campaign: params.get('utm_campaign') || '',
+    utm_term: params.get('utm_term') || '',
+    utm_content: params.get('utm_content') || ''
+  });
+}, []);
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
     const { name, value } = e.target;
     let v = value;
@@ -62,6 +79,7 @@ export default function CarLoanPage() {
           vehicle: form.vehicle,
           income: Number(form.income),
           occupation: form.occupation,
+          ...utm
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -76,7 +94,7 @@ export default function CarLoanPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [form]);
+  }, [form, utm]);
 
   return (
     <>
@@ -344,7 +362,11 @@ export default function CarLoanPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} noValidate>
-
+              <input type="hidden" name="utm_source" value={utm.utm_source} />
+              <input type="hidden" name="utm_medium" value={utm.utm_medium} />
+              <input type="hidden" name="utm_campaign" value={utm.utm_campaign} />
+              <input type="hidden" name="utm_term" value={utm.utm_term} />
+              <input type="hidden" name="utm_content" value={utm.utm_content} />
               <div className={`cl-field${errors.pan ? ' invalid' : ''}`}>
                 <input type="text" name="pan" id="pan" value={form.pan} onChange={handleChange}
                   maxLength={10} placeholder=" " autoComplete="off" />
