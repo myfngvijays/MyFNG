@@ -215,7 +215,7 @@ export default function ServiceExplorer({
                 Ask MY FNG AI <Sparkles className="w-5 h-5" />
               </button>
               <Link
-                href="/services"
+                href="/car-services"
                 className="col-span-2 w-full sm:col-span-1 sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-6 py-3 text-gray-900 font-semibold hover:border-gray-300 transition-all"
               >
                 Explore All Services <ArrowRight className="w-5 h-5" />
