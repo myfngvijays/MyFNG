@@ -41,9 +41,25 @@ const EXTERNAL_AUTOUPDATE_URL =
 const EXTERNAL_AUTOUPDATE_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
 
-async function pushLeadToExternalApi(leadRow: Record<string, any>) {
+async function resolveServiceNames(supabaseAdmin: any, serviceTypeIds: string[]): Promise<string[]> {
+  if (!serviceTypeIds.length) return [];
+  try {
+    const { data } = await supabaseAdmin
+      .from('service_types')
+      .select('id, name')
+      .in('id', serviceTypeIds);
+    if (!data || !data.length) return [];
+    const nameMap = new Map((data as any[]).map((r: any) => [r.id, r.name]));
+    return serviceTypeIds.map((id) => nameMap.get(id) || id);
+  } catch {
+    return serviceTypeIds;
+  }
+}
+
+async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin: any) {
   const phoneDigits = String(leadRow.customer_phone || '').replace(/\D/g, '').slice(-10);
   const serviceTypeIds = Array.isArray(leadRow.service_type_ids) ? leadRow.service_type_ids : [];
+  const serviceNames = await resolveServiceNames(supabaseAdmin, serviceTypeIds);
   const meta = (leadRow?.meta && typeof leadRow.meta === 'object') ? leadRow.meta : {};
   const utm = {
     source: typeof meta?.utm_source === 'string' ? meta.utm_source.trim() : '',
@@ -61,58 +77,51 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>) {
   ].filter(Boolean) as string[];
   const utmSystemNote = utmNoteLines.length > 0 ? `UTM Details\n${utmNoteLines.join('\n')}` : null;
 
+  const carInfo = [leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant]
+    .filter(Boolean)
+    .join(' ');
+
+  const bookingDetailsLines = [
+    '--- Booking Confirmed ---',
+    `Lead: ${leadRow.lead_number || 'N/A'}`,
+    `Status: SERVICE_BOOKED`,
+    `Name: ${String(leadRow.customer_name || '').trim() || 'N/A'}`,
+    `Phone: ${phoneDigits ? `+91${phoneDigits}` : 'N/A'}`,
+    `City: ${leadRow.city || 'N/A'}`,
+    carInfo ? `Car: ${carInfo}` : null,
+    leadRow.vehicle_number ? `Vehicle No: ${leadRow.vehicle_number}` : null,
+    serviceNames.length > 0 ? `Services: ${serviceNames.join(', ')}` : null,
+    typeof leadRow.pickup_required === 'boolean'
+      ? `Mode: ${leadRow.pickup_required ? 'Pickup & Drop' : 'Self Drop'}`
+      : null,
+    leadRow.pickup_address ? `Pickup Address: ${leadRow.pickup_address}` : null,
+    leadRow.address || leadRow.customer_address
+      ? `Address: ${leadRow.address || leadRow.customer_address}`
+      : null,
+    leadRow.preferred_slot_start ? `Preferred Slot: ${leadRow.preferred_slot_start}` : null,
+    leadRow.estimated_amount ? `Est. Amount: ₹${leadRow.estimated_amount}` : null,
+    leadRow.payment_mode ? `Payment Mode: ${leadRow.payment_mode}` : null,
+    leadRow.payment_status ? `Payment Status: ${leadRow.payment_status}` : null,
+    leadRow.coupon_code ? `Coupon: ${leadRow.coupon_code} (-₹${leadRow.discount_amount || 0})` : null,
+    `Source: ${leadRow.lead_source || 'Website'}`,
+    `Platform: ${leadRow.created_from || 'WEB'}`,
+    `Created: ${leadRow.created_at || new Date().toISOString()}`,
+  ].filter(Boolean) as string[];
+
   const payload = {
     fields: {
-      // Core contact
       Name: String(leadRow.customer_name || '').trim() || 'Website Lead',
       Phone: phoneDigits ? `+91${phoneDigits}` : null,
       Email: leadRow.customer_email || null,
-
-      // Lead identifiers
-      LEADTAG: 'Website',
-      LeadSource: leadRow.lead_source || 'Website',
-      LeadNumber: leadRow.lead_number || null,
-      LeadType: leadRow.lead_type || null,
-      LeadStatus: leadRow.status || null,
-
-      // Vehicle/service
-      carModel: String(leadRow.vehicle_model || '').trim() || null,
-      VehicleMake: leadRow.vehicle_make || null,
-      VehicleModel: leadRow.vehicle_model || null,
-      VehicleVariant: leadRow.vehicle_variant || null,
-      VehicleNumber: leadRow.vehicle_number || null,
-      ServiceType: leadRow.service_type || null,
-      ServiceTypeIds: serviceTypeIds,
-
-      // Location/schedule
-      City: leadRow.city || null,
-      State: leadRow.state || null,
-      Pincode: leadRow.pincode || null,
-      Address: leadRow.address || leadRow.customer_address || null,
-      PickupRequired: typeof leadRow.pickup_required === 'boolean' ? leadRow.pickup_required : null,
-      PickupAddress: leadRow.pickup_address || null,
-      PreferredSlotStart: leadRow.preferred_slot_start || null,
-
-      // Commercial
-      EstimatedAmount: leadRow.estimated_amount ?? null,
-      PaymentMode: leadRow.payment_mode || null,
-      PaymentStatus: leadRow.payment_status || null,
-      CouponCode: leadRow.coupon_code || null,
-      DiscountAmount: leadRow.discount_amount ?? null,
-
-      // Metadata
-      CreatedFrom: leadRow.created_from || 'WEB',
-      CreatedAt: leadRow.created_at || null,
-      utm_source: utm.source || null,
-      utm_medium: utm.medium || null,
-      utm_campaign: utm.campaign || null,
-      utm_term: utm.term || null,
-      utm_content: utm.content || null,
     },
     actions: [
       {
         type: 'SYSTEM_NOTE',
         text: 'Lead Source: delhi_service',
+      },
+      {
+        type: 'SYSTEM_NOTE',
+        text: bookingDetailsLines.join('\n'),
       },
       ...(utmSystemNote
         ? [
@@ -395,7 +404,7 @@ export async function POST(request: NextRequest) {
 
     // Fire external lead sync after successful lead creation.
     try {
-      await pushLeadToExternalApi(serviceLead as Record<string, any>);
+      await pushLeadToExternalApi(serviceLead as Record<string, any>, supabaseAdmin);
     } catch (err) {
       console.error('[bookings/create] external sync failed:', err);
     }

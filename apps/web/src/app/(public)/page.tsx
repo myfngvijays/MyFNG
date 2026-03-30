@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { appendUtmToHref } from '@/lib/utm';
 
 function extractLatLngFromMapLink(mapLink?: string | null): { lat: number; lng: number } | null {
   if (!mapLink) return null;
@@ -720,7 +721,7 @@ export default function HomePage() {
               const q = headerAiQuery.trim();
               if (!q) return;
               setChatDraft(q);
-              window.location.href = '/ai-booking';
+              window.location.href = appendUtmToHref('/ai-booking');
             }}
             className="w-full"
           >
@@ -802,7 +803,7 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     setChatDraft('I want to book a car service.');
-                    window.location.href = '/ai-booking';
+                    window.location.href = appendUtmToHref('/ai-booking');
                   }}
                   className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
@@ -965,7 +966,7 @@ export default function HomePage() {
       {/* 2. Our Services - Option G: Filter Bar + Results (shop-like) */}
       <ServiceExplorer
         services={services}
-        onAskAI={() => (window.location.href = '/ai-booking')}
+        onAskAI={() => (window.location.href = appendUtmToHref('/ai-booking'))}
         onQuickBook={() => setIsBookingFormOpen(true)}
         popularSlugs={['periodic-service', 'ac-service', 'battery-service', 'brake-service', 'engine-service']}
       />
@@ -2245,9 +2246,14 @@ function PricingCard({ title, price, save, time, features, isPremium, activeCar 
         ))}
       </ul>
       
-      <button className={`w-full py-2.5 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base transition ${
-        isPremium ? 'bg-brand-primary text-white hover:bg-brand-primary-hover shadow-lg shadow-brand-primary/30' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-      }`}>
+      <button
+        onClick={() => {
+          window.location.href = appendUtmToHref('/book-service');
+        }}
+        className={`w-full py-2.5 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base transition ${
+          isPremium ? 'bg-brand-primary text-white hover:bg-brand-primary-hover shadow-lg shadow-brand-primary/30' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+        }`}
+      >
         Book Now
       </button>
     </div>

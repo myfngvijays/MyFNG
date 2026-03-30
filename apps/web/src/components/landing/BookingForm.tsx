@@ -19,6 +19,7 @@ import {
   Smile,
   PartyPopper
 } from 'lucide-react';
+import { getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
 
 type BookingType = 'service' | 'rsa' | null;
 
@@ -221,17 +222,51 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
     }
 
     setIsSubmitting(true);
-    console.log('Booking Data:', formData);
-    // TODO: API call to save booking
-    
-    setTimeout(() => {
-      setIsSubmitting(false);
-      // Show success animation
+    try {
+      const utmParams = getCurrentOrStoredUtmParams();
+      const leadSource = getLeadSourceFromUtm(utmParams.utm_source, utmParams.utm_medium);
+      const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+      const leadType = formData.bookingType === 'rsa' ? 'RSA' : 'CAR_SERVICE';
+
+      const response = await fetch('/api/public/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead: {
+            lead_number: leadNumber,
+            created_from: 'WEB',
+            status: 'NEW',
+            lead_type: leadType,
+            lead_source: leadSource,
+            customer_name: formData.customerName.trim(),
+            customer_phone: formData.customerPhone.trim(),
+            vehicle_number: formData.vehicleNumber.trim(),
+            address: formData.location?.trim() || null,
+            customer_address: formData.location?.trim() || null,
+            lead_priority: 'NORMAL',
+            created_at: new Date().toISOString(),
+            meta: utmParams,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const json = await response.json().catch(() => ({}));
+        throw new Error(json?.error || 'Failed to create booking');
+      }
+
       setTimeout(() => {
-        alert('🎉 Booking submitted successfully! We will contact you shortly.');
-        onClose();
-      }, 1500);
-    }, 1000);
+        setIsSubmitting(false);
+        setTimeout(() => {
+          alert('Booking submitted successfully! We will contact you shortly.');
+          onClose();
+        }, 1500);
+      }, 1000);
+    } catch (error) {
+      console.error('Booking error:', error);
+      setIsSubmitting(false);
+      alert('Failed to submit booking. Please try again.');
+    }
   };
 
   const currentStepData = steps[currentStep];

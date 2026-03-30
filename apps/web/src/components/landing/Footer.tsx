@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { appendUtmToHref } from '@/lib/utm';
 
 const ctaTitles = [
   "Serious Car Owners Don't Postpone Maintenance.",
@@ -15,6 +16,7 @@ export default function Footer() {
   const [ctaFading, setCtaFading] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
+  const [footerPhone, setFooterPhone] = useState('');
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -384,10 +386,24 @@ export default function Footer() {
                       type="tel"
                       autoComplete="tel"
                       placeholder="Enter your mobile number"
+                      value={footerPhone}
+                      onChange={(e) => setFooterPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && footerPhone.length === 10) {
+                          window.location.href = appendUtmToHref(`/book-service?prefill_phone=${footerPhone}`);
+                        }
+                      }}
                       className="py-3 px-3.5 rounded-[10px] border border-gray-300 bg-white text-gray-900 text-[13px] outline-none placeholder:text-gray-500"
                     />
                     <button
                       type="button"
+                      onClick={() => {
+                        window.location.href = appendUtmToHref(
+                          footerPhone.length >= 10
+                            ? `/book-service?prefill_phone=${footerPhone}`
+                            : '/book-service'
+                        );
+                      }}
                       className="py-3 rounded-[10px] border-none text-white font-semibold cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_6px_15px_rgba(37,99,235,0.4)] transition-all duration-300"
                       style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)' }}
                     >
