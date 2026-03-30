@@ -27,22 +27,16 @@ async function pushOtpVerifiedToTeleCRM(phone: string) {
   const payload = {
     fields: {
       Phone: `+91${phone}`,
+      LEADTAG: 'Website',
+      LeadSource: 'Website Book Service',
+      LeadStatus: 'OTP_VERIFIED',
+      CreatedFrom: 'WEB',
+      CreatedAt: new Date().toISOString(),
     },
     actions: [
       {
         type: 'SYSTEM_NOTE',
         text: 'Lead Source: delhi_service',
-      },
-      {
-        type: 'SYSTEM_NOTE',
-        text: [
-          'OTP Verified',
-          `Phone: +91${phone}`,
-          `Status: OTP_VERIFIED`,
-          `Source: Website Book Service`,
-          `Platform: WEB`,
-          `Verified At: ${new Date().toISOString()}`,
-        ].join('\n'),
       },
     ],
   };

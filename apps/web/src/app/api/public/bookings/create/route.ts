@@ -77,51 +77,53 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin
   ].filter(Boolean) as string[];
   const utmSystemNote = utmNoteLines.length > 0 ? `UTM Details\n${utmNoteLines.join('\n')}` : null;
 
-  const carInfo = [leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant]
-    .filter(Boolean)
-    .join(' ');
-
-  const bookingDetailsLines = [
-    '--- Booking Confirmed ---',
-    `Lead: ${leadRow.lead_number || 'N/A'}`,
-    `Status: SERVICE_BOOKED`,
-    `Name: ${String(leadRow.customer_name || '').trim() || 'N/A'}`,
-    `Phone: ${phoneDigits ? `+91${phoneDigits}` : 'N/A'}`,
-    `City: ${leadRow.city || 'N/A'}`,
-    carInfo ? `Car: ${carInfo}` : null,
-    leadRow.vehicle_number ? `Vehicle No: ${leadRow.vehicle_number}` : null,
-    serviceNames.length > 0 ? `Services: ${serviceNames.join(', ')}` : null,
-    typeof leadRow.pickup_required === 'boolean'
-      ? `Mode: ${leadRow.pickup_required ? 'Pickup & Drop' : 'Self Drop'}`
-      : null,
-    leadRow.pickup_address ? `Pickup Address: ${leadRow.pickup_address}` : null,
-    leadRow.address || leadRow.customer_address
-      ? `Address: ${leadRow.address || leadRow.customer_address}`
-      : null,
-    leadRow.preferred_slot_start ? `Preferred Slot: ${leadRow.preferred_slot_start}` : null,
-    leadRow.estimated_amount ? `Est. Amount: ₹${leadRow.estimated_amount}` : null,
-    leadRow.payment_mode ? `Payment Mode: ${leadRow.payment_mode}` : null,
-    leadRow.payment_status ? `Payment Status: ${leadRow.payment_status}` : null,
-    leadRow.coupon_code ? `Coupon: ${leadRow.coupon_code} (-₹${leadRow.discount_amount || 0})` : null,
-    `Source: ${leadRow.lead_source || 'Website'}`,
-    `Platform: ${leadRow.created_from || 'WEB'}`,
-    `Created: ${leadRow.created_at || new Date().toISOString()}`,
-  ].filter(Boolean) as string[];
-
   const payload = {
     fields: {
       Name: String(leadRow.customer_name || '').trim() || 'Website Lead',
       Phone: phoneDigits ? `+91${phoneDigits}` : null,
       Email: leadRow.customer_email || null,
+
+      LEADTAG: 'Website',
+      LeadSource: leadRow.lead_source || 'Website',
+      LeadNumber: leadRow.lead_number || null,
+      LeadType: leadRow.lead_type || null,
+      LeadStatus: 'SERVICE_BOOKED',
+
+      carModel: String(leadRow.vehicle_model || '').trim() || null,
+      VehicleMake: leadRow.vehicle_make || null,
+      VehicleModel: leadRow.vehicle_model || null,
+      VehicleVariant: leadRow.vehicle_variant || null,
+      VehicleNumber: leadRow.vehicle_number || null,
+      ServiceType: leadRow.service_type || null,
+      ServiceNames: serviceNames.length > 0 ? serviceNames.join(', ') : null,
+      ServiceTypeIds: serviceTypeIds,
+
+      City: leadRow.city || null,
+      State: leadRow.state || null,
+      Pincode: leadRow.pincode || null,
+      Address: leadRow.address || leadRow.customer_address || null,
+      PickupRequired: typeof leadRow.pickup_required === 'boolean' ? leadRow.pickup_required : null,
+      PickupAddress: leadRow.pickup_address || null,
+      PreferredSlotStart: leadRow.preferred_slot_start || null,
+
+      EstimatedAmount: leadRow.estimated_amount ?? null,
+      PaymentMode: leadRow.payment_mode || null,
+      PaymentStatus: leadRow.payment_status || null,
+      CouponCode: leadRow.coupon_code || null,
+      DiscountAmount: leadRow.discount_amount ?? null,
+
+      CreatedFrom: leadRow.created_from || 'WEB',
+      CreatedAt: leadRow.created_at || null,
+      utm_source: utm.source || null,
+      utm_medium: utm.medium || null,
+      utm_campaign: utm.campaign || null,
+      utm_term: utm.term || null,
+      utm_content: utm.content || null,
     },
     actions: [
       {
         type: 'SYSTEM_NOTE',
         text: 'Lead Source: delhi_service',
-      },
-      {
-        type: 'SYSTEM_NOTE',
-        text: bookingDetailsLines.join('\n'),
       },
       ...(utmSystemNote
         ? [
