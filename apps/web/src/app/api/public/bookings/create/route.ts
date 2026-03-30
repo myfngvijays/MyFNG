@@ -41,6 +41,7 @@ const EXTERNAL_AUTOUPDATE_URL =
 const EXTERNAL_AUTOUPDATE_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
 
+
 async function resolveServiceNames(supabaseAdmin: any, serviceTypeIds: string[]): Promise<string[]> {
   if (!serviceTypeIds.length) return [];
   try {
@@ -58,81 +59,69 @@ async function resolveServiceNames(supabaseAdmin: any, serviceTypeIds: string[])
 
 async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin: any) {
   const phoneDigits = String(leadRow.customer_phone || '').replace(/\D/g, '').slice(-10);
+  if (!phoneDigits) return;
+
   const serviceTypeIds = Array.isArray(leadRow.service_type_ids) ? leadRow.service_type_ids : [];
   const serviceNames = await resolveServiceNames(supabaseAdmin, serviceTypeIds);
   const meta = (leadRow?.meta && typeof leadRow.meta === 'object') ? leadRow.meta : {};
-  const utm = {
-    source: typeof meta?.utm_source === 'string' ? meta.utm_source.trim() : '',
-    medium: typeof meta?.utm_medium === 'string' ? meta.utm_medium.trim() : '',
-    campaign: typeof meta?.utm_campaign === 'string' ? meta.utm_campaign.trim() : '',
-    term: typeof meta?.utm_term === 'string' ? meta.utm_term.trim() : '',
-    content: typeof meta?.utm_content === 'string' ? meta.utm_content.trim() : '',
-  };
-  const utmNoteLines = [
-    utm.source ? `utm_source: ${utm.source}` : null,
-    utm.medium ? `utm_medium: ${utm.medium}` : null,
-    utm.campaign ? `utm_campaign: ${utm.campaign}` : null,
-    utm.term ? `utm_term: ${utm.term}` : null,
-    utm.content ? `utm_content: ${utm.content}` : null,
-  ].filter(Boolean) as string[];
-  const utmSystemNote = utmNoteLines.length > 0 ? `UTM Details\n${utmNoteLines.join('\n')}` : null;
+
+  const noteLines = [
+    'Lead Source: delhi_service',
+    leadRow.lead_number ? `Lead#: ${leadRow.lead_number}` : null,
+    leadRow.status ? `Status: ${leadRow.status}` : null,
+    leadRow.city ? `City: ${leadRow.city}` : null,
+    [leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant].filter(Boolean).length > 0
+      ? `Vehicle: ${[leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant].filter(Boolean).join(' ')}`
+      : null,
+    leadRow.vehicle_number ? `VehicleNo: ${leadRow.vehicle_number}` : null,
+    serviceNames.length > 0 ? `Services: ${serviceNames.join(', ')}` : null,
+    typeof leadRow.pickup_required === 'boolean' ? `PickupRequired: ${leadRow.pickup_required}` : null,
+    leadRow.pickup_address ? `PickupAddress: ${leadRow.pickup_address}` : null,
+    leadRow.preferred_slot_start ? `PreferredSlot: ${leadRow.preferred_slot_start}` : null,
+    leadRow.estimated_amount != null ? `EstimatedAmount: ₹${leadRow.estimated_amount}` : null,
+    leadRow.payment_mode ? `PaymentMode: ${leadRow.payment_mode}` : null,
+    leadRow.payment_status ? `PaymentStatus: ${leadRow.payment_status}` : null,
+    leadRow.coupon_code ? `CouponCode: ${leadRow.coupon_code}` : null,
+    leadRow.discount_amount != null ? `DiscountAmount: ₹${leadRow.discount_amount}` : null,
+    meta?.utm_source ? `utm_source: ${meta.utm_source}` : null,
+    meta?.utm_medium ? `utm_medium: ${meta.utm_medium}` : null,
+    meta?.utm_campaign ? `utm_campaign: ${meta.utm_campaign}` : null,
+    meta?.utm_term ? `utm_term: ${meta.utm_term}` : null,
+    meta?.utm_content ? `utm_content: ${meta.utm_content}` : null,
+  ].filter(Boolean);
 
   const payload = {
     fields: {
       Name: String(leadRow.customer_name || '').trim() || 'Website Lead',
-      Phone: phoneDigits ? `+91${phoneDigits}` : null,
-      Email: leadRow.customer_email || null,
-
-      LEADTAG: 'Website',
-      LeadSource: leadRow.lead_source || 'Website',
+      Phone: `+91${phoneDigits}`,
+      LEADTAG: 'WEBSITE',
+      LeadSource: 'delhi_service',
+      LeadStatus: leadRow.status || 'NEW',
       LeadNumber: leadRow.lead_number || null,
-      LeadType: leadRow.lead_type || null,
-      LeadStatus: 'SERVICE_BOOKED',
-
-      carModel: String(leadRow.vehicle_model || '').trim() || null,
-      VehicleMake: leadRow.vehicle_make || null,
-      VehicleModel: leadRow.vehicle_model || null,
-      VehicleVariant: leadRow.vehicle_variant || null,
-      VehicleNumber: leadRow.vehicle_number || null,
-      ServiceType: leadRow.service_type || null,
-      ServiceNames: serviceNames.length > 0 ? serviceNames.join(', ') : null,
-      ServiceTypeIds: serviceTypeIds,
-
+      Status: leadRow.status || 'NEW',
       City: leadRow.city || null,
-      State: leadRow.state || null,
-      Pincode: leadRow.pincode || null,
-      Address: leadRow.address || leadRow.customer_address || null,
-      PickupRequired: typeof leadRow.pickup_required === 'boolean' ? leadRow.pickup_required : null,
+      ServiceType: serviceNames.length > 0 ? serviceNames.join(', ') : null,
+      Services: serviceNames.length > 0 ? serviceNames.join(', ') : null,
+      Vehicle: [leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant].filter(Boolean).join(' ') || null,
+      VehicleNumber: leadRow.vehicle_number || null,
+      VehicleNo: leadRow.vehicle_number || null,
+      VehicleModel: [leadRow.vehicle_make, leadRow.vehicle_model].filter(Boolean).join(' ') || null,
+      EstimatedAmount: leadRow.estimated_amount != null ? String(leadRow.estimated_amount) : null,
+      PickupRequired: typeof leadRow.pickup_required === 'boolean' ? String(leadRow.pickup_required) : null,
       PickupAddress: leadRow.pickup_address || null,
-      PreferredSlotStart: leadRow.preferred_slot_start || null,
-
-      EstimatedAmount: leadRow.estimated_amount ?? null,
+      PreferredSlot: leadRow.preferred_slot_start || null,
       PaymentMode: leadRow.payment_mode || null,
       PaymentStatus: leadRow.payment_status || null,
       CouponCode: leadRow.coupon_code || null,
-      DiscountAmount: leadRow.discount_amount ?? null,
-
-      CreatedFrom: leadRow.created_from || 'WEB',
-      CreatedAt: leadRow.created_at || null,
-      utm_source: utm.source || null,
-      utm_medium: utm.medium || null,
-      utm_campaign: utm.campaign || null,
-      utm_term: utm.term || null,
-      utm_content: utm.content || null,
+      DiscountAmount: leadRow.discount_amount != null ? String(leadRow.discount_amount) : null,
+      CreatedFrom: 'WEB',
+      CreatedAt: new Date().toISOString(),
     },
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: 'Lead Source: delhi_service',
+        text: noteLines.join('\n'),
       },
-      ...(utmSystemNote
-        ? [
-            {
-              type: 'SYSTEM_NOTE',
-              text: utmSystemNote,
-            },
-          ]
-        : []),
     ],
   };
 
@@ -144,10 +133,14 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin
     },
     body: JSON.stringify(payload),
   });
+  const responseBody = await res.text().catch(() => '');
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`External API failed: ${res.status} ${body || ''}`.trim());
+    throw new Error(`External API failed: ${res.status} ${responseBody || ''}`.trim());
+  }
+
+  if (responseBody) {
+    console.info('[bookings/create] TeleCRM sync response:', responseBody);
   }
 }
 

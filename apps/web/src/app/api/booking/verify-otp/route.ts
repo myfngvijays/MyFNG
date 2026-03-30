@@ -26,9 +26,10 @@ function isNotExpired(expiresAt: unknown): boolean {
 async function pushOtpVerifiedToTeleCRM(phone: string) {
   const payload = {
     fields: {
+      Name: `Customer_${phone.slice(-4)}`,
       Phone: `+91${phone}`,
-      LEADTAG: 'Website',
-      LeadSource: 'Website Book Service',
+      LEADTAG: 'WEBSITE',
+      LeadSource: 'delhi_service',
       LeadStatus: 'OTP_VERIFIED',
       CreatedFrom: 'WEB',
       CreatedAt: new Date().toISOString(),
@@ -36,7 +37,7 @@ async function pushOtpVerifiedToTeleCRM(phone: string) {
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: 'Lead Source: delhi_service',
+        text: `Lead Source: delhi_service\nOTP Verified\nPhone: +91${phone}\nSource: Website Book Service\nPlatform: WEB`,
       },
     ],
   };
@@ -49,10 +50,14 @@ async function pushOtpVerifiedToTeleCRM(phone: string) {
     },
     body: JSON.stringify(payload),
   });
+  const responseBody = await res.text().catch(() => '');
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`TeleCRM push failed: ${res.status} ${body || ''}`.trim());
+    throw new Error(`TeleCRM push failed: ${res.status} ${responseBody || ''}`.trim());
+  }
+
+  if (responseBody) {
+    console.info('[verify-otp] TeleCRM sync response:', responseBody);
   }
 }
 
