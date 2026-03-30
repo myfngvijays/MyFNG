@@ -193,7 +193,7 @@ export default function Navbar() {
             <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
             <div className="relative group">
               <Link
-                href="/services"
+                href="/car-services"
                 className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
               >
                 Services
@@ -213,10 +213,10 @@ export default function Navbar() {
                 </div>
               </div>
             </div>
-            <Link href="/about" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
+            <Link href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
             <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
             <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
-            <Link href="/contact" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
+            <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">

@@ -140,7 +140,7 @@ export default function AboutPage() {
 
               <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3">
                 <Link
-                  href="/services"
+                  href="/car-services"
                   className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-brand-primary px-5 py-3 text-white font-bold hover:bg-brand-primary-hover transition"
                 >
                   Explore Services
