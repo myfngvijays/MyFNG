@@ -151,7 +151,7 @@ function BookingSuccessContent() {
                   Back to Home
                 </Link>
                 <Link
-                  href="/services"
+                  href="/car-services"
                   className="flex-1 btn border-2 border-gray-300 hover:border-gray-400 text-xs sm:text-sm font-semibold rounded-lg sm:rounded-xl py-3 sm:py-3.5 md:py-4"
                 >
                   View All Services
