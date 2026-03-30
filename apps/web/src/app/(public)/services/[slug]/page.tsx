@@ -46,7 +46,7 @@ export default function ServiceDetailPage({ params }: { params: { slug: string }
         <div className="container mx-auto px-3 sm:px-4 md:px-6">
           <div className="max-w-4xl mx-auto">
             <Link
-              href="/services"
+              href="/car-services"
               className="inline-flex items-center gap-2 text-gray-200 hover:text-white mb-4 sm:mb-5 md:mb-6 transition text-sm sm:text-base"
             >
               <ArrowRight className="w-4 h-4 rotate-180" />
