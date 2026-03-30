@@ -127,15 +127,15 @@ export default function Footer() {
               <AccordionTitle id="quick-links">Quick Links</AccordionTitle>
               <ul className={listClass('quick-links')}>
                 {[
-                  { href: '/about', label: 'About Us' },
+                  { href: '/about-us', label: 'About Us' },
                   { href: '/blogs', label: 'Our Blogs' },
-                  { href: '/contact', label: 'Contact Us' },
+                  { href: '/contact-us', label: 'Contact Us' },
                   { href: '/privacy-policy', label: 'Privacy Policy' },
                   { href: '/terms-and-conditions', label: 'Terms & Conditions' },
                   { href: '/workshops', label: 'Workshop Locator' },
                   { href: '/car-loan', label: 'Car Loans' },
                   { href: '/faqs', label: 'FAQs' },
-                  { href: '/roadside-assistance', label: 'Roadside Assistance' },
+                  { href: '/car-roadside-assistance', label: 'Roadside Assistance' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
                     <Link
@@ -186,7 +186,7 @@ export default function Footer() {
                 ].map((brand) => (
                   <li key={brand} className="mb-0">
                     <Link
-                      href={`/car-services/${brand.toLowerCase().replace(/\s+/g, '-')}-car-service`}
+                      href={`/car-services`}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {brand}
@@ -213,7 +213,7 @@ export default function Footer() {
                 ].map((brand) => (
                   <li key={brand.slug} className="mb-0">
                     <Link
-                      href={`/car-services/${brand.slug}-car-service`}
+                      href={`/car-services`}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {brand.label}
