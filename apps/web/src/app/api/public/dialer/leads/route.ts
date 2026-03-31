@@ -5,8 +5,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export const fetchCache = 'force-no-store';
-
 const RECORDING_BUCKET = 'dialer-recordings';
 
 const TEXT_FIELDS = [
@@ -29,28 +27,17 @@ function fieldValue(form: FormData, key: string): string | null {
   return trimmed || null;
 }
 
-function isFileEntry(value: unknown): value is Blob {
-  return (
-    value != null &&
-    typeof value === 'object' &&
-    typeof (value as any).arrayBuffer === 'function' &&
-    typeof (value as any).size === 'number' &&
-    (value as any).size > 0
-  );
-}
-
 async function uploadRecording(
   supabaseAdmin: any,
-  file: Blob & { name?: string; type?: string },
+  buffer: Buffer,
+  mimeType: string,
+  fileName: string,
   phoneNo: string
 ): Promise<string> {
-  const mimeType = file.type || 'audio/mpeg';
-  const fileName = (file as any).name || '';
   const ext = fileName.split('.').pop() || 'mp3';
   const filePath = `${Date.now()}_${phoneNo.replace(/\D/g, '')}.${ext}`;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  console.log('[dialer-leads] Uploading recording:', { size: file.size, mimeType, filePath });
+  console.log('[dialer-leads] Uploading recording:', { size: buffer.length, mimeType, filePath });
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(RECORDING_BUCKET)
@@ -79,6 +66,7 @@ async function uploadRecording(
 export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get('content-type') || '';
+
     if (!contentType.includes('multipart/form-data')) {
       return NextResponse.json(
         { error: 'Content-Type must be multipart/form-data' },
@@ -87,6 +75,16 @@ export async function POST(request: NextRequest) {
     }
 
     const form = await request.formData();
+
+    const allKeys: string[] = [];
+    const fileKeys: string[] = [];
+    for (const [key, value] of form.entries()) {
+      allKeys.push(key);
+      if (typeof value !== 'string') {
+        fileKeys.push(`${key}(type=${value?.constructor?.name}, size=${(value as any)?.size})`);
+      }
+    }
+    console.log('[dialer-leads] Form keys:', allKeys, '| File fields:', fileKeys);
 
     const phoneNo = fieldValue(form, 'phone_no');
     if (!phoneNo) {
@@ -105,27 +103,22 @@ export async function POST(request: NextRequest) {
     }
 
     let recordingUrl: string | null = null;
-    const recordingFile = form.get('recording');
+    const recordingEntry = form.get('recording');
 
-    console.log('[dialer-leads] recording field:', {
-      exists: recordingFile != null,
-      type: typeof recordingFile,
-      constructor: recordingFile?.constructor?.name,
-      isFile: recordingFile instanceof File,
-      isBlob: recordingFile instanceof Blob,
-      isString: typeof recordingFile === 'string',
-      size: (recordingFile as any)?.size,
-      name: (recordingFile as any)?.name,
-      hasArrayBuffer: typeof (recordingFile as any)?.arrayBuffer === 'function',
-    });
-
-    const isFile =
-      recordingFile != null &&
-      typeof recordingFile !== 'string' &&
-      typeof (recordingFile as any).arrayBuffer === 'function';
-
-    if (isFile && (recordingFile as any).size > 0) {
-      recordingUrl = await uploadRecording(supabaseAdmin, recordingFile as any, phoneNo);
+    if (recordingEntry != null && typeof recordingEntry !== 'string') {
+      const blob = recordingEntry as Blob;
+      const bytes = await blob.arrayBuffer();
+      if (bytes.byteLength > 0) {
+        const mimeType = blob.type || 'audio/mpeg';
+        const name = (blob as any).name || 'recording.mp3';
+        recordingUrl = await uploadRecording(
+          supabaseAdmin,
+          Buffer.from(bytes),
+          mimeType,
+          name,
+          phoneNo
+        );
+      }
     }
 
     const insertPayload: Record<string, any> = { recording_url: recordingUrl };
