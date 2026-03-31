@@ -67,13 +67,13 @@ VALUES (
   'dialer-recordings',
   true,
   52428800, -- 50MB file size limit for audio recordings
-  ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'audio/amr']
+  ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'audio/amr', 'video/mp4', 'video/webm', 'video/3gpp', 'application/octet-stream']
 )
 ON CONFLICT (id) DO UPDATE
 SET
   public = true,
   file_size_limit = 52428800,
-  allowed_mime_types = ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'audio/amr'];
+  allowed_mime_types = ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'audio/amr', 'video/mp4', 'video/webm', 'video/3gpp', 'application/octet-stream'];
 
 -- Storage: anyone can view recordings (public bucket)
 DROP POLICY IF EXISTS "Anyone can view dialer recordings" ON storage.objects;

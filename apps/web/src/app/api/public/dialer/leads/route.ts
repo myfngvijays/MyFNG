@@ -37,8 +37,6 @@ async function uploadRecording(
   const ext = fileName.split('.').pop() || 'mp3';
   const filePath = `${Date.now()}_${phoneNo.replace(/\D/g, '')}.${ext}`;
 
-  console.log('[dialer-leads] Uploading recording:', { size: buffer.length, mimeType, filePath });
-
   const { error: uploadError } = await supabaseAdmin.storage
     .from(RECORDING_BUCKET)
     .upload(filePath, buffer, {
@@ -59,7 +57,6 @@ async function uploadRecording(
     throw new Error('Could not generate public URL for uploaded recording');
   }
 
-  console.log('[dialer-leads] Recording uploaded:', publicUrl);
   return publicUrl;
 }
 
@@ -75,16 +72,6 @@ export async function POST(request: NextRequest) {
     }
 
     const form = await request.formData();
-
-    const allKeys: string[] = [];
-    const fileKeys: string[] = [];
-    for (const [key, value] of form.entries()) {
-      allKeys.push(key);
-      if (typeof value !== 'string') {
-        fileKeys.push(`${key}(type=${value?.constructor?.name}, size=${(value as any)?.size})`);
-      }
-    }
-    console.log('[dialer-leads] Form keys:', allKeys, '| File fields:', fileKeys);
 
     const phoneNo = fieldValue(form, 'phone_no');
     if (!phoneNo) {
@@ -148,7 +135,6 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (e: any) {
-    console.error('[dialer-leads] Error:', e?.message || e);
     return NextResponse.json(
       { error: 'Internal server error', details: e?.message },
       { status: 500 }
