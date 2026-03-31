@@ -59,6 +59,12 @@ const nextConfig = {
   // For Hostinger deployment - standalone mode
   output: 'standalone',
 
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '50mb',
+    },
+  },
+
   async redirects() {
     return [
       // Canonical marketing URLs (requested mappings)

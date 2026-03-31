@@ -3,6 +3,9 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+export const fetchCache = 'force-no-store';
 
 const RECORDING_BUCKET = 'dialer-recordings';
 
