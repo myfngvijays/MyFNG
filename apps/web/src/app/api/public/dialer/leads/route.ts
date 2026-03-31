@@ -106,7 +106,25 @@ export async function POST(request: NextRequest) {
 
     let recordingUrl: string | null = null;
     const recordingFile = form.get('recording');
-    if (isFileEntry(recordingFile)) {
+
+    console.log('[dialer-leads] recording field:', {
+      exists: recordingFile != null,
+      type: typeof recordingFile,
+      constructor: recordingFile?.constructor?.name,
+      isFile: recordingFile instanceof File,
+      isBlob: recordingFile instanceof Blob,
+      isString: typeof recordingFile === 'string',
+      size: (recordingFile as any)?.size,
+      name: (recordingFile as any)?.name,
+      hasArrayBuffer: typeof (recordingFile as any)?.arrayBuffer === 'function',
+    });
+
+    const isFile =
+      recordingFile != null &&
+      typeof recordingFile !== 'string' &&
+      typeof (recordingFile as any).arrayBuffer === 'function';
+
+    if (isFile && (recordingFile as any).size > 0) {
       recordingUrl = await uploadRecording(supabaseAdmin, recordingFile as any, phoneNo);
     }
 
@@ -129,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true, id: row?.id },
+      { success: true, id: row?.id, recording_url: recordingUrl },
       { status: 200 }
     );
   } catch (e: any) {
