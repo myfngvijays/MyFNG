@@ -17,7 +17,6 @@ const SOURCES = [
 ] as const;
 
 const SERVICE_TYPES = [
-  { value: 'breakdown', label: 'Breakdown' },
   { value: 'flat_tire', label: 'Flat Tire' },
   { value: 'battery', label: 'Battery Jumpstart' },
   { value: 'fuel', label: 'Fuel Delivery' },

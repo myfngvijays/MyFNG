@@ -2829,6 +2829,7 @@ export default function SuperAdminRSASettingsPage() {
                     groupedReportCalls.map((group) => {
                       const isOpen = expandedCustomers[group.customer] ?? false;
                       const latest = group.calls[0];
+                      const groupDisposition = group.calls.find(c => c.disposition || c.disposition_category);
                       if (group.calls.length === 1) {
                         const row = latest;
                         const audit = auditByCallId[row.id] ?? null;
@@ -2948,7 +2949,7 @@ export default function SuperAdminRSASettingsPage() {
                             <td className="py-2 pr-3">{normalizeCallType(latest.ctype)}</td>
                             <td className="py-2 pr-3">{formatDuration(latest.talkduration)}</td>
                             <td className="py-2 pr-3">
-                              {latest.disposition || latest.disposition_category || '—'}
+                              {groupDisposition?.disposition || groupDisposition?.disposition_category || '—'}
                             </td>
                             <td className="py-2 pr-3">
                               {latest.summary ? (

@@ -92,13 +92,14 @@ type DirectPayStatusRow = {
 
 const DISPOSITION_OPTIONS = [
   'Registered',
-  'Wrong Number',
-  'Cancelled by Customer',
   'Follow-up Required',
-  // keep only the allowed dispositions for telecaller
-  'Out of Service Area',
+  'Garage Complaints',
   'Spam/Unwanted',
-  'Test Call',
+  'Out of Service Area',
+  'Price Issue Cancellation',
+  'Time Issue Cancellation',
+  'Voice Issue',
+  'Non-RSA Complaint',
 ];
 
 const SERVICE_TYPE_OPTIONS = [
@@ -106,7 +107,6 @@ const SERVICE_TYPE_OPTIONS = [
   'Towing',
   'Fuel Delivery',
   'Jump Start',
-  'Car Service',
   'Other',
 ];
 
@@ -1023,7 +1023,7 @@ export default function TelecallerRSAPage() {
   };
 
   const saveDisposition = async () => {
-    if (!dispositionCall?.id) return;
+    if (!dispositionCall?.id || !dispositionForm.service_type || !dispositionForm.city?.trim()) return;
     const payloadNote = buildDispositionNote({
       note: dispositionForm.disposition_note,
       service_type: dispositionForm.service_type,
@@ -2377,6 +2377,7 @@ export default function TelecallerRSAPage() {
                       {groupedCalls.map((group) => {
                         const isOpen = expandedCustomers[group.customer] ?? false;
                         const latest = group.calls[0];
+                        const groupDisposition = group.calls.find(c => c.disposition || c.disposition_category);
                         if (group.calls.length === 1) {
                           const call = latest;
                           const audit = auditByCallId[call.id] ?? null;
@@ -2508,7 +2509,7 @@ export default function TelecallerRSAPage() {
                               </td>
                               <td className="py-2 pr-3">{formatDuration(latest.talkduration)}</td>
                               <td className="py-2 pr-3">
-                                {latest.disposition || latest.disposition_category || '—'}
+                                {groupDisposition?.disposition || groupDisposition?.disposition_category || '—'}
                               </td>
                               <td className="py-2 pr-3">
                                 {latest.summary ? (
@@ -2849,7 +2850,7 @@ export default function TelecallerRSAPage() {
             </div>
             <div className="p-4 space-y-4">
               <div>
-                <label className="text-xs text-gray-600">Service Type</label>
+                <label className="text-xs text-gray-600">Service Type <span className="text-red-500">*</span></label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   value={dispositionForm.service_type}
@@ -2888,7 +2889,7 @@ export default function TelecallerRSAPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600">City</label>
+                <label className="text-xs text-gray-600">City <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <input
                     className="w-full border rounded-md px-3 py-2 text-sm"
@@ -2945,7 +2946,7 @@ export default function TelecallerRSAPage() {
                   type="button"
                   className="btn btn-primary text-sm px-4 py-2"
                   onClick={saveDisposition}
-                  disabled={!dispositionForm.disposition}
+                  disabled={!dispositionForm.disposition || !dispositionForm.service_type || !dispositionForm.city?.trim()}
                 >
                   Save Disposition
                 </button>

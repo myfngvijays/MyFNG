@@ -84,8 +84,8 @@ export async function GET(request: NextRequest) {
     const toDate = url.searchParams.get('toDate')?.trim() || null;
     const q = url.searchParams.get('q')?.trim() || '';
 
-    const from = fromDate ? `${fromDate}T00:00:00.000Z` : null;
-    const to = toDate ? `${toDate}T23:59:59.999Z` : null;
+    const from = fromDate || null;
+    const to = toDate || null;
 
     // Fetch all matching invoices (then sort by invoice_number sequence desc).
     // We do this because invoice_number is a string like "RA-549/25-26" and we want 614, 613, 612... at top,
@@ -98,14 +98,14 @@ export async function GET(request: NextRequest) {
       let query = supabaseAdmin
         .from('manual_create_invoice')
         .select(
-          'id, invoice_number, customer_name, customer_phone, total_amount, currency, status, created_at, payment_mode, payment_reference, paid_at, customer_gstin, car_number, car_model',
+          'id, invoice_number, invoice_date, customer_name, customer_phone, total_amount, currency, status, created_at, payment_mode, payment_reference, paid_at, customer_gstin, car_number, car_model',
           { count: 'exact' }
         )
         .order('created_at', { ascending: false })
         .range(offset, offset + take - 1);
 
-      if (from) query = query.gte('created_at', from);
-      if (to) query = query.lte('created_at', to);
+      if (from) query = query.gte('invoice_date', from);
+      if (to) query = query.lte('invoice_date', to);
 
       const { data, error, count } = await query;
       if (error) throw error;
