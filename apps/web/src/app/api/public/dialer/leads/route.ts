@@ -29,16 +29,28 @@ function fieldValue(form: FormData, key: string): string | null {
   return trimmed || null;
 }
 
+function isFileEntry(value: unknown): value is Blob {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    typeof (value as any).arrayBuffer === 'function' &&
+    typeof (value as any).size === 'number' &&
+    (value as any).size > 0
+  );
+}
+
 async function uploadRecording(
   supabaseAdmin: any,
-  file: File,
+  file: Blob & { name?: string; type?: string },
   phoneNo: string
 ): Promise<string> {
   const mimeType = file.type || 'audio/mpeg';
-  const ext = (file.name || '').split('.').pop() || 'mp3';
+  const fileName = (file as any).name || '';
+  const ext = fileName.split('.').pop() || 'mp3';
   const filePath = `${Date.now()}_${phoneNo.replace(/\D/g, '')}.${ext}`;
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  console.log('[dialer-leads] Uploading recording:', { size: file.size, mimeType, filePath });
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(RECORDING_BUCKET)
@@ -60,6 +72,7 @@ async function uploadRecording(
     throw new Error('Could not generate public URL for uploaded recording');
   }
 
+  console.log('[dialer-leads] Recording uploaded:', publicUrl);
   return publicUrl;
 }
 
@@ -93,8 +106,8 @@ export async function POST(request: NextRequest) {
 
     let recordingUrl: string | null = null;
     const recordingFile = form.get('recording');
-    if (recordingFile instanceof File && recordingFile.size > 0) {
-      recordingUrl = await uploadRecording(supabaseAdmin, recordingFile, phoneNo);
+    if (isFileEntry(recordingFile)) {
+      recordingUrl = await uploadRecording(supabaseAdmin, recordingFile as any, phoneNo);
     }
 
     const insertPayload: Record<string, any> = { recording_url: recordingUrl };
