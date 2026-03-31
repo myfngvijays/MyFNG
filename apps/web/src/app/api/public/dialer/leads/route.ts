@@ -21,7 +21,7 @@ const TEXT_FIELDS = [
 ] as const;
 
 function fieldValue(form: FormData, key: string): string | null {
-  const raw = form.get(key);
+  const raw = form.get(key) ?? form.get(key + ' ') ?? form.get(' ' + key);
   if (raw == null) return null;
   const trimmed = String(raw).trim();
   return trimmed || null;
@@ -103,22 +103,26 @@ export async function POST(request: NextRequest) {
     }
 
     let recordingUrl: string | null = null;
-    const recordingEntry = form.get('recording');
+    let recordingBlob: Blob | null = null;
 
-    if (recordingEntry != null && typeof recordingEntry !== 'string') {
-      const blob = recordingEntry as Blob;
-      const bytes = await blob.arrayBuffer();
-      if (bytes.byteLength > 0) {
-        const mimeType = blob.type || 'audio/mpeg';
-        const name = (blob as any).name || 'recording.mp3';
-        recordingUrl = await uploadRecording(
-          supabaseAdmin,
-          Buffer.from(bytes),
-          mimeType,
-          name,
-          phoneNo
-        );
+    for (const [key, value] of form.entries()) {
+      if (key.trim() === 'recording' && typeof value !== 'string') {
+        recordingBlob = value as Blob;
+        break;
       }
+    }
+
+    if (recordingBlob && recordingBlob.size > 0) {
+      const bytes = await recordingBlob.arrayBuffer();
+      const mimeType = recordingBlob.type || 'audio/mpeg';
+      const name = (recordingBlob as any).name || 'recording.mp3';
+      recordingUrl = await uploadRecording(
+        supabaseAdmin,
+        Buffer.from(bytes),
+        mimeType,
+        name,
+        phoneNo
+      );
     }
 
     const insertPayload: Record<string, any> = { recording_url: recordingUrl };
