@@ -133,6 +133,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const [waPreviewPhone, setWaPreviewPhone] = useState('');
   const [waPreviewMessage, setWaPreviewMessage] = useState('');
   const [waUnreadCount, setWaUnreadCount] = useState(0);
+  const [waRefreshSignal, setWaRefreshSignal] = useState(0);
   const waAssignedPhonesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -384,10 +385,9 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           const dir = String(row.direction || '').toUpperCase();
           if (dir !== 'INBOUND') return;
           const sender = normPhone(String(row.sender_phone || ''));
-          if (waAssignedPhonesRef.current.has(sender)) {
-            setWaUnreadCount((prev) => prev + 1);
-            playMessageSound();
-          }
+          setWaRefreshSignal((prev) => prev + 1);
+          setWaUnreadCount((prev) => prev + 1);
+          playMessageSound();
         }
       )
       .on(
@@ -1028,7 +1028,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           </button>
           <WhatsAppChatListModal
             isOpen={waListOpen}
-            title="Assigned WhatsApp Chats"
+            title="WhatsApp Chats"
+            refreshSignal={waRefreshSignal}
             onClose={() => setWaListOpen(false)}
             onOpenChat={(phone, preview) => {
               setWaListOpen(false);

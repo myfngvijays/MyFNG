@@ -75,27 +75,54 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const mode = String(request.nextUrl.searchParams.get('mode') || 'assigned').toLowerCase();
+
     let assignedPhoneSet: Set<string> | null = null;
+    let excludePhoneSet: Set<string> | null = null;
+
     if (roleCode === 'RSA_MANAGER' || roleCode === 'TELECALLER') {
-      const { data: assignedRows, error: assignedError } = await db
-        .from('whatsapp_chat_assignments')
-        .select('phone')
-        .contains('assigned_to_ids', [userProfile.id]);
-      if (assignedError) {
-        return NextResponse.json({ error: assignedError.message || 'Failed to load assigned chats' }, { status: 500 });
-      }
-      assignedPhoneSet = new Set(
-        (assignedRows || [])
-          .map((row: any) => normalizePhone(String(row?.phone || '')))
-          .filter(Boolean)
-      );
-      if (assignedPhoneSet.size === 0) {
-        return NextResponse.json({
-          success: true,
-          chats: [],
-          count: 0,
-          scanned_messages: 0,
-        });
+      if (mode === 'unassigned') {
+        const allAssignedPhones: string[] = [];
+        let assignOffset = 0;
+        const assignBatch = 1000;
+        while (true) {
+          const { data: batch, error: batchError } = await db
+            .from('whatsapp_chat_assignments')
+            .select('phone')
+            .range(assignOffset, assignOffset + assignBatch - 1);
+          if (batchError) {
+            return NextResponse.json({ error: batchError.message || 'Failed to load assignments' }, { status: 500 });
+          }
+          const rows = batch || [];
+          for (const row of rows) {
+            const p = normalizePhone(String(row?.phone || ''));
+            if (p) allAssignedPhones.push(p);
+          }
+          if (rows.length < assignBatch) break;
+          assignOffset += assignBatch;
+        }
+        excludePhoneSet = new Set(allAssignedPhones);
+      } else {
+        const { data: assignedRows, error: assignedError } = await db
+          .from('whatsapp_chat_assignments')
+          .select('phone')
+          .contains('assigned_to_ids', [userProfile.id]);
+        if (assignedError) {
+          return NextResponse.json({ error: assignedError.message || 'Failed to load assigned chats' }, { status: 500 });
+        }
+        assignedPhoneSet = new Set(
+          (assignedRows || [])
+            .map((row: any) => normalizePhone(String(row?.phone || '')))
+            .filter(Boolean)
+        );
+        if (assignedPhoneSet.size === 0) {
+          return NextResponse.json({
+            success: true,
+            chats: [],
+            count: 0,
+            scanned_messages: 0,
+          });
+        }
       }
     }
 
@@ -138,6 +165,7 @@ export async function GET(request: NextRequest) {
         const phone = getChatPhone(row);
         if (!phone) continue;
         if (assignedPhoneSet && !assignedPhoneSet.has(phone)) continue;
+        if (excludePhoneSet && excludePhoneSet.has(phone)) continue;
         if (searchDigits && !phone.includes(searchDigits)) continue;
         if (byPhone.has(phone)) continue;
 
