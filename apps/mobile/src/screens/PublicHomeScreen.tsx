@@ -112,11 +112,11 @@ const SERVICES: ServiceItem[] = [
 ];
 
 const HOW_IT_WORKS = [
-  { id: '01', title: 'Book Your Repair with AI', desc: 'Describe your car issues to our AI assistant for an instant quote and booking.', color: '#2563EB', icon: 'sparkles' as const },
-  { id: '02', title: 'Track Live Updates', desc: 'Get real-time status of your car repair with photos and videos from the workshop.', color: '#7C3AED', icon: 'pulse' as const },
-  { id: '03', title: 'Home Pickup', desc: 'Our professional driver picks up your car from your doorstep at your preferred time.', color: '#10B981', icon: 'home' as const },
-  { id: '04', title: 'QC Approved', desc: 'Every repair undergoes a 25-point quality check before we clear it for delivery.', color: '#FBBF24', icon: 'shield-checkmark' as const },
-  { id: '05', title: 'Delivered + Warranty', desc: 'Safe delivery to your home with a 6-month warranty on all spare parts and labor.', color: '#F43F5E', icon: 'trophy' as const },
+  { id: '01', title: 'Book Your Repair with AI', desc: 'Describe your car issues to our AI assistant for an instant quote and booking.', color: '#004AAD', icon: 'sparkles' as const },
+  { id: '02', title: 'Track Live Updates', desc: 'Get real-time status of your car repair with photos and videos from the workshop.', color: '#60A5FA', icon: 'pulse' as const },
+  { id: '03', title: 'Home Pickup', desc: 'Our professional driver picks up your car from your doorstep at your preferred time.', color: '#004AAD', icon: 'home' as const },
+  { id: '04', title: 'QC Approved', desc: 'Every repair undergoes a 25-point quality check before we clear it for delivery.', color: '#60A5FA', icon: 'shield-checkmark' as const },
+  { id: '05', title: 'Delivered + Warranty', desc: 'Safe delivery to your home with a 6-month warranty on all spare parts and labor.', color: '#004AAD', icon: 'trophy' as const },
 ];
 
 const FAQS = [
@@ -563,9 +563,14 @@ export default function PublicHomeScreen({ navigation }: Props) {
                     <Text style={styles.packageName}>{pkg.name}</Text>
                     <Text style={styles.packageDesc}>{pkg.desc}</Text>
                     <View style={styles.packageFooter}>
-                      <Text style={styles.packagePrice}>₹{pkg.price.toLocaleString()}</Text>
+                      <View>
+                        <Text style={styles.packageStartsFrom}>Starts From</Text>
+                        <Text style={styles.packageVariant}>WagonR</Text>
+                        <Text style={styles.packagePrice}>₹{pkg.price.toLocaleString()}*</Text>
+                      </View>
                       <TouchableOpacity
                         style={styles.packageBookBtn}
+                        activeOpacity={0.85}
                         onPress={() => navigation.navigate('PublicBookServiceNow', { city: 'Mumbai', packageId: pkg.id })}
                       >
                         <Text style={styles.packageBookBtnText}>Book</Text>
@@ -909,7 +914,7 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     marginTop: 12,
-    borderRadius: 20,
+    borderRadius: 32,
     overflow: 'hidden',
     shadowColor: '#000000',
     shadowOpacity: 0.1,
@@ -924,7 +929,7 @@ const styles = StyleSheet.create({
   heroFullImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 20,
+    borderRadius: 32,
   },
   heroCta: {
     marginTop: 16,
@@ -1792,7 +1797,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  packageStartsFrom: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  packageVariant: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
   packagePrice: {
+    marginTop: 2,
     fontSize: 18,
     fontWeight: '800',
     color: '#004AAD',

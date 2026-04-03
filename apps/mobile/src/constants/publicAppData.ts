@@ -24,25 +24,25 @@ export const POPULAR_PACKAGES: PublicPackage[] = [
     id: 'general',
     name: 'General Service',
     price: 4999,
-    desc: 'Comprehensive checkup and service.',
+    desc: 'Scheduled maintenance by A-Grade verified multi-brand workshops.',
     image:
-      'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&q=80&w=400',
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Periodic_Service.png',
   },
   {
     id: 'premium',
     name: 'Premium Service',
     price: 8999,
-    desc: 'Full car restoration and maintenance.',
+    desc: 'Advanced diagnostics and complete preventive engine care.',
     image:
-      'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=400',
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Engine_Service.png',
   },
   {
     id: 'platinum',
     name: 'Platinum Service',
     price: 12999,
-    desc: 'The ultimate care for your luxury vehicle.',
+    desc: 'Complete detailing package with premium finish and protection.',
     image:
-      'https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?auto=format&fit=crop&q=80&w=400',
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Detailing_Service.png',
   },
 ];
 

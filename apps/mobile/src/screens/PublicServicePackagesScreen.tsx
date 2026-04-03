@@ -24,23 +24,153 @@ type Props = {
 type ServiceCategory = {
   id: string;
   name: string;
+  detailTitle: string;
   icon: keyof typeof Ionicons.glyphMap;
   image?: any;
   color: string;
   bg: string;
   desc: string;
+  longDesc: string;
+  duration: string;
+  warranty: string;
+  points: string[];
 };
 
+const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
+const SERVICE_PAGE_PROMO_BANNERS = [
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.png`,
+];
+
 const SERVICE_CATEGORIES: ServiceCategory[] = [
-  { id: '1', name: 'Periodic Service', icon: 'construct', color: '#2563EB', bg: '#EFF6FF', desc: 'Complete maintenance check with oil & filter change, brake inspection, and 60-point health check.' },
-  { id: '2', name: 'AC Service', icon: 'snow', color: '#06B6D4', bg: '#ECFEFF', desc: 'Gas top-up, filter cleaning, and cooling system check for a chilled cabin.' },
-  { id: '3', name: 'Brakes Service', icon: 'warning', color: '#EF4444', bg: '#FEF2F2', desc: 'Brake pad replacement, disc resurfacing, and fluid check for maximum safety.' },
-  { id: '4', name: 'Engine Services', icon: 'speedometer', color: '#EA580C', bg: '#FFF7ED', desc: 'Expert engine diagnostics, tuning, and major repairs to ensure peak performance.' },
-  { id: '5', name: 'Clutch Service', icon: 'cog', color: '#7C3AED', bg: '#F5F3FF', desc: 'Clutch plate replacement, cable adjustment, and smooth gear shifting support.' },
-  { id: '6', name: 'Battery Services', icon: 'battery-charging', color: '#CA8A04', bg: '#FEFCE8', desc: 'Battery testing, terminal cleaning, and instant replacement with top brands.' },
-  { id: '7', name: 'Tyre and Wheels', icon: 'radio-button-off', image: require('../../assets/service-icons/tyre-wheels.png'), color: '#525252', bg: '#F5F5F5', desc: 'Wheel alignment, balancing, and tyre rotation for a stable ride.' },
-  { id: '8', name: 'Detailing Service', icon: 'car-sport', color: '#EC4899', bg: '#FDF2F8', desc: 'Ceramic coating, interior deep cleaning, and exterior polishing for a showroom shine.' },
-  { id: '9', name: 'Denting & Painting', icon: 'color-palette', image: require('../../assets/service-icons/denting-painting.png'), color: '#059669', bg: '#ECFDF5', desc: 'High-quality body work with premium paint matching and dent removal.' },
+  {
+    id: '1',
+    name: 'Periodic Service',
+    detailTitle: 'Periodic Car Service',
+    icon: 'construct',
+    color: '#2563EB',
+    bg: '#EFF6FF',
+    desc: 'Standardised periodic maintenance to keep your car smooth, safe, and fuel-efficient.',
+    longDesc:
+      'Keep your car running smooth, safe, and fuel-efficient with MyFNG Periodic Car Service. We follow a standardised service process to inspect, clean, and maintain all critical components.',
+    duration: '2-3 hours',
+    warranty: '1 month / 1,000 km',
+    points: ['Engine Oil Replacement', 'Oil Filter & Air Filter Replacement', 'Complete 60-Point Inspection'],
+  },
+  {
+    id: '2',
+    name: 'AC Service',
+    detailTitle: 'Car AC Service',
+    icon: 'snow',
+    color: '#06B6D4',
+    bg: '#ECFEFF',
+    desc: 'Faster cooling, cleaner air, and reliable AC performance.',
+    longDesc:
+      'Beat the heat with MyFNG Car AC Service, designed to deliver faster cooling, cleaner air, and consistent performance. We inspect, clean, and optimise your car AC system end-to-end.',
+    duration: '2-3 hours',
+    warranty: 'NA',
+    points: ['AC Gas Top-up / Replacement', 'Cooling Coil & Condenser Cleaning', 'Complete System Sanitization'],
+  },
+  {
+    id: '3',
+    name: 'Brakes Service',
+    detailTitle: 'Car Brake Service',
+    icon: 'warning',
+    color: '#EF4444',
+    bg: '#FEF2F2',
+    desc: 'Responsive braking with inspection, cleaning, and precise adjustments.',
+    longDesc:
+      'Your car safety depends on its brakes. MyFNG Car Brake Service ensures responsive braking, reduced stopping distance, and complete driving confidence through detailed inspection.',
+    duration: '2-3 hours',
+    warranty: 'NA',
+    points: ['Brake Pad Check & Replacement', 'Brake Fluid Replacement', 'Brake System Safety Test'],
+  },
+  {
+    id: '4',
+    name: 'Engine Services',
+    detailTitle: 'Car Engine Service',
+    icon: 'speedometer',
+    color: '#EA580C',
+    bg: '#FFF7ED',
+    desc: 'Thorough engine inspection, cleaning, and tuning for mileage and long engine life.',
+    longDesc:
+      'Your car engine is its heart. MyFNG Car Engine Service ensures smooth performance, better mileage, and long engine life by thoroughly inspecting, cleaning, and tuning components.',
+    duration: '3-4 hours',
+    warranty: 'NA',
+    points: ['Complete Engine Diagnostics', 'Engine Oil Service & Replacement', 'Performance Check & Tuning'],
+  },
+  {
+    id: '5',
+    name: 'Clutch Service',
+    detailTitle: 'Car Clutch Service',
+    icon: 'cog',
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    desc: 'Early clutch wear diagnosis for smooth shifts and longer clutch life.',
+    longDesc:
+      'A healthy clutch ensures smooth gear shifts and comfortable driving. MyFNG Car Clutch Service diagnoses wear and performance issues early to prevent breakdowns and jerks.',
+    duration: '3-6 hours',
+    warranty: 'NA',
+    points: ['Clutch System Inspection', 'Pressure Plate & Bearing Check', 'Test Drive & Shift Calibration'],
+  },
+  {
+    id: '6',
+    name: 'Battery Services',
+    detailTitle: 'Car Battery Service',
+    icon: 'battery-charging',
+    color: '#CA8A04',
+    bg: '#FEFCE8',
+    desc: 'Battery and charging system health checks for reliable starts.',
+    longDesc:
+      'Avoid sudden breakdowns with MyFNG Car Battery Service. We test, inspect, and optimise your battery and charging system to ensure consistent power and longer battery life.',
+    duration: '1-2 hours',
+    warranty: 'NA',
+    points: ['Battery Health Check & Analysis', 'Charging System Testing', 'Alternator & Starter Check'],
+  },
+  {
+    id: '7',
+    name: 'Tyre and Wheels',
+    detailTitle: 'Car Tyre & Wheel Care',
+    icon: 'disc-outline',
+    color: '#1F2937',
+    bg: '#F5F5F5',
+    desc: 'Alignment and tyre care for better grip, steering control, and longer tyre life.',
+    longDesc:
+      'Safe handling and smooth rides start with healthy tyres and aligned wheels. MyFNG Tyre & Wheel Care improves road grip, steering control, and tyre life with precise checks.',
+    duration: '1-2 hours',
+    warranty: 'NA',
+    points: ['Tyre Rotation & Balancing', 'Wheel Alignment (4-Wheel)', 'Tyre Pressure Check & Adjustment'],
+  },
+  {
+    id: '8',
+    name: 'Detailing Service',
+    detailTitle: 'Car Detailing Service',
+    icon: 'car-sport',
+    color: '#EC4899',
+    bg: '#FDF2F8',
+    desc: 'Deep clean and protection for comfort, hygiene, and a showroom-like finish.',
+    longDesc:
+      'A clean car is about comfort, hygiene, and value. MyFNG Car Detailing Service deep-cleans, restores, and protects your interior and exterior with a standardised process.',
+    duration: '4-6 hours',
+    warranty: 'NA',
+    points: ['Interior Deep Cleaning', 'Exterior Polish & Waxing', 'Ceramic Coating Application'],
+  },
+  {
+    id: '9',
+    name: 'Denting & Painting',
+    detailTitle: 'Car Denting & Painting',
+    icon: 'color-fill',
+    color: '#059669',
+    bg: '#ECFDF5',
+    desc: 'Dent repair and paint matching to restore body strength and resale value.',
+    longDesc:
+      'Dents and scratches weaken body panels over time. MyFNG Denting & Painting restores body strength and finish using professional dent repair and accurate color matching.',
+    duration: '2-5 days',
+    warranty: 'Depends on package',
+    points: ['Color Matching Technology', 'Dent Removal & Repair', 'Primer & Paint Application'],
+  },
 ];
 
 const SERVICE_FAQS: Record<string, Array<{ q: string; a: string }>> = {
@@ -61,19 +191,13 @@ const SERVICE_FAQS: Record<string, Array<{ q: string; a: string }>> = {
 };
 const DEFAULT_FAQ_COUNT = 5;
 
-const LOAN_CARDS = [
-  { title: 'Loan Against Car', color: '#EA580C', btnText: 'GET LOAN', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=400', points: ['Starting at 11.49%* p.a', 'Flexible Tenures'] },
-  { title: 'Car Inspection', color: '#059669', btnText: 'CHECK NOW', image: 'https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?auto=format&fit=crop&q=80&w=400', points: ['200+ points check', 'Expert Report'] },
-  { title: 'Car Insurance', color: '#2563EB', btnText: 'INSURE NOW', image: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?auto=format&fit=crop&q=80&w=400', points: ['Save up to 80%', 'Renew in 2 mins'] },
-];
-
 export default function PublicServicePackagesScreen({ navigation, route }: Props) {
   const city: string | undefined = route?.params?.city;
   const initialServiceId: string | null = route?.params?.selectedServiceId ?? '1';
   const [selectedService, setSelectedService] = useState<string>(initialServiceId || '1');
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
   const [showAllFaqs, setShowAllFaqs] = useState(false);
-  const [loanIdx, setLoanIdx] = useState(0);
+  const [promoIdx, setPromoIdx] = useState(0);
   const [supportOpen, setSupportOpen] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -86,41 +210,31 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   }, [initialServiceId]);
 
   useEffect(() => {
-    const timer = setInterval(() => setLoanIdx((p) => (p + 1) % LOAN_CARDS.length), 4000);
+    const timer = setInterval(() => setPromoIdx((p) => (p + 1) % SERVICE_PAGE_PROMO_BANNERS.length), 4000);
     return () => clearInterval(timer);
   }, []);
 
   const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
   const faqs = useMemo(() => SERVICE_FAQS[selectedService] || SERVICE_FAQS.default, [selectedService]);
-  const loanCard = LOAN_CARDS[loanIdx];
-
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.screen}>
         <View style={s.header}>
           <Text style={s.headerTitle}>Our Services</Text>
-          <TouchableOpacity style={s.compareBtn} onPress={() => setShowComparison(true)}>
+          <TouchableOpacity style={s.compareBtn} activeOpacity={0.85} onPress={() => setShowComparison(true)}>
             <Text style={s.compareBtnText}>Compare</Text>
           </TouchableOpacity>
         </View>
 
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
-          {/* Loan Banner */}
-          <View style={s.loanBanner}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.loanSubLabel}>GET A QUICK</Text>
-              <Text style={[s.loanTitle, { color: loanCard.color }]}>{loanCard.title}</Text>
-              {loanCard.points.map((p) => (
-                <View key={p} style={s.loanBullet}>
-                  <Ionicons name="checkmark-circle" size={14} color={loanCard.color} />
-                  <Text style={s.loanBulletText}>{p}</Text>
-                </View>
+          {/* Home page promo banners */}
+          <View style={s.promoWrap}>
+            <Image source={{ uri: SERVICE_PAGE_PROMO_BANNERS[promoIdx] }} style={s.promoImage} resizeMode="cover" />
+            <View style={s.promoDots}>
+              {SERVICE_PAGE_PROMO_BANNERS.map((_, idx) => (
+                <View key={idx} style={[s.promoDot, idx === promoIdx ? s.promoDotActive : null]} />
               ))}
-              <TouchableOpacity style={s.loanBtn}>
-                <Text style={s.loanBtnText}>{loanCard.btnText}</Text>
-              </TouchableOpacity>
             </View>
-            <Image source={{ uri: loanCard.image }} style={s.loanImage} resizeMode="cover" />
           </View>
 
           {/* Service Category Grid */}
@@ -177,23 +291,82 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               <View style={[s.detailIcon, { backgroundColor: current.bg }]}>
                 <Ionicons name={current.icon as any} size={22} color={current.color} />
               </View>
-              <Text style={s.detailTitle}>{current.name}</Text>
+              <Text style={s.detailTitle}>{current.detailTitle}</Text>
             </View>
-            <Text style={s.detailDesc}>{current.desc}</Text>
+            <Text style={s.detailDesc}>{current.longDesc}</Text>
+            <View style={s.detailMetaRow}>
+              <View style={s.detailMetaChip}>
+                <Ionicons name="time-outline" size={13} color="#2563EB" />
+                <Text style={s.detailMetaText}>{current.duration}</Text>
+              </View>
+              <View style={s.detailMetaChip}>
+                <Ionicons name="shield-checkmark-outline" size={13} color="#2563EB" />
+                <Text style={s.detailMetaText}>{current.warranty}</Text>
+              </View>
+            </View>
+            <View style={s.detailPoints}>
+              {current.points.map((point) => (
+                <View key={point} style={s.detailPointRow}>
+                  <Ionicons name="checkmark-circle" size={15} color="#10B981" />
+                  <Text style={s.detailPointText}>{point}</Text>
+                </View>
+              ))}
+            </View>
             <View style={s.detailBtns}>
               <TouchableOpacity
                 style={s.bookNowBtn}
+                activeOpacity={0.85}
                 onPress={() => navigation.navigate('PublicBookServiceNow', { city })}
               >
                 <Text style={s.bookNowBtnText}>Book Now</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={s.phoneBtn}
+                activeOpacity={0.85}
                 onPress={() => Linking.openURL(`tel:${supportPhone}`)}
               >
                 <Ionicons name="call" size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Why MyFNG */}
+          <Text style={s.sectionHeading}>Why MyFNG</Text>
+          <View style={s.whyCard}>
+            {([
+              ['4.8/5', 'RATING', 'star' as const],
+              ['17K+', 'CARS', 'trophy' as const],
+              ['100+', 'WORKSHOPS', 'construct' as const],
+              ['Warranty', 'PARTS', 'shield-checkmark' as const],
+              ['Live', 'UPDATES', 'eye' as const],
+            ] as const).map(([value, label, icon]) => (
+              <View key={label} style={s.whyItem}>
+                <View style={s.whyIconWrap}>
+                  <Ionicons name={icon} size={18} color={COLORS.primary} />
+                </View>
+                <Text style={s.whyValue}>{value}</Text>
+                <Text style={s.whyLabel}>{label}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Complete Transparency */}
+          <Text style={s.sectionHeading}>Complete Transparency</Text>
+          <View style={s.transparencyGrid}>
+            {([
+              ['Photo/Video Updates', 'Live service tracking', 'eye' as const],
+              ['Clear Estimates', 'No hidden costs', 'document-text' as const],
+              ['Genuine Parts', '100% quality spares', 'wallet' as const],
+              ['Central Support', '24/7 assistance', 'call' as const],
+            ] as const).map(([title, subtitle, icon]) => (
+              <View key={title} style={s.transparencyCard}>
+                <View style={s.transparencyIconWrap}>
+                  <Ionicons name={icon} size={24} color="#2563EB" />
+                </View>
+                <Text style={s.transparencyTitle}>{title}</Text>
+                <Text style={s.transparencySubtitle}>{subtitle}</Text>
+              </View>
+            ))}
           </View>
 
           {/* Service FAQs */}
@@ -211,7 +384,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
             </View>
           ))}
           {faqs.length > DEFAULT_FAQ_COUNT ? (
-            <TouchableOpacity style={s.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
+            <TouchableOpacity style={s.showMoreBtn} activeOpacity={0.85} onPress={() => setShowAllFaqs(true)}>
               <Text style={s.showMoreBtnText}>Show More FAQs</Text>
               <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
             </TouchableOpacity>
@@ -364,23 +537,35 @@ const s = StyleSheet.create({
   compareBtnText: { fontSize: 10, fontWeight: '800', color: '#2563EB', textTransform: 'uppercase', letterSpacing: 1 },
   content: { paddingHorizontal: 16, paddingBottom: 140 },
 
-  loanBanner: {
+  promoWrap: {
     marginTop: 12,
-    borderRadius: 24,
+    borderRadius: 16,
+    overflow: 'hidden',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#F3F4F6',
-    overflow: 'hidden',
-    flexDirection: 'row',
-    minHeight: 170,
+    borderColor: '#E5E7EB',
   },
-  loanSubLabel: { fontSize: 9, fontWeight: '800', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4, paddingLeft: 16, paddingTop: 16 },
-  loanTitle: { fontSize: 20, fontWeight: '900', paddingLeft: 16, marginBottom: 10 },
-  loanBullet: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 16, marginBottom: 4 },
-  loanBulletText: { fontSize: 11, fontWeight: '700', color: '#374151' },
-  loanBtn: { marginLeft: 16, marginTop: 10, marginBottom: 16, alignSelf: 'flex-start', backgroundColor: '#111827', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
-  loanBtnText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
-  loanImage: { width: '38%', height: '100%', opacity: 0.8 },
+  promoImage: {
+    width: '100%',
+    aspectRatio: 1029 / 376,
+  },
+  promoDots: {
+    flexDirection: 'row',
+    gap: 6,
+    position: 'absolute',
+    right: 12,
+    bottom: 10,
+  },
+  promoDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  promoDotActive: {
+    width: 18,
+    backgroundColor: '#FFFFFF',
+  },
 
   gridHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 12, paddingHorizontal: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -439,11 +624,105 @@ const s = StyleSheet.create({
   detailTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   detailIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   detailTitle: { fontSize: 18, fontWeight: '900', color: '#111827', flex: 1 },
-  detailDesc: { fontSize: 13, color: '#6B7280', lineHeight: 20, marginBottom: 16 },
+  detailDesc: { fontSize: 12, color: '#6B7280', lineHeight: 18, marginBottom: 10 },
+  detailMetaRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 10 },
+  detailMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  detailMetaText: { fontSize: 10, fontWeight: '700', color: '#1D4ED8' },
+  detailPoints: { marginBottom: 14, gap: 6 },
+  detailPointRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  detailPointText: { flex: 1, fontSize: 11, color: '#374151', lineHeight: 16, fontWeight: '600' },
   detailBtns: { flexDirection: 'row', gap: 10 },
   bookNowBtn: { flex: 1, height: 50, borderRadius: 16, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center', shadowColor: '#2563EB', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   bookNowBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   phoneBtn: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+
+  sectionHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 10, textTransform: 'uppercase' },
+  whyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  whyItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  whyIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  whyValue: {
+    fontSize: 10,
+    color: COLORS.primary,
+    fontWeight: '800',
+    marginBottom: 1,
+    textAlign: 'center',
+  },
+  whyLabel: {
+    fontSize: 7.5,
+    color: '#9CA3AF',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    lineHeight: 10,
+  },
+  transparencyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  transparencyCard: {
+    width: '48.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  transparencyIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  transparencyTitle: {
+    fontSize: 11,
+    color: '#111827',
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  transparencySubtitle: {
+    fontSize: 10,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
 
   faqHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 8, paddingHorizontal: 2 },
   faqCard: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8, overflow: 'hidden' },

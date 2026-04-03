@@ -45,11 +45,12 @@ export async function registerAndSyncExpoPushToken(userId: string) {
   if (status !== 'granted') return { ok: false as const, reason: 'permission_denied' as const };
 
   const projectId = getExpoProjectId();
-  // NOTE: For EAS builds, projectId is required. For local dev it may still work without,
-  // but we keep this explicit to avoid production surprises.
-  const tokenRes = await Notifications.getExpoPushTokenAsync(
-    projectId ? { projectId } : undefined as any
-  );
+  // Expo SDK 49+ requires projectId explicitly.
+  // If missing, skip token registration instead of calling with undefined (which logs a warning).
+  if (!projectId) {
+    return { ok: false as const, reason: 'missing_project_id' as const };
+  }
+  const tokenRes = await Notifications.getExpoPushTokenAsync({ projectId });
   const token = tokenRes.data;
   if (!token) return { ok: false as const, reason: 'no_token' as const };
 

@@ -17,7 +17,8 @@ async function pushToTeleCRM(data: Record<string, any>) {
       Name: data.name || 'CRM Lead',
       Phone: `+91${phone}`,
       LEADTAG: 'DELHILEAD',
-      LeadSource: 'CRM Enquiry',
+      LeadSource: 'delhi_service',
+      Source: 'delhi_service',
       LeadStatus: 'NEW',
       CreatedFrom: 'CRM',
       CreatedAt: new Date().toISOString(),
@@ -86,6 +87,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { phone_no, name, address, regdate, car_number, make, model, disposition, remark, dialer_id } = body;
+    const normalizedDisposition =
+      typeof disposition === 'string' ? disposition.replace(/[–—]/g, '-').trim() : null;
 
     if (!phone_no || !/^\d{10}$/.test(phone_no)) {
       return NextResponse.json({ error: 'Valid 10-digit phone number is required' }, { status: 400 });
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
       car_number: car_number || null,
       make: make || null,
       model: model || null,
-      disposition: disposition || null,
+      disposition: normalizedDisposition || null,
       remark: remark || null,
       dialer_id: dialer_id || null,
     };

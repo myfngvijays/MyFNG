@@ -18,6 +18,7 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
             </View>
             <TouchableOpacity
               style={s.referBtn}
+              activeOpacity={1}
               onPress={() =>
                 Share.share({
                   message:

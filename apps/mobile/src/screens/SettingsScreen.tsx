@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Dimensions,
   FlatList,
   Image,
   Linking,
@@ -88,7 +89,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [carSearchFocused, setCarSearchFocused] = useState(false);
   const carNumberRefs = useRef<Array<TextInput | null>>([]);
 
-  const [addresses, setAddresses] = useState<Array<{ id: string; label: string; value: string }>>([]);
+  const [addresses, setAddresses] = useState<Array<{ id: string; label: string; value: string; source: 'saved' | 'lead' }>>([]);
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [newAddrLabel, setNewAddrLabel] = useState<'Home' | 'Work' | 'Others'>('Home');
@@ -120,9 +121,23 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [cartServiceMode, setCartServiceMode] = useState<'pickup' | 'workshop'>('pickup');
   const [cartPaymentMode, setCartPaymentMode] = useState<'pay_now' | 'pay_later'>('pay_now');
   const [cartDate, setCartDate] = useState(() => new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const [cartTime, setCartTime] = useState(() => {
+    const next = new Date();
+    next.setHours(10, 0, 0, 0);
+    return next;
+  });
+  const [showCartDatePicker, setShowCartDatePicker] = useState(false);
+  const [showCartTimePicker, setShowCartTimePicker] = useState(false);
   const [cartCouponResult, setCartCouponResult] = useState<any>(null);
   const [cartCouponLoading, setCartCouponLoading] = useState(false);
   const [cartSelectedService, setCartSelectedService] = useState<{ name: string; price: number; items: string[] } | null>(null);
+  const [cartLeads, setCartLeads] = useState<any[]>([]);
+  const [cartSelectedLeadId, setCartSelectedLeadId] = useState<string | null>(null);
+  const [cartWorkshops, setCartWorkshops] = useState<any[]>([]);
+  const [cartWorkshopLoading, setCartWorkshopLoading] = useState(false);
+  const [cartSelectedWorkshopId, setCartSelectedWorkshopId] = useState<string | null>(null);
+  const [cartPickupAddressId, setCartPickupAddressId] = useState<string | null>(null);
+  const [cartBookingLoading, setCartBookingLoading] = useState(false);
   const [notifState, setNotifState] = useState({
     push: true,
     sms: true,
@@ -141,6 +156,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
     if (!selectedFaqCategory) return [];
     return SUPPORT_FAQ_CATEGORIES[selectedFaqCategory] || [];
   }, [selectedFaqCategory]);
+  const vehiclePagerRef = useRef<FlatList<any> | null>(null);
+  const screenWidth = Dimensions.get('window').width;
+  const vehicleCardWidth = useMemo(() => Math.max(280, screenWidth - 64), [screenWidth]);
+  const vehicleCardSnapInterval = useMemo(() => vehicleCardWidth + 10, [vehicleCardWidth]);
+  const addOnCardWidth = useMemo(() => Math.floor((screenWidth - 32 - 20) / 3), [screenWidth]);
 
   const toggleAddOn = (id: string) => {
     setSelectedAddOns((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -189,6 +209,22 @@ export default function SettingsScreen({ navigation, route }: Props) {
         year: 'numeric',
       }),
     [cartDate]
+  );
+  const formattedCartTime = useMemo(
+    () =>
+      cartTime.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    [cartTime]
+  );
+  const savedAddresses = useMemo(
+    () => addresses.filter((address) => address.source === 'saved'),
+    [addresses]
+  );
+  const selectedPickupAddress = useMemo(
+    () => savedAddresses.find((address) => address.id === cartPickupAddressId) || null,
+    [savedAddresses, cartPickupAddressId]
   );
 
   const applyCartCoupon = useCallback(async () => {
@@ -275,6 +311,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           id: String(a?.id || Date.now()),
           label: String(a?.label || a?.address_type || 'Address'),
           value: fullAddress || String(a?.address || '').trim() || 'Address not available',
+          source: 'saved' as const,
         };
       });
 
@@ -292,17 +329,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
           if (!fullAddress) return null;
           return {
             id: `lead-${String(lead?.id || idx)}`,
-            label: String(lead?.lead_number || 'Recent Service Address'),
+            label: 'Service Address',
             value: fullAddress,
+            source: 'lead' as const,
           };
         })
-        .filter(Boolean) as Array<{ id: string; label: string; value: string }>;
+        .filter(Boolean) as Array<{ id: string; label: string; value: string; source: 'saved' | 'lead' }>;
 
       const existingIds = new Set(mappedAddresses.map((a: { id: string }) => a.id));
       const uniqueLeadAddresses = mappedLeadAddresses.filter((a: { id: string }) => !existingIds.has(a.id));
       setAddresses([...mappedAddresses, ...uniqueLeadAddresses]);
       setVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
       setOrders(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []);
+      setCartLeads(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []);
       setWalletBalance(Number(walletRes?.wallet?.current_balance || 0));
       setReferralCode(String(referralRes?.code?.code || ''));
     } catch (_err) {
@@ -331,6 +370,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           setVehicles([]);
           setOrders([]);
           setAddresses([]);
+          setCartLeads([]);
           setShowAddAddress(false);
           setWalletBalance(0);
           setReferralCode('');
@@ -429,9 +469,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
     return found || allAssociatedVehicles[0] || primaryVehicle;
   }, [allAssociatedVehicles, selectedVehicleKey, primaryVehicle]);
 
-  const selectedVehicleImageUri = useMemo(() => {
-    const make = String(selectedVehicle?.make || '').trim().toLowerCase();
-    const modelFamily = String(selectedVehicle?.model || '')
+  const vehicleCarouselData = useMemo(() => {
+    if (allAssociatedVehicles.length > 0) return allAssociatedVehicles;
+    if (selectedVehicle) return [selectedVehicle];
+    return [];
+  }, [allAssociatedVehicles, selectedVehicle]);
+
+  const getVehicleImageUri = useCallback((vehicle: any) => {
+    const make = String(vehicle?.make || '').trim().toLowerCase();
+    const modelFamily = String(vehicle?.model || '')
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '-');
@@ -439,7 +485,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
       return 'https://cdn.imagin.studio/getimage?customer=img&make=tata&modelFamily=tigor&angle=23&width=400';
     }
     return `https://cdn.imagin.studio/getimage?customer=img&make=${encodeURIComponent(make)}&modelFamily=${encodeURIComponent(modelFamily)}&angle=23&width=400`;
-  }, [selectedVehicle]);
+  }, []);
+
+  const selectedVehicleImageUri = useMemo(() => getVehicleImageUri(selectedVehicle), [getVehicleImageUri, selectedVehicle]);
+  const activeVehicleIndex = useMemo(() => {
+    const idx = vehicleCarouselData.findIndex((vehicle, index) => {
+      const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
+      const key = plate || `vehicle-${index}`;
+      return key === selectedVehicleKey;
+    });
+    return idx >= 0 ? idx : 0;
+  }, [vehicleCarouselData, selectedVehicleKey]);
 
   const persistProfile = async (collapseEditor = true) => {
     try {
@@ -549,19 +605,79 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
+    const resumableStatuses = new Set(['NEW', 'PENDING', 'IN_PROGRESS', 'ASSIGNED', 'CONFIRMED', 'OPEN']);
+    const resumableLead = (cartLeads || []).find((lead: any) => resumableStatuses.has(String(lead?.status || '').toUpperCase()));
     const latestOrder = orders[0];
-    const serviceName = String(latestOrder?.service_display || latestOrder?.service_type || 'Periodic Service Package').trim();
-    const servicePriceRaw = Number(latestOrder?.amount_display || 2999);
+    const serviceName = String(
+      resumableLead?.plan_name ||
+        resumableLead?.package_name ||
+        resumableLead?.service_type ||
+        latestOrder?.plan_name ||
+        latestOrder?.package_name ||
+        latestOrder?.service_display ||
+        latestOrder?.service_type ||
+        'Periodic Service Package'
+    ).trim();
+    const servicePriceRaw = Number(resumableLead?.estimated_amount || latestOrder?.amount_display || 2999);
     const servicePrice = Number.isFinite(servicePriceRaw) && servicePriceRaw > 0 ? Math.round(servicePriceRaw) : 2999;
     const defaultChecklist = serviceName.toLowerCase().includes('periodic')
       ? ['Engine Oil Change', 'Oil Filter Replacement', 'General Inspection']
       : ['Service Checklist', 'Basic Diagnostics', 'General Inspection'];
+    setCartSelectedLeadId(resumableLead?.id ? String(resumableLead.id) : null);
     setCartSelectedService({
       name: serviceName,
       price: servicePrice,
       items: defaultChecklist,
     });
-  }, [activeSubPage, orders]);
+  }, [activeSubPage, orders, cartLeads]);
+
+  useEffect(() => {
+    if (!savedAddresses.length) {
+      setCartPickupAddressId(null);
+      return;
+    }
+    const currentExists = savedAddresses.some((address) => address.id === cartPickupAddressId);
+    if (!currentExists) {
+      setCartPickupAddressId(savedAddresses[0].id);
+    }
+  }, [savedAddresses, cartPickupAddressId]);
+
+  const fetchCartWorkshops = useCallback(async () => {
+    setCartWorkshopLoading(true);
+    try {
+      const selectedAddress = savedAddresses.find((address) => address.id === cartPickupAddressId);
+      const searchCity = String(
+        selectedAddress?.value.split(',').map((part) => part.trim()).find((part) => /^[A-Za-z ]+$/.test(part)) ||
+        ''
+      ).trim();
+      const query = supabase
+        .from('workshops')
+        .select('id,name,address,city,state,pincode,is_active,is_verified')
+        .eq('is_active', true)
+        .eq('is_verified', true)
+        .order('name')
+        .limit(100);
+      const { data, error } = searchCity
+        ? await query.ilike('city', `%${searchCity}%`)
+        : await query;
+      if (error) throw error;
+      const nextWorkshops = Array.isArray(data) ? data : [];
+      setCartWorkshops(nextWorkshops);
+      if (nextWorkshops.length > 0 && !cartSelectedWorkshopId) {
+        setCartSelectedWorkshopId(String(nextWorkshops[0].id));
+      }
+    } catch (_e) {
+      setCartWorkshops([]);
+    } finally {
+      setCartWorkshopLoading(false);
+    }
+  }, [savedAddresses, cartPickupAddressId, cartSelectedWorkshopId]);
+
+  useEffect(() => {
+    if (activeSubPage !== 'Cart') return;
+    if (cartServiceMode !== 'workshop') return;
+    fetchCartWorkshops();
+  }, [activeSubPage, cartServiceMode, fetchCartWorkshops]);
 
   useEffect(() => {
     if (activeSubPage !== 'Help & Support') return;
@@ -871,6 +987,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setSaveAddressLoading(true);
 
       if (editingAddressId) {
+        if (String(editingAddressId).startsWith('lead-')) {
+          throw new Error('Only saved addresses can be edited.');
+        }
         try {
           await apiFetch('/api/customer/addresses', {
             method: 'PATCH',
@@ -878,6 +997,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             body: JSON.stringify({ id: editingAddressId, ...addressPayload }),
           });
         } catch (_apiErr: any) {
+          console.warn('[SettingsScreen] address PATCH failed, attempting direct update fallback', _apiErr?.message || _apiErr);
           if (!customerId) throw _apiErr;
           const { error: sbErr } = await supabase
             .from('customer_addresses')
@@ -894,6 +1014,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             body: JSON.stringify(addressPayload),
           });
         } catch (_apiErr: any) {
+          console.warn('[SettingsScreen] address POST failed, attempting direct insert fallback', _apiErr?.message || _apiErr);
           if (!customerId) throw _apiErr;
           const { error: sbErr } = await supabase
             .from('customer_addresses')
@@ -991,6 +1112,121 @@ export default function SettingsScreen({ navigation, route }: Props) {
     setRegDate(formatDate(selectedDate));
   };
 
+  const onCartDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowCartDatePicker(false);
+    if (!selectedDate) return;
+    setCartDate(selectedDate);
+  };
+
+  const onCartTimeChange = (_event: DateTimePickerEvent, selectedTime?: Date) => {
+    if (Platform.OS === 'android') setShowCartTimePicker(false);
+    if (!selectedTime) return;
+    const next = new Date(cartTime);
+    next.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+    setCartTime(next);
+  };
+
+  const resumableLeads = useMemo(() => {
+    const statusPriority = ['NEW', 'PENDING', 'IN_PROGRESS', 'ASSIGNED', 'CONFIRMED', 'OPEN'];
+    return (cartLeads || [])
+      .filter((lead: any) => statusPriority.includes(String(lead?.status || '').toUpperCase()))
+      .sort((a: any, b: any) => {
+        const ai = statusPriority.indexOf(String(a?.status || '').toUpperCase());
+        const bi = statusPriority.indexOf(String(b?.status || '').toUpperCase());
+        if (ai !== bi) return ai - bi;
+        return new Date(String(b?.created_at || 0)).getTime() - new Date(String(a?.created_at || 0)).getTime();
+      });
+  }, [cartLeads]);
+
+  const selectedCartWorkshop = useMemo(
+    () => cartWorkshops.find((workshop: any) => String(workshop.id) === cartSelectedWorkshopId) || null,
+    [cartWorkshops, cartSelectedWorkshopId]
+  );
+
+  const handleProceedToBook = useCallback(async () => {
+    if (!profileForm.phone.trim()) {
+      Alert.alert('Phone required', 'Please add your phone number in profile.');
+      return;
+    }
+    if (!selectedVehicle) {
+      Alert.alert('Vehicle required', 'Please add/select your vehicle before booking.');
+      return;
+    }
+    if (cartServiceMode === 'pickup' && !selectedPickupAddress) {
+      Alert.alert('Address required', 'Please select a pickup address.');
+      return;
+    }
+    if (cartServiceMode === 'workshop' && !selectedCartWorkshop) {
+      Alert.alert('Workshop required', 'Please select a workshop.');
+      return;
+    }
+
+    setCartBookingLoading(true);
+    try {
+      const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+      const payload = {
+        lead: {
+          lead_number: leadNumber,
+          created_from: 'MOBILE_APP',
+          status: 'NEW',
+          lead_type: 'CAR_SERVICE',
+          lead_source: 'App Booking',
+          customer_name: profileForm.name || null,
+          customer_phone: profileForm.phone.trim(),
+          vehicle_number: String(selectedVehicle?.vehicle_number || '').trim() || null,
+          vehicle_make: selectedVehicle?.make || null,
+          vehicle_model: selectedVehicle?.model || null,
+          service_type: cartSelectedService?.name || 'CAR_SERVICE',
+          pickup_required: cartServiceMode === 'pickup',
+          workshop_id: cartServiceMode === 'workshop' ? selectedCartWorkshop?.id || null : null,
+          pickup_address: cartServiceMode === 'pickup' ? selectedPickupAddress?.value || null : null,
+          address:
+            cartServiceMode === 'pickup'
+              ? selectedPickupAddress?.value || null
+              : selectedCartWorkshop?.address || null,
+          preferred_slot_start:
+            cartServiceMode === 'pickup'
+              ? `${cartDate.getFullYear()}-${String(cartDate.getMonth() + 1).padStart(2, '0')}-${String(cartDate.getDate()).padStart(2, '0')}T${String(cartTime.getHours()).padStart(2, '0')}:${String(cartTime.getMinutes()).padStart(2, '0')}:00`
+              : null,
+          estimated_amount: finalAmount > 0 ? finalAmount : subtotal,
+          payment_mode: cartPaymentMode,
+          payment_status: cartPaymentMode === 'pay_now' ? 'PENDING' : 'PENDING_AT_SERVICE',
+          coupon_code: cartCouponResult?.coupon?.code || null,
+          discount_amount: Number(cartCouponResult?.discount_amount || 0),
+        },
+      };
+      const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+      Alert.alert('Booking created', `Lead: ${json?.lead?.lead_number || leadNumber}`);
+      await hydrateCustomerData();
+      setActiveSubPage('Order History');
+    } catch (error: any) {
+      Alert.alert('Booking failed', error?.message || 'Could not create booking.');
+    } finally {
+      setCartBookingLoading(false);
+    }
+  }, [
+    profileForm.phone,
+    profileForm.name,
+    selectedVehicle,
+    cartServiceMode,
+    selectedPickupAddress,
+    selectedCartWorkshop,
+    cartSelectedService,
+    cartDate,
+    cartTime,
+    finalAmount,
+    subtotal,
+    cartPaymentMode,
+    cartCouponResult,
+    hydrateCustomerData,
+  ]);
+
   const onPressAddVehicle = () => {
     if (isLoggedIn) {
       setVehicleEntryOnly(true);
@@ -1069,51 +1305,77 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
       <View style={styles.vehicleCard}>
         <Text style={styles.cardHeading}>Your Vehicles</Text>
-        <View style={styles.vehicleRow}>
-          <View style={{ flex: 1 }}>
-            <View style={styles.numberPlateBadge}>
-              <Text style={styles.numberPlateText}>
-                {selectedVehicle?.vehicle_number ? String(selectedVehicle.vehicle_number).toUpperCase() : 'NO VEHICLE'}
-              </Text>
-            </View>
-            <Text style={styles.vehicleName}>
-              {[selectedVehicle?.make, selectedVehicle?.model].filter(Boolean).join(' ') || 'Add your first vehicle'}
-            </Text>
-            <View style={styles.vehicleTags}>
-              <View style={styles.vehicleTag}>
-                <Text style={styles.vehicleTagText}>{String(selectedVehicle?.fuel_type || 'N/A').toUpperCase()}</Text>
-              </View>
-              <Text style={styles.vehicleYear}>{selectedVehicle?.year ? String(selectedVehicle.year) : '-'}</Text>
-            </View>
-          </View>
-          <Image
-            source={{ uri: selectedVehicleImageUri }}
-            style={styles.vehicleImage}
-            resizeMode="contain"
+        {vehicleCarouselData.length > 0 ? (
+          <FlatList
+            ref={vehiclePagerRef}
+            data={vehicleCarouselData}
+            horizontal
+            pagingEnabled
+            decelerationRate="fast"
+            snapToInterval={vehicleCardSnapInterval}
+            snapToAlignment="start"
+            disableIntervalMomentum
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.vehiclePagerContent}
+            keyExtractor={(item, index) => {
+              const plate = String(item?.vehicle_number || '').trim().toUpperCase();
+              return plate || `vehicle-${index}`;
+            }}
+            renderItem={({ item, index }) => {
+              const plate = String(item?.vehicle_number || '').trim().toUpperCase();
+              return (
+                <View style={[styles.vehicleSwipeCard, { width: vehicleCardWidth }]}>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.numberPlateBadge}>
+                      <Text style={styles.numberPlateText}>{plate || `VEHICLE ${index + 1}`}</Text>
+                    </View>
+                    <Text style={styles.vehicleName}>
+                      {[item?.make, item?.model].filter(Boolean).join(' ') || 'Add your first vehicle'}
+                    </Text>
+                    <View style={styles.vehicleTags}>
+                      <View style={styles.vehicleTag}>
+                        <Text style={styles.vehicleTagText}>{String(item?.fuel_type || 'N/A').toUpperCase()}</Text>
+                      </View>
+                      <Text style={styles.vehicleYear}>{item?.year ? String(item.year) : '-'}</Text>
+                    </View>
+                  </View>
+                  <Image
+                    source={{ uri: getVehicleImageUri(item) }}
+                    style={styles.vehicleImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              );
+            }}
+            onMomentumScrollEnd={(event) => {
+              const offset = event.nativeEvent.contentOffset.x;
+              const index = Math.round(offset / vehicleCardSnapInterval);
+              const vehicle = vehicleCarouselData[index];
+              if (!vehicle) return;
+              const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
+              const key = plate || `vehicle-${index}`;
+              setSelectedVehicleKey(key);
+            }}
           />
-        </View>
-        {allAssociatedVehicles.length > 1 ? (
-          <View style={styles.vehicleListWrap}>
-            <Text style={styles.vehicleListTitle}>All Vehicles ({allAssociatedVehicles.length})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.vehicleListRow}>
-              {allAssociatedVehicles.map((v, idx) => {
-                const label = String(v?.vehicle_number || '').trim().toUpperCase() || `Vehicle ${idx + 1}`;
-                const model = [v?.make, v?.model].filter(Boolean).join(' ') || 'Model not available';
-                const key = label || `vehicle-${idx}`;
-                const isActive = key === selectedVehicleKey;
-                return (
-                  <TouchableOpacity
-                    key={`${label}-${idx}`}
-                    style={[styles.vehicleMiniCard, isActive ? styles.vehicleMiniCardActive : null]}
-                    onPress={() => setSelectedVehicleKey(key)}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.vehicleMiniPlate}>{label}</Text>
-                    <Text style={styles.vehicleMiniModel} numberOfLines={1}>{model}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+        ) : (
+          <View style={styles.vehicleSwipeCard}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.numberPlateBadge}>
+                <Text style={styles.numberPlateText}>NO VEHICLE</Text>
+              </View>
+              <Text style={styles.vehicleName}>Add your first vehicle</Text>
+            </View>
+            <Image source={{ uri: selectedVehicleImageUri }} style={styles.vehicleImage} resizeMode="contain" />
+          </View>
+        )}
+        {vehicleCarouselData.length > 1 ? (
+          <View style={styles.vehicleDotsRow}>
+            {vehicleCarouselData.map((_, index) => (
+              <View
+                key={`vehicle-dot-${index}`}
+                style={[styles.vehicleDot, activeVehicleIndex === index ? styles.vehicleDotActive : null]}
+              />
+            ))}
           </View>
         ) : null}
         <TouchableOpacity style={styles.addVehicleBtn} onPress={onPressAddVehicle} activeOpacity={0.85}>
@@ -1395,47 +1657,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </>
             ) : (
               <>
-                {addresses.length === 0 ? (
-                  <Text style={styles.rowSub}>No saved addresses found.</Text>
-                ) : addresses.map((a) => {
-                  const isLead = String(a.id).startsWith('lead-');
-                  return (
-                    <View key={a.id} style={styles.addressCard}>
-                      <View style={styles.addressIconWrap}>
-                        <Ionicons name="location" size={16} color="#FFFFFF" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.addressLabel}>{a.label}</Text>
-                        <Text style={styles.addressText}>{a.value}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity
-                          style={styles.addressEditBtn}
-                          onPress={() => {
-                            const parts = a.value.split(',').map((p) => p.trim());
-                            if (isLead) setEditingAddressId(null);
-                            else setEditingAddressId(a.id);
-                            setNewAddrLabel(a.label === 'Work' ? 'Work' : a.label === 'Others' ? 'Others' : 'Home');
-                            setNewAddrLine1(parts[0] || '');
-                            setNewAddrLine2(parts[1] || '');
-                            setNewAddrArea(parts[2] || '');
-                            setNewAddrCity(parts[3] || '');
-                            setNewAddrPincode(parts[parts.length - 1]?.match(/^\d{6}$/) ? parts[parts.length - 1] : '');
-                            setShowAddAddress(true);
-                          }}
-                        >
-                          <Ionicons name="create-outline" size={16} color={COLORS.primary} />
-                        </TouchableOpacity>
-                        {!isLead ? (
-                          <TouchableOpacity style={styles.addressDeleteBtn} onPress={() => handleDeleteAddress(a.id)}>
-                            <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    </View>
-                  );
-                })}
-
                 {showAddAddress ? (
                   <View style={styles.addressFormCard}>
                     <TouchableOpacity style={styles.addressDetectBtn} onPress={handleFetchCurrentLocation}>
@@ -1516,6 +1737,49 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </TouchableOpacity>
                   </View>
                 ) : null}
+
+                {addresses.length === 0 ? (
+                  <Text style={styles.rowSub}>No saved addresses found.</Text>
+                ) : addresses.map((a) => {
+                  const isLead = a.source === 'lead' || String(a.id).startsWith('lead-');
+                  return (
+                    <View key={a.id} style={styles.addressCard}>
+                      <View style={styles.addressIconWrap}>
+                        <Ionicons name="location" size={16} color="#FFFFFF" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.addressLabel}>{a.label}</Text>
+                        <Text style={styles.addressText}>{a.value}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {!isLead ? (
+                          <TouchableOpacity
+                            style={styles.addressEditBtn}
+                            onPress={() => {
+                              const parts = a.value.split(',').map((p) => p.trim());
+                              setEditingAddressId(a.id);
+                              setNewAddrLabel(a.label === 'Work' ? 'Work' : a.label === 'Others' ? 'Others' : 'Home');
+                              setNewAddrLine1(parts[0] || '');
+                              setNewAddrLine2(parts[1] || '');
+                              setNewAddrArea(parts[2] || '');
+                              setNewAddrCity(parts[3] || '');
+                              setNewAddrPincode(parts[parts.length - 1]?.match(/^\d{6}$/) ? parts[parts.length - 1] : '');
+                              setShowAddAddress(true);
+                            }}
+                          >
+                            <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+                          </TouchableOpacity>
+                        ) : null}
+                        {!isLead ? (
+                          <TouchableOpacity style={styles.addressDeleteBtn} onPress={() => handleDeleteAddress(a.id)}>
+                            <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })}
+
               </>
             )}
           </View>
@@ -1841,6 +2105,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </Text>
               <TouchableOpacity
                 style={styles.refInviteBtn}
+                activeOpacity={1}
                 onPress={() => Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹500 off your first service. Download now: https://myfng.in` })}
               >
                 <Text style={styles.refInviteBtnText}>Invite Friends</Text>
@@ -1854,6 +2119,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               <View style={styles.refCodeActions}>
                 <TouchableOpacity
                   style={styles.refCopyBtn}
+                  activeOpacity={1}
                   onPress={async () => {
                     if (referralCode) {
                       await Clipboard.setStringAsync(referralCode);
@@ -1866,6 +2132,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.refShareBtn}
+                  activeOpacity={1}
                   onPress={() => Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹500 off your first service. Download now: https://myfng.in` })}
                 >
                   <Ionicons name="share-social-outline" size={14} color="#FFFFFF" />
@@ -2182,7 +2449,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             <View style={cstyles.sectionCard}>
               <View style={cstyles.vehicleRow}>
                 <View style={cstyles.vehicleIconWrap}>
-                  <Ionicons name="car-sport" size={18} color="#1D4ED8" />
+                  <Image source={{ uri: selectedVehicleImageUri }} style={cstyles.vehicleThumb} resizeMode="contain" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={cstyles.vehicleName}>
@@ -2205,6 +2472,37 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
             <Text style={cstyles.sectionHeading}>SELECTED SERVICES</Text>
             <View style={cstyles.sectionCard}>
+              {resumableLeads.length > 0 ? (
+                <View style={cstyles.resumeWrap}>
+                  <Text style={cstyles.resumeTitle}>Resume Booking</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={cstyles.resumeRow}>
+                    {resumableLeads.slice(0, 6).map((lead: any) => {
+                      const active = cartSelectedLeadId === String(lead.id);
+                      const planName = String(lead?.plan_name || lead?.package_name || lead?.service_type || 'Service').trim();
+                      return (
+                        <TouchableOpacity
+                          key={String(lead.id)}
+                          style={[cstyles.resumeCard, active ? cstyles.resumeCardActive : null]}
+                          onPress={() => {
+                            setCartSelectedLeadId(String(lead.id));
+                            setCartSelectedService((prev) => ({
+                              name: planName || prev?.name || 'Periodic Service Package',
+                              price: Number(lead?.estimated_amount || prev?.price || 2999),
+                              items: prev?.items || ['Service Checklist', 'Basic Diagnostics', 'General Inspection'],
+                            }));
+                          }}
+                        >
+                          <Text style={cstyles.resumeLeadNumber}>{String(lead?.lead_number || '').toUpperCase() || 'BOOKING'}</Text>
+                          <Text style={cstyles.resumePlanName} numberOfLines={1}>{planName}</Text>
+                          <Text style={cstyles.resumeLeadMeta} numberOfLines={1}>
+                            {String(lead?.status || 'NEW').toUpperCase()} • ₹{Math.round(Number(lead?.estimated_amount || 0)).toLocaleString('en-IN')}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : null}
               <View style={cstyles.serviceHeaderRow}>
                 <Text style={cstyles.serviceTitle}>{cartSelectedService?.name || 'Periodic Service Package'}</Text>
                 <Text style={cstyles.servicePrice}>₹{Math.round(Number(cartSelectedService?.price || 2999)).toLocaleString('en-IN')}</Text>
@@ -2229,24 +2527,28 @@ export default function SettingsScreen({ navigation, route }: Props) {
             </View>
 
             <Text style={cstyles.sectionHeading}>ADD-ON SERVICES</Text>
-            <View style={cstyles.addOnGrid}>
-              {recommendedAddOns.map((item: any) => {
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={recommendedAddOns}
+              keyExtractor={(item: any) => String(item.id)}
+              contentContainerStyle={cstyles.addOnRow}
+              renderItem={({ item }: { item: any }) => {
                 const selected = selectedAddOns.includes(item.id);
                 return (
                   <TouchableOpacity
-                    key={item.id}
-                    style={[cstyles.addOnCard, selected && cstyles.addOnCardActive]}
+                    style={[cstyles.addOnCard, { width: addOnCardWidth }, selected && cstyles.addOnCardActive]}
                     onPress={() => toggleAddOn(item.id)}
                   >
                     <View style={cstyles.addOnIconWrap}>
-                      <Ionicons name={(item.icon as any) || 'construct'} size={16} color="#374151" />
+                      <Ionicons name={(item.icon as any) || 'construct'} size={14} color="#374151" />
                     </View>
-                    <Text style={cstyles.addOnName}>{item.name}</Text>
+                    <Text style={cstyles.addOnName} numberOfLines={2}>{item.name}</Text>
                     <Text style={cstyles.addOnPrice}>₹{Number(item.price || 0).toLocaleString('en-IN')}</Text>
                     <View style={cstyles.addOnActionRow}>
                       <Ionicons
                         name={selected ? 'checkmark-circle' : 'add-circle-outline'}
-                        size={14}
+                        size={12}
                         color={selected ? '#1D4ED8' : '#9CA3AF'}
                       />
                       <Text style={[cstyles.addOnActionText, selected && cstyles.addOnActionTextActive]}>
@@ -2255,8 +2557,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </View>
                   </TouchableOpacity>
                 );
-              })}
-            </View>
+              }}
+            />
 
             <View style={cstyles.sectionCard}>
               <Text style={cstyles.subHeading}>APPLY COUPON</Text>
@@ -2310,18 +2612,125 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            <View style={cstyles.sectionCard}>
-              <View style={cstyles.dateRow}>
-                <Ionicons name="calendar-outline" size={20} color="#9CA3AF" />
-                <View style={{ flex: 1 }}>
-                  <Text style={cstyles.dateValue}>{formattedCartDate}</Text>
-                  <Text style={cstyles.dateSub}>10:00 AM</Text>
+            {cartServiceMode === 'pickup' ? (
+              <View style={cstyles.sectionCard}>
+                <View style={cstyles.dateRow}>
+                  <Ionicons name="calendar-outline" size={20} color="#9CA3AF" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={cstyles.dateValue}>{formattedCartDate}</Text>
+                    <Text style={cstyles.dateSub}>{formattedCartTime}</Text>
+                  </View>
+                  <View style={cstyles.dateActionRow}>
+                    <TouchableOpacity onPress={() => setShowCartDatePicker(true)}>
+                      <Text style={cstyles.changeLink}>Date</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setShowCartTimePicker(true)}>
+                      <Text style={cstyles.changeLink}>Time</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <TouchableOpacity onPress={() => setCartDate((prev) => new Date(prev.getTime() + 24 * 60 * 60 * 1000))}>
-                  <Text style={cstyles.changeLink}>Change</Text>
-                </TouchableOpacity>
+                {showCartDatePicker ? (
+                  <View style={styles.datePickerWrap}>
+                    <DateTimePicker
+                      value={cartDate}
+                      mode="date"
+                      minimumDate={new Date()}
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={onCartDateChange}
+                    />
+                    {Platform.OS === 'ios' ? (
+                      <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowCartDatePicker(false)}>
+                        <Text style={styles.datePickerDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
+                {showCartTimePicker ? (
+                  <View style={[styles.datePickerWrap, { marginTop: 8 }]}>
+                    <DateTimePicker
+                      value={cartTime}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={onCartTimeChange}
+                    />
+                    {Platform.OS === 'ios' ? (
+                      <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowCartTimePicker(false)}>
+                        <Text style={styles.datePickerDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
-            </View>
+            ) : (
+              <View style={cstyles.sectionCard}>
+                <View style={cstyles.workshopHeader}>
+                  <Text style={cstyles.workshopTitle}>Nearest Workshops</Text>
+                  <TouchableOpacity onPress={fetchCartWorkshops}>
+                    <Text style={cstyles.changeLink}>{cartWorkshopLoading ? 'Loading...' : 'Refresh'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {cartWorkshops.length === 0 ? (
+                  <Text style={cstyles.workshopEmpty}>No workshop found nearby. Try again.</Text>
+                ) : (
+                  <View style={cstyles.workshopList}>
+                    {cartWorkshops.slice(0, 6).map((workshop: any) => {
+                      const active = String(workshop.id) === cartSelectedWorkshopId;
+                      return (
+                        <TouchableOpacity
+                          key={String(workshop.id)}
+                          style={[cstyles.workshopCard, active ? cstyles.workshopCardActive : null]}
+                          onPress={() => setCartSelectedWorkshopId(String(workshop.id))}
+                        >
+                          <Text style={cstyles.workshopName}>{workshop.name || 'Workshop'}</Text>
+                          <Text style={cstyles.workshopAddress} numberOfLines={2}>
+                            {[workshop.address, workshop.city].filter(Boolean).join(', ') || 'Address unavailable'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {cartServiceMode === 'pickup' ? (
+              <>
+                <Text style={cstyles.sectionHeading}>PICKUP ADDRESS</Text>
+                <View style={cstyles.sectionCard}>
+                  {savedAddresses.length > 0 ? (
+                    <View style={cstyles.pickupAddressList}>
+                      {savedAddresses.map((address) => {
+                        const active = cartPickupAddressId === address.id;
+                        return (
+                          <TouchableOpacity
+                            key={address.id}
+                            style={[cstyles.pickupAddressCard, active ? cstyles.pickupAddressCardActive : null]}
+                            onPress={() => setCartPickupAddressId(address.id)}
+                          >
+                            <Text style={cstyles.pickupAddressLabel}>{address.label}</Text>
+                            <Text style={cstyles.pickupAddressValue} numberOfLines={2}>{address.value}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <View style={cstyles.pickupEmptyWrap}>
+                      <Text style={cstyles.workshopEmpty}>No saved pickup address found.</Text>
+                      <TouchableOpacity
+                        style={cstyles.addPickupBtn}
+                        onPress={() => {
+                          setVehicleEntryOnly(false);
+                          setActiveSubPage('Your Addresses');
+                          setShowAddAddress(true);
+                        }}
+                      >
+                        <Text style={cstyles.addPickupBtnText}>Add New Address</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </>
+            ) : null}
 
             <Text style={cstyles.sectionHeading}>PAYMENT MODE</Text>
             <View style={cstyles.modeRow}>
@@ -2376,8 +2785,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
             </View>
 
-            <TouchableOpacity style={cstyles.bookNowBtn}>
-              <Text style={cstyles.bookNowBtnText}>Proceed to Book</Text>
+            <TouchableOpacity style={cstyles.bookNowBtn} onPress={handleProceedToBook} disabled={cartBookingLoading}>
+              <Text style={cstyles.bookNowBtnText}>{cartBookingLoading ? 'Booking...' : 'Proceed to Book'}</Text>
             </TouchableOpacity>
           </View>
         );
@@ -2741,7 +3150,11 @@ const styles = StyleSheet.create({
   iconCircleGhost: { width: 36, height: 36 },
   vehicleCard: { backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB', padding: 16 },
   cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
-  vehicleRow: { flexDirection: 'row', alignItems: 'center' },
+  vehiclePagerContent: { paddingRight: 10 },
+  vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F8FBFF', paddingHorizontal: 12, paddingVertical: 10, marginRight: 10 },
+  vehicleDotsRow: { marginTop: 10, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  vehicleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#D1D5DB' },
+  vehicleDotActive: { width: 16, backgroundColor: COLORS.primary },
   numberPlateBadge: { backgroundColor: '#1F2937', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 8 },
   numberPlateText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   vehicleName: { fontSize: 18, fontWeight: '800', color: '#111827' },
@@ -2749,17 +3162,10 @@ const styles = StyleSheet.create({
   vehicleTag: { backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   vehicleTagText: { fontSize: 9, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleYear: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
-  vehicleImage: { width: 130, height: 90, borderRadius: 12 },
-  vehicleListWrap: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 10 },
-  vehicleListTitle: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8 },
-  vehicleListRow: { paddingTop: 8, gap: 8, paddingRight: 8 },
-  vehicleMiniCard: { minWidth: 148, maxWidth: 188, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 8 },
-  vehicleMiniCardActive: { borderColor: COLORS.primary, backgroundColor: '#EFF6FF' },
-  vehicleMiniPlate: { fontSize: 10, fontWeight: '800', color: '#111827', textTransform: 'uppercase' },
-  vehicleMiniModel: { marginTop: 4, fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  vehicleImage: { width: 200, height: 140, borderRadius: 12 },
   addVehicleBtn: { marginTop: 12, borderRadius: 12, backgroundColor: COLORS.primary, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  vehicleImgPlaceholder: { width: 130, height: 90, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   gridCard: { width: '48.8%', backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -3081,7 +3487,8 @@ const cstyles = StyleSheet.create({
   },
 
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  vehicleIconWrap: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+  vehicleIconWrap: { width: 60, height: 42, borderRadius: 10, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  vehicleThumb: { width: 58, height: 40 },
   vehicleName: { fontSize: 18, fontWeight: '800', color: '#111827' },
   vehicleMeta: { marginTop: 2, fontSize: 11, fontWeight: '600', color: '#6B7280' },
   changeChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#EFF6FF' },
@@ -3098,21 +3505,28 @@ const cstyles = StyleSheet.create({
   editBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', minHeight: 36 },
   editBtnText: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
 
-  addOnGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  resumeWrap: { marginBottom: 12 },
+  resumeTitle: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
+  resumeRow: { gap: 8, paddingRight: 8 },
+  resumeCard: { width: 168, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', padding: 10 },
+  resumeCardActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
+  resumeLeadNumber: { fontSize: 10, fontWeight: '800', color: '#6B7280' },
+  resumePlanName: { marginTop: 4, fontSize: 12, fontWeight: '800', color: '#111827' },
+  resumeLeadMeta: { marginTop: 2, fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  addOnRow: { paddingRight: 8, gap: 8 },
   addOnCard: {
-    width: '48.2%',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 12,
+    padding: 9,
   },
   addOnCardActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
-  addOnIconWrap: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  addOnName: { minHeight: 36, fontSize: 13, fontWeight: '800', color: '#1F2937' },
-  addOnPrice: { marginTop: 2, fontSize: 16, fontWeight: '900', color: '#1D4ED8' },
+  addOnIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  addOnName: { minHeight: 30, fontSize: 11, fontWeight: '800', color: '#1F2937' },
+  addOnPrice: { marginTop: 2, fontSize: 13, fontWeight: '900', color: '#1D4ED8' },
   addOnActionRow: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addOnActionText: { fontSize: 11, fontWeight: '700', color: '#9CA3AF' },
+  addOnActionText: { fontSize: 10, fontWeight: '700', color: '#9CA3AF' },
   addOnActionTextActive: { color: '#1D4ED8' },
 
   couponRow: { flexDirection: 'row', gap: 8 },
@@ -3131,9 +3545,26 @@ const cstyles = StyleSheet.create({
   modeTextActive: { color: '#1D4ED8' },
 
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dateActionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dateValue: { fontSize: 22, fontWeight: '800', color: '#111827' },
   dateSub: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
   changeLink: { fontSize: 12, fontWeight: '800', color: '#1D4ED8' },
+  workshopHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  workshopTitle: { fontSize: 14, fontWeight: '800', color: '#111827' },
+  workshopEmpty: { marginTop: 8, fontSize: 12, color: '#6B7280', fontWeight: '500' },
+  workshopList: { marginTop: 10, gap: 8 },
+  workshopCard: { borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#FFFFFF' },
+  workshopCardActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
+  workshopName: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  workshopAddress: { marginTop: 2, fontSize: 11, fontWeight: '500', color: '#6B7280' },
+  pickupAddressList: { gap: 8 },
+  pickupAddressCard: { borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 9, backgroundColor: '#FFFFFF' },
+  pickupAddressCardActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
+  pickupAddressLabel: { fontSize: 11, fontWeight: '800', color: '#374151', textTransform: 'uppercase' },
+  pickupAddressValue: { marginTop: 3, fontSize: 12, fontWeight: '500', color: '#4B5563' },
+  pickupEmptyWrap: { alignItems: 'flex-start' },
+  addPickupBtn: { marginTop: 10, borderRadius: 10, backgroundColor: '#1D4ED8', paddingHorizontal: 12, paddingVertical: 8 },
+  addPickupBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
 
   summaryTitle: { fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 12 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },

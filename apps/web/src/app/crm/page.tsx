@@ -324,9 +324,9 @@ export default function CRMPage() {
                     className={`input pl-10 appearance-none bg-white ${errors.disposition ? 'border-red-500 focus:ring-red-500' : ''}`}
                   >
                     <option value="">Select Disposition</option>
-                    <option value="Interested – Hot">Interested – Hot (Today/Tomorrow)</option>
-                    <option value="Interested – Warm">Interested – Warm (3–7 Days)</option>
-                    <option value="Interested – Cold">Interested – Cold (Within Month)</option>
+                    <option value="Interested - Hot">Interested - Hot (Today/Tomorrow)</option>
+                    <option value="Interested - Warm">Interested - Warm (3-7 Days)</option>
+                    <option value="Interested - Cold">Interested - Cold (Within Month)</option>
                   </select>
                 </div>
                 {errors.disposition && <p className="text-red-500 text-xs mt-1">{errors.disposition}</p>}

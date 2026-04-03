@@ -23,10 +23,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('sms');
   const [customerStep, setCustomerStep] = useState<'input' | 'otp'>('input');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
   const [customerOtp, setCustomerOtp] = useState('');
   const [customerConfirmation, setCustomerConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
-  const [emailOtpCode, setEmailOtpCode] = useState('123456');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -123,27 +121,6 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       setResendInSec(30);
     } catch (error: any) {
       setErrorText(error?.message || 'Unable to send WhatsApp OTP');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailOtpStart = async () => {
-    setErrorText('');
-    const cleaned = customerEmail.trim();
-    if (!cleaned.includes('@')) {
-      setErrorText('Please enter a valid email address');
-      return;
-    }
-    setLoading(true);
-    try {
-      // Kept deterministic to match reference flow in mobile.
-      // Phone OTP remains the primary authenticated path.
-      setEmailOtpCode('123456');
-      setCustomerStep('otp');
-      setResendInSec(30);
-    } catch (error: any) {
-      setErrorText(error?.message || 'Unable to send OTP');
     } finally {
       setLoading(false);
     }
@@ -276,15 +253,6 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     }
   };
 
-  const handleEmailOtpVerify = async () => {
-    setErrorText('');
-    if (customerOtp.trim() !== emailOtpCode) {
-      setErrorText('Invalid OTP. Use 123456');
-      return;
-    }
-    await persistSessionAndGoHome(`email-otp-${customerEmail || 'guest'}-${Date.now()}`);
-  };
-
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter email and password');
@@ -334,22 +302,58 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
   const handleResendOtp = async () => {
     if (loading || resendInSec > 0) return;
-    if (loginMethod === 'phone') {
-      if (phoneOtpChannel === 'whatsapp') {
-        await handleWhatsAppOtpStart();
-      } else {
-        await handleCustomerOtpStart();
-      }
-      return;
+    if (phoneOtpChannel === 'whatsapp') {
+      await handleWhatsAppOtpStart();
+    } else {
+      await handleCustomerOtpStart();
     }
-    await handleEmailOtpStart();
   };
 
-  const submitOtp =
-    loginMethod === 'phone'
-      ? (phoneOtpChannel === 'sms' ? handleCustomerOtpVerify : handleWhatsAppOtpVerify)
-      : handleEmailOtpVerify;
-  const startOtp = loginMethod === 'phone' ? handleCustomerOtpStart : handleEmailOtpStart;
+  const switchToPhoneLogin = () => {
+    setLoginMethod('phone');
+  };
+
+  const switchToEmailLogin = () => {
+    setLoginMethod('email');
+    if (customerStep === 'otp') {
+      setCustomerStep('input');
+      setCustomerOtp('');
+      setCustomerConfirmation(null);
+      setPhoneOtpChannel('sms');
+      setErrorText('');
+      setResendInSec(0);
+    }
+  };
+
+  const resetPhoneOtpAndGoInput = () => {
+    setCustomerStep('input');
+    setCustomerOtp('');
+    setCustomerConfirmation(null);
+    setPhoneOtpChannel('sms');
+    setErrorText('');
+  };
+
+  const submitOtp = phoneOtpChannel === 'sms' ? handleCustomerOtpVerify : handleWhatsAppOtpVerify;
+
+  const startPhoneOtp = () => {
+    if (loading) return;
+    setPhoneOtpChannel('sms');
+    void handleCustomerOtpStart();
+  };
+
+  const startEmailLogin = () => {
+    if (loading) return;
+    setErrorText('');
+    if (!email.trim().includes('@')) {
+      setErrorText('Please enter a valid email address');
+      return;
+    }
+    if (!password.trim()) {
+      setErrorText('Please enter password');
+      return;
+    }
+    void handleLogin();
+  };
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -374,14 +378,14 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
             <View style={styles.methodToggle}>
               <TouchableOpacity
                 style={[styles.methodButton, loginMethod === 'phone' && styles.methodButtonActive]}
-                onPress={() => setLoginMethod('phone')}
+                onPress={switchToPhoneLogin}
                 activeOpacity={0.85}
               >
                 <Text style={[styles.methodButtonText, loginMethod === 'phone' && styles.methodButtonTextActive]}>Phone Number</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.methodButton, loginMethod === 'email' && styles.methodButtonActive]}
-                onPress={() => setLoginMethod('email')}
+                onPress={switchToEmailLogin}
                 activeOpacity={0.85}
               >
                 <Text style={[styles.methodButtonText, loginMethod === 'email' && styles.methodButtonTextActive]}>Email Address</Text>
@@ -390,7 +394,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           )}
 
           <View style={styles.formArea}>
-            {customerStep === 'input' ? (
+            {customerStep === 'input' || loginMethod === 'email' ? (
               <View style={styles.formSection}>
                 <Text style={styles.inputLabel}>{loginMethod === 'phone' ? 'Phone Number' : 'Email Address'}</Text>
                 <View style={styles.inputContainer}>
@@ -399,11 +403,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     style={[styles.input, loginMethod === 'phone' && styles.phoneInput]}
                     placeholder={loginMethod === 'phone' ? '8652710389' : 'name@example.com'}
                     placeholderTextColor="#9CA3AF"
-                    value={loginMethod === 'phone' ? customerPhone : customerEmail}
+                    value={loginMethod === 'phone' ? customerPhone : email}
                     onChangeText={(text) =>
                       loginMethod === 'phone'
                         ? setCustomerPhone(text.replace(/\D/g, ''))
-                        : setCustomerEmail(text.trim())
+                        : setEmail(text.trim())
                     }
                     keyboardType={loginMethod === 'phone' ? 'phone-pad' : 'email-address'}
                     maxLength={loginMethod === 'phone' ? 10 : 80}
@@ -411,15 +415,29 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     editable={!loading}
                   />
                 </View>
+                {loginMethod === 'email' && (
+                  <View style={[styles.inputContainer, styles.passwordContainer]}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter password"
+                      placeholderTextColor="#9CA3AF"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      editable={!loading}
+                    />
+                    <TouchableOpacity style={styles.eyeIcon} onPress={() => setShowPassword((prev) => !prev)} activeOpacity={0.8}>
+                      <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
                 {loginMethod === 'phone' ? (
                   <View style={styles.otpButtonsWrap}>
                     <TouchableOpacity
                       style={[styles.primaryButton, styles.channelButton, loading && styles.buttonDisabled]}
-                      onPress={() => {
-                        setPhoneOtpChannel('sms');
-                        void handleCustomerOtpStart();
-                      }}
+                      onPress={startPhoneOtp}
                       disabled={loading}
                       activeOpacity={0.9}
                     >
@@ -451,7 +469,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                 ) : (
                   <TouchableOpacity
                     style={[styles.primaryButton, loading && styles.buttonDisabled]}
-                    onPress={startOtp}
+                    onPress={startEmailLogin}
                     disabled={loading}
                     activeOpacity={0.9}
                   >
@@ -459,7 +477,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
                       <View style={styles.primaryButtonRow}>
-                        <Text style={styles.primaryButtonText}>Get OTP</Text>
+                        <Text style={styles.primaryButtonText}>Login</Text>
                         <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
                       </View>
                     )}
@@ -474,13 +492,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                     {loginMethod === 'phone' ? `+91 ${customerPhone}` : customerEmail}
                   </Text>
                   <TouchableOpacity
-                    onPress={() => {
-                      setCustomerStep('input');
-                      setCustomerOtp('');
-                      setCustomerConfirmation(null);
-                      setPhoneOtpChannel('sms');
-                      setErrorText('');
-                    }}
+                    onPress={resetPhoneOtpAndGoInput}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.changeText}>Change</Text>
@@ -797,5 +809,8 @@ const styles = StyleSheet.create({
   termsTextBold: {
     color: '#4B5563',
     fontWeight: '700',
+  },
+  passwordContainer: {
+    marginTop: 10,
   },
 });
