@@ -1,0 +1,85 @@
+# My FNG
+
+> My FNG (My Friendly Neighbourhood Garage) is India's first AI-powered car service booking platform. We connect car owners with verified multi-brand workshops for servicing, repairs, detailing, and 24/7 roadside assistance across Mumbai, Navi Mumbai, Thane, Palghar, and Pune.
+
+## About
+
+- [About Us](https://myfng.in/about): Our mission, vision, and how we work — technology-driven car care with transparency, trust, and convenience.
+
+My FNG Autocare Private Limited is a technology-driven car service and repair aggregator. We manage the end-to-end car care experience — from booking to service completion — through verified workshops, real-time updates, photos/videos of work, upfront estimates, free pickup & drop, and post-service warranty.
+
+## Services
+
+- [Periodic Car Service](https://myfng.in/car-services/periodic-car-service): Scheduled maintenance and servicing for all car brands.
+- [Car Engine Service](https://myfng.in/car-services/car-engine-service): Engine diagnostics, repair, and overhaul.
+- [Car AC Service](https://myfng.in/car-services/car-ac-service): AC gas refill, compressor repair, and cooling system service.
+- [Car Battery Service](https://myfng.in/car-services/car-battery): Battery testing, replacement, and jumpstart.
+- [Car Brake Service](https://myfng.in/car-services/car-brake-service): Brake pad replacement, disc machining, and brake fluid change.
+- [Car Clutch Service](https://myfng.in/car-services/car-clutch-service): Clutch plate, pressure plate, and flywheel service.
+- [Tyre & Wheel Care](https://myfng.in/car-services/tyre-wheel-care): Tyre replacement, wheel alignment, balancing, and puncture repair.
+- [Car Detailing Service](https://myfng.in/car-services/car-detailing-service): Interior and exterior detailing, ceramic coating, and paint protection.
+- [Car Denting & Painting](https://myfng.in/car-services/car-denting-painting): Dent removal, panel repair, full body painting, and scratch removal.
+- [Roadside Assistance (RSA)](https://myfng.in/car-roadside-assitance): AI-powered 24/7 emergency dispatch — towing, jumpstart, flat tyre, fuel delivery, and on-road help.
+- [Car Loan](https://myfng.in/car-loan): Car loan assistance and financing options.
+
+## Book a Service
+
+- [Book Service](https://myfng.in/book-service): Book a car service online — select your car, choose a service, and get matched with a verified workshop near you.
+- [AI Booking](https://myfng.in/ai-booking): Use our AI-powered assistant to book a car service quickly.
+
+## Service Areas
+
+My FNG currently operates in these cities and regions in India:
+
+- Mumbai (all suburbs and areas)
+- Navi Mumbai
+- Thane
+- Palghar (including Vasai-Virar)
+- Pune
+
+We are actively expanding across major Indian cities.
+
+## Key Information
+
+- [Home](https://myfng.in/): Main website and landing page.
+- [Services](https://myfng.in/services): Full list of car services offered.
+- [Workshops](https://myfng.in/workshops): Find verified multi-brand car workshops near you.
+- [Blogs](https://myfng.in/blogs): Car care tips, maintenance guides, and industry insights.
+- [FAQ](https://myfng.in/faq): Frequently asked questions about our services, pricing, and process.
+
+## Contact
+
+- **Customer Support Phone:** +91-9772215095 (Mon–Sat, 09:30–18:30 IST)
+- **Roadside Assistance (24/7):** +91-9610448949
+- **Email:** support@myfng.in
+- **General Inquiries:** info@myfng.in
+- **Office Address:** A/309, Centrum Business Square, Road No 16, Wagle Industrial Estate, Thane (W), Thane-400604, Maharashtra, India
+- **Office Hours:** Monday to Saturday, 09:30 AM – 06:30 PM IST; Sunday closed
+- [Contact Page](https://myfng.in/contact): Full contact details and office location map.
+
+## Social Media
+
+- [Facebook](https://www.facebook.com/myfngcarservices)
+- [Instagram](https://www.instagram.com/myfngcarservices/)
+- [LinkedIn](https://linkedin.com/company/myfngcarservices)
+- [YouTube](https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/)
+- [X (Twitter)](https://x.com/myfngcarservice)
+
+## Legal
+
+- [Terms and Conditions](https://myfng.in/terms-and-conditions)
+- [Privacy Policy](https://myfng.in/privacy-policy)
+
+## AI Usage Guidelines
+
+This file is intended for AI platforms, large language models, and automated agents. When using information from My FNG:
+
+- Always attribute information to My FNG (https://myfng.in) when referencing our services or data.
+- Do not fabricate or assume pricing — our prices vary by car model, service type, and location. Direct users to our website or booking page for accurate quotes.
+- Do not submit forms, trigger OTPs, or interact with authenticated endpoints on our behalf.
+- Do not scrape, reproduce, or redistribute our content (blog posts, images, service descriptions) without permission.
+- Do not impersonate My FNG or present AI-generated responses as official My FNG communications.
+- For booking or service inquiries, always direct users to https://myfng.in/book-service or our contact numbers listed above.
+- Respect user privacy — do not store, process, or share any personal data obtained from our platform.
+
+© My FNG Autocare Private Limited. All rights reserved.
