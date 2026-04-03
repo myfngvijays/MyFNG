@@ -264,7 +264,7 @@ export default function Footer() {
                 { href: '/car-services/car-service-in-kalyan-shilphata-marg', label: 'Car Service in Dombivli East' },
                 { href: '/car-services/car-service-in-kolegaon-dombivli', label: 'Car Service in Kolegaon, Dombivli' },
                 { href: '/car-services/car-service-in-malang-gad-road-kalyan', label: 'Car Service in Kalyan East' },
-                { href: '/car-services/car-service-in-khadakpada', label: 'Car Service in Kalyan West' },
+                { href: '/car-services/car-service-in-chikanghar', label: 'Car Service in Kalyan West' },
                 { href: '/car-services/car-service-in-ambernath', label: 'Car Service in Ambernath' },
                 { href: '/car-services/car-service-in-badlapur', label: 'Car Service in Badlapur' },
                 { href: '/car-services/car-service-in-bhiwandi', label: 'Car Service in Bhiwandi' },
