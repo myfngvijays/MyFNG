@@ -97,6 +97,18 @@ export default function ContactPage() {
                   </div>
 
                   <div className="info-card">
+                    <div className="info-icon"><MapPin className="w-5 h-5" /></div>
+                    <div>
+                      <h3>Delhi Office</h3>
+                      <p>
+                        <a href={https://maps.app.goo.gl/LiPd8jTzg25D6Rpc7} target="_blank" rel="noopener noreferrer">
+                          2151/9B, 3rd Floor, Patel Nagar, Shadipur, Near GD Goenka Healthcare Academy, New Delhi, Delhi-110008, India
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="info-card">
                     <div className="info-icon"><Clock className="w-5 h-5" /></div>
                     <div>
                       <h3>Office Hours</h3>
