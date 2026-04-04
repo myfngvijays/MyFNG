@@ -34,7 +34,7 @@ async function pushToTeleCRM(data: Record<string, any>) {
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: `CRM Enquiry — Disposition: ${data.disposition || 'N/A'}, Dialer: ${data.dialer_id || 'N/A'}, Vehicle: ${data.car_number || 'N/A'} ${data.make || ''} ${data.model || ''}`.trim(),
+        text: 'Lead Source: DELHILEAD',
       },
     ],
   };
