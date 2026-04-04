@@ -348,6 +348,11 @@ export default function CRMPage() {
                     <option value="4003">4003</option>
                     <option value="4004">4004</option>
                     <option value="4005">4005</option>
+                    <option value="4006">4006</option>
+                    <option value="4007">4007</option>
+                    <option value="4008">4008</option>
+                    <option value="4009">4009</option>
+                    <option value="4010">4010</option>
                   </select>
                 </div>
                 {errors.dialer_id && <p className="text-red-500 text-xs mt-1">{errors.dialer_id}</p>}
