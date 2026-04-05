@@ -63,7 +63,7 @@ async function pushToTeleCRM(phone: string, data: {
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: `Car Loan lead from website. PAN: ${data.panId}, Vehicle: ${data.vehicleRegistrationNumber}, Income: ₹${data.income}/month, Occupation: ${data.occupation}`,
+        text: 'Lead Source: CAR_LOAN_WEBSITE',
       },
     ],
   };

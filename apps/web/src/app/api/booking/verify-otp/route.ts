@@ -37,7 +37,7 @@ async function pushOtpVerifiedToTeleCRM(phone: string) {
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: `Lead Source: delhi_service\nOTP Verified\nPhone: +91${phone}\nSource: Website Book Service\nPlatform: WEB`,
+        text: 'Lead Source: WEBSITE',
       },
     ],
   };

@@ -62,18 +62,6 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      const noteLines = [
-        row.service_type ? `Service: ${row.service_type}` : null,
-        row.vehicle_number ? `Vehicle: ${row.vehicle_number}` : null,
-        row.vehicle_model ? `Model: ${row.vehicle_model}` : null,
-        row.customer_quoted_amount ? `Quoted: ₹${row.customer_quoted_amount}` : null,
-        row.disposition ? `Disposition: ${row.disposition}` : null,
-        row.disposition_category ? `Category: ${row.disposition_category}` : null,
-        row.disposition_note ? `Note: ${row.disposition_note}` : null,
-        row.recording_url ? `Recording: ${row.recording_url}` : null,
-        row.location_link ? `Location: ${row.location_link}` : null,
-      ].filter(Boolean);
-
       const payload = {
         fields: {
           Name: row.name || 'RSA Call Lead',
@@ -92,9 +80,12 @@ export async function GET(request: NextRequest) {
           LocationLink: row.location_link || null,
           RecordingUrl: row.recording_url || null,
         },
-        actions: noteLines.length > 0
-          ? [{ type: 'SYSTEM_NOTE', text: noteLines.join('\n') }]
-          : [],
+        actions: [
+          {
+            type: 'SYSTEM_NOTE',
+            text: 'Lead Source: RSA_CALL',
+          },
+        ],
       };
 
       const res = await fetch(TELECRM_AUTOUPDATE_URL, {

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getSession } from './session';
+
 
 export interface BookingData {
   session_id: string;
@@ -24,24 +24,8 @@ const EXTERNAL_AUTOUPDATE_URL =
 const EXTERNAL_AUTOUPDATE_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
 
-function formatConversation(history: { role: string; content: string }[]): string {
-  if (!history || history.length === 0) return '(no conversation)';
-  return history
-    .map((msg) => `${msg.role === 'user' ? 'Customer' : 'AI Bot'}: ${msg.content}`)
-    .join('\n');
-}
-
 async function pushChatbotBookingToExternalApi(booking: BookingData) {
   const phoneDigits = String(booking.phone_number || '').replace(/\D/g, '').slice(-10);
-
-  let conversationText = '';
-  try {
-    const session = await getSession(booking.session_id);
-    conversationText = formatConversation(session.history || []);
-  } catch (err) {
-    console.error('[BOOKING] Failed to fetch chat session for TeleCRM:', err);
-    conversationText = '(could not fetch conversation)';
-  }
 
   const payload = {
     fields: {
@@ -72,11 +56,7 @@ async function pushChatbotBookingToExternalApi(booking: BookingData) {
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: `Lead Source: AI Chatbot | Service: ${booking.service_name || '-'} | Notes: ${booking.notes || '-'}`,
-      },
-      {
-        type: 'SYSTEM_NOTE',
-        text: `--- AI Chatbot Conversation ---\n${conversationText}`,
+        text: 'Lead Source: AI Chatbot',
       },
     ],
   };

@@ -63,33 +63,6 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin
 
   const serviceTypeIds = Array.isArray(leadRow.service_type_ids) ? leadRow.service_type_ids : [];
   const serviceNames = await resolveServiceNames(supabaseAdmin, serviceTypeIds);
-  const meta = (leadRow?.meta && typeof leadRow.meta === 'object') ? leadRow.meta : {};
-
-  const noteLines = [
-    'Lead Source: delhi_service',
-    leadRow.lead_number ? `Lead#: ${leadRow.lead_number}` : null,
-    leadRow.status ? `Status: ${leadRow.status}` : null,
-    leadRow.city ? `City: ${leadRow.city}` : null,
-    [leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant].filter(Boolean).length > 0
-      ? `Vehicle: ${[leadRow.vehicle_make, leadRow.vehicle_model, leadRow.vehicle_variant].filter(Boolean).join(' ')}`
-      : null,
-    leadRow.vehicle_number ? `VehicleNo: ${leadRow.vehicle_number}` : null,
-    serviceNames.length > 0 ? `Services: ${serviceNames.join(', ')}` : null,
-    typeof leadRow.pickup_required === 'boolean' ? `PickupRequired: ${leadRow.pickup_required}` : null,
-    leadRow.pickup_address ? `PickupAddress: ${leadRow.pickup_address}` : null,
-    leadRow.preferred_slot_start ? `PreferredSlot: ${leadRow.preferred_slot_start}` : null,
-    leadRow.estimated_amount != null ? `EstimatedAmount: ₹${leadRow.estimated_amount}` : null,
-    leadRow.payment_mode ? `PaymentMode: ${leadRow.payment_mode}` : null,
-    leadRow.payment_status ? `PaymentStatus: ${leadRow.payment_status}` : null,
-    leadRow.coupon_code ? `CouponCode: ${leadRow.coupon_code}` : null,
-    leadRow.discount_amount != null ? `DiscountAmount: ₹${leadRow.discount_amount}` : null,
-    meta?.utm_source ? `utm_source: ${meta.utm_source}` : null,
-    meta?.utm_medium ? `utm_medium: ${meta.utm_medium}` : null,
-    meta?.utm_campaign ? `utm_campaign: ${meta.utm_campaign}` : null,
-    meta?.utm_term ? `utm_term: ${meta.utm_term}` : null,
-    meta?.utm_content ? `utm_content: ${meta.utm_content}` : null,
-  ].filter(Boolean);
-
   const payload = {
     fields: {
       Name: String(leadRow.customer_name || '').trim() || 'Website Lead',
@@ -120,7 +93,7 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: noteLines.join('\n'),
+        text: 'Lead Source: WEBSITE',
       },
     ],
   };
