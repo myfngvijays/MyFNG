@@ -308,9 +308,9 @@ export default function RsaLandingPage() {
         <header>
           <div className="container">
             <div className="nav">
-              <a className="brand" href="/" aria-label="Go to homepage">
+              <span className="brand">
                 <img src="/logo.png" alt="MY FNG" className="brand-logo" />
-              </a>
+              </span>
               <nav className="nav-links">
                 <a href="#services" onClick={(e) => scrollToSection(e, 'services')}>Services</a>
                 <a href="#pricing" onClick={(e) => scrollToSection(e, 'pricing')}>Pricing</a>
@@ -456,9 +456,22 @@ export default function RsaLandingPage() {
                     <span>Drop to nearest service location</span>
                   </li>
                 </ul>
-                <div style={{ marginTop: 12 }}>
-                  <a className="btn primary" href="tel:+919610448949" onClick={(e) => scrollToSection(e, 'contact')}>
-                    Call Now For Immediate Help
+                <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+                  <a
+                    className="btn"
+                    href="tel:+919610448949"
+                    style={{ flex: 1, background: '#cc2900', border: 'none', color: '#ffffff', justifyContent: 'center' }}
+                  >
+                    📞 Call Now
+                  </a>
+                  <a
+                    className="btn whatsapp"
+                    href={`https://wa.me/${RSA_WHATSAPP}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    💬 WhatsApp
                   </a>
                 </div>
               </div>
@@ -482,14 +495,22 @@ export default function RsaLandingPage() {
                     <span>24×7 customer support</span>
                   </li>
                 </ul>
-                <div style={{ marginTop: 12 }}>
+                <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
                   <a
-                    className="btn primary whatsapp"
+                    className="btn"
+                    href="tel:+919610448949"
+                    style={{ flex: 1, background: '#cc2900', border: 'none', color: '#ffffff', justifyContent: 'center' }}
+                  >
+                    📞 Call Now
+                  </a>
+                  <a
+                    className="btn whatsapp"
                     href={`https://wa.me/${RSA_WHATSAPP}`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    style={{ flex: 1, justifyContent: 'center' }}
                   >
-                    WhatsApp for Quote
+                    💬 WhatsApp
                   </a>
                 </div>
               </div>

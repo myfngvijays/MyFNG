@@ -140,7 +140,10 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
                 </div>
 
                 {/* CTA Button */}
-                <Link href="/book-service" className="btn btn-primary inline-flex items-center gap-2 text-sm sm:text-base px-6 sm:px-8 py-3 sm:py-4">
+                <Link
+                  href={`/book-service?prefill_category=${encodeURIComponent(service.bookPrefill.category)}&prefill_query=${encodeURIComponent(service.bookPrefill.query)}`}
+                  className="btn btn-primary inline-flex items-center gap-2 text-sm sm:text-base px-6 sm:px-8 py-3 sm:py-4"
+                >
                   Book {service.title}
                   <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Link>

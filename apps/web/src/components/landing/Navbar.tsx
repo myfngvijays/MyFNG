@@ -2,17 +2,27 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { MapPin, Loader2, ChevronDown, Search } from 'lucide-react';
+import { MapPin, Loader2, ChevronDown, Search, Menu, X } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 export default function Navbar() {
+  const pathname = usePathname();
+  const isServicesPage =
+    pathname === '/services' ||
+    pathname.startsWith('/services/') ||
+    pathname === '/car-services' ||
+    pathname.startsWith('/car-services/');
+
   const [cityName, setCityName] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(true);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [cities, setCities] = useState<any[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const hamburgerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Check if location is already stored in localStorage
@@ -34,22 +44,25 @@ export default function Navbar() {
     detectLocation();
   }, []);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowCityDropdown(false);
       }
+      if (hamburgerRef.current && !hamburgerRef.current.contains(event.target as Node)) {
+        setShowHamburgerMenu(false);
+      }
     };
 
-    if (showCityDropdown) {
+    if (showCityDropdown || showHamburgerMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showCityDropdown]);
+  }, [showCityDropdown, showHamburgerMenu]);
 
   const fetchCities = async () => {
     if (cities.length > 0) return; // Already fetched
@@ -181,6 +194,26 @@ export default function Navbar() {
     }
   };
 
+  const NAV_LINKS = (
+    <>
+      <Link href="/" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Home</Link>
+      <Link href="/car-services" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">All Services</Link>
+      <Link href="/car-services/periodic-car-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Periodic Car Service</Link>
+      <Link href="/car-services/car-engine-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Engine Service</Link>
+      <Link href="/car-services/car-ac-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car AC Service</Link>
+      <Link href="/car-services/car-battery" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Battery Service</Link>
+      <Link href="/car-services/car-brake-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Brake Service</Link>
+      <Link href="/car-services/car-clutch-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Clutch Service</Link>
+      <Link href="/car-services/tyre-wheel-care" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Tyre &amp; Wheel Care</Link>
+      <Link href="/car-services/car-detailing-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Detailing Service</Link>
+      <Link href="/car-services/car-denting-painting" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Denting &amp; Painting</Link>
+      <Link href="/about-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">About Us</Link>
+      <Link href="/car-roadside-assitance" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Roadside Assistance</Link>
+      <Link href="/blogs" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Blog</Link>
+      <Link href="/contact-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Contact</Link>
+    </>
+  );
+
   return (
     <header className="fixed top-0 w-full bg-white/95 backdrop-blur-sm shadow-sm z-50">
       <nav className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4">
@@ -188,36 +221,74 @@ export default function Navbar() {
           <Link href="/" className="flex items-center min-w-0 flex-shrink-0">
             <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
           </Link>
-          
-          <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
-            <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
-            <div className="relative group">
+
+          {isServicesPage ? (
+            /* Services page: hamburger menu + Book Now CTA */
+            <div className="flex items-center gap-3 flex-shrink-0">
               <Link
-                href="/car-services"
-                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
+                href="/book-service"
+                className="hidden sm:inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all shadow-md"
               >
-                Services
-                <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
+                📅 Book Your Service Now
               </Link>
-              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                <div className="py-2">
-                  <Link href="/car-services/periodic-car-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Periodic Car Service</Link>
-                  <Link href="/car-services/car-engine-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Engine Service</Link>
-                  <Link href="/car-services/car-ac-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car AC Service</Link>
-                  <Link href="/car-services/car-battery" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Battery Service</Link>
-                  <Link href="/car-services/car-brake-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Brake Service</Link>
-                  <Link href="/car-services/car-clutch-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Clutch Service</Link>
-                  <Link href="/car-services/tyre-wheel-care" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Tyre &amp; Wheel Care</Link>
-                  <Link href="/car-services/car-detailing-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Detailing Service</Link>
-                  <Link href="/car-services/car-denting-painting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Denting &amp; Painting</Link>
-                </div>
+              <div className="relative" ref={hamburgerRef}>
+                <button
+                  onClick={() => setShowHamburgerMenu((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700 font-medium text-sm"
+                  aria-label="Open navigation menu"
+                >
+                  {showHamburgerMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                  <span className="hidden sm:inline">Menu</span>
+                </button>
+
+                {showHamburgerMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 py-2 max-h-[80vh] overflow-y-auto">
+                    {NAV_LINKS}
+                    <div className="px-4 pt-3 pb-1 border-t border-gray-100 mt-1">
+                      <Link
+                        href="/book-service"
+                        onClick={() => setShowHamburgerMenu(false)}
+                        className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all"
+                      >
+                        📅 Book Your Service Now
+                      </Link>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-            <Link href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
-            <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
-            <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
-            <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
-          </div>
+          ) : (
+            /* Regular pages: full desktop nav */
+            <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
+              <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
+              <div className="relative group">
+                <Link
+                  href="/car-services"
+                  className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
+                >
+                  Services
+                  <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
+                </Link>
+                <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                  <div className="py-2">
+                    <Link href="/car-services/periodic-car-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Periodic Car Service</Link>
+                    <Link href="/car-services/car-engine-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Engine Service</Link>
+                    <Link href="/car-services/car-ac-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car AC Service</Link>
+                    <Link href="/car-services/car-battery" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Battery Service</Link>
+                    <Link href="/car-services/car-brake-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Brake Service</Link>
+                    <Link href="/car-services/car-clutch-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Clutch Service</Link>
+                    <Link href="/car-services/tyre-wheel-care" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Tyre &amp; Wheel Care</Link>
+                    <Link href="/car-services/car-detailing-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Detailing Service</Link>
+                    <Link href="/car-services/car-denting-painting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Denting &amp; Painting</Link>
+                  </div>
+                </div>
+              </div>
+              <Link href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
+              <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
+              <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
+              <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
+            </div>
+          )}
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
             {isDetecting ? (
