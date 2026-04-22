@@ -9,6 +9,11 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
+// Cost control: same flag as webhook. Set SARV_AUTO_TRANSCRIBE_ENABLED=true
+// to allow super-admin manual regenerate.
+const AUTO_TRANSCRIBE_ENABLED =
+  String(process.env.SARV_AUTO_TRANSCRIBE_ENABLED || '').toLowerCase() === 'true';
+
 async function assertSuperAdmin(supabase: any) {
   const {
     data: { user },
@@ -248,6 +253,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     if (!OPENAI_API_KEY) {
       return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
+    }
+
+    if (!AUTO_TRANSCRIBE_ENABLED) {
+      return NextResponse.json(
+        {
+          error:
+            'Transcription is temporarily disabled to control OpenAI cost. ' +
+            'Re-enable by setting SARV_AUTO_TRANSCRIBE_ENABLED=true in env.',
+        },
+        { status: 503 }
+      );
     }
 
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();

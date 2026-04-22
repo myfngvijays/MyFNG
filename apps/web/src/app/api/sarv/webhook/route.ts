@@ -9,6 +9,13 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
+// Cost control: auto-transcription on every webhook ek din me $273 kha gaya.
+// Default OFF rakha hai. Re-enable karne ke liye env me set karo:
+//   SARV_AUTO_TRANSCRIBE_ENABLED=true
+// (Pehle prompt size, retry guard, per-day limit fix karna zaroori hai.)
+const AUTO_TRANSCRIBE_ENABLED =
+  String(process.env.SARV_AUTO_TRANSCRIBE_ENABLED || '').toLowerCase() === 'true';
+
 type SarvPayload = Record<string, any>;
 
 function parseJsonSafe<T = any>(input: unknown, fallback: T): T {
@@ -440,12 +447,17 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Insert call-level data into telecrm_api.
-      // RSA lead details are filled later via DB trigger when complaint is registered/updated.
-      // api_response & api_datetime are populated by the cron job that calls the TeleCRM API.
+      // Insert one telecrm_api row PER call. We do NOT dedupe here because
+      // TeleCRM's autoupdatelead endpoint treats every push for the same phone
+      // as an update on the existing lead (no duplicates created in TeleCRM).
+      // RSA lead details (name/city/vehicle/etc.) flow in later via the DB
+      // trigger on rsa_leads insert/update — they'll be filled into all rows
+      // for the same mobile before the 12hr cron picks them up.
+      // The 12hr cron (`/api/cron/telecrm-push`) is the ONLY thing that pushes
+      // to TeleCRM, so the row has time to gather enriched details first.
       try {
         const mobile = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
-        await db
+        const { error: insertErr } = await db
           .from('telecrm_api')
           .insert({
             mobile: mobile || null,
@@ -455,11 +467,23 @@ export async function POST(request: NextRequest) {
             recording_url: callRow.recording_url || null,
             updated_at: now,
           });
+
+        if (insertErr) {
+          console.error('[sarv-webhook] telecrm_api insert failed:', insertErr.message);
+        }
       } catch (telecrmErr: any) {
         console.error('[sarv-webhook] telecrm_api insert failed:', telecrmErr?.message || telecrmErr);
       }
 
-      if (callRow.recording_url && !callRow.transcription && OPENAI_API_KEY) {
+      // Auto transcription/summary disabled by default to control OpenAI cost.
+      // Set SARV_AUTO_TRANSCRIBE_ENABLED=true to re-enable (after adding
+      // per-day limit + retry guard + smaller prompt).
+      if (
+        AUTO_TRANSCRIBE_ENABLED &&
+        callRow.recording_url &&
+        !callRow.transcription &&
+        OPENAI_API_KEY
+      ) {
         try {
           const { transcription, summary } = await generateTranscriptionAndSummary(callRow.recording_url);
           await db

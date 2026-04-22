@@ -63,15 +63,68 @@ async function uploadRecording(
 export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get('content-type') || '';
+    const contentLength = request.headers.get('content-length') || '0';
 
-    if (!contentType.includes('multipart/form-data')) {
+    if (!contentType.toLowerCase().includes('multipart/form-data')) {
       return NextResponse.json(
-        { error: 'Content-Type must be multipart/form-data' },
+        {
+          error: 'Content-Type must be multipart/form-data',
+          received_content_type: contentType || '(empty)',
+        },
         { status: 400 }
       );
     }
 
-    const form = await request.formData();
+    // undici (Next.js) ko parsing ke liye boundary parameter chahiye.
+    // Agar dialer client ne sirf "multipart/form-data" bheja boundary ke bina,
+    // toh request.formData() generic "Failed to parse body as FormData" throw karta hai.
+    if (!/boundary=/i.test(contentType)) {
+      return NextResponse.json(
+        {
+          error:
+            'multipart/form-data Content-Type missing boundary parameter. ' +
+            'Client ko full header bhejna hai, e.g. ' +
+            '"multipart/form-data; boundary=----MyDialerBoundary123".',
+          received_content_type: contentType,
+          content_length: contentLength,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (contentLength === '0') {
+      return NextResponse.json(
+        {
+          error: 'Empty request body. Multipart fields/file missing.',
+          received_content_type: contentType,
+        },
+        { status: 400 }
+      );
+    }
+
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch (parseErr: any) {
+      console.error('[dialer/leads] formData parse failed', {
+        contentType,
+        contentLength,
+        message: parseErr?.message,
+      });
+      return NextResponse.json(
+        {
+          error: 'Failed to parse multipart body',
+          details: parseErr?.message || 'unknown parse error',
+          received_content_type: contentType,
+          content_length: contentLength,
+          hint:
+            'Verify ki client multipart body theek se generate kar raha hai: ' +
+            'sahi boundary, sahi CRLF (\\r\\n) line endings, ' +
+            'aur Content-Length actual body ke barabar ho.',
+        },
+        { status: 400 }
+      );
+    }
 
     const phoneNo = fieldValue(form, 'phone_no');
     if (!phoneNo) {
