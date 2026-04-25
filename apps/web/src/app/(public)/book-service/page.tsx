@@ -65,6 +65,7 @@ export default function BookServicePage() {
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isDetectingAddress, setIsDetectingAddress] = useState(false);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const [detectedCityNotServiceable, setDetectedCityNotServiceable] = useState<string | null>(null);
   const cityDropdownRef = useRef<HTMLDivElement>(null);
   
   // Car Model State
@@ -804,6 +805,11 @@ export default function BookServicePage() {
                   if (matchedCity) {
                     setFormData(prev => ({ ...prev, city: matchedCity }));
                     localStorage.setItem('detected_city', matchedCity.name);
+                    setDetectedCityNotServiceable(null);
+                  } else {
+                    // Detected a city but it's not in our serviceable cities list
+                    const detectedName = candidates[0] || 'your city';
+                    setDetectedCityNotServiceable(detectedName);
                   }
                 }
               }
@@ -926,6 +932,7 @@ export default function BookServicePage() {
     setFormData(prev => ({ ...prev, city }));
     localStorage.setItem('detected_city', city.name);
     setShowCityDropdown(false);
+    setDetectedCityNotServiceable(null);
   };
 
   const handleCarSelect = (car: any) => {
@@ -1766,24 +1773,8 @@ export default function BookServicePage() {
       return picked.slice(0, 4);
     }
 
-    if (sortedByPrice.length <= 4) return sortedByPrice;
-    const low = sortedByPrice[0];
-    const q1 = sortedByPrice[Math.floor((sortedByPrice.length - 1) * 0.33)];
-    const q2 = sortedByPrice[Math.floor((sortedByPrice.length - 1) * 0.66)];
-    const high = sortedByPrice[sortedByPrice.length - 1];
-    const byId = new Map<string, any>();
-    [low, q1, q2, high].forEach((s) => s?.id && byId.set(String(s.id), s));
-    const picked = Array.from(byId.values());
-    // ensure exactly 4 by filling from sorted list
-    for (const s of sortedByPrice) {
-      if (picked.length >= 4) break;
-      const id = String(s?.id || '');
-      if (id && !byId.has(id)) {
-        byId.set(id, s);
-        picked.push(s);
-      }
-    }
-    return picked.slice(0, 4);
+    // Non-periodic: show all services sorted by price
+    return sortedByPrice;
   };
 
   const planServices = pickPlanServices();
@@ -2040,6 +2031,29 @@ export default function BookServicePage() {
                             <p className="text-xs sm:text-sm text-blue-700 font-medium">Detecting your location...</p>
                       </div>
                     </div>
+                      )}
+
+                      {/* No service in detected city */}
+                      {!isDetectingLocation && detectedCityNotServiceable && !formData.city && (
+                        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-orange-50 border border-orange-300 rounded-xl animate-fade-in">
+                          <div className="flex items-start gap-2 sm:gap-3">
+                            <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs sm:text-sm font-semibold text-orange-800">
+                                We currently don't serve <strong>{detectedCityNotServiceable}</strong>.
+                              </p>
+                              <p className="text-xs text-orange-600 mt-0.5">
+                                Please select from our available cities below we're expanding soon!
+                              </p>
+                              <button
+                                onClick={() => setShowCityDropdown(true)}
+                                className="mt-2 px-3 py-1.5 text-xs font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                              >
+                                View Available Cities
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
 
                       {formData.city && (
