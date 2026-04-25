@@ -65,7 +65,23 @@ function parseAansh(payload: SarvPayload) {
 
 function toTimestamp(value: unknown) {
   const raw = String(value ?? '').trim();
-  return raw ? raw : null;
+  if (!raw) return null;
+  // Naya Sarv panel kuch timestamp fields ke liye "0" / "0000-00-00 00:00:00"
+  // bhejta hai. Postgres timestamp column me ye invalid hai
+  // ("date/time field value out of range: '0'"), isliye null treat karte hain.
+  if (raw === '0' || raw === '0000-00-00' || raw.startsWith('0000-00-00')) return null;
+  const ts = Date.parse(raw);
+  if (!Number.isFinite(ts)) return null;
+  return raw;
+}
+
+function toInt(value: unknown) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.trunc(value) : null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
 function getValue(payload: SarvPayload, keys: string[]) {
@@ -402,7 +418,7 @@ export async function POST(request: NextRequest) {
       const upsertPayload: Record<string, any> = {
         callid,
         userid: getValue(payload, ['userId', 'userid']),
-        masteragent: getValue(payload, ['masterAgent', 'masteragent']),
+        masteragent: toInt(getValue(payload, ['masterAgent', 'masteragent'])),
         masteragentnumber: getValue(payload, ['masterAgentNumber', 'masteragentnumber']),
         telecaller_id: effectiveTelecallerId,
         assigned_user_id: effectiveAssignedUserId,
@@ -410,15 +426,15 @@ export async function POST(request: NextRequest) {
         cnumber: getValue(payload, ['cNumber', 'cnumber']),
         did: getValue(payload, ['did']),
         ctype: getValue(payload, ['cType', 'ctype']),
-        callstatus: getValue(payload, ['callStatus', 'callstatus']),
+        callstatus: toInt(getValue(payload, ['callStatus', 'callstatus'])),
         ivrstime: toTimestamp(getValue(payload, ['ivrSTime', 'ivrstime'])),
         ivretime: toTimestamp(getValue(payload, ['ivrETime', 'ivretime'])),
-        ivrduration: getValue(payload, ['ivrDuration', 'ivrduration']),
-        talkduration: getValue(payload, ['talkDuration', 'talkduration']),
-        agentoncallduration: getValue(payload, ['agentOnCallDuration', 'agentoncallduration']),
+        ivrduration: toInt(getValue(payload, ['ivrDuration', 'ivrduration'])),
+        talkduration: toInt(getValue(payload, ['talkDuration', 'talkduration'])),
+        agentoncallduration: toInt(getValue(payload, ['agentOnCallDuration', 'agentoncallduration'])),
         custanswerstime: custAnswerSTime,
         custansweretime: toTimestamp(getValue(payload, ['custAnswerETime', 'custansweretime'])),
-        custanswerduration: getValue(payload, ['custAnswerDuration', 'custanswerduration']),
+        custanswerduration: toInt(getValue(payload, ['custAnswerDuration', 'custanswerduration'])),
         recording_url: effectiveRecordingUrl,
         disposition: getValue(payload, ['disposition']),
         disposition_category: getValue(payload, ['disposition_category']),
