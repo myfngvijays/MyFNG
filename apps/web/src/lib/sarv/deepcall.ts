@@ -7,22 +7,28 @@
  * API se generate hota hai. Token approx ssid se tied hai aur kafi der
  * tak valid rehta hai (ek hi token multiple calls me dekha gaya).
  *
- * Required env vars:
- *   DEEPCALL_API_BASE     (default: https://v4-api.deepcall.com)
- *   DEEPCALL_USER_ID      (DeepCall account id, e.g. "11965974")
- *   DEEPCALL_SSID         (DeepCall login session token; rotate when expires)
- *
- * Optional fallback:
- *   SARV_RECORDING_BASE_URL (legacy s-ct3 host, used only when API call fails
- *                            and we have a relative path to fall back on)
+ * Values yahan hardcoded hain (env vars set karne ka jhanjhat avoid karne
+ * ke liye). SSID DeepCall login session token hai — agar woh expire ho
+ * jaye to neeche `DEEPCALL_SSID` constant update karke redeploy karna.
+ * (Optional: env vars `DEEPCALL_API_BASE`, `DEEPCALL_USER_ID`,
+ * `DEEPCALL_SSID` set karne se woh override kar denge.)
  */
 
 const DEEPCALL_API_BASE = (
   process.env.DEEPCALL_API_BASE || 'https://v4-api.deepcall.com'
 ).replace(/\/+$/, '');
 
-const DEEPCALL_USER_ID = process.env.DEEPCALL_USER_ID || '';
-const DEEPCALL_SSID = process.env.DEEPCALL_SSID || '';
+const DEEPCALL_USER_ID = process.env.DEEPCALL_USER_ID || '11965974';
+
+// ⚠️ Yeh DeepCall web panel ka login session token hai. Expire hone par
+// (jaise jab koi DeepCall me logout karta hai ya cookie purani ho jati hai)
+// is value ko fresh ssid se replace karna padega:
+//   1. https://app.deepcall.com me login karo
+//   2. DevTools → Network → kisi recording ka Play dabao
+//   3. `CallReport/detail` request kholo → Payload tab → ssid copy karo
+//   4. Yahan paste karke commit + push + redeploy
+const DEEPCALL_SSID =
+  process.env.DEEPCALL_SSID || 'flmz6ZZu6Adu4Kk6S2Gw7hYEqaQ2LljMQDXL5zpdSxcmLAeboM';
 
 const STREAM_PREFIX = `${DEEPCALL_API_BASE}/api/v2/recording/directstream`;
 
