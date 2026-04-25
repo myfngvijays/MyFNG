@@ -16,6 +16,15 @@ const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-m
 const AUTO_TRANSCRIBE_ENABLED =
   String(process.env.SARV_AUTO_TRANSCRIBE_ENABLED || '').toLowerCase() === 'true';
 
+// Naye Sarv panel me recording field "/mp3/<userid>/.../file.mp3" jaisa
+// relative path aata hai (no host). Old panel "https://s-ct3.sarv.com/..."
+// pura URL bhejta tha. Frontend me play karne ke liye host prepend karna hota
+// hai. Default Sarv ke standard CDN pe rakha hai; agar Sarv ne migration ke
+// baad host badla ho to env me override kar dena.
+const SARV_RECORDING_BASE_URL = (
+  process.env.SARV_RECORDING_BASE_URL || 'https://s-ct3.sarv.com/v2/recording/direct'
+).replace(/\/+$/, '');
+
 type SarvPayload = Record<string, any>;
 
 function parseJsonSafe<T = any>(input: unknown, fallback: T): T {
@@ -36,6 +45,16 @@ function digits10(input: unknown) {
   return d.length <= 10 ? d : d.slice(-10);
 }
 
+function normalizeRecordingUrl(input: unknown) {
+  const raw = String(input ?? '').trim();
+  if (!raw) return '';
+  // Already absolute URL.
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Relative path se bhi double-slash banane se bachao.
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+  return `${SARV_RECORDING_BASE_URL}${path}`;
+}
+
 function pickRecordingUrl(payload: SarvPayload) {
   const direct =
     payload?.recording_url ||
@@ -43,24 +62,57 @@ function pickRecordingUrl(payload: SarvPayload) {
     payload?.recordingURL ||
     payload?.recording ||
     '';
-  if (direct) return String(direct);
+  if (direct) return normalizeRecordingUrl(direct);
 
   const ahDetail = parseJsonSafe<any[]>(payload?.aHDetail ?? payload?.ahdetail, []);
   const answered = ahDetail.find((item) => String(item?.status || '').toLowerCase() === 'answered');
   const candidate = answered?.recordingUrl || answered?.recording || '';
-  if (candidate) return String(candidate);
+  if (candidate) return normalizeRecordingUrl(candidate);
 
   const recordings = parseJsonSafe<any[]>(payload?.recordings, []);
   const rec = recordings[0]?.file;
-  return rec ? String(rec) : '';
+  return rec ? normalizeRecordingUrl(rec) : '';
 }
 
+/**
+ * Naye Sarv panel me `aAnsH` empty array (`[]`) bhejta hai aur agent IDs
+ * aHDetail / aH me hi milte hain. Old panel `aAnsH: [34843]` jaisa fill karta
+ * tha. Hum priority deni chahiye:
+ *   1) aHDetail me jo agents `status === "answered"` hue (actual telecaller jisne
+ *      call uthayi) — yeh sabse accurate signal hai
+ *   2) `aAnsH` (agar non-empty) — old panel ka behavior
+ *   3) `aH` ya `masterAgent` — fallback ke roop me
+ *
+ * Empty array ko skip karna zaroori hai warna `??` chain `aH` tak nahi pahunchti.
+ */
 function parseAansh(payload: SarvPayload) {
-  const raw = parseJsonSafe<any[]>(payload?.aAnsH ?? payload?.aansh ?? payload?.aH, []);
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value)) as number[];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  const push = (value: unknown) => {
+    const n = Number(value);
+    if (Number.isFinite(n) && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  };
+
+  const ahDetail = parseJsonSafe<any[]>(payload?.aHDetail ?? payload?.ahdetail, []);
+  if (Array.isArray(ahDetail)) {
+    for (const item of ahDetail) {
+      if (String(item?.status || '').toLowerCase() === 'answered') push(item?.agentId);
+    }
+  }
+
+  const aAnsH = parseJsonSafe<any[]>(payload?.aAnsH ?? payload?.aansh, []);
+  if (Array.isArray(aAnsH)) for (const value of aAnsH) push(value);
+
+  const aH = parseJsonSafe<any[]>(payload?.aH, []);
+  if (Array.isArray(aH)) for (const value of aH) push(value);
+
+  if (payload?.masterAgent != null) push(payload.masterAgent);
+  if (payload?.masteragent != null) push(payload.masteragent);
+
+  return out;
 }
 
 function toTimestamp(value: unknown) {
