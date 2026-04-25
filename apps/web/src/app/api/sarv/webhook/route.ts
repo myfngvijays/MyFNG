@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { fetchDeepcallRecordingUrl } from '@/lib/sarv/deepcall';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -513,6 +514,34 @@ export async function POST(request: NextRequest) {
       } catch (e: any) {
         results.push({ callid, status: 'error', error: e?.message || 'Lead link failed' });
         continue;
+      }
+
+      // Naye DeepCall panel me webhook me sirf relative path aata hai jo
+      // browser me play nahi hota — har file ke liye DeepCall API se
+      // per-call signed URL chahiye. Yahan upsert ke turant baad refresh
+      // kar lete hain taaki UI me direct play ho. Failure pe webhook fail
+      // nahi karte (raw_payload + relative URL DB me reh hi jaata hai aur
+      // baad me admin refresh endpoint se backfill ho sakta hai).
+      try {
+        const { url: signedUrl, error: deepcallError } = await fetchDeepcallRecordingUrl(callid);
+        if (signedUrl && signedUrl !== callRow.recording_url) {
+          const { error: updateErr } = await db
+            .from('sarv_calls')
+            .update({ recording_url: signedUrl, updated_at: now })
+            .eq('id', callRow.id);
+          if (updateErr) {
+            console.error('[sarv-webhook] recording_url update failed:', updateErr.message);
+          } else {
+            callRow.recording_url = signedUrl;
+          }
+        } else if (!signedUrl && deepcallError) {
+          console.warn(
+            `[sarv-webhook] DeepCall signed URL fetch failed for ${callid}:`,
+            deepcallError
+          );
+        }
+      } catch (e: any) {
+        console.error('[sarv-webhook] DeepCall integration error:', e?.message || e);
       }
 
       // Insert one telecrm_api row PER call. We do NOT dedupe here because
