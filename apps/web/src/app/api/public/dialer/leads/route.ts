@@ -28,6 +28,39 @@ function fieldValue(form: FormData, key: string): string | null {
   return trimmed || null;
 }
 
+/**
+ * Parse multipart/form-data body with a fallback for clients that wrap the
+ * boundary parameter in double quotes (RFC 2046 allows it, but undici's
+ * built-in FormData parser rejects it). Notable offender: C# / .NET
+ * `MultipartFormDataContent` which auto-generates `boundary="<guid>"`.
+ *
+ * Strategy: if the boundary is quoted, rebuild the request with an unquoted
+ * boundary and parse again. Otherwise use the request's native formData().
+ */
+async function parseMultipartBody(
+  request: NextRequest,
+  contentType: string
+): Promise<FormData> {
+  const quotedMatch = contentType.match(/boundary\s*=\s*"([^"]+)"/i);
+  if (!quotedMatch) {
+    return request.formData();
+  }
+
+  const boundary = quotedMatch[1];
+  const sanitizedContentType = contentType.replace(
+    /boundary\s*=\s*"[^"]+"/i,
+    `boundary=${boundary}`
+  );
+
+  const body = await request.arrayBuffer();
+  const rebuilt = new Request('http://internal.local/_dialer-leads', {
+    method: 'POST',
+    headers: { 'content-type': sanitizedContentType },
+    body,
+  });
+  return rebuilt.formData();
+}
+
 async function uploadRecording(
   supabaseAdmin: any,
   buffer: Buffer,
@@ -105,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     let form: FormData;
     try {
-      form = await request.formData();
+      form = await parseMultipartBody(request, contentType);
     } catch (parseErr: any) {
       console.error('[dialer/leads] formData parse failed', {
         contentType,
