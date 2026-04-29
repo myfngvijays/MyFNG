@@ -18,6 +18,7 @@ const TEXT_FIELDS = [
   'disposition',
   'remark',
   'dialer_id',
+  'intrested_customer_date',
 ] as const;
 
 function fieldValue(form: FormData, key: string): string | null {
