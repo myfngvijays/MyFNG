@@ -2422,13 +2422,13 @@ export default function TelecallerRSAPage() {
                                   <div className="flex flex-col gap-2">
                                     <a
                                       className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                      href={call.recording_url}
+                                      href={`/api/sarv-calls/${call.id}/stream`}
                                       target="_blank"
                                       rel="noreferrer"
                                     >
                                       Download
                                     </a>
-                                    <audio controls preload="none" src={call.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
+                                    <audio controls preload="none" src={`/api/sarv-calls/${call.id}/stream`} className="w-80 min-w-[20rem] max-w-full h-10" />
                                   </div>
                                 ) : (
                                   '—'
@@ -2588,13 +2588,13 @@ export default function TelecallerRSAPage() {
                                         <div className="flex flex-col gap-2">
                                           <a
                                             className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                            href={call.recording_url}
+                                            href={`/api/sarv-calls/${call.id}/stream`}
                                             target="_blank"
                                             rel="noreferrer"
                                           >
                                             Download
                                           </a>
-                                          <audio controls preload="none" src={call.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
+                                          <audio controls preload="none" src={`/api/sarv-calls/${call.id}/stream`} className="w-80 min-w-[20rem] max-w-full h-10" />
                                         </div>
                                       ) : (
                                         '—'
@@ -2725,7 +2725,7 @@ export default function TelecallerRSAPage() {
                     </div>
                     {call.recording_url ? (
                       <audio controls className="w-full">
-                        <source src={call.recording_url} />
+                        <source src={`/api/sarv-calls/${call.id}/stream`} />
                       </audio>
                     ) : null}
                     <details className="text-sm">

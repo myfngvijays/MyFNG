@@ -836,13 +836,13 @@ export default function RSAManagerDashboard() {
                                     <div className="flex flex-col gap-2">
                                       <a
                                         className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                        href={call.recording_url}
+                                        href={`/api/sarv-calls/${call.id}/stream`}
                                         target="_blank"
                                         rel="noreferrer"
                                       >
                                         Download
                                       </a>
-                                      <audio controls preload="none" src={call.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
+                                      <audio controls preload="none" src={`/api/sarv-calls/${call.id}/stream`} className="w-80 min-w-[20rem] max-w-full h-10" />
                                     </div>
                                   ) : (
                                     '—'
@@ -984,13 +984,13 @@ export default function RSAManagerDashboard() {
                                           <div className="flex flex-col gap-2">
                                             <a
                                               className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                              href={call.recording_url}
+                                              href={`/api/sarv-calls/${call.id}/stream`}
                                               target="_blank"
                                               rel="noreferrer"
                                             >
                                               Download
                                             </a>
-                                            <audio controls preload="none" src={call.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
+                                            <audio controls preload="none" src={`/api/sarv-calls/${call.id}/stream`} className="w-80 min-w-[20rem] max-w-full h-10" />
                                           </div>
                                         ) : (
                                           '—'
@@ -1912,13 +1912,13 @@ export default function RSAManagerDashboard() {
                 </div>
               </div>
 
-              {previousDetailsCall.previous_disposition_recording_url ? (
+              {previousDetailsCall.previous_disposition_recording_url && previousDetailsCall.previous_disposition_callid ? (
                 <div className="rounded-lg border p-3 bg-white">
                   <div className="text-xs text-gray-600 mb-2">Recording</div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <a
                       className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                      href={previousDetailsCall.previous_disposition_recording_url}
+                      href={`/api/sarv-calls/${previousDetailsCall.previous_disposition_callid}/stream`}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -1927,7 +1927,7 @@ export default function RSAManagerDashboard() {
                     <audio
                       controls
                       preload="none"
-                      src={previousDetailsCall.previous_disposition_recording_url}
+                      src={`/api/sarv-calls/${previousDetailsCall.previous_disposition_callid}/stream`}
                       className="w-full sm:w-96 h-10"
                     />
                   </div>

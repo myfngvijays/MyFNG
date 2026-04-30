@@ -1183,7 +1183,11 @@ export default function SuperAdminRSASettingsPage() {
           row.city || '',
           rating ?? '',
           row.recording_url ? 'yes' : 'no',
-          row.recording_url || '',
+          // Stream endpoint URL instead of the raw (possibly expired) signed
+          // URL — clicking from a spreadsheet always fetches a fresh URL.
+          row.recording_url && row.id
+            ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/sarv-calls/${row.id}/stream`
+            : '',
           audit?.audit_status || '',
           audit?.audit_score ?? '',
           audit?.feedback || '',
@@ -2884,13 +2888,13 @@ export default function SuperAdminRSASettingsPage() {
                                 <div className="flex flex-col gap-2">
                                   <a
                                     className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                    href={row.recording_url}
+                                    href={`/api/sarv-calls/${row.id}/stream`}
                                     target="_blank"
                                     rel="noreferrer"
                                   >
                                     Download
                                   </a>
-                                  <audio controls preload="none" src={row.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
+                                  <audio controls preload="none" src={`/api/sarv-calls/${row.id}/stream`} className="w-80 min-w-[20rem] max-w-full h-10" />
                                 </div>
                               ) : (
                                 '—'
@@ -3034,13 +3038,13 @@ export default function SuperAdminRSASettingsPage() {
                                       <div className="flex flex-col gap-2">
                                         <a
                                           className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                          href={row.recording_url}
+                                          href={`/api/sarv-calls/${row.id}/stream`}
                                           target="_blank"
                                           rel="noreferrer"
                                         >
                                           Download
                                         </a>
-                                        <audio controls preload="none" src={row.recording_url} className="w-80 min-w-[20rem] max-w-full h-10" />
+                                        <audio controls preload="none" src={`/api/sarv-calls/${row.id}/stream`} className="w-80 min-w-[20rem] max-w-full h-10" />
                                       </div>
                                     ) : (
                                       '—'
@@ -4448,13 +4452,13 @@ export default function SuperAdminRSASettingsPage() {
                                 <div className="flex flex-col gap-2">
                                   <a
                                     className="text-blue-600 hover:text-blue-700 text-xs font-semibold"
-                                    href={row.recording_url}
+                                    href={`/api/sarv-calls/${row.id}/stream`}
                                     target="_blank"
                                     rel="noreferrer"
                                   >
                                     Download
                                   </a>
-                                  <audio controls preload="none" src={row.recording_url} className="w-72 min-w-[16rem] max-w-full h-10" />
+                                  <audio controls preload="none" src={`/api/sarv-calls/${row.id}/stream`} className="w-72 min-w-[16rem] max-w-full h-10" />
                                 </div>
                               ) : (
                                 '—'
