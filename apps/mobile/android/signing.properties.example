@@ -1,0 +1,9 @@
+# Copy this file to signing.properties and fill in real values.
+# signing.properties is gitignored — never commit real secrets.
+
+MYFNG_RELEASE_STORE_PASSWORD=your_keystore_password_here
+MYFNG_RELEASE_KEY_ALIAS=myfng-key
+MYFNG_RELEASE_KEY_PASSWORD=your_key_password_here
+
+# Google Maps API Key for Android (restrict by package name + SHA-1 in Google Cloud Console)
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here

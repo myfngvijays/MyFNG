@@ -16,9 +16,12 @@ import {
   Alert,
   Linking,
   RefreshControl,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { ENV } from '../../config/environment';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { calculateSLA, getSLAStatusColor } from '../../services/slaService';
 
@@ -33,6 +36,8 @@ export default function LeadDetailScreen({ leadId, onBack }: LeadDetailScreenPro
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('details');
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
     fetchLeadDetails();
@@ -77,7 +82,7 @@ export default function LeadDetailScreen({ leadId, onBack }: LeadDetailScreenPro
           text: 'Accept',
           onPress: async () => {
             try {
-              const response = await fetch(`http://localhost:3000/api/leads/${leadId}/accept`, {
+              const response = await fetch(`${ENV.API_URL}/api/leads/${leadId}/accept`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
               });
@@ -96,38 +101,32 @@ export default function LeadDetailScreen({ leadId, onBack }: LeadDetailScreenPro
   }
 
   async function handleRejectLead() {
-    Alert.prompt(
-      'Reject Lead',
-      'Please provide a reason (minimum 10 characters):',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          onPress: async (reason) => {
-            if (!reason || reason.length < 10) {
-              Alert.alert('Error', 'Reason must be at least 10 characters');
-              return;
-            }
+    setRejectReason('');
+    setRejectModalVisible(true);
+  }
 
-            try {
-              const response = await fetch(`http://localhost:3000/api/leads/${leadId}/reject`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reason }),
-              });
+  async function submitRejectLead() {
+    if (!rejectReason || rejectReason.length < 10) {
+      Alert.alert('Error', 'Reason must be at least 10 characters');
+      return;
+    }
 
-              if (!response.ok) throw new Error('Failed to reject lead');
+    setRejectModalVisible(false);
 
-              Alert.alert('Success', 'Lead rejected successfully!');
-              onBack();
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
+    try {
+      const response = await fetch(`${ENV.API_URL}/api/leads/${leadId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: rejectReason }),
+      });
+
+      if (!response.ok) throw new Error('Failed to reject lead');
+
+      Alert.alert('Success', 'Lead rejected successfully!');
+      onBack();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
   }
 
   function handlePhoneCall(phone: string) {
@@ -400,6 +399,51 @@ export default function LeadDetailScreen({ leadId, onBack }: LeadDetailScreenPro
           </View>
         )}
       </ScrollView>
+
+      {/* Reject Reason Modal (cross-platform replacement for Alert.prompt) */}
+      <Modal
+        visible={rejectModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRejectModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reject Lead</Text>
+            <Text style={styles.modalSubtitle}>
+              Please provide a reason (minimum 10 characters):
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              placeholder="Enter reason for rejection..."
+              placeholderTextColor={COLORS.gray[400]}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setRejectModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalRejectBtn,
+                  rejectReason.length < 10 && styles.modalRejectBtnDisabled,
+                ]}
+                onPress={submitRejectLead}
+                disabled={rejectReason.length < 10}
+              >
+                <Text style={styles.modalRejectText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -603,6 +647,71 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray[100],
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.xl,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.heading,
+    marginBottom: SPACING.sm,
+  },
+  modalSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray[600],
+    marginBottom: SPACING.md,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+    borderRadius: BORDER_RADIUS.sm,
+    padding: SPACING.md,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.bodyText,
+    minHeight: 80,
+    marginBottom: SPACING.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.sm,
+  },
+  modalCancelBtn: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.gray[200],
+  },
+  modalCancelText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray[700],
+    fontWeight: '600',
+  },
+  modalRejectBtn: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.danger,
+  },
+  modalRejectBtnDisabled: {
+    opacity: 0.5,
+  },
+  modalRejectText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.white,
+    fontWeight: '600',
   },
 });
 

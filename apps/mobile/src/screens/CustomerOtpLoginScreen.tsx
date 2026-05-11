@@ -40,6 +40,12 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
     setLoading(true);
     try {
+      // Re-assert dev/simulator flag before the request to prevent the iOS
+      // PhoneAuthProvider crash on simulators that can't receive APNs.
+      // Safe in production: __DEV__ is false in release builds.
+      if (__DEV__) {
+        auth().settings.appVerificationDisabledForTesting = true;
+      }
       const phoneWithCountry = `+91${cleanPhone}`;
       const result = await auth().signInWithPhoneNumber(phoneWithCountry);
       setConfirmation(result);

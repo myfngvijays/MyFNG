@@ -63,11 +63,11 @@ function AppContent() {
       } else {
         const hasCustomerSession = await fetchCustomerSessionProfile();
         if (!hasCustomerSession) {
-          console.log('No authenticated user');
+          if (__DEV__) console.log('No authenticated user');
         }
       }
     } catch (error) {
-      console.error('Error checking user:', error);
+      if (__DEV__) console.error('Error checking user:', error);
     } finally {
       setIsLoading(false);
     }
@@ -87,13 +87,15 @@ function AppContent() {
 
       if (error) throw error;
       
-      console.log('✅ User profile fetched:', data);
-      console.log('✅ Role code:', data?.role?.role_code);
+      if (__DEV__) {
+        console.log('User profile fetched:', data?.id);
+        console.log('Role code:', data?.role?.role_code);
+      }
       
       setUserProfile(data);
       setUser({ id: userId });
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      if (__DEV__) console.error('Error fetching profile:', error);
     }
   };
 
@@ -146,7 +148,7 @@ function AppContent() {
       setUser(null);
       setUserProfile(null);
     } catch (error) {
-      console.error('Error logging out:', error);
+      if (__DEV__) console.error('Error logging out:', error);
     }
   };
 
@@ -164,7 +166,7 @@ function AppContent() {
   }
 
   return (
-    <NavigationContainer onStateChange={() => { void checkUser(); }}>
+    <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user || !userProfile || isCustomerSessionUser ? (
           <>

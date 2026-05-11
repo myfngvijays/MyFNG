@@ -25,7 +25,7 @@ const AVAILABLE_ROLES = [
   { code: 'WORKSHOP_ADMIN', name: 'Workshop Owner', icon: 'store', color: COLORS.orange },
   { code: 'WORKSHOP_SUPERVISOR', name: 'Workshop Adviser', icon: 'account-supervisor', color: COLORS.indigo },
   { code: 'WORKSHOP_MECHANIC', name: 'Workshop Mechanic', icon: 'wrench', color: COLORS.teal },
-  { code: 'PICKUP_BOY', name: 'Pickupboy/Driver', icon: 'car-pickup', color: COLORS.green },
+  { code: 'WORKSHOP_PICKUP_BOY', name: 'Pickupboy/Driver', icon: 'car-pickup', color: COLORS.green },
   { code: 'RSA_MANAGER', name: 'RSA Manager', icon: 'car-emergency', color: COLORS.red },
   { code: 'AUDITOR', name: 'Quality Auditor', icon: 'shield-check', color: COLORS.indigo },
   { code: 'DIGITAL_MARKETING', name: 'Digital Marketing', icon: 'bullhorn', color: COLORS.purple },
@@ -122,10 +122,21 @@ export default function UserRoleManagementScreen({ navigation }: any) {
         return;
       }
 
-      // Create auth user first
+      const generateStrongPassword = () => {
+        const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        const lower = 'abcdefghijkmnpqrstuvwxyz';
+        const digits = '23456789';
+        const symbols = '!@#$%&*';
+        const all = upper + lower + digits + symbols;
+        const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+        const base = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+        for (let i = 0; i < 12; i++) base.push(pick(all));
+        return base.sort(() => Math.random() - 0.5).join('');
+      };
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
-        password: newUser.password || 'TempPassword123!', // In production, generate secure password
+        password: newUser.password || generateStrongPassword(),
         options: {
           data: {
             full_name: newUser.full_name,

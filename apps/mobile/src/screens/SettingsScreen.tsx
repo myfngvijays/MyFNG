@@ -33,6 +33,7 @@ import {
 import { COLORS } from '../constants/theme';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { apiFetch } from '../lib/api';
+import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
 
 type Props = {
@@ -1086,7 +1087,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const SOCIAL_LINKS = [
     { icon: 'logo-facebook' as const, url: 'https://facebook.com/myfngcarservices', color: '#1877F2' },
-    { icon: 'logo-instagram' as const, url: 'http://instagram.com/myfngcarservices', color: '#E4405F' },
+    { icon: 'logo-instagram' as const, url: 'https://instagram.com/myfngcarservices', color: '#E4405F' },
     { icon: 'logo-youtube' as const, url: 'https://www.youtube.com/@myfng_car_servicing', color: '#FF0000' },
     { icon: 'logo-linkedin' as const, url: 'https://www.linkedin.com/company/myfngcarservices', color: '#0A66C2' },
     { icon: 'logo-twitter' as const, url: 'https://x.com/myfngcarservice', color: '#1DA1F2' },
@@ -2833,14 +2834,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
             <View style={hstyles.topCard}>
               <Text style={hstyles.topTitle}>How can we help you?</Text>
               <View style={hstyles.contactRow}>
-                <TouchableOpacity style={hstyles.contactItem} onPress={() => Linking.openURL('tel:+919152307030')}>
+                <TouchableOpacity style={hstyles.contactItem} onPress={() => openPhoneCall('+919152307030')}>
                   <View style={hstyles.contactIconWrap}>
                     <Ionicons name="call-outline" size={16} color={COLORS.primary} />
                   </View>
                   <Text style={hstyles.contactLabel}>Call Us</Text>
                   <Text style={hstyles.contactSub}>+91 9152307030</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={hstyles.contactItem} onPress={() => Linking.openURL('mailto:support@myfng.in')}>
+                <TouchableOpacity style={hstyles.contactItem} onPress={() => openEmail('support@myfng.in')}>
                   <View style={hstyles.contactIconWrap}>
                     <Ionicons name="mail-outline" size={16} color={COLORS.primary} />
                   </View>
@@ -2903,7 +2904,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     <TouchableOpacity style={hstyles.resolveBtn} onPress={() => setFaqModal(null)}>
                       <Text style={hstyles.resolveBtnText}>Resolved</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={hstyles.agentBtn} onPress={() => Linking.openURL('mailto:support@myfng.in')}>
+                    <TouchableOpacity style={hstyles.agentBtn} onPress={() => openEmail('support@myfng.in')}>
                       <Text style={hstyles.agentBtnText}>Talk with Agent</Text>
                     </TouchableOpacity>
                   </View>
@@ -3065,10 +3066,35 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   onPress={() =>
                     Alert.alert(
                       'Delete Account',
-                      'This will permanently delete your account and all associated data. Are you sure?',
+                      'This will permanently delete your account and all associated personal data. Service history, wallet balance, and rewards will be lost forever and cannot be recovered. Are you sure?',
                       [
                         { text: 'Cancel', style: 'cancel' },
-                        { text: 'Delete', style: 'destructive', onPress: () => navigation.navigate('Login' as never) },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await apiFetch('/api/customer/auth/delete-account', { method: 'POST' });
+                              await clearCustomerSessionToken();
+                              try {
+                                await supabase.auth.signOut();
+                              } catch {
+                                // ignore — supabase session may not exist for customer-session users
+                              }
+                              setIsLoggedIn(false);
+                              Alert.alert(
+                                'Account Deleted',
+                                'Your account has been permanently deleted.',
+                                [{ text: 'OK', onPress: () => navigation.navigate('Login' as never) }]
+                              );
+                            } catch (err: any) {
+                              Alert.alert(
+                                'Could not delete account',
+                                err?.message || 'Please try again later or contact support@myfng.in.'
+                              );
+                            }
+                          },
+                        },
                       ]
                     )
                   }

@@ -76,7 +76,7 @@ export default function LiveTrackingModal({ visible, onClose }: Props) {
               style={styles.whatsAppBtn}
               onPress={() => {
                 onClose();
-                Linking.openURL('https://wa.me/9152307030');
+                Linking.openURL('https://wa.me/919152307030');
               }}
             >
               <Ionicons name="logo-whatsapp" size={14} color="#FFFFFF" />

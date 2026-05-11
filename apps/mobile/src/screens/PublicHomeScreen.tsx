@@ -21,6 +21,7 @@ import PublicHeader from '../components/PublicHeader';
 import LiveTrackingModal from '../components/LiveTrackingModal';
 import SearchOverlay from '../components/SearchOverlay';
 import ReferAndFooter from '../components/ReferAndFooter';
+import { openPhoneCall } from '../lib/phone';
 import { COLORS } from '../constants/theme';
 import {
   BLOGS as BLOG_ITEMS,
@@ -55,7 +56,7 @@ const HERO_BANNERS: HeroBanner[] = [
     icon: 'construct',
     colors: ['#004AAD', '#0A57BF'],
     image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/CarService.png',
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/CarService.PNG',
     overlay: 'rgba(0, 74, 173, 0.45)',
   },
   {
@@ -66,7 +67,7 @@ const HERO_BANNERS: HeroBanner[] = [
     icon: 'alert-circle',
     colors: ['#DC2626', '#991B1B'],
     image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.png',
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.PNG',
     overlay: 'rgba(17, 24, 39, 0.42)',
   },
   {
@@ -77,17 +78,17 @@ const HERO_BANNERS: HeroBanner[] = [
     icon: 'sparkles',
     colors: ['#2563EB', '#1E3A8A'],
     image:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/MyFNG-AI.png',
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/MyFNG-AI.PNG',
     overlay: 'rgba(30, 58, 138, 0.45)',
   },
 ];
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
 const PROMO_BANNERS = [
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.png`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.png`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.png`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`,
 ];
 
 const DENTING_ICON = require('../../assets/service-icons/denting-painting.png');
@@ -609,7 +610,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <TouchableOpacity
                 style={styles.rsaEmergencyBtn}
                 activeOpacity={0.85}
-                onPress={() => Linking.openURL('tel:+919152307030')}
+                onPress={() => openPhoneCall('+919152307030')}
               >
                 <Ionicons name="call" size={18} color="#DC2626" />
                 <Text style={styles.rsaEmergencyBtnText}>Call Emergency Helpline</Text>

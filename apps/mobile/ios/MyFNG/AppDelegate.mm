@@ -5,6 +5,8 @@
 #endif
 // @generated end react-native-maps-import
 
+#import <FirebaseCore/FirebaseCore.h>
+
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTLinkingManager.h>
 
@@ -12,9 +14,16 @@
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
+  if ([FIRApp defaultApp] == nil) {
+    [FIRApp configure];
+  }
+
 // @generated begin react-native-maps-init - expo prebuild (DO NOT MODIFY) sync-81652040855563cf63680b6240a1354a0b51eac9
 #if __has_include(<GoogleMaps/GoogleMaps.h>)
-  [GMSServices provideAPIKey:@"AIzaSyBUSdBMZA5-5WZDnvJISX1El2Kt-ZPal5I"];
+  NSString *gmsApiKey = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"GMSApiKey"];
+  if (gmsApiKey && ![gmsApiKey isEqualToString:@""] && ![gmsApiKey hasPrefix:@"$("]) {
+    [GMSServices provideAPIKey:gmsApiKey];
+  }
 #endif
 // @generated end react-native-maps-init
   self.moduleName = @"main";

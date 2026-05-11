@@ -4,6 +4,17 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+// Load signing credentials and API keys from android/signing.properties (gitignored)
+// Falls back to Gradle properties / environment variables (e.g. CI secrets).
+def signingPropsFile = rootProject.file('signing.properties')
+def signingProps = new Properties()
+if (signingPropsFile.exists()) {
+    signingPropsFile.withInputStream { signingProps.load(it) }
+}
+def getSecret = { String key ->
+    signingProps.getProperty(key) ?: findProperty(key) ?: System.getenv(key) ?: ''
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -88,14 +99,12 @@ android {
         applicationId 'com.myfng.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 7
+        versionName "1.0.6"
 
         buildConfigField("boolean", "REACT_NATIVE_UNSTABLE_USE_RUNTIME_SCHEDULER_ALWAYS", (findProperty("reactNative.unstable_useRuntimeSchedulerAlways") ?: true).toString())
         manifestPlaceholders = [
-            GOOGLE_MAPS_API_KEY: (findProperty("GOOGLE_MAPS_API_KEY")
-                ?: System.getenv("GOOGLE_MAPS_API_KEY")
-                ?: "")
+            GOOGLE_MAPS_API_KEY: getSecret('GOOGLE_MAPS_API_KEY')
         ]
     }
     signingConfigs {
@@ -107,9 +116,9 @@ android {
         }
         release {
             storeFile file('myfng-release.keystore')
-            storePassword 'myfng2026release'
-            keyAlias 'myfng-key'
-            keyPassword 'myfng2026release'
+            storePassword getSecret('MYFNG_RELEASE_STORE_PASSWORD')
+            keyAlias getSecret('MYFNG_RELEASE_KEY_ALIAS') ?: 'myfng-key'
+            keyPassword getSecret('MYFNG_RELEASE_KEY_PASSWORD')
         }
     }
     buildTypes {
@@ -171,8 +180,6 @@ dependencies {
             implementation("com.facebook.fresco:animated-webp:${reactAndroidLibs.versions.fresco.get()}")
         }
     }
-
-    implementation("com.facebook.react:flipper-integration")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

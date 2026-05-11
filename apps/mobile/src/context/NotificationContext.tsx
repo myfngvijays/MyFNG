@@ -55,7 +55,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         
         if (authError || !user) {
-          console.log('No authenticated user');
+          if (__DEV__) console.log('No authenticated user');
           setLoading(false);
           return;
         }
@@ -81,7 +81,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const profile = byId || byEmail || byPhone;
         if (profile?.id) setUserId(profile.id);
       } catch (error) {
-        console.error('Error in fetchUser:', error);
+        if (__DEV__) console.error('Error in fetchUser:', error);
         setLoading(false);
       }
     };
@@ -105,12 +105,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         .limit(50);
 
       if (error) {
-        // If table doesn't exist, just log and continue
         if (error.code === 'PGRST204' || error.code === 'PGRST205') {
-          console.log('ℹ️ Notifications table not found - feature will be available after database migration');
+          if (__DEV__) console.log('Notifications table not found - feature will be available after database migration');
           setNotifications([]);
           setUnreadCount(0);
-        } else {
+        } else if (__DEV__) {
           console.error('Error fetching notifications:', error);
         }
         return;
@@ -119,7 +118,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setNotifications(data || []);
       setUnreadCount(data?.filter(n => !n.is_read).length || 0);
     } catch (error) {
-      console.error('Error:', error);
+      if (__DEV__) console.error('Error:', error);
       // Don't crash, just set empty state
       setNotifications([]);
       setUnreadCount(0);
@@ -139,13 +138,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
 
-    console.log('🔔 Setting up notification subscription for user:', userId);
+    if (__DEV__) console.log('Setting up notification subscription for user:', userId);
 
-    // Check if notifications table exists first
     const checkTable = async () => {
       const { error } = await supabase.from('notifications').select('id').limit(1);
       if (error) {
-        console.log('ℹ️ Notifications table not available - skipping realtime subscription');
+        if (__DEV__) console.log('Notifications table not available - skipping realtime subscription');
         return null;
       }
       return true;
@@ -165,7 +163,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             filter: `user_id=eq.${userId}`
           },
           (payload) => {
-            console.log('🔔 New notification received:', payload);
+            if (__DEV__) console.log('New notification received');
             const newNotification = payload.new as Notification;
 
             // Add to notifications list
@@ -252,7 +250,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         .subscribe();
 
       return () => {
-        console.log('🔕 Unsubscribing from notifications');
+        if (__DEV__) console.log('Unsubscribing from notifications');
         channel.unsubscribe();
       };
     });
@@ -279,7 +277,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         .eq('id', notificationId);
 
       if (error) {
-        console.error('Error marking notification as read:', error);
+        if (__DEV__) console.error('Error marking notification as read:', error);
         return;
       }
 
@@ -288,7 +286,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
-      console.error('Error:', error);
+      if (__DEV__) console.error('Error:', error);
     }
   };
 
@@ -306,7 +304,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         .eq('is_read', false);
 
       if (error) {
-        console.error('Error marking all as read:', error);
+        if (__DEV__) console.error('Error marking all as read:', error);
         return;
       }
 
@@ -316,7 +314,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setUnreadCount(0);
       Alert.alert('Success', 'All notifications marked as read');
     } catch (error) {
-      console.error('Error:', error);
+      if (__DEV__) console.error('Error:', error);
     }
   };
 
@@ -328,7 +326,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         .eq('id', notificationId);
 
       if (error) {
-        console.error('Error deleting notification:', error);
+        if (__DEV__) console.error('Error deleting notification:', error);
         return;
       }
 
@@ -340,7 +338,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
     } catch (error) {
-      console.error('Error:', error);
+      if (__DEV__) console.error('Error:', error);
     }
   };
 

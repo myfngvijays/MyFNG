@@ -11,6 +11,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { ENV } from '../config/environment';
 
 const CACHE_KEYS = {
   LEADS: 'offline_leads',
@@ -43,7 +44,7 @@ export async function cacheLeads(leads: any[]): Promise<boolean> {
     await AsyncStorage.setItem(CACHE_KEYS.LAST_SYNC, new Date().toISOString());
     return true;
   } catch (error) {
-    console.error('Error caching leads:', error);
+    if (__DEV__) console.error('Error caching leads:', error);
     return false;
   }
 }
@@ -56,7 +57,7 @@ export async function getCachedLeads(): Promise<any[]> {
     const data = await AsyncStorage.getItem(CACHE_KEYS.LEADS);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Error getting cached leads:', error);
+    if (__DEV__) console.error('Error getting cached leads:', error);
     return [];
   }
 }
@@ -76,10 +77,10 @@ export async function queueAction(action: Omit<PendingAction, 'id' | 'timestamp'
     pending.push(newAction);
     await AsyncStorage.setItem(CACHE_KEYS.PENDING_ACTIONS, JSON.stringify(pending));
     
-    console.log('[OFFLINE] Action queued:', newAction.type);
+    if (__DEV__) console.log('[OFFLINE] Action queued:', newAction.type);
     return true;
   } catch (error) {
-    console.error('Error queuing action:', error);
+    if (__DEV__) console.error('Error queuing action:', error);
     return false;
   }
 }
@@ -92,7 +93,7 @@ export async function getPendingActions(): Promise<PendingAction[]> {
     const data = await AsyncStorage.getItem(CACHE_KEYS.PENDING_ACTIONS);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Error getting pending actions:', error);
+    if (__DEV__) console.error('Error getting pending actions:', error);
     return [];
   }
 }
@@ -103,7 +104,7 @@ export async function getPendingActions(): Promise<PendingAction[]> {
 export async function syncPendingActions(): Promise<{ success: number; failed: number }> {
   const online = await isOnline();
   if (!online) {
-    console.log('[OFFLINE] Cannot sync - no connection');
+    if (__DEV__) console.log('[OFFLINE] Cannot sync - no connection');
     return { success: 0, failed: 0 };
   }
 
@@ -112,7 +113,7 @@ export async function syncPendingActions(): Promise<{ success: number; failed: n
     return { success: 0, failed: 0 };
   }
 
-  console.log(`[OFFLINE] Syncing ${pending.length} pending actions...`);
+  if (__DEV__) console.log(`[OFFLINE] Syncing ${pending.length} pending actions...`);
 
   let success = 0;
   let failed = 0;
@@ -128,7 +129,7 @@ export async function syncPendingActions(): Promise<{ success: number; failed: n
         remaining.push(action);
       }
     } catch (error) {
-      console.error('Error syncing action:', error);
+      if (__DEV__) console.error('Error syncing action:', error);
       failed++;
       remaining.push(action);
     }
@@ -137,7 +138,7 @@ export async function syncPendingActions(): Promise<{ success: number; failed: n
   // Update pending actions
   await AsyncStorage.setItem(CACHE_KEYS.PENDING_ACTIONS, JSON.stringify(remaining));
 
-  console.log(`[OFFLINE] Sync complete: ${success} success, ${failed} failed`);
+  if (__DEV__) console.log(`[OFFLINE] Sync complete: ${success} success, ${failed} failed`);
   return { success, failed };
 }
 
@@ -168,15 +169,13 @@ async function syncAction(action: PendingAction): Promise<boolean> {
         return !noteError;
 
       case 'ACCEPT_LEAD':
-        // Call accept API
-        const acceptResponse = await fetch(`http://localhost:3000/api/leads/${action.leadId}/accept`, {
+        const acceptResponse = await fetch(`${ENV.API_URL}/api/leads/${action.leadId}/accept`, {
           method: 'POST',
         });
         return acceptResponse.ok;
 
       case 'REJECT_LEAD':
-        // Call reject API
-        const rejectResponse = await fetch(`http://localhost:3000/api/leads/${action.leadId}/reject`, {
+        const rejectResponse = await fetch(`${ENV.API_URL}/api/leads/${action.leadId}/reject`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason: action.data.reason }),
@@ -184,11 +183,11 @@ async function syncAction(action: PendingAction): Promise<boolean> {
         return rejectResponse.ok;
 
       default:
-        console.warn('Unknown action type:', action.type);
+        if (__DEV__) console.warn('Unknown action type:', action.type);
         return false;
     }
   } catch (error) {
-    console.error('Error syncing action:', error);
+    if (__DEV__) console.error('Error syncing action:', error);
     return false;
   }
 }
@@ -205,7 +204,7 @@ export async function clearCache(): Promise<boolean> {
     ]);
     return true;
   } catch (error) {
-    console.error('Error clearing cache:', error);
+    if (__DEV__) console.error('Error clearing cache:', error);
     return false;
   }
 }
@@ -218,7 +217,7 @@ export async function getLastSyncTime(): Promise<Date | null> {
     const time = await AsyncStorage.getItem(CACHE_KEYS.LAST_SYNC);
     return time ? new Date(time) : null;
   } catch (error) {
-    console.error('Error getting last sync time:', error);
+    if (__DEV__) console.error('Error getting last sync time:', error);
     return null;
   }
 }
@@ -229,10 +228,10 @@ export async function getLastSyncTime(): Promise<Date | null> {
 export function setupNetworkListener(onOnline: () => void, onOffline: () => void) {
   return NetInfo.addEventListener((state: any) => {
     if (state.isConnected) {
-      console.log('[OFFLINE] Connection restored');
+      if (__DEV__) console.log('[OFFLINE] Connection restored');
       onOnline();
     } else {
-      console.log('[OFFLINE] Connection lost');
+      if (__DEV__) console.log('[OFFLINE] Connection lost');
       onOffline();
     }
   });

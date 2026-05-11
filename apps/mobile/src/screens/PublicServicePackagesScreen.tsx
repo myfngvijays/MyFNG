@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -15,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import ReferAndFooter from '../components/ReferAndFooter';
+import { openPhoneCall, openEmail } from '../lib/phone';
 
 type Props = {
   navigation: any;
@@ -38,10 +38,10 @@ type ServiceCategory = {
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
 const SERVICE_PAGE_PROMO_BANNERS = [
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.png`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.png`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.png`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.png`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`,
+  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`,
 ];
 
 const SERVICE_CATEGORIES: ServiceCategory[] = [
@@ -323,7 +323,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               <TouchableOpacity
                 style={s.phoneBtn}
                 activeOpacity={0.85}
-                onPress={() => Linking.openURL(`tel:${supportPhone}`)}
+                onPress={() => openPhoneCall(supportPhone)}
               >
                 <Ionicons name="call" size={20} color="#6B7280" />
               </TouchableOpacity>
@@ -416,11 +416,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
                 <Text style={s.modalRowText}>Chat with AI</Text>
                 <Ionicons name="chatbubbles" size={18} color={COLORS.primary} />
               </TouchableOpacity>
-              <TouchableOpacity style={s.modalRow} onPress={() => Linking.openURL(`tel:${supportPhone}`)}>
+              <TouchableOpacity style={s.modalRow} onPress={() => openPhoneCall(supportPhone)}>
                 <Text style={s.modalRowText}>Call Support</Text>
                 <Ionicons name="call" size={18} color={COLORS.primary} />
               </TouchableOpacity>
-              <TouchableOpacity style={s.modalRow} onPress={() => Linking.openURL(`mailto:${supportEmail}`)}>
+              <TouchableOpacity style={s.modalRow} onPress={() => openEmail(supportEmail)}>
                 <Text style={s.modalRowText}>Email</Text>
                 <Ionicons name="mail" size={18} color={COLORS.primary} />
               </TouchableOpacity>

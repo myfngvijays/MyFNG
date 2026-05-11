@@ -17,6 +17,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SIZES, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../../constants/theme';
 import { Icon } from '../../../components/Icon';
+import { openPhoneCall } from '../../../lib/phone';
 
 export default function RSALeadDetailScreen({ navigation, route }: any) {
   const { userProfile } = useAuth();
@@ -225,7 +226,7 @@ export default function RSALeadDetailScreen({ navigation, route }: any) {
   };
 
   const handleCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
+    openPhoneCall(phone);
   };
 
   const handleOpenMap = (link: string) => {

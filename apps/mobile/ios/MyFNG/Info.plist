@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>$(MARKETING_VERSION)</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -32,9 +32,26 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>GMSApiKey</key>
     <string>AIzaSyBUSdBMZA5-5WZDnvJISX1El2Kt-ZPal5I</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>tel</string>
+      <string>telprompt</string>
+      <string>mailto</string>
+      <string>sms</string>
+      <string>whatsapp</string>
+      <string>comgooglemaps</string>
+      <string>comgooglemaps-x-callback</string>
+      <string>gpay</string>
+      <string>tez</string>
+      <string>phonepe</string>
+      <string>paytmmp</string>
+      <string>upi</string>
+      <string>credpay</string>
+      <string>razorpay</string>
+    </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -45,22 +62,23 @@
       <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your camera</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
-    <key>NSLocationAlwaysUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <string>MyFNG needs access to your camera to take photos of your vehicle for service inspections, before/after service documentation, and incident reports during pickup and delivery.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your location</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <string>MyFNG uses your location to show nearby workshops, calculate accurate ETAs for vehicle pickup, track your service request, and help drivers reach your location.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your photos</string>
+    <string>MyFNG needs access to your photo library so you can attach existing photos of your vehicle for service requests, complaints, and inspection records.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>MyFNG needs permission to save photos to your library, such as service invoices, inspection reports, and vehicle documentation.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+      <string>remote-notification</string>
+      <string>fetch</string>
+    </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-      <string>armv7</string>
+      <string>arm64</string>
     </array>
     <key>UIRequiresFullScreen</key>
     <false/>
@@ -81,6 +99,8 @@
     <key>UIUserInterfaceStyle</key>
     <string>Light</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+    <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
   </dict>
 </plist>

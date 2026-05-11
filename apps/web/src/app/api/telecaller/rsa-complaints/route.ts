@@ -288,6 +288,17 @@ export async function POST(request: NextRequest) {
       // ignore
     }
 
+    // Re-push enriched lead to TeleCRM. The DB trigger has already merged this
+    // RSA lead's fields (name/city/vehicle/quoted amount/location) into any
+    // telecrm_api rows for the same mobile. Push the latest snapshot now so
+    // TeleCRM reflects the registered complaint without waiting for the cron.
+    try {
+      const { syncTelecrmRowByMobileSafe } = await import('@/lib/telecrm/push');
+      syncTelecrmRowByMobileSafe(db, contact_number, 'rsa-complaint create telecrm-push');
+    } catch (e: any) {
+      console.error('[rsa-complaints POST] telecrm push schedule failed:', e?.message || e);
+    }
+
     return NextResponse.json({ success: true, id: lead.id, media_upload: urls }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });

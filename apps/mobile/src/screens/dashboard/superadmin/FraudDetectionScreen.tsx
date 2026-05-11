@@ -51,55 +51,41 @@ export default function FraudDetectionScreen() {
     try {
       setLoading(true);
 
-      // Mock fraud detection data since table might not exist yet
-      const mockAlerts: FraudAlert[] = [
-        {
-          id: '1',
-          alert_type: 'DUPLICATE_LEAD',
-          severity: 'HIGH',
-          description: 'Same customer created multiple leads within 1 hour',
-          entity_type: 'LEAD',
-          entity_id: 'lead-123',
-          detected_at: new Date().toISOString(),
-          status: 'PENDING',
-          resolved_at: '',
-        },
-        {
-          id: '2',
-          alert_type: 'PRICE_MANIPULATION',
-          severity: 'CRITICAL',
-          description: 'Lead amount changed significantly after acceptance',
-          entity_type: 'LEAD',
-          entity_id: 'lead-456',
-          detected_at: new Date(Date.now() - 3600000).toISOString(),
-          status: 'PENDING',
-          resolved_at: '',
-        },
-        {
-          id: '3',
-          alert_type: 'SUSPICIOUS_WORKSHOP',
-          severity: 'MEDIUM',
-          description: 'Workshop has unusually high rejection rate (>50%)',
-          entity_type: 'WORKSHOP',
-          entity_id: 'workshop-789',
-          detected_at: new Date(Date.now() - 7200000).toISOString(),
-          status: 'INVESTIGATING',
-          resolved_at: '',
-        },
-      ];
+      const { data, error } = await supabase
+        .from('fraud_alerts')
+        .select('*')
+        .order('detected_at', { ascending: false })
+        .limit(200);
 
-      setAlerts(mockAlerts);
+      if (error) {
+        if (__DEV__) console.warn('fraud_alerts fetch error:', error.message);
+        setAlerts([]);
+        setStats({ critical: 0, high: 0, medium: 0, resolved: 0 });
+        return;
+      }
 
-      // Calculate stats
-      const critical = mockAlerts.filter(a => a.severity === 'CRITICAL' && a.status !== 'RESOLVED').length;
-      const high = mockAlerts.filter(a => a.severity === 'HIGH' && a.status !== 'RESOLVED').length;
-      const medium = mockAlerts.filter(a => a.severity === 'MEDIUM' && a.status !== 'RESOLVED').length;
-      const resolved = mockAlerts.filter(a => a.status === 'RESOLVED').length;
+      const list: FraudAlert[] = (data ?? []).map((row: any) => ({
+        id: String(row.id),
+        alert_type: row.alert_type ?? '',
+        severity: (row.severity ?? '').toString().toUpperCase(),
+        description: row.description ?? '',
+        entity_type: row.entity_type ?? '',
+        entity_id: row.entity_id ?? '',
+        detected_at: row.detected_at ?? row.created_at ?? new Date().toISOString(),
+        status: (row.status ?? 'PENDING').toString().toUpperCase(),
+        resolved_at: row.resolved_at ?? '',
+      }));
 
-      setStats({ critical, high, medium, resolved });
-
+      setAlerts(list);
+      setStats({
+        critical: list.filter(a => a.severity === 'CRITICAL' && a.status !== 'RESOLVED').length,
+        high: list.filter(a => a.severity === 'HIGH' && a.status !== 'RESOLVED').length,
+        medium: list.filter(a => a.severity === 'MEDIUM' && a.status !== 'RESOLVED').length,
+        resolved: list.filter(a => a.status === 'RESOLVED').length,
+      });
     } catch (error) {
-      console.error('Error fetching fraud alerts:', error);
+      if (__DEV__) console.error('Error fetching fraud alerts:', error);
+      setAlerts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

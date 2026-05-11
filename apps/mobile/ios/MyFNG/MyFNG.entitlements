@@ -3,6 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>aps-environment</key>
-    <string>development</string>
+    <string>production</string>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+      <string>applinks:myfng.in</string>
+      <string>applinks:www.myfng.in</string>
+      <string>applinks:myfng.astric.ai</string>
+    </array>
   </dict>
 </plist>

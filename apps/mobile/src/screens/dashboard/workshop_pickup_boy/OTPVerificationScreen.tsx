@@ -110,8 +110,34 @@ export default function OTPVerificationScreen({
   };
 
   const handleResendOTP = async () => {
-    Alert.alert('Resend OTP', 'Contact admin to resend OTP');
-    // TODO: Implement resend OTP functionality
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert('Error', 'Not authenticated');
+        return;
+      }
+
+      const response = await fetch(
+        `${ENV.API_URL}/api/pickup/${leadId}/resend-otp`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ otp_type: otpType }),
+        }
+      );
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Failed to resend OTP');
+      }
+
+      Alert.alert('Success', 'OTP has been resent to the customer.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to resend OTP. Please contact admin.');
+    }
   };
 
   return (
@@ -171,7 +197,7 @@ export default function OTPVerificationScreen({
 
         {/* Resend OTP */}
         <TouchableOpacity onPress={handleResendOTP} style={styles.resendButton}>
-          <Text style={styles.resendButtonText}>Didn't receive OTP? Contact Admin</Text>
+          <Text style={styles.resendButtonText}>Didn't receive OTP? Resend</Text>
         </TouchableOpacity>
 
         {/* Instructions */}

@@ -207,7 +207,7 @@ export async function PATCH(
 
     const { data: existing, error: fetchErr } = await db
       .from('rsa_leads')
-      .select('id, registered_by_id, assigned_mechanic_id, media_upload')
+      .select('id, registered_by_id, assigned_mechanic_id, media_upload, contact_number')
       .eq('id', leadId)
       .maybeSingle();
 
@@ -372,6 +372,21 @@ export async function PATCH(
       } catch {
         // ignore
       }
+    }
+
+    // Re-push enriched lead to TeleCRM (DB trigger has merged the latest
+    // rsa_leads fields into telecrm_api rows for this mobile).
+    try {
+      const mobileForPush =
+        (typeof payload.contact_number === 'string' && payload.contact_number) ||
+        (typeof existing.contact_number === 'string' && existing.contact_number) ||
+        null;
+      if (mobileForPush) {
+        const { syncTelecrmRowByMobileSafe } = await import('@/lib/telecrm/push');
+        syncTelecrmRowByMobileSafe(db, mobileForPush, 'rsa-complaint update telecrm-push');
+      }
+    } catch (e: any) {
+      console.error('[rsa-complaints PATCH] telecrm push schedule failed:', e?.message || e);
     }
 
     return NextResponse.json({ success: true, id: leadId }, { status: 200 });

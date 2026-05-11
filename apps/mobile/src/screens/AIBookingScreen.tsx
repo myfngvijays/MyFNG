@@ -137,7 +137,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       })();
 
       if (!res.ok) {
-        console.log('Chatbot API error', { url, status: res.status, body: raw?.slice(0, 400) });
+        if (__DEV__) console.log('Chatbot API error', { url, status: res.status, body: raw?.slice(0, 400) });
         push({
           id: uid(),
           role: 'assistant',
@@ -222,7 +222,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
         setChatContext((prev: any) => ({ ...(prev || {}), ...(ctxPatch || {}) }));
       }
     } catch (e: any) {
-      console.log('Chatbot API network error', { err: String(e?.message || e), apiBase: apiBase() });
+      if (__DEV__) console.log('Chatbot API network error', { err: String(e?.message || e), apiBase: apiBase() });
       push({ id: uid(), role: 'assistant', text: 'Network issue. Please try again.' });
     } finally {
       setChatLoading(false);

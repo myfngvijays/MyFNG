@@ -16,12 +16,12 @@ import { supabase } from '../../../lib/supabase';
 interface AuditLog {
   id: string;
   action: string;
-  user_id: { full_name: string; role: string };
+  user: { full_name: string; role: string };
   entity_type: string;
   entity_id: string;
   changes: any;
   created_at: string;
-  ip_address: string;
+  ip_address: string | null;
 }
 
 export default function AuditLogsScreen() {
@@ -44,44 +44,64 @@ export default function AuditLogsScreen() {
     try {
       setLoading(true);
 
-      // Mock audit log data
-      const mockLogs: AuditLog[] = [
-        {
-          id: '1',
-          action: 'LEAD_CREATED',
-          user_id: { full_name: 'John Doe', role: 'TELECALLER' },
-          entity_type: 'LEAD',
-          entity_id: 'lead-123',
-          changes: { status: 'NEW' },
-          created_at: new Date().toISOString(),
-          ip_address: '192.168.1.1',
-        },
-        {
-          id: '2',
-          action: 'LEAD_ASSIGNED',
-          user_id: { full_name: 'Jane Smith', role: 'LEAD_MANAGER' },
-          entity_type: 'LEAD',
-          entity_id: 'lead-123',
-          changes: { workshop_id: 'workshop-456' },
-          created_at: new Date(Date.now() - 3600000).toISOString(),
-          ip_address: '192.168.1.2',
-        },
-        {
-          id: '3',
-          action: 'USER_CREATED',
-          user_id: { full_name: 'Admin User', role: 'SUPER_ADMIN' },
-          entity_type: 'USER',
-          entity_id: 'user-789',
-          changes: { role: 'MECHANIC' },
-          created_at: new Date(Date.now() - 7200000).toISOString(),
-          ip_address: '192.168.1.3',
-        },
-      ];
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select(`
+          id,
+          action,
+          table_name,
+          record_id,
+          old_data,
+          new_data,
+          ip_address,
+          created_at,
+          user:users_login!audit_logs_user_id_fkey(
+            full_name,
+            role:roles!role_id(role_code)
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(200);
 
-      setLogs(mockLogs);
+      if (error) {
+        if (__DEV__) console.error('Error fetching audit logs:', error);
+        setLogs([]);
+        return;
+      }
 
+      const normalized: AuditLog[] = (data || []).map((row: any) => {
+        const userInfo = Array.isArray(row.user) ? row.user[0] : row.user;
+        const roleInfo = userInfo?.role;
+        const roleObj = Array.isArray(roleInfo) ? roleInfo[0] : roleInfo;
+
+        let changes: any = null;
+        if (row.new_data && row.old_data) {
+          changes = { before: row.old_data, after: row.new_data };
+        } else if (row.new_data) {
+          changes = row.new_data;
+        } else if (row.old_data) {
+          changes = row.old_data;
+        }
+
+        return {
+          id: String(row.id),
+          action: String(row.action || ''),
+          user: {
+            full_name: userInfo?.full_name || 'Unknown User',
+            role: roleObj?.role_code || 'N/A',
+          },
+          entity_type: String(row.table_name || 'N/A').toUpperCase(),
+          entity_id: String(row.record_id || ''),
+          changes,
+          created_at: row.created_at,
+          ip_address: row.ip_address || null,
+        };
+      });
+
+      setLogs(normalized);
     } catch (error) {
-      console.error('Error fetching audit logs:', error);
+      if (__DEV__) console.error('Error fetching audit logs:', error);
+      setLogs([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -91,9 +111,8 @@ export default function AuditLogsScreen() {
   const filterLogs = () => {
     let filtered = [...logs];
 
-    // Apply entity filter
     if (activeFilter !== 'ALL') {
-      filtered = filtered.filter(log => log.entity_type === activeFilter);
+      filtered = filtered.filter(log => log.entity_type.includes(activeFilter));
     }
 
     // Apply search
@@ -102,7 +121,7 @@ export default function AuditLogsScreen() {
       filtered = filtered.filter(
         log =>
           log.action.toLowerCase().includes(query) ||
-          log.user_id.full_name.toLowerCase().includes(query) ||
+          log.user.full_name.toLowerCase().includes(query) ||
           log.entity_id.toLowerCase().includes(query)
       );
     }
@@ -149,13 +168,13 @@ export default function AuditLogsScreen() {
         <View style={styles.logRow}>
           <Text style={styles.logLabel}>User:</Text>
           <Text style={styles.logValue}>
-            {item.user_id.full_name} ({item.user_id.role})
+            {item.user.full_name} ({item.user.role})
           </Text>
         </View>
         <View style={styles.logRow}>
           <Text style={styles.logLabel}>Entity:</Text>
           <Text style={styles.logValue}>
-            {item.entity_type} - {item.entity_id.slice(0, 12)}...
+            {item.entity_type}{item.entity_id ? ` - ${item.entity_id.slice(0, 12)}...` : ''}
           </Text>
         </View>
         {item.ip_address && (
@@ -166,7 +185,7 @@ export default function AuditLogsScreen() {
         )}
       </View>
 
-      {item.changes && Object.keys(item.changes).length > 0 && (
+      {item.changes && typeof item.changes === 'object' && Object.keys(item.changes).length > 0 && (
         <View style={styles.changesContainer}>
           <Text style={styles.changesLabel}>Changes:</Text>
           <View style={styles.changesContent}>

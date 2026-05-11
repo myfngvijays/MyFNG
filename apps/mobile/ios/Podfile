@@ -7,6 +7,10 @@ podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties
 ENV['RCT_NEW_ARCH_ENABLED'] = podfile_properties['newArchEnabled'] == 'true' ? '1' : '0'
 ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] = podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
 
+# Required by @react-native-firebase/auth so Firebase Swift modules generate
+# their bridging headers (FirebaseAuth-Swift.h, etc.) when linked statically.
+$RNFirebaseAsStaticFramework = true
+
 platform :ios, podfile_properties['ios.deploymentTarget'] || '13.4'
 install! 'cocoapods',
   :deterministic_uuids => false
@@ -38,6 +42,11 @@ elsif podfile_properties.key?('ios.flipper') then
 end
 
 target 'MyFNG' do
+  # Build everything as static frameworks. Required for FirebaseAuth (Swift-based)
+  # so its bridging header (FirebaseAuth-Swift.h) is generated and importable
+  # from the Objective-C side of @react-native-firebase/auth.
+  use_frameworks! :linkage => :static
+
   use_expo_modules!
 # @generated begin react-native-maps - expo prebuild (DO NOT MODIFY) sync-e9cc66c360abe50bc66d89fffb3c55b034d7d369
   pod 'react-native-google-maps', path: File.dirname(`node --print "require.resolve('react-native-maps/package.json')"`)

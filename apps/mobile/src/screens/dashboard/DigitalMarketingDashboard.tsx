@@ -76,28 +76,31 @@ export default function DigitalMarketingDashboard() {
         ? ((bookedLeads || 0) / totalLeadsCount * 100).toFixed(1)
         : 0;
 
-      // Mock campaign data
-      const mockCampaigns = [
-        { id: 1, name: 'Summer Service Campaign', status: 'ACTIVE', impressions: 12500, clicks: 320, ctr: 2.56, spent: 15000 },
-        { id: 2, name: 'New User Promotion', status: 'ACTIVE', impressions: 8900, clicks: 245, ctr: 2.75, spent: 12000 },
-      ];
+      const { data: campaignRows } = await supabase
+        .from('marketing_campaigns')
+        .select('id, name, status, impressions, clicks, spent')
+        .order('created_at', { ascending: false });
+
+      const campaigns = campaignRows ?? [];
+      const totalImpressions = campaigns.reduce((sum, c: any) => sum + Number(c.impressions ?? 0), 0);
+      const totalClicks = campaigns.reduce((sum, c: any) => sum + Number(c.clicks ?? 0), 0);
 
       setStats({
         totalLeads: totalLeadsCount || 0,
         leadsToday: leadsTodayCount || 0,
         conversionRate: parseFloat(conversionRate as string),
-        activeCampaigns: mockCampaigns.filter(c => c.status === 'ACTIVE').length,
-        totalImpressions: mockCampaigns.reduce((sum, c) => sum + c.impressions, 0),
-        totalClicks: mockCampaigns.reduce((sum, c) => sum + c.clicks, 0),
-        clickThroughRate: mockCampaigns.length > 0 
-          ? parseFloat((mockCampaigns.reduce((sum, c) => sum + c.clicks, 0) / mockCampaigns.reduce((sum, c) => sum + c.impressions, 0) * 100).toFixed(2))
+        activeCampaigns: campaigns.filter((c: any) => (c.status ?? '').toString().toUpperCase() === 'ACTIVE').length,
+        totalImpressions,
+        totalClicks,
+        clickThroughRate: totalImpressions > 0
+          ? parseFloat(((totalClicks / totalImpressions) * 100).toFixed(2))
           : 0,
-        totalSpent: mockCampaigns.reduce((sum, c) => sum + c.spent, 0),
+        totalSpent: campaigns.reduce((sum, c: any) => sum + Number(c.spent ?? 0), 0),
       });
 
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      if (__DEV__) console.error('Error fetching dashboard data:', error);
       setLoading(false);
     }
   };

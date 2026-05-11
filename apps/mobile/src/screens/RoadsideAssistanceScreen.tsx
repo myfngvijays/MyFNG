@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import ReferAndFooter from '../components/ReferAndFooter';
+import { openPhoneCall } from '../lib/phone';
 
 type Props = { navigation: any; route: any };
 
@@ -87,7 +88,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             <TouchableOpacity
               style={s.rsaEmergencyBtn}
               activeOpacity={0.85}
-              onPress={() => Linking.openURL('tel:+919152307030')}
+              onPress={() => openPhoneCall('+919152307030')}
             >
               <Ionicons name="call" size={18} color="#DC2626" />
               <Text style={s.rsaEmergencyBtnText}>Call Emergency Helpline</Text>
@@ -133,7 +134,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                 <Text style={s.priceBulletText}>{t}</Text>
               </View>
             ))}
-            <TouchableOpacity style={s.towingBtn} onPress={() => Linking.openURL('tel:+919152307030')}>
+            <TouchableOpacity style={s.towingBtn} onPress={() => openPhoneCall('+919152307030')}>
               <Text style={s.towingBtnText}>Request Towing</Text>
             </TouchableOpacity>
           </View>

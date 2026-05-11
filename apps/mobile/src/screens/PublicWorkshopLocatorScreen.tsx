@@ -199,7 +199,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
     try {
       const expoLocationNative = requireOptionalNativeModule('ExpoLocation');
       if (!expoLocationNative) {
-        Alert.alert('Location not available', 'Please rebuild the Android app (native location module missing).');
+        Alert.alert('Location not available', 'Please update or reinstall the app (native location module missing).');
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-var-requires

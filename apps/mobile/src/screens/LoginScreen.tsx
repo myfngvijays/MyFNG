@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
@@ -63,6 +64,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
     setLoading(true);
     try {
+      // Re-assert the dev/simulator flag right before the request because the iOS
+      // PhoneAuthProvider can crash if app verification runs on a simulator that
+      // can't receive APNs tokens. Safe in production: __DEV__ is false in release.
+      if (__DEV__) {
+        auth().settings.appVerificationDisabledForTesting = true;
+      }
       const phoneWithCountry = `+91${cleanPhone}`;
       const result = await auth().signInWithPhoneNumber(phoneWithCountry);
       setCustomerConfirmation(result);
@@ -489,7 +496,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                 <View style={styles.otpHelpWrap}>
                   <Text style={styles.otpHelp}>
                     OTP sent via {loginMethod === 'phone' ? (phoneOtpChannel === 'sms' ? 'SMS' : 'WhatsApp') : 'Email'} to{' '}
-                    {loginMethod === 'phone' ? `+91 ${customerPhone}` : customerEmail}
+                    {loginMethod === 'phone' ? `+91 ${customerPhone}` : email}
                   </Text>
                   <TouchableOpacity
                     onPress={resetPhoneOtpAndGoInput}
@@ -535,8 +542,19 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
           <Text style={styles.termsText}>
             By continuing, you agree to MyFNG&apos;s{' '}
-            <Text style={styles.termsTextBold}>Terms of Service</Text> and{' '}
-            <Text style={styles.termsTextBold}>Privacy Policy</Text>
+            <Text
+              style={styles.termsTextBold}
+              onPress={() => { void Linking.openURL('https://myfng.in/terms-and-conditions'); }}
+            >
+              Terms of Service
+            </Text>{' '}
+            and{' '}
+            <Text
+              style={styles.termsTextBold}
+              onPress={() => { void Linking.openURL('https://myfng.in/privacy-policy'); }}
+            >
+              Privacy Policy
+            </Text>
           </Text>
         </View>
       </ScrollView>

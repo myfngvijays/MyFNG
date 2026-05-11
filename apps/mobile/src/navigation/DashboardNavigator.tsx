@@ -104,11 +104,11 @@ import WorkshopAdminSettingsScreen from '../screens/dashboard/workshop_admin/Set
 import WorkshopAdminMenuScreen from '../screens/dashboard/workshop_admin/WorkshopAdminMenuScreen';
 import WorkshopAdminPublicPageScreen from '../screens/dashboard/workshop_admin/WorkshopPublicPageScreen';
 
-// Lead Manager screens  
-import LeadManagerLeadsScreen from '../screens/dashboard/leadmanager/LeadManagerLeadsScreen';
-import LeadManagerLeadDetailScreen from '../screens/dashboard/leadmanager/LeadManagerLeadDetailScreen';
-import LeadManagerAssignWorkshopScreen from '../screens/dashboard/leadmanager/LeadManagerAssignWorkshopScreen';
-import LeadManagerEscalationsScreen from '../screens/dashboard/leadmanager/LeadManagerEscalationsScreen';
+// Lead Manager screens
+import LeadManagerLeadsScreen from '../screens/dashboard/lead_manager/LeadManagerLeadsScreen';
+import LeadManagerLeadDetailScreen from '../screens/dashboard/lead_manager/LeadManagerLeadDetailScreen';
+import LeadManagerAssignWorkshopScreen from '../screens/dashboard/lead_manager/LeadManagerAssignWorkshopScreen';
+import LeadManagerEscalationsScreen from '../screens/dashboard/lead_manager/LeadManagerEscalationsScreen';
 import LeadManagerReportsScreen from '../screens/dashboard/lead_manager/LeadManagerReportsScreen';
 import LeadManagerWorkshopsScreen from '../screens/dashboard/lead_manager/LeadManagerWorkshopsScreen';
 import LeadManagerWorkshopDetailScreen from '../screens/dashboard/lead_manager/LeadManagerWorkshopDetailScreen';
@@ -143,14 +143,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     userProfile?.role_name || 
     'User';
 
-  console.log('🔍 DashboardNavigator - User Profile:', JSON.stringify(userProfile, null, 2));
-  console.log('🔍 DashboardNavigator - Role Object:', userProfile?.role);
-  console.log('🔍 DashboardNavigator - Role Code:', roleCode);
-  console.log('🔍 DashboardNavigator - Role Name:', roleName);
-  
-  // ✅ DEBUG: Show which dashboard will be rendered
-  if (roleCode === 'UNKNOWN') {
-    console.error('❌ ROLE NOT FOUND! User profile structure:', userProfile);
+  if (__DEV__) {
+    console.log('DashboardNavigator - Role Code:', roleCode);
+    if (roleCode === 'UNKNOWN') {
+      console.error('ROLE NOT FOUND! Check user profile structure.');
+    }
   }
 
   // Header right button component
@@ -1451,7 +1448,6 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     );
   }
 
-  // Default/Unknown role - show detailed debug info
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen 
@@ -1460,20 +1456,10 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
       >
         {() => (
           <View style={styles.container}>
-            <Text style={styles.errorText}>Role not recognized: {roleCode}</Text>
-            <Text style={styles.errorSubtext}>Please contact administrator</Text>
-            
-            <View style={styles.debugBox}>
-              <Text style={styles.debugTitle}>Debug Info:</Text>
-              <Text style={styles.debugText}>Role Code: {roleCode}</Text>
-              <Text style={styles.debugText}>Role Name: {roleName}</Text>
-              <Text style={styles.debugText}>
-                Full Role: {JSON.stringify(userProfile?.role, null, 2)}
-              </Text>
-              <Text style={styles.debugText}>
-                Role Code Field: {userProfile?.role_code}
-              </Text>
-            </View>
+            <Text style={styles.errorText}>Access Unavailable</Text>
+            <Text style={styles.errorSubtext}>
+              Your role is not configured for the mobile app. Please contact the administrator for assistance.
+            </Text>
             
             <TouchableOpacity onPress={onLogout} style={styles.logoutBtn}>
               <Text style={styles.logoutBtnText}>Logout</Text>
@@ -1514,26 +1500,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 20,
-  },
-  debugBox: {
-    backgroundColor: '#F3F4F6',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
-    width: '100%',
-    maxWidth: 400,
-  },
-  debugTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#111827',
-  },
-  debugText: {
-    fontSize: 12,
-    color: '#4B5563',
-    marginBottom: 5,
-    fontFamily: 'monospace',
   },
   logoutBtn: {
     marginTop: 20,
