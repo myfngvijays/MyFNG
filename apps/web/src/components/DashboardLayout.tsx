@@ -740,6 +740,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/sub_admin/team', icon: <Users className="w-5 h-5" />, label: 'Team Management' },
         { href: '/dashboard/sub_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
         { href: '/dashboard/sub_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'Leads' },
+        ...((((userProfile as any)?.department) === 'CSE') ? [{ href: '/dashboard/sub_admin/dialer-leads', icon: <Phone className="w-5 h-5" />, label: 'Dialer Leads' }] : []),
         { href: '/dashboard/sub_admin/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/sub_admin/performance', icon: <TrendingUp className="w-5 h-5" />, label: 'Performance' },
         { href: '/dashboard/sub_admin/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
