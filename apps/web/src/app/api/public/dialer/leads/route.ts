@@ -1,11 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const RECORDING_BUCKET = 'dialer-recordings';
+
+// Supabase bucket sirf canonical MIME types accept karta hai.
+// Dialer clients (Postman, .NET, etc.) `.wav` ke liye non-standard
+// values bhej dete hain (audio/wave, audio/x-wav, audio/vnd.wave, etc.).
+// Yahaan client-supplied MIME ko canonical form me normalize karte hain,
+// aur agar fir bhi unknown ho toh file extension se infer karte hain.
+const MIME_ALIASES: Record<string, string> = {
+  'audio/wave': 'audio/wav',
+  'audio/x-wav': 'audio/wav',
+  'audio/vnd.wave': 'audio/wav',
+  'audio/wav': 'audio/wav',
+  'audio/mp3': 'audio/mpeg',
+  'audio/mpeg3': 'audio/mpeg',
+  'audio/x-mpeg-3': 'audio/mpeg',
+  'audio/mpeg': 'audio/mpeg',
+  'audio/m4a': 'audio/x-m4a',
+  'audio/x-m4a': 'audio/x-m4a',
+  'audio/aac': 'audio/aac',
+  'audio/ogg': 'audio/ogg',
+  'audio/webm': 'audio/webm',
+  'audio/amr': 'audio/amr',
+  'audio/mp4': 'audio/mp4',
+};
+
+const EXT_TO_MIME: Record<string, string> = {
+  wav: 'audio/wav',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/x-m4a',
+  aac: 'audio/aac',
+  ogg: 'audio/ogg',
+  webm: 'audio/webm',
+  amr: 'audio/amr',
+  mp4: 'audio/mp4',
+  '3gp': 'video/3gpp',
+  '3gpp': 'video/3gpp',
+};
+
+function normalizeRecordingMime(clientMime: string, fileName: string): string {
+  const lower = (clientMime || '').toLowerCase().trim();
+  if (lower && MIME_ALIASES[lower]) return MIME_ALIASES[lower];
+
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  if (ext && EXT_TO_MIME[ext]) return EXT_TO_MIME[ext];
+
+  // Last resort: agar client ne kuch valid-looking bheja hai, use it,
+  // warna safe default mpeg.
+  return lower || 'audio/mpeg';
+}
 
 const TEXT_FIELDS = [
   'phone_no',
@@ -176,8 +225,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let recordingUrl: string | null = null;
     let recordingBlob: Blob | null = null;
+    let recordingBuffer: Buffer | null = null;
+    let recordingMime = '';
+    let recordingName = '';
 
     for (const [key, value] of form.entries()) {
       if (key.trim() === 'recording' && typeof value !== 'string') {
@@ -188,18 +239,12 @@ export async function POST(request: NextRequest) {
 
     if (recordingBlob && recordingBlob.size > 0) {
       const bytes = await recordingBlob.arrayBuffer();
-      const mimeType = recordingBlob.type || 'audio/mpeg';
-      const name = (recordingBlob as any).name || 'recording.mp3';
-      recordingUrl = await uploadRecording(
-        supabaseAdmin,
-        Buffer.from(bytes),
-        mimeType,
-        name,
-        phoneNo
-      );
+      recordingBuffer = Buffer.from(bytes);
+      recordingMime = normalizeRecordingMime(recordingBlob.type || '', (recordingBlob as any).name || 'recording.mp3');
+      recordingName = (recordingBlob as any).name || 'recording.mp3';
     }
 
-    const insertPayload: Record<string, any> = { recording_url: recordingUrl };
+    const insertPayload: Record<string, any> = { recording_url: null };
     for (const key of TEXT_FIELDS) {
       insertPayload[key] = fieldValue(form, key);
     }
@@ -217,8 +262,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const leadId = row?.id;
+
+    if (recordingBuffer && leadId) {
+      after(async () => {
+        try {
+          const { supabaseAdmin: bgAdmin } = getSupabaseAdmin();
+          if (!bgAdmin) return;
+
+          const url = await uploadRecording(
+            bgAdmin,
+            recordingBuffer!,
+            recordingMime,
+            recordingName,
+            phoneNo
+          );
+
+          await bgAdmin
+            .from('dialer_leads')
+            .update({ recording_url: url })
+            .eq('id', leadId);
+
+          console.log(`[dialer/leads] Recording uploaded for lead ${leadId}: ${url}`);
+        } catch (err: any) {
+          console.error(`[dialer/leads] Background recording upload failed for lead ${leadId}:`, err?.message);
+        }
+      });
+    }
+
     return NextResponse.json(
-      { success: true, id: row?.id, recording_url: recordingUrl },
+      { success: true, id: leadId, recording_status: recordingBuffer ? 'uploading' : 'none' },
       { status: 200 }
     );
   } catch (e: any) {

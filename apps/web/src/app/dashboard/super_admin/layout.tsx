@@ -31,6 +31,7 @@ import {
   Bot,
   MessageSquare,
   Image as ImageIcon,
+  Megaphone,
   Ticket,
   ClipboardList,
 } from 'lucide-react';
@@ -128,6 +129,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/website-images/home-carousel',
         icon: ImageIcon,
         description: 'Manage top 3 app hero carousel banners',
+      },
+      {
+        name: 'Promo Banners',
+        href: '/dashboard/super_admin/website-images/promo-banners',
+        icon: Megaphone,
+        description: 'Loan, E-Challan, Fuel, Sell Car etc.',
       },
     ],
   },

@@ -15,6 +15,7 @@ import { COLORS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall, openEmail } from '../lib/phone';
+import { supabase } from '../lib/supabase';
 
 type Props = {
   navigation: any;
@@ -37,7 +38,9 @@ type ServiceCategory = {
 };
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
-const SERVICE_PAGE_PROMO_BANNERS = [
+// Fallback list — overridden by admin-managed `home_promo_banners` table
+// (Super Admin → Website Images → Promo Banners).
+const FALLBACK_SERVICE_PAGE_PROMO_BANNERS = [
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`,
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`,
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`,
@@ -198,6 +201,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
   const [showAllFaqs, setShowAllFaqs] = useState(false);
   const [promoIdx, setPromoIdx] = useState(0);
+  const [promoBanners, setPromoBanners] = useState<string[]>(FALLBACK_SERVICE_PAGE_PROMO_BANNERS);
   const [supportOpen, setSupportOpen] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -210,8 +214,37 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   }, [initialServiceId]);
 
   useEffect(() => {
-    const timer = setInterval(() => setPromoIdx((p) => (p + 1) % SERVICE_PAGE_PROMO_BANNERS.length), 4000);
+    const timer = setInterval(
+      () => setPromoIdx((p) => (p + 1) % Math.max(promoBanners.length, 1)),
+      4000,
+    );
     return () => clearInterval(timer);
+  }, [promoBanners.length]);
+
+  useEffect(() => {
+    // Fetch admin-managed promo banners (mirrors PublicHomeScreen).
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('home_promo_banners')
+          .select('image_url, display_order, is_active')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (error) return;
+        if (!active || !Array.isArray(data) || data.length === 0) return;
+
+        const urls = data.map((row: any) => String(row.image_url || '')).filter(Boolean);
+        if (active && urls.length > 0) setPromoBanners(urls);
+      } catch {
+        // ignore — keep fallback list
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
@@ -227,12 +260,22 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
         </View>
 
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
-          {/* Home page promo banners */}
+          {/* Home page promo banners (admin-managed) */}
           <View style={s.promoWrap}>
-            <Image source={{ uri: SERVICE_PAGE_PROMO_BANNERS[promoIdx] }} style={s.promoImage} resizeMode="cover" />
+            <Image
+              source={{ uri: promoBanners[promoIdx % Math.max(promoBanners.length, 1)] }}
+              style={s.promoImage}
+              resizeMode="cover"
+            />
             <View style={s.promoDots}>
-              {SERVICE_PAGE_PROMO_BANNERS.map((_, idx) => (
-                <View key={idx} style={[s.promoDot, idx === promoIdx ? s.promoDotActive : null]} />
+              {promoBanners.map((_, idx) => (
+                <View
+                  key={idx}
+                  style={[
+                    s.promoDot,
+                    idx === promoIdx % Math.max(promoBanners.length, 1) ? s.promoDotActive : null,
+                  ]}
+                />
               ))}
             </View>
           </View>

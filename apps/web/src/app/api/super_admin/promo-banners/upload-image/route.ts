@@ -26,8 +26,8 @@ async function requireSuperAdmin(supabase: any) {
 }
 
 /**
- * POST /api/super_admin/home-carousel/upload-image
- * Upload carousel image to Supabase storage (recommended bucket: `website-images`)
+ * POST /api/super_admin/promo-banners/upload-image
+ * Uploads promo banner image to Supabase storage (`website-images` bucket).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const title = (formData.get('title') as string) || 'banner';
+    const title = (formData.get('title') as string) || 'promo';
 
     if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
 
@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
     }
 
     const fileExt = file.name.split('.').pop() || 'png';
-    const sanitized = String(title).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 48) || 'banner';
+    const sanitized = String(title).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 48) || 'promo';
     const fileName = `${sanitized}-${Date.now()}.${fileExt}`;
-    // Use the existing public `App` bucket and the folder already used for hero
-    // banners (`Mobile Screen - Hero Section`), so all banners live in one place.
-    const filePath = `Mobile Screen - Hero Section/${fileName}`;
+    // Use the existing public `App` bucket and the folder already used for
+    // promo banners (`Mobile Screen - Home Page - Other Cards`).
+    const filePath = `Mobile Screen - Home Page - Other Cards/${fileName}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -81,5 +81,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });
   }
 }
-
-

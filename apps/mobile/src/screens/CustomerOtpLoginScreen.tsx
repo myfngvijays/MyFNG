@@ -17,6 +17,11 @@ import { setCustomerSessionToken } from '../lib/customerSession';
 
 type Step = 'phone' | 'otp';
 
+// Phone numbers we register in Firebase Console as "Phone numbers for testing".
+// Includes the App Store reviewer demo number so OTP works without APNs/SMS.
+// Reviewer demo: phone 7007543565 / OTP 454545 (configured in Firebase Console).
+const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
+
 export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState(route?.params?.initialPhone || '');
@@ -40,11 +45,16 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
     setLoading(true);
     try {
-      // Re-assert dev/simulator flag before the request to prevent the iOS
-      // PhoneAuthProvider crash on simulators that can't receive APNs.
-      // Safe in production: __DEV__ is false in release builds.
-      if (__DEV__) {
-        auth().settings.appVerificationDisabledForTesting = true;
+      // Disable app verification for pre-registered Firebase test numbers
+      // (App Store reviewer + dev). Prevents native iOS crash on devices
+      // without APNs / cellular (e.g. iPad with no SIM).
+      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
+      if (__DEV__ || isTestNumber) {
+        try {
+          auth().settings.appVerificationDisabledForTesting = true;
+        } catch {
+          // settings may not be available in all environments
+        }
       }
       const phoneWithCountry = `+91${cleanPhone}`;
       const result = await auth().signInWithPhoneNumber(phoneWithCountry);
@@ -52,7 +62,15 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       setStep('otp');
       Alert.alert('OTP Sent', `OTP sent to ${phoneWithCountry}`);
     } catch (error: any) {
-      Alert.alert('Send OTP Failed', error?.message || 'Unable to send OTP');
+      const code = error?.code as string | undefined;
+      if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
+        Alert.alert(
+          'Verification Unavailable',
+          'Phone verification is unavailable on this device. Please try a real iPhone with a SIM, or use email login.'
+        );
+      } else {
+        Alert.alert('Send OTP Failed', error?.message || 'Unable to send OTP. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

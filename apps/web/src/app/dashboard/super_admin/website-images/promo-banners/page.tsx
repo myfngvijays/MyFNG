@@ -24,46 +24,56 @@ const ROUTES = [
   'Login',
 ] as const;
 
-// These mirror the fallback HERO_BANNERS in the mobile app's PublicHomeScreen.
-// If the database is empty, show these as placeholders so the admin can
-// "Replace" them with new uploads (which then take precedence in the app).
+// These mirror the hardcoded PROMO_BANNERS in the mobile app
+// (PublicHomeScreen + PublicServicePackagesScreen).
 const DEFAULT_BANNERS: BannerRow[] = [
   {
-    id: 'default-service',
-    title: 'Car Service',
+    id: 'default-loan',
+    title: 'Get a Loan Against Car',
     image_url:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/CarService.PNG',
-    route_name: 'PublicBookServiceNow',
-    route_params: { city: '__CITY__' },
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG',
+    route_name: 'PublicHome',
+    route_params: {},
     display_order: 1,
     is_active: true,
     is_default: true,
   },
   {
-    id: 'default-rsa',
-    title: 'RSA 24/7',
+    id: 'default-echallan',
+    title: "Check Your Car's E-Challan",
     image_url:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.PNG',
-    route_name: 'PublicWorkshopLocator',
-    route_params: { city: '__CITY__' },
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG',
+    route_name: 'PublicHome',
+    route_params: {},
     display_order: 2,
     is_active: true,
     is_default: true,
   },
   {
-    id: 'default-ai',
-    title: 'MyFNG AI',
+    id: 'default-fuel',
+    title: 'Get Nearest Fuel Station',
     image_url:
-      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/MyFNG-AI.PNG',
-    route_name: 'AIBooking',
-    route_params: { city: '__CITY__' },
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG',
+    route_name: 'PublicHome',
+    route_params: {},
     display_order: 3,
+    is_active: true,
+    is_default: true,
+  },
+  {
+    id: 'default-sell',
+    title: 'Sell Your Car Stress-Free',
+    image_url:
+      'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG',
+    route_name: 'PublicHome',
+    route_params: {},
+    display_order: 4,
     is_active: true,
     is_default: true,
   },
 ];
 
-export default function HomeCarouselImagesPage() {
+export default function PromoBannersPage() {
   const [rows, setRows] = useState<BannerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,14 +81,13 @@ export default function HomeCarouselImagesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<BannerRow | null>(null);
   const [uploading, setUploading] = useState(false);
-  // When true, the "Replace Image" mode hides extra fields and focuses upload.
   const [replaceMode, setReplaceMode] = useState(false);
 
   const [form, setForm] = useState({
     title: '',
     image_url: '',
-    route_name: 'AIBooking',
-    route_params_text: '{"city":"__CITY__"}',
+    route_name: 'PublicHome',
+    route_params_text: '{}',
     display_order: 0,
     is_active: true,
   });
@@ -95,8 +104,6 @@ export default function HomeCarouselImagesPage() {
     }
   }, [form.route_params_text]);
 
-  // Show DB rows if any, else fall back to default placeholders so the admin
-  // can immediately see "this is what's currently in the app" and click Replace.
   const visibleRows: BannerRow[] = useMemo(() => {
     if (rows.length > 0) return rows;
     return DEFAULT_BANNERS;
@@ -105,7 +112,7 @@ export default function HomeCarouselImagesPage() {
   async function fetchRows() {
     setLoading(true);
     try {
-      const res = await fetch('/api/super_admin/home-carousel');
+      const res = await fetch('/api/super_admin/promo-banners');
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = [json?.error, json?.details].filter(Boolean).join('\n');
@@ -113,7 +120,7 @@ export default function HomeCarouselImagesPage() {
       }
       setRows(json.data || []);
     } catch (e: any) {
-      alert(e?.message || 'Failed to load carousel banners');
+      alert(e?.message || 'Failed to load promo banners');
     } finally {
       setLoading(false);
     }
@@ -129,8 +136,8 @@ export default function HomeCarouselImagesPage() {
     setForm({
       title: '',
       image_url: '',
-      route_name: 'AIBooking',
-      route_params_text: '{"city":"__CITY__"}',
+      route_name: 'PublicHome',
+      route_params_text: '{}',
       display_order: rows.length + 1,
       is_active: true,
     });
@@ -145,15 +152,14 @@ export default function HomeCarouselImagesPage() {
     setForm({
       title: r.title || '',
       image_url: opts.replaceImageOnly ? '' : r.image_url || '',
-      route_name: r.route_name || 'AIBooking',
-      route_params_text: JSON.stringify(r.route_params || { city: '__CITY__' }, null, 2),
+      route_name: r.route_name || 'PublicHome',
+      route_params_text: JSON.stringify(r.route_params || {}, null, 2),
       display_order: Number(r.display_order || 0),
       is_active: !!r.is_active,
     });
     setFile(null);
     setPreview(opts.replaceImageOnly ? '' : r.image_url);
     setModalOpen(true);
-    // Auto-focus the file picker when replacing.
     if (opts.replaceImageOnly) {
       setTimeout(() => fileInputRef.current?.click(), 200);
     }
@@ -173,8 +179,8 @@ export default function HomeCarouselImagesPage() {
       setUploading(true);
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('title', form.title || 'banner');
-      const res = await fetch('/api/super_admin/home-carousel/upload-image', { method: 'POST', body: fd });
+      fd.append('title', form.title || 'promo');
+      const res = await fetch('/api/super_admin/promo-banners/upload-image', { method: 'POST', body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = [json?.error, json?.details].filter(Boolean).join('\n');
@@ -219,13 +225,11 @@ export default function HomeCarouselImagesPage() {
         is_active: !!form.is_active,
       };
 
-      // If editing a "default" placeholder, that has a synthetic id ("default-*").
-      // In that case we POST a new row instead of trying to PUT.
       const isDefaultPlaceholder = !!editing?.is_default;
       const url =
         editing && !isDefaultPlaceholder
-          ? `/api/super_admin/home-carousel/${editing.id}`
-          : '/api/super_admin/home-carousel';
+          ? `/api/super_admin/promo-banners/${editing.id}`
+          : '/api/super_admin/promo-banners';
       const method = editing && !isDefaultPlaceholder ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -249,9 +253,9 @@ export default function HomeCarouselImagesPage() {
   }
 
   async function onDelete(id: string) {
-    if (!confirm('Delete this banner?')) return;
+    if (!confirm('Delete this promo banner?')) return;
     try {
-      const res = await fetch(`/api/super_admin/home-carousel/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/super_admin/promo-banners/${id}`, { method: 'DELETE' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = [json?.error, json?.details].filter(Boolean).join('\n');
@@ -267,13 +271,10 @@ export default function HomeCarouselImagesPage() {
     <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Home Carousel Images</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Promo Banners</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Top hero carousel banners for the mobile app (Android + iOS). Tap a banner to upload a new image.
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            Tip: In route params, use <span className="font-mono bg-gray-100 px-1 rounded">&quot;__CITY__&quot;</span> to pass the
-            current city automatically.
+            Promotional cards on the mobile Home & Service Packages screens (Loan, E-Challan, Fuel, Sell Car etc).
+            Replace any image instantly &mdash; the new banner appears in the app within seconds.
           </p>
         </div>
         <button
@@ -286,9 +287,9 @@ export default function HomeCarouselImagesPage() {
 
       {rows.length === 0 && !loading ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>Heads up:</strong> No banners uploaded yet. The mobile app is showing the 3 <em>default</em> banners
-          below. Click <strong>Replace Image</strong> on any to upload a new version — the new image will appear in the
-          app within seconds.
+          <strong>Heads up:</strong> No custom promo banners uploaded yet. The mobile app is showing the{' '}
+          {DEFAULT_BANNERS.length} <em>default</em> banners below. Click <strong>Replace Image</strong> on any to upload
+          a new version.
         </div>
       ) : null}
 
@@ -304,7 +305,7 @@ export default function HomeCarouselImagesPage() {
               <div className="relative aspect-[16/8] bg-gray-100 overflow-hidden">
                 {r.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={r.image_url} alt={r.title || 'banner'} className="absolute inset-0 h-full w-full object-cover" />
+                  <img src={r.image_url} alt={r.title || 'promo'} className="absolute inset-0 h-full w-full object-cover" />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                     <ImageIcon className="h-8 w-8" />
@@ -369,7 +370,6 @@ export default function HomeCarouselImagesPage() {
         </div>
       )}
 
-      {/* Modal */}
       {modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden max-h-[90vh] overflow-y-auto">
@@ -378,8 +378,8 @@ export default function HomeCarouselImagesPage() {
                 {replaceMode
                   ? `Replace Image — ${editing?.title || 'Banner'}`
                   : editing
-                  ? 'Edit Banner'
-                  : 'Add Banner'}
+                  ? 'Edit Promo Banner'
+                  : 'Add Promo Banner'}
               </div>
               <button onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100">
                 <X className="h-5 w-5" />
@@ -387,7 +387,6 @@ export default function HomeCarouselImagesPage() {
             </div>
 
             <form onSubmit={onSubmit} className="p-5 space-y-4">
-              {/* In replace mode: show only image upload + preview, hide the rest. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                 <div>
                   <label className="text-sm font-semibold text-gray-700">Image Upload</label>
@@ -450,7 +449,7 @@ export default function HomeCarouselImagesPage() {
                         value={form.title}
                         onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                         className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                        placeholder="e.g. Book service in minutes"
+                        placeholder="e.g. Get a Loan Against Car"
                       />
                     </div>
                     <div>
@@ -466,7 +465,7 @@ export default function HomeCarouselImagesPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-semibold text-gray-700">Route</label>
+                      <label className="text-sm font-semibold text-gray-700">Route (optional)</label>
                       <select
                         value={form.route_name}
                         onChange={(e) => setForm((p) => ({ ...p, route_name: e.target.value }))}
@@ -493,7 +492,7 @@ export default function HomeCarouselImagesPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm font-semibold text-gray-700">Route Params (JSON)</label>
+                    <label className="text-sm font-semibold text-gray-700">Route Params (JSON, optional)</label>
                     <textarea
                       value={form.route_params_text}
                       onChange={(e) => setForm((p) => ({ ...p, route_params_text: e.target.value }))}

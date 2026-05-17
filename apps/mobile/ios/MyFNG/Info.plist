@@ -25,9 +25,19 @@
     <key>CFBundleURLTypes</key>
     <array>
       <dict>
+        <key>CFBundleURLName</key>
+        <string>com.myfng.app</string>
         <key>CFBundleURLSchemes</key>
         <array>
           <string>com.myfng.app</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>firebase-phone-auth</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>app-1-455279370834-ios-38d95771254f40a5e7b58b</string>
         </array>
       </dict>
     </array>

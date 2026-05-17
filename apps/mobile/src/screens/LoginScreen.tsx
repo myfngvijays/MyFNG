@@ -33,8 +33,13 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [errorText, setErrorText] = useState('');
   const [resendInSec, setResendInSec] = useState(0);
 
+  // Phone numbers we register in Firebase Console as "Phone numbers for testing".
+  // Includes the App Store reviewer demo number so OTP works without APNs/SMS.
+  // Real users with real numbers go through the standard reCAPTCHA + SMS flow.
+  // Reviewer demo: phone 7007543565 / OTP 454545 (configured in Firebase Console).
+  const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
+
   useEffect(() => {
-    // Emulator/testing stability: skip app verification challenge for Firebase test numbers.
     if (__DEV__) {
       auth().settings.appVerificationDisabledForTesting = true;
     }
@@ -64,11 +69,16 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
     setLoading(true);
     try {
-      // Re-assert the dev/simulator flag right before the request because the iOS
-      // PhoneAuthProvider can crash if app verification runs on a simulator that
-      // can't receive APNs tokens. Safe in production: __DEV__ is false in release.
-      if (__DEV__) {
-        auth().settings.appVerificationDisabledForTesting = true;
+      // Disable app verification for our pre-registered Firebase test numbers
+      // (App Store reviewer flow + dev). Real numbers still get full reCAPTCHA / APNs.
+      // This prevents an iOS native crash on devices with no APNs / cellular (e.g. iPad).
+      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
+      if (__DEV__ || isTestNumber) {
+        try {
+          auth().settings.appVerificationDisabledForTesting = true;
+        } catch {
+          // ignore — settings may not be available in all environments
+        }
       }
       const phoneWithCountry = `+91${cleanPhone}`;
       const result = await auth().signInWithPhoneNumber(phoneWithCountry);
@@ -79,8 +89,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       const code = error?.code as string | undefined;
       if (code === 'auth/network-request-failed') {
         setErrorText('Network issue. Please check internet and retry.');
+      } else if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
+        setErrorText('Phone verification is unavailable on this device. Please try a real iPhone with a SIM, or use email login.');
       } else {
-        setErrorText(error?.message || 'Unable to send OTP');
+        setErrorText(error?.message || 'Unable to send OTP. Please try again.');
       }
     } finally {
       setLoading(false);

@@ -31,6 +31,7 @@ import {
 } from '../constants/publicAppData';
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { ENV } from '../config/environment';
+import { supabase } from '../lib/supabase';
 
 type Props = {
   navigation: any;
@@ -41,13 +42,17 @@ type HeroBanner = {
   title: string;
   desc: string;
   route: string;
+  routeParams?: Record<string, any>;
   icon: keyof typeof Ionicons.glyphMap;
   colors: [string, string];
   image: string;
   overlay: string;
 };
 
-const HERO_BANNERS: HeroBanner[] = [
+// Fallback banners — used only if the admin-managed list (home_carousel_banners table)
+// returns no rows or fails. Once the admin uploads images on the Super Admin page,
+// those override this list.
+const FALLBACK_HERO_BANNERS: HeroBanner[] = [
   {
     id: 'service',
     title: 'Car Service',
@@ -84,7 +89,9 @@ const HERO_BANNERS: HeroBanner[] = [
 ];
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
-const PROMO_BANNERS = [
+// Fallback promo banners — overridden by admin-managed `home_promo_banners` table
+// once Super Admin uploads custom images via the web dashboard.
+const FALLBACK_PROMO_BANNERS = [
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`,
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`,
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`,
@@ -148,6 +155,8 @@ const HEADLINES = [
 
 export default function PublicHomeScreen({ navigation }: Props) {
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroBanners, setHeroBanners] = useState<HeroBanner[]>(FALLBACK_HERO_BANNERS);
+  const [promoBanners, setPromoBanners] = useState<string[]>(FALLBACK_PROMO_BANNERS);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [loanIndex, setLoanIndex] = useState(0);
   const [howIndex, setHowIndex] = useState(0);
@@ -191,6 +200,71 @@ export default function PublicHomeScreen({ navigation }: Props) {
       };
     }, []),
   );
+
+  useEffect(() => {
+    // Fetch admin-managed hero carousel banners. Admin uploads them at
+    // /dashboard/super_admin/website-images/home-carousel and they reflect here.
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('home_carousel_banners')
+          .select('id, title, image_url, route_name, route_params, display_order, is_active')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (error) return; // silent fail — fallback banners already set
+        if (!active || !Array.isArray(data) || data.length === 0) return;
+
+        const mapped: HeroBanner[] = data.map((row: any) => ({
+          id: String(row.id),
+          title: row.title || '',
+          desc: '',
+          route: row.route_name || 'PublicHome',
+          routeParams: row.route_params || undefined,
+          icon: 'sparkles',
+          colors: ['#004AAD', '#0A57BF'],
+          image: row.image_url,
+          overlay: 'rgba(0,0,0,0)',
+        }));
+
+        if (active) setHeroBanners(mapped);
+      } catch {
+        // ignore — keep fallback banners
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Fetch admin-managed promo banners (Loan / E-Challan / Fuel / Sell Car etc.)
+    // Admin uploads them at /dashboard/super_admin/website-images/promo-banners.
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('home_promo_banners')
+          .select('image_url, display_order, is_active')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (error) return;
+        if (!active || !Array.isArray(data) || data.length === 0) return;
+
+        const urls = data.map((row: any) => String(row.image_url || '')).filter(Boolean);
+        if (active && urls.length > 0) setPromoBanners(urls);
+      } catch {
+        // ignore — keep fallback list
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -247,7 +321,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   useEffect(() => {
     const timer = setInterval(() => {
       Animated.timing(heroFade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        setHeroIndex((prev) => (prev + 1) % HERO_BANNERS.length);
+        setHeroIndex((prev) => (prev + 1) % Math.max(heroBanners.length, 1));
         Animated.timing(heroFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
       });
     }, 5000);
@@ -267,12 +341,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
   useEffect(() => {
     const timer = setInterval(() => {
       Animated.timing(loanFade, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
-        setLoanIndex((prev) => (prev + 1) % PROMO_BANNERS.length);
+        setLoanIndex((prev) => (prev + 1) % Math.max(promoBanners.length, 1));
         Animated.timing(loanFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
       });
     }, 4000);
     return () => clearInterval(timer);
-  }, [loanFade]);
+  }, [loanFade, promoBanners.length]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -291,7 +365,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
     return () => clearInterval(timer);
   }, [howFade, howSlide]);
 
-  const activeHero = useMemo(() => HERO_BANNERS[heroIndex], [heroIndex]);
+  const activeHero = useMemo(() => {
+    if (heroBanners.length === 0) return FALLBACK_HERO_BANNERS[0];
+    return heroBanners[heroIndex % heroBanners.length] || heroBanners[0];
+  }, [heroIndex, heroBanners]);
 
   const onNavPress = (tab: PublicPillNavTab) => {
     if (tab === 'home') return;
@@ -344,14 +421,27 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <Animated.View style={[styles.heroCard, { opacity: heroFade }]}>
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => navigation.navigate(activeHero.route as never)}
+                onPress={() => {
+                  // Resolve admin-configured route params (supports "__CITY__" placeholder).
+                  const params = activeHero.routeParams ? { ...activeHero.routeParams } : {};
+                  Object.keys(params).forEach((k) => {
+                    if (params[k] === '__CITY__') params[k] = 'Mumbai';
+                  });
+                  navigation.navigate(activeHero.route as never, params as never);
+                }}
                 style={styles.heroTouchable}
               >
                 <Image source={{ uri: activeHero.image }} style={styles.heroFullImage} resizeMode="cover" />
               </TouchableOpacity>
               <View style={styles.heroDots}>
-                {HERO_BANNERS.map((banner, idx) => (
-                  <View key={banner.id} style={[styles.heroDot, idx === heroIndex ? styles.heroDotActive : null]} />
+                {heroBanners.map((banner, idx) => (
+                  <View
+                    key={banner.id}
+                    style={[
+                      styles.heroDot,
+                      idx === heroIndex % Math.max(heroBanners.length, 1) ? styles.heroDotActive : null,
+                    ]}
+                  />
                 ))}
               </View>
             </Animated.View>
@@ -520,13 +610,19 @@ export default function PublicHomeScreen({ navigation }: Props) {
           <Section>
             <Animated.View style={[styles.loanCard, { opacity: loanFade }]}>
               <Image
-                source={{ uri: PROMO_BANNERS[loanIndex % PROMO_BANNERS.length] }}
+                source={{ uri: promoBanners[loanIndex % Math.max(promoBanners.length, 1)] }}
                 style={styles.loanBannerImage}
                 resizeMode="cover"
               />
               <View style={styles.loanDots}>
-                {PROMO_BANNERS.map((_, idx) => (
-                  <View key={idx} style={[styles.heroDot, idx === loanIndex % PROMO_BANNERS.length ? styles.heroDotActive : null]} />
+                {promoBanners.map((_, idx) => (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.heroDot,
+                      idx === loanIndex % Math.max(promoBanners.length, 1) ? styles.heroDotActive : null,
+                    ]}
+                  />
                 ))}
               </View>
             </Animated.View>
