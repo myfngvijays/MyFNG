@@ -98,7 +98,14 @@ DECLARE
   payload      jsonb;
   req_id       bigint;
 BEGIN
-  -- ----- 1. Phone validation -----
+  -- ----- 1. Disposition filter: only push Interested leads -----
+  IF lower(coalesce(trim(NEW.disposition), '')) NOT IN (
+    'intrested hot', 'intrested warm', 'intrested cold'
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  -- ----- 2. Phone validation -----
   phone_digits := regexp_replace(coalesce(NEW.phone_no, ''), '\D', '', 'g');
   IF phone_digits IS NULL OR length(phone_digits) < 10 THEN
     RAISE NOTICE '[dialer_leads -> TeleCRM] Skipping row % - invalid phone "%"',
@@ -124,7 +131,7 @@ BEGIN
 
   -- ----- 3. Optional fields (only added when non-empty) -----
   IF nullif(trim(NEW.car_number), '') IS NOT NULL THEN
-    fields := fields || jsonb_build_object('VehicleNumber', NEW.car_number);
+    fields := fields || jsonb_build_object('CARNO', NEW.car_number);
   END IF;
 
   IF nullif(trim(NEW.make), '') IS NOT NULL THEN
@@ -144,8 +151,6 @@ BEGIN
   END IF;
 
   IF nullif(trim(NEW.disposition), '') IS NOT NULL THEN
-    -- Normalize en-dash / em-dash to ASCII hyphen so TeleCRM gets a clean
-    -- value (same behaviour the /api/crm/enquiries route handler does).
     fields := fields || jsonb_build_object(
       'Disposition',
       regexp_replace(NEW.disposition, '[\u2013\u2014]', '-', 'g')
@@ -153,7 +158,7 @@ BEGIN
   END IF;
 
   IF nullif(trim(NEW.dialer_id), '') IS NOT NULL THEN
-    fields := fields || jsonb_build_object('DialerID', NEW.dialer_id);
+    fields := fields || jsonb_build_object('dailerid_1', NEW.dialer_id);
   END IF;
 
   IF nullif(trim(NEW.remark), '') IS NOT NULL THEN
@@ -162,7 +167,7 @@ BEGIN
 
   -- ----- 4. Dialer-only extras (not present on /crm form) -----
   IF nullif(trim(NEW.recording_url), '') IS NOT NULL THEN
-    fields := fields || jsonb_build_object('RecordingUrl', NEW.recording_url);
+    fields := fields || jsonb_build_object('recording_url', NEW.recording_url);
   END IF;
 
   IF NEW.intrested_customer_date IS NOT NULL THEN
@@ -226,16 +231,15 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ---------------------------------------------------------------------------
 -- 3. Trigger binding
 -- ---------------------------------------------------------------------------
--- We fire on INSERT (every fresh dialer disposition) and on UPDATE only when
--- a meaningful field changes - that way late-arriving recording_url uploads
--- and disposition corrections also reach TeleCRM without spamming on every
--- no-op write.
+-- Fire on INSERT (every fresh dialer disposition) and on UPDATE only when
+-- a meaningful field changes. recording_url is excluded from UPDATE columns
+-- because it is now set at INSERT time itself (no separate UPDATE needed).
 DROP TRIGGER IF EXISTS trg_dialer_leads_push_telecrm ON public.dialer_leads;
 
 CREATE TRIGGER trg_dialer_leads_push_telecrm
 AFTER INSERT OR UPDATE OF
   phone_no, name, address, regdate, car_number, make, model,
-  disposition, remark, dialer_id, recording_url, intrested_customer_date
+  disposition, remark, dialer_id, intrested_customer_date
 ON public.dialer_leads
 FOR EACH ROW
 EXECUTE FUNCTION public.push_dialer_lead_to_telecrm();

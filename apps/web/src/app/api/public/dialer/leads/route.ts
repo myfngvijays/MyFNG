@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const runtime = 'nodejs';
@@ -244,7 +243,24 @@ export async function POST(request: NextRequest) {
       recordingName = (recordingBlob as any).name || 'recording.mp3';
     }
 
-    const insertPayload: Record<string, any> = { recording_url: null };
+    // Upload recording BEFORE insert so recording_url is part of the initial
+    // INSERT — this ensures only a single trigger fire and a single TeleCRM call.
+    let recordingUrl: string | null = null;
+    if (recordingBuffer) {
+      try {
+        recordingUrl = await uploadRecording(
+          supabaseAdmin,
+          recordingBuffer,
+          recordingMime,
+          recordingName,
+          phoneNo
+        );
+      } catch (err: any) {
+        console.error(`[dialer/leads] Recording upload failed, inserting lead without it:`, err?.message);
+      }
+    }
+
+    const insertPayload: Record<string, any> = { recording_url: recordingUrl };
     for (const key of TEXT_FIELDS) {
       insertPayload[key] = fieldValue(form, key);
     }
@@ -264,34 +280,8 @@ export async function POST(request: NextRequest) {
 
     const leadId = row?.id;
 
-    if (recordingBuffer && leadId) {
-      after(async () => {
-        try {
-          const { supabaseAdmin: bgAdmin } = getSupabaseAdmin();
-          if (!bgAdmin) return;
-
-          const url = await uploadRecording(
-            bgAdmin,
-            recordingBuffer!,
-            recordingMime,
-            recordingName,
-            phoneNo
-          );
-
-          await bgAdmin
-            .from('dialer_leads')
-            .update({ recording_url: url })
-            .eq('id', leadId);
-
-          console.log(`[dialer/leads] Recording uploaded for lead ${leadId}: ${url}`);
-        } catch (err: any) {
-          console.error(`[dialer/leads] Background recording upload failed for lead ${leadId}:`, err?.message);
-        }
-      });
-    }
-
     return NextResponse.json(
-      { success: true, id: leadId, recording_status: recordingBuffer ? 'uploading' : 'none' },
+      { success: true, id: leadId, recording_status: recordingUrl ? 'uploaded' : 'none' },
       { status: 200 }
     );
   } catch (e: any) {
