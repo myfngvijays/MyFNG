@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
+  Easing,
   Image,
   StyleSheet,
   Text,
@@ -21,6 +22,8 @@ const SERVICE_ITEMS = [
   { name: 'Oil Change', icon: 'water-outline' as const },
 ];
 
+const DOT_COUNT = 5;
+
 export default function SplashScreen({
   onComplete,
   durationMs = 6000,
@@ -29,13 +32,26 @@ export default function SplashScreen({
   const logoY = useRef(new Animated.Value(-30)).current;
   const carFade = useRef(new Animated.Value(0)).current;
   const carScale = useRef(new Animated.Value(0.7)).current;
+
   const pillLeftFade = useRef(new Animated.Value(0)).current;
   const pillLeftX = useRef(new Animated.Value(-30)).current;
   const pillRightFade = useRef(new Animated.Value(0)).current;
   const pillRightX = useRef(new Animated.Value(30)).current;
+  const pillBob = useRef(new Animated.Value(0)).current;
+
   const serviceFade = useRef(new Animated.Value(0)).current;
   const badgeFade = useRef(new Animated.Value(0)).current;
   const badgeY = useRef(new Animated.Value(10)).current;
+
+  const roadLeftFade = useRef(new Animated.Value(0)).current;
+  const roadRightFade = useRef(new Animated.Value(0)).current;
+  const dotsFade = useRef(new Animated.Value(0)).current;
+  const dotsTravel = useRef(new Animated.Value(0)).current;
+
+  const dotAnims = useMemo(
+    () => Array.from({ length: DOT_COUNT }, () => new Animated.Value(0.2)),
+    []
+  );
 
   useEffect(() => {
     Animated.sequence([
@@ -46,6 +62,11 @@ export default function SplashScreen({
       Animated.parallel([
         Animated.timing(carFade, { toValue: 1, duration: 600, useNativeDriver: true }),
         Animated.spring(carScale, { toValue: 1, friction: 6, tension: 70, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(roadLeftFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(roadRightFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(dotsFade, { toValue: 1, duration: 500, useNativeDriver: true }),
       ]),
       Animated.parallel([
         Animated.timing(pillLeftFade, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -61,9 +82,71 @@ export default function SplashScreen({
       Animated.timing(badgeY, { toValue: 0, duration: 600, delay: 1800, useNativeDriver: true }),
     ]).start();
 
+    // Continuous floating bob for both pills
+    const bobLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pillBob, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pillBob, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    bobLoop.start();
+
+    // Continuous downward "travel" effect on dotted connector
+    const dotsLoop = Animated.loop(
+      Animated.timing(dotsTravel, {
+        toValue: 1,
+        duration: 1400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    dotsLoop.start();
+
+    // Sequential dot pulse to create flowing effect
+    const dotSequence = Animated.loop(
+      Animated.stagger(
+        180,
+        dotAnims.map((d) =>
+          Animated.sequence([
+            Animated.timing(d, { toValue: 1, duration: 350, useNativeDriver: true }),
+            Animated.timing(d, { toValue: 0.2, duration: 350, useNativeDriver: true }),
+          ])
+        )
+      )
+    );
+    dotSequence.start();
+
     const timer = setTimeout(onComplete, durationMs);
-    return () => clearTimeout(timer);
-  }, [durationMs, onComplete, logoFade, logoY, carFade, carScale, pillLeftFade, pillLeftX, pillRightFade, pillRightX, serviceFade, badgeFade, badgeY]);
+    return () => {
+      clearTimeout(timer);
+      bobLoop.stop();
+      dotsLoop.stop();
+      dotSequence.stop();
+    };
+  }, [
+    durationMs,
+    onComplete,
+    logoFade,
+    logoY,
+    carFade,
+    carScale,
+    pillLeftFade,
+    pillLeftX,
+    pillRightFade,
+    pillRightX,
+    pillBob,
+    serviceFade,
+    badgeFade,
+    badgeY,
+    roadLeftFade,
+    roadRightFade,
+    dotsFade,
+    dotsTravel,
+    dotAnims,
+  ]);
+
+  const pillBobY = pillBob.interpolate({ inputRange: [0, 1], outputRange: [0, -6] });
+  const pillBobYReverse = pillBob.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
 
   return (
     <View style={s.container}>
@@ -76,9 +159,28 @@ export default function SplashScreen({
         <Text style={s.subtitle}>India&apos;s #1 AI car service booking platform</Text>
       </Animated.View>
 
-      {/* Car + Floating Pills */}
+      {/* Car + Floating Pills + Road Lanes + Dotted Connector */}
       <View style={s.carSection}>
-        <Animated.View style={[s.pillLeft, { opacity: pillLeftFade, transform: [{ translateX: pillLeftX }] }]}>
+        {/* Diagonal road lane lines emanating from back of car */}
+        <Animated.View
+          style={[
+            s.roadLineLeft,
+            { opacity: roadLeftFade },
+          ]}
+        />
+        <Animated.View
+          style={[
+            s.roadLineRight,
+            { opacity: roadRightFade },
+          ]}
+        />
+
+        <Animated.View
+          style={[
+            s.pillLeft,
+            { opacity: pillLeftFade, transform: [{ translateX: pillLeftX }, { translateY: pillBobY }] },
+          ]}
+        >
           <View style={s.pillIcon}>
             <Ionicons name="chatbubble-ellipses" size={14} color="#2563EB" />
           </View>
@@ -93,13 +195,38 @@ export default function SplashScreen({
           />
         </Animated.View>
 
-        <Animated.View style={[s.pillRight, { opacity: pillRightFade, transform: [{ translateX: pillRightX }] }]}>
+        <Animated.View
+          style={[
+            s.pillRight,
+            { opacity: pillRightFade, transform: [{ translateX: pillRightX }, { translateY: pillBobYReverse }] },
+          ]}
+        >
           <View style={[s.pillIcon, { backgroundColor: '#ECFDF5' }]}>
             <Ionicons name="locate" size={14} color="#10B981" />
           </View>
           <Text style={s.pillText}>Live Tracking</Text>
         </Animated.View>
       </View>
+
+      {/* Animated dotted connector between car and active service icon */}
+      <Animated.View style={[s.dotsConnector, { opacity: dotsFade }]} pointerEvents="none">
+        {dotAnims.map((d, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              s.connectorDot,
+              {
+                opacity: d,
+                transform: [
+                  {
+                    scale: d.interpolate({ inputRange: [0.2, 1], outputRange: [0.7, 1.1] }),
+                  },
+                ],
+              },
+            ]}
+          />
+        ))}
+      </Animated.View>
 
       {/* Service Icons Row */}
       <Animated.View style={[s.serviceRow, { opacity: serviceFade }]}>
@@ -155,8 +282,47 @@ const s = StyleSheet.create({
     marginVertical: 20,
     minHeight: 160,
   },
-  carWrap: { width: 200, height: 160, alignItems: 'center', justifyContent: 'center' },
+  carWrap: { width: 200, height: 160, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   carImage: { width: 200, height: 150 },
+
+  roadLineLeft: {
+    position: 'absolute',
+    width: 2,
+    height: 90,
+    backgroundColor: 'rgba(37,99,235,0.55)',
+    borderRadius: 2,
+    bottom: -20,
+    left: '38%',
+    transform: [{ rotate: '18deg' }],
+    zIndex: 0,
+  },
+  roadLineRight: {
+    position: 'absolute',
+    width: 2,
+    height: 90,
+    backgroundColor: 'rgba(37,99,235,0.55)',
+    borderRadius: 2,
+    bottom: -20,
+    right: '38%',
+    transform: [{ rotate: '-18deg' }],
+    zIndex: 0,
+  },
+
+  dotsConnector: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 36,
+    marginTop: -10,
+    marginBottom: 4,
+  },
+  connectorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#2563EB',
+    marginVertical: 1,
+  },
 
   pillLeft: {
     position: 'absolute',
