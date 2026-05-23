@@ -2383,7 +2383,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       </View>
                     </View>
                     <Text style={ostyles.carModel}>{carModel || 'Vehicle'}</Text>
-                    <Text style={ostyles.serviceType}>{order.service_display || order.service_type || 'Service'}</Text>
+                    <Text style={ostyles.serviceType}>{(order.service_display || order.service_type || 'Service').replace(/_/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}</Text>
 
                     <View style={ostyles.detailRow}>
                       <View style={ostyles.detailCol}>

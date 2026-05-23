@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { ENV } from '../config/environment';
+import { getCustomerSessionToken } from '../lib/customerSession';
+import { apiFetch } from '../lib/api';
 
 type Props = {
   navigation: any;
@@ -82,9 +84,10 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>(initial);
   const [draft, setDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState<{ name?: string; phone?: string; vehicles?: any[] } | null>(null);
   const [chatContext, setChatContext] = useState<any>({
     preferredLanguage: 'auto',
-    // On mobile, city is usually selected explicitly; use it as locationLabel so pricing works like web.
     locationLabel: city || undefined,
     locationConfirmed: Boolean(city),
   });
@@ -97,6 +100,47 @@ export default function AIBookingScreen({ navigation, route }: Props) {
     setMessages((m) => [...m, msg]);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getCustomerSessionToken();
+        if (!token) return;
+        setIsLoggedIn(true);
+        const [profileRes, vehiclesRes] = await Promise.all([
+          apiFetch<any>('/api/customer/profile').catch(() => null),
+          apiFetch<any>('/api/customer/vehicles').catch(() => null),
+        ]);
+        const name = profileRes?.profile?.full_name || profileRes?.profile?.name || '';
+        const phone = profileRes?.profile?.phone || '';
+        const vehicles = (vehiclesRes?.vehicles || []).map((v: any) => ({
+          make: v.make,
+          model: v.model_name || v.model,
+          variant: v.variant,
+          reg_number: v.registration_number,
+        }));
+        setCustomerInfo({ name, phone, vehicles });
+        setChatContext((prev: any) => ({
+          ...prev,
+          customerName: name,
+          customerPhone: phone,
+          customerVehicles: vehicles,
+        }));
+        if (vehicles.length > 0) {
+          const vehicleList = vehicles.map((v: any, i: number) => `${i + 1}. ${v.make} ${v.model}${v.reg_number ? ` (${v.reg_number})` : ''}`).join('\n');
+          const greeting = `Welcome back${name ? `, ${name}` : ''}!` +
+            `\n\nAapke registered vehicles:\n${vehicleList}` +
+            `\n\nKis vehicle ke liye service chahiye? Ya naya vehicle add karna hai?` +
+            `\n\nReply karein: vehicle number (1, 2...) ya "new vehicle"`;
+          setMessages((m) => [...m, { id: uid(), role: 'assistant', text: greeting }]);
+        } else if (name) {
+          const greeting = `Welcome back, ${name}!` +
+            `\n\nAapke paas abhi koi vehicle registered nahi hai. Kya aap naya vehicle add karna chahenge ya directly service book karna hai?`;
+          setMessages((m) => [...m, { id: uid(), role: 'assistant', text: greeting }]);
+        }
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     if (prefill) {
@@ -257,9 +301,16 @@ export default function AIBookingScreen({ navigation, route }: Props) {
             <Text style={styles.headerTitle}>Misa AI</Text>
             <Text style={styles.headerSub}>{city ? `City: ${city}` : 'Ask anything about your car service'}</Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
-            <Text style={styles.loginBtnText}>Login</Text>
-          </TouchableOpacity>
+          {isLoggedIn ? (
+            <View style={styles.loggedInBadge}>
+              <Ionicons name="checkmark-circle" size={14} color="#059669" />
+              <Text style={styles.loggedInText}>{customerInfo?.name ? customerInfo.name.split(' ')[0] : 'Logged In'}</Text>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
+              <Text style={styles.loginBtnText}>Login</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <ScrollView ref={scrollRef} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false}>
@@ -455,6 +506,22 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '900',
     color: COLORS.primary,
+  },
+  loggedInBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  loggedInText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#059669',
   },
   chat: {
     paddingHorizontal: SPACING.md,

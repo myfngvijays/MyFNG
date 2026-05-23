@@ -456,7 +456,7 @@ export default function SuperAdminBookingsPage() {
                         <td className="px-4 py-3 text-sm text-gray-700">{lead.customer_phone || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{lead.vehicle_number || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{lead.city || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{lead.service_type || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{lead.service_display || (lead.service_type ? lead.service_type.replace(/_/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '-')}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className="inline-flex px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
                             {lead.status || '-'}

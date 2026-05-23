@@ -31,7 +31,7 @@ export const POPULAR_PACKAGES: PublicPackage[] = [
   {
     id: 'premium',
     name: 'Premium Service',
-    price: 8999,
+    price: 6800,
     desc: 'Advanced diagnostics and complete preventive engine care.',
     image:
       'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Engine_Service.png',
@@ -39,7 +39,7 @@ export const POPULAR_PACKAGES: PublicPackage[] = [
   {
     id: 'platinum',
     name: 'Platinum Service',
-    price: 12999,
+    price: 11300,
     desc: 'Complete detailing package with premium finish and protection.',
     image:
       'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Detailing_Service.png',

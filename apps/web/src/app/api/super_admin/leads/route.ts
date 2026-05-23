@@ -80,7 +80,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch service leads' }, { status: 500 });
     }
 
-    return NextResponse.json({ leads: data || [] });
+    const leads = (data || []) as any[];
+
+    const allServiceTypeIds = new Set<string>();
+    for (const lead of leads) {
+      if (Array.isArray(lead.service_type_ids)) {
+        lead.service_type_ids.forEach((id: string) => allServiceTypeIds.add(id));
+      }
+    }
+
+    const serviceNameMap: Record<string, string> = {};
+    if (allServiceTypeIds.size > 0) {
+      const { data: stRows } = await supabaseAdmin
+        .from('service_types')
+        .select('id, name')
+        .in('id', Array.from(allServiceTypeIds));
+      if (stRows) {
+        for (const row of stRows as any[]) {
+          serviceNameMap[row.id] = row.name;
+        }
+      }
+    }
+
+    for (const lead of leads) {
+      if ((!lead.service_type || lead.service_type === 'CAR_SERVICE') && Array.isArray(lead.service_type_ids) && lead.service_type_ids.length > 0) {
+        const names = lead.service_type_ids.map((id: string) => serviceNameMap[id]).filter(Boolean);
+        if (names.length > 0) {
+          lead.service_display = names.join(', ');
+        }
+      }
+    }
+
+    return NextResponse.json({ leads });
   } catch (error: any) {
     return NextResponse.json({ error: 'Internal server error', details: error?.message }, { status: 500 });
   }
