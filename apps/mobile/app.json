@@ -5,7 +5,7 @@
     "version": "1.0.6",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
-    "icon": "./assets/logo.png",
+    "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/logo.png",
@@ -40,8 +40,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.png",
-        "backgroundColor": "#004AAD"
+        "foregroundImage": "./assets/app-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
