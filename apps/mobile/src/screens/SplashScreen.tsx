@@ -116,9 +116,8 @@ export default function SplashScreen({
       {/* Trust Badge */}
       <Animated.View style={[s.badge, { opacity: badgeFade, transform: [{ translateY: badgeY }] }]}>
         <Text style={s.badgeText}>
-          Trusted by <Text style={s.badgeBold}>10+ Cr Indians</Text>
+          Trusted by <Text style={s.badgeBold}>10000+ Car Owners</Text>
         </Text>
-        <Text style={s.badgeFlag}> 🇮🇳</Text>
       </Animated.View>
     </View>
   );
@@ -238,5 +237,4 @@ const s = StyleSheet.create({
   },
   badgeText: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
   badgeBold: { color: '#1F2937', fontWeight: '700' },
-  badgeFlag: { fontSize: 14 },
 });
