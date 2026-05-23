@@ -192,7 +192,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     support: true,
   });
   const [selectedFaqCategory, setSelectedFaqCategory] = useState<string | null>(null);
-  const [privacyModal, setPrivacyModal] = useState<{ title: string; content: string } | null>(null);
+  // Legal sections are now rendered inline (fully expanded). No modal state needed.
   const [faqModal, setFaqModal] = useState<{ question: string; answer: string } | null>(null);
 
   const supportFaqs = useMemo(() => {
@@ -2915,61 +2915,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
       case 'Privacy Policy':
         return (
           <View style={styles.subWrapCompact}>
-            {/* Intro card */}
             <View style={pstyles.introCard}>
               <Text style={pstyles.introHeading}>PRIVACY POLICY</Text>
               <Text style={pstyles.introText}>{LEGAL_SECTIONS.privacyIntro}</Text>
-              <TouchableOpacity
-                onPress={() =>
-                  setPrivacyModal({
-                    title: 'PRIVACY POLICY',
-                    content: LEGAL_SECTIONS.privacyFull,
-                  })
-                }
-              >
-                <Text style={pstyles.readMore}>Read More  {'>'}</Text>
-              </TouchableOpacity>
             </View>
 
-            {/* Section list */}
-            <Text style={pstyles.sectionHeading}>PRIVACY SECTIONS</Text>
-            <View style={pstyles.listCard}>
-              {LEGAL_SECTIONS.privacy.map((item, idx) => (
-                <TouchableOpacity
-                  key={item.title}
-                  style={[pstyles.listRow, idx !== LEGAL_SECTIONS.privacy.length - 1 ? pstyles.listRowDivider : null]}
-                  onPress={() => setPrivacyModal(item)}
-                >
-                  <Text style={pstyles.listTitle}>{item.title.toUpperCase()}</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Modal popup */}
-            <Modal
-              visible={!!privacyModal}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setPrivacyModal(null)}
-            >
-              <View style={pstyles.modalOverlay}>
-                <View style={pstyles.modalCard}>
-                  <View style={pstyles.modalHeader}>
-                    <Text style={pstyles.modalTitle}>{privacyModal?.title || ''}</Text>
-                    <TouchableOpacity onPress={() => setPrivacyModal(null)}>
-                      <Ionicons name="close" size={22} color="#374151" />
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView style={pstyles.modalScroll} showsVerticalScrollIndicator={false}>
-                    <Text style={pstyles.modalBody}>{privacyModal?.content || ''}</Text>
-                  </ScrollView>
-                  <TouchableOpacity style={pstyles.modalBtn} onPress={() => setPrivacyModal(null)}>
-                    <Text style={pstyles.modalBtnText}>I Understand</Text>
-                  </TouchableOpacity>
-                </View>
+            {LEGAL_SECTIONS.privacy.map((item) => (
+              <View key={item.title} style={pstyles.expandedSection}>
+                <Text style={pstyles.expandedTitle}>{item.title.toUpperCase()}</Text>
+                <Text style={pstyles.expandedBody}>{item.content}</Text>
               </View>
-            </Modal>
+            ))}
           </View>
         );
       case 'Terms of Use':
@@ -2978,55 +2934,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
             <View style={pstyles.introCard}>
               <Text style={pstyles.introHeading}>CONTRACTUAL RELATIONSHIP</Text>
               <Text style={pstyles.introText}>{LEGAL_SECTIONS.termsIntro}</Text>
-              <TouchableOpacity
-                onPress={() =>
-                  setPrivacyModal({
-                    title: 'TERMS OF USE',
-                    content: LEGAL_SECTIONS.termsFull,
-                  })
-                }
-              >
-                <Text style={pstyles.readMore}>Read More  {'>'}</Text>
-              </TouchableOpacity>
             </View>
 
-            <Text style={pstyles.sectionHeading}>TERMS & POLICIES</Text>
-            <View style={pstyles.listCard}>
-              {LEGAL_SECTIONS.terms.map((item: any, idx: number) => (
-                <TouchableOpacity
-                  key={item.title}
-                  style={[pstyles.listRow, idx !== LEGAL_SECTIONS.terms.length - 1 ? pstyles.listRowDivider : null]}
-                  onPress={() => setPrivacyModal(item)}
-                >
-                  <Text style={pstyles.listTitle}>{String(item.title || '').toUpperCase()}</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Modal
-              visible={!!privacyModal}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setPrivacyModal(null)}
-            >
-              <View style={pstyles.modalOverlay}>
-                <View style={pstyles.modalCard}>
-                  <View style={pstyles.modalHeader}>
-                    <Text style={pstyles.modalTitle}>{privacyModal?.title || ''}</Text>
-                    <TouchableOpacity onPress={() => setPrivacyModal(null)}>
-                      <Ionicons name="close" size={22} color="#374151" />
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView style={pstyles.modalScroll} showsVerticalScrollIndicator={false}>
-                    <Text style={pstyles.modalBody}>{privacyModal?.content || ''}</Text>
-                  </ScrollView>
-                  <TouchableOpacity style={pstyles.modalBtn} onPress={() => setPrivacyModal(null)}>
-                    <Text style={pstyles.modalBtnText}>I Understand</Text>
-                  </TouchableOpacity>
-                </View>
+            {LEGAL_SECTIONS.terms.map((item: any) => (
+              <View key={item.title} style={pstyles.expandedSection}>
+                <Text style={pstyles.expandedTitle}>{String(item.title || '').toUpperCase()}</Text>
+                <Text style={pstyles.expandedBody}>{item.content}</Text>
               </View>
-            </Modal>
+            ))}
           </View>
         );
       case 'Delete Account': {
@@ -3715,6 +3630,29 @@ const pstyles = StyleSheet.create({
     alignItems: 'center',
   },
   modalBtnText: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+
+  expandedSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 10,
+  },
+  expandedTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#111827',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  expandedBody: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#374151',
+    lineHeight: 21,
+  },
 });
 
 const hstyles = StyleSheet.create({

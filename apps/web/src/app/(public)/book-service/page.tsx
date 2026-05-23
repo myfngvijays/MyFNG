@@ -2168,22 +2168,22 @@ export default function BookServicePage() {
                           carSuggestions.length > 0 &&
                           (!formData.carModel ||
                             carSearchQuery !== `${formData.carModel.make} ${formData.carModel.model_name}`) && (
-                          <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-200 rounded-xl shadow-2xl max-h-64 sm:max-h-80 overflow-y-auto">
+                          <div className="absolute z-50 w-full mt-2 bg-[#0A2540] border-2 border-[#0A2540] rounded-xl shadow-2xl max-h-64 sm:max-h-80 overflow-y-auto">
                             {carSuggestions.map((car) => (
                             <button
                               key={car.id}
                               type="button"
                               onClick={() => handleCarSelect(car)}
-                                className="w-full px-3 sm:px-4 py-3 sm:py-4 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                                className="w-full px-3 sm:px-4 py-3 sm:py-4 text-left hover:bg-[#13345f] transition-colors border-b border-white/10 last:border-b-0"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                    <p className="font-semibold text-sm sm:text-base text-text-body truncate">{car.make}</p>
-                                    <p className="text-xs sm:text-sm text-gray-600 truncate">
+                                    <p className="font-bold text-sm sm:text-base text-white truncate">{car.make}</p>
+                                    <p className="text-xs sm:text-sm text-white/70 truncate">
                                       {car.model_name} {car.variant ? `(${car.variant})` : ''}
                                     </p>
                                 </div>
-                                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
+                                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-white/80 flex-shrink-0" />
                               </div>
                             </button>
                           ))}
