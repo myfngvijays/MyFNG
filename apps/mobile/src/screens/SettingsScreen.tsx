@@ -47,8 +47,6 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'profile', label: 'My Profile', icon: 'person' },
   { id: 'addresses', label: 'Your Addresses', icon: 'location' },
   { id: 'membership', label: 'Membership', icon: 'trophy' },
-  { id: 'wallet', label: 'Your Wallet', icon: 'wallet' },
-  { id: 'refer', label: 'Refer & Earn', icon: 'gift' },
   { id: 'orders', label: 'Order History', icon: 'receipt' },
   { id: 'cart', label: 'Cart', icon: 'cart' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
@@ -60,6 +58,50 @@ const LEGAL_MENU: MenuItem[] = [
   { id: 'support', label: 'Help & Support', icon: 'help-circle' },
   { id: 'delete', label: 'Delete Account', icon: 'trash' },
 ];
+
+const CAR_IMAGE_BASE_URL = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images';
+
+function getVehicleImageUris(vehicle: any): { primary: string; fallback: string } {
+  const rawMake = String(vehicle?.make || vehicle?.vehicle_make || '').trim();
+  const rawModel = String(vehicle?.model || vehicle?.model_name || vehicle?.vehicle_model || '').trim();
+  const make = rawMake.toLowerCase().replace(/\s+/g, '-');
+  const model = rawModel.toLowerCase().replace(/\s+/g, '-');
+  const defaultImg = `${CAR_IMAGE_BASE_URL}/default-car.png`;
+  if (!make) {
+    return { primary: defaultImg, fallback: defaultImg };
+  }
+  const brandImg = `${CAR_IMAGE_BASE_URL}/${make}.png`;
+  if (!model) {
+    return { primary: brandImg, fallback: defaultImg };
+  }
+  const makePart = make.split('-')[0];
+  const folderName = `${make}-cars`;
+  const fileName = `${makePart}-${model}.png`;
+  return { primary: `${CAR_IMAGE_BASE_URL}/${folderName}/${fileName}`, fallback: brandImg };
+}
+
+function VehicleImage({ vehicle, style }: { vehicle: any; style: any }) {
+  const uris = useMemo(() => getVehicleImageUris(vehicle), [vehicle]);
+  const [src, setSrc] = useState(uris.primary);
+  const [errored, setErrored] = useState(false);
+  useEffect(() => {
+    setSrc(uris.primary);
+    setErrored(false);
+  }, [uris.primary]);
+  return (
+    <Image
+      source={{ uri: src }}
+      style={style}
+      resizeMode="contain"
+      onError={() => {
+        if (!errored && src !== uris.fallback) {
+          setSrc(uris.fallback);
+          setErrored(true);
+        }
+      }}
+    />
+  );
+}
 
 export default function SettingsScreen({ navigation, route }: Props) {
   const [activeSubPage, setActiveSubPage] = useState<string | null>(route?.params?.initialSubPage ?? route?.params?.subPage ?? null);
@@ -476,19 +518,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
     return [];
   }, [allAssociatedVehicles, selectedVehicle]);
 
-  const getVehicleImageUri = useCallback((vehicle: any) => {
-    const make = String(vehicle?.make || '').trim().toLowerCase();
-    const modelFamily = String(vehicle?.model || '')
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '-');
-    if (!make || !modelFamily) {
-      return 'https://cdn.imagin.studio/getimage?customer=img&make=tata&modelFamily=tigor&angle=23&width=400';
-    }
-    return `https://cdn.imagin.studio/getimage?customer=img&make=${encodeURIComponent(make)}&modelFamily=${encodeURIComponent(modelFamily)}&angle=23&width=400`;
-  }, []);
-
-  const selectedVehicleImageUri = useMemo(() => getVehicleImageUri(selectedVehicle), [getVehicleImageUri, selectedVehicle]);
   const activeVehicleIndex = useMemo(() => {
     const idx = vehicleCarouselData.findIndex((vehicle, index) => {
       const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
@@ -1340,11 +1369,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       <Text style={styles.vehicleYear}>{item?.year ? String(item.year) : '-'}</Text>
                     </View>
                   </View>
-                  <Image
-                    source={{ uri: getVehicleImageUri(item) }}
-                    style={styles.vehicleImage}
-                    resizeMode="contain"
-                  />
+                  <VehicleImage vehicle={item} style={styles.vehicleImage} />
                 </View>
               );
             }}
@@ -1366,7 +1391,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
               <Text style={styles.vehicleName}>Add your first vehicle</Text>
             </View>
-            <Image source={{ uri: selectedVehicleImageUri }} style={styles.vehicleImage} resizeMode="contain" />
+            <VehicleImage vehicle={selectedVehicle} style={styles.vehicleImage} />
           </View>
         )}
         {vehicleCarouselData.length > 1 ? (
@@ -1439,7 +1464,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       )}
 
-      <ReferAndFooter />
+      <ReferAndFooter hideRefer />
     </ScrollView>
   );
 
@@ -2281,19 +2306,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   <Text style={ostyles.loginNowBtnText}>Login Now</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ height: 40 }} />
-              <TouchableOpacity
-                style={ostyles.referBanner}
-                onPress={() => { setActiveSubPage('Refer & Earn'); }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={ostyles.referBannerTitle}>Refer & Earn ₹500</Text>
-                  <Text style={ostyles.referBannerSub}>Invite friends & get discount</Text>
-                </View>
-                <View style={ostyles.referInviteChip}>
-                  <Text style={ostyles.referInviteChipText}>Invite Now</Text>
-                </View>
-              </TouchableOpacity>
             </View>
           );
         }
@@ -2428,19 +2440,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   <Text style={cstyles.loginNowBtnText}>Login Now</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ height: 40 }} />
-              <TouchableOpacity
-                style={cstyles.referBanner}
-                onPress={() => { setActiveSubPage('Refer & Earn'); }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={cstyles.referBannerTitle}>Refer & Earn ₹500</Text>
-                  <Text style={cstyles.referBannerSub}>Invite friends & get discount</Text>
-                </View>
-                <View style={cstyles.referInviteChip}>
-                  <Text style={cstyles.referInviteChipText}>Invite Now</Text>
-                </View>
-              </TouchableOpacity>
             </View>
           );
         }
@@ -2450,7 +2449,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             <View style={cstyles.sectionCard}>
               <View style={cstyles.vehicleRow}>
                 <View style={cstyles.vehicleIconWrap}>
-                  <Image source={{ uri: selectedVehicleImageUri }} style={cstyles.vehicleThumb} resizeMode="contain" />
+                  <VehicleImage vehicle={selectedVehicle} style={cstyles.vehicleThumb} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={cstyles.vehicleName}>
@@ -3141,7 +3140,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       {activeSubPage ? (
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {subPageContent}
-          <ReferAndFooter hideRefer={activeSubPage === 'Refer & Earn' || activeSubPage === 'Cart' || activeSubPage === 'Order History'} />
+          <ReferAndFooter hideRefer />
         </ScrollView>
       ) : (
         renderMain()

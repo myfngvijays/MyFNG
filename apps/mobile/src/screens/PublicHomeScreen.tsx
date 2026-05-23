@@ -32,6 +32,7 @@ import {
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { ENV } from '../config/environment';
 import { supabase } from '../lib/supabase';
+import * as Location from 'expo-location';
 
 type Props = {
   navigation: any;
@@ -98,9 +99,6 @@ const FALLBACK_PROMO_BANNERS = [
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`,
 ];
 
-const DENTING_ICON = require('../../assets/service-icons/denting-painting.png');
-const TYRE_ICON = require('../../assets/service-icons/tyre-wheels.png');
-
 type ServiceItem = {
   id: string;
   label: string;
@@ -111,20 +109,20 @@ type ServiceItem = {
 };
 
 const SERVICES: ServiceItem[] = [
-  { id: '1', label: 'Periodic Service', icon: 'construct-outline', color: '#2563EB', bg: '#EFF6FF' },
-  { id: '4', label: 'Engine Services', icon: 'speedometer-outline', color: '#EA580C', bg: '#FFF7ED' },
-  { id: '8', label: 'Detailing Service', icon: 'car-sport-outline', color: '#EC4899', bg: '#FDF2F8' },
-  { id: '9', label: 'Denting & Painting', image: DENTING_ICON, color: '#059669', bg: '#ECFDF5' },
-  { id: '7', label: 'Tyre & Wheels', image: TYRE_ICON, color: '#525252', bg: '#F5F5F5' },
-  { id: 'all', label: 'View All', icon: 'arrow-forward', color: COLORS.primary, bg: '#F3F4F6' },
+  { id: '1', label: 'Periodic Service', icon: 'construct', color: '#2563EB', bg: '#FFFFFF' },
+  { id: '4', label: 'Engine Services', icon: 'speedometer', color: '#EA580C', bg: '#FFFFFF' },
+  { id: '8', label: 'Detailing Service', icon: 'car-sport', color: '#EC4899', bg: '#FFFFFF' },
+  { id: '9', label: 'Denting & Painting', icon: 'color-fill', color: '#059669', bg: '#FFFFFF' },
+  { id: '7', label: 'Tyre and Wheels', icon: 'disc-outline', color: '#1F2937', bg: '#FFFFFF' },
+  { id: 'all', label: 'View All', icon: 'arrow-forward', color: COLORS.primary, bg: '#FFFFFF' },
 ];
 
 const HOW_IT_WORKS = [
-  { id: '01', title: 'Book Your Repair with AI', desc: 'Describe your car issues to our AI assistant for an instant quote and booking.', color: '#004AAD', icon: 'sparkles' as const },
-  { id: '02', title: 'Track Live Updates', desc: 'Get real-time status of your car repair with photos and videos from the workshop.', color: '#60A5FA', icon: 'pulse' as const },
-  { id: '03', title: 'Home Pickup', desc: 'Our professional driver picks up your car from your doorstep at your preferred time.', color: '#004AAD', icon: 'home' as const },
-  { id: '04', title: 'QC Approved', desc: 'Every repair undergoes a 25-point quality check before we clear it for delivery.', color: '#60A5FA', icon: 'shield-checkmark' as const },
-  { id: '05', title: 'Delivered + Warranty', desc: 'Safe delivery to your home with a 6-month warranty on all spare parts and labor.', color: '#004AAD', icon: 'trophy' as const },
+  { id: '01', title: 'Book Via Misa AI', desc: 'Chat with our AI assistant to select your service and preferred time. No calls required.', color: '#004AAD', icon: 'sparkles' as const },
+  { id: '02', title: 'Pickup Scheduled', desc: 'We confirm your slot and arrange doorstep pickup at your convenience.', color: '#60A5FA', icon: 'car' as const },
+  { id: '03', title: 'Tracking & Updates', desc: "Track your car's journey and receive photos & video updates during service.", color: '#004AAD', icon: 'pulse' as const },
+  { id: '04', title: 'Quality Check', desc: 'Service completion is verified as per MY FNG process before delivery.', color: '#60A5FA', icon: 'shield-checkmark' as const },
+  { id: '05', title: 'Delivery & Warranty', desc: 'Your car is delivered back with service documentation and warranty coverage.', color: '#004AAD', icon: 'trophy' as const },
 ];
 
 const FAQS = [
@@ -168,6 +166,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
+  const [detectedCity, setDetectedCity] = useState('Detecting...');
   const [liveBlogs, setLiveBlogs] = useState<Array<{ id: string; title: string; excerpt: string; date: string; image: string; slug: string }>>([]);
   const brandScrollX = useRef(new Animated.Value(0)).current;
   const brandAnimRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -200,6 +199,35 @@ export default function PublicHomeScreen({ navigation }: Props) {
       };
     }, []),
   );
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          if (active) setDetectedCity('India');
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&format=json&zoom=14&addressdetails=1`;
+        const res = await fetch(url, { headers: { 'User-Agent': 'MyFNG-App/1.0' } });
+        if (!res.ok) return;
+        const json = await res.json();
+        const addr = json?.address || {};
+        const district = addr.suburb || addr.city_district || addr.neighbourhood || addr.village || addr.town || addr.city || addr.county || '';
+        const state = addr.state || '';
+        if (active && district) {
+          setDetectedCity(state ? `${district}, ${state}` : district);
+        } else if (active && state) {
+          setDetectedCity(state);
+        }
+      } catch {
+        if (active) setDetectedCity('India');
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     // Fetch admin-managed hero carousel banners. Admin uploads them at
@@ -372,9 +400,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
   const onNavPress = (tab: PublicPillNavTab) => {
     if (tab === 'home') return;
-    if (tab === 'services') navigation.navigate('PublicServicePackages', { city: 'Mumbai' });
-    if (tab === 'ai') navigation.navigate('AIBooking', { city: 'Mumbai' });
-    if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city: 'Mumbai' });
+    if (tab === 'services') navigation.navigate('PublicServicePackages', { city: detectedCity });
+    if (tab === 'ai') navigation.navigate('AIBooking', { city: detectedCity });
+    if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city: detectedCity });
     if (tab === 'account') navigation.navigate('Settings');
   };
 
@@ -384,7 +412,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
     <SafeAreaView style={styles.safe}>
       <View style={styles.screen}>
         <PublicHeader
-          city="Mumbai, Maharashtra"
+          city={detectedCity}
           isLoggedIn={isLoggedIn}
           userName={isLoggedIn ? 'MyFNG User' : null}
           onPressSearch={() => setShowSearchOverlay(true)}
@@ -425,7 +453,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   // Resolve admin-configured route params (supports "__CITY__" placeholder).
                   const params = activeHero.routeParams ? { ...activeHero.routeParams } : {};
                   Object.keys(params).forEach((k) => {
-                    if (params[k] === '__CITY__') params[k] = 'Mumbai';
+                    if (params[k] === '__CITY__') params[k] = detectedCity;
                   });
                   navigation.navigate(activeHero.route as never, params as never);
                 }}
@@ -498,16 +526,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   style={styles.serviceTile}
                   onPress={() =>
                     navigation.navigate('PublicServicePackages', {
-                      city: 'Mumbai',
+                      city: detectedCity,
                       selectedServiceId: service.id === 'all' ? null : service.id,
                     })
                   }
                 >
-                  <View style={[styles.serviceIconWrap, { backgroundColor: service.bg }]}>
+                  <View style={styles.serviceIconWrap}>
                     {service.image ? (
                       <Image source={service.image} style={styles.serviceIconImage} resizeMode="contain" />
                     ) : service.icon ? (
-                      <Ionicons name={service.icon} size={20} color={service.color} />
+                      <Ionicons name={service.icon} size={22} color={service.color} />
                     ) : null}
                   </View>
                   <Text style={styles.serviceLabel}>{service.label}</Text>
@@ -519,7 +547,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           <Section>
             <TouchableOpacity
               style={styles.locatorCard}
-              onPress={() => navigation.navigate('PublicWorkshopLocator', { city: 'Mumbai' })}
+              onPress={() => navigation.navigate('PublicWorkshopLocator', { city: detectedCity })}
             >
               <View style={styles.locatorLeft}>
                 <View style={styles.locatorIcon}>
@@ -571,7 +599,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 ['4.8/5', 'RATING', 'star' as const],
                 ['17K+', 'CARS', 'trophy' as const],
                 ['100+', 'WORKSHOPS', 'construct' as const],
-                ['Warranty', 'PARTS', 'shield-checkmark' as const],
+                ['Original', 'PARTS', 'shield-checkmark' as const],
                 ['Live', 'UPDATES', 'eye' as const],
               ] as const).map(([value, label, icon]) => (
                 <View key={label} style={styles.uspItem}>
@@ -591,8 +619,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
               {([
                 ['Photo/Video Updates', 'Live service tracking', 'eye' as const],
                 ['Clear Estimates', 'No hidden costs', 'document-text' as const],
-                ['Genuine Parts', '100% quality spares', 'wallet' as const],
-                ['Central Support', '24/7 assistance', 'call' as const],
+                ['MY FNG Service Guarantee', '100% quality assurance', 'shield-checkmark' as const],
+                ['Same-Day Service', 'Quick turnaround time', 'flash' as const],
               ] as const).map(([title, subtitle, icon]) => (
                 <View key={title} style={styles.transparencyCard}>
                   <View style={styles.transparencyIconWrap}>
@@ -668,7 +696,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                       <TouchableOpacity
                         style={styles.packageBookBtn}
                         activeOpacity={0.85}
-                        onPress={() => navigation.navigate('PublicBookServiceNow', { city: 'Mumbai', packageId: pkg.id })}
+                        onPress={() => navigation.navigate('PublicBookServiceNow', { city: detectedCity, packageId: pkg.id })}
                       >
                         <Text style={styles.packageBookBtnText}>Book</Text>
                       </TouchableOpacity>
@@ -691,7 +719,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                   key={svc.name}
                   style={styles.rsaServiceCard}
                   activeOpacity={0.8}
-                  onPress={() => navigation.navigate('RoadsideAssistance', { city: 'Mumbai' })}
+                  onPress={() => navigation.navigate('RoadsideAssistance', { city: detectedCity })}
                 >
                   <View style={[styles.rsaServiceIcon, { backgroundColor: svc.bg }]}>
                     <Ionicons name={svc.icon} size={20} color="#FFFFFF" />
@@ -850,7 +878,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             )}
           </Section>
 
-          <ReferAndFooter />
+          <ReferAndFooter hideRefer />
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
@@ -1181,16 +1209,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   serviceIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
     shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    elevation: 2,
   },
   serviceIconImage: {
     width: 36,

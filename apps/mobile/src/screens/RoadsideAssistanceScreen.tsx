@@ -208,7 +208,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           )}
 
-          <ReferAndFooter />
+          <ReferAndFooter hideRefer />
           <View style={{ height: 24 }} />
         </ScrollView>
 

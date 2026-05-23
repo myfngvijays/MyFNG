@@ -254,9 +254,6 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
       <View style={s.screen}>
         <View style={s.header}>
           <Text style={s.headerTitle}>Our Services</Text>
-          <TouchableOpacity style={s.compareBtn} activeOpacity={0.85} onPress={() => setShowComparison(true)}>
-            <Text style={s.compareBtnText}>Compare</Text>
-          </TouchableOpacity>
         </View>
 
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
@@ -433,7 +430,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
             </TouchableOpacity>
           ) : null}
 
-          <ReferAndFooter />
+          <ReferAndFooter hideRefer />
           <View style={{ height: 24 }} />
         </ScrollView>
 

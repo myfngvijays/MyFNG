@@ -87,7 +87,7 @@ export default function SplashScreen({
 
         <Animated.View style={[s.carWrap, { opacity: carFade, transform: [{ scale: carScale }] }]}>
           <Image
-            source={{ uri: 'https://cdn.imagin.studio/getimage?customer=img&make=hyundai&modelFamily=creta&angle=23&width=500' }}
+            source={require('../../assets/splash-car.png')}
             style={s.carImage}
             resizeMode="contain"
           />

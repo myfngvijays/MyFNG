@@ -24,8 +24,6 @@ export default function CustomerDashboard() {
     { key: 'orders', title: 'Order History', icon: 'receipt-outline', screen: 'CustomerOrders' },
     { key: 'vehicles', title: 'My Vehicles', icon: 'car-sport-outline', screen: 'CustomerVehicles' },
     { key: 'support', title: 'Help & Support', icon: 'help-circle-outline', screen: 'CustomerSupport' },
-    { key: 'wallet', title: 'Wallet', icon: 'wallet-outline', screen: 'CustomerWallet' },
-    { key: 'refer', title: 'Refer & Earn', icon: 'gift-outline', screen: 'CustomerRefer' },
     { key: 'profile', title: 'Profile', icon: 'person-circle-outline', screen: 'CustomerProfile' },
     { key: 'notifications', title: 'Notifications', icon: 'notifications-outline', screen: 'CustomerNotifications' },
     { key: 'membership', title: 'Membership', icon: 'ribbon-outline', screen: 'CustomerMembership' },

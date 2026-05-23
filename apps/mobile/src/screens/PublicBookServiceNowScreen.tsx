@@ -11,11 +11,14 @@ import {
   Modal,
   Pressable,
   Platform,
+  Dimensions,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
@@ -23,7 +26,7 @@ import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottom
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
 
-type Props = { navigation: any };
+type Props = { navigation: any; route?: any };
 
 type CityRow = { id: string; name: string; state?: string | null; zone_id?: string | null };
 type CarModelRow = { id: string; make: string; model_name: string; variant?: string | null; class?: string | null };
@@ -100,6 +103,18 @@ function formatDateDMY(dateStr: string): string {
   return `${d}/${m}/${y}`;
 }
 
+function formatDateDMShort(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const dt = new Date(dateStr + 'T00:00:00');
+    const day = dt.getDate();
+    const month = dt.toLocaleString('en-US', { month: 'short' });
+    return `${day} ${month}`;
+  } catch {
+    return '';
+  }
+}
+
 const TIME_SLOTS = Array.from({ length: 6 }, (_, i) => {
   const hour = 10 + i;
   const time24 = `${String(hour).padStart(2, '0')}:00`;
@@ -114,7 +129,9 @@ const TIME_SLOTS = Array.from({ length: 6 }, (_, i) => {
   };
 });
 
-export default function PublicBookServiceNowScreen({ navigation }: Props) {
+export default function PublicBookServiceNowScreen({ navigation, route }: Props) {
+  const paramServiceCategory = route?.params?.serviceCategory;
+  const paramSelectedServiceId = route?.params?.selectedServiceId;
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -138,6 +155,7 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
   const [cities, setCities] = useState<CityRow[]>([]);
   const [cityModal, setCityModal] = useState(false);
   const [locationDetecting, setLocationDetecting] = useState(false);
+  const [detectedCityNotServiceable, setDetectedCityNotServiceable] = useState<string | null>(null);
 
   const [carQuery, setCarQuery] = useState('');
   const [carSuggestions, setCarSuggestions] = useState<CarModelRow[]>([]);
@@ -166,7 +184,24 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(null);
   const [addressDetecting, setAddressDetecting] = useState(false);
 
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpValue, setOtpValue] = useState('');
+  const [otpConfirmation, setOtpConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [serviceChecklists, setServiceChecklists] = useState<
+    Record<string, Array<{ name: string; category?: string }>>
+  >({});
+  const [detailsService, setDetailsService] = useState<ServiceTypeRow | null>(null);
+  const [bookingSuccess, setBookingSuccess] = useState<{
+    leadNumber: string;
+    title: string;
+    message: string;
+    isPaid: boolean;
+  } | null>(null);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -251,36 +286,51 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
     const list = cityList && cityList.length > 0 ? cityList : cities;
     if (list.length === 0) return;
     setLocationDetecting(true);
+    setDetectedCityNotServiceable(null);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setLocationDetecting(false);
+        Alert.alert('Permission denied', 'Location permission is needed to auto-detect your city.');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&zoom=10&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&zoom=14&addressdetails=1`,
         { headers: { 'User-Agent': 'MyFNG-App/1.0' } }
       );
       if (response.ok) {
         const data = await response.json();
         const addr = data?.address || {};
-        const detectedCity = addr.city || addr.town || addr.village || addr.county || '';
+        const detectedCity = addr.city || addr.town || addr.state_district || addr.county || addr.village || '';
+        const displayLocation = [
+          addr.suburb || addr.neighbourhood || addr.village || '',
+          addr.city || addr.town || addr.state_district || '',
+        ].filter(Boolean).join(', ') || detectedCity;
         if (detectedCity) {
           const normalised = detectedCity.toLowerCase();
+          const districtNorm = (addr.state_district || '').toLowerCase();
           const match = list.find(
-            (c) =>
-              c.name.toLowerCase() === normalised ||
-              c.name.toLowerCase().includes(normalised) ||
-              normalised.includes(c.name.toLowerCase())
+            (c) => {
+              const cn = c.name.toLowerCase();
+              return cn === normalised ||
+                cn.includes(normalised) ||
+                normalised.includes(cn) ||
+                (districtNorm && (cn === districtNorm || cn.includes(districtNorm) || districtNorm.includes(cn)));
+            }
           );
           if (match) {
             setForm((p) => ({ ...p, city: match }));
+            setDetectedCityNotServiceable(null);
+          } else {
+            setDetectedCityNotServiceable(displayLocation || detectedCity);
           }
+        } else {
+          setDetectedCityNotServiceable('your area');
         }
       }
     } catch {
-      // silently ignore
+      Alert.alert('Detection failed', 'Unable to detect your location. Please select city manually.');
     } finally {
       setLocationDetecting(false);
     }
@@ -379,16 +429,31 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
         try {
           const { data: tplRows } = await supabase
             .from('service_type_checklist_templates')
-            .select('service_type_id, points')
+            .select('service_type_id, points, checklist_items')
             .in('service_type_id', ids);
           if (tplRows) {
             const pts: Record<string, number> = {};
+            const lists: Record<string, Array<{ name: string; category?: string }>> = {};
             (tplRows as any[]).forEach((r: any) => {
-              if (r.service_type_id && typeof r.points === 'number') {
-                pts[r.service_type_id] = r.points;
+              if (r.service_type_id) {
+                if (typeof r.points === 'number') pts[r.service_type_id] = r.points;
+                if (Array.isArray(r.checklist_items)) {
+                  const items = r.checklist_items
+                    .map((it: any) => {
+                      if (!it) return null;
+                      if (typeof it === 'string') return { name: it, category: 'General' };
+                      const name = String(it?.name || it?.title || it?.label || '').trim();
+                      if (!name) return null;
+                      const category = String(it?.category || 'General').trim() || 'General';
+                      return { name, category };
+                    })
+                    .filter(Boolean);
+                  if (items.length > 0) lists[r.service_type_id] = items;
+                }
               }
             });
             setServicePoints(pts);
+            setServiceChecklists(lists);
           }
         } catch {
           // checklist templates table might not exist yet
@@ -442,6 +507,25 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
     if (vehicleClass) {
       const p = await tryPrice({ class: vehicleClass, city_id: null, zone_id: null });
       if (p) return p;
+    }
+
+    // Final fallback: any active pricing for this service (cheapest)
+    // Matches the website's logic so Fully Synthetic and other variants
+    // still show a price even when city/zone/class-specific rows aren't configured.
+    try {
+      const { data } = await supabase
+        .from('workshop_service_pricing')
+        .select('custom_price')
+        .eq('service_type_id', serviceTypeId)
+        .eq('is_active', true)
+        .gt('custom_price', 0)
+        .order('custom_price', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const p = Number((data as any)?.custom_price || 0);
+      if (Number.isFinite(p) && p > 0) return p;
+    } catch {
+      // ignore
     }
     return 0;
   }
@@ -679,46 +763,61 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                   theme: { color: '#004AAD' },
                 };
                 await RazorpayCheckout.open(options);
-                Alert.alert(
-                  'Payment Successful',
-                  `Your booking ${json?.lead?.lead_number || leadNumber} has been created and payment received.\n\nWe will contact you shortly.`
-                );
+                setBookingSuccess({
+                  leadNumber: json?.lead?.lead_number || leadNumber,
+                  title: 'Payment Successful!',
+                  message:
+                    'Your booking has been confirmed and payment received. Our team will reach out to you shortly with pickup details.',
+                  isPaid: true,
+                });
               } catch (payErr: any) {
                 const cancelled =
                   payErr?.code === 'PAYMENT_CANCELLED' ||
                   payErr?.description?.includes('cancelled');
-                Alert.alert(
-                  cancelled ? 'Payment Cancelled' : 'Payment Failed',
-                  `Your booking has been created (${json?.lead?.lead_number || leadNumber}). ${
-                    cancelled
-                      ? 'You can pay later.'
-                      : 'Payment could not be processed. You can pay later.'
-                  }`
-                );
+                setBookingSuccess({
+                  leadNumber: json?.lead?.lead_number || leadNumber,
+                  title: 'Booking Confirmed!',
+                  message: cancelled
+                    ? 'Your booking has been created. Payment was cancelled \u2014 you can pay later from your bookings.'
+                    : 'Your booking has been created. Payment could not be processed \u2014 you can pay later from your bookings.',
+                  isPaid: false,
+                });
               }
             } else {
-              Alert.alert(
-                'Booking Created',
-                `Lead: ${json?.lead?.lead_number || leadNumber}\n\nPayment module not available. You can pay later from your bookings.`
-              );
+              setBookingSuccess({
+                leadNumber: json?.lead?.lead_number || leadNumber,
+                title: 'Booking Confirmed!',
+                message:
+                  'Your booking has been created. Payment module is not available \u2014 you can pay later from your bookings.',
+                isPaid: false,
+              });
             }
           } else {
-            Alert.alert(
-              'Booking Created',
-              `Lead: ${json?.lead?.lead_number || leadNumber}\n\nPayment could not be initiated. You can pay later.`
-            );
+            setBookingSuccess({
+              leadNumber: json?.lead?.lead_number || leadNumber,
+              title: 'Booking Confirmed!',
+              message:
+                'Your booking has been created. Payment could not be initiated \u2014 you can pay later from your bookings.',
+              isPaid: false,
+            });
           }
         } catch {
-          Alert.alert(
-            'Booking Created',
-            `Lead: ${json?.lead?.lead_number || leadNumber}\n\nPayment gateway unavailable. You can pay later.`
-          );
+          setBookingSuccess({
+            leadNumber: json?.lead?.lead_number || leadNumber,
+            title: 'Booking Confirmed!',
+            message:
+              'Your booking has been created. Payment gateway is currently unavailable \u2014 you can pay later from your bookings.',
+            isPaid: false,
+          });
         }
       } else {
-        Alert.alert(
-          'Booking Created',
-          `Lead: ${json?.lead?.lead_number || leadNumber}\n\nWe will contact you shortly.`
-        );
+        setBookingSuccess({
+          leadNumber: json?.lead?.lead_number || leadNumber,
+          title: 'Booking Confirmed!',
+          message:
+            'Thank you for choosing MyFNG! Our team will contact you shortly to confirm pickup details and finalise your service.',
+          isPaid: false,
+        });
       }
 
       setForm((prev) => ({
@@ -731,7 +830,6 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
         landmark: '',
         selectedWorkshop: null,
       }));
-      goStep(0);
     } catch {
       Alert.alert('Failed', 'Could not create booking. Please try again.');
     } finally {
@@ -770,12 +868,26 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
   useEffect(() => {
     if (step === 2 && form.city && form.carModel && serviceTypes.length > 0) {
       if (!selectedCategory || !categories.includes(selectedCategory)) {
-        setSelectedCategory(categories[0] || '');
+        if (paramServiceCategory && categories.includes(paramServiceCategory)) {
+          setSelectedCategory(paramServiceCategory);
+        } else {
+          setSelectedCategory(categories[0] || '');
+        }
       }
       fetchPricing();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceTypes.length, step, form.city?.id, form.carModel?.id]);
+
+  useEffect(() => {
+    if (step === 2 && serviceTypes.length > 0 && paramSelectedServiceId && form.selectedServices.length === 0) {
+      const exists = serviceTypes.find((s) => s.id === paramSelectedServiceId);
+      if (exists) {
+        setForm((prev) => ({ ...prev, selectedServices: [paramSelectedServiceId] }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, serviceTypes.length, paramSelectedServiceId]);
 
   // ── Handlers ────────────────────────────────────────────────────
 
@@ -808,7 +920,11 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
 
   const canNext = () => {
     if (step === 0) return Boolean(form.city && form.carModel);
-    if (step === 1) return Boolean(form.customerPhone.trim().length >= 10);
+    if (step === 1) {
+      if (!form.customerPhone.trim() || form.customerPhone.trim().length < 10) return false;
+      if (!isLoggedIn && !otpVerified) return false;
+      return true;
+    }
     if (step === 2) return form.selectedServices.length > 0;
     if (step === 3) {
       if (form.pickupRequired) return Boolean(form.pickupAddress.trim() && form.landmark.trim());
@@ -817,7 +933,55 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
     return true;
   };
 
+  const handleSendOtp = async () => {
+    const cleanPhone = form.customerPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      if (__DEV__) {
+        try { auth().settings.appVerificationDisabledForTesting = true; } catch {}
+      }
+      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`);
+      setOtpConfirmation(result);
+      setOtpSent(true);
+      Alert.alert('OTP Sent', `OTP sent to +91${cleanPhone}`);
+    } catch (error: any) {
+      Alert.alert('OTP Failed', error?.message || 'Unable to send OTP. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpValue.trim().length < 4) {
+      Alert.alert('Invalid OTP', 'Please enter the OTP sent to your number');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
+      await otpConfirmation.confirm(otpValue.trim());
+      setOtpVerified(true);
+      Alert.alert('Verified', 'Phone number verified successfully!');
+    } catch (error: any) {
+      Alert.alert('Verification Failed', error?.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const onNext = () => {
+    if (step === 1 && !isLoggedIn && !otpVerified) {
+      if (!otpSent) {
+        handleSendOtp();
+      } else {
+        handleVerifyOtp();
+      }
+      return;
+    }
     if (!canNext()) {
       Alert.alert('Complete this step', 'Please fill the required details.');
       return;
@@ -861,7 +1025,7 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
           {/* Top header */}
           <View style={styles.top}>
             <View style={styles.topRow}>
-              <Text style={styles.brand}>MY FNG</Text>
+              <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
               {!isLoggedIn ? (
                 <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
                   <Text style={styles.loginText}>Login</Text>
@@ -915,6 +1079,22 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                     {locationDetecting ? 'Detecting…' : 'Auto Detect Location'}
                   </Text>
                 </TouchableOpacity>
+
+                {detectedCityNotServiceable ? (
+                  <View style={styles.notServiceableBanner}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                      <Ionicons name="location" size={16} color="#EA580C" style={{ marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.notServiceableTitle}>
+                          We currently don't serve <Text style={{ fontWeight: '900' }}>{detectedCityNotServiceable}</Text>
+                        </Text>
+                        <Text style={styles.notServiceableSub}>
+                          Please select from our available cities below — we're expanding soon!
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
 
                 {/* Inline car search */}
                 <View style={styles.carSearchWrap}>
@@ -1001,15 +1181,46 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                   <Text style={styles.label}>Phone *</Text>
                   <TextInput
                     value={form.customerPhone}
-                    onChangeText={(t) =>
-                      setForm((p) => ({ ...p, customerPhone: t.replace(/\D/g, '').slice(0, 10) }))
-                    }
+                    onChangeText={(t) => {
+                      setForm((p) => ({ ...p, customerPhone: t.replace(/\D/g, '').slice(0, 10) }));
+                      if (otpSent) { setOtpSent(false); setOtpVerified(false); setOtpValue(''); }
+                    }}
                     style={styles.input}
                     placeholder="10-digit mobile number"
                     placeholderTextColor={COLORS.gray[500]}
                     keyboardType="phone-pad"
+                    editable={!otpVerified}
                   />
                 </View>
+                {!isLoggedIn && otpSent && !otpVerified ? (
+                  <View style={styles.field}>
+                    <Text style={styles.label}>Enter OTP *</Text>
+                    <TextInput
+                      value={otpValue}
+                      onChangeText={setOtpValue}
+                      style={styles.input}
+                      placeholder="Enter 6-digit OTP"
+                      placeholderTextColor={COLORS.gray[500]}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                    />
+                    <TouchableOpacity onPress={handleSendOtp} style={{ marginTop: 8 }} disabled={otpLoading}>
+                      <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>Resend OTP</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                {!isLoggedIn && otpVerified ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                    <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Phone verified</Text>
+                  </View>
+                ) : null}
+                {isLoggedIn ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                    <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Logged in - OTP not required</Text>
+                  </View>
+                ) : null}
               </>
             ) : null}
 
@@ -1062,33 +1273,72 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                       const selected = form.selectedServices.includes(s.id);
                       const price = pricing[s.id] || 0;
                       const pts = servicePoints[s.id] || s.points || 0;
+                      const checklistItems = serviceChecklists[s.id] || [];
+                      const visibleItems = checklistItems.slice(0, 5);
                       return (
-                        <TouchableOpacity
+                        <View
                           key={s.id}
-                          style={[styles.serviceRow, selected ? styles.serviceRowActive : null]}
-                          onPress={() => handleServiceToggle(s.id)}
-                          activeOpacity={0.9}
+                          style={[styles.planCard, selected ? styles.planCardActive : null]}
                         >
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.serviceName}>{s.name}</Text>
-                            {pts > 0 ? (
-                              <Text style={styles.servicePoints}>{pts} Points</Text>
-                            ) : null}
-                            {s.description ? (
-                              <Text style={styles.serviceDesc} numberOfLines={2}>
-                                {s.description}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <View style={styles.serviceRight}>
-                            <Text style={styles.servicePrice}>{price ? inr(price) : '—'}</Text>
-                            <Ionicons
-                              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                              size={20}
-                              color={selected ? COLORS.success : COLORS.gray[400]}
-                            />
-                          </View>
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.planCardHeader}
+                            onPress={() => handleServiceToggle(s.id)}
+                            activeOpacity={0.85}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.serviceName}>{s.name}</Text>
+                              {pts > 0 ? (
+                                <Text style={styles.servicePoints}>{pts} Points</Text>
+                              ) : null}
+                            </View>
+                            <View style={styles.serviceRight}>
+                              <Text style={styles.servicePrice}>{price ? inr(price) : '—'}</Text>
+                              <Ionicons
+                                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                                size={20}
+                                color={selected ? COLORS.success : COLORS.gray[400]}
+                              />
+                            </View>
+                          </TouchableOpacity>
+
+                          {visibleItems.length > 0 ? (
+                            <View style={styles.planCardItems}>
+                              {visibleItems.map((it, idx) => (
+                                <View key={`${s.id}-it-${idx}`} style={styles.planCardItemRow}>
+                                  <Ionicons
+                                    name="checkmark-circle"
+                                    size={14}
+                                    color="#16A34A"
+                                    style={{ marginTop: 2 }}
+                                  />
+                                  <Text style={styles.planCardItemText} numberOfLines={2}>
+                                    {it.name}
+                                  </Text>
+                                </View>
+                              ))}
+                              {checklistItems.length > 5 ? (
+                                <TouchableOpacity
+                                  onPress={() => setDetailsService(s)}
+                                  activeOpacity={0.7}
+                                  style={styles.planViewAllBtn}
+                                >
+                                  <Text style={styles.planViewAllText}>
+                                    View all points ({checklistItems.length})
+                                  </Text>
+                                  <Ionicons
+                                    name="chevron-forward"
+                                    size={14}
+                                    color={COLORS.primary}
+                                  />
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                          ) : s.description ? (
+                            <Text style={styles.serviceDesc} numberOfLines={2}>
+                              {s.description}
+                            </Text>
+                          ) : null}
+                        </View>
                       );
                     })}
                   </View>
@@ -1104,187 +1354,185 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
             {/* ── Step 3: Pickup / Visit ── */}
             {step === 3 ? (
               <>
-                <View style={styles.switchRow}>
-                  <TouchableOpacity
-                    style={[styles.choice, form.pickupRequired ? styles.choiceActive : null]}
-                    onPress={() => setForm((p) => ({ ...p, pickupRequired: true }))}
-                    activeOpacity={0.9}
-                  >
-                    <Ionicons name="car" size={16} color={form.pickupRequired ? '#fff' : COLORS.primary} />
-                    <Text
-                      style={[styles.choiceText, form.pickupRequired ? styles.choiceTextActive : null]}
+                {/* Service Preference Card */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionCardHeader}>
+                    <View style={[styles.sectionIcoBox, { backgroundColor: '#6366F1' }]}>
+                      <Ionicons name="car" size={16} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.sectionCardTitle}>Service Preference</Text>
+                    <Text style={styles.requiredStar}>*</Text>
+                  </View>
+                  <View style={styles.servicePrefRow}>
+                    <TouchableOpacity
+                      style={styles.servicePrefSide}
+                      onPress={() => setForm((p) => ({ ...p, pickupRequired: true, selectedWorkshop: null }))}
+                      activeOpacity={0.85}
                     >
-                      Pickup
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.choice, !form.pickupRequired ? styles.choiceActive : null]}
-                    onPress={() => {
-                      setForm((p) => ({ ...p, pickupRequired: false }));
-                      fetchWorkshops();
-                    }}
-                    activeOpacity={0.9}
-                  >
-                    <Ionicons
-                      name="navigate"
-                      size={16}
-                      color={!form.pickupRequired ? '#fff' : COLORS.primary}
-                    />
-                    <Text
-                      style={[styles.choiceText, !form.pickupRequired ? styles.choiceTextActive : null]}
+                      <View
+                        style={[
+                          styles.servicePrefIcoBox,
+                          form.pickupRequired
+                            ? { backgroundColor: '#6366F1' }
+                            : { backgroundColor: '#D1D5DB' },
+                        ]}
+                      >
+                        <Ionicons
+                          name="navigate"
+                          size={18}
+                          color={form.pickupRequired ? '#FFFFFF' : '#6B7280'}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.servicePrefLabel,
+                          form.pickupRequired ? { color: '#4338CA' } : { color: '#6B7280' },
+                        ]}
+                      >
+                        Pickup
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (form.pickupRequired) {
+                          setForm((p) => ({
+                            ...p,
+                            pickupRequired: false,
+                            pickupDate: '',
+                            pickupTime: '',
+                            pickupAddress: '',
+                            flatNumber: '',
+                            landmark: '',
+                          }));
+                          fetchWorkshops();
+                        } else {
+                          setForm((p) => ({ ...p, pickupRequired: true, selectedWorkshop: null }));
+                        }
+                      }}
+                      style={[
+                        styles.servicePrefToggle,
+                        form.pickupRequired
+                          ? { backgroundColor: '#6366F1' }
+                          : { backgroundColor: '#10B981' },
+                      ]}
                     >
-                      Visit
-                    </Text>
-                  </TouchableOpacity>
+                      <View
+                        style={[
+                          styles.servicePrefKnob,
+                          form.pickupRequired ? { left: 4 } : { right: 4 },
+                        ]}
+                      >
+                        <Ionicons
+                          name={form.pickupRequired ? 'navigate' : 'location'}
+                          size={16}
+                          color={form.pickupRequired ? '#6366F1' : '#10B981'}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.servicePrefSide, { justifyContent: 'flex-end' }]}
+                      onPress={() => {
+                        setForm((p) => ({
+                          ...p,
+                          pickupRequired: false,
+                          pickupDate: '',
+                          pickupTime: '',
+                          pickupAddress: '',
+                          flatNumber: '',
+                          landmark: '',
+                        }));
+                        fetchWorkshops();
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.servicePrefLabel,
+                          !form.pickupRequired ? { color: '#047857' } : { color: '#6B7280' },
+                        ]}
+                      >
+                        Visit
+                      </Text>
+                      <View
+                        style={[
+                          styles.servicePrefIcoBox,
+                          !form.pickupRequired
+                            ? { backgroundColor: '#10B981' }
+                            : { backgroundColor: '#D1D5DB' },
+                        ]}
+                      >
+                        <Ionicons
+                          name="location"
+                          size={18}
+                          color={!form.pickupRequired ? '#FFFFFF' : '#6B7280'}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {form.pickupRequired ? (
                   <>
-                    {/* Saved address selection */}
-                    {isLoggedIn && savedAddresses.length > 0 ? (
-                      <View style={styles.savedAddrSection}>
-                        <Text style={styles.savedAddrTitle}>Saved Addresses</Text>
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={styles.savedAddrRow}
-                        >
-                          {savedAddresses.map((addr) => {
-                            const isActive = selectedSavedAddressId === addr.id;
-                            return (
-                              <TouchableOpacity
-                                key={addr.id}
-                                style={[styles.savedAddrCard, isActive ? styles.savedAddrCardActive : null]}
-                                onPress={() => selectSavedAddress(addr)}
-                                activeOpacity={0.9}
-                              >
-                                <Text style={[styles.savedAddrLabel, isActive ? styles.savedAddrLabelActive : null]}>
-                                  {addr.address_type || addr.label || 'Address'}
-                                </Text>
-                                <Text
-                                  style={[styles.savedAddrLine, isActive ? styles.savedAddrLineActive : null]}
-                                  numberOfLines={2}
-                                >
-                                  {addr.address_line1 || ''}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                          <TouchableOpacity
-                            style={styles.savedAddrCard}
-                            onPress={() => {
-                              setSelectedSavedAddressId(null);
-                              setForm((p) => ({ ...p, pickupAddress: '', flatNumber: '', landmark: '' }));
-                            }}
-                            activeOpacity={0.9}
-                          >
-                            <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                            <Text style={styles.savedAddrLabel}>New Address</Text>
-                          </TouchableOpacity>
-                        </ScrollView>
+                    {/* Pickup Date Card */}
+                    <View style={styles.sectionCard}>
+                      <View style={styles.sectionCardHeader}>
+                        <View style={[styles.sectionIcoBox, { backgroundColor: '#3B82F6' }]}>
+                          <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                        </View>
+                        <Text style={styles.sectionCardTitle}>Pickup Date</Text>
+                        <Text style={styles.requiredStar}>*</Text>
                       </View>
-                    ) : null}
-
-                    {/* Pickup address */}
-                    <View style={styles.field}>
-                      <View style={styles.fieldHeader}>
-                        <Text style={styles.label}>Pickup address *</Text>
-                        <TouchableOpacity
-                          onPress={autoDetectAddress}
-                          disabled={addressDetecting}
-                          style={styles.autoDetectSmall}
-                        >
-                          {addressDetecting ? (
-                            <ActivityIndicator size="small" color={COLORS.primary} />
-                          ) : (
-                            <Ionicons name="navigate" size={12} color={COLORS.primary} />
-                          )}
-                          <Text style={styles.autoDetectSmallText}>
-                            {addressDetecting ? 'Detecting…' : 'Auto Detect'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                      <TextInput
-                        value={form.pickupAddress}
-                        onChangeText={(t) => {
-                          setForm((p) => ({ ...p, pickupAddress: t }));
-                          setSelectedSavedAddressId(null);
-                        }}
-                        style={styles.input}
-                        placeholder="Area, city, pincode"
-                        placeholderTextColor={COLORS.gray[500]}
-                      />
-                    </View>
-
-                    <View style={styles.row2}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.label}>Flat / House (optional)</Text>
-                        <TextInput
-                          value={form.flatNumber}
-                          onChangeText={(t) => setForm((p) => ({ ...p, flatNumber: t }))}
-                          style={styles.input}
-                          placeholder="Flat no."
-                          placeholderTextColor={COLORS.gray[500]}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.label}>Landmark *</Text>
-                        <TextInput
-                          value={form.landmark}
-                          onChangeText={(t) => setForm((p) => ({ ...p, landmark: t }))}
-                          style={styles.input}
-                          placeholder="Near…"
-                          placeholderTextColor={COLORS.gray[500]}
-                        />
-                      </View>
-                    </View>
-
-                    {/* Date picker */}
-                    <View style={styles.field}>
-                      <Text style={styles.label}>Pickup Date *</Text>
                       <View style={styles.dateQuickRow}>
                         <TouchableOpacity
-                          style={[styles.dateQuickBtn, form.pickupDate === todayStr ? styles.dateQuickBtnActive : null]}
+                          style={[
+                            styles.datePill,
+                            form.pickupDate === todayStr ? styles.datePillActive : null,
+                          ]}
                           onPress={() => setForm((p) => ({ ...p, pickupDate: todayStr }))}
                         >
                           <Text
                             style={[
-                              styles.dateQuickBtnText,
-                              form.pickupDate === todayStr ? styles.dateQuickBtnTextActive : null,
+                              styles.datePillText,
+                              form.pickupDate === todayStr ? styles.datePillTextActive : null,
                             ]}
                           >
-                            Today
+                            Today, {formatDateDMShort(todayStr)}
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[
-                            styles.dateQuickBtn,
-                            form.pickupDate === tomorrowStr ? styles.dateQuickBtnActive : null,
+                            styles.datePill,
+                            form.pickupDate === tomorrowStr ? styles.datePillActive : null,
                           ]}
                           onPress={() => setForm((p) => ({ ...p, pickupDate: tomorrowStr }))}
                         >
                           <Text
                             style={[
-                              styles.dateQuickBtnText,
-                              form.pickupDate === tomorrowStr ? styles.dateQuickBtnTextActive : null,
+                              styles.datePillText,
+                              form.pickupDate === tomorrowStr ? styles.datePillTextActive : null,
                             ]}
                           >
-                            Tomorrow
+                            Tomorrow, {formatDateDMShort(tomorrowStr)}
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={styles.dateQuickBtn}
+                          style={styles.dateCalendarBtn}
                           onPress={() => setShowDatePicker(true)}
+                          activeOpacity={0.85}
                         >
-                          <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
-                          <Text style={styles.dateQuickBtnText}>Pick Date</Text>
+                          <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                          {form.pickupDate &&
+                          form.pickupDate !== todayStr &&
+                          form.pickupDate !== tomorrowStr ? (
+                            <Text style={styles.dateCalendarBtnText}>
+                              {new Date(form.pickupDate + 'T00:00:00').getDate()}
+                            </Text>
+                          ) : null}
                         </TouchableOpacity>
                       </View>
-                      {form.pickupDate ? (
-                        <Text style={styles.dateSelectedText}>
-                          Selected: {formatDateDMY(form.pickupDate)}
-                        </Text>
-                      ) : null}
                       {showDatePicker ? (
                         <DateTimePicker
                           value={form.pickupDate ? new Date(form.pickupDate) : getIndiaDate()}
@@ -1296,24 +1544,33 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                       ) : null}
                     </View>
 
-                    {/* Time slots */}
+                    {/* Pickup Time Card */}
                     {form.pickupDate ? (
-                      <View style={styles.field}>
-                        <Text style={styles.label}>Pickup Time *</Text>
+                      <View style={styles.sectionCard}>
+                        <View style={styles.sectionCardHeader}>
+                          <View style={[styles.sectionIcoBox, { backgroundColor: '#A855F7' }]}>
+                            <Ionicons name="time" size={16} color="#FFFFFF" />
+                          </View>
+                          <Text style={styles.sectionCardTitle}>Pickup Time</Text>
+                          <Text style={styles.requiredStar}>*</Text>
+                        </View>
                         <View style={styles.timeSlotsGrid}>
                           {TIME_SLOTS.map((slot) => {
                             const isActive = form.pickupTime === slot.value;
                             return (
                               <TouchableOpacity
                                 key={slot.value}
-                                style={[styles.timeSlotBtn, isActive ? styles.timeSlotBtnActive : null]}
+                                style={[
+                                  styles.timeSlotTile,
+                                  isActive ? styles.timeSlotTileActive : null,
+                                ]}
                                 onPress={() => setForm((p) => ({ ...p, pickupTime: slot.value }))}
                                 activeOpacity={0.9}
                               >
                                 <Text
                                   style={[
-                                    styles.timeSlotText,
-                                    isActive ? styles.timeSlotTextActive : null,
+                                    styles.timeSlotTileText,
+                                    isActive ? styles.timeSlotTileTextActive : null,
                                   ]}
                                 >
                                   {slot.label}
@@ -1322,15 +1579,160 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                             );
                           })}
                         </View>
+                        {form.pickupTime ? (
+                          <View style={styles.timeSelectedRow}>
+                            <Ionicons name="checkmark-circle" size={14} color="#9333EA" />
+                            <Text style={styles.timeSelectedText}>
+                              Selected:{' '}
+                              {TIME_SLOTS.find((s) => s.value === form.pickupTime)?.label}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     ) : (
-                      <View style={styles.fieldHint}>
-                        <Text style={styles.fieldHintText}>Select a date to choose time slot</Text>
+                      <View style={styles.fieldHintCard}>
+                        <Text style={styles.fieldHintText}>
+                          Select a pickup date to choose a time slot.
+                        </Text>
                       </View>
                     )}
+
+                    {/* Pickup Address Card */}
+                    {form.pickupTime ? (
+                      <View style={styles.sectionCard}>
+                        <View style={styles.sectionCardHeader}>
+                          <View style={[styles.sectionIcoBox, { backgroundColor: '#F97316' }]}>
+                            <Ionicons name="home" size={16} color="#FFFFFF" />
+                          </View>
+                          <Text style={styles.sectionCardTitle}>Pickup Address</Text>
+                          <Text style={styles.requiredStar}>*</Text>
+                        </View>
+
+                        {isLoggedIn && savedAddresses.length > 0 ? (
+                          <View style={{ marginBottom: 10 }}>
+                            <Text style={styles.savedAddrTitle}>Saved Addresses</Text>
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.savedAddrRow}
+                            >
+                              {savedAddresses.map((addr) => {
+                                const isActive = selectedSavedAddressId === addr.id;
+                                return (
+                                  <TouchableOpacity
+                                    key={addr.id}
+                                    style={[
+                                      styles.savedAddrCard,
+                                      isActive ? styles.savedAddrCardActive : null,
+                                    ]}
+                                    onPress={() => selectSavedAddress(addr)}
+                                    activeOpacity={0.9}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.savedAddrLabel,
+                                        isActive ? styles.savedAddrLabelActive : null,
+                                      ]}
+                                    >
+                                      {addr.address_type || addr.label || 'Address'}
+                                    </Text>
+                                    <Text
+                                      style={[
+                                        styles.savedAddrLine,
+                                        isActive ? styles.savedAddrLineActive : null,
+                                      ]}
+                                      numberOfLines={2}
+                                    >
+                                      {addr.address_line1 || ''}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                              <TouchableOpacity
+                                style={styles.savedAddrCard}
+                                onPress={() => {
+                                  setSelectedSavedAddressId(null);
+                                  setForm((p) => ({
+                                    ...p,
+                                    pickupAddress: '',
+                                    flatNumber: '',
+                                    landmark: '',
+                                  }));
+                                }}
+                                activeOpacity={0.9}
+                              >
+                                <Ionicons
+                                  name="add-circle-outline"
+                                  size={20}
+                                  color={COLORS.primary}
+                                />
+                                <Text style={styles.savedAddrLabel}>New Address</Text>
+                              </TouchableOpacity>
+                            </ScrollView>
+                          </View>
+                        ) : null}
+
+                        <View style={styles.fieldHeader}>
+                          <Text style={styles.label}>Pickup address *</Text>
+                          <TouchableOpacity
+                            onPress={autoDetectAddress}
+                            disabled={addressDetecting}
+                            style={styles.autoDetectSmall}
+                          >
+                            {addressDetecting ? (
+                              <ActivityIndicator size="small" color={COLORS.primary} />
+                            ) : (
+                              <Ionicons name="navigate" size={12} color={COLORS.primary} />
+                            )}
+                            <Text style={styles.autoDetectSmallText}>
+                              {addressDetecting ? 'Detecting…' : 'Auto Detect'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                        <TextInput
+                          value={form.pickupAddress}
+                          onChangeText={(t) => {
+                            setForm((p) => ({ ...p, pickupAddress: t }));
+                            setSelectedSavedAddressId(null);
+                          }}
+                          style={styles.input}
+                          placeholder="Area, city, pincode"
+                          placeholderTextColor={COLORS.gray[500]}
+                        />
+                        <View style={[styles.row2, { marginTop: 10 }]}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.label}>Flat / House (optional)</Text>
+                            <TextInput
+                              value={form.flatNumber}
+                              onChangeText={(t) => setForm((p) => ({ ...p, flatNumber: t }))}
+                              style={styles.input}
+                              placeholder="Flat no."
+                              placeholderTextColor={COLORS.gray[500]}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.label}>Landmark *</Text>
+                            <TextInput
+                              value={form.landmark}
+                              onChangeText={(t) => setForm((p) => ({ ...p, landmark: t }))}
+                              style={styles.input}
+                              placeholder="Near…"
+                              placeholderTextColor={COLORS.gray[500]}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    ) : null}
                   </>
                 ) : (
-                  <>
+                  <View style={styles.sectionCard}>
+                    <View style={styles.sectionCardHeader}>
+                      <View style={[styles.sectionIcoBox, { backgroundColor: '#10B981' }]}>
+                        <Ionicons name="business" size={16} color="#FFFFFF" />
+                      </View>
+                      <Text style={styles.sectionCardTitle}>Select Workshop</Text>
+                      <Text style={styles.requiredStar}>*</Text>
+                    </View>
                     <TouchableOpacity
                       style={styles.inputRow}
                       onPress={() => setWorkshopModal(true)}
@@ -1346,7 +1748,7 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                       </Text>
                       <Ionicons name="chevron-down" size={16} color={COLORS.gray[500]} />
                     </TouchableOpacity>
-                  </>
+                  </View>
                 )}
               </>
             ) : null}
@@ -1527,13 +1929,15 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
                 activeOpacity={0.9}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : null}
+                {(loading || otpLoading) ? <ActivityIndicator color="#fff" /> : null}
                 <Text style={styles.primaryText}>
-                  {step === steps.length - 1
-                    ? form.paymentMethod === 'PAY_NOW'
-                      ? 'Pay & Book'
-                      : 'Book Service'
-                    : 'Continue'}
+                  {step === 1 && !isLoggedIn && !otpVerified
+                    ? (otpSent ? 'Verify OTP' : 'Send OTP')
+                    : step === steps.length - 1
+                      ? form.paymentMethod === 'PAY_NOW'
+                        ? 'Pay & Book'
+                        : 'Book Service'
+                      : 'Continue'}
                 </Text>
                 <Ionicons name="arrow-forward" size={16} color="#fff" />
               </TouchableOpacity>
@@ -1638,6 +2042,211 @@ export default function PublicBookServiceNowScreen({ navigation }: Props) {
             </Pressable>
           </Pressable>
         </Modal>
+
+        {/* Service Details / View All Points modal */}
+        <Modal
+          visible={!!detailsService}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDetailsService(null)}
+        >
+          <View style={styles.detailsOverlay}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setDetailsService(null)}
+            />
+            <View style={styles.detailsCard}>
+              {detailsService ? (
+                <>
+                  <View style={styles.detailsHeader}>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={styles.detailsTitle} numberOfLines={2}>
+                        {detailsService.name}
+                      </Text>
+                      <View style={styles.detailsMetaRow}>
+                        <Text style={styles.detailsMetaText}>Checklist</Text>
+                        {Number(servicePoints[detailsService.id] || detailsService.points) > 0 ? (
+                          <View style={styles.detailsPtsPill}>
+                            <Ionicons name="checkmark-circle" size={12} color="#16A34A" />
+                            <Text style={styles.detailsPtsPillText}>
+                              {servicePoints[detailsService.id] || detailsService.points} pts
+                            </Text>
+                          </View>
+                        ) : null}
+                        <View style={styles.detailsOfficialPill}>
+                          <Text style={styles.detailsOfficialText}>Official</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setDetailsService(null)}
+                      style={styles.detailsCloseBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close" size={20} color="#374151" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.detailsPriceRow}>
+                    <Text style={styles.detailsPriceText}>
+                      {pricing[detailsService.id] && pricing[detailsService.id] > 0
+                        ? `\u20B9${pricing[detailsService.id].toLocaleString('en-IN')}`
+                        : '\u2014'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const sid = detailsService.id;
+                        setForm((p) => ({
+                          ...p,
+                          selectedServices: Array.from(
+                            new Set([...(p.selectedServices || []), sid])
+                          ),
+                        }));
+                        setDetailsService(null);
+                        setTimeout(() => onNext(), 0);
+                      }}
+                      style={styles.detailsProceedBtn}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.detailsProceedText}>Proceed to Book</Text>
+                      <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.detailsBodyWrap}>
+                    <ScrollView
+                      style={styles.detailsBody}
+                      contentContainerStyle={styles.detailsBodyContent}
+                      showsVerticalScrollIndicator
+                      nestedScrollEnabled
+                    >
+                      {(() => {
+                        const items = serviceChecklists[detailsService.id] || [];
+                        if (!items.length) {
+                          return (
+                            <Text style={styles.detailsEmpty}>
+                              No checklist available for this service.
+                            </Text>
+                          );
+                        }
+                        const rows: Array<typeof items> = [];
+                        for (let i = 0; i < items.length; i += 2) {
+                          rows.push(items.slice(i, i + 2));
+                        }
+                        return (
+                          <View style={styles.detailsGrid}>
+                            {rows.map((row, rIdx) => (
+                              <View key={rIdx} style={styles.detailsGridRow}>
+                                {row.map((it, idx) => (
+                                  <View key={`${rIdx}-${idx}`} style={styles.detailsGridItem}>
+                                    <Ionicons
+                                      name="checkmark-circle"
+                                      size={16}
+                                      color="#16A34A"
+                                      style={{ marginTop: 2 }}
+                                    />
+                                    <Text style={styles.detailsGridItemText}>{it.name}</Text>
+                                  </View>
+                                ))}
+                                {row.length === 1 ? (
+                                  <View style={styles.detailsGridItem} />
+                                ) : null}
+                              </View>
+                            ))}
+                          </View>
+                        );
+                      })()}
+                    </ScrollView>
+                  </View>
+                </>
+              ) : null}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Booking Success modal */}
+        <Modal
+          visible={!!bookingSuccess}
+          transparent
+          animationType="fade"
+          onRequestClose={() => undefined}
+        >
+          <View style={styles.successOverlay}>
+            <View style={styles.successCard}>
+              <View style={styles.successIconWrap}>
+                <View style={styles.successIconRingOuter}>
+                  <View style={styles.successIconRingInner}>
+                    <Ionicons
+                      name={bookingSuccess?.isPaid ? 'checkmark-done' : 'checkmark'}
+                      size={44}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.successTitle}>
+                {bookingSuccess?.title || 'Booking Confirmed!'}
+              </Text>
+
+              {bookingSuccess?.leadNumber ? (
+                <View style={styles.successLeadPill}>
+                  <Ionicons name="receipt-outline" size={13} color="#047857" />
+                  <Text style={styles.successLeadText}>
+                    Booking ID: {bookingSuccess.leadNumber}
+                  </Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.successMessage}>
+                {bookingSuccess?.message ||
+                  'Thank you for choosing MyFNG! We will contact you shortly.'}
+              </Text>
+
+              <View style={styles.successInfoRow}>
+                <View style={styles.successInfoItem}>
+                  <View style={[styles.successInfoIco, { backgroundColor: '#DBEAFE' }]}>
+                    <Ionicons name="call-outline" size={16} color="#2563EB" />
+                  </View>
+                  <Text style={styles.successInfoText}>We'll call to confirm</Text>
+                </View>
+                <View style={styles.successInfoItem}>
+                  <View style={[styles.successInfoIco, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="car-outline" size={16} color="#D97706" />
+                  </View>
+                  <Text style={styles.successInfoText}>Doorstep pickup</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.successPrimaryBtn}
+                onPress={() => {
+                  setBookingSuccess(null);
+                  goStep(0);
+                  navigation.navigate('PublicHome');
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="home" size={16} color="#FFFFFF" />
+                <Text style={styles.successPrimaryBtnText}>Go to Home</Text>
+              </TouchableOpacity>
+
+              {isLoggedIn ? (
+                <TouchableOpacity
+                  style={styles.successSecondaryBtn}
+                  onPress={() => {
+                    setBookingSuccess(null);
+                    goStep(0);
+                    navigation.navigate('Settings');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.successSecondaryBtnText}>View My Bookings</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -1654,6 +2263,7 @@ const styles = StyleSheet.create({
   },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brand: { fontSize: 18, fontWeight: '900', color: COLORS.primaryDark },
+  brandLogo: { width: 110, height: 36 },
   loginBtn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1731,6 +2341,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   autoDetectText: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+
+  notServiceableBanner: { padding: 14, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FDBA74', borderRadius: 14, marginBottom: 12 },
+  notServiceableTitle: { fontSize: 13, fontWeight: '700', color: '#9A3412' },
+  notServiceableSub: { fontSize: 11, fontWeight: '600', color: '#C2410C', marginTop: 4 },
 
   carSearchWrap: { marginBottom: 12, zIndex: 10 },
   carSearchRow: {
@@ -1949,7 +2563,12 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  timeSlotsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  timeSlotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
   timeSlotBtn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -2088,4 +2707,552 @@ const styles = StyleSheet.create({
   modalRowText: { flex: 1, fontSize: 13, fontWeight: '900', color: COLORS.primaryDark },
   modalSub: { marginTop: 3, fontSize: 11, fontWeight: '700', color: COLORS.gray[600] },
   modalEmpty: { paddingVertical: 14, fontSize: 12, fontWeight: '800', color: COLORS.gray[600] },
+
+  // Step 2 — plan card with checklist preview
+  planCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  planCardActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#F0F7FF',
+  },
+  planCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  planCardItems: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.06)',
+    gap: 6,
+  },
+  planCardItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  planCardItemText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#374151',
+    lineHeight: 17,
+  },
+  planViewAllBtn: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  planViewAllText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+
+  // Step 3 — card-based design (matches website mobile view)
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#F3F4F6',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  sectionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  sectionIcoBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  sectionCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1F2937',
+  },
+  requiredStar: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#EF4444',
+    marginLeft: 2,
+  },
+
+  // Service Preference toggle
+  servicePrefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  servicePrefSide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  servicePrefIcoBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  servicePrefLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  servicePrefToggle: {
+    width: 76,
+    height: 42,
+    borderRadius: 999,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  servicePrefKnob: {
+    position: 'absolute',
+    top: 4,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+
+  // Date pills (Step 3)
+  datePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  datePillActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
+  datePillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  datePillTextActive: {
+    color: '#FFFFFF',
+  },
+  dateCalendarBtn: {
+    minWidth: 36,
+    height: 36,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  dateCalendarBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 12,
+  },
+
+  // Time slot tiles (Step 3)
+  timeSlotTile: {
+    width: '32%',
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeSlotTileActive: {
+    backgroundColor: '#9333EA',
+    borderColor: '#7E22CE',
+    shadowColor: '#9333EA',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  timeSlotTileText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  timeSlotTileTextActive: {
+    color: '#FFFFFF',
+  },
+  timeSelectedRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeSelectedText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#9333EA',
+  },
+  fieldHintCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 14,
+  },
+
+  // Service Details / View All Points modal
+  detailsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 40,
+  },
+  detailsCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  detailsHeader: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  detailsTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  detailsMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  detailsMetaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  detailsPtsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  detailsPtsPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#374151',
+  },
+  detailsOfficialPill: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  detailsOfficialText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#047857',
+  },
+  detailsCloseBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsPriceRow: {
+    marginHorizontal: 18,
+    marginTop: 14,
+    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  detailsPriceText: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  detailsProceedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#16A34A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    shadowColor: '#16A34A',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  detailsProceedText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  detailsBodyWrap: {
+    height: Math.min(520, Dimensions.get('window').height * 0.55),
+  },
+  detailsBody: {
+    flex: 1,
+  },
+  detailsBodyContent: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 22,
+  },
+  detailsEmpty: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  detailsGrid: {
+    flexDirection: 'column',
+  },
+  detailsGridRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  detailsGridItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  detailsGridItemText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#1F2937',
+    lineHeight: 17,
+  },
+
+  // Booking Success modal
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 22,
+  },
+  successCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+  },
+  successIconWrap: {
+    marginBottom: 18,
+  },
+  successIconRingOuter: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successIconRingInner: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#10B981',
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  successLeadPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  successLeadText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#047857',
+  },
+  successMessage: {
+    fontSize: 13.5,
+    color: '#475569',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 18,
+    paddingHorizontal: 4,
+  },
+  successInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 10,
+    marginBottom: 18,
+  },
+  successInfoItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  successInfoIco: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successInfoText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  successPrimaryBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  successPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  successSecondaryBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+  },
+  successSecondaryBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
+  },
 });

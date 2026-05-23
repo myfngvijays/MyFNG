@@ -28,7 +28,9 @@ type Props = {
 type WorkshopRow = {
   id: string;
   name: string;
+  workshop_name?: string | null;
   city: string | null;
+  address?: string | null;
   latitude: number | null;
   longitude: number | null;
   map_link: string | null;
@@ -77,13 +79,31 @@ function openTel(phoneE164: string) {
   if (url) Linking.openURL(url);
 }
 
-function openMapsForWorkshop(w: WorkshopRow) {
-  if (w.map_link) {
-    Linking.openURL(w.map_link);
+// Build a Google Maps DIRECTIONS URL (matches what the website uses):
+// https://www.google.com/maps/dir/?api=1&destination=...
+// Prefers the workshop's saved map_link only when it is already a directions URL,
+// otherwise constructs a real "directions" URL from coordinates / address / name.
+function openMapsForWorkshop(w: WorkshopRow & { address?: string | null }) {
+  const link = (w.map_link || '').trim();
+  if (link && /\/maps\/dir/i.test(link)) {
+    Linking.openURL(link);
     return;
   }
   if (typeof w.latitude === 'number' && typeof w.longitude === 'number') {
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${w.latitude},${w.longitude}`);
+    Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&destination=${w.latitude},${w.longitude}`
+    );
+    return;
+  }
+  const dest = [w.name, w.address || '', w.city || ''].filter(Boolean).join(', ').trim();
+  if (dest) {
+    Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`
+    );
+    return;
+  }
+  if (link) {
+    Linking.openURL(link);
     return;
   }
   Alert.alert('No map location', 'This workshop does not have a map location yet.');
@@ -162,7 +182,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
       const fetchRows = async (cityFilter?: string) => {
         let query = supabase
           .from('workshops')
-          .select('id,name,city,latitude,longitude,map_link,is_verified,phone')
+          .select('id,name,workshop_name,city,address,latitude,longitude,map_link,is_verified,phone')
           .eq('is_verified', true)
           .order('created_at', { ascending: false })
           .limit(250);
@@ -262,11 +282,11 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
 
           <View style={{ flex: 1 }}>
             <Text style={styles.sheetTitle} numberOfLines={1}>
-          {item.name}
-        </Text>
+              {item.workshop_name || item.name}
+            </Text>
             <Text style={styles.sheetSub} numberOfLines={2}>
-          {item.city || '—'}
-        </Text>
+              {item.city || '—'}
+            </Text>
             {km != null ? (
               <View style={styles.kmPill}>
                 <Text style={styles.kmPillText}>{km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`}</Text>

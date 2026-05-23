@@ -72,7 +72,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       {
         id: uid(),
         role: 'assistant',
-        text: `Hi! I'm MY FNG AI Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?`,
+        text: `Hi! I'm Misa AI (MyFNG Instant Service Assistant).\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?`,
       },
       ...(prefill ? [{ id: uid(), role: 'user' as const, text: prefill }] : []),
     ],
@@ -254,7 +254,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
             <Ionicons name="sparkles" size={20} color="#FFFFFF" />
           </View>
           <View style={styles.headerTextWrap}>
-            <Text style={styles.headerTitle}>MyFNG AI Assistant</Text>
+            <Text style={styles.headerTitle}>Misa AI</Text>
             <Text style={styles.headerSub}>{city ? `City: ${city}` : 'Ask anything about your car service'}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
