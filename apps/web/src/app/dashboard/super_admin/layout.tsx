@@ -34,6 +34,7 @@ import {
   Megaphone,
   Ticket,
   ClipboardList,
+  Bell,
 } from 'lucide-react';
 
 type NavItem = {
@@ -175,6 +176,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/coupons',
     icon: Ticket,
     description: 'Create/manage coupons'
+  },
+  {
+    name: 'Send Notification',
+    href: '/dashboard/super_admin/notifications',
+    icon: Bell,
+    description: 'Send push notifications by role'
   },
   {
     name: 'AI Learning Inbox',
