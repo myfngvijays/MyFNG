@@ -99,7 +99,10 @@ DECLARE
   req_id       bigint;
 BEGIN
   -- ----- 1. Disposition filter: only push Interested leads -----
-  IF lower(coalesce(trim(NEW.disposition), '')) NOT IN (
+  -- Normalize: lowercase + collapse multiple spaces to single space
+  -- Handles both "Interested" and "Intrested" spellings from dialer data.
+  IF regexp_replace(lower(coalesce(trim(NEW.disposition), '')), '\s+', ' ', 'g') NOT IN (
+    'interested hot', 'interested warm', 'interested cold',
     'intrested hot', 'intrested warm', 'intrested cold'
   ) THEN
     RETURN NEW;
