@@ -1106,9 +1106,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
         description: `${plan.name} Membership`,
         order_id: orderRes.order_id,
         prefill: {
-          contact: customerData?.phone || '',
-          name: customerData?.full_name || '',
-          email: customerData?.email || '',
+          contact: profileForm.phone || '',
+          name: profileForm.name || '',
+          email: profileForm.email || '',
         },
         theme: { color: '#004AAD' },
       };
