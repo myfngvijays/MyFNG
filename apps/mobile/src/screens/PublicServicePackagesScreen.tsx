@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
+import { FAQ_CATEGORIES } from '../constants/publicAppData';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall, openEmail } from '../lib/phone';
@@ -46,6 +49,13 @@ const FALLBACK_SERVICE_PAGE_PROMO_BANNERS = [
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`,
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`,
 ];
+
+const PROMO_BANNER_LINKS: Record<string, string> = {
+  loan: 'https://myfng.in/car-loan',
+  challan: 'https://myfng.in',
+  fuel: 'https://myfng.in',
+  sell: 'https://myfng.in',
+};
 
 const SERVICE_CATEGORIES: ServiceCategory[] = [
   {
@@ -176,22 +186,32 @@ const SERVICE_CATEGORIES: ServiceCategory[] = [
   },
 ];
 
-const SERVICE_FAQS: Record<string, Array<{ q: string; a: string }>> = {
-  '1': [
-    { q: 'How often should I get a periodic service?', a: 'Every 10,000 km or 1 year, whichever comes first.' },
-    { q: 'What is included in a 60-point check?', a: 'It covers engine, brakes, suspension, electricals, and more.' },
-    { q: 'Do you use genuine oil filters?', a: 'Yes, we only use OEM or OES genuine parts.' },
-    { q: 'Is pickup and drop free?', a: 'Yes, we offer free pickup and drop for all periodic services.' },
-    { q: 'How long does the service take?', a: 'Typically 4-6 hours depending on the car model.' },
-  ],
-  default: [
-    { q: 'Is there a warranty on services?', a: 'Yes, we provide a 1000km or 1-month warranty on all services.' },
-    { q: 'How can I track my service?', a: 'You can track live updates directly in the MyFNG app.' },
-    { q: 'Are the technicians certified?', a: 'All our technicians are MyFNG certified with 5+ years experience.' },
-    { q: 'What payment methods are accepted?', a: 'We accept all UPI, Cards, and Cash on delivery.' },
-    { q: 'Can I cancel my booking?', a: 'Yes, you can cancel up to 2 hours before the scheduled pickup.' },
-  ],
+const SERVICE_ID_TO_FAQ: Record<string, string> = {
+  '1': 'Periodic Car Service',
+  '2': 'AC Service',
+  '3': 'Brake Service',
+  '4': 'Car Engine Service',
+  '5': 'Clutch Maintenance',
+  '6': 'Battery Service',
+  '7': 'Tyre Service',
+  '8': 'Car Detailing',
+  '9': 'Denting & Painting',
 };
+
+// Keyword used to filter category pills on the booking screen so users
+// only see plans matching the service they chose here.
+const SERVICE_ID_TO_CATEGORY_KEYWORD: Record<string, string> = {
+  '1': 'PERIODIC',
+  '2': 'AC',
+  '3': 'BRAKE',
+  '4': 'ENGINE',
+  '5': 'CLUTCH',
+  '6': 'BATTERY',
+  '7': 'TYRE',
+  '8': 'DETAIL',
+  '9': 'DENT',
+};
+const GENERAL_FAQS = FAQ_CATEGORIES[0].items;
 const DEFAULT_FAQ_COUNT = 5;
 
 export default function PublicServicePackagesScreen({ navigation, route }: Props) {
@@ -248,7 +268,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   }, []);
 
   const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
-  const faqs = useMemo(() => SERVICE_FAQS[selectedService] || SERVICE_FAQS.default, [selectedService]);
+  const faqs = useMemo(() => {
+    const catTitle = SERVICE_ID_TO_FAQ[selectedService];
+    const found = catTitle ? FAQ_CATEGORIES.find((c) => c.title === catTitle) : null;
+    return found?.items || GENERAL_FAQS;
+  }, [selectedService]);
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.screen}>
@@ -259,11 +283,20 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
           {/* Home page promo banners (admin-managed) */}
           <View style={s.promoWrap}>
-            <Image
-              source={{ uri: promoBanners[promoIdx % Math.max(promoBanners.length, 1)] }}
-              style={s.promoImage}
-              resizeMode="cover"
-            />
+            {(() => {
+              const currentBannerUrl = promoBanners[promoIdx % Math.max(promoBanners.length, 1)] || '';
+              const bannerLower = currentBannerUrl.toLowerCase();
+              const link = Object.entries(PROMO_BANNER_LINKS).find(([key]) => bannerLower.includes(key))?.[1] || 'https://myfng.in';
+              return (
+                <TouchableOpacity activeOpacity={0.85} onPress={() => Linking.openURL(link)}>
+                  <Image
+                    source={{ uri: currentBannerUrl }}
+                    style={s.promoImage}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+              );
+            })()}
             <View style={s.promoDots}>
               {promoBanners.map((_, idx) => (
                 <View
@@ -356,7 +389,13 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               <TouchableOpacity
                 style={s.bookNowBtn}
                 activeOpacity={0.85}
-                onPress={() => navigation.navigate('PublicBookServiceNow', { city })}
+                onPress={() =>
+                  navigation.navigate('PublicBookServiceNow', {
+                    city,
+                    serviceCategory: SERVICE_ID_TO_CATEGORY_KEYWORD[selectedService] || null,
+                    serviceCategoryName: current?.name || null,
+                  })
+                }
               >
                 <Text style={s.bookNowBtnText}>Book Now</Text>
               </TouchableOpacity>
@@ -396,14 +435,14 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
             {([
               ['Photo/Video Updates', 'Live service tracking', 'eye' as const],
               ['Clear Estimates', 'No hidden costs', 'document-text' as const],
-              ['Genuine Parts', '100% quality spares', 'wallet' as const],
-              ['Central Support', '24/7 assistance', 'call' as const],
+              ['MY FNG Service Guarantee', '100% quality assurance', 'shield-checkmark' as const],
+              ['Same-Day Service', 'Quick turnaround time', 'flash' as const],
             ] as const).map(([title, subtitle, icon]) => (
-              <View key={title} style={s.transparencyCard}>
+              <View key={title} style={[s.transparencyCard, { width: (Dimensions.get('window').width - 32 - 10) / 2 }]}>
                 <View style={s.transparencyIconWrap}>
                   <Ionicons name={icon} size={24} color="#2563EB" />
                 </View>
-                <Text style={s.transparencyTitle}>{title}</Text>
+                <Text style={s.transparencyTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{title}</Text>
                 <Text style={s.transparencySubtitle}>{subtitle}</Text>
               </View>
             ))}
@@ -411,7 +450,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
           {/* Service FAQs */}
           <Text style={s.faqHeading}>Service FAQs</Text>
-          {faqs.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
+          {faqs.slice(0, 5).map((faq, idx) => (
             <View key={faq.q} style={s.faqCard}>
               <TouchableOpacity
                 style={s.faqHeader}
@@ -423,12 +462,12 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               {openFaqIdx === idx ? <Text style={s.faqA}>{faq.a}</Text> : null}
             </View>
           ))}
-          {faqs.length > DEFAULT_FAQ_COUNT ? (
-            <TouchableOpacity style={s.showMoreBtn} activeOpacity={0.85} onPress={() => setShowAllFaqs(true)}>
-              <Text style={s.showMoreBtnText}>Show More FAQs</Text>
+          {faqs.length > 5 && (
+            <TouchableOpacity style={s.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
+              <Text style={s.showMoreBtnText}>View All FAQs</Text>
               <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
             </TouchableOpacity>
-          ) : null}
+          )}
 
           <ReferAndFooter hideRefer />
           <View style={{ height: 24 }} />
@@ -527,9 +566,14 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
         </Modal>
 
         <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
-          <Pressable style={s.modalOverlay} onPress={() => setShowAllFaqs(false)}>
-            <Pressable style={s.modalCard} onPress={() => undefined}>
-              <Text style={s.modalTitle}>All FAQs</Text>
+          <Pressable style={s.faqModalOverlay} onPress={() => setShowAllFaqs(false)}>
+            <Pressable style={s.faqModalSheet} onPress={() => undefined}>
+              <View style={s.faqModalHeaderRow}>
+                <Text style={s.faqModalTitle}>All FAQs</Text>
+                <TouchableOpacity onPress={() => setShowAllFaqs(false)} style={s.faqModalCloseBtn}>
+                  <Ionicons name="close" size={22} color="#374151" />
+                </TouchableOpacity>
+              </View>
               <ScrollView showsVerticalScrollIndicator={false}>
                 {faqs.map((faq, idx) => (
                   <View key={faq.q} style={s.faqCard}>
@@ -728,11 +772,10 @@ const s = StyleSheet.create({
   transparencyGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     justifyContent: 'space-between',
+    rowGap: 10,
   },
   transparencyCard: {
-    width: '48.5%',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
@@ -775,6 +818,11 @@ const s = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end', padding: 16 },
   modalCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
   modalTitle: { fontSize: 18, fontWeight: '900', color: '#111827', marginBottom: 12 },
+  faqModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  faqModalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: 24, paddingHorizontal: 16 },
+  faqModalHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, paddingBottom: 12 },
+  faqModalTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  faqModalCloseBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   modalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   modalRowText: { fontSize: 14, fontWeight: '700', color: '#111827' },
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
@@ -34,12 +34,63 @@ export default function CustomerMembershipScreen({ navigation }: any) {
   }, [benefits]);
 
   const subscribe = async (planId: string) => {
-    await apiFetch('/api/customer/membership/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan_id: planId }),
-    });
-    await load();
+    try {
+      const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_id: planId }),
+      });
+
+      if (!orderRes?.order_id) {
+        Alert.alert('Error', 'Could not create payment order. Please try again.');
+        return;
+      }
+
+      let RazorpayCheckout: any = null;
+      try {
+        RazorpayCheckout = require('react-native-razorpay')?.default;
+      } catch {
+        RazorpayCheckout = null;
+      }
+
+      if (!RazorpayCheckout) {
+        Alert.alert('Error', 'Payment module is not available. Please update the app.');
+        return;
+      }
+
+      const options = {
+        key: orderRes.razorpay_key,
+        amount: orderRes.amount_paise,
+        currency: 'INR',
+        name: 'MyFNG',
+        description: `${orderRes.plan_name} Membership`,
+        order_id: orderRes.order_id,
+        theme: { color: '#004AAD' },
+      };
+
+      const paymentResult = await RazorpayCheckout.open(options);
+
+      await apiFetch('/api/customer/membership/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: planId,
+          razorpay_payment_id: paymentResult.razorpay_payment_id,
+          razorpay_order_id: paymentResult.razorpay_order_id,
+          razorpay_signature: paymentResult.razorpay_signature,
+        }),
+      });
+
+      Alert.alert('Success', `Membership activated successfully!`);
+      await load();
+    } catch (err: any) {
+      const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      if (cancelled) {
+        Alert.alert('Payment Cancelled', 'No charges were made.');
+      } else {
+        Alert.alert('Subscription failed', err?.message || 'Unable to subscribe. Please try again.');
+      }
+    }
   };
 
   return (

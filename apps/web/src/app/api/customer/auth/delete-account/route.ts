@@ -38,7 +38,8 @@ export async function POST() {
   }
 
   const customerId = customer.id;
-  const anonymizedPhone = `deleted_${customerId}`;
+  const shortId = customerId.replace(/-/g, '').substring(0, 12);
+  const anonymizedPhone = `del_${shortId}`;
   const anonymizedEmail = `deleted_${customerId}@deleted.invalid`;
 
   // 1. Anonymize the customer record (keep id for historical FK integrity)
@@ -53,7 +54,7 @@ export async function POST() {
       phone_verified: false,
       email_verified: false,
       is_active: false,
-      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .eq('id', customerId);
 

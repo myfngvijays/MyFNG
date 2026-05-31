@@ -26,7 +26,7 @@ const DOT_COUNT = 5;
 
 export default function SplashScreen({
   onComplete,
-  durationMs = 6000,
+  durationMs = 2400,
 }: SplashScreenProps) {
   const logoFade = useRef(new Animated.Value(0)).current;
   const logoY = useRef(new Animated.Value(-30)).current;
@@ -56,30 +56,30 @@ export default function SplashScreen({
   useEffect(() => {
     Animated.sequence([
       Animated.parallel([
-        Animated.timing(logoFade, { toValue: 1, duration: 700, delay: 200, useNativeDriver: true }),
-        Animated.timing(logoY, { toValue: 0, duration: 700, delay: 200, useNativeDriver: true }),
+        Animated.timing(logoFade, { toValue: 1, duration: 350, delay: 80, useNativeDriver: true }),
+        Animated.timing(logoY, { toValue: 0, duration: 350, delay: 80, useNativeDriver: true }),
       ]),
       Animated.parallel([
-        Animated.timing(carFade, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.spring(carScale, { toValue: 1, friction: 6, tension: 70, useNativeDriver: true }),
+        Animated.timing(carFade, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.spring(carScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
       ]),
       Animated.parallel([
-        Animated.timing(roadLeftFade, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(roadRightFade, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(dotsFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(roadLeftFade, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.timing(roadRightFade, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.timing(dotsFade, { toValue: 1, duration: 250, useNativeDriver: true }),
       ]),
       Animated.parallel([
-        Animated.timing(pillLeftFade, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(pillLeftX, { toValue: 0, duration: 400, useNativeDriver: true }),
-        Animated.timing(pillRightFade, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(pillRightX, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(pillLeftFade, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(pillLeftX, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(pillRightFade, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(pillRightX, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]),
     ]).start();
 
-    Animated.timing(serviceFade, { toValue: 1, duration: 700, delay: 1400, useNativeDriver: true }).start();
+    Animated.timing(serviceFade, { toValue: 1, duration: 350, delay: 600, useNativeDriver: true }).start();
     Animated.parallel([
-      Animated.timing(badgeFade, { toValue: 1, duration: 600, delay: 1800, useNativeDriver: true }),
-      Animated.timing(badgeY, { toValue: 0, duration: 600, delay: 1800, useNativeDriver: true }),
+      Animated.timing(badgeFade, { toValue: 1, duration: 300, delay: 800, useNativeDriver: true }),
+      Animated.timing(badgeY, { toValue: 0, duration: 300, delay: 800, useNativeDriver: true }),
     ]).start();
 
     // Continuous floating bob for both pills

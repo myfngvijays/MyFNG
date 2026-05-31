@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import PublicHeader from '../components/PublicHeader';
 import LiveTrackingModal from '../components/LiveTrackingModal';
@@ -27,6 +28,7 @@ import {
   BLOGS as BLOG_ITEMS,
   POPULAR_PACKAGES as PACKAGE_ITEMS,
   SPARE_PART_BRANDS,
+  FAQ_CATEGORIES,
   type PublicBrand,
 } from '../constants/publicAppData';
 import { getCustomerSessionToken } from '../lib/customerSession';
@@ -99,6 +101,13 @@ const FALLBACK_PROMO_BANNERS = [
   `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`,
 ];
 
+const PROMO_BANNER_LINKS: Record<string, string> = {
+  loan: 'https://myfng.in/car-loan',
+  challan: 'https://myfng.in',
+  fuel: 'https://myfng.in',
+  sell: 'https://myfng.in',
+};
+
 type ServiceItem = {
   id: string;
   label: string;
@@ -125,19 +134,6 @@ const HOW_IT_WORKS = [
   { id: '05', title: 'Delivery & Warranty', desc: 'Your car is delivered back with service documentation and warranty coverage.', color: '#004AAD', icon: 'trophy' as const },
 ];
 
-const FAQS = [
-  { q: 'How do I book a service?', a: 'You can book via our AI assistant or the traditional booking flow in just 60 seconds.' },
-  { q: 'Are parts genuine?', a: 'Yes, we use 100% OEM/OES genuine spare parts.' },
-  { q: 'What is RSA?', a: 'Roadside Assistance provides emergency help like jumpstarts and towing 24/7.' },
-  { q: 'How long does a service take?', a: 'A basic service takes 4-5 hours, while comprehensive ones might take 24-48 hours.' },
-  { q: 'Do you offer warranty?', a: 'Yes, we offer up to 1000km or 1 month warranty on services.' },
-  { q: 'Can I track my service?', a: 'Yes, you get live photo and video updates during the service.' },
-  { q: 'Is pickup and drop free?', a: 'Yes, we offer free pickup and drop within a 10km radius.' },
-  { q: 'What car brands do you service?', a: 'We service all major brands including Maruti, Hyundai, Tata, Honda, etc.' },
-  { q: 'How do I pay?', a: 'You can pay online via UPI, Cards, or Cash on Delivery.' },
-  { q: "What if I'm not satisfied?", a: 'We have a 100% satisfaction guarantee. Contact our support for any issues.' },
-];
-const DEFAULT_FAQ_COUNT = 5;
 
 const REVIEWS = [
   { name: 'Rahul Sharma', car: 'Hyundai Creta', stars: 5, text: 'Excellent service! My Creta feels brand new after the comprehensive service. The live tracking was amazing.', date: 'Oct 2024' },
@@ -158,7 +154,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [loanIndex, setLoanIndex] = useState(0);
   const [howIndex, setHowIndex] = useState(0);
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+  const [openFaqIndex, setOpenFaqIndex] = useState<string | null>(null);
   const [showAllFaqs, setShowAllFaqs] = useState(false);
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
@@ -177,6 +173,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const loanFade = useRef(new Animated.Value(1)).current;
   const howFade = useRef(new Animated.Value(1)).current;
   const howSlide = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    navigation.navigate('AIBooking', { city: detectedCity });
+  }, []);
 
   useEffect(() => {
     Animated.loop(
@@ -564,7 +564,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section>
             <SectionTitle title="How It Works" />
-            <Text style={styles.howSubLabel}>Scroll to see the steps</Text>
             <View style={styles.howCardWrap}>
               <Animated.View
                 style={[
@@ -615,18 +614,18 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section>
             <SectionTitle title="Complete Transparency" />
-            <View style={styles.gridTwo}>
+            <View style={styles.transparencyGrid}>
               {([
                 ['Photo/Video Updates', 'Live service tracking', 'eye' as const],
                 ['Clear Estimates', 'No hidden costs', 'document-text' as const],
                 ['MY FNG Service Guarantee', '100% quality assurance', 'shield-checkmark' as const],
                 ['Same-Day Service', 'Quick turnaround time', 'flash' as const],
               ] as const).map(([title, subtitle, icon]) => (
-                <View key={title} style={styles.transparencyCard}>
+                <View key={title} style={[styles.transparencyCard, { width: (Dimensions.get('window').width - 32 - 14) / 2 }]}>
                   <View style={styles.transparencyIconWrap}>
                     <Ionicons name={icon} size={26} color="#2563EB" />
                   </View>
-                  <Text style={styles.transparencyTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                  <Text style={styles.transparencyTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>
                     {title}
                   </Text>
                   <Text style={styles.transparencySubtitle}>{subtitle}</Text>
@@ -637,11 +636,20 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section>
             <Animated.View style={[styles.loanCard, { opacity: loanFade }]}>
-              <Image
-                source={{ uri: promoBanners[loanIndex % Math.max(promoBanners.length, 1)] }}
-                style={styles.loanBannerImage}
-                resizeMode="cover"
-              />
+              {(() => {
+                const currentBannerUrl = promoBanners[loanIndex % Math.max(promoBanners.length, 1)] || '';
+                const bannerLower = currentBannerUrl.toLowerCase();
+                const link = Object.entries(PROMO_BANNER_LINKS).find(([key]) => bannerLower.includes(key))?.[1] || 'https://myfng.in';
+                return (
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => Linking.openURL(link)}>
+                    <Image
+                      source={{ uri: currentBannerUrl }}
+                      style={styles.loanBannerImage}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                );
+              })()}
               <View style={styles.loanDots}>
                 {promoBanners.map((_, idx) => (
                   <View
@@ -661,18 +669,13 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {SPARE_PART_BRANDS.map((brand) => (
                 <View key={brand.name} style={styles.brandCard}>
-                  <View style={styles.brandLogoWrap}>
-                    {brand.logo ? (
-                      <Image source={{ uri: brand.logo }} style={styles.brandLogo} resizeMode="contain" />
-                    ) : (
-                      <View style={styles.brandLogoPlaceholder}>
-                        <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.brandCardTitle} numberOfLines={1}>
-                    {brand.name}
-                  </Text>
+                  {brand.logo ? (
+                    <Image source={{ uri: brand.logo }} style={styles.brandLogo} resizeMode="contain" />
+                  ) : (
+                    <View style={styles.brandLogoPlaceholder}>
+                      <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
+                    </View>
+                  )}
                 </View>
               ))}
             </ScrollView>
@@ -858,21 +861,21 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section>
             <SectionTitle title="FAQs" />
-            {FAQS.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
+            {FAQ_CATEGORIES[0].items.slice(0, 5).map((faq, idx) => (
               <View key={faq.q} style={styles.faqCard}>
                 <TouchableOpacity
                   style={styles.faqHeader}
-                  onPress={() => setOpenFaqIndex((prev) => (prev === idx ? null : idx))}
+                  onPress={() => setOpenFaqIndex((prev) => (prev === String(idx) ? null : String(idx)))}
                 >
                   <Text style={styles.faqQ}>{faq.q}</Text>
-                  <Ionicons name={openFaqIndex === idx ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
+                  <Ionicons name={openFaqIndex === String(idx) ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
                 </TouchableOpacity>
-                {openFaqIndex === idx ? <Text style={styles.faqA}>{faq.a}</Text> : null}
+                {openFaqIndex === String(idx) && <Text style={styles.faqA}>{faq.a}</Text>}
               </View>
             ))}
-            {FAQS.length > DEFAULT_FAQ_COUNT && (
+            {FAQ_CATEGORIES[0].items.length > 5 && (
               <TouchableOpacity style={styles.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
-                <Text style={styles.showMoreBtnText}>Show More FAQs</Text>
+                <Text style={styles.showMoreBtnText}>View All FAQs</Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
               </TouchableOpacity>
             )}
@@ -918,27 +921,32 @@ export default function PublicHomeScreen({ navigation }: Props) {
         </Modal>
 
         <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
-          <TouchableOpacity style={styles.reviewModalOverlay} activeOpacity={1} onPress={() => setShowAllFaqs(false)}>
-            <TouchableOpacity style={styles.reviewModalSheet} activeOpacity={1} onPress={() => undefined}>
-              <View style={styles.reviewModalHandle} />
-              <Text style={styles.reviewModalTitle}>All FAQs</Text>
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.reviewModalScroll}>
-                {FAQS.map((faq, idx) => (
+          <TouchableOpacity style={styles.faqModalOverlay} activeOpacity={1} onPress={() => setShowAllFaqs(false)}>
+            <TouchableOpacity style={styles.faqModalSheet} activeOpacity={1} onPress={() => undefined}>
+              <View style={styles.faqModalHeaderRow}>
+                <Text style={styles.faqModalTitle}>All FAQs</Text>
+                <TouchableOpacity onPress={() => setShowAllFaqs(false)} style={styles.faqModalCloseBtn}>
+                  <Ionicons name="close" size={22} color="#374151" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.faqModalScroll}>
+                {FAQ_CATEGORIES[0].items.map((faq, idx) => (
                   <View key={faq.q} style={styles.faqCard}>
                     <TouchableOpacity
                       style={styles.faqHeader}
-                      onPress={() => setOpenFaqIndex((prev) => (prev === idx + 100 ? null : idx + 100))}
+                      onPress={() => setOpenFaqIndex((prev) => (prev === `modal-${idx}` ? null : `modal-${idx}`))}
                     >
                       <Text style={styles.faqQ}>{faq.q}</Text>
-                      <Ionicons name={openFaqIndex === idx + 100 ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
+                      <Ionicons name={openFaqIndex === `modal-${idx}` ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
                     </TouchableOpacity>
-                    {openFaqIndex === idx + 100 ? <Text style={styles.faqA}>{faq.a}</Text> : null}
+                    {openFaqIndex === `modal-${idx}` && <Text style={styles.faqA}>{faq.a}</Text>}
                   </View>
                 ))}
               </ScrollView>
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+
       </View>
     </SafeAreaView>
   );
@@ -1413,8 +1421,13 @@ const styles = StyleSheet.create({
     gap: 14,
     justifyContent: 'space-between',
   },
+  transparencyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 14,
+  },
   transparencyCard: {
-    width: '48%',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     borderWidth: 1,
@@ -1520,12 +1533,12 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
   brandLogoWrap: {
     width: '100%',
-    height: 46,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1538,7 +1551,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   brandLogo: {
-    width: '92%',
+    width: '100%',
     height: '100%',
   },
   brandCarouselClip: {
@@ -1843,16 +1856,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   faqCard: {
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#F3F4F6',
-    marginBottom: 12,
+    marginBottom: 8,
     overflow: 'hidden',
   },
   faqHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1885,6 +1898,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.primary,
+  },
+  faqModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  faqModalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '80%',
+    paddingBottom: 32,
+    paddingHorizontal: 16,
+  },
+  faqModalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  faqModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  faqModalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  faqModalScroll: {
+    paddingHorizontal: 0,
   },
   packageCard: {
     width: 240,

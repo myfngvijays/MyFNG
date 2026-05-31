@@ -18,6 +18,9 @@ import { ENV } from '../config/environment';
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
 
+const stripEmojis = (text: string) =>
+  text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{2700}-\u{27BF}\u{2B50}\u{2B55}\u{231A}-\u{23F3}\u{23E9}-\u{23EF}\u{25AA}-\u{25FE}\u{2934}-\u{2935}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').replace(/\s{2,}/g, ' ').trim();
+
 type Props = {
   navigation: any;
   route: any;
@@ -336,8 +339,8 @@ export default function AIBookingScreen({ navigation, route }: Props) {
                         }}
                         activeOpacity={0.9}
                       >
-                        <Text style={styles.chipTitle}>{it.label}</Text>
-                        {it.subtitle ? <Text style={styles.chipSub}>{it.subtitle}</Text> : null}
+                        <Text style={styles.chipTitle}>{stripEmojis(it.label)}</Text>
+                        {it.subtitle ? <Text style={styles.chipSub}>{stripEmojis(it.subtitle)}</Text> : null}
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -350,9 +353,9 @@ export default function AIBookingScreen({ navigation, route }: Props) {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, gap: 12 }}>
                     {m.ui.items.map((w) => (
                       <View key={w.id} style={styles.workshopCard}>
-                        <Text style={styles.workshopName}>{w.name}</Text>
-                        {w.subtitle ? <Text style={styles.workshopSub}>{w.subtitle}</Text> : null}
-                        {w.usp ? <Text style={styles.workshopMeta}>• {w.usp}</Text> : null}
+                        <Text style={styles.workshopName}>{stripEmojis(w.name)}</Text>
+                        {w.subtitle ? <Text style={styles.workshopSub}>{stripEmojis(w.subtitle)}</Text> : null}
+                        {w.usp ? <Text style={styles.workshopMeta}>• {stripEmojis(w.usp)}</Text> : null}
                         {typeof w.rating === 'number' ? <Text style={styles.workshopMeta}>⭐ {Math.round(w.rating)}/100</Text> : null}
                         <Text style={styles.workshopMeta}>{typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : 'Distance unavailable'}</Text>
                         <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
@@ -393,19 +396,19 @@ export default function AIBookingScreen({ navigation, route }: Props) {
                         activeOpacity={0.9}
                         onPress={() => {
                           const lines: string[] = [];
-                          lines.push(s.name);
+                          lines.push(stripEmojis(s.name));
                           if (typeof s.exactPrice === 'number' && s.exactPrice > 0) lines.push(`₹${Math.round(s.exactPrice)}`);
                           if (Array.isArray(s.checklistItems) && s.checklistItems.length > 0) {
                             lines.push('');
                             lines.push('Checkpoints:');
-                            s.checklistItems.slice(0, 12).forEach((x) => lines.push(`- ${x}`));
+                            s.checklistItems.slice(0, 12).forEach((x) => lines.push(`- ${stripEmojis(x)}`));
                             if (s.checklistItems.length > 12) lines.push(`+${s.checklistItems.length - 12} more`);
                           }
                           // Use a lightweight native modal via Alert
                           Alert.alert('Details', lines.join('\n'), [{ text: 'OK' }]);
                         }}
                       >
-                        <Text style={styles.chipTitle}>{s.name}</Text>
+                        <Text style={styles.chipTitle}>{stripEmojis(s.name)}</Text>
                         {typeof s.exactPrice === 'number' && s.exactPrice > 0 ? (
                           <Text style={[styles.chipSub, { color: '#0E7A2D', fontWeight: '900' }]}>₹{Math.round(s.exactPrice)}</Text>
                         ) : null}

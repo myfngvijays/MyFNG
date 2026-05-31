@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   const vehicleNumber = String(body.vehicle_number || '').trim().toUpperCase();
   if (!vehicleNumber) return NextResponse.json({ error: 'vehicle_number required' }, { status: 400 });
 
-  const payload = {
+  const payload: Record<string, any> = {
     customer_id: customer.id,
     vehicle_number: vehicleNumber,
     make: body.make || null,
@@ -35,16 +35,54 @@ export async function POST(request: NextRequest) {
     fuel_type: body.fuel_type || null,
     vin: body.vin || null,
     odometer_km: body.odometer_km ? Number(body.odometer_km) : null,
+    insurance_expiry: body.insurance_expiry || null,
     is_default: Boolean(body.is_default),
+    updated_at: new Date().toISOString(),
   };
 
   if (payload.is_default) {
     await supabaseAdmin.from('customer_vehicles').update({ is_default: false }).eq('customer_id', customer.id);
   }
 
-  const { data, error } = await supabaseAdmin.from('customer_vehicles').insert(payload).select('*').single();
+  const { data: existing } = await supabaseAdmin
+    .from('customer_vehicles')
+    .select('id')
+    .eq('customer_id', customer.id)
+    .eq('vehicle_number', vehicleNumber)
+    .maybeSingle();
+
+  let data: any = null;
+  let error: any = null;
+  let isUpdate = false;
+
+  if (existing?.id) {
+    isUpdate = true;
+    const updatePayload = { ...payload };
+    delete updatePayload.customer_id;
+    delete updatePayload.vehicle_number;
+    const res = await supabaseAdmin
+      .from('customer_vehicles')
+      .update(updatePayload)
+      .eq('id', existing.id)
+      .eq('customer_id', customer.id)
+      .select('*')
+      .single();
+    data = res.data;
+    error = res.error;
+  } else {
+    const res = await supabaseAdmin.from('customer_vehicles').insert(payload).select('*').single();
+    data = res.data;
+    error = res.error;
+  }
+
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  await logCustomerEvent(supabaseAdmin, customer.id, 'vehicle_added', 'vehicle', { vehicleNumber });
+  await logCustomerEvent(
+    supabaseAdmin,
+    customer.id,
+    isUpdate ? 'vehicle_updated' : 'vehicle_added',
+    'vehicle',
+    { vehicleNumber },
+  );
   return NextResponse.json({ vehicle: data });
 }
 

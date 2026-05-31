@@ -80,6 +80,16 @@ function formatCar(m: CarModelRow) {
   return `${m.make} ${m.model_name}${v}`.trim();
 }
 
+const CAR_IMG_BASE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images';
+function getCarImageUrl(make?: string, model?: string): string {
+  const m = (make || '').trim().toLowerCase().replace(/\s+/g, '-');
+  const md = (model || '').trim().toLowerCase().replace(/\s+/g, '-');
+  if (!m) return `${CAR_IMG_BASE}/default-car.png`;
+  if (!md) return `${CAR_IMG_BASE}/${m}.png`;
+  const makePart = m.split('-')[0];
+  return `${CAR_IMG_BASE}/${m}-cars/${makePart}-${md}.png`;
+}
+
 function inr(n: number) {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
@@ -131,6 +141,7 @@ const TIME_SLOTS = Array.from({ length: 6 }, (_, i) => {
 
 export default function PublicBookServiceNowScreen({ navigation, route }: Props) {
   const paramServiceCategory = route?.params?.serviceCategory;
+  const paramServiceCategoryName: string | null = route?.params?.serviceCategoryName ?? null;
   const paramSelectedServiceId = route?.params?.selectedServiceId;
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -180,6 +191,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [workshopModal, setWorkshopModal] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [savedVehicles, setSavedVehicles] = useState<any[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(null);
   const [addressDetecting, setAddressDetecting] = useState(false);
@@ -212,6 +224,20 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     arr.sort((a, b) => a.localeCompare(b));
     return arr.length ? arr : [];
   }, [serviceTypes]);
+
+  // Filter the visible category pills when the user came from a specific
+  // service tile (e.g. "Periodic Service" → only show Periodic-related pills).
+  const visibleCategories = useMemo(() => {
+    const keyword = String(paramServiceCategory || '').trim().toUpperCase();
+    if (!keyword) return categories;
+    const matched = categories.filter((c) => c.toUpperCase().includes(keyword));
+    return matched.length > 0 ? matched : categories;
+  }, [categories, paramServiceCategory]);
+
+  const isCategoryScoped = useMemo(
+    () => Boolean(paramServiceCategory) && visibleCategories.length > 0 && visibleCategories.length < categories.length,
+    [paramServiceCategory, visibleCategories.length, categories.length],
+  );
 
   const servicesInCategory = useMemo(() => {
     const q = serviceSearch.trim().toLowerCase();
@@ -648,6 +674,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         address_type: a.address_type || null,
       }));
       setSavedAddresses(addresses);
+
+      try {
+        const vehiclesRes = await apiFetch<any>('/api/customer/vehicles');
+        setSavedVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
+      } catch {}
+
     } catch {
       // not logged in or API failed
     }
@@ -867,17 +899,21 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   useEffect(() => {
     if (step === 2 && form.city && form.carModel && serviceTypes.length > 0) {
-      if (!selectedCategory || !categories.includes(selectedCategory)) {
-        if (paramServiceCategory && categories.includes(paramServiceCategory)) {
-          setSelectedCategory(paramServiceCategory);
-        } else {
-          setSelectedCategory(categories[0] || '');
-        }
+      const allowed = visibleCategories.length > 0 ? visibleCategories : categories;
+      if (!selectedCategory || !allowed.includes(selectedCategory)) {
+        const keyword = String(paramServiceCategory || '').trim().toUpperCase();
+        const fromKeyword = keyword
+          ? allowed.find((c) => c.toUpperCase().includes(keyword))
+          : undefined;
+        const exact = paramServiceCategory && allowed.includes(paramServiceCategory)
+          ? paramServiceCategory
+          : undefined;
+        setSelectedCategory(fromKeyword || exact || allowed[0] || '');
       }
       fetchPricing();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serviceTypes.length, step, form.city?.id, form.carModel?.id]);
+  }, [serviceTypes.length, step, form.city?.id, form.carModel?.id, visibleCategories.length]);
 
   useEffect(() => {
     if (step === 2 && serviceTypes.length > 0 && paramSelectedServiceId && form.selectedServices.length === 0) {
@@ -1157,6 +1193,47 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   ) : null}
                 </View>
 
+                {isLoggedIn && savedVehicles.length > 0 && !form.carModel ? (
+                  <View style={styles.savedVehicleSection}>
+                    <Text style={styles.savedVehicleLabel}>YOUR SAVED VEHICLE</Text>
+                    {savedVehicles.map((v) => (
+                      <TouchableOpacity
+                        key={v.id}
+                        style={styles.savedVehicleCard}
+                        activeOpacity={0.85}
+                        onPress={async () => {
+                          const make = v.make || '';
+                          const model = v.model || '';
+                          const { data } = await supabase
+                            .from('car_models')
+                            .select('id,make,model_name,variant,class')
+                            .eq('is_active', true)
+                            .ilike('make', make)
+                            .ilike('model_name', model)
+                            .limit(1);
+                          if (data && data.length > 0) {
+                            setForm((p) => ({ ...p, carModel: data[0] as any }));
+                          } else {
+                            setForm((p) => ({ ...p, carModel: { id: v.id, make, model_name: model, variant: v.variant || null } as any }));
+                          }
+                        }}
+                      >
+                        <Image
+                          source={{ uri: getCarImageUrl(v.make, v.model) }}
+                          style={styles.savedVehicleImg}
+                          resizeMode="contain"
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.savedVehicleName}>{[v.make, v.model].filter(Boolean).join(' ') || 'Vehicle'}</Text>
+                          {v.vehicle_number ? <Text style={styles.savedVehicleNumber}>{v.vehicle_number}</Text> : null}
+                          {v.fuel_type ? <Text style={styles.savedVehicleFuel}>{v.fuel_type}</Text> : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+
                 <View style={styles.tip}>
                   <Ionicons name="sparkles" size={16} color={COLORS.purple} />
                   <Text style={styles.tipText}>Book Your Service Under 60 Seconds</Text>
@@ -1227,13 +1304,27 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             {/* ── Step 2: Services ── */}
             {step === 2 ? (
               <>
-                {categories.length > 0 ? (
+                {isCategoryScoped ? (
+                  <View style={styles.scopedHintRow}>
+                    <Ionicons name="filter" size={12} color={COLORS.primary} />
+                    <Text style={styles.scopedHintText}>
+                      Showing {paramServiceCategoryName || 'selected service'} plans
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => navigation.setParams({ serviceCategory: null, serviceCategoryName: null } as never)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.scopedHintClear}>View all</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                {visibleCategories.length > 0 ? (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.tabs}
                   >
-                    {categories.map((c) => (
+                    {visibleCategories.map((c) => (
                       <TouchableOpacity
                         key={c}
                         style={[styles.tab, c === selectedCategory ? styles.tabActive : null]}
@@ -1421,7 +1512,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <View
                         style={[
                           styles.servicePrefKnob,
-                          form.pickupRequired ? { left: 4 } : { right: 4 },
+                          form.pickupRequired ? { left: 3 } : { right: 3 },
                         ]}
                       >
                         <Ionicons
@@ -2390,6 +2481,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
 
+  savedVehicleSection: {
+    marginTop: 12,
+  },
+  savedVehicleLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#9CA3AF',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  savedVehicleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#F0F7FF',
+    borderWidth: 1.5,
+    borderColor: '#DBEAFE',
+    marginBottom: 8,
+  },
+  savedVehicleImg: {
+    width: 72,
+    height: 48,
+    borderRadius: 8,
+  },
+  savedVehicleName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  savedVehicleNumber: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  savedVehicleFuel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginTop: 2,
+    textTransform: 'uppercase',
+  },
   tip: {
     marginTop: 6,
     flexDirection: 'row',
@@ -2434,6 +2569,21 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: '#EEF6FF', borderColor: 'rgba(0,136,232,0.18)' },
   tabText: { fontSize: 11, fontWeight: '900', color: COLORS.gray[700] },
   tabTextActive: { color: COLORS.primaryDark },
+  scopedHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#EEF6FF',
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(0,136,232,0.18)',
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  scopedHintText: { fontSize: 11, fontWeight: '800', color: COLORS.primaryDark },
+  scopedHintClear: { marginLeft: 4, fontSize: 11, fontWeight: '900', color: COLORS.primary, textDecorationLine: 'underline' },
   searchRow: {
     marginTop: 4,
     flexDirection: 'row',
@@ -2815,38 +2965,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
   },
   servicePrefSide: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   servicePrefIcoBox: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   servicePrefLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
   servicePrefToggle: {
-    width: 76,
-    height: 42,
+    width: 64,
+    height: 36,
     borderRadius: 999,
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
   servicePrefKnob: {
     position: 'absolute',
-    top: 4,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    top: 3,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',

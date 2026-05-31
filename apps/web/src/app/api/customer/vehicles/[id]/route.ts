@@ -20,6 +20,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (typeof body.fuel_type === 'string') update.fuel_type = body.fuel_type;
   if (typeof body.vin === 'string') update.vin = body.vin;
   if (typeof body.odometer_km !== 'undefined') update.odometer_km = body.odometer_km ? Number(body.odometer_km) : null;
+  if (typeof body.insurance_expiry !== 'undefined') update.insurance_expiry = body.insurance_expiry || null;
   if (typeof body.is_default !== 'undefined') {
     update.is_default = Boolean(body.is_default);
     if (Boolean(body.is_default)) {

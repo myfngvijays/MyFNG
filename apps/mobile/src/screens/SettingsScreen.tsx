@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   Dimensions,
   FlatList,
   Image,
@@ -21,11 +22,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { clearCustomerSessionToken, getCustomerSessionToken } from '../lib/customerSession';
 import { supabase } from '../lib/supabase';
 import {
-  ADD_ON_SERVICES,
   LEGAL_SECTIONS,
   MEMBERSHIP_PLANS,
   SUPPORT_FAQ_CATEGORIES,
@@ -119,6 +120,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [orders, setOrders] = useState<any[]>([]);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [referralCode, setReferralCode] = useState('');
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
   const [carSearch, setCarSearch] = useState('');
   const [carSuggestions, setCarSuggestions] = useState<any[]>([]);
@@ -127,12 +129,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [regDate, setRegDate] = useState('');
   const [regDateValue, setRegDateValue] = useState<Date>(new Date());
   const [showRegDatePicker, setShowRegDatePicker] = useState(false);
+  const [chassisNumber, setChassisNumber] = useState('');
+  const [insuranceExpiry, setInsuranceExpiry] = useState('');
+  const [insuranceExpiryValue, setInsuranceExpiryValue] = useState<Date>(new Date());
+  const [showInsuranceDatePicker, setShowInsuranceDatePicker] = useState(false);
+  const [odometerReading, setOdometerReading] = useState('');
+  const [profileStep, setProfileStep] = useState(1);
   const [fuelType, setFuelType] = useState<'Petrol' | 'Diesel' | 'CNG' | ''>('');
   const [carNumberParts, setCarNumberParts] = useState<string[]>(['', '', '', '']);
   const [carSearchFocused, setCarSearchFocused] = useState(false);
   const carNumberRefs = useRef<Array<TextInput | null>>([]);
 
-  const [addresses, setAddresses] = useState<Array<{ id: string; label: string; value: string; source: 'saved' | 'lead' }>>([]);
+  const [addresses, setAddresses] = useState<Array<{ id: string; label: string; value: string; source: 'saved' | 'lead'; city?: string | null; state?: string | null; pincode?: string | null }>>([]);
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [newAddrLabel, setNewAddrLabel] = useState<'Home' | 'Work' | 'Others'>('Home');
@@ -160,7 +168,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [walletPromoCode, setWalletPromoCode] = useState('');
   const [orderFilter, setOrderFilter] = useState<'All' | 'Completed' | 'Upcoming' | 'Ongoing' | 'Cancelled'>('All');
   const [coupon, setCoupon] = useState('');
-  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [cartServiceMode, setCartServiceMode] = useState<'pickup' | 'workshop'>('pickup');
   const [cartPaymentMode, setCartPaymentMode] = useState<'pay_now' | 'pay_later'>('pay_now');
   const [cartDate, setCartDate] = useState(() => new Date(Date.now() + 24 * 60 * 60 * 1000));
@@ -181,6 +188,16 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [cartSelectedWorkshopId, setCartSelectedWorkshopId] = useState<string | null>(null);
   const [cartPickupAddressId, setCartPickupAddressId] = useState<string | null>(null);
   const [cartBookingLoading, setCartBookingLoading] = useState(false);
+  const [cartServerCart, setCartServerCart] = useState<any>(null);
+  const [cartItems, setCartItems] = useState<any[]>([]);
+  const [cartLoading, setCartLoading] = useState(false);
+  const [cartSyncing, setCartSyncing] = useState(false);
+  const [showInlinePickupAdd, setShowInlinePickupAdd] = useState(false);
+  const [pickupForm, setPickupForm] = useState<{ label: 'Home' | 'Work' | 'Others'; line1: string; line2: string; city: string; pincode: string }>(
+    { label: 'Home', line1: '', line2: '', city: '', pincode: '' }
+  );
+  const [pickupSaving, setPickupSaving] = useState(false);
+  const [pickupLocationLoading, setPickupLocationLoading] = useState(false);
   const [notifState, setNotifState] = useState({
     push: true,
     sms: true,
@@ -203,11 +220,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const screenWidth = Dimensions.get('window').width;
   const vehicleCardWidth = useMemo(() => Math.max(280, screenWidth - 64), [screenWidth]);
   const vehicleCardSnapInterval = useMemo(() => vehicleCardWidth + 10, [vehicleCardWidth]);
-  const addOnCardWidth = useMemo(() => Math.floor((screenWidth - 32 - 20) / 3), [screenWidth]);
-
-  const toggleAddOn = (id: string) => {
-    setSelectedAddOns((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
 
   const toTitleCase = useCallback((value: string) => {
     return String(value || '')
@@ -215,31 +227,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }, []);
 
-  const serviceKeywords = useMemo(() => {
-    const source = String(cartSelectedService?.name || '').toLowerCase();
-    if (source.includes('periodic')) return ['periodic', 'general', 'premium', 'platinum'];
-    if (source.includes('ac')) return ['ac', 'periodic'];
-    return ['periodic', 'general'];
-  }, [cartSelectedService]);
-
-  const recommendedAddOns = useMemo(() => {
-    return ADD_ON_SERVICES.filter((item: any) =>
-      Array.isArray(item.recommended_for)
-        ? item.recommended_for.some((k: string) => serviceKeywords.includes(k))
-        : true
-    );
-  }, [serviceKeywords]);
-
-  const cartServiceBase = useMemo(() => Number(cartSelectedService?.price || 0), [cartSelectedService]);
-  const addOnTotal = useMemo(
-    () =>
-      selectedAddOns.reduce((sum, id) => {
-        const found: any = ADD_ON_SERVICES.find((x: any) => x.id === id);
-        return sum + Number(found?.price || 0);
-      }, 0),
-    [selectedAddOns]
-  );
-  const subtotal = useMemo(() => cartServiceBase + addOnTotal, [cartServiceBase, addOnTotal]);
+  const subtotal = useMemo(() => {
+    if (cartItems && cartItems.length > 0) {
+      return cartItems.reduce((sum: number, item: any) => sum + Number(item?.total_price || 0), 0);
+    }
+    return Number(cartServerCart?.subtotal || cartSelectedService?.price || 0);
+  }, [cartItems, cartServerCart, cartSelectedService]);
   const couponDiscount = useMemo(() => Number(cartCouponResult?.discount_amount || 0), [cartCouponResult]);
   const walletUsed = useMemo(() => Math.min(Number(walletBalance || 0), Math.max(0, subtotal - couponDiscount)), [walletBalance, subtotal, couponDiscount]);
   const referralUsed = useMemo(() => 0, []);
@@ -278,21 +271,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
     }
     setCartCouponLoading(true);
     try {
+      const serviceItems = (cartItems || []).length > 0
+        ? cartItems.map((it: any) => ({ label: String(it?.service_type || 'Service'), price: Number(it?.total_price || 0) }))
+        : cartSelectedService
+        ? [{ label: cartSelectedService.name, price: cartSelectedService.price }]
+        : [];
       const payload = {
         code,
         lead_context: {
           subtotal,
           customer_phone: profileForm.phone || null,
-          custom_labels: selectedAddOns,
-          service_items: [
-            ...(cartSelectedService
-              ? [{ label: cartSelectedService.name, price: cartSelectedService.price }]
-              : []),
-            ...selectedAddOns.map((id) => {
-              const found: any = ADD_ON_SERVICES.find((x: any) => x.id === id);
-              return { label: found?.name || id, price: Number(found?.price || 0) };
-            }),
-          ],
+          service_items: serviceItems,
         },
       };
       const res = await fetch(`${ENV.API_URL}/api/coupons/validate`, {
@@ -314,7 +303,154 @@ export default function SettingsScreen({ navigation, route }: Props) {
     } finally {
       setCartCouponLoading(false);
     }
-  }, [coupon, subtotal, profileForm.phone, selectedAddOns, cartSelectedService]);
+  }, [coupon, subtotal, profileForm.phone, cartItems, cartSelectedService]);
+
+  const loadCart = useCallback(async () => {
+    setCartLoading(true);
+    try {
+      const res = await apiFetch<any>('/api/customer/cart');
+      setCartServerCart(res?.cart || null);
+      const items = Array.isArray(res?.items) ? res.items : [];
+      setCartItems(items);
+    } catch (_err) {
+      setCartServerCart(null);
+      setCartItems([]);
+    } finally {
+      setCartLoading(false);
+    }
+  }, []);
+
+  const addCartItem = useCallback(
+    async (
+      serviceType: string,
+      unitPrice: number,
+      quantity = 1,
+      metadata?: Record<string, any>,
+    ) => {
+      const cleanService = String(serviceType || '').trim();
+      if (!cleanService) return;
+      setCartSyncing(true);
+      try {
+        await apiFetch('/api/customer/cart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service_type: cleanService,
+            quantity: Math.max(1, Math.floor(quantity || 1)),
+            unit_price: Math.max(0, Number(unitPrice) || 0),
+            metadata: metadata && typeof metadata === 'object' ? metadata : {},
+          }),
+        });
+        await loadCart();
+      } catch (err: any) {
+        Alert.alert('Cart', err?.message || 'Could not add item to cart.');
+      } finally {
+        setCartSyncing(false);
+      }
+    },
+    [loadCart],
+  );
+
+  const removeCartItem = useCallback(
+    async (itemId: string) => {
+      if (!itemId) return;
+      setCartSyncing(true);
+      try {
+        await apiFetch(`/api/customer/cart?item_id=${encodeURIComponent(itemId)}`, {
+          method: 'DELETE',
+        });
+        await loadCart();
+      } catch (err: any) {
+        Alert.alert('Cart', err?.message || 'Could not remove item.');
+      } finally {
+        setCartSyncing(false);
+      }
+    },
+    [loadCart],
+  );
+
+  const resetPickupForm = useCallback(() => {
+    setPickupForm({ label: 'Home', line1: '', line2: '', city: '', pincode: '' });
+    setShowInlinePickupAdd(false);
+  }, []);
+
+  const handlePickupQuickLocation = useCallback(async () => {
+    setPickupLocationLoading(true);
+    try {
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesEnabled) {
+        Alert.alert(
+          'Location is off',
+          'Please turn on Location / GPS from your phone settings and try again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
+        return;
+      }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please allow location access to autofill the address.');
+        return;
+      }
+      let position = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (!position) {
+        position = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+        ]).catch(() => null);
+      }
+      if (!position) {
+        Alert.alert('Location', 'Could not fetch your current location. Please try again.');
+        return;
+      }
+      const { latitude, longitude } = (position as any).coords;
+      const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+      const p = (places && places[0]) || {};
+      setPickupForm((prev) => ({
+        ...prev,
+        line1: prev.line1 || String((p as any).name || (p as any).street || '').trim(),
+        line2: prev.line2 || String((p as any).district || (p as any).subregion || '').trim(),
+        city: prev.city || String((p as any).city || (p as any).subregion || '').trim(),
+        pincode: prev.pincode || String((p as any).postalCode || '').trim(),
+      }));
+    } catch (_err) {
+      Alert.alert('Location', 'Unable to autofill address. Please enter manually.');
+    } finally {
+      setPickupLocationLoading(false);
+    }
+  }, []);
+
+  const handleSaveInlinePickup = useCallback(async () => {
+    const line1 = pickupForm.line1.trim();
+    if (!line1) {
+      Alert.alert('Address', 'Please enter address line 1.');
+      return;
+    }
+    setPickupSaving(true);
+    try {
+      const res = await apiFetch<any>('/api/customer/addresses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: pickupForm.label,
+          line1,
+          line2: pickupForm.line2.trim() || null,
+          city: pickupForm.city.trim() || null,
+          pincode: pickupForm.pincode.trim() || null,
+        }),
+      });
+      const newId = res?.address?.id ? String(res.address.id) : null;
+      await hydrateCustomerData();
+      if (newId) setCartPickupAddressId(newId);
+      resetPickupForm();
+    } catch (err: any) {
+      Alert.alert('Address', err?.message || 'Could not save address.');
+    } finally {
+      setPickupSaving(false);
+    }
+  }, [pickupForm, resetPickupForm]);
 
   const hydrateCustomerData = useCallback(async () => {
     setDataLoading(true);
@@ -330,6 +466,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
       const customer = profileRes?.customer || {};
       setCustomerId(customer?.id ? String(customer.id) : null);
+      setProfileImageUrl(customer?.profile_image || null);
       setProfileForm({
         name: String(customer?.full_name || ''),
         phone: String(customer?.phone || ''),
@@ -355,6 +492,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
           label: String(a?.label || a?.address_type || 'Address'),
           value: fullAddress || String(a?.address || '').trim() || 'Address not available',
           source: 'saved' as const,
+          city: a?.city ? String(a.city) : null,
+          state: a?.state ? String(a.state) : null,
+          pincode: a?.pincode ? String(a.pincode) : null,
         };
       });
 
@@ -375,9 +515,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
             label: 'Service Address',
             value: fullAddress,
             source: 'lead' as const,
+            city: lead?.city ? String(lead.city) : null,
+            state: lead?.state ? String(lead.state) : null,
+            pincode: lead?.pincode ? String(lead.pincode) : null,
           };
         })
-        .filter(Boolean) as Array<{ id: string; label: string; value: string; source: 'saved' | 'lead' }>;
+        .filter(Boolean) as Array<{ id: string; label: string; value: string; source: 'saved' | 'lead'; city?: string | null; state?: string | null; pincode?: string | null }>;
 
       const existingIds = new Set(mappedAddresses.map((a: { id: string }) => a.id));
       const uniqueLeadAddresses = mappedLeadAddresses.filter((a: { id: string }) => !existingIds.has(a.id));
@@ -414,6 +557,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
           setOrders([]);
           setAddresses([]);
           setCartLeads([]);
+          setCartItems([]);
+          setCartServerCart(null);
           setShowAddAddress(false);
           setWalletBalance(0);
           setReferralCode('');
@@ -426,6 +571,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
       };
     }, [hydrateCustomerData]),
   );
+
+  useEffect(() => {
+    const onHardwareBack = () => {
+      if (faqModal) { setFaqModal(null); return true; }
+      if (showAddAddress) { setShowAddAddress(false); return true; }
+      if (showProfileEditor) { setShowProfileEditor(false); return true; }
+      if (vehicleEntryOnly) { setVehicleEntryOnly(false); return true; }
+      if (activeSubPage) { setActiveSubPage(null); return true; }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    return () => sub.remove();
+  }, [activeSubPage, faqModal, showAddAddress, showProfileEditor, vehicleEntryOnly]);
 
   const primaryVehicle = useMemo(() => {
     // Prefer latest vehicle from order history because orders are tied to logged-in customer phone.
@@ -550,6 +708,91 @@ export default function SettingsScreen({ navigation, route }: Props) {
     await persistProfile();
   };
 
+  const launchGalleryPicker = async () => {
+    if (Platform.OS === 'ios') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to upload profile picture.');
+        return;
+      }
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await uploadProfileImage(result.assets[0].uri);
+    }
+  };
+
+  const launchCameraPicker = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Please allow camera access to take profile picture.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await uploadProfileImage(result.assets[0].uri);
+    }
+  };
+
+  const pickAndUploadProfileImage = () => {
+    if (!isLoggedIn) {
+      Alert.alert('Login required', 'Please login to upload profile picture.');
+      return;
+    }
+    Alert.alert('Profile Picture', 'Choose an option', [
+      {
+        text: 'Camera',
+        onPress: () => setTimeout(() => { void launchCameraPicker(); }, 300),
+      },
+      {
+        text: 'Gallery',
+        onPress: () => setTimeout(() => { void launchGalleryPicker(); }, 300),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const uploadProfileImage = async (uri: string) => {
+    try {
+      const filename = uri.split('/').pop() || 'profile.jpg';
+      const customerSessionToken = await getCustomerSessionToken();
+      if (!customerSessionToken) throw new Error('Not authenticated');
+
+      const formData = new FormData();
+      // @ts-ignore - React Native FormData handles file objects this way
+      formData.append('file', { uri, name: filename, type: 'image/jpeg' });
+      formData.append('folder', 'customer-profiles');
+
+      const uploadRes = await fetch(`${ENV.API_URL}/api/customer/upload`, {
+        method: 'POST',
+        headers: { 'x-customer-session': customerSessionToken },
+        body: formData,
+      });
+      const uploadJson = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok) throw new Error(uploadJson?.error || 'Upload failed');
+
+      const imageUrl = uploadJson.url;
+      await apiFetch('/api/customer/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_image: imageUrl }),
+      });
+      setProfileImageUrl(imageUrl);
+      Alert.alert('Success', 'Profile picture updated!');
+    } catch (err: any) {
+      Alert.alert('Upload failed', err?.message || 'Could not upload image.');
+    }
+  };
+
   useEffect(() => {
     if (activeSubPage !== 'My Profile') return;
     if (!selectedVehicle) return;
@@ -635,6 +878,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
+    if (!isLoggedIn) return;
+    loadCart();
+  }, [activeSubPage, isLoggedIn, loadCart]);
+
+  useEffect(() => {
+    if (activeSubPage !== 'Cart') return;
     const resumableStatuses = new Set(['NEW', 'PENDING', 'IN_PROGRESS', 'ASSIGNED', 'CONFIRMED', 'OPEN']);
     const resumableLead = (cartLeads || []).find((lead: any) => resumableStatuses.has(String(lead?.status || '').toUpperCase()));
     const latestOrder = orders[0];
@@ -676,28 +925,28 @@ export default function SettingsScreen({ navigation, route }: Props) {
     setCartWorkshopLoading(true);
     try {
       const selectedAddress = savedAddresses.find((address) => address.id === cartPickupAddressId);
-      const searchCity = String(
+      const cityFromAddress = String(selectedAddress?.city || '').trim();
+      const cityFromValue = String(
         selectedAddress?.value.split(',').map((part) => part.trim()).find((part) => /^[A-Za-z ]+$/.test(part)) ||
-        ''
+          ''
       ).trim();
-      const query = supabase
-        .from('workshops')
-        .select('id,name,address,city,state,pincode,is_active,is_verified')
-        .eq('is_active', true)
-        .eq('is_verified', true)
-        .order('name')
-        .limit(100);
-      const { data, error } = searchCity
-        ? await query.ilike('city', `%${searchCity}%`)
-        : await query;
-      if (error) throw error;
-      const nextWorkshops = Array.isArray(data) ? data : [];
+      const searchCity = cityFromAddress || cityFromValue;
+      const qs = new URLSearchParams();
+      if (searchCity) qs.set('city', searchCity);
+      qs.set('limit', '50');
+      const res = await fetch(`${ENV.API_URL}/api/customer/workshops?${qs.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || 'Unable to load workshops');
+      const nextWorkshops = Array.isArray((data as any)?.workshops) ? (data as any).workshops : [];
       setCartWorkshops(nextWorkshops);
       if (nextWorkshops.length > 0 && !cartSelectedWorkshopId) {
         setCartSelectedWorkshopId(String(nextWorkshops[0].id));
+      } else if (nextWorkshops.length === 0) {
+        setCartSelectedWorkshopId(null);
       }
     } catch (_e) {
       setCartWorkshops([]);
+      setCartSelectedWorkshopId(null);
     } finally {
       setCartWorkshopLoading(false);
     }
@@ -707,7 +956,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     if (activeSubPage !== 'Cart') return;
     if (cartServiceMode !== 'workshop') return;
     fetchCartWorkshops();
-  }, [activeSubPage, cartServiceMode, fetchCartWorkshops]);
+  }, [activeSubPage, cartServiceMode, cartPickupAddressId, fetchCartWorkshops]);
 
   useEffect(() => {
     if (activeSubPage !== 'Help & Support') return;
@@ -826,16 +1075,67 @@ export default function SettingsScreen({ navigation, route }: Props) {
       return;
     }
     try {
-      await apiFetch('/api/customer/membership/subscribe', {
+      const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan_id: plan.raw.id }),
       });
+
+      if (!orderRes?.order_id) {
+        Alert.alert('Error', orderRes?.error || 'Could not create payment order. Please try again.');
+        return;
+      }
+
+      let RazorpayCheckout: any = null;
+      try {
+        RazorpayCheckout = require('react-native-razorpay')?.default;
+      } catch {
+        RazorpayCheckout = null;
+      }
+
+      if (!RazorpayCheckout) {
+        Alert.alert('Error', 'Payment module is not available. Please update the app.');
+        return;
+      }
+
+      const options = {
+        key: orderRes.razorpay_key,
+        amount: orderRes.amount_paise,
+        currency: 'INR',
+        name: 'MyFNG',
+        description: `${plan.name} Membership`,
+        order_id: orderRes.order_id,
+        prefill: {
+          contact: customerData?.phone || '',
+          name: customerData?.full_name || '',
+          email: customerData?.email || '',
+        },
+        theme: { color: '#004AAD' },
+      };
+
+      const paymentResult = await RazorpayCheckout.open(options);
+
+      await apiFetch('/api/customer/membership/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: plan.raw.id,
+          razorpay_payment_id: paymentResult.razorpay_payment_id,
+          razorpay_order_id: paymentResult.razorpay_order_id,
+          razorpay_signature: paymentResult.razorpay_signature,
+        }),
+      });
+
       Alert.alert('Success', `You are now a ${plan.name} member!`);
       const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
       if (memRes?.membership) setCurrentMembership(memRes.membership);
     } catch (err: any) {
-      Alert.alert('Upgrade failed', err?.message || 'Unable to upgrade membership.');
+      const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      if (cancelled) {
+        Alert.alert('Payment Cancelled', 'Membership upgrade was cancelled. No charges were made.');
+      } else {
+        Alert.alert('Upgrade failed', err?.message || 'Unable to upgrade membership. Please try again.');
+      }
     }
   };
 
@@ -882,23 +1182,65 @@ export default function SettingsScreen({ navigation, route }: Props) {
     const yearMatch = regDate.match(/(19|20)\d{2}/);
     const year = yearMatch ? Number(yearMatch[0]) : Number(selectedVehicle?.year || 0) || null;
 
+    const insuranceISO = (() => {
+      if (!insuranceExpiry) return null;
+      const [dd, mm, yyyy] = insuranceExpiry.split('-');
+      if (!dd || !mm || !yyyy) return null;
+      return `${yyyy}-${mm}-${dd}`;
+    })();
+
+    const vehiclePayload: Record<string, any> = {
+      vehicle_number: vehicleNumber,
+      make,
+      model,
+      year,
+      fuel_type: fuelType || undefined,
+      vin: chassisNumber || undefined,
+      odometer_km: odometerReading ? Number(odometerReading) : undefined,
+      insurance_expiry: insuranceISO || undefined,
+      is_default: true,
+    };
+
+    const existingVehicle = allAssociatedVehicles.find((v: any) =>
+      String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber,
+    );
+
     try {
-      await apiFetch('/api/customer/vehicles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicle_number: vehicleNumber,
-          make,
-          model,
-          year,
-          fuel_type: fuelType || undefined,
-          is_default: true,
-        }),
-      });
+      if (existingVehicle?.id) {
+        await apiFetch(`/api/customer/vehicles/${existingVehicle.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vehiclePayload),
+        });
+      } else {
+        await apiFetch('/api/customer/vehicles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vehiclePayload),
+        });
+      }
       await hydrateCustomerData();
       Alert.alert('Saved', 'Profile and car details have been updated.');
     } catch (err: any) {
-      Alert.alert('Update failed', err?.message || 'Unable to save car details');
+      const message = String(err?.message || '');
+      if (message.toLowerCase().includes('duplicate') || message.includes('unique_vehicle_per_customer')) {
+        try {
+          const vRes: any = await apiFetch('/api/customer/vehicles');
+          const list: any[] = vRes?.vehicles || [];
+          const match = list.find((v) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber);
+          if (match?.id) {
+            await apiFetch(`/api/customer/vehicles/${match.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(vehiclePayload),
+            });
+            await hydrateCustomerData();
+            Alert.alert('Saved', 'Profile and car details have been updated.');
+            return;
+          }
+        } catch (_e2) {}
+      }
+      Alert.alert('Update failed', message || 'Unable to save car details');
     }
   };
 
@@ -955,30 +1297,90 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const handleFetchCurrentLocation = async () => {
     try {
       setLocationLoading(true);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission required', 'Please allow location access to auto-fill your address.');
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!servicesEnabled) {
+        Alert.alert(
+          'Location is off',
+          'Please turn on Location / GPS from your phone settings and try again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
         return;
       }
 
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission required',
+          canAskAgain
+            ? 'Please allow location access to auto-fill your address.'
+            : 'Location permission was denied. Please enable it from app settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
+        return;
+      }
+
+      const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Location timed out')), ms);
+          p.then((v) => { clearTimeout(timer); resolve(v); })
+           .catch((e) => { clearTimeout(timer); reject(e); });
+        });
+
+      let current: Location.LocationObject | null = null;
+      try {
+        current = await withTimeout(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          12000,
+        );
+      } catch (_e1) {
+        try {
+          current = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 });
+        } catch (_e2) {
+          current = null;
+        }
+        if (!current) {
+          current = await withTimeout(
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }),
+            15000,
+          );
+        }
+      }
+
       const latitude = Number(current?.coords?.latitude);
       const longitude = Number(current?.coords?.longitude);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        throw new Error('Unable to read your location coordinates.');
+        throw new Error('Unable to read your location coordinates. Please try again in an open area.');
       }
       setGeoPoint({ latitude, longitude });
 
-      const reverseAddress = await fetchReverseAddress(latitude, longitude);
-      const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
-      setNewAddrArea(parsed.area);
-      setNewAddrCity(parsed.city);
-      setNewAddrState(parsed.state);
-      setNewAddrPincode(parsed.pincode);
+      try {
+        const reverseAddress = await fetchReverseAddress(latitude, longitude);
+        const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
+        if (parsed.area) setNewAddrArea(parsed.area);
+        if (parsed.city) setNewAddrCity(parsed.city);
+        if (parsed.state) setNewAddrState(parsed.state);
+        if (parsed.pincode) setNewAddrPincode(parsed.pincode);
+      } catch (revErr: any) {
+        Alert.alert(
+          'Location captured',
+          'We saved your coordinates but could not fetch the nearby address. Please fill the details manually.',
+        );
+      }
     } catch (err: any) {
-      Alert.alert('Location unavailable', err?.message || 'Could not fetch your current location.');
+      const msg = String(err?.message || '');
+      Alert.alert(
+        'Location unavailable',
+        msg.toLowerCase().includes('timed out')
+          ? 'Could not get your location in time. Please go to an open area or enter the address manually.'
+          : msg || 'Could not fetch your current location.',
+      );
     } finally {
       setLocationLoading(false);
     }
@@ -1142,6 +1544,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
     setRegDate(formatDate(selectedDate));
   };
 
+  const onInsuranceDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowInsuranceDatePicker(false);
+    if (!selectedDate) return;
+    setInsuranceExpiryValue(selectedDate);
+    setInsuranceExpiry(formatDate(selectedDate));
+  };
+
   const onCartDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') setShowCartDatePicker(false);
     if (!selectedDate) return;
@@ -1182,6 +1591,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
       Alert.alert('Vehicle required', 'Please add/select your vehicle before booking.');
       return;
     }
+    if ((cartItems || []).length === 0) {
+      Alert.alert('Cart empty', 'Please add a service to your cart before booking.');
+      return;
+    }
     if (cartServiceMode === 'pickup' && !selectedPickupAddress) {
       Alert.alert('Address required', 'Please select a pickup address.');
       return;
@@ -1194,6 +1607,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
     setCartBookingLoading(true);
     try {
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+      const cartServiceTypes = (cartItems || [])
+        .map((it: any) => String(it?.service_type || '').trim())
+        .filter(Boolean);
+      const serviceType = cartServiceTypes.length > 0
+        ? cartServiceTypes.join(', ')
+        : (cartSelectedService?.name || 'CAR_SERVICE');
+      const bookingAmount = finalAmount > 0
+        ? finalAmount
+        : Number(cartServerCart?.grand_total || subtotal || 0);
       const payload = {
         lead: {
           lead_number: leadNumber,
@@ -1206,7 +1628,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           vehicle_number: String(selectedVehicle?.vehicle_number || '').trim() || null,
           vehicle_make: selectedVehicle?.make || null,
           vehicle_model: selectedVehicle?.model || null,
-          service_type: cartSelectedService?.name || 'CAR_SERVICE',
+          service_type: serviceType,
           pickup_required: cartServiceMode === 'pickup',
           workshop_id: cartServiceMode === 'workshop' ? selectedCartWorkshop?.id || null : null,
           pickup_address: cartServiceMode === 'pickup' ? selectedPickupAddress?.value || null : null,
@@ -1218,7 +1640,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             cartServiceMode === 'pickup'
               ? `${cartDate.getFullYear()}-${String(cartDate.getMonth() + 1).padStart(2, '0')}-${String(cartDate.getDate()).padStart(2, '0')}T${String(cartTime.getHours()).padStart(2, '0')}:${String(cartTime.getMinutes()).padStart(2, '0')}:00`
               : null,
-          estimated_amount: finalAmount > 0 ? finalAmount : subtotal,
+          estimated_amount: bookingAmount,
           payment_mode: cartPaymentMode,
           payment_status: cartPaymentMode === 'pay_now' ? 'PENDING' : 'PENDING_AT_SERVICE',
           coupon_code: cartCouponResult?.coupon?.code || null,
@@ -1232,8 +1654,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+      try {
+        for (const it of cartItems) {
+          if (it?.id) {
+            await apiFetch(`/api/customer/cart?item_id=${encodeURIComponent(String(it.id))}`, {
+              method: 'DELETE',
+            });
+          }
+        }
+      } catch (_clearErr) { /* non-fatal */ }
       Alert.alert('Booking created', `Lead: ${json?.lead?.lead_number || leadNumber}`);
       await hydrateCustomerData();
+      await loadCart();
       setActiveSubPage('Order History');
     } catch (error: any) {
       Alert.alert('Booking failed', error?.message || 'Could not create booking.');
@@ -1254,7 +1686,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
     subtotal,
     cartPaymentMode,
     cartCouponResult,
+    cartItems,
+    cartServerCart,
     hydrateCustomerData,
+    loadCart,
   ]);
 
   const onPressAddVehicle = () => {
@@ -1470,178 +1905,399 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const renderSubPage = () => {
     switch (activeSubPage) {
-      case 'My Profile':
+      case 'My Profile': {
+        const step1Done = !!(profileForm.name && profileForm.phone);
+        const step2Done = !!(carSearch && fuelType && carNumberParts.every((p) => p.length > 0));
+        const STEP_COLORS = {
+          1: { accent: '#0046AD', bg: '#DBEAFE' },
+          2: { accent: '#F97316', bg: '#FFEDD5' },
+          3: { accent: '#7C3AED', bg: '#EDE9FE' },
+        } as const;
+        const STEP_CONTENT_STYLE = { backgroundColor: '#F8FAFC', paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 4 } as const;
+        const STEP_LABEL_STYLE = { fontSize: 11, fontWeight: '800' as const, color: '#64748B', textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 8, marginBottom: 4 };
+        const STEP_INPUT_STYLE = { paddingHorizontal: 14, paddingVertical: 12, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 14, backgroundColor: '#FFFFFF', fontSize: 14, fontWeight: '600' as const, color: '#1E293B' };
+        const STEP_DATE_STYLE = { paddingHorizontal: 14, paddingVertical: 13, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 14, backgroundColor: '#FFFFFF', flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
+        const STEP_NEXT_BTN_STYLE = { marginTop: 14, borderRadius: 12, paddingVertical: 14, alignItems: 'center' as const };
+        const STEP_NEXT_BTN_TEXT_STYLE = { color: '#FFFFFF', fontSize: 14, fontWeight: '700' as const };
+        const PLATE_BOX_STYLE = { flex: 1, paddingVertical: 14, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF', textAlign: 'center' as const, fontSize: 15, fontWeight: '800' as const, color: '#1E293B', textTransform: 'uppercase' as const };
         return (
-          <View style={styles.subWrap}>
-            <View style={styles.myProfileHeaderCard}>
-              <View style={[styles.avatar, !isLoggedIn ? styles.avatarGuest : null]}>
-                <Text style={[styles.avatarText, !isLoggedIn ? styles.avatarGuestText : null]}>
-                  {(profileForm.name || 'Guest').trim().charAt(0).toUpperCase() || 'G'}
-                </Text>
+          <View style={{ padding: 14, paddingBottom: 28, gap: 14, backgroundColor: '#F0F7FF' }}>
+            {/* Vibrant Header Banner */}
+            <View style={{
+              backgroundColor: '#0046AD',
+              borderRadius: 24,
+              paddingTop: 28,
+              paddingBottom: 22,
+              paddingHorizontal: 20,
+              alignItems: 'center',
+              overflow: 'hidden',
+              elevation: 10,
+              shadowColor: '#0046AD',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.3,
+              shadowRadius: 16,
+            }}>
+              <View pointerEvents="none" style={{ position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, backgroundColor: '#0084FF', opacity: 0.5 }} />
+              <View pointerEvents="none" style={{ position: 'absolute', bottom: -80, left: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: '#F97316', opacity: 0.2 }} />
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5, backgroundColor: '#F97316' }} />
+              <View style={{ width: 82, height: 82, marginBottom: 14, position: 'relative', zIndex: 10 }}>
+                <TouchableOpacity activeOpacity={0.6} onPress={pickAndUploadProfileImage} style={{ width: 82, height: 82, borderRadius: 41, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {profileImageUrl ? (
+                    <Image source={{ uri: profileImageUrl }} style={{ width: 82, height: 82 }} />
+                  ) : (
+                    <Text style={{ color: '#FFFFFF', fontSize: 32, fontWeight: '900' }}>
+                      {(profileForm.name || 'G').trim().charAt(0).toUpperCase()}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={pickAndUploadProfileImage} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: '#0084FF', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="camera" size={12} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.myProfileHeaderTitle}>{isLoggedIn ? (profileForm.name || 'MyFNG User') : 'Guest Login'}</Text>
-                <Text style={styles.myProfileHeaderSub}>
-                  {isLoggedIn
-                    ? (vehicleEntryOnly ? 'Add your vehicle details below' : profileForm.phone ? `+91 ${profileForm.phone}` : 'Complete profile details below')
-                    : 'Register now to unlock all features'}
-                </Text>
+              <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '900', textAlign: 'center' }}>
+                {isLoggedIn ? (profileForm.name || 'MyFNG Customer') : 'Guest User'}
+              </Text>
+              <View style={{ marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: '#10B981' }}>
+                  <Ionicons name="shield-checkmark" size={11} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>VERIFIED CUSTOMER</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}>
+                  <Ionicons name="star" size={11} color="#FCD34D" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>MyFNG MEMBER</Text>
+                </View>
               </View>
             </View>
 
-            <View style={styles.myProfileFormCard}>
-              {!vehicleEntryOnly ? (
-                <>
-                  <Text style={styles.subTitle}>FULL NAME</Text>
+            {/* Step 1: Owner Information */}
+            <View style={{
+              borderRadius: 18,
+              borderWidth: 2,
+              borderColor: profileStep === 1 ? STEP_COLORS[1].accent : '#E2E8F0',
+              backgroundColor: '#FFFFFF',
+              overflow: 'hidden',
+              elevation: profileStep === 1 ? 5 : 2,
+              shadowColor: profileStep === 1 ? STEP_COLORS[1].accent : '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: profileStep === 1 ? 0.18 : 0.06,
+              shadowRadius: 10,
+            }}>
+              <View style={{ height: 4, width: '100%', backgroundColor: STEP_COLORS[1].accent }} />
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setProfileStep(profileStep === 1 ? 0 : 1)}
+                style={{ paddingHorizontal: 16, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: step1Done ? '#10B981' : STEP_COLORS[1].bg, alignItems: 'center', justifyContent: 'center' }}>
+                    {step1Done ? (
+                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                    ) : (
+                      <Ionicons name="person" size={16} color={STEP_COLORS[1].accent} />
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: STEP_COLORS[1].accent }}>1. Owner Information</Text>
+                </View>
+                <Ionicons name={profileStep === 1 ? 'chevron-up' : 'chevron-down'} size={18} color={STEP_COLORS[1].accent} />
+              </TouchableOpacity>
+              {profileStep === 1 && (
+                <View style={STEP_CONTENT_STYLE}>
+                  <Text style={STEP_LABEL_STYLE}>FULL NAME</Text>
                   <TextInput
-                    style={styles.input}
+                    style={STEP_INPUT_STYLE}
                     value={profileForm.name}
                     onChangeText={(text) => setProfileForm((prev) => ({ ...prev, name: text }))}
-                    placeholder="Enter your full name"
+                    placeholder="Rahul Sharma"
+                    placeholderTextColor="#9CA3AF"
                   />
-
-                  <Text style={styles.subTitle}>MOBILE NUMBER</Text>
+                  <Text style={STEP_LABEL_STYLE}>MOBILE NUMBER</Text>
                   <TextInput
-                    style={[styles.input, styles.readOnlyInput]}
+                    style={[STEP_INPUT_STYLE, { backgroundColor: '#F1F5F9', color: '#64748B' }]}
                     value={profileForm.phone ? `+91 ${profileForm.phone}` : ''}
-                    placeholder="Mobile number"
+                    placeholder="98XXXXXXXX"
+                    placeholderTextColor="#9CA3AF"
                     editable={false}
                   />
-
-                  <Text style={styles.subTitle}>EMAIL ADDRESS</Text>
+                  <Text style={STEP_LABEL_STYLE}>EMAIL ADDRESS</Text>
                   <TextInput
-                    style={styles.input}
+                    style={STEP_INPUT_STYLE}
                     value={profileForm.email}
                     onChangeText={(text) => setProfileForm((prev) => ({ ...prev, email: text }))}
-                    placeholder="Enter email address"
+                    placeholder="rahul@fng.com"
+                    placeholderTextColor="#9CA3AF"
                     keyboardType="email-address"
                     autoCapitalize="none"
                   />
-
-                  <View style={styles.formDivider} />
-                </>
-              ) : null}
-              <Text style={styles.subTitle}>CAR DETAILS</Text>
-
-              <Text style={styles.subTitle}>CAR MODEL</Text>
-              <View style={styles.carSearchWrap}>
-                <TextInput
-                  style={styles.input}
-                  value={carSearch}
-                  onChangeText={(text) => {
-                    setCarSearch(text);
-                    setSelectedCar(null);
-                  }}
-                  onFocus={() => setCarSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setCarSearchFocused(false), 400)}
-                  placeholder="Search Brand/Model (e.g. Swift)"
-                />
-                {carSearchLoading ? (
-                  <View style={styles.carSearchLoader}>
-                    <Text style={styles.rowSub}>Searching...</Text>
-                  </View>
-                ) : null}
-                {carSearchFocused && carSuggestions.length > 0 ? (
-                  <View style={styles.carSuggestionBox}>
-                    <FlatList
-                      data={carSuggestions.slice(0, 8)}
-                      keyExtractor={(item, idx) => String(item?.id || `${item?.make}-${item?.model || item?.model_name}-${idx}`)}
-                      keyboardShouldPersistTaps="handled"
-                      renderItem={({ item }) => {
-                        const itemMake = String(item?.make || '').trim();
-                        const itemModel = String(item?.model_name || item?.model || '').trim();
-                        return (
-                          <TouchableOpacity
-                            style={styles.carSuggestionItem}
-                            onPress={() => {
-                              setSelectedCar({ make: itemMake, model: itemModel, raw: item });
-                              setCarSearch([itemMake, itemModel].filter(Boolean).join(' '));
-                              setCarSuggestions([]);
-                              setCarSearchFocused(false);
-                            }}
-                          >
-                            <Text style={styles.carSuggestionTitle}>{[itemMake, itemModel].filter(Boolean).join(' ')}</Text>
-                            {!!item?.variant ? <Text style={styles.carSuggestionMeta}>{String(item.variant)}</Text> : null}
-                          </TouchableOpacity>
-                        );
-                      }}
-                    />
-                  </View>
-                ) : null}
-              </View>
-
-              <Text style={styles.subTitle}>REGISTRATION DATE OF CAR</Text>
-              <TouchableOpacity style={styles.datePickerInput} onPress={() => setShowRegDatePicker(true)} activeOpacity={0.85}>
-                <Text style={[styles.datePickerText, !regDate ? styles.datePickerTextPlaceholder : null]}>
-                  {regDate || 'dd-mm-yyyy'}
-                </Text>
-                <Ionicons name="calendar-outline" size={18} color="#6B7280" />
-              </TouchableOpacity>
-              {showRegDatePicker ? (
-                <View style={styles.datePickerWrap}>
-                  <DateTimePicker
-                    value={regDateValue}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    maximumDate={new Date()}
-                    onChange={onRegDateChange}
-                  />
-                  {Platform.OS === 'ios' ? (
-                    <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowRegDatePicker(false)}>
-                      <Text style={styles.datePickerDoneText}>Done</Text>
-                    </TouchableOpacity>
-                  ) : null}
+                  <TouchableOpacity style={[STEP_NEXT_BTN_STYLE, { backgroundColor: STEP_COLORS[1].accent }]} onPress={() => setProfileStep(2)} activeOpacity={0.85}>
+                    <Text style={STEP_NEXT_BTN_TEXT_STYLE}>Next: Vehicle Specs →</Text>
+                  </TouchableOpacity>
                 </View>
-              ) : null}
-
-              <Text style={styles.subTitle}>FUEL TYPE</Text>
-              <View style={styles.fuelPillRow}>
-                {(['Petrol', 'Diesel', 'CNG'] as const).map((fuel) => {
-                  const active = fuelType === fuel;
-                  const colors = FUEL_COLOR_MAP[fuel];
-                  return (
-                    <TouchableOpacity
-                      key={fuel}
-                      style={[
-                        styles.fuelPill,
-                        { borderColor: colors.border },
-                        active ? { backgroundColor: colors.bg, borderColor: colors.bg } : null,
-                      ]}
-                      onPress={() => setFuelType(fuel)}
-                    >
-                      <Text style={[styles.fuelPillText, { color: colors.text }, active ? styles.fuelPillTextActive : null]}>{fuel}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.subTitle}>CAR NUMBER</Text>
-              <View style={styles.carNumberRow}>
-                {[0, 1, 2, 3].map((idx) => (
-                  <TextInput
-                    key={String(idx)}
-                    ref={(input) => {
-                      carNumberRefs.current[idx] = input;
-                    }}
-                    style={[styles.carNumberInput, idx === 3 ? styles.carNumberInputWide : null]}
-                    value={carNumberParts[idx]}
-                    onChangeText={(text) => handleCarPartChange(idx, text)}
-                    maxLength={idx === 3 ? 4 : 2}
-                    autoCapitalize="characters"
-                    keyboardType={idx === 0 || idx === 2 ? 'default' : 'number-pad'}
-                    placeholder={idx === 0 ? 'MH' : idx === 1 ? '01' : idx === 2 ? 'BJ' : '7842'}
-                  />
-                ))}
-              </View>
+              )}
             </View>
 
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleRegisterSave}>
-              <Text style={styles.primaryBtnText}>
-                {isLoggedIn ? (vehicleEntryOnly ? 'Save Vehicle' : 'Save Changes') : 'Register Now'}
+            {/* Step 2: Vehicle Specs */}
+            <View style={{
+              borderRadius: 18,
+              borderWidth: 2,
+              borderColor: profileStep === 2 ? STEP_COLORS[2].accent : '#E2E8F0',
+              backgroundColor: '#FFFFFF',
+              overflow: 'hidden',
+              elevation: profileStep === 2 ? 5 : 2,
+              shadowColor: profileStep === 2 ? STEP_COLORS[2].accent : '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: profileStep === 2 ? 0.18 : 0.06,
+              shadowRadius: 10,
+            }}>
+              <View style={{ height: 4, width: '100%', backgroundColor: STEP_COLORS[2].accent }} />
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setProfileStep(profileStep === 2 ? 0 : 2)}
+                style={{ paddingHorizontal: 16, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: step2Done ? '#10B981' : STEP_COLORS[2].bg, alignItems: 'center', justifyContent: 'center' }}>
+                    {step2Done ? (
+                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                    ) : (
+                      <Ionicons name="car-sport" size={16} color={STEP_COLORS[2].accent} />
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: STEP_COLORS[2].accent }}>2. Vehicle Specs</Text>
+                </View>
+                <Ionicons name={profileStep === 2 ? 'chevron-up' : 'chevron-down'} size={18} color={STEP_COLORS[2].accent} />
+              </TouchableOpacity>
+              {profileStep === 2 && (
+                <View style={STEP_CONTENT_STYLE}>
+                  <Text style={STEP_LABEL_STYLE}>CAR BRAND & MODEL</Text>
+                  <View style={styles.carSearchWrap}>
+                    <TextInput
+                      style={STEP_INPUT_STYLE}
+                      value={carSearch}
+                      onChangeText={(text) => { setCarSearch(text); setSelectedCar(null); }}
+                      onFocus={() => setCarSearchFocused(true)}
+                      onBlur={() => setTimeout(() => setCarSearchFocused(false), 400)}
+                      placeholder="Search (e.g. Tata Nexon)"
+                      placeholderTextColor="#9CA3AF"
+                    />
+                    {carSearchLoading ? (
+                      <View style={styles.carSearchLoader}><Text style={styles.rowSub}>Searching...</Text></View>
+                    ) : null}
+                    {carSearchFocused && carSuggestions.length > 0 ? (
+                      <View style={styles.carSuggestionBox}>
+                        <FlatList
+                          data={carSuggestions.slice(0, 8)}
+                          keyExtractor={(item, idx) => String(item?.id || `${item?.make}-${item?.model || item?.model_name}-${idx}`)}
+                          keyboardShouldPersistTaps="handled"
+                          renderItem={({ item }) => {
+                            const itemMake = String(item?.make || '').trim();
+                            const itemModel = String(item?.model_name || item?.model || '').trim();
+                            return (
+                              <TouchableOpacity
+                                style={styles.carSuggestionItem}
+                                onPress={() => {
+                                  setSelectedCar({ make: itemMake, model: itemModel, raw: item });
+                                  setCarSearch([itemMake, itemModel].filter(Boolean).join(' '));
+                                  setCarSuggestions([]);
+                                  setCarSearchFocused(false);
+                                }}
+                              >
+                                <Text style={styles.carSuggestionTitle}>{[itemMake, itemModel].filter(Boolean).join(' ')}</Text>
+                                {!!item?.variant ? <Text style={styles.carSuggestionMeta}>{String(item.variant)}</Text> : null}
+                              </TouchableOpacity>
+                            );
+                          }}
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <Text style={STEP_LABEL_STYLE}>FUEL TYPE</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    {(['Petrol', 'Diesel', 'CNG'] as const).map((fuel) => {
+                      const active = fuelType === fuel;
+                      const colors = FUEL_COLOR_MAP[fuel];
+                      return (
+                        <TouchableOpacity
+                          key={fuel}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 11,
+                            paddingHorizontal: 8,
+                            borderRadius: 999,
+                            borderWidth: 1.5,
+                            borderColor: active ? colors.bg : colors.border,
+                            backgroundColor: active ? colors.bg : '#FFFFFF',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => setFuelType(fuel)}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: active ? '#FFFFFF' : colors.text }}>{fuel}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={STEP_LABEL_STYLE}>REG. DATE</Text>
+                  <TouchableOpacity style={STEP_DATE_STYLE} onPress={() => setShowRegDatePicker(true)} activeOpacity={0.85}>
+                    <Text style={[styles.datePickerText, !regDate ? styles.datePickerTextPlaceholder : null]}>
+                      {regDate || 'dd-mm-yyyy'}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                  </TouchableOpacity>
+                  {showRegDatePicker ? (
+                    <View style={styles.datePickerWrap}>
+                      <DateTimePicker
+                        value={regDateValue}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        maximumDate={new Date()}
+                        onChange={onRegDateChange}
+                      />
+                      {Platform.OS === 'ios' ? (
+                        <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowRegDatePicker(false)}>
+                          <Text style={styles.datePickerDoneText}>Done</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  <Text style={STEP_LABEL_STYLE}>VEHICLE NUMBER PLATE</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {[0, 1, 2, 3].map((idx) => (
+                      <TextInput
+                        key={String(idx)}
+                        ref={(input) => { carNumberRefs.current[idx] = input; }}
+                        style={[PLATE_BOX_STYLE, idx === 3 ? { flex: 1.5 } : null]}
+                        value={carNumberParts[idx]}
+                        onChangeText={(text) => handleCarPartChange(idx, text)}
+                        maxLength={idx === 3 ? 4 : 2}
+                        autoCapitalize="characters"
+                        keyboardType={idx === 0 || idx === 2 ? 'default' : 'number-pad'}
+                        placeholder={idx === 0 ? 'MH' : idx === 1 ? '01' : idx === 2 ? 'BJ' : '7842'}
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    ))}
+                  </View>
+                  <TouchableOpacity style={[STEP_NEXT_BTN_STYLE, { backgroundColor: STEP_COLORS[2].accent }]} onPress={() => setProfileStep(3)} activeOpacity={0.85}>
+                    <Text style={STEP_NEXT_BTN_TEXT_STYLE}>Next: Maintenance →</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Step 3: Maintenance Details */}
+            <View style={{
+              borderRadius: 18,
+              borderWidth: 2,
+              borderColor: profileStep === 3 ? STEP_COLORS[3].accent : '#E2E8F0',
+              backgroundColor: '#FFFFFF',
+              overflow: 'hidden',
+              elevation: profileStep === 3 ? 5 : 2,
+              shadowColor: profileStep === 3 ? STEP_COLORS[3].accent : '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: profileStep === 3 ? 0.18 : 0.06,
+              shadowRadius: 10,
+            }}>
+              <View style={{ height: 4, width: '100%', backgroundColor: STEP_COLORS[3].accent }} />
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setProfileStep(profileStep === 3 ? 0 : 3)}
+                style={{ paddingHorizontal: 16, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF' }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: STEP_COLORS[3].bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="construct" size={16} color={STEP_COLORS[3].accent} />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: STEP_COLORS[3].accent }}>3. Maintenance Details</Text>
+                </View>
+                <Ionicons name={profileStep === 3 ? 'chevron-up' : 'chevron-down'} size={18} color={STEP_COLORS[3].accent} />
+              </TouchableOpacity>
+              {profileStep === 3 && (
+                <View style={STEP_CONTENT_STYLE}>
+                  <Text style={STEP_LABEL_STYLE}>CHASSIS (LAST 5)</Text>
+                  <TextInput
+                    style={STEP_INPUT_STYLE}
+                    maxLength={5}
+                    placeholder="12345"
+                    placeholderTextColor="#9CA3AF"
+                    value={chassisNumber}
+                    onChangeText={(text) => setChassisNumber(text.toUpperCase())}
+                    autoCapitalize="characters"
+                  />
+
+                  <Text style={STEP_LABEL_STYLE}>INSURANCE EXPIRY</Text>
+                  <TouchableOpacity style={STEP_DATE_STYLE} onPress={() => setShowInsuranceDatePicker(true)} activeOpacity={0.85}>
+                    <Text style={[styles.datePickerText, !insuranceExpiry ? styles.datePickerTextPlaceholder : null]}>
+                      {insuranceExpiry || 'dd-mm-yyyy'}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                  </TouchableOpacity>
+                  {showInsuranceDatePicker ? (
+                    <View style={styles.datePickerWrap}>
+                      <DateTimePicker
+                        value={insuranceExpiryValue}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        minimumDate={new Date()}
+                        onChange={onInsuranceDateChange}
+                      />
+                      {Platform.OS === 'ios' ? (
+                        <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowInsuranceDatePicker(false)}>
+                          <Text style={styles.datePickerDoneText}>Done</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  <Text style={STEP_LABEL_STYLE}>CURRENT ODOMETER READING</Text>
+                  <View style={{ backgroundColor: '#121A29', borderRadius: 18, borderWidth: 3, borderColor: '#334155', paddingHorizontal: 14, paddingVertical: 8, marginTop: 4, position: 'relative', justifyContent: 'center' }}>
+                    <TextInput
+                      style={{ color: '#00F2FF', fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 8, paddingVertical: 12 }}
+                      placeholder="000000"
+                      placeholderTextColor="rgba(0,242,255,0.25)"
+                      keyboardType="number-pad"
+                      maxLength={7}
+                      value={odometerReading}
+                      onChangeText={(text) => setOdometerReading(text.replace(/[^0-9]/g, ''))}
+                    />
+                    <Text style={{ position: 'absolute', right: 14, bottom: 10, color: '#94A3B8', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>KMS</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Save Button */}
+            <TouchableOpacity
+              style={{
+                marginTop: 18,
+                marginHorizontal: 6,
+                borderRadius: 20,
+                paddingVertical: 18,
+                paddingHorizontal: 22,
+                flexDirection: 'row',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 10,
+                backgroundColor: '#0046AD',
+                overflow: 'hidden',
+                elevation: 10,
+                shadowColor: '#0046AD',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.4,
+                shadowRadius: 18,
+              }}
+              onPress={handleRegisterSave}
+              activeOpacity={0.9}
+            >
+              <View style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: 50, backgroundColor: '#0084FF', opacity: 0.5 }} />
+              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2 }}>
+                {isLoggedIn ? (vehicleEntryOnly ? 'SAVE VEHICLE' : 'SAVE CHANGES') : 'REGISTER NOW'}
               </Text>
             </TouchableOpacity>
           </View>
         );
+      }
       case 'Your Addresses':
         return (
           <View style={styles.subWrap}>
@@ -1685,12 +2341,28 @@ export default function SettingsScreen({ navigation, route }: Props) {
               <>
                 {showAddAddress ? (
                   <View style={styles.addressFormCard}>
-                    <TouchableOpacity style={styles.addressDetectBtn} onPress={handleFetchCurrentLocation}>
+                    <TouchableOpacity style={styles.addressDetectBtn} onPress={handleFetchCurrentLocation} disabled={locationLoading}>
                       <Ionicons name="locate-outline" size={16} color="#FFFFFF" />
                       <Text style={styles.addressDetectBtnText}>
                         {locationLoading ? 'Fetching location...' : 'Fetch Current Location'}
                       </Text>
                     </TouchableOpacity>
+
+                    <Text style={styles.subTitle}>Address Type</Text>
+                    <View style={styles.fuelPillRow}>
+                      {(['Home', 'Work', 'Others'] as const).map((label) => {
+                        const active = newAddrLabel === label;
+                        return (
+                          <TouchableOpacity
+                            key={label}
+                            style={[styles.fuelPill, active ? styles.fuelPillActive : null]}
+                            onPress={() => setNewAddrLabel(label)}
+                          >
+                            <Text style={[styles.fuelPillText, active ? styles.fuelPillTextActive : null]}>{label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
 
                     {editingAddressId ? (
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1740,22 +2412,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           placeholder="Pincode"
                         />
                       </View>
-                    </View>
-
-                    <Text style={styles.subTitle}>Address Type</Text>
-                    <View style={styles.fuelPillRow}>
-                      {(['Home', 'Work', 'Others'] as const).map((label) => {
-                        const active = newAddrLabel === label;
-                        return (
-                          <TouchableOpacity
-                            key={label}
-                            style={[styles.fuelPill, active ? styles.fuelPillActive : null]}
-                            onPress={() => setNewAddrLabel(label)}
-                          >
-                            <Text style={[styles.fuelPillText, active ? styles.fuelPillTextActive : null]}>{label}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
                     </View>
 
                     <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveAddress}>
@@ -2479,23 +3135,35 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     {resumableLeads.slice(0, 6).map((lead: any) => {
                       const active = cartSelectedLeadId === String(lead.id);
                       const planName = String(lead?.plan_name || lead?.package_name || lead?.service_type || 'Service').trim();
+                      const leadPrice = Math.max(0, Math.round(Number(lead?.estimated_amount || 0)));
                       return (
                         <TouchableOpacity
                           key={String(lead.id)}
                           style={[cstyles.resumeCard, active ? cstyles.resumeCardActive : null]}
-                          onPress={() => {
+                          disabled={cartSyncing}
+                          onPress={async () => {
                             setCartSelectedLeadId(String(lead.id));
                             setCartSelectedService((prev) => ({
                               name: planName || prev?.name || 'Periodic Service Package',
                               price: Number(lead?.estimated_amount || prev?.price || 2999),
                               items: prev?.items || ['Service Checklist', 'Basic Diagnostics', 'General Inspection'],
                             }));
+                            const alreadyInCart = (cartItems || []).some(
+                              (it: any) => String(it?.metadata?.lead_id || '') === String(lead.id),
+                            );
+                            if (!alreadyInCart) {
+                              await addCartItem(planName || 'Service', leadPrice || 2999, 1, {
+                                lead_id: String(lead.id),
+                                lead_number: lead?.lead_number || null,
+                                source: 'resume_booking',
+                              });
+                            }
                           }}
                         >
                           <Text style={cstyles.resumeLeadNumber}>{String(lead?.lead_number || '').toUpperCase() || 'BOOKING'}</Text>
                           <Text style={cstyles.resumePlanName} numberOfLines={1}>{planName}</Text>
                           <Text style={cstyles.resumeLeadMeta} numberOfLines={1}>
-                            {String(lead?.status || 'NEW').toUpperCase()} • ₹{Math.round(Number(lead?.estimated_amount || 0)).toLocaleString('en-IN')}
+                            {String(lead?.status || 'NEW').toUpperCase()} • ₹{leadPrice.toLocaleString('en-IN')}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -2503,62 +3171,51 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   </ScrollView>
                 </View>
               ) : null}
-              <View style={cstyles.serviceHeaderRow}>
-                <Text style={cstyles.serviceTitle}>{cartSelectedService?.name || 'Periodic Service Package'}</Text>
-                <Text style={cstyles.servicePrice}>₹{Math.round(Number(cartSelectedService?.price || 2999)).toLocaleString('en-IN')}</Text>
-              </View>
-              {(cartSelectedService?.items || []).map((item) => (
-                <View key={item} style={cstyles.serviceBulletRow}>
-                  <Ionicons name="checkmark" size={14} color="#22C55E" />
-                  <Text style={cstyles.serviceBulletText}>{item}</Text>
-                </View>
-              ))}
-              <View style={cstyles.serviceActionRow}>
-                <TouchableOpacity
-                  style={cstyles.removeBtn}
-                  onPress={() => setCartSelectedService((prev) => (prev ? { ...prev, items: [] } : prev))}
-                >
-                  <Text style={cstyles.removeBtnText}>Remove</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={cstyles.editBtn} onPress={() => navigation.navigate('PublicServicePackages' as never)}>
-                  <Text style={cstyles.editBtnText}>Edit Service</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
 
-            <Text style={cstyles.sectionHeading}>ADD-ON SERVICES</Text>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={recommendedAddOns}
-              keyExtractor={(item: any) => String(item.id)}
-              contentContainerStyle={cstyles.addOnRow}
-              renderItem={({ item }: { item: any }) => {
-                const selected = selectedAddOns.includes(item.id);
-                return (
+              {cartLoading ? (
+                <Text style={cstyles.workshopEmpty}>Loading your cart...</Text>
+              ) : cartItems.length === 0 ? (
+                <View style={cstyles.pickupEmptyWrap}>
+                  <Text style={cstyles.workshopEmpty}>Your cart is empty.</Text>
                   <TouchableOpacity
-                    style={[cstyles.addOnCard, { width: addOnCardWidth }, selected && cstyles.addOnCardActive]}
-                    onPress={() => toggleAddOn(item.id)}
+                    style={cstyles.addPickupBtn}
+                    onPress={() => navigation.navigate('PublicServicePackages' as never)}
                   >
-                    <View style={cstyles.addOnIconWrap}>
-                      <Ionicons name={(item.icon as any) || 'construct'} size={14} color="#374151" />
-                    </View>
-                    <Text style={cstyles.addOnName} numberOfLines={2}>{item.name}</Text>
-                    <Text style={cstyles.addOnPrice}>₹{Number(item.price || 0).toLocaleString('en-IN')}</Text>
-                    <View style={cstyles.addOnActionRow}>
-                      <Ionicons
-                        name={selected ? 'checkmark-circle' : 'add-circle-outline'}
-                        size={12}
-                        color={selected ? '#1D4ED8' : '#9CA3AF'}
-                      />
-                      <Text style={[cstyles.addOnActionText, selected && cstyles.addOnActionTextActive]}>
-                        {selected ? 'ADDED' : 'ADD'}
-                      </Text>
-                    </View>
+                    <Text style={cstyles.addPickupBtnText}>Add a Service</Text>
                   </TouchableOpacity>
-                );
-              }}
-            />
+                </View>
+              ) : (
+                cartItems.map((item: any, idx: number) => {
+                  const checklist = Array.isArray(item?.metadata?.items) ? item.metadata.items : (cartSelectedService?.items || []);
+                  return (
+                    <View key={String(item?.id || idx)} style={{ marginTop: idx === 0 ? 0 : 12, paddingTop: idx === 0 ? 0 : 12, borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: '#F3F4F6' }}>
+                      <View style={cstyles.serviceHeaderRow}>
+                        <Text style={cstyles.serviceTitle}>{String(item?.service_type || 'Service')}</Text>
+                        <Text style={cstyles.servicePrice}>₹{Math.round(Number(item?.total_price || 0)).toLocaleString('en-IN')}</Text>
+                      </View>
+                      {(checklist || []).slice(0, 4).map((line: string) => (
+                        <View key={line} style={cstyles.serviceBulletRow}>
+                          <Ionicons name="checkmark" size={14} color="#22C55E" />
+                          <Text style={cstyles.serviceBulletText}>{line}</Text>
+                        </View>
+                      ))}
+                      <View style={cstyles.serviceActionRow}>
+                        <TouchableOpacity
+                          style={cstyles.removeBtn}
+                          disabled={cartSyncing}
+                          onPress={() => removeCartItem(String(item?.id))}
+                        >
+                          <Text style={cstyles.removeBtnText}>{cartSyncing ? 'Removing...' : 'Remove'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={cstyles.editBtn} onPress={() => navigation.navigate('PublicServicePackages' as never)}>
+                          <Text style={cstyles.editBtnText}>Edit Service</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
 
             <View style={cstyles.sectionCard}>
               <Text style={cstyles.subHeading}>APPLY COUPON</Text>
@@ -2574,23 +3231,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 <TouchableOpacity style={cstyles.applyBtn} onPress={applyCartCoupon} disabled={cartCouponLoading}>
                   <Text style={cstyles.applyBtnText}>{cartCouponLoading ? '...' : 'Apply'}</Text>
                 </TouchableOpacity>
-              </View>
-
-              <View style={cstyles.creditRow}>
-                <View style={cstyles.creditChip}>
-                  <Ionicons name="wallet-outline" size={14} color="#6B7280" />
-                  <View>
-                    <Text style={cstyles.creditTitle}>Wallet</Text>
-                    <Text style={cstyles.creditValue}>Balance: ₹{Number(walletBalance || 0).toLocaleString('en-IN')}</Text>
-                  </View>
-                </View>
-                <View style={cstyles.creditChip}>
-                  <Ionicons name="gift-outline" size={14} color="#6B7280" />
-                  <View>
-                    <Text style={cstyles.creditTitle}>Referral</Text>
-                    <Text style={cstyles.creditValue}>Points: {walletReferralRewards.toLocaleString('en-IN')}</Text>
-                  </View>
-                </View>
               </View>
             </View>
 
@@ -2665,15 +3305,30 @@ export default function SettingsScreen({ navigation, route }: Props) {
               <View style={cstyles.sectionCard}>
                 <View style={cstyles.workshopHeader}>
                   <Text style={cstyles.workshopTitle}>Nearest Workshops</Text>
-                  <TouchableOpacity onPress={fetchCartWorkshops}>
+                  <TouchableOpacity onPress={fetchCartWorkshops} disabled={cartWorkshopLoading}>
                     <Text style={cstyles.changeLink}>{cartWorkshopLoading ? 'Loading...' : 'Refresh'}</Text>
                   </TouchableOpacity>
                 </View>
-                {cartWorkshops.length === 0 ? (
-                  <Text style={cstyles.workshopEmpty}>No workshop found nearby. Try again.</Text>
+                {cartWorkshopLoading ? (
+                  <Text style={cstyles.workshopEmpty}>Searching nearby workshops...</Text>
+                ) : cartWorkshops.length === 0 ? (
+                  <View style={cstyles.pickupEmptyWrap}>
+                    <Text style={cstyles.workshopEmpty}>
+                      {(() => {
+                        const sa = savedAddresses.find((a) => a.id === cartPickupAddressId);
+                        const c = String(sa?.city || '').trim();
+                        return c
+                          ? `No workshops found in ${c}. Try refreshing or change your saved address.`
+                          : 'No workshops found nearby. Try refreshing.';
+                      })()}
+                    </Text>
+                    <TouchableOpacity style={cstyles.addPickupBtn} onPress={fetchCartWorkshops}>
+                      <Text style={cstyles.addPickupBtnText}>Refresh</Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : (
                   <View style={cstyles.workshopList}>
-                    {cartWorkshops.slice(0, 6).map((workshop: any) => {
+                    {cartWorkshops.slice(0, 8).map((workshop: any) => {
                       const active = String(workshop.id) === cartSelectedWorkshopId;
                       return (
                         <TouchableOpacity
@@ -2714,20 +3369,103 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       })}
                     </View>
                   ) : (
-                    <View style={cstyles.pickupEmptyWrap}>
-                      <Text style={cstyles.workshopEmpty}>No saved pickup address found.</Text>
+                    <Text style={cstyles.workshopEmpty}>No saved pickup address yet. Add one below.</Text>
+                  )}
+
+                  <TouchableOpacity
+                    style={cstyles.pickupToggleRow}
+                    onPress={() => setShowInlinePickupAdd((v) => !v)}
+                  >
+                    <Ionicons
+                      name={showInlinePickupAdd ? 'remove-circle-outline' : 'add-circle-outline'}
+                      size={16}
+                      color="#1D4ED8"
+                    />
+                    <Text style={cstyles.pickupToggleText}>
+                      {showInlinePickupAdd ? 'Cancel' : 'Add new pickup address'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showInlinePickupAdd ? (
+                    <View style={cstyles.pickupFormWrap}>
+                      <View style={cstyles.pickupLabelRow}>
+                        {(['Home', 'Work', 'Others'] as const).map((label) => {
+                          const active = pickupForm.label === label;
+                          return (
+                            <TouchableOpacity
+                              key={label}
+                              style={[cstyles.pickupLabelPill, active ? cstyles.pickupLabelPillActive : null]}
+                              onPress={() => setPickupForm((prev) => ({ ...prev, label }))}
+                            >
+                              <Text style={[cstyles.pickupLabelPillText, active ? cstyles.pickupLabelPillTextActive : null]}>{label}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
                       <TouchableOpacity
-                        style={cstyles.addPickupBtn}
-                        onPress={() => {
-                          setVehicleEntryOnly(false);
-                          setActiveSubPage('Your Addresses');
-                          setShowAddAddress(true);
-                        }}
+                        style={cstyles.pickupLocateBtn}
+                        onPress={handlePickupQuickLocation}
+                        disabled={pickupLocationLoading}
                       >
-                        <Text style={cstyles.addPickupBtnText}>Add New Address</Text>
+                        <Ionicons name="locate-outline" size={14} color="#FFFFFF" />
+                        <Text style={cstyles.pickupLocateBtnText}>
+                          {pickupLocationLoading ? 'Fetching location...' : 'Use Current Location'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TextInput
+                        style={cstyles.pickupInput}
+                        placeholder="Address line 1 (House / Flat / Building) *"
+                        placeholderTextColor="#9CA3AF"
+                        value={pickupForm.line1}
+                        onChangeText={(t) => setPickupForm((prev) => ({ ...prev, line1: t }))}
+                      />
+                      <TextInput
+                        style={cstyles.pickupInput}
+                        placeholder="Address line 2 (Area / Street) — optional"
+                        placeholderTextColor="#9CA3AF"
+                        value={pickupForm.line2}
+                        onChangeText={(t) => setPickupForm((prev) => ({ ...prev, line2: t }))}
+                      />
+                      <View style={cstyles.pickupRow2}>
+                        <TextInput
+                          style={[cstyles.pickupInput, { flex: 1 }]}
+                          placeholder="City"
+                          placeholderTextColor="#9CA3AF"
+                          value={pickupForm.city}
+                          onChangeText={(t) => setPickupForm((prev) => ({ ...prev, city: t }))}
+                        />
+                        <TextInput
+                          style={[cstyles.pickupInput, { flex: 1 }]}
+                          placeholder="Pincode"
+                          placeholderTextColor="#9CA3AF"
+                          value={pickupForm.pincode}
+                          onChangeText={(t) => setPickupForm((prev) => ({ ...prev, pincode: t.replace(/[^0-9]/g, '').slice(0, 6) }))}
+                          keyboardType="number-pad"
+                          maxLength={6}
+                        />
+                      </View>
+                      <TouchableOpacity
+                        style={[cstyles.addPickupBtn, { alignSelf: 'stretch', alignItems: 'center', marginTop: 4 }]}
+                        onPress={handleSaveInlinePickup}
+                        disabled={pickupSaving}
+                      >
+                        <Text style={cstyles.addPickupBtnText}>{pickupSaving ? 'Saving...' : 'Save Address'}</Text>
                       </TouchableOpacity>
                     </View>
-                  )}
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={cstyles.pickupManageRow}
+                    onPress={() => {
+                      setVehicleEntryOnly(false);
+                      setActiveSubPage('Your Addresses');
+                    }}
+                  >
+                    <Text style={cstyles.pickupManageText}>Manage all addresses</Text>
+                    <Ionicons name="chevron-forward" size={14} color="#1D4ED8" />
+                  </TouchableOpacity>
                 </View>
               </>
             ) : null}
@@ -3037,6 +3775,23 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const subPageContent = renderSubPage();
 
+  const allMenuItems = [...MAIN_MENU, ...LEGAL_MENU];
+  const subPageLabel = useMemo(() => {
+    if (!activeSubPage) return 'Settings';
+    const found = allMenuItems.find((m) => m.id === activeSubPage);
+    return found?.label || activeSubPage;
+  }, [activeSubPage]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (activeSubPage) {
+        e.preventDefault();
+        setActiveSubPage(null);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, activeSubPage]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
@@ -3049,7 +3804,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         >
           <Ionicons name="chevron-back" size={18} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{activeSubPage || 'Settings'}</Text>
+        <Text style={styles.headerTitle}>{subPageLabel}</Text>
         <View style={styles.iconCircleGhost} />
       </View>
       {activeSubPage ? (
@@ -3107,8 +3862,8 @@ const styles = StyleSheet.create({
   addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  gridCard: { width: '48.8%', backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
+  gridCard: { width: (Dimensions.get('window').width - 32 - 8) / 2, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   gridCardText: { fontSize: 12, fontWeight: '700', color: '#111827', flex: 1 },
   socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
   socialBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
@@ -3135,10 +3890,25 @@ const styles = StyleSheet.create({
   formDivider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 4 },
   carSearchWrap: { position: 'relative', zIndex: 10 },
   carSearchLoader: { marginTop: 4 },
-  carSuggestionBox: { marginTop: 6, borderRadius: 12, borderWidth: 1, borderColor: '#DBEAFE', backgroundColor: '#FFFFFF', maxHeight: 220, overflow: 'hidden' },
-  carSuggestionItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EFF6FF' },
-  carSuggestionTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
-  carSuggestionMeta: { marginTop: 2, fontSize: 11, color: '#6B7280' },
+  carSuggestionBox: { marginTop: 8, borderRadius: 14, backgroundColor: 'transparent', maxHeight: 260, paddingVertical: 4 },
+  carSuggestionItem: {
+    backgroundColor: '#0046AD',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 8,
+    marginHorizontal: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#0046AD',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  carSuggestionTitle: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.3 },
+  carSuggestionMeta: { marginTop: 2, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
   fuelPillRow: { flexDirection: 'row', gap: 8 },
   fuelPill: { borderRadius: 999, borderWidth: 1, borderColor: '#BFDBFE', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#FFFFFF' },
   fuelPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
@@ -3453,22 +4223,6 @@ const cstyles = StyleSheet.create({
   resumeLeadNumber: { fontSize: 10, fontWeight: '800', color: '#6B7280' },
   resumePlanName: { marginTop: 4, fontSize: 12, fontWeight: '800', color: '#111827' },
   resumeLeadMeta: { marginTop: 2, fontSize: 10, fontWeight: '700', color: '#6B7280' },
-  addOnRow: { paddingRight: 8, gap: 8 },
-  addOnCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    padding: 9,
-  },
-  addOnCardActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
-  addOnIconWrap: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  addOnName: { minHeight: 30, fontSize: 11, fontWeight: '800', color: '#1F2937' },
-  addOnPrice: { marginTop: 2, fontSize: 13, fontWeight: '900', color: '#1D4ED8' },
-  addOnActionRow: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addOnActionText: { fontSize: 10, fontWeight: '700', color: '#9CA3AF' },
-  addOnActionTextActive: { color: '#1D4ED8' },
-
   couponRow: { flexDirection: 'row', gap: 8 },
   couponInput: { flex: 1, minHeight: 42, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, fontSize: 13, color: '#111827' },
   applyBtn: { minWidth: 72, borderRadius: 10, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
@@ -3503,8 +4257,66 @@ const cstyles = StyleSheet.create({
   pickupAddressLabel: { fontSize: 11, fontWeight: '800', color: '#374151', textTransform: 'uppercase' },
   pickupAddressValue: { marginTop: 3, fontSize: 12, fontWeight: '500', color: '#4B5563' },
   pickupEmptyWrap: { alignItems: 'flex-start' },
-  addPickupBtn: { marginTop: 10, borderRadius: 10, backgroundColor: '#1D4ED8', paddingHorizontal: 12, paddingVertical: 8 },
+  addPickupBtn: { marginTop: 10, borderRadius: 10, backgroundColor: '#1D4ED8', paddingHorizontal: 12, paddingVertical: 10 },
   addPickupBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  pickupToggleRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  pickupToggleText: { fontSize: 12, fontWeight: '800', color: '#1D4ED8' },
+  pickupFormWrap: { marginTop: 10, gap: 8 },
+  pickupLabelRow: { flexDirection: 'row', gap: 8 },
+  pickupLabelPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  pickupLabelPillActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
+  pickupLabelPillText: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
+  pickupLabelPillTextActive: { color: '#1D4ED8' },
+  pickupLocateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    borderRadius: 10,
+    backgroundColor: '#0EA56B',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pickupLocateBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  pickupInput: {
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+  pickupRow2: { flexDirection: 'row', gap: 8 },
+  pickupManageRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingTop: 10,
+  },
+  pickupManageText: { fontSize: 12, fontWeight: '800', color: '#1D4ED8' },
 
   summaryTitle: { fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 12 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
@@ -3730,4 +4542,259 @@ const dstyles = StyleSheet.create({
     borderRadius: 14,
     zIndex: 1,
   },
+
+  profileWrap: { padding: 14, gap: 14, paddingBottom: 28 },
+  profileBanner: {
+    backgroundColor: '#0046AD',
+    borderRadius: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: '#0046AD',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  profileBannerGlow: {
+    position: 'absolute',
+    top: -70,
+    right: -70,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#0084FF',
+    opacity: 0.45,
+  },
+  profileBannerGlow2: {
+    position: 'absolute',
+    bottom: -80,
+    left: -50,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#F97316',
+    opacity: 0.2,
+  },
+  profileBannerStripe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+    backgroundColor: '#F97316',
+  },
+  profileBannerBadge: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16, 185, 129, 0.95)',
+  },
+  profileBannerBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  stepAccentBar: {
+    height: 4,
+    width: '100%',
+  },
+  profileDpWrap: {
+    marginBottom: 14,
+    position: 'relative',
+    width: 82,
+    height: 82,
+  },
+  profileDp: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileDpText: { color: '#FFFFFF', fontSize: 32, fontWeight: '900' },
+  profileDpEdit: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#0084FF',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileBannerName: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
+  profileBannerSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 4 },
+
+  stepContainer: {
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#EEF2F6',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  stepContainerActive: {
+    borderColor: '#0046AD',
+    shadowColor: '#0046AD',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  stepHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  stepHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stepIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepIconCircleDone: { backgroundColor: '#10B981' },
+  stepHeaderText: { fontSize: 14, fontWeight: '800', color: '#0046AD' },
+  stepContent: {
+    backgroundColor: '#FAFBFC',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EEF2F6',
+  },
+  stepLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  stepInput: {
+    width: '100%',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  stepInputReadonly: { backgroundColor: '#F1F5F9', color: '#64748B' },
+  stepDateInput: {
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stepNextBtn: {
+    marginTop: 14,
+    backgroundColor: '#0046AD',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  stepNextBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  stepRow: { flexDirection: 'row', gap: 12 },
+
+  plateGrid: { flexDirection: 'row', gap: 8 },
+  plateBox: {
+    flex: 1,
+    paddingVertical: 14,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1E293B',
+    textTransform: 'uppercase',
+  },
+  plateBoxWide: { flex: 1.5 },
+
+  odoWrapper: {
+    backgroundColor: '#121A29',
+    borderRadius: 18,
+    borderWidth: 3,
+    borderColor: '#334155',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: 4,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  odoInput: {
+    color: '#00F2FF',
+    fontSize: 30,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 8,
+    paddingVertical: 12,
+  },
+  odoUnit: {
+    position: 'absolute',
+    right: 14,
+    bottom: 10,
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+
+  profileBigSaveBtn: {
+    marginTop: 18,
+    marginHorizontal: 6,
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#0046AD',
+    overflow: 'hidden',
+    shadowColor: '#0046AD',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  profileBigSaveBtnGlow: {
+    position: 'absolute',
+    top: -20,
+    right: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#0084FF',
+    opacity: 0.45,
+  },
+  profileBigSaveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2 },
 });
