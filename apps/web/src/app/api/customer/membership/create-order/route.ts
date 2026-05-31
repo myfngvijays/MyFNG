@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const planId = String(body.plan_id || '');
+  const addSecondCar = Boolean(body.add_second_car);
   if (!planId) return NextResponse.json({ error: 'plan_id is required' }, { status: 400 });
 
   const { data: plan } = await supabaseAdmin
@@ -31,7 +32,9 @@ export async function POST(request: NextRequest) {
 
   if (!plan) return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
 
-  const amount = Number(plan.price || 0);
+  const SECOND_CAR_ADDON_PRICE = 299;
+  const baseAmount = Number(plan.price || 0);
+  const amount = baseAmount + (addSecondCar ? SECOND_CAR_ADDON_PRICE : 0);
   if (amount <= 0) return NextResponse.json({ error: 'Plan has no price' }, { status: 400 });
 
   const amountInPaise = Math.round(amount * 100);
@@ -52,6 +55,7 @@ export async function POST(request: NextRequest) {
         plan_id: plan.id,
         plan_name: plan.name,
         type: 'membership',
+        add_second_car: addSecondCar ? 'yes' : 'no',
       },
     }),
   });
