@@ -167,6 +167,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [walletTxFilter, setWalletTxFilter] = useState<'ALL' | 'CREDIT' | 'DEBIT'>('ALL');
   const [walletPromoCode, setWalletPromoCode] = useState('');
   const [orderFilter, setOrderFilter] = useState<'All' | 'Completed' | 'Upcoming' | 'Ongoing' | 'Cancelled'>('All');
+  const [orderDetailModal, setOrderDetailModal] = useState<any>(null);
+  const [orderDetailLoading, setOrderDetailLoading] = useState(false);
   const [coupon, setCoupon] = useState('');
   const [cartServiceMode, setCartServiceMode] = useState<'pickup' | 'workshop'>('pickup');
   const [cartPaymentMode, setCartPaymentMode] = useState<'pay_now' | 'pay_later'>('pay_now');
@@ -1058,6 +1060,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
     };
     return (fallbackMap[plan.code] || fallbackMap.BRONZE).map((b, idx) => ({ ...b, id: `fb-${idx}` }));
   }, [membershipPlans, selectedMembershipIdx, membershipBenefits]);
+
+  const viewOrderDetails = async (orderId: string) => {
+    setOrderDetailLoading(true);
+    try {
+      const res = await apiFetch<any>(`/api/customer/orders/${orderId}`);
+      setOrderDetailModal(res);
+    } catch {
+      Alert.alert('Error', 'Could not load order details.');
+    } finally {
+      setOrderDetailLoading(false);
+    }
+  };
 
   const handleMembershipUpgrade = async () => {
     if (!isLoggedIn) {
@@ -3059,7 +3073,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         <Text style={ostyles.detailLabel}>TOTAL AMOUNT</Text>
                         <Text style={ostyles.amountValue}>{displayAmt}</Text>
                       </View>
-                      <TouchableOpacity style={ostyles.viewDetailsBtn}>
+                      <TouchableOpacity style={ostyles.viewDetailsBtn} onPress={() => viewOrderDetails(order.id)}>
                         <Text style={ostyles.viewDetailsBtnText}>View Details</Text>
                       </TouchableOpacity>
                     </View>
@@ -3814,6 +3828,124 @@ export default function SettingsScreen({ navigation, route }: Props) {
         </ScrollView>
       ) : (
         renderMain()
+      )}
+
+      <Modal visible={!!orderDetailModal} transparent animationType="slide" onRequestClose={() => setOrderDetailModal(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%', paddingBottom: 30 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: '#111827' }}>Order Details</Text>
+              <TouchableOpacity onPress={() => setOrderDetailModal(null)}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            {orderDetailModal && (
+              <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+                {(() => {
+                  const o = orderDetailModal.order || {};
+                  const inv = orderDetailModal.invoice;
+                  const activities = orderDetailModal.activities || [];
+                  const extras = orderDetailModal.extra_charges || [];
+                  const toTitleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+                  const carModel = [o.vehicle_make, o.vehicle_model].filter(Boolean).map((s: string) => toTitleCase(s)).join(' ');
+                  const dt = o.created_at ? new Date(o.created_at) : null;
+                  return (
+                    <View style={{ gap: 14, paddingBottom: 20 }}>
+                      <View style={{ backgroundColor: '#F0F7FF', borderRadius: 12, padding: 14, gap: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B7280' }}>ORDER #{(o.lead_number || o.id || '').toString().toUpperCase()}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>{carModel || 'Vehicle'}</Text>
+                        <Text style={{ fontSize: 13, color: '#374151' }}>{o.service_display || o.service_type || 'Service'}</Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>DATE</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginTop: 2 }}>{dt ? dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</Text>
+                        </View>
+                        <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>STATUS</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: o.status === 'COMPLETED' ? '#16A34A' : '#F59E0B', marginTop: 2 }}>{toTitleCase(o.status || 'Pending')}</Text>
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>WORKSHOP</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginTop: 2 }}>{o.workshop_name || 'MyFNG Partner'}</Text>
+                        </View>
+                        <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>AMOUNT</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827', marginTop: 2 }}>₹{Math.round(Number(o.amount_display || o.estimated_cost || 0)).toLocaleString('en-IN')}</Text>
+                        </View>
+                      </View>
+
+                      {o.customer_address ? (
+                        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>PICKUP ADDRESS</Text>
+                          <Text style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>{o.customer_address}</Text>
+                        </View>
+                      ) : null}
+
+                      {(orderDetailModal.services || []).length > 0 || (orderDetailModal.addons || []).length > 0 ? (
+                        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10, gap: 4 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>SERVICES & ADDONS</Text>
+                          {(o.services || []).map((s: string, i: number) => (
+                            <Text key={`s-${i}`} style={{ fontSize: 13, color: '#111827' }}>• {s}</Text>
+                          ))}
+                          {(o.addons || []).map((a: string, i: number) => (
+                            <Text key={`a-${i}`} style={{ fontSize: 13, color: '#6B7280' }}>+ {a}</Text>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {inv ? (
+                        <View style={{ backgroundColor: '#F0FDF4', borderRadius: 10, padding: 10, gap: 4 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>INVOICE</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>#{inv.invoice_number || '-'}</Text>
+                          <Text style={{ fontSize: 12, color: '#374151' }}>Amount: ₹{Math.round(Number(inv.final_amount || 0)).toLocaleString('en-IN')}</Text>
+                          <Text style={{ fontSize: 12, color: inv.payment_status === 'PAID' ? '#16A34A' : '#F59E0B' }}>Payment: {inv.payment_status || 'Pending'}</Text>
+                        </View>
+                      ) : null}
+
+                      {extras.length > 0 ? (
+                        <View style={{ backgroundColor: '#FFF7ED', borderRadius: 10, padding: 10, gap: 4 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>EXTRA CHARGES</Text>
+                          {extras.map((e: any) => (
+                            <View key={e.id} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                              <Text style={{ fontSize: 12, color: '#374151', flex: 1 }}>{e.description}</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: '#111827' }}>₹{Number(e.amount || 0)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {activities.length > 0 ? (
+                        <View style={{ gap: 4 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#9CA3AF', marginBottom: 4 }}>ACTIVITY TIMELINE</Text>
+                          {activities.slice(0, 10).map((act: any) => (
+                            <View key={act.id} style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#CBD5E1', marginTop: 5 }} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 12, color: '#374151' }}>{act.description || act.activity_type}</Text>
+                                <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>{act.created_at ? new Date(act.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</Text>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })()}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {orderDetailLoading && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151' }}>Loading...</Text>
+        </View>
       )}
     </SafeAreaView>
   );
