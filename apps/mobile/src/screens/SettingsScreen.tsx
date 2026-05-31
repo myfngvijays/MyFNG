@@ -29,6 +29,7 @@ import { supabase } from '../lib/supabase';
 import {
   LEGAL_SECTIONS,
   MEMBERSHIP_PLANS,
+  PRIME_MEMBERSHIP,
   SUPPORT_FAQ_CATEGORIES,
 } from '../constants/publicAppData';
 import { COLORS } from '../constants/theme';
@@ -475,7 +476,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const hydrateCustomerData = useCallback(async () => {
     setDataLoading(true);
     try {
-      const [profileRes, vehiclesRes, ordersRes, walletRes, referralRes, leadsRes] = await Promise.all([
+      // Use allSettled so a single failing endpoint (e.g. wallet/referral)
+      // never wipes out the rest of the profile (name, vehicles, orders).
+      const settled = await Promise.allSettled([
         apiFetch<any>('/api/customer/profile'),
         apiFetch<any>('/api/customer/vehicles'),
         apiFetch<any>('/api/customer/orders'),
@@ -483,6 +486,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
         apiFetch<any>('/api/customer/referral'),
         apiFetch<any>('/api/customer/leads'),
       ]);
+      const valueOf = (i: number) => (settled[i]?.status === 'fulfilled' ? (settled[i] as PromiseFulfilledResult<any>).value : null);
+      const profileRes = valueOf(0);
+      const vehiclesRes = valueOf(1);
+      const ordersRes = valueOf(2);
+      const walletRes = valueOf(3);
+      const referralRes = valueOf(4);
+      const leadsRes = valueOf(5);
 
       const customer = profileRes?.customer || {};
       setCustomerId(customer?.id ? String(customer.id) : null);
@@ -1097,7 +1107,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setActiveSubPage('My Profile');
       return;
     }
-    const plan = membershipPlans[selectedMembershipIdx];
+    const plan =
+      membershipPlans.find((p: any) => String(p?.code || '').toUpperCase() === 'PRIME' && p?.raw?.id) ||
+      membershipPlans.find((p: any) => p?.raw?.id) ||
+      membershipPlans[selectedMembershipIdx];
     if (!plan?.raw?.id) {
       Alert.alert('Membership', 'Plan details not available. Please try again.');
       return;
@@ -2542,78 +2555,79 @@ export default function SettingsScreen({ navigation, route }: Props) {
             )}
           </View>
         );
-      case 'Membership':
+      case 'Membership': {
+        const isPrimeCurrent = Boolean(currentMembership);
         return (
           <View style={styles.subWrap}>
-            <View style={styles.memHeaderCard}>
-              <View style={styles.memTrophyCircle}>
-                <Ionicons name="trophy" size={28} color={COLORS.primary} />
+            {/* Prime price card */}
+            <View style={styles.primeCard}>
+              <View style={styles.primeRow}>
+                <Text style={styles.primeName}>{PRIME_MEMBERSHIP.name}</Text>
+                <View style={styles.primeBadge}>
+                  <Text style={styles.primeBadgeText}>{PRIME_MEMBERSHIP.badge}</Text>
+                </View>
               </View>
-              <Text style={styles.memHeaderTitle}>MyFNG Membership</Text>
-              <Text style={styles.memHeaderSub}>Unlock exclusive benefits and savings</Text>
+              <View style={styles.primePriceRow}>
+                <Text style={styles.primePriceAmount}>{PRIME_MEMBERSHIP.price}</Text>
+                <Text style={styles.primePricePeriod}>{PRIME_MEMBERSHIP.period}</Text>
+              </View>
+              <Text style={styles.primeTagline}>{PRIME_MEMBERSHIP.tagline}</Text>
+              {isPrimeCurrent ? (
+                <View style={styles.primeActiveBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color="#047857" />
+                  <Text style={styles.primeActiveText}>ACTIVE</Text>
+                </View>
+              ) : null}
             </View>
 
-            {(membershipPlans.length > 0 ? membershipPlans : MEMBERSHIP_PLANS.map((p, i) => ({ id: String(i), name: p.name, price: p.price, color: p.color, code: i === 0 ? 'BRONZE' : i === 1 ? 'SILVER' : 'GOLD', raw: null }))).map((plan: any, idx: number) => {
-              const isSelected = selectedMembershipIdx === idx;
-              const isCurrent = Boolean(currentMembership && currentMembership.plan_id === plan.id);
-              const isRecommended = idx === 1;
-              return (
-                <TouchableOpacity
-                  key={plan.id || plan.name}
-                  style={[styles.memPlanCard, isSelected ? styles.memPlanCardActive : null]}
-                  onPress={() => setSelectedMembershipIdx(idx)}
-                  activeOpacity={0.85}
+            {/* Benefits card */}
+            <View style={styles.primeBenefitsCard}>
+              <Text style={styles.primeBenefitsLabel}>BENEFITS FOR {PRIME_MEMBERSHIP.name.toUpperCase()}</Text>
+              {PRIME_MEMBERSHIP.benefits.map((b, idx) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.primeBenefitRow,
+                    idx === PRIME_MEMBERSHIP.benefits.length - 1 ? { borderBottomWidth: 0 } : null,
+                  ]}
                 >
-                  {isRecommended ? (
-                    <View style={styles.memRecommendedBadge}>
-                      <Text style={styles.memRecommendedText}>RECOMMENDED</Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.memPlanRow}>
-                    <View style={[styles.memPlanDot, isSelected ? styles.memPlanDotActive : null]}>
-                      {isSelected ? <View style={styles.memPlanDotInner} /> : null}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.memPlanName}>{plan.name}</Text>
-                      <Text style={styles.memPlanPrice}>{plan.price} / Year</Text>
-                    </View>
-                    {isCurrent ? (
-                      <View style={styles.memCurrentBadge}>
-                        <Text style={styles.memCurrentText}>CURRENT</Text>
-                      </View>
-                    ) : null}
-                    <View style={[styles.memRadioOuter, isSelected ? styles.memRadioOuterActive : null]}>
-                      {isSelected ? <Ionicons name="checkmark" size={14} color="#FFFFFF" /> : null}
-                    </View>
+                  <View style={styles.primeBenefitIcon}>
+                    <Ionicons name={b.icon as any} size={17} color={COLORS.primary} />
                   </View>
-                </TouchableOpacity>
-              );
-            })}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.primeBenefitTitle}>{b.title}</Text>
+                    <Text style={styles.primeBenefitSub}>{b.description}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
 
-            {selectedPlanBenefits.length > 0 ? (
-              <View style={styles.memBenefitsCard}>
-                <Text style={styles.memBenefitsHeading}>
-                  Benefits for {membershipPlans[selectedMembershipIdx]?.name || 'MyFNG Go'}
-                </Text>
-                {selectedPlanBenefits.map((b: any, idx: number) => (
-                  <View key={b.id || idx} style={styles.memBenefitRow}>
-                    <Ionicons name={(b.icon || 'checkmark-circle-outline') as any} size={18} color={COLORS.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.memBenefitTitle}>{b.title}</Text>
-                      <Text style={styles.memBenefitDesc}>{b.description}</Text>
-                    </View>
-                  </View>
-                ))}
+            {/* Add-on card */}
+            <View style={styles.primeAddonCard}>
+              <Ionicons name={PRIME_MEMBERSHIP.addOn.icon as any} size={22} color={COLORS.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.primeAddonTitle}>{PRIME_MEMBERSHIP.addOn.title}</Text>
+                <Text style={styles.primeAddonSub}>{PRIME_MEMBERSHIP.addOn.description}</Text>
               </View>
-            ) : null}
+              <Text style={styles.primeAddonPrice}>{PRIME_MEMBERSHIP.addOn.price}</Text>
+            </View>
 
-            <TouchableOpacity style={styles.memUpgradeBtn} onPress={handleMembershipUpgrade}>
+            {/* CTA */}
+            <TouchableOpacity
+              style={[styles.memUpgradeBtn, { marginTop: 14 }, isPrimeCurrent ? { backgroundColor: '#9CA3AF' } : null]}
+              onPress={handleMembershipUpgrade}
+              disabled={isPrimeCurrent}
+              activeOpacity={0.85}
+            >
               <Text style={styles.memUpgradeBtnText}>
-                {isLoggedIn ? 'Upgrade Now  →' : 'Upgrade Now  →'}
+                {isPrimeCurrent ? 'Already Active' : 'Activate Now  →'}
               </Text>
             </TouchableOpacity>
+
+            <Text style={styles.primeFooterNote}>{PRIME_MEMBERSHIP.footerNote}</Text>
           </View>
         );
+      }
       case 'Your Wallet': {
         const bal = isLoggedIn ? Number(walletBalance || 0) : 0;
         const pts = isLoggedIn ? walletRewardPoints : 0;
@@ -4419,6 +4433,28 @@ const styles = StyleSheet.create({
   memBenefitDesc: { fontSize: 11, fontWeight: '500', color: '#6B7280', marginTop: 1 },
   memUpgradeBtn: { borderRadius: 14, backgroundColor: '#1E3A5F', minHeight: 50, alignItems: 'center', justifyContent: 'center' },
   memUpgradeBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  primeCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, borderWidth: 2, borderColor: COLORS.primary },
+  primeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  primeName: { fontSize: 22, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.5 },
+  primeBadge: { backgroundColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  primeBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  primePriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 6 },
+  primePriceAmount: { fontSize: 30, fontWeight: '800', color: COLORS.primary },
+  primePricePeriod: { fontSize: 14, color: '#8A8A8A', fontWeight: '500' },
+  primeTagline: { marginTop: 6, fontSize: 12, color: '#0088E8', fontStyle: 'italic', fontWeight: '500' },
+  primeActiveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#ECFDF5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  primeActiveText: { fontSize: 10, fontWeight: '900', color: '#047857', letterSpacing: 0.5 },
+  primeBenefitsCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, marginTop: 12 },
+  primeBenefitsLabel: { fontSize: 11, fontWeight: '700', color: COLORS.primary, letterSpacing: 2, marginBottom: 6 },
+  primeBenefitRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F0F4F8' },
+  primeBenefitIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#E6F0FB', alignItems: 'center', justifyContent: 'center' },
+  primeBenefitTitle: { fontSize: 15, fontWeight: '700', color: '#1A1A1A', lineHeight: 18 },
+  primeBenefitSub: { fontSize: 12, color: '#8A8A8A', marginTop: 2, lineHeight: 16 },
+  primeAddonCard: { backgroundColor: '#F2F6FC', borderRadius: 14, padding: 14, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: '#0088E8' },
+  primeAddonTitle: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  primeAddonSub: { fontSize: 11, color: '#8A8A8A', marginTop: 1 },
+  primeAddonPrice: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
+  primeFooterNote: { textAlign: 'center', fontSize: 10, color: '#AAAAAA', marginTop: 14, paddingHorizontal: 16 },
   refHeroBanner: { borderRadius: 20, backgroundColor: COLORS.primary, padding: 20, alignItems: 'flex-start', gap: 8 },
   refHeroIcons: { flexDirection: 'row', gap: 8, marginBottom: 4 },
   refHeroIconCircle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },

@@ -117,6 +117,44 @@ async function pushLeadToExternalApi(leadRow: Record<string, any>, supabaseAdmin
   }
 }
 
+// When a registered customer books, persist the booked vehicle into their
+// profile garage (customer_vehicles) so it shows up as a saved vehicle later.
+async function saveVehicleToProfile(supabaseAdmin: any, lead: Record<string, any>, customerPhone: string) {
+  try {
+    const vehicleNumber = String(lead?.vehicle_number || '').trim().toUpperCase();
+    const make = String(lead?.vehicle_make || '').trim();
+    const model = String(lead?.vehicle_model || '').trim();
+    // Need at least a make/model; skip placeholder "NA" plates with no vehicle info.
+    if (!make && !model) return;
+
+    // Find the customer account by phone (last-10-digit match).
+    const { data: customer } = await supabaseAdmin
+      .from('customers')
+      .select('id')
+      .ilike('phone', `%${customerPhone}`)
+      .maybeSingle();
+    if (!customer?.id) return; // not a registered customer — nothing to save
+
+    const plate = vehicleNumber && vehicleNumber !== 'NA' ? vehicleNumber : `${make}-${model}`.toUpperCase();
+
+    const payload: Record<string, any> = {
+      customer_id: customer.id,
+      vehicle_number: plate,
+      make: make || null,
+      model: model || null,
+      variant: lead?.vehicle_variant || null,
+      fuel_type: lead?.fuel_type || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    await supabaseAdmin
+      .from('customer_vehicles')
+      .upsert(payload, { onConflict: 'customer_id,vehicle_number' });
+  } catch (err) {
+    console.error('[bookings/create] saveVehicleToProfile failed:', err);
+  }
+}
+
 function toServiceLeadType(input: string) {
   const raw = String(input || '').trim().toUpperCase();
   if (raw === 'CAR_SERVICE') return 'NORMAL';
@@ -369,6 +407,9 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    // Persist booked vehicle to the customer's profile garage (if registered).
+    await saveVehicleToProfile(supabaseAdmin, serviceLead as Record<string, any>, customerPhone);
 
     // Fire external lead sync after successful lead creation.
     try {

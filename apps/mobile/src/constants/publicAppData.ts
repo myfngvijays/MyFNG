@@ -181,19 +181,55 @@ export const MEMBERSHIP_PLANS = [
   { name: 'MyFNG Max', price: '₹2,999', color: '#F97316' },
 ];
 
+export const PRIME_MEMBERSHIP = {
+  name: 'MY FNG Prime',
+  badge: 'MEMBERSHIP',
+  price: '₹699',
+  priceNum: 699,
+  period: '/ Year',
+  tagline: 'Your Car. Our Responsibility.',
+  benefits: [
+    { icon: 'pricetag', title: '10% Off Periodic Packages', description: 'Save on every scheduled service, all year' },
+    { icon: 'cash', title: '5% Cashback to Wallet', description: 'On every MY FNG bill, automatically credited' },
+    { icon: 'construct', title: 'Free Top-Up & Inspection', description: '2 times a year — fluids, tyre pressure, visual check' },
+    { icon: 'pulse', title: 'Free Car Scanning', description: "2 full diagnostic scans — know your car's health" },
+    { icon: 'shield-checkmark', title: 'Free Damage Assessment & Insurance Claim', description: 'Accident or dent? We assess, document & handle your insurance claim end-to-end' },
+    { icon: 'flash', title: 'Priority Slot Booking', description: 'Members get first pick — skip the wait' },
+    { icon: 'ribbon', title: '6-Month Extended Warranty', description: '6x our standard coverage on every service' },
+  ],
+  addOn: {
+    icon: 'car-sport',
+    title: '2nd Car Add-On',
+    description: "Cover your family's second car — same benefits",
+    price: '+₹299',
+  },
+  footerNote: 'Valid 12 months from activation · Linked to registered mobile number',
+};
+
 export const SUPPORT_FAQ_CATEGORIES: Record<string, Array<{ question: string; answer: string }>> = {
   Account: [
-    { question: 'How do I delete my account?', answer: 'Go to Delete Account section in settings and confirm.' },
-    { question: 'Can I change my phone number?', answer: 'Contact support to update your primary mobile number.' },
-    { question: 'How do I update my profile details?', answer: 'Open My Profile from Settings, edit your name/email, and tap Save to update details.' },
+    { question: 'How do I create a MyFNG account?', answer: 'Download the MyFNG app.\nEnter your mobile number.\nVerify using OTP.\nComplete your profile setup.' },
+    { question: 'How do I login to the MyFNG app?', answer: 'Open the MyFNG app.\nEnter your registered mobile number.\nVerify using OTP.\nLogin successfully.' },
+    { question: 'Why am I not receiving OTP?', answer: 'Wait for 30–60 seconds.\nCheck network signal.\nEnsure DND/SMS blocking is disabled.\nTap “Resend OTP”.' },
+    { question: 'How can I change my mobile number?', answer: 'Open Profile section.\nTap “Edit Profile”.\nSelect “Change Mobile Number”.\nVerify new number using OTP.' },
+    { question: 'How can I update my profile information?', answer: 'Go to Profile section.\nTap “Edit Profile”.\nUpdate your details.\nTap “Save Changes”.' },
+    { question: 'How do I add my car in the app?', answer: 'Open “Setting Page”.\nTap “Add Vehicle”.\nEnter vehicle details.\nSave your vehicle.' },
+    { question: 'Can I add multiple vehicles in one account?', answer: 'Yes, you can add multiple vehicles.' },
+    { question: 'How do I remove a vehicle from my garage?', answer: 'Open “Setting Page”.\nSelect the vehicle.\nTap “Remove/Delete Vehicle”.\nConfirm removal request.' },
   ],
   Booking: [
-    { question: 'How can I track my service status?', answer: 'Use Live Tracking from home page or order history.' },
-    { question: 'Can I reschedule a booking?', answer: 'Yes, reschedule up to 4 hours before pickup time.' },
+    { question: 'How do I book a car service?', answer: 'Select your service and click “Book Now”.\nSelect your location.\nChoose your Vehicle.\nAdd Name & Number.\nChoose required service/plan.\nSelect preferred slot.\nConfirm booking request.' },
+    { question: 'How do I reschedule my booking?', answer: 'You can call on given number to reschedule your booking.' },
+    { question: 'How do I cancel a service booking?', answer: 'You can call on given number to cancel your booking.' },
+    { question: 'How can I track my car service status live?', answer: 'Open “My Bookings”.\nSelect active booking.\nTap “Track Service”.\nView live updates.' },
+    { question: 'Can I book emergency roadside assistance from the app?', answer: 'Open MyFNG app.\nTap “Roadside Assistance”.\nShare your location.\nConfirm assistance request.' },
+    { question: 'Does MyFNG provide warranty on services?', answer: 'Warranty available on selected services.\nCheck warranty details before booking.\nSave service invoice safely.\nContact support for claims.' },
   ],
   Payment: [
-    { question: 'What payment methods are accepted?', answer: 'UPI, cards, net banking, wallet and cash on delivery.' },
-    { question: 'How do refunds work?', answer: 'Refunds are processed in 5-7 business days.' },
+    { question: 'Which payment methods are supported?', answer: 'UPI payments supported.\nDebit/Credit cards supported.\nNet Banking available.\nWallet and cash supported.' },
+    { question: 'My payment failed but money was deducted. What should I do?', answer: 'Wait for payment confirmation.\nCheck booking status.\nSave payment screenshot.\nContact support if needed.' },
+    { question: 'How long does refund processing take?', answer: 'Refunds usually take 5–7 days.\nCheck bank processing time.\nMonitor payment account.\nContact support for delays.' },
+    { question: 'Can I pay after service completion?', answer: 'Check payment availability.\nSelect supported payment option.\nConfirm payment after service.\nCollect payment receipt.' },
   ],
 };
 

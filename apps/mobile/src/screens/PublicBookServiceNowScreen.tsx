@@ -289,13 +289,19 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
 
+  const prevServicesKeyRef = useRef<string>('');
   useEffect(() => {
-    if (couponMeta && form.selectedServices.length > 0) {
+    const key = [...form.selectedServices].sort().join('|');
+    // Only clear an applied coupon when the selected services actually change
+    // (not when the coupon itself is applied).
+    if (prevServicesKeyRef.current && prevServicesKeyRef.current !== key && couponMeta) {
       setCouponMeta(null);
       setCouponDiscount(0);
       setCouponError('Coupon cleared. Please re-apply after changing services.');
     }
-  }, [form.selectedServices, couponMeta]);
+    prevServicesKeyRef.current = key;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.selectedServices]);
 
   const steps = [
     { title: "Let's get started!", subtitle: 'Select your location and car model' },
@@ -2254,7 +2260,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
                   {couponError ? <Text style={styles.errorText}>{couponError}</Text> : null}
                   {couponMeta ? (
-                    <Text style={styles.successText}>Coupon applied: {couponMeta.code}</Text>
+                    <View style={styles.couponAppliedBanner}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <View style={styles.couponAppliedCheck}>
+                          <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.couponAppliedTitle}>{couponMeta.code} applied</Text>
+                          {couponDiscount > 0 ? (
+                            <Text style={styles.couponAppliedSub}>You saved {inr(couponDiscount)}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <TouchableOpacity onPress={clearCoupon} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={styles.couponAppliedRemove}>REMOVE</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : null}
                 </View>
 
@@ -2302,18 +2323,24 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   <View style={styles.reviewDivider} />
                   <Text style={styles.reviewLine}>
                     <Text style={styles.reviewLabel}>Estimated: </Text>
-                    {totalPrice ? inr(totalPrice) : '—'}
+                    {couponMeta && couponDiscount > 0 ? (
+                      <Text style={{ textDecorationLine: 'line-through', color: COLORS.gray[500] }}>
+                        {totalPrice ? inr(totalPrice) : '—'}
+                      </Text>
+                    ) : (
+                      <Text>{totalPrice ? inr(totalPrice) : '—'}</Text>
+                    )}
                   </Text>
                   {couponMeta ? (
                     <>
                       <Text style={styles.reviewLine}>
-                        <Text style={styles.reviewLabel}>Discount: </Text>
-                        <Text style={{ color: '#059669' }}>-{inr(couponDiscount || 0)}</Text>
+                        <Text style={styles.reviewLabel}>Discount ({couponMeta.code}): </Text>
+                        <Text style={{ color: '#059669', fontWeight: '800' }}>-{inr(couponDiscount || 0)}</Text>
                       </Text>
-                      <Text style={[styles.reviewLine, { fontWeight: '900' }]}>
-                        <Text style={styles.reviewLabel}>Payable: </Text>
-                        {inr(couponAdjustedTotal)}
-                      </Text>
+                      <View style={styles.payableBar}>
+                        <Text style={styles.payableLabel}>Payable</Text>
+                        <Text style={styles.payableValue}>{inr(couponAdjustedTotal)}</Text>
+                      </View>
                     </>
                   ) : null}
                 </View>
@@ -3165,6 +3192,37 @@ const styles = StyleSheet.create({
   couponRemoveText: { fontSize: 12, fontWeight: '900', color: COLORS.gray[700] },
   errorText: { marginTop: 6, fontSize: 11, fontWeight: '700', color: '#DC2626' },
   successText: { marginTop: 6, fontSize: 11, fontWeight: '800', color: '#059669' },
+  couponAppliedBanner: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  couponAppliedCheck: {
+    width: 22, height: 22, borderRadius: 11, backgroundColor: '#059669',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  couponAppliedTitle: { fontSize: 13, fontWeight: '800', color: '#047857' },
+  couponAppliedSub: { fontSize: 11, fontWeight: '700', color: '#059669', marginTop: 1 },
+  couponAppliedRemove: { fontSize: 11, fontWeight: '900', color: '#DC2626', letterSpacing: 0.5 },
+  payableBar: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  payableLabel: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  payableValue: { fontSize: 18, fontWeight: '900', color: COLORS.primary },
   reviewBox: {
     marginTop: 6,
     padding: 12,

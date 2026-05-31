@@ -194,7 +194,11 @@ function AppContent() {
             <Stack.Screen name="PublicHome" component={PublicHomeScreen} />
             {/* Website-style Book Service Now wizard (opened via CTA button) */}
             <Stack.Screen name="PublicBookServiceNow" component={PublicBookServiceNowScreen} />
-            <Stack.Screen name="AIBooking" component={AIBookingScreen} />
+            <Stack.Screen
+              name="AIBooking"
+              component={AIBookingScreen}
+              options={{ presentation: 'transparentModal', animation: 'slide_from_bottom' }}
+            />
             <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
             <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
             <Stack.Screen name="RoadsideAssistance" component={RoadsideAssistanceScreen} />

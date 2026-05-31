@@ -22,7 +22,7 @@ export async function GET() {
 
   const { data: leads, error } = await supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, fuel_type, service_type, service_type_ids, subservice_ids, description, estimated_amount, created_at, customer_phone, address, city, state, pincode')
+    .select('id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, service_type, service_type_ids, subservice_ids, description, estimated_amount, created_at, customer_phone, address, city, state, pincode')
     .eq('customer_phone', customer.phone)
     .order('created_at', { ascending: false })
     .limit(50);

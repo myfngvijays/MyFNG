@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   Linking,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -301,12 +302,19 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   // NOTE: To pay, user can type “pay now” / “pay invoice” / “pay advance 2000”.
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.safe}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-      >
+    <View style={styles.drawerRoot}>
+      <TouchableOpacity
+        style={styles.drawerBackdrop}
+        activeOpacity={1}
+        onPress={() => navigation.goBack()}
+      />
+      <SafeAreaView style={styles.drawerSheet} edges={['bottom']}>
+        <View style={styles.drawerHandle} />
+        <KeyboardAvoidingView
+          style={styles.safe}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={20} color={COLORS.secondary} />
@@ -462,13 +470,32 @@ export default function AIBookingScreen({ navigation, route }: Props) {
             <Ionicons name="send" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
+  drawerRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  drawerBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  drawerSheet: {
+    height: Dimensions.get('window').height * 0.8,
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
+  drawerHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#D1D5DB',
+    marginTop: 8,
+    marginBottom: 4,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

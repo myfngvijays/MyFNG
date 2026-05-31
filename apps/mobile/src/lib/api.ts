@@ -9,11 +9,32 @@ export async function apiFetch<T = JsonValue>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const bearerToken = session?.access_token;
-  const customerSessionToken = await getCustomerSessionToken();
-  const firebaseUser = auth().currentUser;
-  const firebaseIdToken = firebaseUser ? await firebaseUser.getIdToken() : null;
+  // Each token source is resolved independently so a failure in one
+  // (e.g. Firebase native module unavailable, token refresh error) never
+  // breaks an authenticated request when another valid token exists.
+  let bearerToken: string | undefined;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    bearerToken = session?.access_token;
+  } catch {
+    bearerToken = undefined;
+  }
+
+  let customerSessionToken: string | null = null;
+  try {
+    customerSessionToken = await getCustomerSessionToken();
+  } catch {
+    customerSessionToken = null;
+  }
+
+  let firebaseIdToken: string | null = null;
+  try {
+    const firebaseUser = auth().currentUser;
+    firebaseIdToken = firebaseUser ? await firebaseUser.getIdToken() : null;
+  } catch {
+    firebaseIdToken = null;
+  }
+
   if (!bearerToken && !customerSessionToken && !firebaseIdToken) throw new Error('Not authenticated');
 
   const headers: Record<string, string> = {
