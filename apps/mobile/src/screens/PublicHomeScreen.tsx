@@ -1031,10 +1031,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroHeadline: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     color: '#111827',
-    lineHeight: 36,
+    lineHeight: 32,
   },
   heroHeadlineBlue: {
     color: COLORS.primary,

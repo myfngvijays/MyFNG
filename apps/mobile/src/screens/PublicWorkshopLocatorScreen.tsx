@@ -18,7 +18,7 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 import { supabase } from '../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Marker, Callout, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 type Props = {
   navigation: any;
@@ -354,15 +354,24 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
                 <Marker
                   key={String(w.id)}
                   coordinate={{ latitude: w.latitude, longitude: w.longitude }}
-                  title={String(w.name || '')}
-                  description={String(w.city || '')}
                   onPress={() => setExpandedId(String(w.id))}
                 >
-                  <View style={styles.pinWrap}>
-                    <View style={styles.pinInner}>
-                      <Ionicons name="location" size={18} color="#fff" />
+                  <View style={styles.markerContainer}>
+                    <View style={styles.markerLabel}>
+                      <Text style={styles.markerLabelText} numberOfLines={1}>
+                        {w.workshop_name || w.name}
+                      </Text>
+                      <Text style={styles.markerLabelSub} numberOfLines={1}>
+                        {w.city || ''}
+                      </Text>
                     </View>
-                    <View style={styles.pinStem} />
+                    <View style={styles.markerArrow} />
+                    <View style={styles.pinWrap}>
+                      <View style={styles.pinInner}>
+                        <Ionicons name="location" size={18} color="#fff" />
+                      </View>
+                      <View style={styles.pinStem} />
+                    </View>
                   </View>
                 </Marker>
               ))}
@@ -560,6 +569,30 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: '800',
     color: COLORS.gray[700],
+  },
+  markerContainer: { alignItems: 'center', maxWidth: 160 },
+  markerLabel: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+    alignItems: 'center',
+  },
+  markerLabelText: { fontSize: 10, fontWeight: '800', color: '#111827', maxWidth: 140 },
+  markerLabelSub: { fontSize: 8, fontWeight: '600', color: '#6B7280' },
+  markerArrow: {
+    width: 0, height: 0,
+    borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 6,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent',
+    borderTopColor: COLORS.primary,
+    marginBottom: -1,
   },
   pinWrap: { alignItems: 'center' },
   pinInner: {

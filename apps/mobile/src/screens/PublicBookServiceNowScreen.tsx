@@ -13,6 +13,7 @@ import {
   Platform,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1226,8 +1227,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   return (
     <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
       <View style={styles.screen}>
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Top header */}
           <View style={styles.top}>
             <View style={styles.topRow}>
@@ -1782,6 +1784,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           onPress={() => setForm((p) => ({ ...p, pickupDate: todayStr }))}
                         >
                           <Text
+                            numberOfLines={1}
                             style={[
                               styles.datePillText,
                               form.pickupDate === todayStr ? styles.datePillTextActive : null,
@@ -1798,6 +1801,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           onPress={() => setForm((p) => ({ ...p, pickupDate: tomorrowStr }))}
                         >
                           <Text
+                            numberOfLines={1}
                             style={[
                               styles.datePillText,
                               form.pickupDate === tomorrowStr ? styles.datePillTextActive : null,
@@ -2018,7 +2022,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           style={[styles.datePill, form.pickupDate === todayStr ? styles.datePillActive : null]}
                           onPress={() => setForm((p) => ({ ...p, pickupDate: todayStr }))}
                         >
-                          <Text style={[styles.datePillText, form.pickupDate === todayStr ? styles.datePillTextActive : null]}>
+                          <Text numberOfLines={1} style={[styles.datePillText, form.pickupDate === todayStr ? styles.datePillTextActive : null]}>
                             Today, {formatDateDMShort(todayStr)}
                           </Text>
                         </TouchableOpacity>
@@ -2026,7 +2030,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           style={[styles.datePill, form.pickupDate === tomorrowStr ? styles.datePillActive : null]}
                           onPress={() => setForm((p) => ({ ...p, pickupDate: tomorrowStr }))}
                         >
-                          <Text style={[styles.datePillText, form.pickupDate === tomorrowStr ? styles.datePillTextActive : null]}>
+                          <Text numberOfLines={1} style={[styles.datePillText, form.pickupDate === tomorrowStr ? styles.datePillTextActive : null]}>
                             Tomorrow, {formatDateDMShort(tomorrowStr)}
                           </Text>
                         </TouchableOpacity>
@@ -2055,7 +2059,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           <Text style={styles.requiredStar}>*</Text>
                         </View>
                         <View style={styles.timeSlotsGrid}>
-                          {TIME_SLOTS.map((slot) => {
+                          {TIME_SLOTS.filter((slot) => slot.value < '13:00').map((slot) => {
                             const isActive = form.pickupTime === slot.value;
                             return (
                               <TouchableOpacity
@@ -2679,7 +2683,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   onPress={() => {
                     setBookingSuccess(null);
                     goStep(0);
-                    navigation.navigate('Settings');
+                    navigation.navigate('Settings', { subPage: 'Order History' });
                   }}
                   activeOpacity={0.85}
                 >
@@ -2690,6 +2694,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           </View>
         </Modal>
       </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -2737,22 +2742,16 @@ const styles = StyleSheet.create({
   stepDotActive: { backgroundColor: COLORS.primary },
   card: {
     marginTop: SPACING.sm,
-    marginHorizontal: SPACING.lg,
+    marginHorizontal: SPACING.md,
     backgroundColor: COLORS.white,
-    borderRadius: 22,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-    shadowColor: '#0B1F44',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 2,
+    borderRadius: 14,
+    padding: SPACING.md,
+    borderWidth: 0,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: COLORS.primaryDark,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1A1A1A',
     marginBottom: SPACING.md,
   },
   inputRow: {
@@ -2966,8 +2965,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
+    gap: 3,
+    paddingHorizontal: 6,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1.5,
@@ -2975,7 +2974,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   oilTypePillActive: { backgroundColor: COLORS.primary },
-  oilTypePillText: { fontSize: 11.5, fontWeight: '800', color: COLORS.primary },
+  oilTypePillText: { fontSize: 10, fontWeight: '800', color: COLORS.primary },
   oilTypePillTextActive: { color: '#FFFFFF' },
   loadingBox: { paddingVertical: 18, alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '800', color: COLORS.gray[600] },
@@ -3069,7 +3068,7 @@ const styles = StyleSheet.create({
   savedAddrLine: { fontSize: 10, fontWeight: '700', color: COLORS.gray[600], textAlign: 'center' },
   savedAddrLineActive: { color: COLORS.primaryDark },
 
-  dateQuickRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dateQuickRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   dateQuickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3097,7 +3096,6 @@ const styles = StyleSheet.create({
   timeSlotsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
     rowGap: 8,
     columnGap: 8,
   },
@@ -3295,18 +3293,13 @@ const styles = StyleSheet.create({
   // Step 2 — plan card with checklist preview
   planCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1.5,
+    borderRadius: 12,
+    borderWidth: 1,
     borderColor: '#E5E7EB',
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
   },
   planCardActive: {
     borderColor: COLORS.primary,
@@ -3348,21 +3341,18 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // Step 3 — card-based design (matches website mobile view)
+  // Step 3 — flat section (matches Cart page clean UI)
   sectionCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: '#F3F4F6',
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    paddingHorizontal: 0,
     paddingTop: 14,
     paddingBottom: 16,
-    marginBottom: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    marginBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   sectionCardHeader: {
     flexDirection: 'row',
@@ -3371,21 +3361,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionIcoBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   sectionCardTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#1F2937',
+    color: '#1A1A1A',
   },
   requiredStar: {
     fontSize: 18,
@@ -3440,44 +3425,38 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // Date pills (Step 3)
+  // Date pills (Step 3) — matched to Cart page styling
   datePill: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
     borderColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
   },
   datePillActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
+    borderColor: '#1D4ED8',
+    backgroundColor: '#EFF6FF',
   },
   datePillText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#374151',
   },
   datePillTextActive: {
-    color: '#FFFFFF',
+    color: '#1D4ED8',
   },
   dateCalendarBtn: {
     minWidth: 36,
     height: 36,
     paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: COLORS.primary,
+    borderRadius: 18,
+    backgroundColor: '#1D4ED8',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   dateCalendarBtnText: {
     color: '#FFFFFF',
@@ -3485,35 +3464,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Time slot tiles (Step 3)
+  // Time slot tiles (Step 3) — matched to Cart page styling
   timeSlotTile: {
-    width: '48%',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
     borderColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   timeSlotTileActive: {
-    backgroundColor: '#9333EA',
-    borderColor: '#7E22CE',
-    shadowColor: '#9333EA',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    backgroundColor: '#F5F3FF',
+    borderColor: '#7C3AED',
   },
   timeSlotTileText: {
-    fontSize: 11.5,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#374151',
     textAlign: 'center',
   },
   timeSlotTileTextActive: {
-    color: '#FFFFFF',
+    color: '#7C3AED',
   },
   timeSelectedRow: {
     marginTop: 12,

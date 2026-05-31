@@ -1844,7 +1844,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     <View style={styles.numberPlateBadge}>
                       <Text style={styles.numberPlateText}>{plate || `VEHICLE ${index + 1}`}</Text>
                     </View>
-                    <Text style={styles.vehicleName}>
+                    <Text style={styles.vehicleName} numberOfLines={1}>
                       {[item?.make, item?.model].filter(Boolean).join(' ') || 'Add your first vehicle'}
                     </Text>
                     <View style={styles.vehicleTags}>
@@ -1874,7 +1874,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               <View style={styles.numberPlateBadge}>
                 <Text style={styles.numberPlateText}>NO VEHICLE</Text>
               </View>
-              <Text style={styles.vehicleName}>Add your first vehicle</Text>
+              <Text style={styles.vehicleName} numberOfLines={1}>Add your first vehicle</Text>
             </View>
             <VehicleImage vehicle={selectedVehicle} style={styles.vehicleImage} />
           </View>
@@ -3823,13 +3823,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
             <View style={nstyles.listCard}>
               {[
                 ['push', 'Push Notifications'],
-                ['sms', 'SMS Alerts'],
-                ['email', 'Email Alerts'],
-                ['order', 'Order Updates'],
-                ['promos', 'Offers & Promos'],
-                ['wallet', 'Wallet Credits'],
-                ['referral', 'Referral Updates'],
-                ['support', 'Support Updates'],
               ].map(([key, label], idx, arr) => (
                 <View key={key} style={[nstyles.switchRow, idx !== arr.length - 1 ? nstyles.switchRowDivider : null]}>
                   <Text style={nstyles.switchLabel}>{label}</Text>
@@ -4306,7 +4299,7 @@ const styles = StyleSheet.create({
   vehicleDotActive: { width: 16, backgroundColor: COLORS.primary },
   numberPlateBadge: { backgroundColor: '#1F2937', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 8 },
   numberPlateText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  vehicleName: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  vehicleName: { fontSize: 14, fontWeight: '800', color: '#111827' },
   vehicleTags: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   vehicleTag: { backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   vehicleTagText: { fontSize: 9, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -4675,7 +4668,7 @@ const cstyles = StyleSheet.create({
   vehicleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   vehicleIconWrap: { width: 60, height: 42, borderRadius: 10, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   vehicleThumb: { width: 58, height: 40 },
-  vehicleName: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  vehicleName: { fontSize: 14, fontWeight: '800', color: '#111827' },
   vehicleMeta: { marginTop: 2, fontSize: 11, fontWeight: '600', color: '#6B7280' },
   changeChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#EFF6FF' },
   changeChipText: { fontSize: 11, fontWeight: '800', color: '#1D4ED8' },
