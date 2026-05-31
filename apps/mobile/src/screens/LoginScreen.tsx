@@ -420,7 +420,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                   {loginMethod === 'phone' && <Text style={styles.countryCode}>+91</Text>}
                   <TextInput
                     style={[styles.input, loginMethod === 'phone' && styles.phoneInput]}
-                    placeholder={loginMethod === 'phone' ? '8652710389' : 'name@example.com'}
+                    placeholder={loginMethod === 'phone' ? '9152307030' : 'name@example.com'}
                     placeholderTextColor="#9CA3AF"
                     value={loginMethod === 'phone' ? customerPhone : email}
                     onChangeText={(text) =>
@@ -606,23 +606,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   brandWrap: {
-    width: 96,
-    height: 96,
-    borderRadius: 32,
-    backgroundColor: '#004AAD',
+    width: 200,
+    height: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
     marginBottom: 24,
-    shadowColor: '#004AAD',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 20,
-    elevation: 10,
   },
   brandLogo: {
-    width: 60,
-    height: 60,
+    width: 200,
+    height: 54,
   },
   brandTitle: {
     color: '#111827',

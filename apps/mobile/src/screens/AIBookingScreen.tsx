@@ -154,18 +154,32 @@ export default function AIBookingScreen({ navigation, route }: Props) {
 
   async function sendChatMessage(rawText: string, displayText?: string) {
     if (chatLoading) return;
-    const text = (rawText || '').trim();
+    let text = (rawText || '').trim();
     const shown = (displayText || rawText || '').trim();
     if (!text) return;
+
+    // Intercept vehicle number selection (e.g. "1", "2") and enrich with actual vehicle details
+    const vehicles = customerInfo?.vehicles || [];
+    const numMatch = text.match(/^\s*(\d+)\s*$/);
+    if (numMatch && vehicles.length > 0) {
+      const idx = parseInt(numMatch[1], 10) - 1;
+      if (idx >= 0 && idx < vehicles.length) {
+        const v = vehicles[idx];
+        const vehicleName = `${v.make} ${v.model}`.trim();
+        setChatContext((prev: any) => ({ ...prev, selectedVehicle: vehicleName, vehicleMake: v.make, vehicleModel: v.model }));
+        text = `I selected my vehicle: ${vehicleName}. Please proceed with this car.`;
+      }
+    }
 
     setChatLoading(true);
     try {
       const url = `${apiBase()}/api/chatbot/v2`;
+      const ctx = chatContext || {};
       const payload = {
         message: text,
         context: {
-          ...(chatContext || {}),
-          locationLabel: chatContext?.locationLabel || city || undefined,
+          ...ctx,
+          locationLabel: ctx.locationLabel || city || undefined,
         },
       };
       const res = await fetch(url, {

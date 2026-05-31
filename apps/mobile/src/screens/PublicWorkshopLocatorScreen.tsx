@@ -79,13 +79,15 @@ function openTel(phoneE164: string) {
   if (url) Linking.openURL(url);
 }
 
-// Build a Google Maps DIRECTIONS URL (matches what the website uses):
-// https://www.google.com/maps/dir/?api=1&destination=...
-// Prefers the workshop's saved map_link only when it is already a directions URL,
-// otherwise constructs a real "directions" URL from coordinates / address / name.
-function openMapsForWorkshop(w: WorkshopRow & { address?: string | null }) {
+// Open Google Maps directions using near_area_google_map column (preferred)
+function openMapsForWorkshop(w: any) {
+  const nearAreaLink = String((w as any).near_area_google_map || '').trim();
+  if (nearAreaLink && nearAreaLink.startsWith('http')) {
+    Linking.openURL(nearAreaLink);
+    return;
+  }
   const link = (w.map_link || '').trim();
-  if (link && /\/maps\/dir/i.test(link)) {
+  if (link && link.startsWith('http')) {
     Linking.openURL(link);
     return;
   }
@@ -100,10 +102,6 @@ function openMapsForWorkshop(w: WorkshopRow & { address?: string | null }) {
     Linking.openURL(
       `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`
     );
-    return;
-  }
-  if (link) {
-    Linking.openURL(link);
     return;
   }
   Alert.alert('No map location', 'This workshop does not have a map location yet.');
@@ -179,34 +177,15 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
   async function fetchWorkshops() {
     try {
       setLoading(true);
-      const fetchRows = async (cityFilter?: string) => {
-        let query = supabase
-          .from('workshops')
-          .select('id,name,workshop_name,city,address,latitude,longitude,map_link,is_verified,phone')
-          .eq('is_verified', true)
-          .order('created_at', { ascending: false })
-          .limit(250);
-        if (cityFilter) query = query.ilike('city', `%${cityFilter}%`);
-        return query;
-      };
-
-      const cityValue = String(city || '').trim();
-      if (cityValue) {
-        const cityRes = await fetchRows(cityValue);
-        if (cityRes.error) throw cityRes.error;
-        const cityRows = (cityRes.data as any[]) || [];
-        if (cityRows.length > 0) {
-          setRows(cityRows);
-          setCityScoped(true);
-          return;
-        }
-      }
-
-      // Fallback: if city filter returns nothing (common in emulator geo like Mountain View),
-      // show all verified workshops so locator is still useful.
-      const allRes = await fetchRows();
-      if (allRes.error) throw allRes.error;
-      setRows((allRes.data as any[]) || []);
+      // Always fetch all verified workshops; distance sorting handles relevance
+      const { data, error } = await supabase
+        .from('workshops')
+        .select('id,name,workshop_name,city,address,latitude,longitude,map_link,near_area_google_map,is_verified,phone')
+        .eq('is_verified', true)
+        .order('created_at', { ascending: false })
+        .limit(250);
+      if (error) throw error;
+      setRows((data as any[]) || []);
       setCityScoped(false);
     } catch {
       Alert.alert('Unable to load workshops', 'Please try again.');
@@ -234,22 +213,30 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
         Alert.alert('Turn on Location', 'Please enable device Location (GPS) and try again.');
         return;
       }
+      // Use last known position first (instant) for quick sorting
+      const lastKnown = await Location.getLastKnownPositionAsync();
+      if (lastKnown) {
+        setUserLoc({ lat: lastKnown.coords.latitude, lng: lastKnown.coords.longitude });
+      }
+
+      // Then get fresh position for accuracy
       const pos = await Promise.race([
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
       ]);
-      if (!pos) {
-        Alert.alert('No GPS fix', 'Couldn’t get your location. Try again.');
-        return;
+      if (pos) {
+        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      } else if (!lastKnown) {
+        Alert.alert('No GPS fix', 'Could not get your location. Try again.');
       }
-      setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
     } catch {
-      Alert.alert('Location failed', 'Couldn’t detect your location.');
+      Alert.alert('Location failed', 'Could not detect your location.');
     }
   }
 
   useEffect(() => {
     fetchWorkshops();
+    if (!userLoc) detectMyLocation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city]);
 
@@ -303,12 +290,10 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
             <Ionicons name="navigate" size={16} color={COLORS.primary} />
               <Text style={styles.sheetBtnText}>Directions</Text>
           </TouchableOpacity>
-          {item.phone ? (
-              <TouchableOpacity style={styles.sheetBtn} onPress={() => openTel(String(item.phone))} activeOpacity={0.9}>
+              <TouchableOpacity style={styles.sheetBtn} onPress={() => openTel('+919152307030')} activeOpacity={0.9}>
               <Ionicons name="call" size={16} color={COLORS.primary} />
                 <Text style={styles.sheetBtnText}>Call</Text>
             </TouchableOpacity>
-          ) : null}
         </View>
         ) : null}
       </View>
@@ -325,11 +310,9 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Workshop Locator</Text>
             <Text style={styles.subTitle}>
-              {city
-                ? cityScoped
-                  ? `City: ${city}`
-                  : `City: ${city} (showing all nearby verified)`
-                : 'Verified workshops near you'}
+              {userLoc
+                ? 'Showing nearby verified workshops'
+                : 'Detecting your location…'}
             </Text>
           </View>
           <TouchableOpacity onPress={detectMyLocation} style={styles.locBtn} activeOpacity={0.9}>

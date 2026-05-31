@@ -176,6 +176,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [serviceLoading, setServiceLoading] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedOilType, setSelectedOilType] = useState<'semi' | 'full'>('semi');
   const [pricing, setPricing] = useState<Record<string, number>>({});
   const [pricingLoading, setPricingLoading] = useState(false);
   const [servicePoints, setServicePoints] = useState<Record<string, number>>({});
@@ -185,6 +186,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [couponMeta, setCouponMeta] = useState<any | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponApplying, setCouponApplying] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
 
   const [workshops, setWorkshops] = useState<WorkshopRow[]>([]);
   const [workshopLoading, setWorkshopLoading] = useState(false);
@@ -239,12 +241,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     [paramServiceCategory, visibleCategories.length, categories.length],
   );
 
+  const isPeriodicCategory = useMemo(
+    () => String(selectedCategory || '').toUpperCase().includes('PERIODIC'),
+    [selectedCategory],
+  );
+
+  const getOilTypeForService = (service: any): 'semi' | 'full' | 'unknown' => {
+    const text = `${String(service?.name || '')} ${String(service?.description || '')}`.toLowerCase();
+    const hasSemi =
+      text.includes('semi synthetic') || text.includes('semi-synthetic') || text.includes('(semi)') || /\bsemi\b/.test(text);
+    const hasFull =
+      text.includes('fully synthetic') || text.includes('full synthetic') || text.includes('synthetic full') ||
+      text.includes('(fully)') || text.includes('(full)') || /\bfully\b/.test(text) || /\bfull\b/.test(text);
+    if (hasSemi && hasFull) return 'unknown';
+    if (hasFull) return 'full';
+    if (hasSemi) return 'semi';
+    return 'unknown';
+  };
+
   const servicesInCategory = useMemo(() => {
     const q = serviceSearch.trim().toLowerCase();
     return serviceTypes
       .filter((s) => s.category === selectedCategory)
-      .filter((s) => (q ? s.name.toLowerCase().includes(q) : true));
-  }, [serviceTypes, selectedCategory, serviceSearch]);
+      .filter((s) => (q ? s.name.toLowerCase().includes(q) : true))
+      .filter((s) => {
+        if (!isPeriodicCategory) return true;
+        const oilType = getOilTypeForService(s);
+        if (oilType === 'unknown') return true;
+        return oilType === selectedOilType;
+      });
+  }, [serviceTypes, selectedCategory, serviceSearch, isPeriodicCategory, selectedOilType]);
 
   const totalPrice = useMemo(() => {
     return form.selectedServices.reduce((sum, id) => sum + (pricing[id] || 0), 0);
@@ -405,14 +431,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
     try {
       const safe = query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      const tokens = safe.split(' ').filter(Boolean);
+      // Build an OR filter that matches the make OR model on every token so
+      // multi-word queries like "skoda rapid" and single brand queries both work.
+      const orFilters: string[] = [`make.ilike.%${safe}%`, `model_name.ilike.%${safe}%`];
+      for (const t of tokens) {
+        orFilters.push(`make.ilike.%${t}%`);
+        orFilters.push(`model_name.ilike.%${t}%`);
+      }
       const { data, error } = await supabase
         .from('car_models')
         .select('id,make,model_name,variant,class')
         .eq('is_active', true)
-        .or(`make.ilike.%${safe}%,model_name.ilike.%${safe}%`)
+        .or(orFilters.join(','))
         .order('make')
         .order('model_name')
-        .limit(10);
+        .limit(100);
       if (error) throw error;
       setCarSuggestions(((data as any[]) || []) as any);
     } catch {
@@ -601,12 +635,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
   }
 
-  async function applyCoupon() {
-    const code = couponCode.trim();
+  async function fetchAvailableCoupons() {
+    // Public, unauthenticated fetch (booking flow works for logged-out users too).
+    // The coupons table has RLS so a direct anon Supabase query won't work — must go via the API.
+    try {
+      const res = await fetch(`${ENV.API_URL}/api/coupons/active`);
+      const json = await res.json().catch(() => ({}));
+      const list = Array.isArray(json?.coupons) ? json.coupons : [];
+      setAvailableCoupons(list);
+    } catch {
+      setAvailableCoupons([]);
+    }
+  }
+
+  function describeCoupon(c: any): string {
+    const mode = String(c?.discount_mode || '').toUpperCase();
+    const val = Number(c?.discount_value || 0);
+    if (c?.coupon_kind === 'FREE_SERVICE') return 'Free service';
+    if (mode === 'PERCENT' && val > 0) return `${val}% OFF`;
+    if ((mode === 'AMOUNT' || mode === 'FLAT' || mode === 'FIXED') && val > 0) return `₹${val} OFF`;
+    if (c?.description) return String(c.description);
+    return 'Offer';
+  }
+
+  async function applyCoupon(overrideCode?: string) {
+    const code = (overrideCode ?? couponCode).trim();
     if (!code) {
       setCouponError('Please enter a coupon code.');
       return;
     }
+    if (overrideCode) setCouponCode(overrideCode.toUpperCase());
     setCouponApplying(true);
     setCouponError(null);
     try {
@@ -675,9 +733,87 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }));
       setSavedAddresses(addresses);
 
+      // If no saved addresses from API, pull from past orders + customer record
+      if (addresses.length === 0) {
+        const fallbackAddresses: SavedAddress[] = [];
+        const seen = new Set<string>();
+
+        // Customer's own address from profile
+        const custAddr = customer.address || customer.customer_address || '';
+        if (custAddr && !seen.has(custAddr.toLowerCase().trim())) {
+          seen.add(custAddr.toLowerCase().trim());
+          fallbackAddresses.push({
+            id: 'customer_primary',
+            address_line1: custAddr,
+            city: customer.city || null,
+            address_type: 'Home',
+            label: 'Home',
+            address_line2: null, state: null, pincode: null, landmark: null,
+          });
+        }
+
+        // Past bookings (orders + leads)
+        try {
+          const [ordersRes, leadsRes] = await Promise.all([
+            apiFetch<any>('/api/customer/orders').catch(() => null),
+            apiFetch<any>('/api/customer/leads').catch(() => null),
+          ]);
+          const allLeads = [
+            ...(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []),
+            ...(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []),
+          ];
+          for (const o of allLeads) {
+            const addr = o.address || o.customer_address || o.pickup_address || '';
+            if (!addr || seen.has(addr.toLowerCase().trim())) continue;
+            seen.add(addr.toLowerCase().trim());
+            fallbackAddresses.push({
+              id: `lead_${o.id}`,
+              address_line1: addr,
+              city: o.city || null,
+              address_type: 'Previous Booking',
+              label: 'Previous Booking',
+              address_line2: null, state: null, pincode: null, landmark: null,
+            });
+          }
+        } catch {}
+
+        if (fallbackAddresses.length > 0) setSavedAddresses(fallbackAddresses.slice(0, 5));
+      }
+
       try {
         const vehiclesRes = await apiFetch<any>('/api/customer/vehicles');
-        setSavedVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
+        const savedV = Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : [];
+        if (savedV.length > 0) {
+          setSavedVehicles(savedV);
+        } else {
+          // Fallback: pull vehicles from past orders/leads
+          try {
+            const [ordersRes, leadsRes] = await Promise.all([
+              apiFetch<any>('/api/customer/orders').catch(() => null),
+              apiFetch<any>('/api/customer/leads').catch(() => null),
+            ]);
+            const allLeads = [
+              ...(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []),
+              ...(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []),
+            ];
+            const vehicleMap = new Map<string, any>();
+            for (const o of allLeads) {
+              const make = o.vehicle_make || o.car_make || '';
+              const model = o.vehicle_model || o.car_model || '';
+              const plate = String(o.vehicle_number || o.car_number || '').trim().toUpperCase();
+              const key = plate || `${make}-${model}`;
+              if (!key || vehicleMap.has(key)) continue;
+              vehicleMap.set(key, {
+                id: o.id,
+                make,
+                model,
+                vehicle_number: plate,
+                fuel_type: o.fuel_type || null,
+              });
+            }
+            setSavedVehicles(Array.from(vehicleMap.values()).slice(0, 5));
+          } catch {}
+        }
       } catch {}
 
     } catch {
@@ -691,8 +827,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       Alert.alert('Phone required', 'Please enter your phone number.');
       return;
     }
-    if (!form.pickupRequired && !form.selectedWorkshop) {
-      Alert.alert('Select workshop', 'Please select a workshop for visit.');
+    if (!form.pickupDate || !form.pickupTime) {
+      Alert.alert('Date & time required', 'Please select your preferred date and time.');
       return;
     }
     if (form.pickupRequired && (!form.pickupAddress.trim() || !form.landmark.trim())) {
@@ -733,7 +869,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             customer_address: form.pickupRequired ? completeAddress : form.selectedWorkshop?.address || null,
             pickup_address: form.pickupRequired ? completeAddress : null,
             preferred_slot_start:
-              form.pickupRequired && form.pickupDate && form.pickupTime
+              form.pickupDate && form.pickupTime
                 ? `${form.pickupDate}T${form.pickupTime}:00`
                 : null,
             estimated_amount: totalPrice > 0 ? totalPrice : null,
@@ -872,9 +1008,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   // ── Effects ─────────────────────────────────────────────────────
 
   useEffect(() => {
+    fetchAvailableCoupons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const cityList = await fetchCities();
-      autoDetectLocation(cityList);
+      const rebook = route?.params?.rebookOrder;
+      if (rebook) {
+        const cityName = String(rebook.city || '').trim().toLowerCase();
+        const matchedCity = cityList.find((c) => c.name.toLowerCase() === cityName);
+        const addressText = String(rebook.address || '').trim();
+        const rebookFormUpdates: Partial<BookingFormData> = {};
+        if (matchedCity) rebookFormUpdates.city = matchedCity;
+        if (addressText) {
+          rebookFormUpdates.pickupAddress = addressText;
+          rebookFormUpdates.landmark = addressText;
+        }
+        const make = String(rebook.vehicle_make || '').trim();
+        const model = String(rebook.vehicle_model || '').trim();
+        if (make && model) {
+          rebookFormUpdates.carModel = { id: `rebook-${Date.now()}`, make, model_name: model, variant: rebook.fuel_type || null };
+          setCarQuery(`${make} ${model}`);
+        }
+        setForm((prev) => ({ ...prev, ...rebookFormUpdates }));
+        if (!matchedCity) autoDetectLocation(cityList);
+        if (matchedCity || make) setStep(1);
+      } else {
+        autoDetectLocation(cityList);
+      }
     })();
     fetchProfileIfLoggedIn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -963,8 +1126,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
     if (step === 2) return form.selectedServices.length > 0;
     if (step === 3) {
-      if (form.pickupRequired) return Boolean(form.pickupAddress.trim() && form.landmark.trim());
-      return Boolean(form.selectedWorkshop);
+      if (form.pickupRequired)
+        return Boolean(form.pickupDate && form.pickupTime && form.pickupAddress.trim() && form.landmark.trim());
+      return Boolean(form.pickupDate && form.pickupTime);
     }
     return true;
   };
@@ -1165,7 +1329,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </View>
 
                   {showCarSuggestions && carSuggestions.length > 0 ? (
-                    <View style={styles.carSuggestionList}>
+                    <ScrollView
+                      style={styles.carSuggestionList}
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator
+                    >
                       {carSuggestions.map((m) => (
                         <TouchableOpacity
                           key={m.id}
@@ -1179,7 +1348,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           <Text style={styles.carSuggestionText}>{formatCar(m)}</Text>
                         </TouchableOpacity>
                       ))}
-                    </View>
+                    </ScrollView>
                   ) : null}
 
                   {showCarSuggestions && carQuery.length >= 2 && carSuggestions.length === 0 ? (
@@ -1352,6 +1521,28 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   />
                   {pricingLoading ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
                 </View>
+
+                {isPeriodicCategory ? (
+                  <View style={styles.oilTypeRow}>
+                    <Text style={styles.oilTypeLabel}>Engine Oil:</Text>
+                    <TouchableOpacity
+                      style={[styles.oilTypePill, selectedOilType === 'semi' ? styles.oilTypePillActive : null]}
+                      onPress={() => setSelectedOilType('semi')}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="water-outline" size={14} color={selectedOilType === 'semi' ? '#FFFFFF' : COLORS.primary} />
+                      <Text numberOfLines={1} style={[styles.oilTypePillText, selectedOilType === 'semi' ? styles.oilTypePillTextActive : null]}>Semi Synthetic</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.oilTypePill, selectedOilType === 'full' ? styles.oilTypePillActive : null]}
+                      onPress={() => setSelectedOilType('full')}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="water" size={14} color={selectedOilType === 'full' ? '#FFFFFF' : COLORS.primary} />
+                      <Text numberOfLines={1} style={[styles.oilTypePillText, selectedOilType === 'full' ? styles.oilTypePillTextActive : null]}>Fully Synthetic</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
 
                 {serviceLoading ? (
                   <View style={styles.loadingBox}>
@@ -1624,15 +1815,6 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           ) : null}
                         </TouchableOpacity>
                       </View>
-                      {showDatePicker ? (
-                        <DateTimePicker
-                          value={form.pickupDate ? new Date(form.pickupDate) : getIndiaDate()}
-                          mode="date"
-                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                          minimumDate={getIndiaDate()}
-                          onChange={onDateChange}
-                        />
-                      ) : null}
                     </View>
 
                     {/* Pickup Time Card */}
@@ -1699,7 +1881,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           <Text style={styles.requiredStar}>*</Text>
                         </View>
 
-                        {isLoggedIn && savedAddresses.length > 0 ? (
+                        {savedAddresses.length > 0 ? (
                           <View style={{ marginBottom: 10 }}>
                             <Text style={styles.savedAddrTitle}>Saved Addresses</Text>
                             <ScrollView
@@ -1792,7 +1974,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         />
                         <View style={[styles.row2, { marginTop: 10 }]}>
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Flat / House (optional)</Text>
+                            <Text style={styles.label}>Flat / House</Text>
                             <TextInput
                               value={form.flatNumber}
                               onChangeText={(t) => setForm((p) => ({ ...p, flatNumber: t }))}
@@ -1816,31 +1998,117 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     ) : null}
                   </>
                 ) : (
-                  <View style={styles.sectionCard}>
-                    <View style={styles.sectionCardHeader}>
-                      <View style={[styles.sectionIcoBox, { backgroundColor: '#10B981' }]}>
-                        <Ionicons name="business" size={16} color="#FFFFFF" />
+                  <>
+                    <View style={styles.sectionCard}>
+                      <View style={styles.sectionCardHeader}>
+                        <View style={[styles.sectionIcoBox, { backgroundColor: '#3B82F6' }]}>
+                          <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                        </View>
+                        <Text style={styles.sectionCardTitle}>Visit Date</Text>
+                        <Text style={styles.requiredStar}>*</Text>
                       </View>
-                      <Text style={styles.sectionCardTitle}>Select Workshop</Text>
-                      <Text style={styles.requiredStar}>*</Text>
+                      <View style={styles.dateQuickRow}>
+                        <TouchableOpacity
+                          style={[styles.datePill, form.pickupDate === todayStr ? styles.datePillActive : null]}
+                          onPress={() => setForm((p) => ({ ...p, pickupDate: todayStr }))}
+                        >
+                          <Text style={[styles.datePillText, form.pickupDate === todayStr ? styles.datePillTextActive : null]}>
+                            Today, {formatDateDMShort(todayStr)}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.datePill, form.pickupDate === tomorrowStr ? styles.datePillActive : null]}
+                          onPress={() => setForm((p) => ({ ...p, pickupDate: tomorrowStr }))}
+                        >
+                          <Text style={[styles.datePillText, form.pickupDate === tomorrowStr ? styles.datePillTextActive : null]}>
+                            Tomorrow, {formatDateDMShort(tomorrowStr)}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dateCalendarBtn}
+                          onPress={() => setShowDatePicker(true)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                          {form.pickupDate && form.pickupDate !== todayStr && form.pickupDate !== tomorrowStr ? (
+                            <Text style={styles.dateCalendarBtnText}>
+                              {new Date(form.pickupDate + 'T00:00:00').getDate()}
+                            </Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <TouchableOpacity
-                      style={styles.inputRow}
-                      onPress={() => setWorkshopModal(true)}
-                      activeOpacity={0.9}
-                    >
-                      <Ionicons name="business" size={16} color={COLORS.primary} />
-                      <Text style={styles.inputRowText}>
-                        {form.selectedWorkshop
-                          ? form.selectedWorkshop.name
-                          : workshopLoading
-                          ? 'Loading workshops…'
-                          : 'Select workshop'}
-                      </Text>
-                      <Ionicons name="chevron-down" size={16} color={COLORS.gray[500]} />
-                    </TouchableOpacity>
-                  </View>
+
+                    {form.pickupDate ? (
+                      <View style={styles.sectionCard}>
+                        <View style={styles.sectionCardHeader}>
+                          <View style={[styles.sectionIcoBox, { backgroundColor: '#A855F7' }]}>
+                            <Ionicons name="time" size={16} color="#FFFFFF" />
+                          </View>
+                          <Text style={styles.sectionCardTitle}>Visit Time</Text>
+                          <Text style={styles.requiredStar}>*</Text>
+                        </View>
+                        <View style={styles.timeSlotsGrid}>
+                          {TIME_SLOTS.map((slot) => {
+                            const isActive = form.pickupTime === slot.value;
+                            return (
+                              <TouchableOpacity
+                                key={slot.value}
+                                style={[styles.timeSlotTile, isActive ? styles.timeSlotTileActive : null]}
+                                onPress={() => setForm((p) => ({ ...p, pickupTime: slot.value }))}
+                                activeOpacity={0.9}
+                              >
+                                <Text style={[styles.timeSlotTileText, isActive ? styles.timeSlotTileTextActive : null]}>
+                                  {slot.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        {form.pickupTime ? (
+                          <View style={styles.timeSelectedRow}>
+                            <Ionicons name="checkmark-circle" size={14} color="#9333EA" />
+                            <Text style={styles.timeSelectedText}>
+                              Selected: {TIME_SLOTS.find((s) => s.value === form.pickupTime)?.label}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </>
                 )}
+
+                {showDatePicker && Platform.OS === 'android' ? (
+                  <DateTimePicker
+                    value={form.pickupDate ? new Date(form.pickupDate) : getIndiaDate()}
+                    mode="date"
+                    display="default"
+                    minimumDate={getIndiaDate()}
+                    onChange={onDateChange}
+                  />
+                ) : null}
+
+                {Platform.OS === 'ios' ? (
+                  <Modal visible={showDatePicker} transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}>
+                    <View style={styles.datePickerModalOverlay}>
+                      <View style={styles.datePickerModalCard}>
+                        <View style={styles.datePickerModalHeader}>
+                          <Text style={styles.datePickerModalTitle}>Select Date</Text>
+                          <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                            <Text style={styles.datePickerModalDone}>Done</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <DateTimePicker
+                          value={form.pickupDate ? new Date(form.pickupDate) : getIndiaDate()}
+                          mode="date"
+                          display="spinner"
+                          minimumDate={getIndiaDate()}
+                          onChange={onDateChange}
+                        />
+                      </View>
+                    </View>
+                  </Modal>
+                ) : null}
               </>
             ) : null}
 
@@ -1912,12 +2180,56 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 {/* Coupon */}
                 <View style={styles.couponBox}>
                   <Text style={styles.label}>Apply Coupon</Text>
+
+                  {/* Available coupon cards - like saved addresses */}
+                  {availableCoupons.length > 0 ? (
+                    <View style={{ marginBottom: 10 }}>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                      >
+                        {availableCoupons.map((c) => {
+                          const isApplied = couponMeta?.code && String(couponMeta.code).toUpperCase() === String(c.code).toUpperCase();
+                          return (
+                            <TouchableOpacity
+                              key={c.id}
+                              style={{
+                                paddingHorizontal: 14,
+                                paddingVertical: 10,
+                                borderRadius: 12,
+                                borderWidth: 1.5,
+                                borderColor: isApplied ? '#047857' : '#E2E8F0',
+                                backgroundColor: isApplied ? '#ECFDF5' : '#F8FAFC',
+                                minWidth: 120,
+                              }}
+                              activeOpacity={0.85}
+                              onPress={() => isApplied ? clearCoupon() : applyCoupon(c.code)}
+                              disabled={couponApplying}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Ionicons name="pricetag" size={14} color={isApplied ? '#047857' : COLORS.primary} />
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: isApplied ? '#047857' : '#1E293B' }}>{c.code}</Text>
+                              </View>
+                              <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }} numberOfLines={1}>
+                                {describeCoupon(c)}
+                              </Text>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: isApplied ? '#047857' : COLORS.primary, marginTop: 4 }}>
+                                {isApplied ? '✓ APPLIED' : 'TAP TO APPLY'}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+
                   <View style={styles.couponRow}>
                     <TextInput
                       value={couponCode}
                       onChangeText={(t) => setCouponCode(t.toUpperCase())}
                       style={[styles.input, styles.couponInput]}
-                      placeholder="Coupon code"
+                      placeholder="Or enter coupon code"
                       placeholderTextColor={COLORS.gray[500]}
                       autoCapitalize="characters"
                     />
@@ -1926,7 +2238,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         styles.couponBtn,
                         couponApplying || !couponCode.trim() ? styles.couponBtnDisabled : null,
                       ]}
-                      onPress={applyCoupon}
+                      onPress={() => applyCoupon()}
                       disabled={couponApplying || !couponCode.trim()}
                     >
                       <Text style={styles.couponBtnText}>
@@ -1939,6 +2251,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       </TouchableOpacity>
                     ) : null}
                   </View>
+
                   {couponError ? <Text style={styles.errorText}>{couponError}</Text> : null}
                   {couponMeta ? (
                     <Text style={styles.successText}>Coupon applied: {couponMeta.code}</Text>
@@ -1970,10 +2283,21 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     </Text>
                   ) : null}
                   {!form.pickupRequired && form.selectedWorkshop ? (
-                    <Text style={styles.reviewLine}>
-                      <Text style={styles.reviewLabel}>Workshop: </Text>
-                      {form.selectedWorkshop.name}
-                    </Text>
+                    <>
+                      <Text style={styles.reviewLine}>
+                        <Text style={styles.reviewLabel}>Workshop: </Text>
+                        {form.selectedWorkshop.name}
+                      </Text>
+                      {form.pickupDate ? (
+                        <Text style={styles.reviewLine}>
+                          <Text style={styles.reviewLabel}>Visit: </Text>
+                          {formatDateDMY(form.pickupDate)}
+                          {form.pickupTime
+                            ? ` at ${TIME_SLOTS.find((s) => s.value === form.pickupTime)?.label || form.pickupTime}`
+                            : ''}
+                        </Text>
+                      ) : null}
+                    </>
                   ) : null}
                   <View style={styles.reviewDivider} />
                   <Text style={styles.reviewLine}>
@@ -2456,8 +2780,7 @@ const styles = StyleSheet.create({
     borderColor: '#0A2540',
     borderRadius: 12,
     backgroundColor: '#0A2540',
-    maxHeight: 200,
-    overflow: 'hidden',
+    maxHeight: 240,
   },
   carSuggestionRow: {
     paddingHorizontal: 12,
@@ -2596,6 +2919,37 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   searchInput: { flex: 1, fontSize: 13, fontWeight: '800', color: COLORS.primaryDark },
+  datePickerModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  datePickerModalCard: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 20 },
+  datePickerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  datePickerModalTitle: { fontSize: 15, fontWeight: '900', color: COLORS.primaryDark },
+  datePickerModalDone: { fontSize: 15, fontWeight: '900', color: COLORS.primary },
+  oilTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  oilTypeLabel: { fontSize: 11, fontWeight: '800', color: COLORS.gray[600] },
+  oilTypePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: '#FFFFFF',
+  },
+  oilTypePillActive: { backgroundColor: COLORS.primary },
+  oilTypePillText: { fontSize: 11.5, fontWeight: '800', color: COLORS.primary },
+  oilTypePillTextActive: { color: '#FFFFFF' },
   loadingBox: { paddingVertical: 18, alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '800', color: COLORS.gray[600] },
   serviceList: { marginTop: 10, gap: 10 },
@@ -2688,7 +3042,7 @@ const styles = StyleSheet.create({
   savedAddrLine: { fontSize: 10, fontWeight: '700', color: COLORS.gray[600], textAlign: 'center' },
   savedAddrLineActive: { color: COLORS.primaryDark },
 
-  dateQuickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  dateQuickRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dateQuickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2717,7 +3071,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 10,
+    rowGap: 8,
+    columnGap: 8,
   },
   timeSlotBtn: {
     paddingHorizontal: 12,
@@ -2770,6 +3125,27 @@ const styles = StyleSheet.create({
   },
   couponRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   couponInput: { flex: 1 },
+  availCouponWrap: { marginTop: 12, gap: 8 },
+  availCouponHeading: { fontSize: 12, fontWeight: '900', color: COLORS.gray[600], marginBottom: 2 },
+  availCouponCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: COLORS.primary,
+    backgroundColor: '#F8FAFF',
+  },
+  availCouponCardActive: { borderStyle: 'solid', borderColor: '#10B981', backgroundColor: '#ECFDF5' },
+  availCouponLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  availCouponCode: { fontSize: 13, fontWeight: '900', color: COLORS.primaryDark },
+  availCouponDesc: { fontSize: 11, fontWeight: '700', color: COLORS.gray[600], marginTop: 1 },
+  availCouponAction: { fontSize: 12, fontWeight: '900', color: COLORS.primary },
+  availCouponActionActive: { color: '#047857' },
   couponBtn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -3008,19 +3384,21 @@ const styles = StyleSheet.create({
 
   // Date pills (Step 3)
   datePill: {
-    paddingHorizontal: 14,
+    flex: 1,
+    paddingHorizontal: 10,
     paddingVertical: 9,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
+    alignItems: 'center',
   },
   datePillActive: {
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primary,
   },
   datePillText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: '#374151',
   },
@@ -3051,9 +3429,9 @@ const styles = StyleSheet.create({
 
   // Time slot tiles (Step 3)
   timeSlotTile: {
-    width: '32%',
+    width: '48%',
     paddingVertical: 12,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#E5E7EB',
@@ -3071,7 +3449,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   timeSlotTileText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
     color: '#374151',
     textAlign: 'center',

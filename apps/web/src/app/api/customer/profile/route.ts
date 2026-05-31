@@ -20,10 +20,39 @@ export async function GET() {
     .eq('customer_id', customer.id)
     .order('is_default', { ascending: false });
 
+  // Also pull addresses from past bookings (service_leads) if customer_addresses is empty
+  let allAddresses = addresses || [];
+  if (allAddresses.length === 0) {
+    const phone = customer.phone ? customer.phone.replace(/\D/g, '').slice(-10) : null;
+    if (phone) {
+      const { data: leads } = await supabaseAdmin
+        .from('service_leads')
+        .select('id,address,customer_address,city,pickup_address')
+        .or(`customer_phone.ilike.%${phone}%,customer_id.eq.${customer.id}`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      const seen = new Set<string>();
+      const fromLeads: any[] = [];
+      for (const l of (leads || [])) {
+        const addr = l.pickup_address || l.customer_address || l.address || '';
+        if (!addr || seen.has(addr.toLowerCase().trim())) continue;
+        seen.add(addr.toLowerCase().trim());
+        fromLeads.push({
+          id: `lead_${l.id}`,
+          address_line1: addr,
+          city: l.city || null,
+          address_type: 'Previous Booking',
+          label: 'Previous Booking',
+        });
+      }
+      allAddresses = fromLeads.slice(0, 5);
+    }
+  }
+
   return NextResponse.json({
     customer,
     profile: profile || null,
-    addresses: addresses || [],
+    addresses: allAddresses,
   });
 }
 

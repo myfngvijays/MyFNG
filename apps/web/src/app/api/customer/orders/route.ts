@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, workshops(name, workshop_name)')
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time, workshops(name, workshop_name)')
     .eq('customer_phone', customer.phone)
     .order('created_at', { ascending: false })
     .limit(200);

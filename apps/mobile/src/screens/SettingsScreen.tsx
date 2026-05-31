@@ -62,6 +62,21 @@ const LEGAL_MENU: MenuItem[] = [
 
 const CAR_IMAGE_BASE_URL = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images';
 
+// Maps a free-text service name to the PublicServicePackages category id (1-9).
+function mapServiceNameToCategoryId(serviceName: string): string {
+  const s = String(serviceName || '').toLowerCase();
+  if (/\bac\b|air ?condition|cooling/.test(s)) return '2';
+  if (/brake/.test(s)) return '3';
+  if (/clutch/.test(s)) return '5';
+  if (/battery|alternator/.test(s)) return '6';
+  if (/tyre|tire|wheel|alignment|balancing/.test(s)) return '7';
+  if (/dent|paint/.test(s)) return '9';
+  if (/detail|polish|wax|ceramic|wash|cleaning|spa/.test(s)) return '8';
+  if (/engine/.test(s)) return '4';
+  if (/periodic|general|standard|comprehensive|basic|premium|service/.test(s)) return '1';
+  return '1';
+}
+
 function getVehicleImageUris(vehicle: any): { primary: string; fallback: string } {
   const rawMake = String(vehicle?.make || vehicle?.vehicle_make || '').trim();
   const rawModel = String(vehicle?.model || vehicle?.model_name || vehicle?.vehicle_model || '').trim();
@@ -169,6 +184,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [orderFilter, setOrderFilter] = useState<'All' | 'Completed' | 'Upcoming' | 'Ongoing' | 'Cancelled'>('All');
   const [orderDetailModal, setOrderDetailModal] = useState<any>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
+  const [showVehiclePicker, setShowVehiclePicker] = useState(false);
   const [coupon, setCoupon] = useState('');
   const [cartServiceMode, setCartServiceMode] = useState<'pickup' | 'workshop'>('pickup');
   const [cartPaymentMode, setCartPaymentMode] = useState<'pay_now' | 'pay_later'>('pay_now');
@@ -178,6 +194,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
     next.setHours(10, 0, 0, 0);
     return next;
   });
+  const [cartDateStr, setCartDateStr] = useState('');
+  const [cartTimeStr, setCartTimeStr] = useState('');
   const [showCartDatePicker, setShowCartDatePicker] = useState(false);
   const [showCartTimePicker, setShowCartTimePicker] = useState(false);
   const [cartCouponResult, setCartCouponResult] = useState<any>(null);
@@ -1712,6 +1730,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
     } else {
       setVehicleEntryOnly(false);
     }
+    setProfileStep(2);
+    setCarSearch('');
+    setSelectedCar(null);
+    setFuelType('');
+    setCarNumberParts(['', '', '', '']);
     setActiveSubPage('My Profile');
   };
 
@@ -1855,7 +1878,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         ) : null}
         <TouchableOpacity style={styles.addVehicleBtn} onPress={onPressAddVehicle} activeOpacity={0.85}>
           <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
-          <Text style={styles.addVehicleBtnText}>Add Your Vehicle</Text>
+          <Text style={styles.addVehicleBtnText}>Add New Vehicle</Text>
         </TouchableOpacity>
       </View>
 
@@ -2021,14 +2044,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     style={STEP_INPUT_STYLE}
                     value={profileForm.name}
                     onChangeText={(text) => setProfileForm((prev) => ({ ...prev, name: text }))}
-                    placeholder="Rahul Sharma"
+                    placeholder="My FNG Autocare"
                     placeholderTextColor="#9CA3AF"
                   />
                   <Text style={STEP_LABEL_STYLE}>MOBILE NUMBER</Text>
                   <TextInput
                     style={[STEP_INPUT_STYLE, { backgroundColor: '#F1F5F9', color: '#64748B' }]}
                     value={profileForm.phone ? `+91 ${profileForm.phone}` : ''}
-                    placeholder="98XXXXXXXX"
+                    placeholder="9152307030"
                     placeholderTextColor="#9CA3AF"
                     editable={false}
                   />
@@ -2037,7 +2060,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     style={STEP_INPUT_STYLE}
                     value={profileForm.email}
                     onChangeText={(text) => setProfileForm((prev) => ({ ...prev, email: text }))}
-                    placeholder="rahul@fng.com"
+                    placeholder="support@myfng.in"
                     placeholderTextColor="#9CA3AF"
                     keyboardType="email-address"
                     autoCapitalize="none"
@@ -2082,6 +2105,47 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </TouchableOpacity>
               {profileStep === 2 && (
                 <View style={STEP_CONTENT_STYLE}>
+                  {/* Quick select from saved vehicles */}
+                  {allAssociatedVehicles.length > 0 ? (
+                    <View style={{ marginBottom: 14 }}>
+                      <Text style={STEP_LABEL_STYLE}>YOUR SAVED VEHICLES</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                        {allAssociatedVehicles.map((v: any, idx: number) => {
+                          const label = [v.vehicle_make, v.vehicle_model].filter(Boolean).join(' ') || 'Vehicle';
+                          const isActive = carSearch === label;
+                          return (
+                            <TouchableOpacity
+                              key={v.vehicle_number || idx}
+                              style={{
+                                paddingHorizontal: 14,
+                                paddingVertical: 10,
+                                borderRadius: 12,
+                                borderWidth: 1.5,
+                                borderColor: isActive ? STEP_COLORS[2].accent : '#E2E8F0',
+                                backgroundColor: isActive ? STEP_COLORS[2].accent : '#FFFFFF',
+                              }}
+                              activeOpacity={0.85}
+                              onPress={() => {
+                                setSelectedCar({ make: v.vehicle_make || '', model: v.vehicle_model || '', raw: v });
+                                setCarSearch(label);
+                                setCarSuggestions([]);
+                                setCarSearchFocused(false);
+                                if (v.fuel_type) setFuelType(v.fuel_type);
+                                if (v.vehicle_number) {
+                                  const parts = String(v.vehicle_number).replace(/[^A-Z0-9]/gi, '').match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/i);
+                                  if (parts) setCarNumberParts([parts[1].toUpperCase(), parts[2], parts[3].toUpperCase(), parts[4]]);
+                                }
+                              }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: isActive ? '#FFFFFF' : '#374151' }}>{label}</Text>
+                              {v.vehicle_number ? <Text style={{ fontSize: 10, fontWeight: '700', color: isActive ? 'rgba(255,255,255,0.8)' : '#9CA3AF', marginTop: 2 }}>{v.vehicle_number}</Text> : null}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+
                   <Text style={STEP_LABEL_STYLE}>CAR BRAND & MODEL</Text>
                   <View style={styles.carSearchWrap}>
                     <TextInput
@@ -2097,16 +2161,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       <View style={styles.carSearchLoader}><Text style={styles.rowSub}>Searching...</Text></View>
                     ) : null}
                     {carSearchFocused && carSuggestions.length > 0 ? (
-                      <View style={styles.carSuggestionBox}>
-                        <FlatList
-                          data={carSuggestions.slice(0, 8)}
-                          keyExtractor={(item, idx) => String(item?.id || `${item?.make}-${item?.model || item?.model_name}-${idx}`)}
-                          keyboardShouldPersistTaps="handled"
-                          renderItem={({ item }) => {
+                      <View style={[styles.carSuggestionBox, { maxHeight: 260 }]}>
+                        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
+                          {carSuggestions.slice(0, 20).map((item, idx) => {
                             const itemMake = String(item?.make || '').trim();
                             const itemModel = String(item?.model_name || item?.model || '').trim();
                             return (
                               <TouchableOpacity
+                                key={String(item?.id || `${itemMake}-${itemModel}-${idx}`)}
                                 style={styles.carSuggestionItem}
                                 onPress={() => {
                                   setSelectedCar({ make: itemMake, model: itemModel, raw: item });
@@ -2119,8 +2181,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
                                 {!!item?.variant ? <Text style={styles.carSuggestionMeta}>{String(item.variant)}</Text> : null}
                               </TouchableOpacity>
                             );
-                          }}
-                        />
+                          })}
+                        </ScrollView>
                       </View>
                     ) : null}
                   </View>
@@ -3073,19 +3135,32 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         <Text style={ostyles.detailLabel}>TOTAL AMOUNT</Text>
                         <Text style={ostyles.amountValue}>{displayAmt}</Text>
                       </View>
-                      <TouchableOpacity style={ostyles.viewDetailsBtn} onPress={() => viewOrderDetails(order.id)}>
-                        <Text style={ostyles.viewDetailsBtnText}>View Details</Text>
-                      </TouchableOpacity>
                     </View>
 
                     <View style={ostyles.actionRow}>
-                      <TouchableOpacity style={ostyles.bookAgainBtn}>
+                      <TouchableOpacity style={ostyles.bookAgainBtn} onPress={() => viewOrderDetails(order.id)}>
+                        <Ionicons name="eye-outline" size={14} color="#1A3C6E" />
+                        <Text style={ostyles.bookAgainText}>VIEW DETAILS</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={ostyles.bookAgainBtn}
+                        onPress={() => {
+                          navigation.navigate('PublicBookServiceNow', {
+                            rebookOrder: {
+                              vehicle_make: order.vehicle_make || '',
+                              vehicle_model: order.vehicle_model || '',
+                              fuel_type: order.fuel_type || '',
+                              city: order.city || '',
+                              address: order.address || '',
+                              service_type: order.service_type || '',
+                              service_type_ids: order.service_type_ids || '',
+                              service_display: order.service_display || '',
+                            },
+                          });
+                        }}
+                      >
                         <Ionicons name="refresh" size={14} color="#1A3C6E" />
                         <Text style={ostyles.bookAgainText}>BOOK AGAIN</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={ostyles.invoiceBtn}>
-                        <Ionicons name="document-text-outline" size={14} color="#6B7280" />
-                        <Text style={ostyles.invoiceText}>INVOICE</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -3132,8 +3207,24 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   </Text>
                 </View>
                 <TouchableOpacity style={cstyles.changeChip} onPress={() => {
-                  setVehicleEntryOnly(false);
-                  setActiveSubPage('My Profile');
+                  if (allAssociatedVehicles.length > 1) {
+                    setShowVehiclePicker(true);
+                  } else {
+                    Alert.alert(
+                      'Change Vehicle',
+                      'You have only one saved vehicle. Add another vehicle in My Profile to switch.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Add Vehicle',
+                          onPress: () => {
+                            setVehicleEntryOnly(true);
+                            setActiveSubPage('My Profile');
+                          },
+                        },
+                      ]
+                    );
+                  }
                 }}>
                   <Text style={cstyles.changeChipText}>Change</Text>
                 </TouchableOpacity>
@@ -3148,7 +3239,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={cstyles.resumeRow}>
                     {resumableLeads.slice(0, 6).map((lead: any) => {
                       const active = cartSelectedLeadId === String(lead.id);
-                      const planName = String(lead?.plan_name || lead?.package_name || lead?.service_type || 'Service').trim();
+                      const planName = String(lead?.service_display || lead?.plan_name || lead?.package_name || lead?.service_type || 'Service').trim();
                       const leadPrice = Math.max(0, Math.round(Number(lead?.estimated_amount || 0)));
                       return (
                         <TouchableOpacity
@@ -3221,7 +3312,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         >
                           <Text style={cstyles.removeBtnText}>{cartSyncing ? 'Removing...' : 'Remove'}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={cstyles.editBtn} onPress={() => navigation.navigate('PublicServicePackages' as never)}>
+                        <TouchableOpacity
+                          style={cstyles.editBtn}
+                          onPress={() => {
+                            const cityParam = pickupForm.city?.trim() || undefined;
+                            const serviceName = String(item?.service_type || cartSelectedService?.name || '');
+                            const categoryId = mapServiceNameToCategoryId(serviceName);
+                            navigation.navigate('PublicServicePackages', { city: cityParam, selectedServiceId: categoryId } as never);
+                          }}
+                        >
                           <Text style={cstyles.editBtnText}>Edit Service</Text>
                         </TouchableOpacity>
                       </View>
@@ -3268,29 +3367,55 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
             {cartServiceMode === 'pickup' ? (
               <View style={cstyles.sectionCard}>
-                <View style={cstyles.dateRow}>
-                  <Ionicons name="calendar-outline" size={20} color="#9CA3AF" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={cstyles.dateValue}>{formattedCartDate}</Text>
-                    <Text style={cstyles.dateSub}>{formattedCartTime}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="calendar" size={14} color="#FFFFFF" />
                   </View>
-                  <View style={cstyles.dateActionRow}>
-                    <TouchableOpacity onPress={() => setShowCartDatePicker(true)}>
-                      <Text style={cstyles.changeLink}>Date</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setShowCartTimePicker(true)}>
-                      <Text style={cstyles.changeLink}>Time</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A' }}>Pickup Date</Text>
                 </View>
+                {(() => {
+                  const now = new Date();
+                  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                  const tmr = new Date(now.getTime() + 86400000);
+                  const tomorrowStr = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
+                  const fmtShort = (s: string) => { const d = new Date(s + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleString('en-IN', { month: 'short' })}`; };
+                  return (
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                      <TouchableOpacity
+                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === todayStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === todayStr ? '#EFF6FF' : '#FFF' }}
+                        onPress={() => { setCartDateStr(todayStr); setCartDate(now); }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === todayStr ? '#1D4ED8' : '#374151' }}>Today, {fmtShort(todayStr)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === tomorrowStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === tomorrowStr ? '#EFF6FF' : '#FFF' }}
+                        onPress={() => { setCartDateStr(tomorrowStr); setCartDate(tmr); }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === tomorrowStr ? '#1D4ED8' : '#374151' }}>Tomorrow, {fmtShort(tomorrowStr)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center' }}
+                        onPress={() => setShowCartDatePicker(true)}
+                      >
+                        <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })()}
                 {showCartDatePicker ? (
-                  <View style={styles.datePickerWrap}>
+                  <View style={[styles.datePickerWrap, { marginTop: 8 }]}>
                     <DateTimePicker
                       value={cartDate}
                       mode="date"
                       minimumDate={new Date()}
                       display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={onCartDateChange}
+                      onChange={(e, d) => {
+                        if (Platform.OS === 'android') setShowCartDatePicker(false);
+                        if (d) {
+                          setCartDate(d);
+                          setCartDateStr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                        }
+                      }}
                     />
                     {Platform.OS === 'ios' ? (
                       <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowCartDatePicker(false)}>
@@ -3299,32 +3424,66 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     ) : null}
                   </View>
                 ) : null}
-                {showCartTimePicker ? (
-                  <View style={[styles.datePickerWrap, { marginTop: 8 }]}>
-                    <DateTimePicker
-                      value={cartTime}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={onCartTimeChange}
-                    />
-                    {Platform.OS === 'ios' ? (
-                      <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowCartTimePicker(false)}>
-                        <Text style={styles.datePickerDoneText}>Done</Text>
-                      </TouchableOpacity>
+
+                {cartDateStr ? (
+                  <View style={{ marginTop: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#A855F7', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="time" size={14} color="#FFFFFF" />
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A' }}>Pickup Time</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {[
+                        { value: '10:00', label: '10 AM - 11 AM' },
+                        { value: '11:00', label: '11 AM - 12 PM' },
+                        { value: '12:00', label: '12 PM - 1 PM' },
+                        { value: '13:00', label: '1 PM - 2 PM' },
+                        { value: '14:00', label: '2 PM - 3 PM' },
+                        { value: '15:00', label: '3 PM - 4 PM' },
+                      ].map((slot) => {
+                        const isActive = cartTimeStr === slot.value;
+                        return (
+                          <TouchableOpacity
+                            key={slot.value}
+                            style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: isActive ? '#7C3AED' : '#E5E7EB', backgroundColor: isActive ? '#F5F3FF' : '#FFF' }}
+                            onPress={() => { setCartTimeStr(slot.value); const t = new Date(); t.setHours(parseInt(slot.value), 0, 0, 0); setCartTime(t); }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: isActive ? '#7C3AED' : '#374151' }}>{slot.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    {cartTimeStr ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                        <Ionicons name="checkmark-circle" size={14} color="#7C3AED" />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#7C3AED' }}>
+                          Selected: {[{ value: '10:00', label: '10 AM - 11 AM' }, { value: '11:00', label: '11 AM - 12 PM' }, { value: '12:00', label: '12 PM - 1 PM' }, { value: '13:00', label: '1 PM - 2 PM' }, { value: '14:00', label: '2 PM - 3 PM' }, { value: '15:00', label: '3 PM - 4 PM' }].find((s) => s.value === cartTimeStr)?.label}
+                        </Text>
+                      </View>
                     ) : null}
                   </View>
-                ) : null}
+                ) : (
+                  <View style={{ marginTop: 10, padding: 10, backgroundColor: '#F9FAFB', borderRadius: 10 }}>
+                    <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600' }}>Select a pickup date to choose a time slot.</Text>
+                  </View>
+                )}
               </View>
             ) : (
               <View style={cstyles.sectionCard}>
-                <View style={cstyles.workshopHeader}>
-                  <Text style={cstyles.workshopTitle}>Nearest Workshops</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="business" size={14} color="#FFFFFF" />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A', flex: 1 }}>Select Workshop</Text>
                   <TouchableOpacity onPress={fetchCartWorkshops} disabled={cartWorkshopLoading}>
-                    <Text style={cstyles.changeLink}>{cartWorkshopLoading ? 'Loading...' : 'Refresh'}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>{cartWorkshopLoading ? 'Loading...' : 'Refresh'}</Text>
                   </TouchableOpacity>
                 </View>
                 {cartWorkshopLoading ? (
-                  <Text style={cstyles.workshopEmpty}>Searching nearby workshops...</Text>
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, color: '#6B7280' }}>Searching nearby workshops...</Text>
+                  </View>
                 ) : cartWorkshops.length === 0 ? (
                   <View style={cstyles.pickupEmptyWrap}>
                     <Text style={cstyles.workshopEmpty}>
@@ -3341,24 +3500,116 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <View style={cstyles.workshopList}>
+                  <View style={{ gap: 8 }}>
                     {cartWorkshops.slice(0, 8).map((workshop: any) => {
                       const active = String(workshop.id) === cartSelectedWorkshopId;
                       return (
                         <TouchableOpacity
                           key={String(workshop.id)}
-                          style={[cstyles.workshopCard, active ? cstyles.workshopCardActive : null]}
+                          style={{
+                            padding: 12, borderRadius: 12, borderWidth: 1.5,
+                            borderColor: active ? '#059669' : '#E5E7EB',
+                            backgroundColor: active ? '#ECFDF5' : '#FFF',
+                          }}
                           onPress={() => setCartSelectedWorkshopId(String(workshop.id))}
                         >
-                          <Text style={cstyles.workshopName}>{workshop.name || 'Workshop'}</Text>
-                          <Text style={cstyles.workshopAddress} numberOfLines={2}>
-                            {[workshop.address, workshop.city].filter(Boolean).join(', ') || 'Address unavailable'}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: active ? '#D1FAE5' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
+                              <Ionicons name="business" size={16} color={active ? '#059669' : '#6B7280'} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>{workshop.name || 'Workshop'}</Text>
+                              <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={2}>
+                                {[workshop.address, workshop.city].filter(Boolean).join(', ') || 'Address unavailable'}
+                              </Text>
+                            </View>
+                            {active && <Ionicons name="checkmark-circle" size={20} color="#059669" />}
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
                 )}
+
+                {cartSelectedWorkshopId ? (
+                  <View style={{ marginTop: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="calendar" size={14} color="#FFFFFF" />
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A' }}>Preferred Date & Time</Text>
+                    </View>
+                    {(() => {
+                      const now = new Date();
+                      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                      const tmr = new Date(now.getTime() + 86400000);
+                      const tomorrowStr = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
+                      const fmtShort = (s: string) => { const d = new Date(s + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleString('en-IN', { month: 'short' })}`; };
+                      return (
+                        <View style={{ gap: 10 }}>
+                          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === todayStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === todayStr ? '#EFF6FF' : '#FFF' }}
+                              onPress={() => { setCartDateStr(todayStr); setCartDate(now); }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === todayStr ? '#1D4ED8' : '#374151' }}>Today, {fmtShort(todayStr)}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === tomorrowStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === tomorrowStr ? '#EFF6FF' : '#FFF' }}
+                              onPress={() => { setCartDateStr(tomorrowStr); setCartDate(tmr); }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === tomorrowStr ? '#1D4ED8' : '#374151' }}>Tomorrow, {fmtShort(tomorrowStr)}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center' }}
+                              onPress={() => setShowCartDatePicker(true)}
+                            >
+                              <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                            </TouchableOpacity>
+                          </View>
+                          {showCartDatePicker ? (
+                            <DateTimePicker
+                              value={cartDate}
+                              mode="date"
+                              minimumDate={new Date()}
+                              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                              onChange={(e, d) => {
+                                if (Platform.OS === 'android') setShowCartDatePicker(false);
+                                if (d) {
+                                  setCartDate(d);
+                                  setCartDateStr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                                }
+                              }}
+                            />
+                          ) : null}
+                          {cartDateStr ? (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                              {[
+                                { value: '10:00', label: '10 AM - 11 AM' },
+                                { value: '11:00', label: '11 AM - 12 PM' },
+                                { value: '12:00', label: '12 PM - 1 PM' },
+                                { value: '13:00', label: '1 PM - 2 PM' },
+                                { value: '14:00', label: '2 PM - 3 PM' },
+                                { value: '15:00', label: '3 PM - 4 PM' },
+                              ].map((slot) => {
+                                const isActive = cartTimeStr === slot.value;
+                                return (
+                                  <TouchableOpacity
+                                    key={slot.value}
+                                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: isActive ? '#7C3AED' : '#E5E7EB', backgroundColor: isActive ? '#F5F3FF' : '#FFF' }}
+                                    onPress={() => { setCartTimeStr(slot.value); const t = new Date(); t.setHours(parseInt(slot.value), 0, 0, 0); setCartTime(t); }}
+                                  >
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: isActive ? '#7C3AED' : '#374151' }}>{slot.label}</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })()}
+                  </View>
+                ) : null}
               </View>
             )}
 
@@ -3947,6 +4198,63 @@ export default function SettingsScreen({ navigation, route }: Props) {
           <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151' }}>Loading...</Text>
         </View>
       )}
+
+      <Modal visible={showVehiclePicker} transparent animationType="slide" onRequestClose={() => setShowVehiclePicker(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%', paddingBottom: 30 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: '#111827' }}>Select Vehicle</Text>
+              <TouchableOpacity onPress={() => setShowVehiclePicker(false)}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+              {allAssociatedVehicles.map((v: any, idx: number) => {
+                const plate = String(v?.vehicle_number || '').trim().toUpperCase();
+                const key = plate || `vehicle-${idx}`;
+                const isActive = key === selectedVehicleKey;
+                const name = [v?.make, v?.model].filter(Boolean).map((s: string) => s.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())).join(' ') || 'Vehicle';
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, marginBottom: 10,
+                      borderWidth: 1.5, borderColor: isActive ? COLORS.primary : '#E5E7EB',
+                      backgroundColor: isActive ? '#F0F7FF' : '#FFF',
+                    }}
+                    onPress={() => {
+                      setSelectedVehicleKey(key);
+                      setShowVehiclePicker(false);
+                    }}
+                  >
+                    <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' }}>
+                      <VehicleImage vehicle={v} style={{ width: 44, height: 44 }} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }}>{name}</Text>
+                      <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                        {plate || 'No plate'}{v?.fuel_type ? ` • ${String(v.fuel_type).toUpperCase()}` : ''}
+                      </Text>
+                    </View>
+                    {isActive && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.primary, borderStyle: 'dashed', marginTop: 4 }}
+                onPress={() => {
+                  setShowVehiclePicker(false);
+                  setVehicleEntryOnly(true);
+                  setActiveSubPage('My Profile');
+                }}
+              >
+                <Ionicons name="add" size={18} color={COLORS.primary} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.primary }}>Add New Vehicle</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

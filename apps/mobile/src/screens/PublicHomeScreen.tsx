@@ -426,7 +426,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <View>
                 <Text style={styles.loginBannerTitle}>Unlock Premium Benefits</Text>
                 <Text style={styles.loginBannerText}>
-                  Login to track services, earn rewards and manage your garage.
+                  Login to track services, earn rewards and manage your service history.
                 </Text>
               </View>
               <TouchableOpacity style={styles.loginBannerButton} onPress={() => navigation.navigate('Login')}>

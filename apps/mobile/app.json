@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyFNG",
     "slug": "myfng-app",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
     "icon": "./assets/app-icon.png",
