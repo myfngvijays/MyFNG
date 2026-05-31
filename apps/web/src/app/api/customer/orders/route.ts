@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time, workshops(name, workshop_name)')
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time_slot')
     .eq('customer_phone', customer.phone)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -91,6 +91,20 @@ export async function GET(request: Request) {
     }
   }
 
+  const workshopIds = Array.from(new Set(
+    rows.map((r: any) => String(r.workshop_id || '').trim()).filter((v: string) => uuidLike.test(v))
+  ));
+  const workshopNameById: Record<string, string> = {};
+  if (workshopIds.length > 0) {
+    const { data: workshops } = await supabaseAdmin
+      .from('workshops')
+      .select('id, name, workshop_name')
+      .in('id', workshopIds);
+    for (const w of workshops || []) {
+      workshopNameById[String((w as any).id)] = String((w as any).workshop_name || (w as any).name || '');
+    }
+  }
+
   const leadIds = Array.from(new Set(rows.map((r: any) => String(r.id || '').trim()).filter(Boolean)));
   const latestInvoiceAmountByLeadId: Record<string, number> = {};
   if (leadIds.length > 0) {
@@ -144,13 +158,12 @@ export async function GET(request: Request) {
               ? estimatedAmount
               : null;
 
-    const workshopName = r.workshops?.workshop_name || r.workshops?.name || '';
-
     return {
       ...r,
       service_display: resolvedServiceType,
       amount_display: displayAmount,
-      workshop_name: workshopName,
+      preferred_time: r.preferred_time_slot || null,
+      workshop_name: workshopNameById[String(r.workshop_id || '')] || '',
     };
   });
 
