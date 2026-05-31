@@ -14,6 +14,8 @@ import {
   Dimensions,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
+  findNodeHandle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -146,6 +148,23 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const paramSelectedServiceId = route?.params?.selectedServiceId;
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  const scrollToInput = (reactNode: any) => {
+    if (scrollRef.current && reactNode) {
+      setTimeout(() => {
+        (scrollRef.current as any)?.scrollResponderScrollNativeHandleToKeyboard?.(
+          findNodeHandle(reactNode), 150, true
+        );
+      }, 300);
+    }
+  };
 
   const [form, setForm] = useState<BookingFormData>({
     city: null,
@@ -1227,9 +1246,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}>
       <View style={styles.screen}>
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} contentContainerStyle={[styles.container, keyboardVisible && { paddingBottom: 350 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Top header */}
           <View style={styles.top}>
             <View style={styles.topRow}>
@@ -1429,6 +1448,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     style={styles.input}
                     placeholder="Your name"
                     placeholderTextColor={COLORS.gray[500]}
+                    onFocus={(e) => scrollToInput(e.target)}
                   />
                 </View>
                 <View style={styles.field}>
@@ -1444,6 +1464,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     placeholderTextColor={COLORS.gray[500]}
                     keyboardType="phone-pad"
                     editable={!otpVerified}
+                    onFocus={(e) => scrollToInput(e.target)}
                   />
                 </View>
                 {!isLoggedIn && otpSent && !otpVerified ? (
@@ -1457,6 +1478,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       placeholderTextColor={COLORS.gray[500]}
                       keyboardType="number-pad"
                       maxLength={6}
+                      onFocus={(e) => scrollToInput(e.target)}
                     />
                     <TouchableOpacity onPress={handleSendOtp} style={{ marginTop: 8 }} disabled={otpLoading}>
                       <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>Resend OTP</Text>
@@ -1981,6 +2003,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           style={styles.input}
                           placeholder="Area, city, pincode"
                           placeholderTextColor={COLORS.gray[500]}
+                          onFocus={(e) => scrollToInput(e.target)}
                         />
                         <View style={[styles.row2, { marginTop: 10 }]}>
                           <View style={{ flex: 1 }}>
@@ -1991,6 +2014,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                               style={styles.input}
                               placeholder="Flat no."
                               placeholderTextColor={COLORS.gray[500]}
+                              onFocus={(e) => scrollToInput(e.target)}
                             />
                           </View>
                           <View style={{ flex: 1 }}>
@@ -2001,6 +2025,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                               style={styles.input}
                               placeholder="Near…"
                               placeholderTextColor={COLORS.gray[500]}
+                              onFocus={(e) => scrollToInput(e.target)}
                             />
                           </View>
                         </View>
@@ -2242,6 +2267,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       placeholder="Or enter coupon code"
                       placeholderTextColor={COLORS.gray[500]}
                       autoCapitalize="characters"
+                      onFocus={(e) => scrollToInput(e.target)}
                     />
                     <TouchableOpacity
                       style={[

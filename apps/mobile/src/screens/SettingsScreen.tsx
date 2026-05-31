@@ -152,7 +152,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [odometerReading, setOdometerReading] = useState('');
   const [profileStep, setProfileStep] = useState(1);
   const [fuelType, setFuelType] = useState<'Petrol' | 'Diesel' | 'CNG' | ''>('');
-  const [carNumberParts, setCarNumberParts] = useState<string[]>(['', '', '', '']);
+  const [carNumberParts, setCarNumberParts] = useState<string[]>(['']);
   const [carSearchFocused, setCarSearchFocused] = useState(false);
   const carNumberRefs = useRef<Array<TextInput | null>>([]);
 
@@ -635,39 +635,48 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const allAssociatedVehicles = useMemo(() => {
     const map = new Map<string, any>();
+    const INVALID_PLATES = new Set(['', 'NA', 'N/A', 'NONE', 'NULL', 'UNDEFINED']);
+    const normalizePlate = (raw: any) => {
+      const plate = String(raw || '').trim().toUpperCase();
+      return INVALID_PLATES.has(plate) ? '' : plate;
+    };
 
-    (orders || []).forEach((o: any) => {
-      const plate = String(o?.vehicle_number || '').trim().toUpperCase();
-      const make = String(o?.vehicle_make || '').trim();
-      const model = String(o?.vehicle_model || '').trim();
-      const key = plate || `${make}-${model}`.trim();
-      if (!key) return;
-      if (!map.has(key)) {
-        map.set(key, {
-          vehicle_number: plate || null,
-          make: make || null,
-          model: model || null,
-          fuel_type: o?.fuel_type || null,
-          year: o?.year || null,
-        });
-      }
-    });
-
+    // Real saved vehicles take priority (they have authoritative make/model/plate).
     (vehicles || []).forEach((v: any) => {
-      const plate = String(v?.vehicle_number || '').trim().toUpperCase();
+      const plate = normalizePlate(v?.vehicle_number);
       const make = String(v?.make || '').trim();
       const model = String(v?.model || '').trim();
-      const key = plate || `${make}-${model}`.trim();
+      const key = plate || `${make}-${model}`.trim().toUpperCase();
       if (!key) return;
-      if (!map.has(key)) {
-        map.set(key, {
-          vehicle_number: plate || null,
-          make: make || null,
-          model: model || null,
-          fuel_type: v?.fuel_type || null,
-          year: v?.year || null,
-        });
-      }
+      map.set(key, {
+        id: v?.id || null,
+        vehicle_number: plate || null,
+        make: make || null,
+        model: model || null,
+        fuel_type: v?.fuel_type || null,
+        year: v?.year || null,
+      });
+    });
+
+    // Add order-derived vehicles only if they aren't already covered by a saved vehicle.
+    (orders || []).forEach((o: any) => {
+      const plate = normalizePlate(o?.vehicle_number);
+      const make = String(o?.vehicle_make || '').trim();
+      const model = String(o?.vehicle_model || '').trim();
+      if (!make && !model && !plate) return;
+      const key = plate || `${make}-${model}`.trim().toUpperCase();
+      if (!key) return;
+      // If a saved vehicle already matches by plate OR make-model, skip.
+      const makeModelKey = `${make}-${model}`.trim().toUpperCase();
+      if (map.has(key) || (makeModelKey && map.has(makeModelKey))) return;
+      map.set(key, {
+        id: null,
+        vehicle_number: plate || null,
+        make: make || null,
+        model: model || null,
+        fuel_type: o?.fuel_type || null,
+        year: o?.year || null,
+      });
     });
 
     return Array.from(map.values());
@@ -844,20 +853,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
     }
 
     const vehicleYear = String(selectedVehicle?.year || '').trim();
-    if (vehicleYear && !regDate) {
-      setRegDate(vehicleYear);
+    if (vehicleYear) {
+      setRegDate((prev) => prev || vehicleYear);
     }
 
     const rawVehicleNumber = String(selectedVehicle?.vehicle_number || '').toUpperCase();
     if (!rawVehicleNumber) return;
     const compact = rawVehicleNumber.replace(/[^A-Z0-9]/g, '');
-    const matched = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,2})(\d{1,4})$/);
-    if (matched) {
-      setCarNumberParts([matched[1], matched[2], matched[3], matched[4]]);
-      return;
-    }
-    setCarNumberParts([compact.slice(0, 2), compact.slice(2, 4), compact.slice(4, 6), compact.slice(6, 10)]);
-  }, [activeSubPage, selectedVehicle, regDate]);
+    setCarNumberParts([compact]);
+  }, [activeSubPage, selectedVehicle]);
 
   useEffect(() => {
     if (activeSubPage !== 'My Profile') return;
@@ -1184,22 +1188,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleCarPartChange = (index: number, value: string) => {
-    const maxLengths = [2, 2, 2, 4];
-    const isAlphaPart = index === 0 || index === 2;
-    const sanitized = isAlphaPart
-      ? value.replace(/[^a-z]/gi, '').toUpperCase().slice(0, maxLengths[index])
-      : value.replace(/\D/g, '').slice(0, maxLengths[index]);
-
-    setCarNumberParts((prev) => {
-      const next = [...prev];
-      next[index] = sanitized;
-      return next;
-    });
-
-    if (sanitized.length === maxLengths[index] && index < 3) {
-      carNumberRefs.current[index + 1]?.focus();
-    }
+  const handleCarPartChange = (_index: number, value: string) => {
+    const sanitized = value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12);
+    setCarNumberParts([sanitized]);
   };
 
   const handleRegisterSave = async () => {
@@ -1747,7 +1738,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     setCarSearch('');
     setSelectedCar(null);
     setFuelType('');
-    setCarNumberParts(['', '', '', '']);
+    setCarNumberParts(['']);
     setActiveSubPage('My Profile');
   };
 
@@ -1840,9 +1831,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
               const plate = String(item?.vehicle_number || '').trim().toUpperCase();
               return (
                 <View style={[styles.vehicleSwipeCard, { width: vehicleCardWidth }]}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={styles.numberPlateBadge}>
-                      <Text style={styles.numberPlateText}>{plate || `VEHICLE ${index + 1}`}</Text>
+                      <Text style={styles.numberPlateText} numberOfLines={1}>{plate || `VEHICLE ${index + 1}`}</Text>
                     </View>
                     <Text style={styles.vehicleName} numberOfLines={1}>
                       {[item?.make, item?.model].filter(Boolean).join(' ') || 'Add your first vehicle'}
@@ -1870,9 +1861,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
           />
         ) : (
           <View style={styles.vehicleSwipeCard}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <View style={styles.numberPlateBadge}>
-                <Text style={styles.numberPlateText}>NO VEHICLE</Text>
+                <Text style={styles.numberPlateText} numberOfLines={1}>NO VEHICLE</Text>
               </View>
               <Text style={styles.vehicleName} numberOfLines={1}>Add your first vehicle</Text>
             </View>
@@ -1957,7 +1948,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     switch (activeSubPage) {
       case 'My Profile': {
         const step1Done = !!(profileForm.name && profileForm.phone);
-        const step2Done = !!(carSearch && fuelType && carNumberParts.every((p) => p.length > 0));
+        const step2Done = !!(carSearch && fuelType && carNumberParts[0]?.length > 0);
         const STEP_COLORS = {
           1: { accent: '#0046AD', bg: '#DBEAFE' },
           2: { accent: '#F97316', bg: '#FFEDD5' },
@@ -2124,7 +2115,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       <Text style={STEP_LABEL_STYLE}>YOUR SAVED VEHICLES</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                         {allAssociatedVehicles.map((v: any, idx: number) => {
-                          const label = [v.vehicle_make, v.vehicle_model].filter(Boolean).join(' ') || 'Vehicle';
+                          const vMake = v.make || v.vehicle_make || '';
+                          const vModel = v.model || v.vehicle_model || '';
+                          const label = [vMake, vModel].filter(Boolean).join(' ') || 'Vehicle';
                           const isActive = carSearch === label;
                           return (
                             <TouchableOpacity
@@ -2139,14 +2132,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
                               }}
                               activeOpacity={0.85}
                               onPress={() => {
-                                setSelectedCar({ make: v.vehicle_make || '', model: v.vehicle_model || '', raw: v });
+                                setSelectedCar({ make: vMake, model: vModel, raw: v });
                                 setCarSearch(label);
                                 setCarSuggestions([]);
                                 setCarSearchFocused(false);
                                 if (v.fuel_type) setFuelType(v.fuel_type);
                                 if (v.vehicle_number) {
-                                  const parts = String(v.vehicle_number).replace(/[^A-Z0-9]/gi, '').match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/i);
-                                  if (parts) setCarNumberParts([parts[1].toUpperCase(), parts[2], parts[3].toUpperCase(), parts[4]]);
+                                  setCarNumberParts([String(v.vehicle_number).replace(/[^A-Z0-9]/gi, '').toUpperCase()]);
                                 }
                               }}
                             >
@@ -2155,6 +2147,30 @@ export default function SettingsScreen({ navigation, route }: Props) {
                             </TouchableOpacity>
                           );
                         })}
+                        <TouchableOpacity
+                          style={{
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            borderRadius: 12,
+                            borderWidth: 1.5,
+                            borderColor: STEP_COLORS[2].accent,
+                            backgroundColor: '#FFFFFF',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            setSelectedCar(null);
+                            setCarSearch('');
+                            setCarSuggestions([]);
+                            setFuelType('');
+                            setCarNumberParts(['']);
+                          }}
+                        >
+                          <Ionicons name="add-circle-outline" size={16} color={STEP_COLORS[2].accent} />
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: STEP_COLORS[2].accent }}>Add New</Text>
+                        </TouchableOpacity>
                       </ScrollView>
                     </View>
                   ) : null}
@@ -2251,22 +2267,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   ) : null}
 
                   <Text style={STEP_LABEL_STYLE}>VEHICLE NUMBER PLATE</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {[0, 1, 2, 3].map((idx) => (
-                      <TextInput
-                        key={String(idx)}
-                        ref={(input) => { carNumberRefs.current[idx] = input; }}
-                        style={[PLATE_BOX_STYLE, idx === 3 ? { flex: 1.5 } : null]}
-                        value={carNumberParts[idx]}
-                        onChangeText={(text) => handleCarPartChange(idx, text)}
-                        maxLength={idx === 3 ? 4 : 2}
-                        autoCapitalize="characters"
-                        keyboardType={idx === 0 || idx === 2 ? 'default' : 'number-pad'}
-                        placeholder={idx === 0 ? 'MH' : idx === 1 ? '01' : idx === 2 ? 'BJ' : '7842'}
-                        placeholderTextColor="#9CA3AF"
-                      />
-                    ))}
-                  </View>
+                  <TextInput
+                    style={STEP_INPUT_STYLE}
+                    value={carNumberParts[0] || ''}
+                    onChangeText={(text) => handleCarPartChange(0, text)}
+                    maxLength={12}
+                    autoCapitalize="characters"
+                    placeholder="e.g. MH01BJ7842 or DL9CAY5551"
+                    placeholderTextColor="#9CA3AF"
+                  />
                   <TouchableOpacity style={[STEP_NEXT_BTN_STYLE, { backgroundColor: STEP_COLORS[2].accent }]} onPress={() => setProfileStep(3)} activeOpacity={0.85}>
                     <Text style={STEP_NEXT_BTN_TEXT_STYLE}>Next: Maintenance →</Text>
                   </TouchableOpacity>
@@ -4293,18 +4302,18 @@ const styles = StyleSheet.create({
   vehicleCard: { backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB', padding: 16 },
   cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
   vehiclePagerContent: { paddingRight: 10 },
-  vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F8FBFF', paddingHorizontal: 12, paddingVertical: 10, marginRight: 10 },
+  vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F8FBFF', paddingHorizontal: 14, paddingVertical: 12, marginRight: 10, gap: 10 },
   vehicleDotsRow: { marginTop: 10, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   vehicleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#D1D5DB' },
   vehicleDotActive: { width: 16, backgroundColor: COLORS.primary },
-  numberPlateBadge: { backgroundColor: '#1F2937', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 8 },
-  numberPlateText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  vehicleName: { fontSize: 14, fontWeight: '800', color: '#111827' },
-  vehicleTags: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  numberPlateBadge: { backgroundColor: '#1F2937', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 8, maxWidth: '100%' },
+  numberPlateText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  vehicleName: { fontSize: 15, fontWeight: '800', color: '#111827' },
+  vehicleTags: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   vehicleTag: { backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   vehicleTagText: { fontSize: 9, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleYear: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
-  vehicleImage: { width: 200, height: 140, borderRadius: 12 },
+  vehicleImage: { width: 130, height: 92, borderRadius: 12, flexShrink: 0 },
   addVehicleBtn: { marginTop: 12, borderRadius: 12, backgroundColor: COLORS.primary, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },

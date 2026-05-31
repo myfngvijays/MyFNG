@@ -127,7 +127,7 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
   }> = [
     { id: 'home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
     { id: 'services', label: 'Services', icon: 'construct-outline', iconActive: 'construct' },
-    { id: 'ai', label: 'AI Bot', icon: 'sparkles-outline', iconActive: 'sparkles', special: true },
+    { id: 'ai', label: 'Misa AI', icon: 'sparkles-outline', iconActive: 'sparkles', special: true },
     { id: 'roadside', label: 'Roadside', icon: 'car-sport-outline', iconActive: 'car-sport' },
     { id: 'account', label: 'Account', icon: 'person-outline', iconActive: 'person' },
   ];
