@@ -2,22 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Platform, Text as RNText } from 'react-native';
 
 if (Platform.OS === 'ios') {
-  const oldRender = (RNText as any).render;
-  if (oldRender) {
-    const bumpFontSize = (style: any): any => {
-      if (!style) return style;
-      if (Array.isArray(style)) return style.map(bumpFontSize);
-      if (typeof style === 'object' && typeof style.fontSize === 'number') {
-        return { ...style, fontSize: style.fontSize + 2 };
-      }
-      return style;
-    };
-    (RNText as any).render = function (...args: any[]) {
-      const origin = oldRender.call(this, ...args);
-      return React.cloneElement(origin, {
-        style: bumpFontSize(origin.props.style),
-      });
-    };
+  try {
+    const oldRender = (RNText as any).render;
+    if (typeof oldRender === 'function') {
+      const bumpFontSize = (style: any): any => {
+        if (!style) return style;
+        if (Array.isArray(style)) return style.map(bumpFontSize);
+        if (typeof style === 'object' && typeof style.fontSize === 'number') {
+          return { ...style, fontSize: style.fontSize + 2 };
+        }
+        return style;
+      };
+      (RNText as any).render = function (...args: any[]) {
+        const origin = oldRender.apply(this, args);
+        if (!origin || !React.isValidElement(origin)) return origin;
+        return React.cloneElement(origin, {
+          style: bumpFontSize((origin as any).props?.style),
+        } as any);
+      };
+    }
+  } catch (_e) {
+    // If the Text internals change across RN versions, skip the font bump rather than crash.
   }
 }
 import { NavigationContainer } from '@react-navigation/native';

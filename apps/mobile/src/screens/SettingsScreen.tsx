@@ -174,6 +174,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [currentMembership, setCurrentMembership] = useState<any | null>(null);
   const [selectedMembershipIdx, setSelectedMembershipIdx] = useState(0);
   const [membershipLoading, setMembershipLoading] = useState(false);
+  const [addSecondCar, setAddSecondCar] = useState(false);
   const [showReferTnC, setShowReferTnC] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
   const [walletRewardPoints, setWalletRewardPoints] = useState(0);
@@ -1127,7 +1128,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: plan.raw.id }),
+        body: JSON.stringify({ plan_id: plan.raw.id, add_second_car: addSecondCar }),
       });
 
       if (!orderRes?.order_id) {
@@ -1152,7 +1153,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         amount: orderRes.amount_paise,
         currency: 'INR',
         name: 'MyFNG',
-        description: `${plan.name} Membership`,
+        description: addSecondCar ? `${plan.name} Membership + 2nd Car` : `${plan.name} Membership`,
         order_id: orderRes.order_id,
         prefill: {
           contact: profileForm.phone || '',
@@ -2611,14 +2612,31 @@ export default function SettingsScreen({ navigation, route }: Props) {
               ))}
             </View>
 
-            {/* Add-on card */}
-            <View style={styles.primeAddonCard}>
+            {/* Add-on card (selectable) */}
+            <TouchableOpacity
+              style={[styles.primeAddonCard, addSecondCar ? { borderColor: COLORS.primary, backgroundColor: '#E8F2FF' } : null]}
+              onPress={() => setAddSecondCar(!addSecondCar)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={addSecondCar ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={addSecondCar ? COLORS.primary : '#9CA3AF'}
+              />
               <Ionicons name={PRIME_MEMBERSHIP.addOn.icon as any} size={22} color={COLORS.primary} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.primeAddonTitle}>{PRIME_MEMBERSHIP.addOn.title}</Text>
                 <Text style={styles.primeAddonSub}>{PRIME_MEMBERSHIP.addOn.description}</Text>
               </View>
               <Text style={styles.primeAddonPrice}>{PRIME_MEMBERSHIP.addOn.price}</Text>
+            </TouchableOpacity>
+
+            {/* Total price display */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 10 }}>
+              <Text style={{ fontSize: 14, color: '#6B7280' }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A1A1A' }}>
+                ₹{addSecondCar ? PRIME_MEMBERSHIP.priceNum + 299 : PRIME_MEMBERSHIP.priceNum}
+              </Text>
             </View>
 
             {/* CTA */}
