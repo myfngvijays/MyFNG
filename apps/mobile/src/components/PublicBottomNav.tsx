@@ -94,21 +94,23 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
   const pulseAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
-        Animated.timing(pulseAnim, { toValue: 0, duration: 1000, useNativeDriver: false }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
       ]),
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, [pulseAnim]);
 
-  const glowShadowOpacity = pulseAnim.interpolate({
+  const glowOpacity = pulseAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.3, 0.7],
+    outputRange: [0.35, 0.75],
   });
-  const glowShadowRadius = pulseAnim.interpolate({
+  const glowScale = pulseAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [16, 30],
+    outputRange: [1, 1.35],
   });
 
   const normalizedActive: PublicPillNavTab =
@@ -140,12 +142,21 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
           if (tab.special) {
             return (
               <View key={tab.id} style={styles.aiWrap}>
-                <Animated.View style={{ shadowColor: '#2563EB', shadowOpacity: glowShadowOpacity, shadowRadius: glowShadowRadius, shadowOffset: { width: 0, height: 10 }, elevation: 10 }}>
-                  <TouchableOpacity style={styles.aiButton} onPress={() => onPressTab(tab.id)} activeOpacity={0.85}>
+                <View style={styles.aiButtonHolder}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.aiGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}
+                  />
+                  <TouchableOpacity
+                    style={styles.aiButton}
+                    onPress={() => onPressTab(tab.id)}
+                    activeOpacity={0.85}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
                     <BotFace size={32} />
                   </TouchableOpacity>
-                </Animated.View>
-                <Text style={styles.aiLabel}>{tab.label}</Text>
+                </View>
+                <Text style={styles.aiLabel} numberOfLines={1}>{tab.label}</Text>
               </View>
             );
           }
@@ -156,13 +167,14 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
               style={[styles.tabButton, isActive ? styles.tabButtonActive : null]}
               onPress={() => onPressTab(tab.id)}
               activeOpacity={0.85}
+              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
             >
               <Ionicons
                 name={isActive ? tab.iconActive : tab.icon}
                 size={22}
                 color={isActive ? '#2563EB' : COLORS.secondary}
               />
-              <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : null]}>{tab.label}</Text>
+              <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : null]} numberOfLines={1}>{tab.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -193,33 +205,47 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   tabButton: {
-    width: 64,
-    height: 58,
+    flex: 1,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 3,
   },
   tabButtonActive: {},
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: COLORS.secondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
+    textAlign: 'center',
   },
   tabLabelActive: {
     color: '#2563EB',
   },
   aiWrap: {
-    width: 64,
+    flex: 1,
     alignItems: 'center',
+  },
+  aiButtonHolder: {
+    width: 64,
+    height: 64,
+    marginTop: -24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiGlow: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#2563EB',
   },
   aiButton: {
     width: 64,
     height: 64,
     borderRadius: 32,
     backgroundColor: '#2563EB',
-    marginTop: -24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
@@ -232,10 +258,11 @@ const styles = StyleSheet.create({
   },
   aiLabel: {
     marginTop: 6,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: COLORS.secondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
+    textAlign: 'center',
   },
 });

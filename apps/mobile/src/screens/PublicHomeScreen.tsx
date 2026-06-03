@@ -401,7 +401,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const onNavPress = (tab: PublicPillNavTab) => {
     if (tab === 'home') return;
     if (tab === 'services') navigation.navigate('PublicServicePackages', { city: detectedCity });
-    if (tab === 'ai') navigation.navigate('AIBooking', { city: detectedCity });
+    if (tab === 'ai') navigation.navigate('AIBooking', { city: detectedCity, fullScreen: true });
     if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city: detectedCity });
     if (tab === 'account') navigation.navigate('Settings');
   };

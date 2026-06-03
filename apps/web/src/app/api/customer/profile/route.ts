@@ -41,8 +41,8 @@ export async function GET() {
           id: `lead_${l.id}`,
           address_line1: addr,
           city: l.city || null,
-          address_type: 'Previous Booking',
-          label: 'Previous Booking',
+          address_type: 'Saved Address',
+          label: 'Saved Address',
         });
       }
       allAddresses = fromLeads.slice(0, 5);

@@ -434,7 +434,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
           onPressTab={(tab: PublicPillNavTab) => {
             if (tab === 'home') navigation.navigate('PublicHome');
             if (tab === 'services') navigation.navigate('PublicServicePackages', { city });
-            if (tab === 'ai') navigation.navigate('AIBooking', { city });
+            if (tab === 'ai') navigation.navigate('AIBooking', { city, fullScreen: true });
             if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city });
             if (tab === 'account') navigation.navigate('Settings');
             if (tab === 'profile') navigation.navigate('Settings');

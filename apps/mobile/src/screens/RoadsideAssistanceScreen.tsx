@@ -217,7 +217,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           onPressTab={(tab: PublicPillNavTab) => {
             if (tab === 'home') navigation.navigate('PublicHome');
             if (tab === 'services') navigation.navigate('PublicServicePackages', { city });
-            if (tab === 'ai') navigation.navigate('AIBooking', { city });
+            if (tab === 'ai') navigation.navigate('AIBooking', { city, fullScreen: true });
             if (tab === 'roadside') return;
             if (tab === 'account') navigation.navigate('Settings');
           }}

@@ -372,7 +372,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         Alert.alert('Permission denied', 'Location permission is needed to auto-detect your city.');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const last = await Location.getLastKnownPositionAsync();
+      const loc = last || await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&zoom=14&addressdetails=1`,
         { headers: { 'User-Agent': 'MyFNG-App/1.0' } }
@@ -423,7 +424,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         setAddressDetecting(false);
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const last = await Location.getLastKnownPositionAsync();
+      const loc = last || await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&zoom=18&addressdetails=1`,
         { headers: { 'User-Agent': 'MyFNG-App/1.0' } }
@@ -749,8 +751,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       const addresses: SavedAddress[] = (profileRes?.addresses || []).map((a: any) => ({
         id: String(a.id),
         label: a.label || a.address_type || null,
-        address_line1: a.address_line1 || a.address || null,
-        address_line2: a.address_line2 || null,
+        address_line1: a.address_line1 || a.line1 || a.address || null,
+        address_line2: a.address_line2 || a.line2 || null,
         city: a.city || null,
         state: a.state || null,
         pincode: a.pincode || null,
@@ -796,8 +798,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
               id: `lead_${o.id}`,
               address_line1: addr,
               city: o.city || null,
-              address_type: 'Previous Booking',
-              label: 'Previous Booking',
+              address_type: 'Saved Address',
+              label: 'Saved Address',
               address_line2: null, state: null, pincode: null, landmark: null,
             });
           }
@@ -1227,13 +1229,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const selectSavedAddress = (addr: SavedAddress) => {
     setSelectedSavedAddressId(addr.id);
-    const line1 = addr.address_line1 || '';
-    const cityState = [addr.city, addr.state, addr.pincode].filter(Boolean).join(', ');
+    const raw = addr.address_line1 || '';
+    const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+
+    let flatNumber = addr.address_line2 || '';
+    let landmark = addr.landmark || '';
+    let pickupAddress = raw;
+
+    if (!flatNumber && parts.length >= 3) {
+      const pincodeIdx = parts.findIndex((p) => /^\d{6}$/.test(p));
+      const nonPinParts = parts.filter((p) => !/^\d{6}$/.test(p));
+      if (nonPinParts.length >= 2) {
+        flatNumber = nonPinParts[0] || '';
+        landmark = nonPinParts[1] || '';
+        pickupAddress = nonPinParts.slice(1).join(', ');
+      }
+    } else if (!flatNumber && parts.length === 2) {
+      flatNumber = parts[0] || '';
+      pickupAddress = parts[1] || '';
+    }
+
+    if (!pickupAddress) {
+      const cityState = [addr.city, addr.state, addr.pincode].filter(Boolean).join(', ');
+      pickupAddress = [raw, cityState].filter(Boolean).join(', ');
+    }
+
     setForm((p) => ({
       ...p,
-      pickupAddress: [line1, cityState].filter(Boolean).join(', '),
-      flatNumber: addr.address_line2 || '',
-      landmark: addr.landmark || '',
+      pickupAddress,
+      flatNumber,
+      landmark,
     }));
   };
 
@@ -1923,6 +1948,18 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             >
                               {savedAddresses.map((addr) => {
                                 const isActive = selectedSavedAddressId === addr.id;
+                                const displayAddr = (() => {
+                                  const raw = addr.address_line1 || '';
+                                  const parts = raw.split(',').map((s: string) => s.trim()).filter(Boolean);
+                                  const seen = new Set<string>();
+                                  const unique = parts.filter((p: string) => {
+                                    const key = p.toLowerCase();
+                                    if (seen.has(key) || /^\d{6}$/.test(p)) return false;
+                                    seen.add(key);
+                                    return true;
+                                  });
+                                  return unique.slice(0, 3).join(', ');
+                                })();
                                 return (
                                   <TouchableOpacity
                                     key={addr.id}
@@ -1935,20 +1972,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                                   >
                                     <Text
                                       style={[
-                                        styles.savedAddrLabel,
-                                        isActive ? styles.savedAddrLabelActive : null,
-                                      ]}
-                                    >
-                                      {addr.address_type || addr.label || 'Address'}
-                                    </Text>
-                                    <Text
-                                      style={[
                                         styles.savedAddrLine,
                                         isActive ? styles.savedAddrLineActive : null,
                                       ]}
                                       numberOfLines={2}
                                     >
-                                      {addr.address_line1 || ''}
+                                      {displayAddr || 'Address'}
                                     </Text>
                                   </TouchableOpacity>
                                 );
@@ -2426,7 +2455,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             if (tab === 'services')
               navigation.navigate('PublicServicePackages', { city: form.city?.name || undefined });
             if (tab === 'ai')
-              navigation.navigate('AIBooking', { city: form.city?.name || undefined });
+              navigation.navigate('AIBooking', { city: form.city?.name || undefined, fullScreen: true });
             if (tab === 'roadside')
               navigation.navigate('RoadsideAssistance', { city: form.city?.name || undefined });
             if (tab === 'account') navigation.navigate('Settings');

@@ -202,6 +202,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [showCartTimePicker, setShowCartTimePicker] = useState(false);
   const [cartCouponResult, setCartCouponResult] = useState<any>(null);
   const [cartCouponLoading, setCartCouponLoading] = useState(false);
+  const [cartAvailableCoupons, setCartAvailableCoupons] = useState<any[]>([]);
   const [cartSelectedService, setCartSelectedService] = useState<{ name: string; price: number; items: string[] } | null>(null);
   const [cartLeads, setCartLeads] = useState<any[]>([]);
   const [cartSelectedLeadId, setCartSelectedLeadId] = useState<string | null>(null);
@@ -285,12 +286,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
     [savedAddresses, cartPickupAddressId]
   );
 
-  const applyCartCoupon = useCallback(async () => {
-    const code = String(coupon || '').trim().toUpperCase();
+  const applyCartCoupon = useCallback(async (overrideCode?: string) => {
+    const code = String(overrideCode || coupon || '').trim().toUpperCase();
     if (!code) {
       Alert.alert('Coupon', 'Please enter coupon code.');
       return;
     }
+    if (overrideCode) setCoupon(code);
     setCartCouponLoading(true);
     try {
       const serviceItems = (cartItems || []).length > 0
@@ -326,6 +328,26 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setCartCouponLoading(false);
     }
   }, [coupon, subtotal, profileForm.phone, cartItems, cartSelectedService]);
+
+  const fetchCartCoupons = useCallback(async () => {
+    try {
+      const res = await fetch(`${ENV.API_URL}/api/coupons/active`);
+      const json = await res.json().catch(() => ({}));
+      setCartAvailableCoupons(Array.isArray(json?.coupons) ? json.coupons : []);
+    } catch {
+      setCartAvailableCoupons([]);
+    }
+  }, []);
+
+  const describeCartCoupon = (c: any): string => {
+    const mode = String(c?.discount_mode || '').toUpperCase();
+    const val = Number(c?.discount_value || 0);
+    if (c?.coupon_kind === 'FREE_SERVICE') return 'Free service';
+    if (mode === 'PERCENT' && val > 0) return `${val}% OFF`;
+    if ((mode === 'AMOUNT' || mode === 'FLAT' || mode === 'FIXED') && val > 0) return `₹${val} OFF`;
+    if (c?.description) return String(c.description);
+    return 'Offer';
+  };
 
   const loadCart = useCallback(async () => {
     setCartLoading(true);
@@ -915,7 +937,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
     if (activeSubPage !== 'Cart') return;
     if (!isLoggedIn) return;
     loadCart();
-  }, [activeSubPage, isLoggedIn, loadCart]);
+    fetchCartCoupons();
+  }, [activeSubPage, isLoggedIn, loadCart, fetchCartCoupons]);
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
@@ -1315,6 +1338,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
       return {
         address: String(googleData?.address || ''),
         shortLabel: String(googleData?.shortLabel || ''),
+        pincode: String(googleData?.pincode || ''),
+        city: String(googleData?.city || ''),
+        state: String(googleData?.state || ''),
+        area: String(googleData?.area || ''),
+        building: String(googleData?.building || ''),
       };
     }
 
@@ -1328,6 +1356,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
     return {
       address: String(fallbackData?.displayName || ''),
       shortLabel: String(fallbackData?.shortLabel || ''),
+      pincode: '',
+      city: '',
+      state: '',
+      area: '',
+      building: '',
     };
   };
 
@@ -1372,21 +1405,26 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
       let current: Location.LocationObject | null = null;
       try {
-        current = await withTimeout(
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          12000,
-        );
-      } catch (_e1) {
+        current = await Location.getLastKnownPositionAsync({ maxAge: 60 * 1000 });
+      } catch {}
+      if (!current) {
         try {
-          current = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 });
-        } catch (_e2) {
-          current = null;
-        }
-        if (!current) {
           current = await withTimeout(
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }),
-            15000,
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            12000,
           );
+        } catch (_e1) {
+          try {
+            current = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 });
+          } catch (_e2) {
+            current = null;
+          }
+          if (!current) {
+            current = await withTimeout(
+              Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }),
+              15000,
+            );
+          }
         }
       }
 
@@ -1399,11 +1437,20 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
       try {
         const reverseAddress = await fetchReverseAddress(latitude, longitude);
-        const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
-        if (parsed.area) setNewAddrArea(parsed.area);
-        if (parsed.city) setNewAddrCity(parsed.city);
-        if (parsed.state) setNewAddrState(parsed.state);
-        if (parsed.pincode) setNewAddrPincode(parsed.pincode);
+        if (reverseAddress.pincode) setNewAddrPincode(reverseAddress.pincode);
+        if (reverseAddress.city) setNewAddrCity(reverseAddress.city);
+        if (reverseAddress.state) setNewAddrState(reverseAddress.state);
+        if (reverseAddress.area) {
+          setNewAddrArea(reverseAddress.area);
+        } else {
+          const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
+          if (parsed.area) setNewAddrArea(parsed.area);
+        }
+        if (!reverseAddress.pincode) {
+          const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
+          if (parsed.pincode) setNewAddrPincode(parsed.pincode);
+          if (!reverseAddress.city && parsed.city) setNewAddrCity(parsed.city);
+        }
       } catch (revErr: any) {
         Alert.alert(
           'Location captured',
@@ -3373,37 +3420,106 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
             <View style={cstyles.sectionCard}>
               <Text style={cstyles.subHeading}>APPLY COUPON</Text>
+
+              {cartAvailableCoupons.length > 0 ? (
+                <View style={{ marginBottom: 10 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                  >
+                    {cartAvailableCoupons.map((c) => {
+                      const isApplied = cartCouponResult?.coupon?.code && String(cartCouponResult.coupon.code).toUpperCase() === String(c.code).toUpperCase();
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={{
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            borderRadius: 12,
+                            borderWidth: 1.5,
+                            borderColor: isApplied ? '#047857' : '#E2E8F0',
+                            backgroundColor: isApplied ? '#ECFDF5' : '#F8FAFC',
+                            minWidth: 120,
+                          }}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            if (isApplied) {
+                              setCartCouponResult(null);
+                              setCoupon('');
+                            } else {
+                              applyCartCoupon(c.code);
+                            }
+                          }}
+                          disabled={cartCouponLoading}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="pricetag" size={14} color={isApplied ? '#047857' : '#1D4ED8'} />
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: isApplied ? '#047857' : '#1E293B' }}>{c.code}</Text>
+                          </View>
+                          <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }} numberOfLines={1}>
+                            {describeCartCoupon(c)}
+                          </Text>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: isApplied ? '#047857' : '#1D4ED8', marginTop: 4 }}>
+                            {isApplied ? '✓ APPLIED' : 'TAP TO APPLY'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : null}
+
               <View style={cstyles.couponRow}>
                 <TextInput
                   style={cstyles.couponInput}
-                  placeholder="Enter Code (e.g. SAVE200)"
+                  placeholder="Or enter coupon code"
                   placeholderTextColor="#9CA3AF"
                   value={coupon}
                   onChangeText={setCoupon}
                   autoCapitalize="characters"
                 />
-                <TouchableOpacity style={cstyles.applyBtn} onPress={applyCartCoupon} disabled={cartCouponLoading}>
+                <TouchableOpacity style={cstyles.applyBtn} onPress={() => applyCartCoupon()} disabled={cartCouponLoading}>
                   <Text style={cstyles.applyBtnText}>{cartCouponLoading ? '...' : 'Apply'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             <Text style={cstyles.sectionHeading}>SERVICE MODE</Text>
-            <View style={cstyles.modeRow}>
-              <TouchableOpacity
-                style={[cstyles.modeCard, cartServiceMode === 'pickup' && cstyles.modeCardActive]}
-                onPress={() => setCartServiceMode('pickup')}
-              >
-                <Ionicons name="car-sport-outline" size={22} color={cartServiceMode === 'pickup' ? '#1D4ED8' : '#9CA3AF'} />
-                <Text style={[cstyles.modeText, cartServiceMode === 'pickup' && cstyles.modeTextActive]}>Doorstep Pickup & Drop</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[cstyles.modeCard, cartServiceMode === 'workshop' && cstyles.modeCardActive]}
-                onPress={() => setCartServiceMode('workshop')}
-              >
-                <Ionicons name="location-outline" size={22} color={cartServiceMode === 'workshop' ? '#1D4ED8' : '#9CA3AF'} />
-                <Text style={[cstyles.modeText, cartServiceMode === 'workshop' && cstyles.modeTextActive]}>Visit Workshop</Text>
-              </TouchableOpacity>
+            <View style={cstyles.sectionCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                  onPress={() => setCartServiceMode('pickup')}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: cartServiceMode === 'pickup' ? '#6366F1' : '#D1D5DB' }}>
+                    <Ionicons name="navigate" size={18} color={cartServiceMode === 'pickup' ? '#FFF' : '#6B7280'} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: cartServiceMode === 'pickup' ? '#4338CA' : '#6B7280' }}>Pickup</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setCartServiceMode(cartServiceMode === 'pickup' ? 'workshop' : 'pickup')}
+                  style={{ width: 52, height: 28, borderRadius: 14, justifyContent: 'center', backgroundColor: cartServiceMode === 'pickup' ? '#6366F1' : '#10B981' }}
+                >
+                  <View style={{ position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', ...(cartServiceMode === 'pickup' ? { left: 3 } : { right: 3 }) }}>
+                    <Ionicons name={cartServiceMode === 'pickup' ? 'navigate' : 'location'} size={14} color={cartServiceMode === 'pickup' ? '#6366F1' : '#10B981'} />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}
+                  onPress={() => { setCartServiceMode('workshop'); fetchCartWorkshops(); }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: cartServiceMode === 'workshop' ? '#047857' : '#6B7280' }}>Visit</Text>
+                  <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: cartServiceMode === 'workshop' ? '#10B981' : '#D1D5DB' }}>
+                    <Ionicons name="location" size={18} color={cartServiceMode === 'workshop' ? '#FFF' : '#6B7280'} />
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {cartServiceMode === 'pickup' ? (
@@ -3512,145 +3628,108 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
             ) : (
               <View style={cstyles.sectionCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#059669', alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="business" size={14} color="#FFFFFF" />
+                {/* Visit Date */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="calendar" size={14} color="#FFFFFF" />
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A', flex: 1 }}>Select Workshop</Text>
-                  <TouchableOpacity onPress={fetchCartWorkshops} disabled={cartWorkshopLoading}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>{cartWorkshopLoading ? 'Loading...' : 'Refresh'}</Text>
-                  </TouchableOpacity>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A' }}>Visit Date</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#EF4444', marginLeft: 2 }}>*</Text>
                 </View>
-                {cartWorkshopLoading ? (
-                  <View style={{ padding: 20, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 12, color: '#6B7280' }}>Searching nearby workshops...</Text>
-                  </View>
-                ) : cartWorkshops.length === 0 ? (
-                  <View style={cstyles.pickupEmptyWrap}>
-                    <Text style={cstyles.workshopEmpty}>
-                      {(() => {
-                        const sa = savedAddresses.find((a) => a.id === cartPickupAddressId);
-                        const c = String(sa?.city || '').trim();
-                        return c
-                          ? `No workshops found in ${c}. Try refreshing or change your saved address.`
-                          : 'No workshops found nearby. Try refreshing.';
-                      })()}
-                    </Text>
-                    <TouchableOpacity style={cstyles.addPickupBtn} onPress={fetchCartWorkshops}>
-                      <Text style={cstyles.addPickupBtnText}>Refresh</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={{ gap: 8 }}>
-                    {cartWorkshops.slice(0, 8).map((workshop: any) => {
-                      const active = String(workshop.id) === cartSelectedWorkshopId;
-                      return (
-                        <TouchableOpacity
-                          key={String(workshop.id)}
-                          style={{
-                            padding: 12, borderRadius: 12, borderWidth: 1.5,
-                            borderColor: active ? '#059669' : '#E5E7EB',
-                            backgroundColor: active ? '#ECFDF5' : '#FFF',
-                          }}
-                          onPress={() => setCartSelectedWorkshopId(String(workshop.id))}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: active ? '#D1FAE5' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
-                              <Ionicons name="business" size={16} color={active ? '#059669' : '#6B7280'} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>{workshop.name || 'Workshop'}</Text>
-                              <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={2}>
-                                {[workshop.address, workshop.city].filter(Boolean).join(', ') || 'Address unavailable'}
-                              </Text>
-                            </View>
-                            {active && <Ionicons name="checkmark-circle" size={20} color="#059669" />}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-
-                {cartSelectedWorkshopId ? (
-                  <View style={{ marginTop: 14 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                      <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons name="calendar" size={14} color="#FFFFFF" />
-                      </View>
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A' }}>Preferred Date & Time</Text>
+                {(() => {
+                  const now = new Date();
+                  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                  const tmr = new Date(now.getTime() + 86400000);
+                  const tomorrowStr = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
+                  const fmtShort = (s: string) => { const d = new Date(s + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleString('en-IN', { month: 'short' })}`; };
+                  return (
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                      <TouchableOpacity
+                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === todayStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === todayStr ? '#EFF6FF' : '#FFF' }}
+                        onPress={() => { setCartDateStr(todayStr); setCartDate(now); }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === todayStr ? '#1D4ED8' : '#374151' }}>Today, {fmtShort(todayStr)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === tomorrowStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === tomorrowStr ? '#EFF6FF' : '#FFF' }}
+                        onPress={() => { setCartDateStr(tomorrowStr); setCartDate(tmr); }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === tomorrowStr ? '#1D4ED8' : '#374151' }}>Tomorrow, {fmtShort(tomorrowStr)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center' }}
+                        onPress={() => setShowCartDatePicker(true)}
+                      >
+                        <Ionicons name="calendar" size={16} color="#FFFFFF" />
+                      </TouchableOpacity>
                     </View>
-                    {(() => {
-                      const now = new Date();
-                      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                      const tmr = new Date(now.getTime() + 86400000);
-                      const tomorrowStr = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
-                      const fmtShort = (s: string) => { const d = new Date(s + 'T00:00:00'); return `${d.getDate()} ${d.toLocaleString('en-IN', { month: 'short' })}`; };
-                      return (
-                        <View style={{ gap: 10 }}>
-                          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                            <TouchableOpacity
-                              style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === todayStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === todayStr ? '#EFF6FF' : '#FFF' }}
-                              onPress={() => { setCartDateStr(todayStr); setCartDate(now); }}
-                            >
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === todayStr ? '#1D4ED8' : '#374151' }}>Today, {fmtShort(todayStr)}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: cartDateStr === tomorrowStr ? '#1D4ED8' : '#E5E7EB', backgroundColor: cartDateStr === tomorrowStr ? '#EFF6FF' : '#FFF' }}
-                              onPress={() => { setCartDateStr(tomorrowStr); setCartDate(tmr); }}
-                            >
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: cartDateStr === tomorrowStr ? '#1D4ED8' : '#374151' }}>Tomorrow, {fmtShort(tomorrowStr)}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center' }}
-                              onPress={() => setShowCartDatePicker(true)}
-                            >
-                              <Ionicons name="calendar" size={16} color="#FFFFFF" />
-                            </TouchableOpacity>
-                          </View>
-                          {showCartDatePicker ? (
-                            <DateTimePicker
-                              value={cartDate}
-                              mode="date"
-                              minimumDate={new Date()}
-                              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                              onChange={(e, d) => {
-                                if (Platform.OS === 'android') setShowCartDatePicker(false);
-                                if (d) {
-                                  setCartDate(d);
-                                  setCartDateStr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-                                }
-                              }}
-                            />
-                          ) : null}
-                          {cartDateStr ? (
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                              {[
-                                { value: '10:00', label: '10 AM - 11 AM' },
-                                { value: '11:00', label: '11 AM - 12 PM' },
-                                { value: '12:00', label: '12 PM - 1 PM' },
-                                { value: '13:00', label: '1 PM - 2 PM' },
-                                { value: '14:00', label: '2 PM - 3 PM' },
-                                { value: '15:00', label: '3 PM - 4 PM' },
-                              ].map((slot) => {
-                                const isActive = cartTimeStr === slot.value;
-                                return (
-                                  <TouchableOpacity
-                                    key={slot.value}
-                                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: isActive ? '#7C3AED' : '#E5E7EB', backgroundColor: isActive ? '#F5F3FF' : '#FFF' }}
-                                    onPress={() => { setCartTimeStr(slot.value); const t = new Date(); t.setHours(parseInt(slot.value), 0, 0, 0); setCartTime(t); }}
-                                  >
-                                    <Text style={{ fontSize: 11, fontWeight: '700', color: isActive ? '#7C3AED' : '#374151' }}>{slot.label}</Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    })()}
+                  );
+                })()}
+                {showCartDatePicker ? (
+                  <View style={[styles.datePickerWrap, { marginTop: 8 }]}>
+                    <DateTimePicker
+                      value={cartDate}
+                      mode="date"
+                      minimumDate={new Date()}
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(e, d) => {
+                        if (Platform.OS === 'android') setShowCartDatePicker(false);
+                        if (d) {
+                          setCartDate(d);
+                          setCartDateStr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                        }
+                      }}
+                    />
+                    {Platform.OS === 'ios' ? (
+                      <TouchableOpacity style={styles.datePickerDoneBtn} onPress={() => setShowCartDatePicker(false)}>
+                        <Text style={styles.datePickerDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : null}
+
+                {/* Visit Time */}
+                {cartDateStr ? (
+                  <View style={{ marginTop: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#A855F7', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="time" size={14} color="#FFFFFF" />
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#1A1A1A' }}>Visit Time</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: '#EF4444', marginLeft: 2 }}>*</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {[
+                        { value: '10:00', label: '10 AM - 11 AM' },
+                        { value: '11:00', label: '11 AM - 12 PM' },
+                        { value: '12:00', label: '12 PM - 1 PM' },
+                      ].map((slot) => {
+                        const isActive = cartTimeStr === slot.value;
+                        return (
+                          <TouchableOpacity
+                            key={slot.value}
+                            style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: isActive ? '#7C3AED' : '#E5E7EB', backgroundColor: isActive ? '#F5F3FF' : '#FFF' }}
+                            onPress={() => { setCartTimeStr(slot.value); const t = new Date(); t.setHours(parseInt(slot.value), 0, 0, 0); setCartTime(t); }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: isActive ? '#7C3AED' : '#374151' }}>{slot.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    {cartTimeStr ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                        <Ionicons name="checkmark-circle" size={14} color="#7C3AED" />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#7C3AED' }}>
+                          Selected: {[{ value: '10:00', label: '10 AM - 11 AM' }, { value: '11:00', label: '11 AM - 12 PM' }, { value: '12:00', label: '12 PM - 1 PM' }].find((s) => s.value === cartTimeStr)?.label}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 10, padding: 10, backgroundColor: '#F9FAFB', borderRadius: 10 }}>
+                    <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600' }}>Select a visit date to choose a time slot.</Text>
+                  </View>
+                )}
               </View>
             )}
 

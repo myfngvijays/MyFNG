@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   Dimensions,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,6 +73,7 @@ function apiBase() {
 export default function AIBookingScreen({ navigation, route }: Props) {
   const city: string | undefined = route?.params?.city;
   const prefill: string | undefined = route?.params?.prefill;
+  const fullScreen: boolean = route?.params?.fullScreen === true;
 
   const initial = useMemo<ChatMsg[]>(
     () => [
@@ -99,6 +101,18 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   // Payments are supported via chat commands (e.g., “pay now”, “pay invoice”, “pay advance 2000”).
 
   const scrollRef = useRef<ScrollView>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    });
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   const push = (msg: ChatMsg) => {
     setMessages((m) => [...m, msg]);
@@ -302,18 +316,20 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   // NOTE: To pay, user can type “pay now” / “pay invoice” / “pay advance 2000”.
 
   return (
-    <View style={styles.drawerRoot}>
-      <TouchableOpacity
-        style={styles.drawerBackdrop}
-        activeOpacity={1}
-        onPress={() => navigation.goBack()}
-      />
-      <SafeAreaView style={styles.drawerSheet} edges={['bottom']}>
-        <View style={styles.drawerHandle} />
+    <View style={fullScreen ? styles.fullRoot : styles.drawerRoot}>
+      {!fullScreen && (
+        <TouchableOpacity
+          style={styles.drawerBackdrop}
+          activeOpacity={1}
+          onPress={() => navigation.goBack()}
+        />
+      )}
+      <SafeAreaView style={fullScreen ? styles.fullSheet : styles.drawerSheet} edges={fullScreen ? ['top', 'bottom'] : ['bottom']}>
+        {!fullScreen && <View style={styles.drawerHandle} />}
         <KeyboardAvoidingView
           style={styles.safe}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? (fullScreen ? 50 : Math.round(Dimensions.get('window').height * 0.2)) : 0}
         >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -338,7 +354,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
           )}
         </View>
 
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
           {messages.map((m) => (
             <View key={m.id}>
               <View style={[styles.msgRow, m.role === 'user' ? styles.msgRowUser : null]}>
@@ -452,6 +468,31 @@ export default function AIBookingScreen({ navigation, route }: Props) {
           ) : null}
         </ScrollView>
 
+        {keyboardVisible && messages.length <= 3 && !draft.trim() && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickChipsRow} keyboardShouldPersistTaps="always">
+            {[
+              { label: 'Car Service', msg: 'I need a car service' },
+              { label: 'AC Service', msg: 'I need AC service' },
+              { label: 'Get Quote', msg: 'I want a price quote' },
+              { label: 'Workshop Near Me', msg: 'Show me workshops near me' },
+              { label: 'Battery Service', msg: 'I need battery service' },
+            ].map((q) => (
+              <TouchableOpacity
+                key={q.label}
+                style={styles.quickChip}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  push({ id: uid(), role: 'user', text: q.label });
+                  void sendChatMessage(q.msg, q.label);
+                }}
+              >
+                <Text style={styles.quickChipText}>{q.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
         <View style={styles.composer}>
           <TextInput
             value={draft}
@@ -478,6 +519,8 @@ export default function AIBookingScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
+  fullRoot: { flex: 1, backgroundColor: COLORS.background },
+  fullSheet: { flex: 1, backgroundColor: COLORS.background },
   drawerRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   drawerBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   drawerSheet: {
@@ -664,6 +707,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#9CA3AF',
   },
 
+  quickChipsRow: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 8,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  quickChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  quickChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
   composer: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,

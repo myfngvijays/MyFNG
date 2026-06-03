@@ -13,6 +13,20 @@ function pickShortLabel(result: any): string | null {
   return label || null;
 }
 
+function extractComponents(result: any) {
+  const comps: any[] = Array.isArray(result?.address_components) ? result.address_components : [];
+  const byType = (type: string) =>
+    comps.find((c) => Array.isArray(c?.types) && c.types.includes(type))?.long_name || '';
+
+  return {
+    pincode: byType('postal_code') || '',
+    city: byType('locality') || byType('sublocality_level_1') || byType('administrative_area_level_2') || '',
+    state: byType('administrative_area_level_1') || '',
+    area: byType('sublocality_level_2') || byType('sublocality_level_1') || byType('neighborhood') || byType('route') || '',
+    building: byType('premise') || byType('subpremise') || '',
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -42,6 +56,7 @@ export async function GET(request: NextRequest) {
     const first = results[0] || null;
     const address = first?.formatted_address ? String(first.formatted_address).trim() : '';
     const shortLabel = first ? pickShortLabel(first) : null;
+    const components = first ? extractComponents(first) : null;
 
     return NextResponse.json(
       {
@@ -49,6 +64,11 @@ export async function GET(request: NextRequest) {
         provider: 'google',
         address: address || null,
         shortLabel: shortLabel || null,
+        pincode: components?.pincode || null,
+        city: components?.city || null,
+        state: components?.state || null,
+        area: components?.area || null,
+        building: components?.building || null,
       },
       { status: 200 }
     );

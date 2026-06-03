@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 
 export interface BookingData {
@@ -76,6 +77,60 @@ async function pushChatbotBookingToExternalApi(booking: BookingData) {
   }
 }
 
+async function createServiceLead(bookingData: BookingData): Promise<string | null> {
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      console.error('[BOOKING] Admin client not available for service_leads insert');
+      return null;
+    }
+
+    const phoneDigits = String(bookingData.phone_number || '').replace(/\D/g, '').slice(-10);
+    if (!phoneDigits) return null;
+
+    const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+    const nowIso = new Date().toISOString();
+
+    const payload: Record<string, any> = {
+      lead_number: leadNumber,
+      lead_type: 'NORMAL',
+      lead_source: 'AI Chatbot',
+      status: 'NEW',
+      customer_name: bookingData.customer_name || `Customer_${phoneDigits.slice(-4)}`,
+      customer_phone: phoneDigits,
+      vehicle_number: 'NA',
+      vehicle_model: bookingData.car_model || null,
+      service_type: bookingData.service_name || bookingData.service_category || 'CAR_SERVICE',
+      description: `${bookingData.service_name || ''} - ${bookingData.service_category || ''}`.trim().replace(/^-\s*|-\s*$/g, '') || null,
+      city: bookingData.city || null,
+      address: bookingData.address || null,
+      pickup_address: bookingData.address || null,
+      pincode: bookingData.pincode || null,
+      preferred_date: bookingData.preferred_date || null,
+      preferred_time_slot: bookingData.preferred_time || null,
+      estimated_amount: bookingData.quoted_price || null,
+      created_at: nowIso,
+    };
+
+    const { data, error } = await supabaseAdmin
+      .from('service_leads')
+      .insert([payload])
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('[BOOKING] service_leads insert failed:', error);
+      return null;
+    }
+
+    console.log('[BOOKING] service_leads entry created:', data?.id);
+    return data?.id || null;
+  } catch (err) {
+    console.error('[BOOKING] service_leads creation error:', err);
+    return null;
+  }
+}
+
 export async function saveBooking(bookingData: BookingData): Promise<{ success: boolean; error?: string; id?: string }> {
   try {
     if (!supabase) {
@@ -114,6 +169,9 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
     }
 
     console.log('[BOOKING] Successfully saved to database:', data);
+
+    // Also create a service_leads entry so it appears in customer's order history
+    await createServiceLead(bookingData);
 
     try {
       await pushChatbotBookingToExternalApi(bookingData);
