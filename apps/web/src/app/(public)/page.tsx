@@ -131,7 +131,7 @@ export default function HomePage() {
     {
       id: 'm0',
       role: 'assistant',
-      text: `Hi! I'm MY FNG AI Assistant. Aap apni car problem simple words me batao — main service/RSA suggest kar dunga aur approx price range dikhा dunga.\n\nAapko kis type ka issue aa raha hai?`,
+      text: `Hi! I'm MISA AI. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikhा dunga.\n\nAapko kis type ka issue aa raha hai?`,
     },
   ]);
 
@@ -733,7 +733,7 @@ export default function HomePage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500">
-                      Ask MY FNG AI
+                      Ask MISA AI
                     </div>
                     <input
                       id="header-ai-query"
@@ -808,7 +808,7 @@ export default function HomePage() {
                   className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <Bot className="w-5 h-5" />
-                  Book via MY FNG AI
+                  Book via MISA AI
                 </button>
 
                 <Link
@@ -1075,7 +1075,7 @@ export default function HomePage() {
               {[
                 { 
                   icon: <MessageSquare className="w-5 h-5" />, 
-                  title: "Book via MY FNG AI", 
+                  title: "Book via MISA AI", 
                   desc: "Chat with our AI assistant to select your service and preferred time. No calls required." 
                 },
                 { 
@@ -1830,7 +1830,7 @@ export default function HomePage() {
               {
                 question: 'How can I book a service appointment with My FNG?',
                 answer:
-                  'You can book service via MyFNG AI Booking Agent - https://myfng.in/ai-booking or online through our website www.myfng.in/book-service or by calling our customer support. We offer flexible scheduling to accommodate your convenience.',
+                  'You can book service via MISA AI Booking Agent - https://myfng.in/ai-booking or online through our website www.myfng.in/book-service or by calling our customer support. We offer flexible scheduling to accommodate your convenience.',
               },
               {
                 question: 'Is the pricing really transparent?',
@@ -1959,9 +1959,9 @@ export default function HomePage() {
                 <Bot className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-white font-bold text-xs sm:text-sm truncate">MY FNG AI Assistant</p>
+                <p className="text-white font-bold text-xs sm:text-sm truncate">MISA AI</p>
                 <p className="text-blue-100 text-[10px] sm:text-xs truncate">
-                  MY FNG AI • Online
+                  MISA AI • Online
                 </p>
               </div>
             </div>
