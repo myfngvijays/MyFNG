@@ -15,7 +15,7 @@ export default function LandingChatWidget() {
           className="bg-brand-primary hover:bg-brand-primary-hover text-white px-4 sm:px-5 md:px-6 py-3 sm:py-3.5 md:py-4 rounded-full shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2 sm:gap-3 group border-2 sm:border-4 border-white/20 animate-bounce-slow"
         >
           <Bot className="w-5 h-5 sm:w-5.5 sm:h-5.5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform flex-shrink-0" />
-          <span className="font-semibold text-xs sm:text-sm md:text-base hidden sm:inline">Ask MY FNG AI</span>
+          <span className="font-semibold text-xs sm:text-sm md:text-base hidden sm:inline">Ask MISA AI</span>
           <span className="font-semibold text-xs sm:hidden">AI</span>
         </button>
       </div>
@@ -29,7 +29,7 @@ export default function LandingChatWidget() {
                 <Bot className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-white font-bold text-xs sm:text-sm truncate">MY FNG AI Assistant</p>
+                <p className="text-white font-bold text-xs sm:text-sm truncate">MISA AI Assistant</p>
                 <p className="text-blue-100 text-[10px] sm:text-xs truncate">Online • Book service directly</p>
               </div>
             </div>
@@ -43,7 +43,7 @@ export default function LandingChatWidget() {
                 <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-primary" />
               </div>
               <div className="bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-xs sm:text-sm text-gray-700">
-                Hi! 👋 I&apos;m MY FNG AI Assistant. Book your car service directly with me - no employee needed!
+                Hi! 👋 I&apos;m MISA AI Assistant. Book your car service directly with me - no employee needed!
                 <br />
                 <br />
                 What service do you need today?

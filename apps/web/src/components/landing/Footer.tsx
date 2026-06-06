@@ -109,7 +109,7 @@ export default function Footer() {
               href="/ai-booking"
               className="py-[14px] px-[30px] text-[16px] font-semibold rounded-lg border-2 border-white text-white bg-transparent hover:bg-white hover:text-[#0f172a] transition-all duration-300 no-underline"
             >
-              🤖 Book via MY FNG AI
+              🤖 Book via MISA AI
             </Link>
           </div>
         </div>

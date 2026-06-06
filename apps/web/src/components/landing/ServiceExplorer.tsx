@@ -212,7 +212,7 @@ export default function ServiceExplorer({
                 onClick={onAskAI}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/80 px-6 py-3 text-gray-900 font-semibold backdrop-blur hover:border-blue-200 hover:text-blue-700 transition-all"
               >
-                Ask MY FNG AI <Sparkles className="w-5 h-5" />
+                Ask MISA AI <Sparkles className="w-5 h-5" />
               </button>
               <Link
                 href="/car-services"

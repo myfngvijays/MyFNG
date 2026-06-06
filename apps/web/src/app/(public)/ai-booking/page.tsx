@@ -83,7 +83,7 @@ function AIBookingPageInner() {
     {
       id: 'm0',
       role: 'assistant',
-      text: "Hi! I'm MY FNG AI Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?",
+      text: "Hi! I'm MISA AI Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?",
     },
   ]);
 
@@ -573,7 +573,7 @@ function AIBookingPageInner() {
               <Bot className="w-5 h-5 text-brand-primary" />
             </div>
             <div className="min-w-0">
-              <div className="font-bold text-gray-900 truncate">Book via MY FNG AI</div>
+              <div className="font-bold text-gray-900 truncate">Book via MISA AI</div>
               <div className="text-xs text-gray-500 truncate">
                 {chatConnected ? 'AI Assistant • Online' : 'AI Assistant • Starting...'}
               </div>

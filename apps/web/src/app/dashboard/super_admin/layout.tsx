@@ -193,7 +193,7 @@ const navigationItems: NavItem[] = [
     name: 'Admin AI Chat',
     href: '/dashboard/super_admin/admin-ai-chat',
     icon: Bot,
-    description: 'Chat with MY FNG AI'
+    description: 'Chat with MISA AI'
   },
   {
     name: 'WhatsApp',
