@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Package, Search, ChevronRight, Loader2, ListChecks } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Package, Search, ChevronRight, Loader2, ListChecks, FolderPlus, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -16,19 +16,39 @@ export default function PackageListPage() {
   const [categories, setCategories] = useState<{ uuid: string; name: string }[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categorySubmitting, setCategorySubmitting] = useState(false);
+  const [newCategory, setNewCategory] = useState({ category: '', description: '' });
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<{ uuid: string; category: string; description: string } | null>(null);
+  const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const categoryMenuRef = useRef<HTMLDivElement>(null);
+
   // Using service_types as packages
   const [newPackage, setNewPackage] = useState({
     name: '',
     description: '',
     hsn_sac_code: '',
     default_tax_rate: '18.00',
-    is_active: true
+    is_active: true,
+    category_uuid: ''
   });
 
   useEffect(() => {
     fetchPackages();
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (categoryMenuOpen && categoryMenuRef.current && !categoryMenuRef.current.contains(e.target as Node)) {
+        setCategoryMenuOpen(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [categoryMenuOpen]);
 
   const fetchCategories = async () => {
     try {
@@ -81,7 +101,8 @@ export default function PackageListPage() {
     try {
       const payload = {
         ...newPackage,
-        default_tax_rate: parseFloat(newPackage.default_tax_rate)
+        default_tax_rate: parseFloat(newPackage.default_tax_rate),
+        category_uuid: newPackage.category_uuid || null
       };
       
       const res = await fetch('/api/admin/inventory/packages', {
@@ -106,7 +127,7 @@ export default function PackageListPage() {
       setShowAddModal(false);
       setNewPackage({
         name: '', description: '', hsn_sac_code: '',
-        default_tax_rate: '18.00', is_active: true
+        default_tax_rate: '18.00', is_active: true, category_uuid: ''
       });
       
       // Refresh the list
@@ -119,6 +140,73 @@ export default function PackageListPage() {
       setError(error.message || 'Failed to create package');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCategorySubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/inventory/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCategory)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create category');
+      }
+      setShowCategoryModal(false);
+      setNewCategory({ category: '', description: '' });
+      fetchCategories();
+    } catch (error: any) {
+      setError(error.message || 'Failed to create category');
+    } finally {
+      setCategorySubmitting(false);
+    }
+  };
+
+  const handleEditCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    setCategorySubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/inventory/categories/${editingCategory.uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: editingCategory.category, description: editingCategory.description })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update category');
+      setShowEditCategoryModal(false);
+      setEditingCategory(null);
+      fetchCategories();
+    } catch (error: any) {
+      setError(error.message || 'Failed to update category');
+    } finally {
+      setCategorySubmitting(false);
+    }
+  };
+
+  const handleDeleteCategory = async (uuid: string) => {
+    setCategorySubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/inventory/categories/${uuid}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete category');
+      setShowDeleteConfirm(null);
+      if (selectedCategory === uuid) setSelectedCategory(null);
+      fetchCategories();
+      fetchPackages();
+    } catch (error: any) {
+      setError(error.message || 'Failed to delete category');
+    } finally {
+      setCategorySubmitting(false);
     }
   };
 
@@ -138,13 +226,22 @@ export default function PackageListPage() {
           <h1 className="text-2xl font-bold text-gray-900">Service Packages</h1>
           <p className="text-gray-500">Manage services and their included products (parts/consumables)</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Create New Service
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setShowCategoryModal(true)}
+            className="flex items-center gap-2 px-4 py-2 border border-brand-primary text-brand-primary rounded-lg hover:bg-brand-primary/5 font-medium transition-colors"
+          >
+            <FolderPlus className="w-4 h-4" />
+            Create New Service Category
+          </button>
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Service
+          </button>
+        </div>
       </div>
 
       {/* Error Message */}
@@ -173,7 +270,7 @@ export default function PackageListPage() {
           />
         </div>
         {categories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex flex-wrap gap-2 relative">
             <button
               onClick={() => setSelectedCategory(null)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
@@ -186,19 +283,58 @@ export default function PackageListPage() {
             </button>
             {categories.map((cat) => {
               const count = packages.filter(p => p.category_uuid === cat.uuid).length;
-              if (count === 0) return null;
               return (
-                <button
-                  key={cat.uuid}
-                  onClick={() => setSelectedCategory(selectedCategory === cat.uuid ? null : cat.uuid)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
-                    selectedCategory === cat.uuid
-                      ? 'bg-brand-primary text-white border-brand-primary'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  {cat.name} ({count})
-                </button>
+                <div key={cat.uuid} className="relative flex items-center">
+                  <button
+                    onClick={() => setSelectedCategory(selectedCategory === cat.uuid ? null : cat.uuid)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors pr-7 ${
+                      selectedCategory === cat.uuid
+                        ? 'bg-brand-primary text-white border-brand-primary'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {cat.name} ({count})
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCategoryMenuOpen(categoryMenuOpen === cat.uuid ? null : cat.uuid);
+                    }}
+                    className={`absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-black/10 ${
+                      selectedCategory === cat.uuid ? 'text-white/80 hover:text-white' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <MoreVertical className="w-3 h-3" />
+                  </button>
+                  {categoryMenuOpen === cat.uuid && (
+                    <div
+                      ref={categoryMenuRef}
+                      className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1 min-w-[130px]"
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCategory({ uuid: cat.uuid, category: cat.name, description: '' });
+                          setShowEditCategoryModal(true);
+                          setCategoryMenuOpen(null);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 text-gray-700"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDeleteConfirm(cat.uuid);
+                          setCategoryMenuOpen(null);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-red-50 text-red-600"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
             {packages.some(p => !p.category_uuid) && (
@@ -287,6 +423,127 @@ export default function PackageListPage() {
         </div>
       )}
 
+      {/* Create Category Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 m-4 shadow-xl">
+            <h2 className="text-xl font-bold mb-6">Create New Service Category</h2>
+            <form onSubmit={handleCreateCategory} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-primary/20 outline-none" 
+                  value={newCategory.category} 
+                  onChange={e => setNewCategory({...newCategory, category: e.target.value})} 
+                  placeholder="e.g. Car Periodic Service"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea 
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-primary/20 outline-none" 
+                  rows={3}
+                  value={newCategory.description} 
+                  onChange={e => setNewCategory({...newCategory, description: e.target.value})}
+                  placeholder="Brief description of this category"
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setShowCategoryModal(false)} 
+                  className="flex-1 py-2 border rounded-lg hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={categorySubmitting} 
+                  className="flex-1 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 font-medium disabled:opacity-50"
+                >
+                  {categorySubmitting ? 'Creating...' : 'Create Category'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Category Modal */}
+      {showEditCategoryModal && editingCategory && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 m-4 shadow-xl">
+            <h2 className="text-xl font-bold mb-6">Edit Service Category</h2>
+            <form onSubmit={handleEditCategory} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-primary/20 outline-none" 
+                  value={editingCategory.category} 
+                  onChange={e => setEditingCategory({...editingCategory, category: e.target.value})} 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea 
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-primary/20 outline-none" 
+                  rows={3}
+                  value={editingCategory.description} 
+                  onChange={e => setEditingCategory({...editingCategory, description: e.target.value})}
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => { setShowEditCategoryModal(false); setEditingCategory(null); }} 
+                  className="flex-1 py-2 border rounded-lg hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={categorySubmitting} 
+                  className="flex-1 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 font-medium disabled:opacity-50"
+                >
+                  {categorySubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Category Confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-6 m-4 shadow-xl">
+            <h2 className="text-lg font-bold mb-2 text-gray-900">Delete Category?</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              This will remove the category. Services under this category will become uncategorized.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowDeleteConfirm(null)} 
+                className="flex-1 py-2 border rounded-lg hover:bg-gray-50 font-medium"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => handleDeleteCategory(showDeleteConfirm)}
+                disabled={categorySubmitting}
+                className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:opacity-50"
+              >
+                {categorySubmitting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -303,6 +560,21 @@ export default function PackageListPage() {
                   onChange={e => setNewPackage({...newPackage, name: e.target.value})} 
                   placeholder="e.g. Gold Service"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Parent Category *</label>
+                <select
+                  required
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-primary/20 outline-none"
+                  value={newPackage.category_uuid}
+                  onChange={e => setNewPackage({...newPackage, category_uuid: e.target.value})}
+                >
+                  <option value="">Select a category</option>
+                  {categories.map(cat => (
+                    <option key={cat.uuid} value={cat.uuid}>{cat.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
