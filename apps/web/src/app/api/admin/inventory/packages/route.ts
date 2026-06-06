@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { 
-      name, description, hsn_sac_code, default_tax_rate, is_active
+      name, description, hsn_sac_code, default_tax_rate, is_active, category_uuid
     } = body;
 
     if (!name) {
@@ -92,7 +92,8 @@ export async function POST(request: Request) {
         description, 
         hsn_sac_code, 
         default_tax_rate: default_tax_rate || 18.00,
-        is_active: is_active !== undefined ? is_active : true
+        is_active: is_active !== undefined ? is_active : true,
+        category_uuid: category_uuid || null
       }])
       .select()
       .single();
