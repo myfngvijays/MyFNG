@@ -193,14 +193,14 @@ export default function WorkshopPricingPage() {
   const fetchProductsForBulkMode = async () => {
     setLoading(true);
     try {
-      // Just fetch all products for bulk mode (no existing prices)
       const { data: masterProducts } = await supabase
         .from('master_products')
         .select('*')
-        .order('name');
+        .order('name')
+        .limit(5000);
 
       setProducts(masterProducts || []);
-      setPrices({}); // Start with empty prices in bulk mode
+      setPrices({});
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
@@ -211,17 +211,17 @@ export default function WorkshopPricingPage() {
   const fetchPricingData = async (workshopId: string, vehicleClass: string, zoneId: string) => {
     setLoading(true);
     try {
-      // 1. Fetch All Master Products
       const { data: masterProducts } = await supabase
         .from('master_products')
         .select('*')
-        .order('name');
+        .order('name')
+        .limit(5000);
 
-      // 2. Fetch Existing Overrides for this Workshop, Class, and Zone
       let query = supabase
         .from('workshop_product_pricing')
         .select('product_id, selling_price')
-        .eq('workshop_id', workshopId);
+        .eq('workshop_id', workshopId)
+        .limit(5000);
 
       if (vehicleClass === 'DEFAULT') {
         query = query.is('class', null);
@@ -237,7 +237,6 @@ export default function WorkshopPricingPage() {
 
       const { data: existingPrices } = await query;
 
-      // 3. Merge Data
       const priceMap: Record<string, number> = {};
       existingPrices?.forEach((p: any) => {
         priceMap[p.product_id] = p.selling_price;
@@ -287,33 +286,36 @@ export default function WorkshopPricingPage() {
       throw new Error('No products found to update for this selection.');
     }
 
-    // Delete existing for this scope (for these products)
-    for (const workshopId of workshopIds) {
-      let delQuery = supabase
-        .from('workshop_product_pricing')
-        .delete()
-        .eq('workshop_id', workshopId)
-        .in('product_id', productIdsToAffect);
+    const inBatchSize = 50;
 
-      if (selectedClass === 'DEFAULT') {
-        delQuery = delQuery.is('class', null);
-      } else {
-        delQuery = delQuery.eq('class', selectedClass);
+    for (const workshopId of workshopIds) {
+      // Delete in batches to avoid URL length limits
+      for (let i = 0; i < productIdsToAffect.length; i += inBatchSize) {
+        const batch = productIdsToAffect.slice(i, i + inBatchSize);
+        let delQuery = supabase
+          .from('workshop_product_pricing')
+          .delete()
+          .eq('workshop_id', workshopId)
+          .in('product_id', batch);
+
+        if (selectedClass === 'DEFAULT') {
+          delQuery = delQuery.is('class', null);
+        } else {
+          delQuery = delQuery.eq('class', selectedClass);
+        }
+
+        if (selectedZone) {
+          delQuery = delQuery.eq('zone_id', selectedZone);
+        } else {
+          delQuery = delQuery.is('zone_id', null);
+        }
+
+        const { error: delError } = await delQuery;
+        if (delError) throw delError;
       }
 
-      if (selectedZone) {
-        delQuery = delQuery.eq('zone_id', selectedZone);
-      } else {
-        delQuery = delQuery.is('zone_id', null);
-      }
-
-      const { error: delError } = await delQuery;
-      if (delError) throw delError;
-    }
-
-    // Insert new
-    const toInsert: any[] = [];
-    for (const workshopId of workshopIds) {
+      // Insert for THIS workshop immediately after its delete
+      const toInsert: any[] = [];
       for (const [productId, price] of Object.entries(priceMap)) {
         if (!Number.isFinite(price) || price < 0) continue;
         toInsert.push({
@@ -324,18 +326,13 @@ export default function WorkshopPricingPage() {
           zone_id: selectedZone || null,
         });
       }
-    }
 
-    if (!toInsert.length) {
-      // User may have cleared everything; deletes above already applied
-      return;
-    }
-
-    const batchSize = 100;
-    for (let i = 0; i < toInsert.length; i += batchSize) {
-      const batch = toInsert.slice(i, i + batchSize);
-      const { error } = await supabase.from('workshop_product_pricing').insert(batch);
-      if (error) throw error;
+      const insertBatchSize = 100;
+      for (let i = 0; i < toInsert.length; i += insertBatchSize) {
+        const batch = toInsert.slice(i, i + insertBatchSize);
+        const { error } = await supabase.from('workshop_product_pricing').insert(batch);
+        if (error) throw error;
+      }
     }
   };
 

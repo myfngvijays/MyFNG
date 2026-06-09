@@ -272,15 +272,15 @@ export default function ServiceTypePricingPage() {
   const fetchServiceTypesForBulkMode = async () => {
     setLoading(true);
     try {
-      // Just fetch all service types for bulk mode (no existing prices)
       const { data: allServiceTypes } = await supabase
         .from('service_types')
         .select('*')
         .eq('is_active', true)
-        .order('name');
+        .order('name')
+        .limit(5000);
 
       setServiceTypes(allServiceTypes || []);
-      setPrices({}); // Start with empty prices in bulk mode
+      setPrices({});
     } catch (error) {
       console.error('Error fetching service types:', error);
     } finally {
@@ -291,18 +291,18 @@ export default function ServiceTypePricingPage() {
   const fetchPricingData = async (workshopId: string, vehicleClass: string, zoneId: string, cityId?: string) => {
     setLoading(true);
     try {
-      // 1. Fetch All Service Types
       const { data: allServiceTypes } = await supabase
         .from('service_types')
         .select('*')
         .eq('is_active', true)
-        .order('name');
+        .order('name')
+        .limit(5000);
 
-      // 2. Fetch Existing Overrides for this Workshop, Class, Zone, and City
       let query = supabase
         .from('workshop_service_pricing')
         .select('service_type_id, custom_price')
-        .eq('workshop_id', workshopId);
+        .eq('workshop_id', workshopId)
+        .limit(5000);
 
       if (vehicleClass === 'DEFAULT') {
         query = query.is('class', null);
@@ -324,11 +324,41 @@ export default function ServiceTypePricingPage() {
 
       const { data: existingPrices } = await query;
 
-      // 3. Merge Data
-      const priceMap: Record<string, number> = {};
+      let priceMap: Record<string, number> = {};
       existingPrices?.forEach((p: any) => {
         priceMap[p.service_type_id] = p.custom_price;
       });
+
+      // When a specific city is selected, also load zone-level pricing (city_id = null)
+      // as fallback for services that don't have city-specific overrides
+      if (cityId) {
+        let fallbackQuery = supabase
+          .from('workshop_service_pricing')
+          .select('service_type_id, custom_price')
+          .eq('workshop_id', workshopId)
+          .is('city_id', null)
+          .limit(5000);
+
+        if (vehicleClass === 'DEFAULT') {
+          fallbackQuery = fallbackQuery.is('class', null);
+        } else {
+          fallbackQuery = fallbackQuery.eq('class', vehicleClass);
+        }
+
+        if (zoneId) {
+          fallbackQuery = fallbackQuery.eq('zone_id', zoneId);
+        } else {
+          fallbackQuery = fallbackQuery.is('zone_id', null);
+        }
+
+        const { data: zonePrices } = await fallbackQuery;
+        zonePrices?.forEach((p: any) => {
+          // Only use zone-level price if no city-specific price exists
+          if (priceMap[p.service_type_id] === undefined) {
+            priceMap[p.service_type_id] = p.custom_price;
+          }
+        });
+      }
 
       setServiceTypes(allServiceTypes || []);
       setPrices(priceMap);
@@ -374,39 +404,66 @@ export default function ServiceTypePricingPage() {
       throw new Error('No services found to update for this selection.');
     }
 
-    // Delete existing for this scope (for these service types)
+    const inBatchSize = 50;
+
     for (const workshopId of workshopIds) {
-      let delQuery = supabase
-        .from('workshop_service_pricing')
-        .delete()
-        .eq('workshop_id', workshopId)
-        .in('service_type_id', serviceTypeIdsToAffect);
+      // Delete in batches to avoid URL length limits
+      for (let i = 0; i < serviceTypeIdsToAffect.length; i += inBatchSize) {
+        const batch = serviceTypeIdsToAffect.slice(i, i + inBatchSize);
+        let delQuery = supabase
+          .from('workshop_service_pricing')
+          .delete()
+          .eq('workshop_id', workshopId)
+          .in('service_type_id', batch);
 
-      if (selectedClass === 'DEFAULT') {
-        delQuery = delQuery.is('class', null);
-      } else {
-        delQuery = delQuery.eq('class', selectedClass);
+        if (selectedClass === 'DEFAULT') {
+          delQuery = delQuery.is('class', null);
+        } else {
+          delQuery = delQuery.eq('class', selectedClass);
+        }
+
+        if (selectedCity) {
+          delQuery = delQuery.eq('city_id', selectedCity);
+        } else {
+          delQuery = delQuery.is('city_id', null);
+        }
+
+        if (selectedZone) {
+          delQuery = delQuery.eq('zone_id', selectedZone);
+        } else {
+          delQuery = delQuery.is('zone_id', null);
+        }
+
+        const { error: delError } = await delQuery;
+        if (delError) throw delError;
       }
 
-      if (selectedCity) {
-        delQuery = delQuery.eq('city_id', selectedCity);
-      } else {
-        delQuery = delQuery.is('city_id', null);
+      // When saving at zone level ("All Cities"), also delete city-specific overrides
+      // so zone-level pricing becomes the effective pricing for all cities
+      if (!selectedCity && selectedZone) {
+        for (let i = 0; i < serviceTypeIdsToAffect.length; i += inBatchSize) {
+          const batch = serviceTypeIdsToAffect.slice(i, i + inBatchSize);
+          let cityDelQuery = supabase
+            .from('workshop_service_pricing')
+            .delete()
+            .eq('workshop_id', workshopId)
+            .in('service_type_id', batch)
+            .eq('zone_id', selectedZone)
+            .not('city_id', 'is', null);
+
+          if (selectedClass === 'DEFAULT') {
+            cityDelQuery = cityDelQuery.is('class', null);
+          } else {
+            cityDelQuery = cityDelQuery.eq('class', selectedClass);
+          }
+
+          const { error: cityDelError } = await cityDelQuery;
+          if (cityDelError) throw cityDelError;
+        }
       }
 
-      if (selectedZone) {
-        delQuery = delQuery.eq('zone_id', selectedZone);
-      } else {
-        delQuery = delQuery.is('zone_id', null);
-      }
-
-      const { error: delError } = await delQuery;
-      if (delError) throw delError;
-    }
-
-    // Insert new
-    const toInsert: any[] = [];
-    for (const workshopId of workshopIds) {
+      // Insert for THIS workshop immediately after its delete
+      const toInsert: any[] = [];
       for (const [serviceTypeId, price] of Object.entries(priceMap)) {
         if (!Number.isFinite(price) || price < 0) continue;
         toInsert.push({
@@ -418,18 +475,13 @@ export default function ServiceTypePricingPage() {
           city_id: selectedCity || null,
         });
       }
-    }
 
-    if (!toInsert.length) {
-      // User may have cleared everything; deletes above already applied
-      return;
-    }
-
-    const batchSize = 100;
-    for (let i = 0; i < toInsert.length; i += batchSize) {
-      const batch = toInsert.slice(i, i + batchSize);
-      const { error } = await supabase.from('workshop_service_pricing').insert(batch);
-      if (error) throw error;
+      const insertBatchSize = 100;
+      for (let i = 0; i < toInsert.length; i += insertBatchSize) {
+        const batch = toInsert.slice(i, i + insertBatchSize);
+        const { error } = await supabase.from('workshop_service_pricing').insert(batch);
+        if (error) throw error;
+      }
     }
   };
 
