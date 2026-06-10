@@ -246,7 +246,7 @@ export default function BlogPageClient() {
                       className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all group"
                     >
                       <Link href={`/blogs/${blog.slug}`} className="block">
-                        <div className="h-40 sm:h-44 md:h-48 relative overflow-hidden bg-gray-200">
+                        <div className="aspect-video relative overflow-hidden bg-gray-200">
                           {blog.featured_image ? (
                             <Image
                               src={blog.featured_image}

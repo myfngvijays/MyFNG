@@ -19,6 +19,8 @@ My FNG Autocare Private Limited is a technology-driven car service and repair ag
 - [Tyre & Wheel Care](https://myfng.in/car-services/tyre-wheel-care): Tyre replacement, wheel alignment, balancing, and puncture repair.
 - [Car Detailing Service](https://myfng.in/car-services/car-detailing-service): Interior and exterior detailing, ceramic coating, and paint protection.
 - [Car Denting & Painting](https://myfng.in/car-services/car-denting-painting): Dent removal, panel repair, full body painting, and scratch removal.
+- [Electrical & Battery Service](https://myfng.in/car-services/car-electrical-battery-service): Complete electrical diagnostics, wiring repair, alternator, starter motor, and battery system service.
+- [Suspension & Steering Service](https://myfng.in/car-services/car-suspension-steering-service): Shock absorber, strut, power steering, tie rod, and steering rack service.
 - [Roadside Assistance (RSA)](https://myfng.in/car-roadside-assitance): AI-powered 24/7 emergency dispatch — towing, jumpstart, flat tyre, fuel delivery, and on-road help.
 - [Car Loan](https://myfng.in/car-loan): Car loan assistance and financing options.
 

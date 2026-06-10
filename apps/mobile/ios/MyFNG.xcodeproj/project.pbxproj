@@ -8,20 +8,18 @@
 
 /* Begin PBXBuildFile section */
 		009E570AF814CE36D396524C /* Pods_MyFNG.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8622AD54FB08CA90720AC133 /* Pods_MyFNG.framework */; };
-		AA0100000000000000000A01 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0100000000000000000A02 /* AppDelegate.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		3EE65DB8911F4D4E9960CAF3 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366CF4BFE18940358B91DB83 /* noop-file.swift */; };
 		7A1B2C3D4E5F60718293A4B5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B6 /* PrivacyInfo.xcprivacy */; };
 		7A1B2C3D4E5F60718293A4C5 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4C6 /* GoogleService-Info.plist */; };
+		AA0100000000000000000A01 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0100000000000000000A02 /* AppDelegate.swift */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* MyFNG.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MyFNG.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = MyFNG/AppDelegate.mm; sourceTree = "<group>"; };
-		AA0100000000000000000A02 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = MyFNG/AppDelegate.swift; sourceTree = "<group>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = MyFNG/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = MyFNG/Info.plist; sourceTree = "<group>"; };
 		366CF4BFE18940358B91DB83 /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "MyFNG/noop-file.swift"; sourceTree = "<group>"; };
@@ -30,6 +28,7 @@
 		7A1B2C3D4E5F60718293A4C6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "MyFNG/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-MyFNG.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MyFNG.release.xcconfig"; path = "Target Support Files/Pods-MyFNG/Pods-MyFNG.release.xcconfig"; sourceTree = "<group>"; };
 		8622AD54FB08CA90720AC133 /* Pods_MyFNG.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_MyFNG.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0100000000000000000A02 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = MyFNG/AppDelegate.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = MyFNG/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		E24291962B8A44329E3870B7 /* MyFNG-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "MyFNG-Bridging-Header.h"; path = "MyFNG/MyFNG-Bridging-Header.h"; sourceTree = "<group>"; };

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
+import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
 import { loadRazorpayScript } from '@/lib/services/paymentService';
@@ -12,7 +13,7 @@ import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
   Wrench, DollarSign, Sparkles, Calendar, Clock, MapPin as AddressIcon,
-  X, Droplets, Home, Briefcase, MoreHorizontal
+  X, Droplets, Home, Briefcase, MoreHorizontal, Shield, Award
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -250,23 +251,28 @@ export default function BookServicePage() {
   // Prefill service selection when coming from /services "Book Now"
   useEffect(() => {
     if (bookingPrefillApplied) return;
-    if (currentStep !== 2) return; // only when selecting services
+    if (currentStep !== 2) return;
     if (!serviceTypes.length) return;
 
     const prefillCategory = bookingPrefillParams?.category || null;
     const prefillQuery = bookingPrefillParams?.query || null;
     if (!prefillCategory && !prefillQuery) return;
 
-    const categoryWanted = prefillCategory ? String(prefillCategory) : null;
+    const categoryWanted = prefillCategory ? String(prefillCategory).toUpperCase() : null;
     const queryWanted = prefillQuery ? String(prefillQuery).toLowerCase() : null;
 
     const candidates = serviceTypes
-      .filter((s: any) => (categoryWanted ? s.category === categoryWanted : true))
+      .filter((s: any) => {
+        if (!categoryWanted) return true;
+        const cat = String(s.category || '').toUpperCase();
+        return cat === categoryWanted || cat.includes(categoryWanted) || categoryWanted.includes(cat);
+      })
       .filter((s: any) => (queryWanted ? String(s.name || '').toLowerCase().includes(queryWanted) : true));
 
     const pick = candidates[0] || null;
     if (pick?.id) {
-      if (categoryWanted) setSelectedCategory(categoryWanted);
+      const matchedCategory = String(pick.category || '');
+      if (matchedCategory) setSelectedCategory(matchedCategory);
       setFormData((prev) => ({
         ...prev,
         selectedServices: prev.selectedServices.includes(pick.id)
@@ -285,7 +291,7 @@ export default function BookServicePage() {
         car.make.toLowerCase().includes(query) || 
         car.model_name.toLowerCase().includes(query) ||
         `${car.make} ${car.model_name}`.toLowerCase().includes(query)
-      ).slice(0, 8);
+      );
       setCarSuggestions(filtered);
       setShowCarSuggestions(true);
     } else {
@@ -560,7 +566,12 @@ export default function BookServicePage() {
         setServiceCategories(categories);
 
         if (!selectedCategory && categories.length > 0) {
-          setSelectedCategory(categories[0].id);
+          const sp = new URLSearchParams(window.location.search);
+          const prefillCat = (sp.get('prefill_category') || '').toUpperCase();
+          const matched = prefillCat
+            ? categories.find((c: any) => c.id === prefillCat || c.id.includes(prefillCat) || prefillCat.includes(c.id))
+            : null;
+          setSelectedCategory(matched ? matched.id : categories[0].id);
         }
       }
     } catch (error) {
@@ -1952,6 +1963,7 @@ export default function BookServicePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      <AppDownloadPopup />
 
       {/* Hero Section */}
       <div className="bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary pt-16 sm:pt-20 md:pt-22 pb-8 sm:pb-10 md:pb-12">
@@ -2168,7 +2180,7 @@ export default function BookServicePage() {
                           carSuggestions.length > 0 &&
                           (!formData.carModel ||
                             carSearchQuery !== `${formData.carModel.make} ${formData.carModel.model_name}`) && (
-                          <div className="absolute z-50 w-full mt-2 bg-[#0A2540] border-2 border-[#0A2540] rounded-xl shadow-2xl max-h-64 sm:max-h-80 overflow-y-auto">
+                          <div className="absolute z-50 w-full mt-2 bg-[#0A2540] border-2 border-[#0A2540] rounded-xl shadow-2xl max-h-80 sm:max-h-96 overflow-y-auto">
                             {carSuggestions.map((car) => (
                             <button
                               key={car.id}
@@ -2449,6 +2461,32 @@ export default function BookServicePage() {
                               </div>
                             ) : (
                           <>
+                            {/* MyFNG Prime Membership Promotion */}
+                            <div className="mb-3 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 p-2.5 sm:p-3">
+                              <div className="flex items-center gap-2 sm:gap-3">
+                                <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-sm">
+                                  <Award className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-extrabold text-xs sm:text-sm text-gray-900">MyFNG Prime</span>
+                                    <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-amber-400 text-amber-900">₹699/yr</span>
+                                  </div>
+                                  <p className="text-[10px] sm:text-xs text-gray-600 leading-tight mt-0.5">Extra discounts, priority booking & free inspections</p>
+                                </div>
+                                <div className="flex-shrink-0 flex items-center gap-1.5">
+                                  <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
+                                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-1.4l2.834 1.642a1 1 0 0 1 0 1.736l-2.834 1.642L15.206 12l2.492-2.693zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/></svg>
+                                    <span className="text-[9px] sm:text-[10px] font-bold leading-tight">Android</span>
+                                  </a>
+                                  <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
+                                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                                    <span className="text-[9px] sm:text-[10px] font-bold leading-tight">iOS</span>
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+
                             {/* Plans */}
                             <div className="mb-2">
                               <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-2 sm:gap-3`}>
@@ -2636,6 +2674,7 @@ export default function BookServicePage() {
                             );
                                 })}
                               </div>
+
                             </div>
 
                             {/* More services (same card layout as plans) */}
@@ -2775,6 +2814,32 @@ export default function BookServicePage() {
               {/* Step 4: Pickup Details / Self Come Option */}
               {currentStep === 3 && (
                   <div className="mb-8 sm:mb-10 md:mb-12 space-y-5 sm:space-y-6">
+                    {/* MyFNG Prime Membership Promotion */}
+                    <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 p-2.5 sm:p-3">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-sm">
+                          <Award className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-xs sm:text-sm text-gray-900">MyFNG Prime</span>
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-amber-400 text-amber-900">₹699/yr</span>
+                          </div>
+                          <p className="text-[10px] sm:text-xs text-gray-600 leading-tight mt-0.5">Free pickup & drop, priority scheduling & exclusive discounts</p>
+                        </div>
+                        <div className="flex-shrink-0 flex items-center gap-1.5">
+                          <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
+                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-1.4l2.834 1.642a1 1 0 0 1 0 1.736l-2.834 1.642L15.206 12l2.492-2.693zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/></svg>
+                            <span className="text-[9px] sm:text-[10px] font-bold leading-tight">Android</span>
+                          </a>
+                          <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
+                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                            <span className="text-[9px] sm:text-[10px] font-bold leading-tight">iOS</span>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Pickup Required / Self Come Toggle Switch - Show First */}
                     <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm mb-6">
                       <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
@@ -3570,22 +3635,22 @@ export default function BookServicePage() {
       {currentStep === 2 && detailsService && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDetailsService(null)} />
-          <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-4 sm:p-6 border-b border-gray-200 flex items-start justify-between gap-3">
+          <div className="relative w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-3 sm:p-6 border-b border-gray-200 flex items-start justify-between gap-2 sm:gap-3">
               <div className="min-w-0">
-                <div className="text-lg sm:text-xl font-extrabold text-gray-900 truncate">
+                <div className="text-base sm:text-xl font-extrabold text-gray-900 truncate">
                   {detailsService.service?.name}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                <div className="mt-0.5 sm:mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600">
                   <span>Checklist</span>
                   {detailsService?.checklistTemplate?.points ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-700">
-                      <CheckCircle className="w-3.5 h-3.5 text-green-600" /> {detailsService.checklistTemplate.points} pts
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold text-gray-700">
+                      <CheckCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-600" /> {detailsService.checklistTemplate.points} pts
                     </span>
                   ) : null}
                   {detailsService?.checklistTemplate?.source ? (
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-bold ${
+                      className={`inline-flex items-center rounded-full px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold ${
                         detailsService.checklistTemplate.source === 'db'
                           ? 'bg-green-50 text-green-700'
                           : 'bg-gray-100 text-gray-600'
@@ -3599,16 +3664,16 @@ export default function BookServicePage() {
               <button
                 type="button"
                 onClick={() => setDetailsService(null)}
-                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50"
+                className="inline-flex items-center justify-center h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50"
                 aria-label="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
-              <div className={`${showReferencePlanUi ? 'lg:col-span-12' : 'lg:col-span-8'} p-4 sm:p-6`}>
+              <div className={`${showReferencePlanUi ? 'lg:col-span-12' : 'lg:col-span-8'} p-3 sm:p-6`}>
                 {(() => {
                   const raw = detailsService.checklistTemplate?.items || [];
                   const normalized = raw
@@ -3665,72 +3730,133 @@ export default function BookServicePage() {
                     : 0;
 
                   const categories = Array.from(groups.keys());
+                  const categoryId = String(detailsService?.service?.category || activeCategoryId || '').toUpperCase();
+                  const isPeriodic = categoryId.includes('PERIODIC');
+                  const isDenting = categoryId.includes('DENTING') || categoryId.includes('PAINTING');
+                  const isDetailing = categoryId.includes('DETAIL');
+
+                  const usps = isPeriodic
+                    ? ['Live Photos & Videos Updates', 'Same-Day Servicing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts', 'Detailed Inspection Report', 'Car Delivery At Your Doorstep']
+                    : isDenting
+                      ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Color Matching', 'Premium Finish']
+                      : isDetailing
+                        ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Interior Deep Clean', 'Exterior Polish']
+                        : ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts'];
+
+                  const warrantyLabel = isPeriodic
+                    ? '1000 kms / 1 Month'
+                    : isDenting
+                      ? 'Depends on Package'
+                      : 'NA';
+
+                  let disclaimer = '';
+                  if (isPeriodic) {
+                    disclaimer = '* Spare part replacements charged at actual cost. Service packages use company-recommended oil and filters.';
+                  } else if (isDenting) {
+                    disclaimer = '* Major panel denting will incur additional charges. Rates do not apply to rusted vehicles.';
+                  } else if (!isDetailing) {
+                    disclaimer = '* This includes only labor charges, If any additional parts are required, they will be billed at actual cost.';
+                  }
+
                   return (
-                    <div className="space-y-5">
+                    <div className="space-y-3 sm:space-y-5">
+                      {/* Price + Warranty + Proceed to Book (green box) */}
                       {planDiff?.prevSet ? (
-                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="font-extrabold">
+                        <div className="rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50 px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-emerald-900">
+                          <div className="flex items-center justify-between gap-2 sm:gap-3">
+                            <div className="font-extrabold text-xs sm:text-sm">
                               +{newCount} New Checkpoints
                             </div>
-                            <div className="text-xs font-bold text-emerald-800">
+                            <div className="text-[10px] sm:text-xs font-bold text-emerald-800">
                               vs {planDiff.prevPoints} pts plan
                             </div>
                           </div>
-                          <div className="mt-1 text-xs text-emerald-800">
+                          <div className="mt-1 text-[10px] sm:text-xs text-emerald-800">
                             Highlighted items are new in this plan.
                           </div>
-                          <div className="mt-3 flex items-center justify-between gap-3 bg-white/70 border border-emerald-200 rounded-xl p-3">
-                            <div className="text-xl font-extrabold text-gray-900">
-                              {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
+                          <div className="mt-2 sm:mt-3 bg-white/70 border border-emerald-200 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                            <div className="flex items-center justify-between gap-2 sm:gap-3">
+                              <div className="text-lg sm:text-xl font-extrabold text-gray-900">
+                                {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  ensureServiceSelected(detailsService.service.id);
+                                  setDetailsService(null);
+                                  setTimeout(() => handleNext(), 0);
+                                }}
+                                className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg font-extrabold text-[11px] sm:text-xs bg-green-600 hover:bg-green-700 text-white shadow"
+                              >
+                                Proceed to Book
+                                <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                ensureServiceSelected(detailsService.service.id);
-                                setDetailsService(null);
-                                setTimeout(() => handleNext(), 0);
-                              }}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-extrabold text-xs bg-green-600 hover:bg-green-700 text-white shadow"
-                            >
-                              Proceed to Book
-                              <ArrowRight className="w-4 h-4" />
-                            </button>
+                            <div className="mt-1.5 sm:mt-2 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-emerald-800">
+                              <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-600" />
+                              <span className="font-semibold">Warranty:</span>
+                              <span>{warrantyLabel}</span>
+                            </div>
                           </div>
                         </div>
                       ) : (
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                            <div className="text-xl font-extrabold text-gray-900">
-                              {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
+                        <div className="mb-1 sm:mb-2">
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg sm:rounded-xl p-2.5 sm:p-3">
+                            <div className="flex items-center justify-between gap-2 sm:gap-3">
+                              <div className="text-lg sm:text-xl font-extrabold text-gray-900">
+                                {detailsService.price > 0 ? `₹${detailsService.price.toLocaleString('en-IN')}` : '—'}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  ensureServiceSelected(detailsService.service.id);
+                                  setDetailsService(null);
+                                  setTimeout(() => handleNext(), 0);
+                                }}
+                                className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg font-extrabold text-[11px] sm:text-xs bg-green-600 hover:bg-green-700 text-white shadow"
+                              >
+                                Proceed to Book
+                                <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                ensureServiceSelected(detailsService.service.id);
-                                setDetailsService(null);
-                                setTimeout(() => handleNext(), 0);
-                              }}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-extrabold text-xs bg-green-600 hover:bg-green-700 text-white shadow"
-                            >
-                              Proceed to Book
-                              <ArrowRight className="w-4 h-4" />
-                            </button>
+                            <div className="mt-1.5 sm:mt-2 flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-emerald-800">
+                              <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-600" />
+                              <span className="font-semibold">Warranty:</span>
+                              <span>{warrantyLabel}</span>
+                            </div>
                           </div>
                         </div>
                       )}
+
+                      {/* What you get (USPs - responsive grid) */}
+                      <div className="rounded-2xl bg-blue-50 border border-blue-100 p-3 sm:p-4">
+                        <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">
+                          <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                          What you get
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
+                          {usps.map((usp) => (
+                            <span key={usp} className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-blue-100 bg-white/80 px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold text-gray-700">
+                              <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-blue-600 flex-shrink-0" />
+                              <span className="truncate">{usp}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Checklist points */}
                       {showReferencePlanUi ? (
-                        <div className="grid grid-cols-2 gap-x-4">
+                        <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
                           {normalized.map((it, idx) => {
                             const isNew = planDiff?.prevSet ? !planDiff.prevSet.has(it.name.toLowerCase()) : false;
                             return (
                               <div
                                 key={`${it.category}-${idx}-${it.name}`}
-                                className={`flex items-start gap-2 py-2 text-sm border-b border-gray-100 ${
+                                className={`flex items-start gap-1.5 sm:gap-2 py-1.5 sm:py-2 text-xs sm:text-sm border-b border-gray-100 ${
                                   isNew ? 'text-emerald-900 font-semibold' : 'text-gray-700'
                                 }`}
                               >
-                                <CheckCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-emerald-600' : 'text-green-600'}`} />
+                                <CheckCircle className={`w-3.5 h-3.5 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0 ${isNew ? 'text-emerald-600' : 'text-green-600'}`} />
                                 <span className="break-words flex-1 leading-snug">{it.name}</span>
                               </div>
                             );
@@ -3768,6 +3894,11 @@ export default function BookServicePage() {
                       {!normalized.length ? (
                         <div className="text-sm text-gray-600">No checklist available for this service.</div>
                       ) : null}
+
+                      {/* Disclaimer */}
+                      {disclaimer && (
+                        <p className="text-[10px] sm:text-xs italic text-red-600">{disclaimer}</p>
+                      )}
                     </div>
                   );
                 })()}

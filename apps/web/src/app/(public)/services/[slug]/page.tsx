@@ -4,19 +4,7 @@ import Footer from '@/components/landing/Footer';
 import { Activity, ArrowRight, Calendar, CheckCircle, Shield } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { findServiceBySlug } from '@/lib/services/catalog';
-
-const INTERNAL_TO_MARKETING: Record<string, string> = {
-  'periodic-service': 'periodic-car-service',
-  'engine-service': 'car-engine-service',
-  'ac-service': 'car-ac-service',
-  'battery-service': 'car-battery',
-  'brake-service': 'car-brake-service',
-  'clutch-service': 'car-clutch-service',
-  'tyre-wheel-care': 'tyre-wheel-care',
-  'detailing-service': 'car-detailing-service',
-  'denting-painting': 'car-denting-painting',
-};
+import { findServiceBySlug, INTERNAL_SLUG_TO_MARKETING as INTERNAL_TO_MARKETING } from '@/lib/services/catalog';
 
 export function generateMetadata({ params }: { params: { slug: string } }) {
   const marketingSlug = INTERNAL_TO_MARKETING[params?.slug];

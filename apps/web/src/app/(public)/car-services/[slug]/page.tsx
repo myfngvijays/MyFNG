@@ -5,20 +5,8 @@ import Footer from '@/components/landing/Footer';
 import { Activity, ArrowRight, Calendar, CheckCircle, Shield } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { findServiceBySlug, makeShortDescription } from '@/lib/services/catalog';
-
-const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {
-  'periodic-car-service': 'periodic-service',
-  'car-engine-service': 'engine-service',
-  'car-ac-service': 'ac-service',
-  'car-battery-service': 'battery-service',
-  'car-battery': 'battery-service',
-  'car-brake-service': 'brake-service',
-  'car-clutch-service': 'clutch-service',
-  'tyre-wheel-care': 'tyre-wheel-care',
-  'car-detailing-service': 'detailing-service',
-  'car-denting-painting': 'denting-painting',
-};
+import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
+import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
@@ -67,6 +55,7 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
+      <AppDownloadPopup />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-gray-900 via-blue-900 to-gray-800 text-white py-12 sm:py-16 md:py-20 mt-16 sm:mt-18 md:mt-20">

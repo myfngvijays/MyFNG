@@ -87,6 +87,8 @@ const nextConfig = {
       { source: '/services/tyre-wheel-care', destination: '/car-services/tyre-wheel-care', permanent: true },
       { source: '/services/detailing-service', destination: '/car-services/car-detailing-service', permanent: true },
       { source: '/services/denting-painting', destination: '/car-services/car-denting-painting', permanent: true },
+      { source: '/services/electrical-battery-service', destination: '/car-services/car-electrical-battery-service', permanent: true },
+      { source: '/services/suspension-steering-service', destination: '/car-services/car-suspension-steering-service', permanent: true },
       // RSA canonical URL
       { source: '/rsa_landing', destination: '/car-roadside-assitance', permanent: true },
       { source: '/roadside-assistance', destination: '/car-roadside-assitance', permanent: true },

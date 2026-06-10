@@ -23,7 +23,7 @@ export const CHATBOT_TOOLS = [
           service_category: {
             type: 'string',
             description:
-              "Service category. Must be one of: 'Car Periodic Service', 'Car AC Service', 'Car Battery Service', 'Car Brake Service', 'Car Clutch Service', 'Car Denting & Painting', 'Car Detailing Service', 'Car Engine Service', 'Car Tyre & Wheel Care'",
+              "Service category. Must be one of: 'Car Periodic Service', 'Car AC Service', 'Car Battery Service', 'Car Brake Service', 'Car Clutch Service', 'Car Denting & Painting', 'Car Detailing Service', 'Car Engine Service', 'Car Tyre & Wheel Care', 'Electrical & Battery Service', 'Suspension & Steering Service'",
             enum: [
               'Car Periodic Service',
               'Car AC Service',
@@ -34,6 +34,8 @@ export const CHATBOT_TOOLS = [
               'Car Detailing Service',
               'Car Engine Service',
               'Car Tyre & Wheel Care',
+              'Electrical & Battery Service',
+              'Suspension & Steering Service',
             ],
           },
           car_model: {

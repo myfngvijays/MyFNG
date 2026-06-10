@@ -8,6 +8,7 @@ import BookingForm from '@/components/landing/BookingForm';
 import LiveStats from '@/components/landing/LiveStats';
 import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
 import DynamicFOMO from '@/components/landing/DynamicFOMO';
+import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import ServiceExplorer, { type ServiceExplorerItem } from '@/components/landing/ServiceExplorer';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { 
@@ -36,6 +37,7 @@ import {
   Droplets,
   Calendar,
   Wrench,
+  ArrowUp,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -90,6 +92,7 @@ export default function HomePage() {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   type WhyIntent = 'instant' | 'save' | 'control' | 'trust';
   const [whyIntent, setWhyIntent] = useState<WhyIntent>('instant');
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [headerAiQuery, setHeaderAiQuery] = useState('');
   const [chatDraft, setChatDraft] = useState('');
   const [latestBlogs, setLatestBlogs] = useState<Array<{ title: string; excerpt: string; slug: string; readTime: string; tag: string; featuredImage?: string }>>([]);
@@ -204,6 +207,15 @@ export default function HomePage() {
     }, 2600);
     return () => window.clearInterval(timer);
   }, [heroSlidesReady, heroServiceSlides.length]);
+
+  useEffect(() => {
+    function onScroll() {
+      setShowScrollTop(window.scrollY > 400);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const [chatLoading, setChatLoading] = useState(false);
   const [chatConnected, setChatConnected] = useState(false);
   const [chatContext, setChatContext] = useState<any>({}); // keep flexible (matches /api/chatbot context)
@@ -706,11 +718,38 @@ export default function HomePage() {
       warranty: 'Depends on Package',
       highlights: ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts', 'Color Matching', 'Premium Finish'],
     },
+    {
+      icon: Zap,
+      title: 'Electrical & Battery Service',
+      desc: 'Complete Electrical Diagnostics & Battery System Service',
+      slug: 'electrical-battery-service',
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+      ring: 'ring-amber-200/60',
+      priceFrom: '₹999',
+      eta: '2–4 hrs',
+      warranty: 'NA',
+      highlights: ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts', 'Expert Electrical Technicians', 'Complete System Scan'],
+    },
+    {
+      icon: Wrench,
+      title: 'Suspension & Steering Service',
+      desc: 'Shock Absorber, Strut & Steering System Service',
+      slug: 'suspension-steering-service',
+      color: 'text-teal-600',
+      bg: 'bg-teal-50',
+      ring: 'ring-teal-200/60',
+      priceFrom: '₹1,499',
+      eta: '2–4 hrs',
+      warranty: 'NA',
+      highlights: ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts', 'Improved Ride Comfort', 'Better Handling'],
+    },
   ] satisfies ServiceExplorerItem[];
 
   return (
     <div className="min-h-screen bg-white font-poppins text-text-body selection:bg-brand-primary/20">
       <Navbar />
+      <AppDownloadPopup />
 
       {/* Header AI Search Bar (full-width, under navbar) */}
       <div className="hidden w-full mt-16 sm:mt-20 md:mt-24 bg-white/70 backdrop-blur border-b border-gray-200/70">
@@ -1825,7 +1864,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          <div className="max-w-5xl mx-auto flex flex-col gap-3 sm:gap-4">
             {[
               {
                 question: 'How can I book a service appointment with My FNG?',
@@ -1866,6 +1905,18 @@ export default function HomePage() {
                 onToggle={() => setOpenFaqIndex((prev) => (prev === idx ? null : idx))}
               />
             ))}
+          </div>
+
+          <div className="text-center mt-8">
+            <a
+              href="/faqs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white font-bold text-sm rounded-full hover:bg-brand-secondary transition-all shadow-md hover:shadow-lg"
+            >
+              Show More FAQs
+              <ArrowRight className="w-4 h-4" />
+            </a>
           </div>
         </div>
       </section>
@@ -2192,6 +2243,17 @@ export default function HomePage() {
       )}
 
       <Footer />
+
+      {/* Scroll to Top */}
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-6 z-50 w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-brand-primary text-white shadow-lg hover:bg-brand-primary/90 hover:scale-110 transition-all flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-300"
+          aria-label="Scroll to top"
+        >
+          <ArrowUp className="w-5 h-5 sm:w-6 sm:h-6" />
+        </button>
+      )}
 
       {/* Booking Form Modal */}
       {isBookingFormOpen && (

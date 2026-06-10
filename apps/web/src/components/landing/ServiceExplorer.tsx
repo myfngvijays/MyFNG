@@ -28,18 +28,7 @@ export type ServiceExplorerItem = {
   highlights: string[];
 };
 
-/** Internal slug → marketing URL slug (same as /car-services/ and Navbar) */
-const INTERNAL_SLUG_TO_CAR_SERVICES: Record<string, string> = {
-  'periodic-service': 'periodic-car-service',
-  'engine-service': 'car-engine-service',
-  'ac-service': 'car-ac-service',
-  'battery-service': 'car-battery',
-  'brake-service': 'car-brake-service',
-  'clutch-service': 'car-clutch-service',
-  'tyre-wheel-care': 'tyre-wheel-care',
-  'detailing-service': 'car-detailing-service',
-  'denting-painting': 'car-denting-painting',
-};
+import { INTERNAL_SLUG_TO_MARKETING as INTERNAL_SLUG_TO_CAR_SERVICES } from '@/lib/services/catalog';
 
 function cx(...classes: Array<string | undefined | false | null>) {
   return classes.filter(Boolean).join(' ');
@@ -285,7 +274,7 @@ export default function ServiceExplorer({
                                 <Shield className="w-4 h-4 text-gray-400" />
                               </div>
                               <div className="mt-1 text-sm font-bold text-gray-900">
-                                {active.slug === 'periodic-service' ? '1000 kms / 3 Months' : active.warranty}
+                                {active.warranty}
                               </div>
                             </div>
                           </div>

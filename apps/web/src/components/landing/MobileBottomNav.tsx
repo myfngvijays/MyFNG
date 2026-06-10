@@ -19,6 +19,8 @@ const CAR_SERVICE_SLUG_MAP: Record<string, ServiceSlugInfo> = {
   'tyre-wheel-care': { label: 'Book Tyre Service', prefillCategory: 'TYRE & WHEEL CARE', prefillQuery: 'TYRE' },
   'car-detailing-service': { label: 'Book Detailing Service', prefillCategory: 'DETAILING SERVICE', prefillQuery: 'DETAIL' },
   'car-denting-painting': { label: 'Book Denting & Painting', prefillCategory: 'DENTING PAINTING', prefillQuery: 'PAINT' },
+  'car-electrical-battery-service': { label: 'Book Electrical & Battery Service', prefillCategory: 'ELECTRICAL & BATTERY SERVICE', prefillQuery: 'ELECTRICAL' },
+  'car-suspension-steering-service': { label: 'Book Suspension & Steering Service', prefillCategory: 'SUSPENSION & STEERING SERVICE', prefillQuery: 'SUSPENSION' },
 };
 
 type NavItem = {

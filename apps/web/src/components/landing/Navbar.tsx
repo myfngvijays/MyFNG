@@ -3,17 +3,95 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { MapPin, Loader2, ChevronDown, Search, Menu, X } from 'lucide-react';
-import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
+
+function useCountdown() {
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
+
+  useEffect(() => {
+    function getEndOfDay() {
+      const now = new Date();
+      const end = new Date(now);
+      end.setHours(23, 59, 59, 999);
+      return end;
+    }
+
+    function update() {
+      const diff = Math.max(0, Math.floor((getEndOfDay().getTime() - Date.now()) / 1000));
+      setTimeLeft({
+        hours: Math.floor(diff / 3600),
+        minutes: Math.floor((diff % 3600) / 60),
+        seconds: diff % 60,
+      });
+    }
+
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return timeLeft;
+}
+
+function AppDownloadBanner({ onClose }: { onClose: () => void }) {
+  const { hours, minutes, seconds } = useCountdown();
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  return (
+    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 text-white relative">
+      <div className="container mx-auto px-2 pr-8 sm:px-10 md:px-12 py-1.5 sm:py-2 flex items-center justify-between sm:justify-center gap-2 sm:gap-3 md:gap-4">
+        {/* Left: text */}
+        <span className="text-[9px] sm:text-xs md:text-sm font-bold sm:whitespace-nowrap min-w-0">
+          📱 Download MyFNG App &amp; Get 10% OFF
+          <br className="sm:hidden" />
+          <span className="hidden sm:inline"> | </span>
+          <span className="text-yellow-200">Limited-Time Launch Offer →</span>
+        </span>
+
+        {/* Right: timer + buttons */}
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-1">
+            <span className="inline-flex items-center justify-center w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded bg-white/20 text-[8px] sm:text-xs md:text-sm font-bold tabular-nums">{pad(hours)}</span>
+            <span className="text-[8px] sm:text-xs font-bold">:</span>
+            <span className="inline-flex items-center justify-center w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded bg-white/20 text-[8px] sm:text-xs md:text-sm font-bold tabular-nums">{pad(minutes)}</span>
+            <span className="text-[8px] sm:text-xs font-bold">:</span>
+            <span className="inline-flex items-center justify-center w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded bg-white/20 text-[8px] sm:text-xs md:text-sm font-bold tabular-nums">{pad(seconds)}</span>
+          </div>
+          <a
+            href="https://play.google.com/store/apps/details?id=com.myfng.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 bg-white text-blue-700 hover:bg-blue-50 rounded sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all shadow-sm"
+          >
+            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-1.4l2.237 1.296a1 1 0 0 1 0 1.794l-2.237 1.296-2.532-2.543 2.532-2.843zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/></svg>
+            <span className="hidden sm:inline">Android</span>
+          </a>
+          <a
+            href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 bg-white text-blue-700 hover:bg-blue-50 rounded sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all shadow-sm"
+          >
+            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            <span className="hidden sm:inline">iOS</span>
+          </a>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 p-0.5 sm:p-1 rounded-full hover:bg-white/20 transition-all"
+          aria-label="Close banner"
+        >
+          <X className="w-3 h-3 sm:w-4 sm:h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Navbar() {
-  const pathname = usePathname();
-  const isServicesPage =
-    pathname === '/services' ||
-    pathname.startsWith('/services/') ||
-    pathname === '/car-services' ||
-    pathname.startsWith('/car-services/');
-
+  const [showAppBanner, setShowAppBanner] = useState(true);
   const [cityName, setCityName] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(true);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
@@ -198,15 +276,9 @@ export default function Navbar() {
     <>
       <Link href="/" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Home</Link>
       <Link href="/car-services" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">All Services</Link>
-      <Link href="/car-services/periodic-car-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Periodic Car Service</Link>
-      <Link href="/car-services/car-engine-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Engine Service</Link>
-      <Link href="/car-services/car-ac-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car AC Service</Link>
-      <Link href="/car-services/car-battery" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Battery Service</Link>
-      <Link href="/car-services/car-brake-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Brake Service</Link>
-      <Link href="/car-services/car-clutch-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Clutch Service</Link>
-      <Link href="/car-services/tyre-wheel-care" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Tyre &amp; Wheel Care</Link>
-      <Link href="/car-services/car-detailing-service" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Detailing Service</Link>
-      <Link href="/car-services/car-denting-painting" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ Car Denting &amp; Painting</Link>
+      {DEFAULT_SERVICES.map((s) => (
+        <Link key={s.slug} href={`/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`} onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ {s.title}</Link>
+      ))}
       <Link href="/about-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">About Us</Link>
       <Link href="/car-roadside-assitance" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Roadside Assistance</Link>
       <Link href="/blogs" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Blog</Link>
@@ -215,80 +287,67 @@ export default function Navbar() {
   );
 
   return (
-    <header className="fixed top-0 w-full bg-white/95 backdrop-blur-sm shadow-sm z-50">
+    <header className="fixed top-0 w-full z-50">
+      {showAppBanner && (
+        <AppDownloadBanner onClose={() => setShowAppBanner(false)} />
+      )}
+      <div className="bg-white/95 backdrop-blur-sm shadow-sm">
       <nav className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4">
         <div className="flex items-center justify-between gap-2 sm:gap-4">
+          {/* Mobile hamburger (left side, only on small screens) */}
+          <div className="lg:hidden relative flex-shrink-0" ref={hamburgerRef}>
+            <button
+              onClick={() => setShowHamburgerMenu((v) => !v)}
+              className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700"
+              aria-label="Open navigation menu"
+            >
+              {showHamburgerMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
+            {showHamburgerMenu && (
+              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 py-2 max-h-[80vh] overflow-y-auto">
+                {NAV_LINKS}
+                <div className="px-4 pt-3 pb-1 border-t border-gray-100 mt-1">
+                  <Link
+                    href="/book-service"
+                    onClick={() => setShowHamburgerMenu(false)}
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all"
+                  >
+                    📅 Book Your Service Now
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
           <Link href="/" className="flex items-center min-w-0 flex-shrink-0">
             <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
           </Link>
 
-          {isServicesPage ? (
-            /* Services page: hamburger menu + Book Now CTA */
-            <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Desktop nav (visible on lg+) */}
+          <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
+            <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
+            <div className="relative group">
               <Link
-                href="/book-service"
-                className="hidden sm:inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all shadow-md"
+                href="/car-services"
+                className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
               >
-                📅 Book Your Service Now
+                Services
+                <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
               </Link>
-              <div className="relative" ref={hamburgerRef}>
-                <button
-                  onClick={() => setShowHamburgerMenu((v) => !v)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700 font-medium text-sm"
-                  aria-label="Open navigation menu"
-                >
-                  {showHamburgerMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                  <span className="hidden sm:inline">Menu</span>
-                </button>
-
-                {showHamburgerMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 py-2 max-h-[80vh] overflow-y-auto">
-                    {NAV_LINKS}
-                    <div className="px-4 pt-3 pb-1 border-t border-gray-100 mt-1">
-                      <Link
-                        href="/book-service"
-                        onClick={() => setShowHamburgerMenu(false)}
-                        className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all"
-                      >
-                        📅 Book Your Service Now
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* Regular pages: full desktop nav */
-            <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
-              <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
-              <div className="relative group">
-                <Link
-                  href="/car-services"
-                  className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
-                >
-                  Services
-                  <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
-                </Link>
-                <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                  <div className="py-2">
-                    <Link href="/car-services/periodic-car-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Periodic Car Service</Link>
-                    <Link href="/car-services/car-engine-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Engine Service</Link>
-                    <Link href="/car-services/car-ac-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car AC Service</Link>
-                    <Link href="/car-services/car-battery" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Battery Service</Link>
-                    <Link href="/car-services/car-brake-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Brake Service</Link>
-                    <Link href="/car-services/car-clutch-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Clutch Service</Link>
-                    <Link href="/car-services/tyre-wheel-care" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Tyre &amp; Wheel Care</Link>
-                    <Link href="/car-services/car-detailing-service" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Detailing Service</Link>
-                    <Link href="/car-services/car-denting-painting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">Car Denting &amp; Painting</Link>
-                  </div>
+              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                <div className="py-2">
+                  {DEFAULT_SERVICES.map((s) => (
+                    <Link key={s.slug} href={`/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`} className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">{s.title}</Link>
+                  ))}
                 </div>
               </div>
-              <Link href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
-              <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
-              <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
-              <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
             </div>
-          )}
+            <Link href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
+            <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
+            <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
+            <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
+          </div>
 
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
             {isDetecting ? (
@@ -381,6 +440,7 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
+      </div>
     </header>
   );
 }

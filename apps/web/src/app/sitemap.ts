@@ -1,19 +1,7 @@
 import type { MetadataRoute } from 'next';
-import { DEFAULT_SERVICES } from '@/lib/services/catalog';
+import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING as INTERNAL_TO_MARKETING } from '@/lib/services/catalog';
 
 const SITE_URL = 'https://myfng.in';
-
-const INTERNAL_TO_MARKETING: Record<string, string> = {
-  'periodic-service': 'periodic-car-service',
-  'engine-service': 'car-engine-service',
-  'ac-service': 'car-ac-service',
-  'battery-service': 'car-battery',
-  'brake-service': 'car-brake-service',
-  'clutch-service': 'car-clutch-service',
-  'tyre-wheel-care': 'tyre-wheel-care',
-  'detailing-service': 'car-detailing-service',
-  'denting-painting': 'car-denting-painting',
-};
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

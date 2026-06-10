@@ -2588,77 +2588,148 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.detailsPriceRow}>
-                    <Text style={styles.detailsPriceText}>
-                      {pricing[detailsService.id] && pricing[detailsService.id] > 0
-                        ? `\u20B9${pricing[detailsService.id].toLocaleString('en-IN')}`
-                        : '\u2014'}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const sid = detailsService.id;
-                        setForm((p) => ({
-                          ...p,
-                          selectedServices: Array.from(
-                            new Set([...(p.selectedServices || []), sid])
-                          ),
-                        }));
-                        setDetailsService(null);
-                        setTimeout(() => onNext(), 0);
-                      }}
-                      style={styles.detailsProceedBtn}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.detailsProceedText}>Proceed to Book</Text>
-                      <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-                    </TouchableOpacity>
-                  </View>
+                  {(() => {
+                    const categoryId = String(detailsService?.category || selectedCategory || '').toUpperCase();
+                    const isPeriodic = categoryId.includes('PERIODIC');
+                    const isDenting = categoryId.includes('DENTING') || categoryId.includes('PAINTING');
+                    const isDetailing = categoryId.includes('DETAIL');
 
-                  <View style={styles.detailsBodyWrap}>
-                    <ScrollView
-                      style={styles.detailsBody}
-                      contentContainerStyle={styles.detailsBodyContent}
-                      showsVerticalScrollIndicator
-                      nestedScrollEnabled
-                    >
-                      {(() => {
-                        const items = serviceChecklists[detailsService.id] || [];
-                        if (!items.length) {
-                          return (
-                            <Text style={styles.detailsEmpty}>
-                              No checklist available for this service.
+                    const usps = isPeriodic
+                      ? ['Live Photos & Videos Updates', 'Same-Day Servicing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts', 'Detailed Inspection Report', 'Car Delivery At Your Doorstep']
+                      : isDenting
+                        ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Color Matching', 'Premium Finish']
+                        : isDetailing
+                          ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Interior Deep Clean', 'Exterior Polish']
+                          : ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts'];
+
+                    const warrantyLabel = isPeriodic
+                      ? '1000 kms / 1 Month'
+                      : isDenting
+                        ? 'Depends on Package'
+                        : 'NA';
+
+                    let disclaimer = '';
+                    if (isPeriodic) {
+                      disclaimer = '* Spare part replacements charged at actual cost. Service packages use company-recommended oil and filters.';
+                    } else if (isDenting) {
+                      disclaimer = '* Major panel denting will incur additional charges. Rates do not apply to rusted vehicles.';
+                    } else if (!isDetailing) {
+                      disclaimer = '* This includes only labor charges, If any additional parts are required, they will be billed at actual cost.';
+                    }
+
+                    const uspRows: string[][] = [];
+                    for (let i = 0; i < usps.length; i += 3) {
+                      uspRows.push(usps.slice(i, i + 3));
+                    }
+
+                    return (
+                      <>
+                        {/* Price + Warranty + Proceed (green box) */}
+                        <View style={styles.detailsPriceRow}>
+                          <View>
+                            <Text style={styles.detailsPriceText}>
+                              {pricing[detailsService.id] && pricing[detailsService.id] > 0
+                                ? `\u20B9${pricing[detailsService.id].toLocaleString('en-IN')}`
+                                : '\u2014'}
                             </Text>
-                          );
-                        }
-                        const rows: Array<typeof items> = [];
-                        for (let i = 0; i < items.length; i += 2) {
-                          rows.push(items.slice(i, i + 2));
-                        }
-                        return (
-                          <View style={styles.detailsGrid}>
-                            {rows.map((row, rIdx) => (
-                              <View key={rIdx} style={styles.detailsGridRow}>
-                                {row.map((it, idx) => (
-                                  <View key={`${rIdx}-${idx}`} style={styles.detailsGridItem}>
-                                    <Ionicons
-                                      name="checkmark-circle"
-                                      size={16}
-                                      color="#16A34A"
-                                      style={{ marginTop: 2 }}
-                                    />
-                                    <Text style={styles.detailsGridItemText}>{it.name}</Text>
-                                  </View>
-                                ))}
-                                {row.length === 1 ? (
-                                  <View style={styles.detailsGridItem} />
-                                ) : null}
-                              </View>
-                            ))}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                              <Ionicons name="shield-checkmark" size={12} color="#16A34A" />
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: '#065F46' }}>Warranty: {warrantyLabel}</Text>
+                            </View>
                           </View>
-                        );
-                      })()}
-                    </ScrollView>
-                  </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const sid = detailsService.id;
+                              setForm((p) => ({
+                                ...p,
+                                selectedServices: Array.from(
+                                  new Set([...(p.selectedServices || []), sid])
+                                ),
+                              }));
+                              setDetailsService(null);
+                              setTimeout(() => onNext(), 0);
+                            }}
+                            style={styles.detailsProceedBtn}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.detailsProceedText}>Proceed to Book</Text>
+                            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.detailsBodyWrap}>
+                          <ScrollView
+                            style={styles.detailsBody}
+                            contentContainerStyle={styles.detailsBodyContent}
+                            showsVerticalScrollIndicator
+                            nestedScrollEnabled
+                          >
+                            {/* What you get (USPs in 3-column rows) */}
+                            <View style={{ backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1, borderColor: '#DBEAFE', padding: 12, marginBottom: 16 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>What you get</Text>
+                              </View>
+                              {uspRows.map((row, rIdx) => (
+                                <View key={rIdx} style={{ flexDirection: 'row', gap: 6, marginBottom: rIdx < uspRows.length - 1 ? 6 : 0 }}>
+                                  {row.map((usp) => (
+                                    <View key={usp} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 20, borderWidth: 1, borderColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 5 }}>
+                                      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#2563EB' }} />
+                                      <Text style={{ fontSize: 10, fontWeight: '600', color: '#374151' }} numberOfLines={1}>{usp}</Text>
+                                    </View>
+                                  ))}
+                                  {row.length < 3 ? Array.from({ length: 3 - row.length }).map((_, i) => <View key={`empty-${i}`} style={{ flex: 1 }} />) : null}
+                                </View>
+                              ))}
+                            </View>
+
+                            {/* Checklist points */}
+                            {(() => {
+                              const items = serviceChecklists[detailsService.id] || [];
+                              if (!items.length) {
+                                return (
+                                  <Text style={styles.detailsEmpty}>
+                                    No checklist available for this service.
+                                  </Text>
+                                );
+                              }
+                              const rows: Array<typeof items> = [];
+                              for (let i = 0; i < items.length; i += 2) {
+                                rows.push(items.slice(i, i + 2));
+                              }
+                              return (
+                                <View style={styles.detailsGrid}>
+                                  {rows.map((row, rIdx) => (
+                                    <View key={rIdx} style={styles.detailsGridRow}>
+                                      {row.map((it, idx) => (
+                                        <View key={`${rIdx}-${idx}`} style={styles.detailsGridItem}>
+                                          <Ionicons
+                                            name="checkmark-circle"
+                                            size={16}
+                                            color="#16A34A"
+                                            style={{ marginTop: 2 }}
+                                          />
+                                          <Text style={styles.detailsGridItemText}>{it.name}</Text>
+                                        </View>
+                                      ))}
+                                      {row.length === 1 ? (
+                                        <View style={styles.detailsGridItem} />
+                                      ) : null}
+                                    </View>
+                                  ))}
+                                </View>
+                              );
+                            })()}
+
+                            {/* Disclaimer */}
+                            {disclaimer ? (
+                              <Text style={{ marginTop: 12, fontSize: 11, fontStyle: 'italic', color: '#DC2626' }}>{disclaimer}</Text>
+                            ) : null}
+                          </ScrollView>
+                        </View>
+                      </>
+                    );
+                  })()}
                 </>
               ) : null}
             </View>

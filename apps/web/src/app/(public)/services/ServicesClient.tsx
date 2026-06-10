@@ -6,20 +6,8 @@ import Footer from '@/components/landing/Footer';
 import { ArrowRight, CheckCircle, Clock, IndianRupee, Shield, ShieldCheck, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { DEFAULT_SERVICES, Service, canonicalCategoryName, makeShortDescription, normalizeSpaces } from '@/lib/services/catalog';
-
-/** Internal slug (catalog) → marketing URL slug (same as Navbar /car-services/ links) */
-const INTERNAL_SLUG_TO_CAR_SERVICES: Record<string, string> = {
-  'periodic-service': 'periodic-car-service',
-  'engine-service': 'car-engine-service',
-  'ac-service': 'car-ac-service',
-  'battery-service': 'car-battery',
-  'brake-service': 'car-brake-service',
-  'clutch-service': 'car-clutch-service',
-  'tyre-wheel-care': 'tyre-wheel-care',
-  'detailing-service': 'car-detailing-service',
-  'denting-painting': 'car-denting-painting',
-};
+import { DEFAULT_SERVICES, Service, canonicalCategoryName, makeShortDescription, normalizeSpaces, INTERNAL_SLUG_TO_MARKETING as INTERNAL_SLUG_TO_CAR_SERVICES } from '@/lib/services/catalog';
+import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 
@@ -33,6 +21,8 @@ const SERVICE_DISPLAY_META: Record<string, { priceFrom: string; warranty?: strin
   'clutch-service': { priceFrom: '₹1,999' },
   'detailing-service': { priceFrom: '₹2,999', warranty: 'NA' },
   'denting-painting': { priceFrom: '₹3,999', warranty: 'Up to 24 Months' },
+  'electrical-battery-service': { priceFrom: '₹999', warranty: 'NA' },
+  'suspension-steering-service': { priceFrom: '₹1,499', warranty: 'NA' },
 };
 
 function getServiceDisplayMeta(service: Service) {
@@ -106,6 +96,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
+      <AppDownloadPopup />
 
       {/* Full-Bleed Service Explorer Section */}
       <section className="relative mt-16 overflow-hidden bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">

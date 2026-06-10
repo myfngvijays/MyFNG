@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { appendUtmToHref } from '@/lib/utm';
+import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 
 const ctaTitles = [
   "Serious Car Owners Don't Postpone Maintenance.",
@@ -155,17 +156,10 @@ export default function Footer() {
             <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="services">Our Services</AccordionTitle>
               <ul className={listClass('services')}>
-                {[
-                  { href: '/car-services/periodic-car-service', label: 'Periodic Car Service' },
-                  { href: '/car-services/car-engine-service', label: 'Car Engine Service' },
-                  { href: '/car-services/car-ac-service', label: 'Car AC Service' },
-                  { href: '/car-services/car-battery-service', label: 'Car Battery Service' },
-                  { href: '/car-services/car-brake-service', label: 'Car Brake Service' },
-                  { href: '/car-services/car-clutch-service', label: 'Car Clutch Service' },
-                  { href: '/car-services/car-detailing-service', label: 'Car Detailing' },
-                  { href: '/car-services/car-denting-painting', label: 'Denting & Painting' },
-                  { href: '/car-services/tyre-wheel-care', label: 'Wheel Alignment & Balancing' },
-                ].map((item) => (
+                {DEFAULT_SERVICES.map((s) => ({
+                  href: `/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`,
+                  label: s.title,
+                })).map((item) => (
                   <li key={item.href} className="mb-0">
                     <Link
                       href={item.href}
@@ -359,14 +353,14 @@ export default function Footer() {
                 <div className="text-center md:text-left">
                   <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Download MyFNG App</h4>
                   <div className="flex flex-row md:flex-col gap-2.5 justify-center md:justify-start items-center md:items-start flex-wrap">
-                    <a href="#" target="_blank" rel="noopener noreferrer">
+                    <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer">
                       <img
                         src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
                         alt="Download on Play Store"
                         className="w-[145px] sm:w-[160px] block"
                       />
                     </a>
-                    <a href="#" target="_blank" rel="noopener noreferrer">
+                    <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer">
                       <img
                         src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
                         alt="Download on App Store"

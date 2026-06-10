@@ -1,4 +1,4 @@
-import { Activity, Battery, Circle, Disc3, Paintbrush, Snowflake, Sparkles, Wrench, Zap } from 'lucide-react';
+import { Activity, Battery, Circle, Disc3, Lightbulb, Paintbrush, Snowflake, Sparkles, Wrench, Zap } from 'lucide-react';
 
 const SERVICE_IMAGE_BASE_URL =
   'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public';
@@ -31,6 +31,8 @@ export function canonicalCategoryName(name: string) {
   if (n === 'Detailing Service') return 'Car Detailing Service';
   if (n === 'Denting & Painting') return 'Car Denting & Painting';
   if (n === 'Tyre & Wheel Care') return 'Car Tyre & Wheel Care';
+  if (n === 'Electrical & Battery') return 'Electrical & Battery Service';
+  if (n === 'Suspension & Steering') return 'Suspension & Steering Service';
   return n;
 }
 
@@ -260,7 +262,68 @@ export const DEFAULT_SERVICES: Service[] = [
     duration: '2-5 days',
     warranty: 'NA',
   },
+  {
+    id: 10,
+    slug: 'electrical-battery-service',
+    title: 'Electrical & Battery Service',
+    bookPrefill: { category: 'ELECTRICAL & BATTERY SERVICE', query: 'ELECTRICAL' },
+    icon: Lightbulb,
+    description: 'Complete electrical diagnostics, wiring repair & battery system service.',
+    longDescription:
+      'Your car\'s electrical system powers everything from headlights to engine management. MyFNG Electrical & Battery Service provides comprehensive diagnostics and repairs for all electrical components - including alternator, starter motor, wiring harness, fuse box, and battery health. We identify hidden faults, fix intermittent issues, and ensure your car\'s electrical system runs reliably.',
+    features: [
+      'Complete Electrical Diagnostics',
+      'Battery Health Check & Replacement',
+      'Alternator & Starter Motor Testing',
+      'Wiring Harness Inspection',
+      'Fuse Box & Relay Check',
+      'Headlight & Tail Light Repair',
+      'Power Window & Central Lock Fix',
+      'Sensor & ECU Diagnostics',
+    ],
+    benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Transparent Pricing', 'Expert Electrical Technicians', 'Complete System Scan', 'Preventive Diagnostics'],
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Electrical_Battery_Service.png`,
+    duration: '2-4 hours',
+    warranty: 'NA',
+  },
+  {
+    id: 11,
+    slug: 'suspension-steering-service',
+    title: 'Suspension & Steering Service',
+    bookPrefill: { category: 'SUSPENSION & STEERING SERVICE', query: 'SUSPENSION' },
+    icon: Wrench,
+    description: 'Smooth rides with shock absorber, strut & steering system service.',
+    longDescription:
+      'A well-maintained suspension and steering system ensures comfortable rides, precise handling, and safe driving. MyFNG Suspension & Steering Service covers everything from shock absorbers and struts to power steering fluid and tie rod ends. We diagnose and fix issues like bumpy rides, uneven tyre wear, steering vibrations, and alignment problems through a standardised inspection process.',
+    features: [
+      'Shock Absorber Inspection & Replacement',
+      'Strut & Spring Check',
+      'Power Steering Fluid Service',
+      'Tie Rod & Ball Joint Inspection',
+      'Steering Rack & Pinion Check',
+      'Bushing & Mounting Inspection',
+      'Ride Height Adjustment',
+      'Road Test & Alignment Check',
+    ],
+    benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Transparent Pricing', 'Improved Ride Comfort', 'Better Handling', 'Enhanced Safety'],
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Suspension_Steering_Service.png`,
+    duration: '2-4 hours',
+    warranty: 'NA',
+  },
 ];
+
+export const INTERNAL_SLUG_TO_MARKETING: Record<string, string> = {};
+export const MARKETING_SLUG_TO_INTERNAL: Record<string, string> = {};
+
+for (const s of DEFAULT_SERVICES) {
+  const m = s.slug === 'periodic-service' ? 'periodic-car-service'
+    : s.slug === 'tyre-wheel-care' ? 'tyre-wheel-care'
+    : `car-${s.slug}`;
+  INTERNAL_SLUG_TO_MARKETING[s.slug] = m;
+  MARKETING_SLUG_TO_INTERNAL[m] = s.slug;
+}
+MARKETING_SLUG_TO_INTERNAL['car-battery'] = 'battery-service';
+MARKETING_SLUG_TO_INTERNAL['car-battery-service'] = 'battery-service';
 
 export function findServiceBySlug(slug: string) {
   return DEFAULT_SERVICES.find((service) => service.slug === slug);
