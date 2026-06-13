@@ -92,13 +92,15 @@ const FALLBACK_HERO_BANNERS: HeroBanner[] = [
 ];
 
 const SUPABASE_STORAGE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App';
+type PromoBanner = { image_url: string; route_name: string; route_params: any };
+
 // Fallback promo banners — overridden by admin-managed `home_promo_banners` table
 // once Super Admin uploads custom images via the web dashboard.
-const FALLBACK_PROMO_BANNERS = [
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`,
-  `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`,
+const FALLBACK_PROMO_BANNERS: PromoBanner[] = [
+  { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20A%20Loan%20Against%20Car.PNG`, route_name: '', route_params: {} },
+  { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Check%20Your%20Cars%20E-Challan.PNG`, route_name: '', route_params: {} },
+  { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Get%20Nearest%20Fuel%20Station.PNG`, route_name: '', route_params: {} },
+  { image_url: `${SUPABASE_STORAGE}/Mobile%20Screen%20-%20Home%20Page%20-%20Other%20Cards/My%20FNG%20-%20Banner%20-%20Sell%20Your%20Car%20Stress%20Free.PNG`, route_name: '', route_params: {} },
 ];
 
 const PROMO_BANNER_LINKS: Record<string, string> = {
@@ -150,7 +152,7 @@ const HEADLINES = [
 export default function PublicHomeScreen({ navigation }: Props) {
   const [heroIndex, setHeroIndex] = useState(0);
   const [heroBanners, setHeroBanners] = useState<HeroBanner[]>(FALLBACK_HERO_BANNERS);
-  const [promoBanners, setPromoBanners] = useState<string[]>(FALLBACK_PROMO_BANNERS);
+  const [promoBanners, setPromoBanners] = useState<PromoBanner[]>(FALLBACK_PROMO_BANNERS);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [loanIndex, setLoanIndex] = useState(0);
   const [howIndex, setHowIndex] = useState(0);
@@ -275,7 +277,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
       try {
         const { data, error } = await supabase
           .from('home_promo_banners')
-          .select('image_url, display_order, is_active')
+          .select('image_url, route_name, route_params, display_order, is_active')
           .eq('is_active', true)
           .order('display_order', { ascending: true })
           .order('created_at', { ascending: false });
@@ -283,8 +285,14 @@ export default function PublicHomeScreen({ navigation }: Props) {
         if (error) return;
         if (!active || !Array.isArray(data) || data.length === 0) return;
 
-        const urls = data.map((row: any) => String(row.image_url || '')).filter(Boolean);
-        if (active && urls.length > 0) setPromoBanners(urls);
+        const banners: PromoBanner[] = data
+          .filter((row: any) => !!row.image_url)
+          .map((row: any) => ({
+            image_url: String(row.image_url),
+            route_name: String(row.route_name || ''),
+            route_params: row.route_params || {},
+          }));
+        if (active && banners.length > 0) setPromoBanners(banners);
       } catch {
         // ignore — keep fallback list
       }
@@ -637,13 +645,21 @@ export default function PublicHomeScreen({ navigation }: Props) {
           <Section>
             <Animated.View style={[styles.loanCard, { opacity: loanFade }]}>
               {(() => {
-                const currentBannerUrl = promoBanners[loanIndex % Math.max(promoBanners.length, 1)] || '';
-                const bannerLower = currentBannerUrl.toLowerCase();
-                const link = Object.entries(PROMO_BANNER_LINKS).find(([key]) => bannerLower.includes(key))?.[1] || 'https://myfng.in';
+                const currentBanner = promoBanners[loanIndex % Math.max(promoBanners.length, 1)];
+                if (!currentBanner) return null;
+                const handlePress = () => {
+                  if (currentBanner.route_name) {
+                    navigation.navigate(currentBanner.route_name as never, currentBanner.route_params as never);
+                  } else {
+                    const bannerLower = currentBanner.image_url.toLowerCase();
+                    const link = Object.entries(PROMO_BANNER_LINKS).find(([key]) => bannerLower.includes(key))?.[1] || 'https://myfng.in';
+                    Linking.openURL(link);
+                  }
+                };
                 return (
-                  <TouchableOpacity activeOpacity={0.85} onPress={() => Linking.openURL(link)}>
+                  <TouchableOpacity activeOpacity={0.85} onPress={handlePress}>
                     <Image
-                      source={{ uri: currentBannerUrl }}
+                      source={{ uri: currentBanner.image_url }}
                       style={styles.loanBannerImage}
                       resizeMode="cover"
                     />

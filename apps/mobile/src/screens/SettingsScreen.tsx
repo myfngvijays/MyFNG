@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   BackHandler,
   Dimensions,
   FlatList,
   Image,
   Linking,
   Modal,
+  PanResponder,
   Platform,
   ScrollView,
   Share,
@@ -121,7 +123,18 @@ function VehicleImage({ vehicle, style }: { vehicle: any; style: any }) {
 }
 
 export default function SettingsScreen({ navigation, route }: Props) {
-  const [activeSubPage, setActiveSubPage] = useState<string | null>(route?.params?.initialSubPage ?? route?.params?.subPage ?? null);
+  const resolveSubPage = (value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const all = [...MAIN_MENU, ...LEGAL_MENU];
+    const byLabel = all.find((m) => m.label === value);
+    if (byLabel) return byLabel.label;
+    const byId = all.find((m) => m.id === value);
+    if (byId) return byId.label;
+    return value;
+  };
+  const [activeSubPage, setActiveSubPage] = useState<string | null>(resolveSubPage(route?.params?.initialSubPage ?? route?.params?.subPage ?? null));
+  const activeSubPageRef = useRef(activeSubPage);
+  activeSubPageRef.current = activeSubPage;
   const [vehicleEntryOnly, setVehicleEntryOnly] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -592,7 +605,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     const sp = route?.params?.subPage;
-    if (sp) setActiveSubPage(sp);
+    if (sp) setActiveSubPage(resolveSubPage(sp));
   }, [route?.params?.subPage]);
 
   useFocusEffect(
@@ -4161,14 +4174,52 @@ export default function SettingsScreen({ navigation, route }: Props) {
   }, [activeSubPage]);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
-      if (activeSubPage) {
-        e.preventDefault();
-        setActiveSubPage(null);
-      }
-    });
-    return unsubscribe;
+    navigation.setOptions({ gestureEnabled: !activeSubPage });
   }, [navigation, activeSubPage]);
+
+  const swipeAnim = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        return (
+          Platform.OS === 'ios' &&
+          !!activeSubPageRef.current &&
+          gestureState.dx > 10 &&
+          gestureState.x0 < 40 &&
+          Math.abs(gestureState.dy) < Math.abs(gestureState.dx)
+        );
+      },
+      onPanResponderMove: (_evt, gestureState) => {
+        if (gestureState.dx > 0) {
+          swipeAnim.setValue(gestureState.dx);
+        }
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dx > screenWidth * 0.35 || gestureState.vx > 0.5) {
+          Animated.timing(swipeAnim, {
+            toValue: screenWidth,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            setActiveSubPage(null);
+            swipeAnim.setValue(0);
+          });
+        } else {
+          Animated.spring(swipeAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(swipeAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      },
+    })
+  ).current;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -4186,10 +4237,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
         <View style={styles.iconCircleGhost} />
       </View>
       {activeSubPage ? (
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {subPageContent}
-          <ReferAndFooter hideRefer />
-        </ScrollView>
+        <Animated.View
+          style={{ flex: 1, transform: [{ translateX: swipeAnim }] }}
+          {...panResponder.panHandlers}
+        >
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {subPageContent}
+            <ReferAndFooter hideRefer />
+          </ScrollView>
+        </Animated.View>
       ) : (
         renderMain()
       )}

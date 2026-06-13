@@ -21,6 +21,8 @@ const ROUTES = [
   'PublicWorkshopLocator',
   'PublicServicePackages',
   'PublicBookServiceNow',
+  'Settings',
+  'RoadsideAssistance',
   'Login',
 ] as const;
 
