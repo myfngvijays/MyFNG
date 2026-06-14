@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
 import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
+import AppDownloadSection from '@/components/landing/AppDownloadSection';
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
@@ -69,7 +70,11 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
               Back to All Services
             </Link>
             <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
-              {IconComponent && (
+              {service.iconImage ? (
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-white p-0.5 shadow-lg">
+                  <img src={service.iconImage} alt={service.title} className="w-full h-full object-contain" style={{ mixBlendMode: 'darken' }} />
+                </div>
+              ) : IconComponent && (
                 <div className="bg-white/10 backdrop-blur-sm p-3 sm:p-4 rounded-xl">
                   <IconComponent className="w-8 h-8 sm:w-10 sm:h-10" />
                 </div>
@@ -148,6 +153,8 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
           </div>
         </div>
       </section>
+
+      <AppDownloadSection />
 
       <Footer />
     </div>

@@ -9,6 +9,7 @@ export type Service = {
   title: string;
   bookPrefill: { category: string; query: string };
   icon: any;
+  iconImage?: string;
   description: string;
   longDescription: string;
   features: string[];
@@ -52,6 +53,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Periodic Car Service',
     bookPrefill: { category: 'PERIODIC SERVICE', query: 'BASIC' },
     icon: Activity,
+    iconImage: '/icon-periodic-service.png',
     description: 'Standardised periodic maintenance to keep your car smooth, safe, and fuel-efficient.',
     longDescription:
       'Keep your car running smooth, safe, and fuel-efficient with MyFNG Periodic Car Service. We follow a standardised service process to inspect, clean, and maintain all critical components - helping prevent your car breakdowns and costly repairs.',
@@ -76,6 +78,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Engine Service',
     bookPrefill: { category: 'ENGINE SERVICE', query: 'ENGINE' },
     icon: Zap,
+    iconImage: '/icon-engine-service.png',
     description: 'Thorough engine inspection, cleaning & tuning for mileage and long engine life.',
     longDescription:
       'Your car’s engine is its heart. MyFNG Car Engine Service ensures smooth performance, better mileage, and long engine life by thoroughly inspecting, cleaning, and tuning critical engine components. We identify early warning signs, prevent major failures, and help you avoid expensive engine repairs through a standardised, expert-led service process.',
@@ -100,6 +103,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car AC Service',
     bookPrefill: { category: 'AC SERVICE', query: 'AC' },
     icon: Snowflake,
+    iconImage: '/icon-ac-service.png',
     description: 'Faster cooling, cleaner air, and reliable AC performance.',
     longDescription:
       'Beat the heat with MyFNG Car AC Service, designed to deliver faster cooling, cleaner air, and consistent performance. We inspect, clean, and optimise your car’s AC system to prevent weak cooling, bad odour, and sudden AC failures.',
@@ -124,6 +128,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Battery Service',
     bookPrefill: { category: 'BATTERY SERVICE', query: 'BATTERY' },
     icon: Battery,
+    iconImage: '/icon-battery-service.png',
     description: 'Battery + charging system health checks for reliable starts.',
     longDescription:
       'Avoid sudden breakdowns with MyFNG Car Battery Service, designed to keep your car starting reliably every time. We test, inspect, and optimise your battery and charging system to ensure consistent power and longer battery life.',
@@ -148,6 +153,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Brake Service',
     bookPrefill: { category: 'BRAKE SERVICE', query: 'BRAKE' },
     icon: Disc3,
+    iconImage: '/icon-brake-service.png',
     description: 'Responsive braking with inspection, cleaning & precise adjustments.',
     longDescription:
       'Your car’s safety depends on its brakes. MyFNG Car Brake Service ensures responsive braking, reduced stopping distance, and complete driving confidence through detailed inspection, cleaning, and precise adjustments. We identify early brake wear and fix issues before they turn into expensive or dangerous failures.',
@@ -172,6 +178,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Clutch Service',
     bookPrefill: { category: 'CLUTCH SERVICE', query: 'CLUTCH' },
     icon: Wrench,
+    iconImage: '/icon-clutch-service.png',
     description: 'Early clutch wear diagnosis for smooth shifts and longer clutch life.',
     longDescription:
       'A healthy clutch ensures smooth gear shifts and comfortable driving. MyFNG Car Clutch Service diagnoses wear and performance issues early to prevent breakdowns, jerks, and costly transmission damage. We inspect, adjust, and service clutch components using a standardised process for reliable performance and longer clutch life.',
@@ -196,6 +203,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Tyre & Wheel Care',
     bookPrefill: { category: 'TYRE & WHEEL CARE', query: 'TYRE' },
     icon: Circle,
+    iconImage: '/icon-tyre-service.png',
     description: 'Alignment & tyre care for better grip, steering control, and longer tyre life.',
     longDescription:
       'Safe handling and smooth rides start with healthy tyres and well-aligned wheels. MyFNG Car Tyre & Wheel Care service improves road grip, steering control, and tyre life through precise inspection and corrective maintenance. We help prevent uneven tyre wear, vibrations, and poor fuel efficiency with a standardised care process.',
@@ -220,6 +228,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Detailing Service',
     bookPrefill: { category: 'DETAILING SERVICE', query: 'DETAIL' },
     icon: Sparkles,
+    iconImage: '/icon-detailing-service.png',
     description: 'Deep clean + protection for comfort, hygiene, and a showroom-like finish.',
     longDescription:
       'A clean car isn’t just about looks - it’s about comfort, hygiene, and safety. MyFNG Car Detailing Service deep-cleans, restores, and protects your car’s interior and exterior, helping maintain visibility, air quality, and long-term value. We use professional-grade products and a standardised detailing process to give your car a fresh, showroom-like finish.',
@@ -244,6 +253,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Car Denting & Painting',
     bookPrefill: { category: 'DENTING PAINTING', query: 'PAINT' },
     icon: Paintbrush,
+    iconImage: '/icon-denting-service.png',
     description: 'Dent repair + paint matching to restore body strength and resale value.',
     longDescription:
       'Dents and scratches don’t just spoil your car’s look - they can weaken body panels and lead to rust over time. MyFNG Car Denting & Painting service restores your car’s body strength, paint finish, and resale value using professional repair and paint-matching techniques. We ensure precise dent removal and a smooth, factory-like paint finish through a standardised repair process.',
@@ -268,6 +278,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Electrical & Battery Service',
     bookPrefill: { category: 'ELECTRICAL & BATTERY SERVICE', query: 'ELECTRICAL' },
     icon: Lightbulb,
+    iconImage: '/icon-electrical-service.png',
     description: 'Complete electrical diagnostics, wiring repair & battery system service.',
     longDescription:
       'Your car\'s electrical system powers everything from headlights to engine management. MyFNG Electrical & Battery Service provides comprehensive diagnostics and repairs for all electrical components - including alternator, starter motor, wiring harness, fuse box, and battery health. We identify hidden faults, fix intermittent issues, and ensure your car\'s electrical system runs reliably.',
@@ -282,7 +293,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Sensor & ECU Diagnostics',
     ],
     benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Transparent Pricing', 'Expert Electrical Technicians', 'Complete System Scan', 'Preventive Diagnostics'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Electrical_Battery_Service.png`,
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Electrical_And_Battery_Service.png`,
     duration: '2-4 hours',
     warranty: 'NA',
   },
@@ -292,6 +303,7 @@ export const DEFAULT_SERVICES: Service[] = [
     title: 'Suspension & Steering Service',
     bookPrefill: { category: 'SUSPENSION & STEERING SERVICE', query: 'SUSPENSION' },
     icon: Wrench,
+    iconImage: '/icon-suspension-service.png',
     description: 'Smooth rides with shock absorber, strut & steering system service.',
     longDescription:
       'A well-maintained suspension and steering system ensures comfortable rides, precise handling, and safe driving. MyFNG Suspension & Steering Service covers everything from shock absorbers and struts to power steering fluid and tie rod ends. We diagnose and fix issues like bumpy rides, uneven tyre wear, steering vibrations, and alignment problems through a standardised inspection process.',
@@ -306,7 +318,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Road Test & Alignment Check',
     ],
     benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Transparent Pricing', 'Improved Ride Comfort', 'Better Handling', 'Enhanced Safety'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Suspension_Steering_Service.png`,
+    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Suspension_&_Steering_Service.png`,
     duration: '2-4 hours',
     warranty: 'NA',
   },

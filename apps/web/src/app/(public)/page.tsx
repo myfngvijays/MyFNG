@@ -9,6 +9,7 @@ import LiveStats from '@/components/landing/LiveStats';
 import AIFeatureBadge from '@/components/landing/AIFeatureBadge';
 import DynamicFOMO from '@/components/landing/DynamicFOMO';
 import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
+import AppDownloadSection from '@/components/landing/AppDownloadSection';
 import ServiceExplorer, { type ServiceExplorerItem } from '@/components/landing/ServiceExplorer';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import { 
@@ -619,6 +620,7 @@ export default function HomePage() {
       title: 'Periodic Car Service',
       desc: 'Scheduled maintenance by A-Grade verified multi-brand workshops',
       slug: 'periodic-service',
+      iconImage: '/icon-periodic-service.png',
       color: 'text-blue-600',
       bg: 'bg-blue-50',
       ring: 'ring-blue-200/60',
@@ -632,6 +634,7 @@ export default function HomePage() {
       title: 'Car Engine Service',
       desc: 'Complete engine inspection and repair by expert mechanics',
       slug: 'engine-service',
+      iconImage: '/icon-engine-service.png',
       color: 'text-orange-600',
       bg: 'bg-orange-50',
       ring: 'ring-orange-200/60',
@@ -645,6 +648,7 @@ export default function HomePage() {
       title: 'Car AC Service',
       desc: 'Inspection, Gas Refill, and AC Performance Service',
       slug: 'ac-service',
+      iconImage: '/icon-ac-service.png',
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
       ring: 'ring-emerald-200/60',
@@ -658,6 +662,7 @@ export default function HomePage() {
       title: 'Car Battery Service',
       desc: 'Battery Testing, Battery Replacement, and Warranty Support',
       slug: 'battery-service',
+      iconImage: '/icon-battery-service.png',
       color: 'text-yellow-600',
       bg: 'bg-yellow-50',
       ring: 'ring-yellow-200/60',
@@ -671,6 +676,7 @@ export default function HomePage() {
       title: 'Brake Service',
       desc: 'Brake Inspection, Brake Pad Replacement, and Safety Checks',
       slug: 'brake-service',
+      iconImage: '/icon-brake-service.png',
       color: 'text-red-600',
       bg: 'bg-red-50',
       ring: 'ring-red-200/60',
@@ -684,6 +690,7 @@ export default function HomePage() {
       title: 'Tyre & Wheel Care',
       desc: 'Wheel Alignment & Balancing, and Tyre Services',
       slug: 'tyre-wheel-care',
+      iconImage: '/icon-tyre-service.png',
       color: 'text-purple-600',
       bg: 'bg-purple-50',
       ring: 'ring-purple-200/60',
@@ -697,6 +704,7 @@ export default function HomePage() {
       title: 'Detailing Service',
       desc: 'Interior & Exterior Detailing With Paint Protection Options',
       slug: 'detailing-service',
+      iconImage: '/icon-detailing-service.png',
       color: 'text-cyan-600',
       bg: 'bg-cyan-50',
       ring: 'ring-cyan-200/60',
@@ -710,6 +718,7 @@ export default function HomePage() {
       title: 'Denting & Painting',
       desc: 'Precision Bodywork With Colour-Matched Painting',
       slug: 'denting-painting',
+      iconImage: '/icon-denting-service.png',
       color: 'text-indigo-600',
       bg: 'bg-indigo-50',
       ring: 'ring-indigo-200/60',
@@ -723,6 +732,7 @@ export default function HomePage() {
       title: 'Electrical & Battery Service',
       desc: 'Complete Electrical Diagnostics & Battery System Service',
       slug: 'electrical-battery-service',
+      iconImage: '/icon-electrical-service.png',
       color: 'text-amber-600',
       bg: 'bg-amber-50',
       ring: 'ring-amber-200/60',
@@ -736,6 +746,7 @@ export default function HomePage() {
       title: 'Suspension & Steering Service',
       desc: 'Shock Absorber, Strut & Steering System Service',
       slug: 'suspension-steering-service',
+      iconImage: '/icon-suspension-service.png',
       color: 'text-teal-600',
       bg: 'bg-teal-50',
       ring: 'ring-teal-200/60',
@@ -1006,7 +1017,7 @@ export default function HomePage() {
       <ServiceExplorer
         services={services}
         onAskAI={() => (window.location.href = appendUtmToHref('/ai-booking'))}
-        onQuickBook={() => setIsBookingFormOpen(true)}
+        onQuickBook={() => (window.location.href = '/book-service')}
         popularSlugs={['periodic-service', 'ac-service', 'battery-service', 'brake-service', 'engine-service']}
       />
 
@@ -1188,7 +1199,7 @@ export default function HomePage() {
                   
                   <h3 className="text-3xl font-bold mb-4 text-white">
                     {[
-                      "Smart Booking Assistant",
+                      "Smart AI Booking Assistant",
                       "Doorstep Pickup Confirmed",
                       "Real-Time Service Updates",
                       "Service Review & Approval",
@@ -1198,7 +1209,7 @@ export default function HomePage() {
                   
                   <p className="text-blue-100 text-lg max-w-xs mx-auto">
                     {[
-                      "Book in Minutes. No Calls Needed.",
+                      "Book in 60 Seconds. No Calls Needed.",
                       "Pickup Scheduled at Your Convenience",
                       "Track pickup, workshop progress, and view photos as work happens.",
                       "Work summary and documentation shared before delivery.",
@@ -1219,6 +1230,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <AppDownloadSection />
 
       {/* 5. Why Choose MY FNG */}
       <section className="py-8 sm:py-10 md:py-12 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5">
@@ -1926,15 +1939,14 @@ export default function HomePage() {
       {/* Floating Quick Book – above mobile bottom bar when visible (lg:hidden) */}
       {!isChatOpen && (
         <div className="fixed bottom-[5.25rem] right-3 z-50 lg:hidden">
-          <button
-            type="button"
-            onClick={() => setIsBookingFormOpen(true)}
+          <a
+            href="/book-service"
             className="bg-white/30 text-brand-primary px-4 py-2.5 rounded-full shadow-xl shadow-blue-500/15 transition-all transform hover:scale-105 flex items-center gap-2 group border border-white/70 backdrop-blur-lg hover:bg-white/40"
           >
             <Zap className="w-5 h-5 group-hover:rotate-12 transition-transform flex-shrink-0" />
             <span className="font-semibold text-sm">Quick Book</span>
             <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-          </button>
+          </a>
         </div>
       )}
 

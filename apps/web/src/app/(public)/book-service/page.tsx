@@ -13,7 +13,7 @@ import {
   MapPin, Car, User, Phone, Loader2, Search, CheckCircle, 
   Navigation, ArrowRight, ArrowLeft, Send, Smile, PartyPopper,
   Wrench, DollarSign, Sparkles, Calendar, Clock, MapPin as AddressIcon,
-  X, Droplets, Home, Briefcase, MoreHorizontal, Shield, Award
+  X, Droplets, Home, Briefcase, MoreHorizontal, Shield, Award,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -435,6 +435,9 @@ export default function BookServicePage() {
         .from('car_models')
         .select('id, make, model_name, variant, class')
         .eq('is_active', true)
+        .not('make', 'ilike', 'mercedes')
+        .not('make', 'ilike', 'bmw')
+        .not('make', 'ilike', 'audi')
         .order('make')
         .order('model_name');
       
@@ -2421,12 +2424,34 @@ export default function BookServicePage() {
                           </div>
                         )}
 
-                        {/* Category pills (horizontal) */}
+                        {/* Category Icons - Horizontal Scroll */}
                         {serviceCategories.length > 0 && (
-                          <div className="mb-2">
-                            <div className="flex gap-2 overflow-x-auto pb-1">
+                          <div className="mb-4 -mx-3 sm:-mx-4">
+                            <div className="flex gap-3 sm:gap-4 overflow-x-auto px-3 sm:px-4 pb-2 scrollbar-hide">
                               {serviceCategories.map((category) => {
                                 const isSelected = activeCategoryId === category.id;
+                                const catName = String(category.name || '').toLowerCase();
+
+                                let iconBg = 'bg-white';
+                                const getIcon = () => {
+                                  const catLower = catName;
+                                  if (catLower.includes('periodic')) { iconBg = 'bg-blue-50'; return '/icon-periodic-service.png'; }
+                                  if (catLower.includes('ac')) { iconBg = 'bg-cyan-50'; return '/icon-ac-service.png'; }
+                                  if (catLower.includes('battery') || catLower.includes('electrical')) { iconBg = 'bg-amber-50'; return '/icon-electrical-service.png'; }
+                                  if (catLower.includes('brake')) { iconBg = 'bg-red-50'; return '/icon-brake-service.png'; }
+                                  if (catLower.includes('clutch')) { iconBg = 'bg-purple-50'; return '/icon-clutch-service.png'; }
+                                  if (catLower.includes('tyre') || catLower.includes('wheel')) { iconBg = 'bg-gray-100'; return '/icon-tyre-service.png'; }
+                                  if (catLower.includes('detailing')) { iconBg = 'bg-pink-50'; return '/icon-detailing-service.png'; }
+                                  if (catLower.includes('denting') || catLower.includes('painting')) { iconBg = 'bg-green-50'; return '/icon-denting-service.png'; }
+                                  if (catLower.includes('engine')) { iconBg = 'bg-orange-50'; return '/icon-engine-service.png'; }
+                                  if (catLower.includes('suspension') || catLower.includes('steering')) { iconBg = 'bg-indigo-50'; return '/icon-suspension-service.png'; }
+                                  iconBg = 'bg-gray-50'; return '/icon-periodic-service.png';
+                                };
+                                const iconSrc = getIcon();
+
+                                const displayName = String(category.name || '')
+                                  .replace(/^car\s+/i, '');
+
                                 return (
                                   <button
                                     key={category.id}
@@ -2435,13 +2460,22 @@ export default function BookServicePage() {
                                       setServiceSearchQuery('');
                                       setDetailsService(null);
                                     }}
-                                    className={`whitespace-nowrap px-3 py-1.5 rounded-full border transition-all text-xs font-bold ${
-                                      isSelected
-                                        ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
-                                        : 'border-gray-200 bg-white text-gray-600 hover:border-brand-primary/50'
+                                    className={`flex flex-col items-center gap-1.5 flex-shrink-0 w-[5rem] sm:w-[5.5rem] transition-all ${
+                                      isSelected ? 'scale-105' : 'opacity-75 hover:opacity-100'
                                     }`}
                                   >
-                                    {category.name}
+                                    <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center transition-all ${
+                                      isSelected
+                                        ? 'shadow-lg border-2 border-blue-500 ring-2 ring-blue-100 bg-white'
+                                        : 'border border-gray-100 hover:shadow-md bg-white'
+                                    }`}>
+                                      <img src={iconSrc} alt={category.name} className="w-[70%] h-[70%] object-contain mix-blend-darken" />
+                                    </div>
+                                    <span className={`text-[9px] sm:text-[10px] font-semibold text-center leading-tight line-clamp-2 max-w-full ${
+                                      isSelected ? 'text-gray-900 font-bold' : 'text-gray-600'
+                                    }`}>
+                                      {displayName}
+                                    </span>
                                   </button>
                                 );
                               })}
@@ -2487,9 +2521,24 @@ export default function BookServicePage() {
                               </div>
                             </div>
 
+                            {/* Oil type indicator for Periodic */}
+                            {isPeriodicCategory && (
+                              <div className="mb-2 flex items-center gap-2">
+                                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                                  selectedOilType === 'semi' 
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                                    : 'bg-purple-100 text-purple-800 border border-purple-200'
+                                }`}>
+                                  <Droplets className="w-3 h-3" />
+                                  {selectedOilType === 'semi' ? 'Semi Synthetic Oil' : 'Fully Synthetic Oil'}
+                                </div>
+                                <span className="text-[10px] text-gray-400">packages</span>
+                              </div>
+                            )}
+
                             {/* Plans */}
                             <div className="mb-2">
-                              <div className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-2 sm:gap-3`}>
+                              <div key={`${activeCategoryId}-${selectedOilType}`} className={`grid ${showReferencePlanUi ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 xl:grid-cols-4'} gap-2 sm:gap-3 animate-in fade-in duration-300`}>
                                 {planServices.map((service: any, idx: number) => {
                                   const isSelected = formData.selectedServices.includes(service.id);
                                   const isLockedByOtherSelection =
@@ -2517,6 +2566,7 @@ export default function BookServicePage() {
                                             ? 'Platinum Service'
                                             : service.name;
                                   const displayTitle = isPeriodicCategory ? periodicTitleFromName : service.name;
+                                  const displayTitleFormatted = isPeriodicCategory ? displayTitle.replace(' ', '\n') : displayTitle;
                                   const pointsValue = getActualServicePoints(service, checklist.points);
                                   const newPointsCount = isPeriodicCategory
                                     ? getPeriodicNewPointsCount(service, planServices)
@@ -2531,19 +2581,26 @@ export default function BookServicePage() {
                                         isSelected ? 'border-brand-primary shadow-lg' : 'border-gray-200 hover:border-brand-primary/50 hover:shadow-md'
                                       }`}
                                     >
-                                {!showReferencePlanUi && idx === 1 && (
+                                {!showReferencePlanUi && idx === 1 && isPeriodicCategory && (
                                   <div className="absolute left-5 right-5 -top-3">
                                     <div className="mx-auto w-fit rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary px-4 py-1 text-xs font-extrabold text-white shadow">
-                                      MOST POPULAR
+                                      MyFNG RECOMMENDED
                                           </div>
+                                  </div>
+                                )}
+                                {showReferencePlanUi && idx === 1 && isPeriodicCategory && (
+                                  <div className="absolute left-3 right-3 -top-3">
+                                    <div className="mx-auto w-fit rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary px-3 py-1 text-[10px] font-extrabold text-white shadow">
+                                      MyFNG RECOMMENDED
+                                    </div>
                                   </div>
                                 )}
 
                                       {showReferencePlanUi ? (
                                         <>
                                           <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                              <div className="text-lg sm:text-xl leading-[1.15] font-extrabold text-gray-900 break-words">{displayTitle}</div>
+                                            <div className="min-w-0 min-h-[3.5rem]">
+                                              <div className="text-lg sm:text-xl leading-[1.15] font-extrabold text-gray-900 break-words whitespace-pre-wrap">{displayTitleFormatted}</div>
                                               <div className="mt-1 text-xs sm:text-sm font-bold text-brand-primary">
                                                 {pointsValue > 0 ? `${pointsValue} Activity Points` : 'Activity Points Included'}
                                               </div>
@@ -2670,6 +2727,39 @@ export default function BookServicePage() {
                                     {showReferencePlanUi ? (isSelected ? 'Continue' : 'Select Package') : (isSelected ? 'Continue' : 'Select')}
                                   </button>
                                 </div>
+
+                                {/* MyFNG Prime Offer */}
+                                {price > 0 && (
+                                  <div className="mt-3 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                                      <span className="text-xs font-bold text-amber-800">👑 Prime Members Save 10%</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-2">
+                                      <span className="text-sm line-through text-gray-400">₹{price.toLocaleString('en-IN')}</span>
+                                      <span className="text-base font-extrabold text-amber-800">₹{Math.round(price * 0.9).toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <p className="text-[10px] text-gray-600 text-center mt-1">+ Free Inspection, Car Scanning, Extended Warranty & more</p>
+                                    <div className="flex items-center justify-center gap-2 mt-1.5">
+                                      <a
+                                        href="https://play.google.com/store/apps/details?id=com.myfng.app"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] font-bold text-white bg-[#01875f] hover:bg-[#016d4d] px-2.5 py-1 rounded-full transition-all"
+                                      >
+                                        Android
+                                      </a>
+                                      <a
+                                        href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] font-bold text-white bg-black hover:bg-gray-800 px-2.5 py-1 rounded-full transition-all"
+                                      >
+                                        iOS
+                                      </a>
+                                      <span className="text-[10px] text-amber-700 font-semibold">₹699/yr</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                                 })}
@@ -3421,6 +3511,31 @@ export default function BookServicePage() {
                   </div>
               )}
 
+              {/* Prime Membership Nudge - Step 4 */}
+              {currentStep === 3 && totalPrice > 0 && (
+                <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 via-yellow-50 to-orange-50 border border-amber-200 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-xl">👑</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-gray-900">MyFNG Prime Members pay only ₹{Math.round(totalPrice * 0.9).toLocaleString('en-IN')} for this service</p>
+                      <p className="text-xs text-gray-600 mt-0.5">Get 10% OFF on every service + Free Inspections, Car Scanning, Extended Warranty, Priority Booking & more — all for just ₹699/year.</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-white bg-[#01875f] hover:bg-[#016d4d] px-3 py-1.5 rounded-full transition-all">
+                          Android
+                        </a>
+                        <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-white bg-black hover:bg-gray-800 px-3 py-1.5 rounded-full transition-all">
+                          iOS
+                        </a>
+                        <span className="text-[11px] text-amber-700 font-semibold">₹699/yr</span>
+                        <span className="text-[10px] text-amber-600 font-semibold">Save ₹{Math.round(totalPrice * 0.1).toLocaleString('en-IN')}!</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Step 5: Payment Options */}
               {currentStep === 4 && (
                 <div className="mb-8 sm:mb-10 md:mb-12 space-y-4 sm:space-y-6">
@@ -3481,6 +3596,32 @@ export default function BookServicePage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Prime Membership Regret Nudge - Step 5 Payment */}
+                  {totalPrice > 0 && (
+                    <div className="p-4 bg-gradient-to-r from-red-50 via-orange-50 to-amber-50 border border-red-200 rounded-xl">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-xl">⚠️</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-gray-900">Wait! You&apos;re paying ₹{Math.round(totalPrice * 0.1).toLocaleString('en-IN')} extra without Prime</p>
+                          <p className="text-xs text-gray-700 mt-0.5">
+                            Prime Members pay just <span className="font-bold text-green-700">₹{Math.round(totalPrice * 0.9).toLocaleString('en-IN')}</span> for this exact service. Plus get Free Inspections, Car Scanning, Extended Warranty & Priority Booking — all year!
+                          </p>
+                          <div className="flex items-center gap-3 mt-2.5">
+                            <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-white bg-[#01875f] hover:bg-[#016d4d] px-3.5 py-1.5 rounded-full transition-all">
+                              Android
+                            </a>
+                            <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-white bg-black hover:bg-gray-800 px-3.5 py-1.5 rounded-full transition-all">
+                              iOS
+                            </a>
+                            <span className="text-[10px] text-gray-500">₹699/yr • Benefits ₹6,650+</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Coupon */}
                   <div className="mt-4 sm:mt-6 p-4 sm:p-5 bg-white border-2 border-gray-200 rounded-xl">

@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { DEFAULT_SERVICES, Service, canonicalCategoryName, makeShortDescription, normalizeSpaces, INTERNAL_SLUG_TO_MARKETING as INTERNAL_SLUG_TO_CAR_SERVICES } from '@/lib/services/catalog';
 import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
+import AppDownloadSection from '@/components/landing/AppDownloadSection';
 
 type CategoryRow = { uuid: string; category: string; description: string | null; sequence: number };
 
@@ -167,10 +168,14 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                             <div className="flex items-start gap-4">
                               <div
                                 className={`flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${
-                                  isSelected ? 'bg-blue-600 text-white' : 'bg-white text-gray-600'
+                                  isSelected ? 'bg-white shadow-sm' : 'bg-white text-gray-600'
                                 } transition-all`}
                               >
-                                <IconComponent className="w-6 h-6" />
+                                {service.iconImage ? (
+                                  <img src={service.iconImage} alt={service.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                                ) : (
+                                  <IconComponent className="w-6 h-6" />
+                                )}
                               </div>
 
                               <div className="flex-1 min-w-0">
@@ -232,6 +237,13 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                         <div className="flex items-center justify-left gap-3 sm:gap-6 text-center">
                           <div className="flex-shrink-0 w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-xl">
                           {(() => {
+                            if (selectedService.iconImage) {
+                              return (
+                                <div className="w-[75%] h-[75%] rounded-lg sm:rounded-xl bg-white flex items-center justify-center">
+                                  <img src={selectedService.iconImage} alt={selectedService.title} className="w-[80%] h-[80%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                                </div>
+                              );
+                            }
                             const IconComponent = selectedService.icon;
                               return <IconComponent className="w-7 h-7 sm:w-10 sm:h-10" />;
                           })()}
@@ -351,6 +363,8 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
           </div>
         </div>
       </section>
+
+      <AppDownloadSection />
 
       <Footer />
     </div>

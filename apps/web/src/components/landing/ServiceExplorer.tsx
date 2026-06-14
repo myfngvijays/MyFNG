@@ -19,6 +19,7 @@ export type ServiceExplorerItem = {
   title: string;
   desc: string;
   icon: LucideIcon;
+  iconImage?: string;
   color: string;
   bg: string;
   ring?: string;
@@ -233,7 +234,9 @@ export default function ServiceExplorer({
                                   active.ring ?? 'ring-black/5'
                                 )}
                               >
-                                {ActiveIcon ? <ActiveIcon className="w-6 h-6" /> : null}
+                                {active?.iconImage ? (
+                                  <img src={active.iconImage} alt={active.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                                ) : ActiveIcon ? <ActiveIcon className="w-6 h-6" /> : null}
                               </div>
                               <div className="min-w-0">
                                 <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Featured</div>
@@ -345,7 +348,11 @@ export default function ServiceExplorer({
                                 s.color
                               )}
                             >
-                              <Icon className="w-6 h-6" />
+                              {s.iconImage ? (
+                                <img src={s.iconImage} alt={s.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                              ) : (
+                                <Icon className="w-6 h-6" />
+                              )}
                             </div>
                             <span className="text-[11px] font-bold text-gray-700 bg-white/80 px-2.5 py-1 rounded-full border border-white/60">
                               {s.priceFrom}
@@ -394,7 +401,9 @@ export default function ServiceExplorer({
                   sheetService.ring ?? 'ring-black/5'
                 )}
               >
-                {SheetIcon ? <SheetIcon className="w-7 h-7" /> : null}
+                {sheetService?.iconImage ? (
+                  <img src={sheetService.iconImage} alt={sheetService.title} className="w-[70%] h-[70%] object-contain" style={{ mixBlendMode: 'darken' }} />
+                ) : SheetIcon ? <SheetIcon className="w-7 h-7" /> : null}
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-bold text-gray-900">{sheetService.title}</div>
