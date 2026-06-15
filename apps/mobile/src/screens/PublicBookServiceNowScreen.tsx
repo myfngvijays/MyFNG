@@ -224,6 +224,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [newAddrLocating, setNewAddrLocating] = useState(false);
 
   const [otpSent, setOtpSent] = useState(false);
+  const [otpChannel, setOtpChannel] = useState<'sms' | 'whatsapp'>('whatsapp');
   const [otpValue, setOtpValue] = useState('');
   const [otpConfirmation, setOtpConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
@@ -1225,27 +1226,63 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     return true;
   };
 
-  const handleSendOtp = async () => {
+  const handleSendWhatsAppOtp = async () => {
     const cleanPhone = form.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
     setOtpLoading(true);
+    setOtpChannel('whatsapp');
     try {
-      if (__DEV__) {
-        try { auth().settings.appVerificationDisabledForTesting = true; } catch {}
+      let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+        body: JSON.stringify({ phone: cleanPhone }),
+      });
+      if (res.status === 404) {
+        res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+          body: JSON.stringify({ phone: cleanPhone }),
+        });
       }
-      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`);
-      setOtpConfirmation(result);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Failed to send OTP');
       setOtpSent(true);
-      Alert.alert('OTP Sent', `OTP sent to +91${cleanPhone}`);
     } catch (error: any) {
-      Alert.alert('OTP Failed', error?.message || 'Unable to send OTP. Please try again.');
+      Alert.alert('OTP Failed', error?.message || 'Unable to send WhatsApp OTP. Try SMS instead.');
     } finally {
       setOtpLoading(false);
     }
   };
+
+  const handleSendSmsOtp = async () => {
+    const cleanPhone = form.customerPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpChannel('sms');
+    try {
+      if (__DEV__) {
+        try { auth().settings.appVerificationDisabledForTesting = true; } catch {}
+      }
+      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`, undefined, true);
+      setOtpConfirmation(result);
+      setOtpSent(true);
+    } catch (error: any) {
+      const msg = error?.code === 'auth/missing-client-identifier'
+        ? 'SMS verification unavailable. Please use WhatsApp OTP instead.'
+        : (error?.message || 'Unable to send SMS OTP.');
+      Alert.alert('OTP Failed', msg);
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleSendOtp = handleSendWhatsAppOtp;
 
   const handleVerifyOtp = async () => {
     if (otpValue.trim().length < 4) {
@@ -1254,10 +1291,28 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
     setOtpLoading(true);
     try {
-      if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
-      await otpConfirmation.confirm(otpValue.trim());
-      setOtpVerified(true);
-      Alert.alert('Verified', 'Phone number verified successfully!');
+      if (otpChannel === 'whatsapp') {
+        const cleanPhone = form.customerPhone.replace(/\D/g, '');
+        let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+          body: JSON.stringify({ phone: cleanPhone, otp: otpValue.trim() }),
+        });
+        if (res.status === 404) {
+          res = await fetch(`${ENV.API_URL}/api/booking/verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+            body: JSON.stringify({ phone: cleanPhone, otp: otpValue.trim() }),
+          });
+        }
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Invalid OTP');
+        setOtpVerified(true);
+      } else {
+        if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
+        await otpConfirmation.confirm(otpValue.trim());
+        setOtpVerified(true);
+      }
     } catch (error: any) {
       Alert.alert('Verification Failed', error?.message || 'Invalid OTP. Please try again.');
     } finally {
@@ -1547,7 +1602,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     value={form.customerPhone}
                     onChangeText={(t) => {
                       setForm((p) => ({ ...p, customerPhone: t.replace(/\D/g, '').slice(0, 10) }));
-                      if (otpSent) { setOtpSent(false); setOtpVerified(false); setOtpValue(''); }
+                      if (otpSent) { setOtpSent(false); setOtpVerified(false); setOtpValue(''); setOtpChannel('whatsapp'); }
                     }}
                     style={styles.input}
                     placeholder="10-digit mobile number"
@@ -1557,8 +1612,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     onFocus={(e) => scrollToInput(e.target)}
                   />
                 </View>
+                {!isLoggedIn && !otpSent && !otpVerified ? (
+                  <View style={styles.otpBtnRow}>
+                    <TouchableOpacity
+                      style={styles.otpWhatsAppBtn}
+                      onPress={handleSendWhatsAppOtp}
+                      disabled={otpLoading || form.customerPhone.replace(/\D/g, '').length < 10}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
+                      <Text style={styles.otpWhatsAppBtnText}>WhatsApp OTP</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.otpSmsBtnAlt}
+                      onPress={handleSendSmsOtp}
+                      disabled={otpLoading || form.customerPhone.replace(/\D/g, '').length < 10}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="chatbubble-ellipses" size={16} color={COLORS.primary} />
+                      <Text style={styles.otpSmsBtnAltText}>SMS OTP</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 {!isLoggedIn && otpSent && !otpVerified ? (
                   <View style={styles.field}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Ionicons name={otpChannel === 'whatsapp' ? 'logo-whatsapp' : 'chatbubble-ellipses'} size={14} color={otpChannel === 'whatsapp' ? '#25D366' : COLORS.primary} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#6B7280' }}>
+                        OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 {form.customerPhone}
+                      </Text>
+                    </View>
                     <Text style={styles.label}>Enter OTP *</Text>
                     <TextInput
                       value={otpValue}
@@ -1570,15 +1653,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       maxLength={6}
                       onFocus={(e) => scrollToInput(e.target)}
                     />
-                    <TouchableOpacity onPress={handleSendOtp} style={{ marginTop: 8 }} disabled={otpLoading}>
-                      <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>Resend OTP</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                      <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendWhatsAppOtp : handleSendSmsOtp} disabled={otpLoading}>
+                        <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '700' }}>Resend OTP</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendSmsOtp : handleSendWhatsAppOtp} disabled={otpLoading}>
+                        <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '700' }}>
+                          Try {otpChannel === 'whatsapp' ? 'SMS' : 'WhatsApp'} instead
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : null}
                 {!isLoggedIn && otpVerified ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
                     <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                    <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Phone verified</Text>
+                    <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Phone verified via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}</Text>
                   </View>
                 ) : null}
                 {isLoggedIn ? (
@@ -2565,7 +2655,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 {(loading || otpLoading) ? <ActivityIndicator color="#fff" /> : null}
                 <Text style={styles.primaryText}>
                   {step === 1 && !isLoggedIn && !otpVerified
-                    ? (otpSent ? 'Verify OTP' : 'Send OTP')
+                    ? (otpSent ? 'Verify OTP →' : 'Send OTP →')
                     : step === steps.length - 1
                       ? form.paymentMethod === 'PAY_NOW'
                         ? 'Pay & Book'
@@ -3145,6 +3235,33 @@ const styles = StyleSheet.create({
   },
   tipText: { flex: 1, fontSize: 12, fontWeight: '800', color: COLORS.primaryDark },
   field: { marginBottom: 12 },
+  otpBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 4 },
+  otpWhatsAppBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#25D366',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  otpWhatsAppBtnText: { fontSize: 13.5, fontWeight: '800', color: '#FFFFFF' },
+  otpSmsBtnAlt: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  otpSmsBtnAltText: { fontSize: 13.5, fontWeight: '800', color: COLORS.primary },
   fieldHeader: {
     flexDirection: 'row',
     alignItems: 'center',
