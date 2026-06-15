@@ -1226,6 +1226,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     return true;
   };
 
+  const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
+
   const handleSendWhatsAppOtp = async () => {
     const cleanPhone = form.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
@@ -1235,19 +1237,41 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpLoading(true);
     setOtpChannel('whatsapp');
     try {
-      let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
-        body: JSON.stringify({ phone: cleanPhone }),
-      });
-      if (res.status === 404) {
-        res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+      const payload = JSON.stringify({ phone: cleanPhone });
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-mobile-client': 'true',
+      };
+
+      let res: Response | null = null;
+      let json: any = {};
+
+      // Try primary endpoint
+      try {
+        res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-otp`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
-          body: JSON.stringify({ phone: cleanPhone }),
+          headers,
+          body: payload,
         });
+        json = await res.json().catch(() => ({}));
+      } catch {
+        res = null;
       }
-      const json = await res.json().catch(() => ({}));
+
+      // Fallback if primary fails or returns 404
+      if (!res || res.status === 404) {
+        try {
+          res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+            method: 'POST',
+            headers,
+            body: payload,
+          });
+          json = await res.json().catch(() => ({}));
+        } catch (fetchErr: any) {
+          throw new Error('Network error. Please check your internet connection and try again.');
+        }
+      }
+
       if (!res.ok) throw new Error(json?.error || 'Failed to send OTP');
       setOtpSent(true);
     } catch (error: any) {
@@ -1266,17 +1290,29 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpLoading(true);
     setOtpChannel('sms');
     try {
-      if (__DEV__) {
+      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
+      if (__DEV__ || isTestNumber) {
         try { auth().settings.appVerificationDisabledForTesting = true; } catch {}
       }
-      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`, undefined, true);
+      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`);
       setOtpConfirmation(result);
       setOtpSent(true);
     } catch (error: any) {
-      const msg = error?.code === 'auth/missing-client-identifier'
-        ? 'SMS verification unavailable. Please use WhatsApp OTP instead.'
-        : (error?.message || 'Unable to send SMS OTP.');
-      Alert.alert('OTP Failed', msg);
+      const code = error?.code as string | undefined;
+      if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
+        Alert.alert(
+          'SMS Unavailable',
+          'SMS verification is not available on this device. Please use WhatsApp OTP instead.',
+          [
+            { text: 'Use WhatsApp', onPress: () => handleSendWhatsAppOtp() },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+      } else if (code === 'auth/network-request-failed') {
+        Alert.alert('Network Error', 'Please check your internet connection and try again.');
+      } else {
+        Alert.alert('OTP Failed', error?.message || 'Unable to send SMS OTP.');
+      }
     } finally {
       setOtpLoading(false);
     }
@@ -1293,20 +1329,40 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     try {
       if (otpChannel === 'whatsapp') {
         const cleanPhone = form.customerPhone.replace(/\D/g, '');
-        let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
-          body: JSON.stringify({ phone: cleanPhone, otp: otpValue.trim() }),
-        });
-        if (res.status === 404) {
-          res = await fetch(`${ENV.API_URL}/api/booking/verify-otp`, {
+        const payload = JSON.stringify({ phone: cleanPhone, otp: otpValue.trim() });
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'x-mobile-client': 'true',
+        };
+
+        let res: Response | null = null;
+        let json: any = {};
+
+        try {
+          res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
-            body: JSON.stringify({ phone: cleanPhone, otp: otpValue.trim() }),
+            headers,
+            body: payload,
           });
+          json = await res.json().catch(() => ({}));
+        } catch {
+          res = null;
         }
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || 'Invalid OTP');
+
+        if (!res || res.status === 404) {
+          try {
+            res = await fetch(`${ENV.API_URL}/api/booking/verify-otp`, {
+              method: 'POST',
+              headers,
+              body: payload,
+            });
+            json = await res.json().catch(() => ({}));
+          } catch (fetchErr: any) {
+            throw new Error('Network error. Please check your internet and try again.');
+          }
+        }
+
+        if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
         setOtpVerified(true);
       } else {
         if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
