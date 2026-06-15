@@ -35,6 +35,7 @@ import {
   Ticket,
   ClipboardList,
   Bell,
+  Star,
 } from 'lucide-react';
 
 type NavItem = {
@@ -136,6 +137,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/website-images/promo-banners',
         icon: Megaphone,
         description: 'Loan, E-Challan, Fuel, Sell Car etc.',
+      },
+      {
+        name: 'Customer Reviews',
+        href: '/dashboard/super_admin/website-images/customer-reviews',
+        icon: Star,
+        description: 'Manage app home screen reviews',
       },
     ],
   },

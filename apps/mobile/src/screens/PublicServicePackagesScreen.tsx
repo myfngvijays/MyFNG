@@ -296,7 +296,21 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               if (!currentBanner) return null;
               const handlePress = () => {
                 if (currentBanner.route_name) {
-                  navigation.navigate(currentBanner.route_name as never, currentBanner.route_params as never);
+                  const route = currentBanner.route_name;
+                  const params = currentBanner.route_params || {};
+                  if (route.startsWith('Settings__')) {
+                    const subPageMap: Record<string, string> = {
+                      Settings__MyProfile: 'My Profile',
+                      Settings__Membership: 'Membership',
+                      Settings__YourAddresses: 'Your Addresses',
+                      Settings__OrderHistory: 'Order History',
+                      Settings__Cart: 'Cart',
+                      Settings__Notifications: 'Notifications',
+                    };
+                    navigation.navigate('Settings' as never, { subPage: subPageMap[route] || null, ...params } as never);
+                  } else {
+                    navigation.navigate(route as never, params as never);
+                  }
                 } else {
                   const bannerLower = currentBanner.image_url.toLowerCase();
                   const link = Object.entries(PROMO_BANNER_LINKS).find(([key]) => bannerLower.includes(key))?.[1] || 'https://myfng.in';

@@ -16,12 +16,21 @@ type BannerRow = {
 };
 
 const ROUTES = [
-  'PublicHome',
-  'AIBooking',
-  'PublicWorkshopLocator',
-  'PublicServicePackages',
-  'PublicBookServiceNow',
-  'Login',
+  { value: 'PublicHome', label: 'Home' },
+  { value: 'PublicServicePackages', label: 'Services' },
+  { value: 'PublicBookServiceNow', label: 'Book Service Now' },
+  { value: 'AIBooking', label: 'AI Chatbot' },
+  { value: 'PublicWorkshopLocator', label: 'Workshop Locator' },
+  { value: 'RoadsideAssistance', label: 'Roadside Assistance (RSA)' },
+  { value: 'Settings', label: 'Settings' },
+  { value: 'Settings__MyProfile', label: 'Settings → My Profile' },
+  { value: 'Settings__Membership', label: 'Settings → Membership' },
+  { value: 'Settings__YourAddresses', label: 'Settings → Your Addresses' },
+  { value: 'Settings__OrderHistory', label: 'Settings → Order History' },
+  { value: 'Settings__Cart', label: 'Settings → Cart' },
+  { value: 'Settings__Notifications', label: 'Settings → Notifications' },
+  { value: 'Login', label: 'Login' },
+  { value: 'CustomerSignup', label: 'Customer Signup' },
 ] as const;
 
 // These mirror the fallback HERO_BANNERS in the mobile app's PublicHomeScreen.
@@ -286,9 +295,9 @@ export default function HomeCarouselImagesPage() {
 
       {rows.length === 0 && !loading ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>Heads up:</strong> No banners uploaded yet. The mobile app is showing the 3 <em>default</em> banners
+          <strong>Heads up:</strong> No banners uploaded yet. The mobile app is showing the <em>default</em> banners
           below. Click <strong>Replace Image</strong> on any to upload a new version — the new image will appear in the
-          app within seconds.
+          app within seconds. You can add up to <strong>10</strong> banners.
         </div>
       ) : null}
 
@@ -338,7 +347,7 @@ export default function HomeCarouselImagesPage() {
               </div>
               <div className="p-3 flex-1 flex flex-col">
                 <div className="text-sm font-semibold text-gray-900 truncate">{r.title || 'Untitled'}</div>
-                <div className="text-xs text-gray-500 truncate">→ {r.route_name}</div>
+                <div className="text-xs text-gray-500 truncate">→ {ROUTES.find((rt) => rt.value === r.route_name)?.label || r.route_name}</div>
                 <div className="mt-3 flex items-center gap-2">
                   <button
                     onClick={() => openEdit(r, { replaceImageOnly: true })}
@@ -473,8 +482,8 @@ export default function HomeCarouselImagesPage() {
                         className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                       >
                         {ROUTES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
+                          <option key={r.value} value={r.value}>
+                            {r.label}
                           </option>
                         ))}
                       </select>

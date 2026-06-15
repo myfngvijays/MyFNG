@@ -161,6 +161,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [reviews, setReviews] = useState(REVIEWS);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
@@ -303,6 +304,35 @@ export default function PublicHomeScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('customer_reviews')
+          .select('id, name, car, stars, text, date, display_order, is_active')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (error) return;
+        if (!active || !Array.isArray(data) || data.length === 0) return;
+
+        const mapped = data.map((row: any) => ({
+          name: row.name || '',
+          car: row.car || '',
+          stars: row.stars || 5,
+          text: row.text || '',
+          date: row.date || '',
+        }));
+        if (active) setReviews(mapped);
+      } catch {
+        // ignore — keep fallback reviews
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await fetch(`${ENV.API_URL}/api/super_admin/car-brands?active_only=true`);
@@ -355,14 +385,15 @@ export default function PublicHomeScreen({ navigation }: Props) {
   }, [carBrands, brandScrollX, screenW]);
 
   useEffect(() => {
+    const count = heroBanners.length;
     const timer = setInterval(() => {
       Animated.timing(heroFade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        setHeroIndex((prev) => (prev + 1) % Math.max(heroBanners.length, 1));
+        setHeroIndex((prev) => (prev + 1) % Math.max(count, 1));
         Animated.timing(heroFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
       });
     }, 5000);
     return () => clearInterval(timer);
-  }, [heroFade]);
+  }, [heroFade, heroBanners.length]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -458,12 +489,24 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
-                  // Resolve admin-configured route params (supports "__CITY__" placeholder).
                   const params = activeHero.routeParams ? { ...activeHero.routeParams } : {};
                   Object.keys(params).forEach((k) => {
                     if (params[k] === '__CITY__') params[k] = detectedCity;
                   });
-                  navigation.navigate(activeHero.route as never, params as never);
+                  const route = activeHero.route;
+                  if (route.startsWith('Settings__')) {
+                    const subPageMap: Record<string, string> = {
+                      Settings__MyProfile: 'My Profile',
+                      Settings__Membership: 'Membership',
+                      Settings__YourAddresses: 'Your Addresses',
+                      Settings__OrderHistory: 'Order History',
+                      Settings__Cart: 'Cart',
+                      Settings__Notifications: 'Notifications',
+                    };
+                    navigation.navigate('Settings' as never, { subPage: subPageMap[route] || null, ...params } as never);
+                  } else {
+                    navigation.navigate(route as never, params as never);
+                  }
                 }}
                 style={styles.heroTouchable}
               >
@@ -649,7 +692,21 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 if (!currentBanner) return null;
                 const handlePress = () => {
                   if (currentBanner.route_name) {
-                    navigation.navigate(currentBanner.route_name as never, currentBanner.route_params as never);
+                    const route = currentBanner.route_name;
+                    const params = currentBanner.route_params || {};
+                    if (route.startsWith('Settings__')) {
+                      const subPageMap: Record<string, string> = {
+                        Settings__MyProfile: 'My Profile',
+                        Settings__Membership: 'Membership',
+                        Settings__YourAddresses: 'Your Addresses',
+                        Settings__OrderHistory: 'Order History',
+                        Settings__Cart: 'Cart',
+                        Settings__Notifications: 'Notifications',
+                      };
+                      navigation.navigate('Settings' as never, { subPage: subPageMap[route] || null, ...params } as never);
+                    } else {
+                      navigation.navigate(route as never, params as never);
+                    }
                   } else {
                     const bannerLower = currentBanner.image_url.toLowerCase();
                     const link = Object.entries(PROMO_BANNER_LINKS).find(([key]) => bannerLower.includes(key))?.[1] || 'https://myfng.in';
@@ -813,7 +870,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               </View>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
-              {REVIEWS.slice(0, 3).map((review) => (
+              {reviews.slice(0, 3).map((review) => (
                 <View key={review.name} style={styles.reviewCard}>
                   <View style={styles.reviewStars}>
                     {Array.from({ length: 5 }).map((_, i) => (
@@ -912,7 +969,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <View style={styles.reviewModalHandle} />
               <Text style={styles.reviewModalTitle}>All Reviews</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={styles.reviewModalScroll}>
-                {REVIEWS.map((review) => (
+                {reviews.map((review) => (
                   <View key={review.name} style={styles.reviewModalCard}>
                     <View style={styles.reviewStars}>
                       {Array.from({ length: 5 }).map((_, i) => (

@@ -23,7 +23,23 @@ type BannerRow = {
   is_active: boolean;
 };
 
-const ROUTES = ['PublicHome', 'AIBooking', 'PublicWorkshopLocator', 'PublicServicePackages', 'PublicBookServiceNow', 'Login'];
+const ROUTES = [
+  'PublicHome',
+  'PublicServicePackages',
+  'PublicBookServiceNow',
+  'AIBooking',
+  'PublicWorkshopLocator',
+  'RoadsideAssistance',
+  'Settings',
+  'Settings__MyProfile',
+  'Settings__Membership',
+  'Settings__YourAddresses',
+  'Settings__OrderHistory',
+  'Settings__Cart',
+  'Settings__Notifications',
+  'Login',
+  'CustomerSignup',
+];
 
 export default function HomeCarouselScreen({ navigation }: any) {
   const [rows, setRows] = useState<BannerRow[]>([]);

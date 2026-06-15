@@ -16,14 +16,21 @@ type BannerRow = {
 };
 
 const ROUTES = [
-  'PublicHome',
-  'AIBooking',
-  'PublicWorkshopLocator',
-  'PublicServicePackages',
-  'PublicBookServiceNow',
-  'Settings',
-  'RoadsideAssistance',
-  'Login',
+  { value: 'PublicHome', label: 'Home' },
+  { value: 'PublicServicePackages', label: 'Services' },
+  { value: 'PublicBookServiceNow', label: 'Book Service Now' },
+  { value: 'AIBooking', label: 'AI Chatbot' },
+  { value: 'PublicWorkshopLocator', label: 'Workshop Locator' },
+  { value: 'RoadsideAssistance', label: 'Roadside Assistance (RSA)' },
+  { value: 'Settings', label: 'Settings' },
+  { value: 'Settings__MyProfile', label: 'Settings → My Profile' },
+  { value: 'Settings__Membership', label: 'Settings → Membership' },
+  { value: 'Settings__YourAddresses', label: 'Settings → Your Addresses' },
+  { value: 'Settings__OrderHistory', label: 'Settings → Order History' },
+  { value: 'Settings__Cart', label: 'Settings → Cart' },
+  { value: 'Settings__Notifications', label: 'Settings → Notifications' },
+  { value: 'Login', label: 'Login' },
+  { value: 'CustomerSignup', label: 'Customer Signup' },
 ] as const;
 
 // These mirror the hardcoded PROMO_BANNERS in the mobile app
@@ -341,7 +348,7 @@ export default function PromoBannersPage() {
               </div>
               <div className="p-3 flex-1 flex flex-col">
                 <div className="text-sm font-semibold text-gray-900 truncate">{r.title || 'Untitled'}</div>
-                <div className="text-xs text-gray-500 truncate">→ {r.route_name}</div>
+                <div className="text-xs text-gray-500 truncate">→ {ROUTES.find((rt) => rt.value === r.route_name)?.label || r.route_name}</div>
                 <div className="mt-3 flex items-center gap-2">
                   <button
                     onClick={() => openEdit(r, { replaceImageOnly: true })}
@@ -474,8 +481,8 @@ export default function PromoBannersPage() {
                         className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                       >
                         {ROUTES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
+                          <option key={r.value} value={r.value}>
+                            {r.label}
                           </option>
                         ))}
                       </select>

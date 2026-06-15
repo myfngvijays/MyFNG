@@ -67,6 +67,7 @@ type BookingFormData = {
   carModel: CarModelRow | null;
   customerName: string;
   customerPhone: string;
+  vehicleNumber: string;
   selectedServices: string[];
   pickupRequired: boolean;
   selectedWorkshop: WorkshopRow | null;
@@ -171,6 +172,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     carModel: null,
     customerName: '',
     customerPhone: '',
+    vehicleNumber: '',
     selectedServices: [],
     pickupRequired: true,
     selectedWorkshop: null,
@@ -217,6 +219,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(null);
   const [addressDetecting, setAddressDetecting] = useState(false);
+  const [showNewAddressForm, setShowNewAddressForm] = useState(false);
+  const [newAddrForm, setNewAddrForm] = useState<{ label: 'Home' | 'Work' | 'Other'; line1: string; line2: string; city: string; pincode: string }>({ label: 'Home', line1: '', line2: '', city: '', pincode: '' });
+  const [newAddrLocating, setNewAddrLocating] = useState(false);
 
   const [otpSent, setOtpSent] = useState(false);
   const [otpValue, setOtpValue] = useState('');
@@ -450,6 +455,61 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       setAddressDetecting(false);
     }
   }, []);
+
+  const fetchNewAddrLocation = useCallback(async () => {
+    setNewAddrLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Location permission is needed.');
+        return;
+      }
+      let position = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (!position) {
+        position = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+        ]).catch(() => null);
+      }
+      if (!position) {
+        Alert.alert('Location', 'Could not fetch location. Try again.');
+        return;
+      }
+      const { latitude, longitude } = (position as any).coords;
+      const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+      const p = (places && places[0]) || {};
+      setNewAddrForm((prev) => ({
+        ...prev,
+        line2: String((p as any).street || (p as any).name || (p as any).district || '').trim(),
+        city: String((p as any).city || (p as any).subregion || '').trim(),
+        pincode: String((p as any).postalCode || '').trim(),
+      }));
+    } catch {
+      Alert.alert('Location', 'Unable to fetch. Enter manually.');
+    } finally {
+      setNewAddrLocating(false);
+    }
+  }, []);
+
+  const saveNewAddress = useCallback(() => {
+    const line1 = newAddrForm.line1.trim();
+    const line2 = newAddrForm.line2.trim();
+    const city = newAddrForm.city.trim();
+    const pincode = newAddrForm.pincode.trim();
+    if (!line1) {
+      Alert.alert('Address', 'Please enter Flat / House / Building (Address Line 1).');
+      return;
+    }
+    if (!line2 && !city) {
+      Alert.alert('Address', 'Please enter area/street or city.');
+      return;
+    }
+    const fullAddress = [line1, line2, city, pincode].filter(Boolean).join(', ');
+    setForm((p) => ({ ...p, pickupAddress: fullAddress, flatNumber: line1, landmark: line2 || city }));
+    setSelectedSavedAddressId(null);
+    setShowNewAddressForm(false);
+    setNewAddrForm({ label: 'Home', line1: '', line2: '', city: '', pincode: '' });
+  }, [newAddrForm]);
 
   async function searchCarModels(q: string) {
     const query = q.trim();
@@ -813,6 +873,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         const savedV = Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : [];
         if (savedV.length > 0) {
           setSavedVehicles(savedV);
+          const firstPlate = String(savedV[0].vehicle_number || '').trim().toUpperCase();
+          if (firstPlate) setForm((p) => ({ ...p, vehicleNumber: p.vehicleNumber || firstPlate }));
         } else {
           // Fallback: pull vehicles from past orders/leads
           try {
@@ -859,8 +921,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       Alert.alert('Date & time required', 'Please select your preferred date and time.');
       return;
     }
-    if (form.pickupRequired && (!form.pickupAddress.trim() || !form.landmark.trim())) {
-      Alert.alert('Address required', 'Please enter pickup address and landmark.');
+    if (form.pickupRequired && !form.pickupAddress.trim()) {
+      Alert.alert('Address required', 'Please select or add a pickup address.');
       return;
     }
 
@@ -890,6 +952,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             model_id: form.carModel.id,
             vehicle_model: form.carModel.model_name,
             vehicle_variant: form.carModel.variant || null,
+            vehicle_number: form.vehicleNumber.trim().toUpperCase() || null,
             service_type_ids: form.selectedServices.length > 0 ? form.selectedServices : null,
             pickup_required: form.pickupRequired,
             workshop_id: form.pickupRequired ? null : form.selectedWorkshop?.id || null,
@@ -1154,8 +1217,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
     if (step === 2) return form.selectedServices.length > 0;
     if (step === 3) {
+      if (!form.vehicleNumber.trim() || form.vehicleNumber.trim().length < 4) return false;
       if (form.pickupRequired)
-        return Boolean(form.pickupDate && form.pickupTime && form.pickupAddress.trim() && form.landmark.trim());
+        return Boolean(form.pickupDate && form.pickupTime && form.pickupAddress.trim());
       return Boolean(form.pickupDate && form.pickupTime);
     }
     return true;
@@ -1425,6 +1489,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         onPress={async () => {
                           const make = v.make || '';
                           const model = v.model || '';
+                          const plate = v.vehicle_number ? String(v.vehicle_number).trim().toUpperCase() : '';
                           const { data } = await supabase
                             .from('car_models')
                             .select('id,make,model_name,variant,class')
@@ -1433,9 +1498,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             .ilike('model_name', model)
                             .limit(1);
                           if (data && data.length > 0) {
-                            setForm((p) => ({ ...p, carModel: data[0] as any }));
+                            setForm((p) => ({ ...p, carModel: data[0] as any, vehicleNumber: plate || p.vehicleNumber }));
                           } else {
-                            setForm((p) => ({ ...p, carModel: { id: v.id, make, model_name: model, variant: v.variant || null } as any }));
+                            setForm((p) => ({ ...p, carModel: { id: v.id, make, model_name: model, variant: v.variant || null } as any, vehicleNumber: plate || p.vehicleNumber }));
                           }
                         }}
                       >
@@ -1675,6 +1740,29 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                               {s.description}
                             </Text>
                           ) : null}
+
+                          {selected ? (
+                            <TouchableOpacity
+                              style={styles.selectContinueBtn}
+                              activeOpacity={0.85}
+                              onPress={() => onNext()}
+                            >
+                              <Text style={styles.selectContinueBtnText}>Continue</Text>
+                              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.selectContinueBtnOutline}
+                              activeOpacity={0.85}
+                              onPress={() => {
+                                handleServiceToggle(s.id);
+                                setTimeout(() => onNext(), 150);
+                              }}
+                            >
+                              <Text style={styles.selectContinueBtnOutlineText}>Select & Continue</Text>
+                              <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+                            </TouchableOpacity>
+                          )}
                         </View>
                       );
                     })}
@@ -1811,6 +1899,26 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </View>
                 </View>
 
+                {/* Vehicle Number Card (common for both Pickup and Visit) */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionCardHeader}>
+                    <View style={[styles.sectionIcoBox, { backgroundColor: '#F59E0B' }]}>
+                      <Ionicons name="document-text" size={16} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.sectionCardTitle}>Vehicle Number</Text>
+                    <Text style={styles.requiredStar}>*</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.input, { letterSpacing: 1.5, fontWeight: '600', textTransform: 'uppercase' }]}
+                    value={form.vehicleNumber}
+                    onChangeText={(text) => setForm((p) => ({ ...p, vehicleNumber: text.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12) }))}
+                    placeholder="e.g. MH01BJ7842"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="characters"
+                    maxLength={12}
+                  />
+                </View>
+
                 {form.pickupRequired ? (
                   <>
                     {/* Pickup Date Card */}
@@ -1938,126 +2046,150 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           <Text style={styles.requiredStar}>*</Text>
                         </View>
 
-                        {savedAddresses.length > 0 ? (
-                          <View style={{ marginBottom: 10 }}>
-                            <Text style={styles.savedAddrTitle}>Saved Addresses</Text>
-                            <ScrollView
-                              horizontal
-                              showsHorizontalScrollIndicator={false}
-                              contentContainerStyle={styles.savedAddrRow}
-                            >
-                              {savedAddresses.map((addr) => {
-                                const isActive = selectedSavedAddressId === addr.id;
-                                const displayAddr = (() => {
-                                  const raw = addr.address_line1 || '';
-                                  const parts = raw.split(',').map((s: string) => s.trim()).filter(Boolean);
-                                  const seen = new Set<string>();
-                                  const unique = parts.filter((p: string) => {
-                                    const key = p.toLowerCase();
-                                    if (seen.has(key) || /^\d{6}$/.test(p)) return false;
-                                    seen.add(key);
-                                    return true;
-                                  });
-                                  return unique.slice(0, 3).join(', ');
-                                })();
-                                return (
-                                  <TouchableOpacity
-                                    key={addr.id}
-                                    style={[
-                                      styles.savedAddrCard,
-                                      isActive ? styles.savedAddrCardActive : null,
-                                    ]}
-                                    onPress={() => selectSavedAddress(addr)}
-                                    activeOpacity={0.9}
-                                  >
-                                    <Text
-                                      style={[
-                                        styles.savedAddrLine,
-                                        isActive ? styles.savedAddrLineActive : null,
-                                      ]}
-                                      numberOfLines={2}
-                                    >
-                                      {displayAddr || 'Address'}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                              <TouchableOpacity
-                                style={styles.savedAddrCard}
-                                onPress={() => {
-                                  setSelectedSavedAddressId(null);
-                                  setForm((p) => ({
-                                    ...p,
-                                    pickupAddress: '',
-                                    flatNumber: '',
-                                    landmark: '',
-                                  }));
-                                }}
-                                activeOpacity={0.9}
-                              >
-                                <Ionicons
-                                  name="add-circle-outline"
-                                  size={20}
-                                  color={COLORS.primary}
-                                />
-                                <Text style={styles.savedAddrLabel}>New Address</Text>
-                              </TouchableOpacity>
-                            </ScrollView>
+                        {/* Saved addresses list */}
+                        {savedAddresses.length > 0 && !showNewAddressForm ? (
+                          <View style={{ gap: 8 }}>
+                            {savedAddresses.map((addr) => {
+                              const isActive = selectedSavedAddressId === addr.id;
+                              const addrLabel = addr.label || addr.address_type || 'Address';
+                              const addrValue = [addr.address_line1, addr.address_line2, addr.city, addr.pincode].filter(Boolean).join(', ');
+                              const icon = addrLabel.toLowerCase() === 'home' ? 'home' : addrLabel.toLowerCase() === 'work' ? 'briefcase' : 'location';
+                              return (
+                                <TouchableOpacity
+                                  key={addr.id}
+                                  style={[styles.addrPickCard, isActive ? styles.addrPickCardActive : null]}
+                                  onPress={() => selectSavedAddress(addr)}
+                                  activeOpacity={0.85}
+                                >
+                                  <View style={[styles.addrPickIcon, isActive ? { backgroundColor: '#EEF2FF' } : null]}>
+                                    <Ionicons name={icon as any} size={16} color={isActive ? COLORS.primary : '#6B7280'} />
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.addrPickLabel, isActive ? { color: COLORS.primary } : null]}>{addrLabel}</Text>
+                                    <Text style={styles.addrPickValue} numberOfLines={2}>{addrValue || 'No address details'}</Text>
+                                  </View>
+                                  <Ionicons name={isActive ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={isActive ? COLORS.primary : '#D1D5DB'} />
+                                </TouchableOpacity>
+                              );
+                            })}
                           </View>
                         ) : null}
 
-                        <View style={styles.fieldHeader}>
-                          <Text style={styles.label}>Pickup address *</Text>
+                        {/* Add new address button */}
+                        {!showNewAddressForm ? (
                           <TouchableOpacity
-                            onPress={autoDetectAddress}
-                            disabled={addressDetecting}
-                            style={styles.autoDetectSmall}
+                            style={styles.addNewAddrBtn}
+                            onPress={() => {
+                              setShowNewAddressForm(true);
+                              setSelectedSavedAddressId(null);
+                              setForm((p) => ({ ...p, pickupAddress: '', flatNumber: '', landmark: '' }));
+                            }}
+                            activeOpacity={0.85}
                           >
-                            {addressDetecting ? (
-                              <ActivityIndicator size="small" color={COLORS.primary} />
-                            ) : (
-                              <Ionicons name="navigate" size={12} color={COLORS.primary} />
-                            )}
-                            <Text style={styles.autoDetectSmallText}>
-                              {addressDetecting ? 'Detecting…' : 'Auto Detect'}
-                            </Text>
+                            <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                            <Text style={styles.addNewAddrBtnText}>Add New Address</Text>
                           </TouchableOpacity>
-                        </View>
-                        <TextInput
-                          value={form.pickupAddress}
-                          onChangeText={(t) => {
-                            setForm((p) => ({ ...p, pickupAddress: t }));
-                            setSelectedSavedAddressId(null);
-                          }}
-                          style={styles.input}
-                          placeholder="Area, city, pincode"
-                          placeholderTextColor={COLORS.gray[500]}
-                          onFocus={(e) => scrollToInput(e.target)}
-                        />
-                        <View style={[styles.row2, { marginTop: 10 }]}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Flat / House</Text>
+                        ) : (
+                          <View style={styles.newAddrFormWrap}>
+                            {/* Address type pills with icons */}
+                            <View style={styles.addrTypePillRow}>
+                              {([
+                                { key: 'Home', icon: 'home' },
+                                { key: 'Work', icon: 'briefcase' },
+                                { key: 'Other', icon: 'location' },
+                              ] as const).map(({ key, icon }) => {
+                                const active = newAddrForm.label === key;
+                                return (
+                                  <TouchableOpacity
+                                    key={key}
+                                    style={[styles.addrTypePill, active ? styles.addrTypePillActive : null]}
+                                    onPress={() => setNewAddrForm((p) => ({ ...p, label: key }))}
+                                    activeOpacity={0.85}
+                                  >
+                                    <Ionicons name={icon as any} size={14} color={active ? '#FFFFFF' : '#6B7280'} />
+                                    <Text style={[styles.addrTypePillText, active ? styles.addrTypePillTextActive : null]}>{key}</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+
+                              <TouchableOpacity
+                                style={styles.fetchLocBtn}
+                                onPress={fetchNewAddrLocation}
+                                disabled={newAddrLocating}
+                                activeOpacity={0.85}
+                              >
+                                <Ionicons name="locate" size={14} color="#FFFFFF" />
+                                <Text style={styles.fetchLocBtnText}>
+                                  {newAddrLocating ? 'Fetching...' : 'Fetch Location'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            {/* Address fields */}
                             <TextInput
-                              value={form.flatNumber}
-                              onChangeText={(t) => setForm((p) => ({ ...p, flatNumber: t }))}
                               style={styles.input}
-                              placeholder="Flat no."
-                              placeholderTextColor={COLORS.gray[500]}
+                              placeholder="Flat / House / Building *"
+                              placeholderTextColor="#9CA3AF"
+                              value={newAddrForm.line1}
+                              onChangeText={(t) => setNewAddrForm((p) => ({ ...p, line1: t }))}
                               onFocus={(e) => scrollToInput(e.target)}
                             />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Landmark *</Text>
                             <TextInput
-                              value={form.landmark}
-                              onChangeText={(t) => setForm((p) => ({ ...p, landmark: t }))}
-                              style={styles.input}
-                              placeholder="Near…"
-                              placeholderTextColor={COLORS.gray[500]}
+                              style={[styles.input, { marginTop: 8 }]}
+                              placeholder="Area / Street / Locality"
+                              placeholderTextColor="#9CA3AF"
+                              value={newAddrForm.line2}
+                              onChangeText={(t) => setNewAddrForm((p) => ({ ...p, line2: t }))}
                               onFocus={(e) => scrollToInput(e.target)}
                             />
+                            <View style={[styles.row2, { marginTop: 8 }]}>
+                              <TextInput
+                                style={[styles.input, { flex: 1 }]}
+                                placeholder="City"
+                                placeholderTextColor="#9CA3AF"
+                                value={newAddrForm.city}
+                                onChangeText={(t) => setNewAddrForm((p) => ({ ...p, city: t }))}
+                                onFocus={(e) => scrollToInput(e.target)}
+                              />
+                              <TextInput
+                                style={[styles.input, { flex: 1 }]}
+                                placeholder="Pincode"
+                                placeholderTextColor="#9CA3AF"
+                                value={newAddrForm.pincode}
+                                onChangeText={(t) => setNewAddrForm((p) => ({ ...p, pincode: t.replace(/[^0-9]/g, '').slice(0, 6) }))}
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                onFocus={(e) => scrollToInput(e.target)}
+                              />
+                            </View>
+
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                              <TouchableOpacity
+                                style={styles.newAddrCancelBtn}
+                                onPress={() => {
+                                  setShowNewAddressForm(false);
+                                  setNewAddrForm({ label: 'Home', line1: '', line2: '', city: '', pincode: '' });
+                                }}
+                              >
+                                <Text style={styles.newAddrCancelBtnText}>Cancel</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.newAddrSaveBtn}
+                                onPress={saveNewAddress}
+                              >
+                                <Text style={styles.newAddrSaveBtnText}>Use This Address</Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
-                        </View>
+                        )}
+
+                        {/* Show selected address summary if chosen */}
+                        {form.pickupAddress && !showNewAddressForm ? (
+                          <View style={styles.selectedAddrSummary}>
+                            <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                            <Text style={styles.selectedAddrText} numberOfLines={2}>{form.pickupAddress}</Text>
+                          </View>
+                        ) : null}
                       </View>
                     ) : null}
                   </>
@@ -3194,6 +3326,103 @@ const styles = StyleSheet.create({
   savedAddrLine: { fontSize: 10, fontWeight: '700', color: COLORS.gray[600], textAlign: 'center' },
   savedAddrLineActive: { color: COLORS.primaryDark },
 
+  addrPickCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  addrPickCardActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#EEF6FF',
+  },
+  addrPickIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addrPickLabel: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  addrPickValue: { fontSize: 11.5, fontWeight: '600', color: '#6B7280', marginTop: 1 },
+  addNewAddrBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderStyle: 'dashed',
+  },
+  addNewAddrBtnText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  newAddrFormWrap: { marginTop: 10, gap: 0 },
+  addrTypePillRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  addrTypePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  addrTypePillActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
+  addrTypePillText: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
+  addrTypePillTextActive: { color: '#FFFFFF' },
+  fetchLocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#16A34A',
+  },
+  fetchLocBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  newAddrCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  newAddrCancelBtnText: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
+  newAddrSaveBtn: {
+    flex: 2,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+  },
+  newAddrSaveBtnText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
+  selectedAddrSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  selectedAddrText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#166534' },
+
   dateQuickRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   dateQuickBtn: {
     flexDirection: 'row',
@@ -3463,6 +3692,40 @@ const styles = StyleSheet.create({
   },
   planViewAllText: {
     fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  selectContinueBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+  },
+  selectContinueBtnText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  selectContinueBtnOutline: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  selectContinueBtnOutlineText: {
+    fontSize: 13.5,
     fontWeight: '800',
     color: COLORS.primary,
   },

@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React from 'react';
 import Link from 'next/link';
-import { Image as ImageIcon, Car, ChevronRight, Megaphone } from 'lucide-react';
+import { Image as ImageIcon, Car, ChevronRight, Megaphone, Star } from 'lucide-react';
 
 function Tile({
   title,
@@ -56,7 +56,7 @@ export default function WebsiteImagesHubPage() {
           />
           <Tile
             title="Home Carousel Images"
-            subtitle="Manage top 3 app hero carousel banners"
+            subtitle="Manage app hero carousel banners (up to 10)"
             href="/dashboard/super_admin/website-images/home-carousel"
             Icon={ImageIcon}
           />
@@ -65,6 +65,12 @@ export default function WebsiteImagesHubPage() {
             subtitle="Loan, E-Challan, Fuel, Sell Car etc. (Home & Packages screens)"
             href="/dashboard/super_admin/website-images/promo-banners"
             Icon={Megaphone}
+          />
+          <Tile
+            title="Customer Reviews"
+            subtitle="Manage reviews shown in 'What Our Customers Say' section"
+            href="/dashboard/super_admin/website-images/customer-reviews"
+            Icon={Star}
           />
         </div>
       </div>
