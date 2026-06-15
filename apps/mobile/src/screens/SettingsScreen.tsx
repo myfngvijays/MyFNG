@@ -39,6 +39,7 @@ import ReferAndFooter from '../components/ReferAndFooter';
 import { apiFetch } from '../lib/api';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
+import { BookingDraft, getBookingDrafts, removeBookingDraft } from '../lib/bookingDraft';
 
 type Props = {
   navigation: any;
@@ -218,6 +219,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [cartAvailableCoupons, setCartAvailableCoupons] = useState<any[]>([]);
   const [cartSelectedService, setCartSelectedService] = useState<{ name: string; price: number; items: string[] } | null>(null);
   const [cartLeads, setCartLeads] = useState<any[]>([]);
+  const [cartDrafts, setCartDrafts] = useState<BookingDraft[]>([]);
+  const [cartSelectedDraftId, setCartSelectedDraftId] = useState<string | null>(null);
   const [cartSelectedLeadId, setCartSelectedLeadId] = useState<string | null>(null);
   const [cartWorkshops, setCartWorkshops] = useState<any[]>([]);
   const [cartWorkshopLoading, setCartWorkshopLoading] = useState(false);
@@ -952,6 +955,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
     loadCart();
     fetchCartCoupons();
   }, [activeSubPage, isLoggedIn, loadCart, fetchCartCoupons]);
+
+  useEffect(() => {
+    if (activeSubPage !== 'Cart') return;
+    getBookingDrafts().then((drafts) => {
+      setCartDrafts(drafts);
+      if (drafts.length > 0 && !cartSelectedDraftId) setCartSelectedDraftId(drafts[0].id);
+    }).catch(() => {});
+  }, [activeSubPage]);
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
@@ -1787,6 +1798,91 @@ export default function SettingsScreen({ navigation, route }: Props) {
     cartServerCart,
     hydrateCustomerData,
     loadCart,
+  ]);
+
+  const handleDraftBooking = useCallback(async (draft: BookingDraft) => {
+    const draftCar = draft.carModel;
+    if (!draftCar) {
+      Alert.alert('Vehicle required', 'Car details are missing. Please resume and complete booking.');
+      return;
+    }
+    if (!draft.selectedServices?.length) {
+      Alert.alert('Service required', 'No service selected. Please resume and select a service.');
+      return;
+    }
+    if (!draft.customerPhone?.trim()) {
+      Alert.alert('Phone required', 'Phone number is missing. Please resume and enter your number.');
+      return;
+    }
+    if (!draft.pickupDate || !draft.pickupTime) {
+      Alert.alert('Date & Time required', 'Please resume booking and select date & time.');
+      return;
+    }
+    if (draft.pickupRequired && !draft.pickupAddress) {
+      Alert.alert('Address required', 'Please resume booking and add pickup address.');
+      return;
+    }
+
+    setCartBookingLoading(true);
+    try {
+      const leadNumber = `L-${Date.now().toString().slice(-8)}`;
+      const serviceNames = draft.serviceNames ? Object.values(draft.serviceNames).join(', ') : 'CAR_SERVICE';
+      const totalDraftPrice = draft.servicePrices ? Object.values(draft.servicePrices).reduce((s, p) => s + p, 0) : 0;
+
+      const payload = {
+        lead: {
+          lead_number: leadNumber,
+          created_from: 'MOBILE_APP',
+          status: 'NEW',
+          lead_type: 'CAR_SERVICE',
+          lead_source: 'App Booking (Cart)',
+          customer_name: draft.customerName || profileForm.name || null,
+          customer_phone: draft.customerPhone.trim(),
+          city: draft.city?.name || null,
+          city_id: draft.city?.id || null,
+          vehicle_make: draftCar.make,
+          vehicle_model: draftCar.model_name,
+          model_id: draftCar.id,
+          vehicle_variant: draftCar.variant || null,
+          vehicle_number: draft.vehicleNumber?.trim().toUpperCase() || null,
+          service_type: serviceNames,
+          service_type_ids: draft.selectedServices,
+          pickup_required: draft.pickupRequired ?? true,
+          pickup_address: draft.pickupRequired ? (draft.pickupAddress || null) : null,
+          address: draft.pickupAddress || null,
+          customer_address: draft.pickupAddress || null,
+          preferred_slot_start: `${draft.pickupDate}T${draft.pickupTime}:00`,
+          estimated_amount: totalDraftPrice > 0 ? totalDraftPrice : null,
+          payment_mode: draft.paymentMethod || 'pay_later',
+          payment_status: (draft.paymentMethod || 'pay_later') === 'pay_now' ? 'PENDING' : 'PENDING_AT_SERVICE',
+          lead_priority: 'NORMAL',
+          created_at: new Date().toISOString(),
+        },
+      };
+
+      const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+
+      await removeBookingDraft(draft.id);
+      setCartDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+      setCartSelectedDraftId(null);
+
+      Alert.alert('Booking Created!', `Your booking ${json?.lead?.lead_number || leadNumber} has been placed successfully.`);
+      await hydrateCustomerData();
+      setActiveSubPage('Order History');
+    } catch (error: any) {
+      Alert.alert('Booking failed', error?.message || 'Could not create booking.');
+    } finally {
+      setCartBookingLoading(false);
+    }
+  }, [
+    profileForm.name,
+    hydrateCustomerData,
   ]);
 
   const onPressAddVehicle = () => {
@@ -3290,88 +3386,118 @@ export default function SettingsScreen({ navigation, route }: Props) {
           );
         }
 
+        const activeDraft = cartDrafts.find((d) => d.id === cartSelectedDraftId) || (cartDrafts.length > 0 ? cartDrafts[0] : null);
+        const draftCar = activeDraft?.carModel;
+        const displayVehicle = draftCar
+          ? { make: draftCar.make, model: draftCar.model_name, vehicle_number: activeDraft?.vehicleNumber || '', fuel_type: draftCar.variant || '' }
+          : selectedVehicle;
+
         return (
           <View style={styles.subWrap}>
             <View style={cstyles.sectionCard}>
               <View style={cstyles.vehicleRow}>
                 <View style={cstyles.vehicleIconWrap}>
-                  <VehicleImage vehicle={selectedVehicle} style={cstyles.vehicleThumb} />
+                  <VehicleImage vehicle={displayVehicle} style={cstyles.vehicleThumb} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={cstyles.vehicleName}>
                     {toTitleCase(
-                      [selectedVehicle?.make, selectedVehicle?.model].filter(Boolean).join(' ') || 'Your Car'
+                      [displayVehicle?.make, displayVehicle?.model].filter(Boolean).join(' ') || 'Your Car'
                     )}
                   </Text>
                   <Text style={cstyles.vehicleMeta}>
-                    {String(selectedVehicle?.vehicle_number || 'DL01AB1234').toUpperCase()} • {String(selectedVehicle?.fuel_type || 'Petrol').toUpperCase()}
+                    {String(displayVehicle?.vehicle_number || '').toUpperCase() || '—'} • {String(displayVehicle?.fuel_type || 'Petrol').toUpperCase()}
                   </Text>
                 </View>
-                <TouchableOpacity style={cstyles.changeChip} onPress={() => {
-                  if (allAssociatedVehicles.length > 1) {
-                    setShowVehiclePicker(true);
-                  } else {
-                    Alert.alert(
-                      'Change Vehicle',
-                      'You have only one saved vehicle. Add another vehicle in My Profile to switch.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Add Vehicle',
-                          onPress: () => {
-                            setVehicleEntryOnly(true);
-                            setActiveSubPage('My Profile');
+                {!activeDraft ? (
+                  <TouchableOpacity style={cstyles.changeChip} onPress={() => {
+                    if (allAssociatedVehicles.length > 1) {
+                      setShowVehiclePicker(true);
+                    } else {
+                      Alert.alert(
+                        'Change Vehicle',
+                        'You have only one saved vehicle. Add another vehicle in My Profile to switch.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Add Vehicle',
+                            onPress: () => {
+                              setVehicleEntryOnly(true);
+                              setActiveSubPage('My Profile');
+                            },
                           },
-                        },
-                      ]
-                    );
-                  }
-                }}>
-                  <Text style={cstyles.changeChipText}>Change</Text>
-                </TouchableOpacity>
+                        ]
+                      );
+                    }
+                  }}>
+                    <Text style={cstyles.changeChipText}>Change</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
 
-            <Text style={cstyles.sectionHeading}>SELECTED SERVICES</Text>
             <View style={cstyles.sectionCard}>
-              {resumableLeads.length > 0 ? (
+              {cartDrafts.length > 0 ? (
                 <View style={cstyles.resumeWrap}>
-                  <Text style={cstyles.resumeTitle}>Resume Booking</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={[cstyles.resumeTitle, { marginBottom: 0 }]}>Resume Booking</Text>
+                    {cartSelectedDraftId && cartDrafts.find((d) => d.id === cartSelectedDraftId && d.step >= 2 && d.selectedServices?.length) ? (
+                      <TouchableOpacity
+                        style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.primary }}
+                        onPress={() => {
+                          const draft = cartDrafts.find((d) => d.id === cartSelectedDraftId);
+                          if (draft) navigation.navigate('PublicBookServiceNow', { resumeDraft: { ...draft, step: 2 } });
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.primary }}>Change Service</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={cstyles.resumeRow}>
-                    {resumableLeads.slice(0, 6).map((lead: any) => {
-                      const active = cartSelectedLeadId === String(lead.id);
-                      const planName = String(lead?.service_display || lead?.plan_name || lead?.package_name || lead?.service_type || 'Service').trim();
-                      const leadPrice = Math.max(0, Math.round(Number(lead?.estimated_amount || 0)));
+                    {cartDrafts.slice(0, 6).map((draft) => {
+                      const stepLabels = ['Car Selected', 'Details Filled', 'Service Selected', 'Pickup Set', 'Payment'];
+                      const label = stepLabels[draft.step] || `Step ${draft.step + 1}`;
+                      const serviceName = draft.serviceNames
+                        ? Object.values(draft.serviceNames).join(', ') || draft.selectedCategory || 'Service'
+                        : draft.selectedCategory || 'Service';
+                      const draftPrice = draft.servicePrices
+                        ? Object.values(draft.servicePrices).reduce((s, p) => s + p, 0)
+                        : 0;
+                      const carLabel = draft.carModel ? `${draft.carModel.make} ${draft.carModel.model_name}` : '';
+                      const isSelected = cartSelectedDraftId === draft.id;
+                      const hasService = draft.step >= 2 && draft.selectedServices && draft.selectedServices.length > 0;
                       return (
-                        <TouchableOpacity
-                          key={String(lead.id)}
-                          style={[cstyles.resumeCard, active ? cstyles.resumeCardActive : null]}
-                          disabled={cartSyncing}
-                          onPress={async () => {
-                            setCartSelectedLeadId(String(lead.id));
-                            setCartSelectedService((prev) => ({
-                              name: planName || prev?.name || 'Periodic Service Package',
-                              price: Number(lead?.estimated_amount || prev?.price || 2999),
-                              items: prev?.items || ['Service Checklist', 'Basic Diagnostics', 'General Inspection'],
-                            }));
-                            const alreadyInCart = (cartItems || []).some(
-                              (it: any) => String(it?.metadata?.lead_id || '') === String(lead.id),
-                            );
-                            if (!alreadyInCart) {
-                              await addCartItem(planName || 'Service', leadPrice || 2999, 1, {
-                                lead_id: String(lead.id),
-                                lead_number: lead?.lead_number || null,
-                                source: 'resume_booking',
-                              });
-                            }
-                          }}
-                        >
-                          <Text style={cstyles.resumeLeadNumber}>{String(lead?.lead_number || '').toUpperCase() || 'BOOKING'}</Text>
-                          <Text style={cstyles.resumePlanName} numberOfLines={1}>{planName}</Text>
-                          <Text style={cstyles.resumeLeadMeta} numberOfLines={1}>
-                            {String(lead?.status || 'NEW').toUpperCase()} • ₹{leadPrice.toLocaleString('en-IN')}
-                          </Text>
-                        </TouchableOpacity>
+                        <View key={draft.id} style={{ position: 'relative' }}>
+                          <TouchableOpacity
+                            style={[cstyles.resumeCard, isSelected ? cstyles.resumeCardActive : null]}
+                            onPress={() => {
+                              if (!hasService) {
+                                navigation.navigate('PublicBookServiceNow', { resumeDraft: draft });
+                              } else {
+                                setCartSelectedDraftId(draft.id);
+                              }
+                            }}
+                          >
+                            <Text style={cstyles.resumeLeadNumber}>{carLabel || 'DRAFT'}</Text>
+                            <Text style={cstyles.resumePlanName} numberOfLines={1}>{serviceName}</Text>
+                            <Text style={cstyles.resumeLeadMeta} numberOfLines={1}>
+                              {label}{draftPrice > 0 ? ` • ₹${draftPrice.toLocaleString('en-IN')}` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
+                            onPress={async () => {
+                              await removeBookingDraft(draft.id);
+                              const updated = await getBookingDrafts();
+                              setCartDrafts(updated);
+                              if (cartSelectedDraftId === draft.id) {
+                                setCartSelectedDraftId(updated.length > 0 ? updated[0].id : null);
+                              }
+                            }}
+                          >
+                            <Ionicons name="close" size={13} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        </View>
                       );
                     })}
                   </ScrollView>
@@ -3380,7 +3506,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
               {cartLoading ? (
                 <Text style={cstyles.workshopEmpty}>Loading your cart...</Text>
-              ) : cartItems.length === 0 ? (
+              ) : cartItems.length === 0 && cartDrafts.length === 0 ? (
                 <View style={cstyles.pickupEmptyWrap}>
                   <Text style={cstyles.workshopEmpty}>Your cart is empty.</Text>
                   <TouchableOpacity
@@ -3390,7 +3516,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     <Text style={cstyles.addPickupBtnText}>Add a Service</Text>
                   </TouchableOpacity>
                 </View>
-              ) : (
+              ) : cartItems.length > 0 ? (
                 cartItems.map((item: any, idx: number) => {
                   const checklist = Array.isArray(item?.metadata?.items) ? item.metadata.items : (cartSelectedService?.items || []);
                   return (
@@ -3428,9 +3554,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </View>
                   );
                 })
-              )}
+              ) : null}
             </View>
 
+            {!activeDraft ? (
+            <>
             <View style={cstyles.sectionCard}>
               <Text style={cstyles.subHeading}>APPLY COUPON</Text>
 
@@ -3886,29 +4014,109 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            <View style={cstyles.sectionCard}>
-              <Text style={cstyles.summaryTitle}>Price Summary</Text>
-              <View style={cstyles.summaryRow}>
-                <Text style={cstyles.summaryLabel}>Service Total</Text>
-                <Text style={cstyles.summaryValue}>₹{subtotal.toLocaleString('en-IN')}</Text>
-              </View>
-              {couponDiscount > 0 ? (
+              <View style={cstyles.sectionCard}>
+                <Text style={cstyles.summaryTitle}>Price Summary</Text>
                 <View style={cstyles.summaryRow}>
-                  <Text style={cstyles.summaryLabel}>Coupon Discount</Text>
-                  <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{Math.round(couponDiscount).toLocaleString('en-IN')}</Text>
+                  <Text style={cstyles.summaryLabel}>Service Total</Text>
+                  <Text style={cstyles.summaryValue}>₹{subtotal.toLocaleString('en-IN')}</Text>
                 </View>
-              ) : null}
-              {walletUsed > 0 ? (
-                <View style={cstyles.summaryRow}>
-                  <Text style={cstyles.summaryLabel}>Wallet Used</Text>
-                  <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{walletUsed.toLocaleString('en-IN')}</Text>
+                {couponDiscount > 0 ? (
+                  <View style={cstyles.summaryRow}>
+                    <Text style={cstyles.summaryLabel}>Coupon Discount</Text>
+                    <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{Math.round(couponDiscount).toLocaleString('en-IN')}</Text>
+                  </View>
+                ) : null}
+                {walletUsed > 0 ? (
+                  <View style={cstyles.summaryRow}>
+                    <Text style={cstyles.summaryLabel}>Wallet Used</Text>
+                    <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{walletUsed.toLocaleString('en-IN')}</Text>
+                  </View>
+                ) : null}
+                <View style={[cstyles.summaryRow, cstyles.summaryFinalRow]}>
+                  <Text style={cstyles.finalLabel}>Final Amount</Text>
+                  <Text style={cstyles.finalValue}>₹{Math.round(finalAmount).toLocaleString('en-IN')}</Text>
                 </View>
-              ) : null}
-              <View style={[cstyles.summaryRow, cstyles.summaryFinalRow]}>
-                <Text style={cstyles.finalLabel}>Final Amount</Text>
-                <Text style={cstyles.finalValue}>₹{Math.round(finalAmount).toLocaleString('en-IN')}</Text>
               </View>
-            </View>
+            </>
+            ) : null}
+
+            {/* Booking Summary from Draft */}
+            {activeDraft && (activeDraft.selectedServices?.length || activeDraft.pickupDate || activeDraft.carModel) ? (
+              <>
+                <Text style={cstyles.sectionHeading}>BOOKING SUMMARY</Text>
+                <View style={cstyles.sectionCard}>
+                  {/* Car Model */}
+                  {draftCar ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                      <Ionicons name="car-sport-outline" size={16} color="#374151" />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>
+                        {draftCar.make} {draftCar.model_name}
+                      </Text>
+                      {activeDraft.vehicleNumber ? (
+                        <Text style={{ fontSize: 11, color: '#6B7280' }}>• {activeDraft.vehicleNumber}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {/* Services */}
+                  {activeDraft.serviceNames && Object.keys(activeDraft.serviceNames).length > 0 ? (
+                    Object.entries(activeDraft.serviceNames).map(([sid, name]) => (
+                      <View key={sid} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="build-outline" size={14} color="#6B7280" />
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>{name}</Text>
+                        </View>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.primary }}>
+                          {activeDraft.servicePrices?.[sid] ? `₹${activeDraft.servicePrices[sid].toLocaleString('en-IN')}` : '—'}
+                        </Text>
+                      </View>
+                    ))
+                  ) : null}
+
+                  {/* Pickup / Visit */}
+                  {activeDraft.pickupRequired !== undefined ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                      <Ionicons name={activeDraft.pickupRequired ? 'navigate-outline' : 'storefront-outline'} size={14} color="#6B7280" />
+                      <Text style={{ fontSize: 12, color: '#374151', fontWeight: '600' }}>
+                        {activeDraft.pickupRequired ? 'Pickup & Drop' : 'Workshop Visit'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Date & Time */}
+                  {activeDraft.pickupDate ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                      <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+                      <Text style={{ fontSize: 12, color: '#374151', fontWeight: '600' }}>
+                        {activeDraft.pickupDate}{activeDraft.pickupTime ? `  •  ${activeDraft.pickupTime}` : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Address */}
+                  {activeDraft.pickupAddress ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                      <Ionicons name="location-outline" size={14} color="#6B7280" />
+                      <Text style={{ fontSize: 12, color: '#374151', fontWeight: '600', flex: 1 }} numberOfLines={2}>
+                        {activeDraft.pickupAddress}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Estimated Total */}
+                  {(() => {
+                    const totalDraftPrice = activeDraft.servicePrices ? Object.values(activeDraft.servicePrices).reduce((s, p) => s + p, 0) : 0;
+                    if (totalDraftPrice <= 0) return null;
+                    return (
+                      <View style={{ marginTop: 8, paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>Estimated Total</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: COLORS.primary }}>₹{totalDraftPrice.toLocaleString('en-IN')}</Text>
+                      </View>
+                    );
+                  })()}
+                </View>
+              </>
+            ) : null}
 
             <View style={cstyles.noteWrap}>
               <View style={cstyles.noteRow}>
@@ -3921,8 +4129,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
             </View>
 
-            <TouchableOpacity style={cstyles.bookNowBtn} onPress={handleProceedToBook} disabled={cartBookingLoading}>
-              <Text style={cstyles.bookNowBtnText}>{cartBookingLoading ? 'Booking...' : 'Proceed to Book'}</Text>
+            <TouchableOpacity
+              style={cstyles.bookNowBtn}
+              disabled={cartBookingLoading}
+              onPress={() => {
+                if (activeDraft) {
+                  navigation.navigate('PublicBookServiceNow', { resumeDraft: activeDraft });
+                } else {
+                  handleProceedToBook();
+                }
+              }}
+            >
+              <Text style={cstyles.bookNowBtnText}>{cartBookingLoading ? 'Booking...' : (activeDraft ? 'Continue Booking' : 'Proceed to Book')}</Text>
             </TouchableOpacity>
           </View>
         );

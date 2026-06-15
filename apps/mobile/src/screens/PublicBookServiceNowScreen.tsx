@@ -26,8 +26,26 @@ import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
-import { getCustomerSessionToken } from '../lib/customerSession';
+import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
+import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
+
+const SERVICE_ICON_BASE = 'https://myfng.in';
+function getCategoryIconUrl(category: string): string {
+  const c = category.toUpperCase();
+  if (c.includes('PERIODIC')) return `${SERVICE_ICON_BASE}/icon-periodic-service.png`;
+  if (c.includes('AC')) return `${SERVICE_ICON_BASE}/icon-ac-service.png`;
+  if (c.includes('BATTERY') && !c.includes('ELECTRICAL')) return `${SERVICE_ICON_BASE}/icon-battery-service.png`;
+  if (c.includes('BRAKE')) return `${SERVICE_ICON_BASE}/icon-brake-service.png`;
+  if (c.includes('CLUTCH')) return `${SERVICE_ICON_BASE}/icon-clutch-service.png`;
+  if (c.includes('DENTING') || c.includes('PAINTING')) return `${SERVICE_ICON_BASE}/icon-denting-service.png`;
+  if (c.includes('DETAILING')) return `${SERVICE_ICON_BASE}/icon-detailing-service.png`;
+  if (c.includes('ENGINE')) return `${SERVICE_ICON_BASE}/icon-engine-service.png`;
+  if (c.includes('TYRE') || c.includes('WHEEL')) return `${SERVICE_ICON_BASE}/icon-tyre-service.png`;
+  if (c.includes('ELECTRICAL')) return `${SERVICE_ICON_BASE}/icon-electrical-service.png`;
+  if (c.includes('SUSPENSION') || c.includes('STEERING')) return `${SERVICE_ICON_BASE}/icon-suspension-service.png`;
+  return '';
+}
 
 type Props = { navigation: any; route?: any };
 
@@ -147,7 +165,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const paramServiceCategory = route?.params?.serviceCategory;
   const paramServiceCategoryName: string | null = route?.params?.serviceCategoryName ?? null;
   const paramSelectedServiceId = route?.params?.selectedServiceId;
-  const [step, setStep] = useState(0);
+  const resumeDraft: BookingDraft | null = route?.params?.resumeDraft ?? null;
+  const [draftId] = useState(() => resumeDraft?.id || `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  const [step, setStep] = useState(resumeDraft?.step || 0);
   const scrollRef = useRef<ScrollView>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -167,21 +187,40 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
   };
 
-  const [form, setForm] = useState<BookingFormData>({
-    city: null,
-    carModel: null,
-    customerName: '',
-    customerPhone: '',
-    vehicleNumber: '',
-    selectedServices: [],
-    pickupRequired: true,
-    selectedWorkshop: null,
-    pickupDate: '',
-    pickupTime: '',
-    pickupAddress: '',
-    flatNumber: '',
-    landmark: '',
-    paymentMethod: 'PAY_LATER',
+  const [form, setForm] = useState<BookingFormData>(() => {
+    const base: BookingFormData = {
+      city: null,
+      carModel: null,
+      customerName: '',
+      customerPhone: '',
+      vehicleNumber: '',
+      selectedServices: [],
+      pickupRequired: true,
+      selectedWorkshop: null,
+      pickupDate: '',
+      pickupTime: '',
+      pickupAddress: '',
+      flatNumber: '',
+      landmark: '',
+      paymentMethod: 'PAY_LATER',
+    };
+    if (resumeDraft) {
+      return {
+        ...base,
+        city: resumeDraft.city as any || null,
+        carModel: resumeDraft.carModel as any || null,
+        customerName: resumeDraft.customerName || '',
+        customerPhone: resumeDraft.customerPhone || '',
+        vehicleNumber: resumeDraft.vehicleNumber || '',
+        selectedServices: resumeDraft.selectedServices || [],
+        pickupRequired: resumeDraft.pickupRequired ?? true,
+        pickupDate: resumeDraft.pickupDate || '',
+        pickupTime: resumeDraft.pickupTime || '',
+        pickupAddress: resumeDraft.pickupAddress || '',
+        paymentMethod: (resumeDraft.paymentMethod as any) || 'PAY_LATER',
+      };
+    }
+    return base;
   });
 
   const [loading, setLoading] = useState(false);
@@ -190,14 +229,17 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [locationDetecting, setLocationDetecting] = useState(false);
   const [detectedCityNotServiceable, setDetectedCityNotServiceable] = useState<string | null>(null);
 
-  const [carQuery, setCarQuery] = useState('');
+  const [carQuery, setCarQuery] = useState(() => {
+    if (resumeDraft?.carModel) return `${resumeDraft.carModel.make} ${resumeDraft.carModel.model_name}`;
+    return '';
+  });
   const [carSuggestions, setCarSuggestions] = useState<CarModelRow[]>([]);
   const [showCarSuggestions, setShowCarSuggestions] = useState(false);
 
   const [serviceTypes, setServiceTypes] = useState<ServiceTypeRow[]>([]);
   const [serviceLoading, setServiceLoading] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>(resumeDraft?.selectedCategory || '');
   const [selectedOilType, setSelectedOilType] = useState<'semi' | 'full'>('semi');
   const [pricing, setPricing] = useState<Record<string, number>>({});
   const [pricingLoading, setPricingLoading] = useState(false);
@@ -249,7 +291,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       if (s.category) set.add(s.category);
     }
     const arr = Array.from(set);
-    arr.sort((a, b) => a.localeCompare(b));
+    const order = ['PERIODIC', 'ENGINE', 'AC', 'BATTERY', 'BRAKE', 'CLUTCH', 'TYRE', 'WHEEL', 'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING'];
+    arr.sort((a, b) => {
+      const ai = order.findIndex((k) => a.toUpperCase().includes(k));
+      const bi = order.findIndex((k) => b.toUpperCase().includes(k));
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
     return arr.length ? arr : [];
   }, [serviceTypes]);
 
@@ -340,6 +387,39 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const goStep = (next: number) => {
     setStep(next);
     scrollRef.current?.scrollTo({ y: 0, animated: true });
+    // Save draft progress
+    saveDraftProgress(next);
+  };
+
+  const saveDraftProgress = (currentStep: number) => {
+    const serviceNames: Record<string, string> = {};
+    const servicePrices: Record<string, number> = {};
+    for (const sid of form.selectedServices) {
+      const svc = serviceTypes.find((s) => s.id === sid);
+      if (svc) serviceNames[sid] = svc.name;
+      if (pricing[sid]) servicePrices[sid] = pricing[sid];
+    }
+    const draft: BookingDraft = {
+      id: draftId,
+      step: currentStep,
+      createdAt: resumeDraft?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      city: form.city ? { id: form.city.id, name: form.city.name } : null,
+      carModel: form.carModel ? { id: form.carModel.id, make: form.carModel.make, model_name: form.carModel.model_name, variant: form.carModel.variant } : null,
+      customerName: form.customerName || undefined,
+      customerPhone: form.customerPhone || undefined,
+      selectedCategory: selectedCategory,
+      selectedServices: form.selectedServices,
+      serviceNames,
+      servicePrices,
+      pickupRequired: form.pickupRequired,
+      pickupDate: form.pickupDate || undefined,
+      pickupTime: form.pickupTime || undefined,
+      pickupAddress: form.pickupAddress || undefined,
+      vehicleNumber: form.vehicleNumber || undefined,
+      paymentMethod: form.paymentMethod || undefined,
+    };
+    saveBookingDraft(draft);
   };
 
   // ── Data Fetching ───────────────────────────────────────────────
@@ -984,6 +1064,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
 
+      // Clear draft on successful booking
+      removeBookingDraft(draftId);
+
       const createdLeadId = json?.lead?.id;
 
       if (form.paymentMethod === 'PAY_NOW' && couponAdjustedTotal > 0 && createdLeadId) {
@@ -1327,9 +1410,15 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
     setOtpLoading(true);
     try {
+      let sessionToken: string | null = null;
+
       if (otpChannel === 'whatsapp') {
         const cleanPhone = form.customerPhone.replace(/\D/g, '');
-        const payload = JSON.stringify({ phone: cleanPhone, otp: otpValue.trim() });
+        const payload = JSON.stringify({
+          phone: cleanPhone,
+          otp: otpValue.trim(),
+          displayName: form.customerName?.trim() || undefined,
+        });
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
           'x-mobile-client': 'true',
@@ -1363,12 +1452,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         }
 
         if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
-        setOtpVerified(true);
+        sessionToken = json?.session_token || null;
       } else {
         if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
-        await otpConfirmation.confirm(otpValue.trim());
-        setOtpVerified(true);
+        const userCredential = await otpConfirmation.confirm(otpValue.trim());
+        if (!userCredential?.user) throw new Error('OTP verification failed');
+
+        const idToken = await userCredential.user.getIdToken();
+        const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+          body: JSON.stringify({
+            idToken,
+            displayName: form.customerName?.trim() || undefined,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Verification failed');
+        sessionToken = json?.session_token || null;
       }
+
+      // Save session and auto-login
+      if (sessionToken) {
+        await setCustomerSessionToken(sessionToken);
+        setIsLoggedIn(true);
+        // Fetch profile data (name, car, addresses) for existing users
+        fetchProfileIfLoggedIn();
+      }
+
+      setOtpVerified(true);
+      setTimeout(() => goStep(2), 300);
     } catch (error: any) {
       Alert.alert('Verification Failed', error?.message || 'Invalid OTP. Please try again.');
     } finally {
@@ -1754,25 +1867,30 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </View>
                 ) : null}
                 {visibleCategories.length > 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.tabs}
-                  >
-                    {visibleCategories.map((c) => (
-                      <TouchableOpacity
-                        key={c}
-                        style={[styles.tab, c === selectedCategory ? styles.tabActive : null]}
-                        onPress={() => setSelectedCategory(c)}
-                        activeOpacity={0.9}
-                      >
-                        <Text
-                          style={[styles.tabText, c === selectedCategory ? styles.tabTextActive : null]}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} pagingEnabled={false} contentContainerStyle={styles.categoryScrollContainer}>
+                    {visibleCategories.map((c) => {
+                      const isActive = c === selectedCategory;
+                      const iconUrl = getCategoryIconUrl(c);
+                      return (
+                        <TouchableOpacity
+                          key={c}
+                          style={[styles.categoryGridItem, isActive ? styles.categoryGridItemActive : null]}
+                          onPress={() => setSelectedCategory(c)}
+                          activeOpacity={0.85}
                         >
-                          {c}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                          <View style={[styles.categoryIconWrap, isActive ? styles.categoryIconWrapActive : null]}>
+                            {iconUrl ? (
+                              <Image source={{ uri: iconUrl }} style={styles.categoryIcon} resizeMode="contain" />
+                            ) : (
+                              <Ionicons name="construct-outline" size={22} color={isActive ? '#1D4ED8' : '#6B7280'} />
+                            )}
+                          </View>
+                          <Text style={[styles.categoryGridText, isActive ? styles.categoryGridTextActive : null]} numberOfLines={2}>
+                            {c.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </ScrollView>
                 ) : null}
 
@@ -1791,22 +1909,24 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 {isPeriodicCategory ? (
                   <View style={styles.oilTypeRow}>
                     <Text style={styles.oilTypeLabel}>Engine Oil:</Text>
-                    <TouchableOpacity
-                      style={[styles.oilTypePill, selectedOilType === 'semi' ? styles.oilTypePillActive : null]}
-                      onPress={() => setSelectedOilType('semi')}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="water-outline" size={14} color={selectedOilType === 'semi' ? '#FFFFFF' : COLORS.primary} />
-                      <Text numberOfLines={1} style={[styles.oilTypePillText, selectedOilType === 'semi' ? styles.oilTypePillTextActive : null]}>Semi Synthetic</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.oilTypePill, selectedOilType === 'full' ? styles.oilTypePillActive : null]}
-                      onPress={() => setSelectedOilType('full')}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="water" size={14} color={selectedOilType === 'full' ? '#FFFFFF' : COLORS.primary} />
-                      <Text numberOfLines={1} style={[styles.oilTypePillText, selectedOilType === 'full' ? styles.oilTypePillTextActive : null]}>Fully Synthetic</Text>
-                    </TouchableOpacity>
+                    <View style={styles.oilTypeToggle}>
+                      <TouchableOpacity
+                        style={[styles.oilTypeTab, selectedOilType === 'semi' ? styles.oilTypeTabActive : null]}
+                        onPress={() => setSelectedOilType('semi')}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="water-outline" size={13} color={selectedOilType === 'semi' ? '#FFFFFF' : COLORS.primary} />
+                        <Text style={[styles.oilTypeTabText, selectedOilType === 'semi' ? styles.oilTypeTabTextActive : null]}>Semi Synthetic</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.oilTypeTab, selectedOilType === 'full' ? styles.oilTypeTabFullActive : null]}
+                        onPress={() => setSelectedOilType('full')}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="water" size={13} color={selectedOilType === 'full' ? '#FFFFFF' : '#EA580C'} />
+                        <Text style={[styles.oilTypeTabText, selectedOilType === 'full' ? styles.oilTypeTabTextActive : { color: '#EA580C' }]}>Fully Synthetic</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : null}
 
@@ -1885,6 +2005,24 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             <Text style={styles.serviceDesc} numberOfLines={2}>
                               {s.description}
                             </Text>
+                          ) : null}
+
+                          {/* MyFNG Prime Membership Promo */}
+                          {price > 0 ? (
+                            <View style={styles.membershipPromo}>
+                              <Text style={styles.membershipPromoLine}>
+                                Get <Text style={styles.membershipPromoBold}>MyFNG Prime</Text> — service at{' '}
+                                <Text style={styles.membershipPromoPrice}>{inr(Math.round(price * 0.9))}</Text>
+                                {' '}<Text style={styles.membershipPromoStrike}>{inr(price)}</Text>
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.membershipActivateBtn}
+                                activeOpacity={0.85}
+                                onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
+                              >
+                                <Text style={styles.membershipActivateBtnText}>Activate Membership Now</Text>
+                              </TouchableOpacity>
+                            </View>
                           ) : null}
 
                           {selected ? (
@@ -2451,12 +2589,53 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     </View>
                   </Modal>
                 ) : null}
+
+                {/* FOMO: Membership reminder — shown after date + time + address filled */}
+                {totalPrice > 0 && form.pickupDate && form.pickupTime && form.pickupAddress.trim() ? (
+                  <TouchableOpacity
+                    style={styles.fomoCard}
+                    activeOpacity={0.85}
+                    onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
+                  >
+                    <View style={styles.fomoIconWrap}>
+                      <Ionicons name="diamond" size={16} color="#F59E0B" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fomoText}>
+                        You could save <Text style={styles.fomoHighlight}>{inr(totalPrice - Math.round(totalPrice * 0.9))}</Text> on this booking with MyFNG Prime!
+                      </Text>
+                    </View>
+                    <Text style={styles.fomoCta}>Activate →</Text>
+                  </TouchableOpacity>
+                ) : null}
               </>
             ) : null}
 
             {/* ── Step 4: Payment + Coupon + Summary ── */}
             {step === 4 ? (
               <>
+                {/* FOMO: Last chance membership reminder */}
+                {totalPrice > 0 ? (
+                  <TouchableOpacity
+                    style={styles.fomoCardUrgent}
+                    activeOpacity={0.85}
+                    onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
+                  >
+                    <View style={styles.fomoUrgentTop}>
+                      <Ionicons name="flash" size={14} color="#FFFFFF" />
+                      <Text style={styles.fomoUrgentTitle}>Last chance! Don't miss out</Text>
+                    </View>
+                    <Text style={styles.fomoUrgentText}>
+                      Activate MyFNG Prime now & pay only{' '}
+                      <Text style={{ fontWeight: '900' }}>{inr(Math.round(totalPrice * 0.9))}</Text>
+                      {' '}instead of {inr(totalPrice)} — save {inr(totalPrice - Math.round(totalPrice * 0.9))} today!
+                    </Text>
+                    <View style={styles.fomoUrgentBtn}>
+                      <Text style={styles.fomoUrgentBtnText}>Activate Membership Now</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
+
                 {/* Pay Later */}
                 <TouchableOpacity
                   style={[styles.payRow, form.paymentMethod === 'PAY_LATER' ? styles.payRowActive : null]}
@@ -2896,8 +3075,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     }
 
                     const uspRows: string[][] = [];
-                    for (let i = 0; i < usps.length; i += 3) {
-                      uspRows.push(usps.slice(i, i + 3));
+                    for (let i = 0; i < usps.length; i += 2) {
+                      uspRows.push(usps.slice(i, i + 2));
                     }
 
                     return (
@@ -2942,21 +3121,21 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             showsVerticalScrollIndicator
                             nestedScrollEnabled
                           >
-                            {/* What you get (USPs in 3-column rows) */}
+                            {/* What you get (USPs in 2-column rows) */}
                             <View style={{ backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1, borderColor: '#DBEAFE', padding: 12, marginBottom: 16 }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                                 <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
                                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>What you get</Text>
                               </View>
                               {uspRows.map((row, rIdx) => (
-                                <View key={rIdx} style={{ flexDirection: 'row', gap: 6, marginBottom: rIdx < uspRows.length - 1 ? 6 : 0 }}>
+                                <View key={rIdx} style={{ flexDirection: 'row', gap: 8, marginBottom: rIdx < uspRows.length - 1 ? 8 : 0 }}>
                                   {row.map((usp) => (
-                                    <View key={usp} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 20, borderWidth: 1, borderColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 5 }}>
-                                      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#2563EB' }} />
-                                      <Text style={{ fontSize: 10, fontWeight: '600', color: '#374151' }} numberOfLines={1}>{usp}</Text>
+                                    <View key={usp} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10, borderWidth: 1, borderColor: '#DBEAFE', paddingHorizontal: 10, paddingVertical: 7 }}>
+                                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#2563EB' }} />
+                                      <Text style={{ fontSize: 11, fontWeight: '600', color: '#374151', flexShrink: 1 }}>{usp}</Text>
                                     </View>
                                   ))}
-                                  {row.length < 3 ? Array.from({ length: 3 - row.length }).map((_, i) => <View key={`empty-${i}`} style={{ flex: 1 }} />) : null}
+                                  {row.length < 2 ? <View style={{ flex: 1 }} /> : null}
                                 </View>
                               ))}
                             </View>
@@ -3002,6 +3181,27 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             {/* Disclaimer */}
                             {disclaimer ? (
                               <Text style={{ marginTop: 12, fontSize: 11, fontStyle: 'italic', color: '#DC2626' }}>{disclaimer}</Text>
+                            ) : null}
+
+                            {/* MyFNG Prime Membership Promo in modal */}
+                            {pricing[detailsService.id] > 0 ? (
+                              <View style={[styles.membershipPromo, { marginTop: 16 }]}>
+                                <Text style={styles.membershipPromoLine}>
+                                  Get <Text style={styles.membershipPromoBold}>MyFNG Prime</Text> — service at{' '}
+                                  <Text style={styles.membershipPromoPrice}>{inr(Math.round(pricing[detailsService.id] * 0.9))}</Text>
+                                  {' '}<Text style={styles.membershipPromoStrike}>{inr(pricing[detailsService.id])}</Text>
+                                </Text>
+                                <TouchableOpacity
+                                  style={styles.membershipActivateBtn}
+                                  activeOpacity={0.85}
+                                  onPress={() => {
+                                    setDetailsService(null);
+                                    navigation.navigate('Settings', { subPage: 'Membership' });
+                                  }}
+                                >
+                                  <Text style={styles.membershipActivateBtnText}>Activate Membership Now</Text>
+                                </TouchableOpacity>
+                              </View>
                             ) : null}
                           </ScrollView>
                         </View>
@@ -3349,6 +3549,51 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: '#EEF6FF', borderColor: 'rgba(0,136,232,0.18)' },
   tabText: { fontSize: 11, fontWeight: '900', color: COLORS.gray[700] },
   tabTextActive: { color: COLORS.primaryDark },
+  categoryScrollContainer: {
+    paddingBottom: 12,
+    gap: 10,
+  },
+  categoryGridItem: {
+    width: (Dimensions.get('window').width - 32 - 30) / 4,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+  },
+  categoryGridItemActive: {
+    borderColor: '#1D4ED8',
+    backgroundColor: '#EFF6FF',
+  },
+  categoryIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  categoryIconWrapActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  categoryIcon: {
+    width: 50,
+    height: 50,
+  },
+  categoryGridText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#4B5563',
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  categoryGridTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '800',
+  },
   scopedHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3389,24 +3634,44 @@ const styles = StyleSheet.create({
   },
   datePickerModalTitle: { fontSize: 15, fontWeight: '900', color: COLORS.primaryDark },
   datePickerModalDone: { fontSize: 15, fontWeight: '900', color: COLORS.primary },
-  oilTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  oilTypeLabel: { fontSize: 11, fontWeight: '800', color: COLORS.gray[600] },
-  oilTypePill: {
+  oilTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  oilTypeLabel: { fontSize: 12, fontWeight: '800', color: COLORS.gray[700] },
+  oilTypeToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 25,
+    padding: 3,
+  },
+  oilTypeTab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
-    backgroundColor: '#FFFFFF',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: 'transparent',
   },
-  oilTypePillActive: { backgroundColor: COLORS.primary },
-  oilTypePillText: { fontSize: 10, fontWeight: '800', color: COLORS.primary },
-  oilTypePillTextActive: { color: '#FFFFFF' },
+  oilTypeTabActive: {
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  oilTypeTabFullActive: {
+    backgroundColor: '#EA580C',
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  oilTypeTabText: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  oilTypeTabTextActive: { color: '#FFFFFF' },
   loadingBox: { paddingVertical: 18, alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '800', color: COLORS.gray[600] },
   serviceList: { marginTop: 10, gap: 10 },
@@ -3901,6 +4166,123 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '800',
     color: COLORS.primary,
+  },
+
+  // MyFNG Prime Membership Promo
+  membershipPromo: {
+    marginTop: 12,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  membershipPromoLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#78350F',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  membershipPromoBold: {
+    fontWeight: '900',
+    color: '#B45309',
+  },
+  membershipPromoPrice: {
+    fontWeight: '900',
+    color: '#16A34A',
+    fontSize: 13,
+  },
+  membershipPromoStrike: {
+    textDecorationLine: 'line-through',
+    color: '#9CA3AF',
+    fontSize: 11,
+  },
+  membershipActivateBtn: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  membershipActivateBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+
+  // FOMO Membership banners
+  fomoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 12,
+    gap: 10,
+    marginBottom: 12,
+  },
+  fomoIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fomoText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#78350F',
+    lineHeight: 17,
+  },
+  fomoHighlight: {
+    fontWeight: '900',
+    color: '#B45309',
+  },
+  fomoCta: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#D97706',
+  },
+  fomoCardUrgent: {
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  fomoUrgentTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  fomoUrgentTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  fomoUrgentText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FEE2E2',
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  fomoUrgentBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  fomoUrgentBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#DC2626',
   },
 
   // Step 3 — flat section (matches Cart page clean UI)
