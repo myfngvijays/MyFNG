@@ -327,3 +327,12 @@
     display: none;
   }
 }
+
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+
+.animate-blink {
+  animation: blink 3s infinite;
+}

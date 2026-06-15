@@ -39,6 +39,8 @@ import {
   Calendar,
   Wrench,
   ArrowUp,
+  Crown,
+  X,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -88,6 +90,8 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 export default function HomePage() {
   const [activeCarType, setActiveCarType] = useState<'hatchback' | 'sedan' | 'suv'>('sedan');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [showPrimeInChat, setShowPrimeInChat] = useState(false);
+  const [showOtherServices, setShowOtherServices] = useState(false);
   const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(0); // Added for How It Works section
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
@@ -1936,25 +1940,13 @@ export default function HomePage() {
 
 
 
-      {/* Floating Quick Book – above mobile bottom bar when visible (lg:hidden) */}
-      {!isChatOpen && (
-        <div className="fixed bottom-[5.25rem] right-3 z-50 lg:hidden">
-          <a
-            href="/book-service"
-            className="bg-white/30 text-brand-primary px-4 py-2.5 rounded-full shadow-xl shadow-blue-500/15 transition-all transform hover:scale-105 flex items-center gap-2 group border border-white/70 backdrop-blur-lg hover:bg-white/40"
-          >
-            <Zap className="w-5 h-5 group-hover:rotate-12 transition-transform flex-shrink-0" />
-            <span className="font-semibold text-sm">Quick Book</span>
-            <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-          </a>
-        </div>
-      )}
+      {/* Floating Quick Book removed for mobile */}
 
       {/* Floating AI button hidden for mobile by request */}
 
       {/* Chatbot Modal */}
-      {false && (
-        <div className="fixed bottom-40 sm:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-80 max-w-sm bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
+      {isChatOpen && (
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-96 max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 flex flex-col" style={{ maxHeight: 'calc(100vh - 6rem)' }}>
           {suggestionModal && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
               <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
@@ -2016,58 +2008,135 @@ export default function HomePage() {
               </div>
             </div>
           )}
-          <div className="bg-brand-primary p-3 sm:p-4 flex justify-between items-center gap-2">
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-              <div className="bg-white/20 p-1 sm:p-1.5 rounded-lg flex-shrink-0">
-                <Bot className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-white" />
+
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                  <rect x="4" y="8" width="16" height="12" rx="3" fill="white" opacity="0.9"/>
+                  <rect x="9" y="4" width="6" height="5" rx="2" fill="white" opacity="0.7"/>
+                  <line x1="12" y1="2" x2="12" y2="4" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                  <circle cx="12" cy="2" r="1" fill="white"/>
+                  <rect x="8" y="12" width="3" height="2.5" rx="1" fill="#4F46E5" className="animate-blink" style={{ transformOrigin: '9.5px 13.25px' }}/>
+                  <rect x="13" y="12" width="3" height="2.5" rx="1" fill="#4F46E5" className="animate-blink" style={{ transformOrigin: '14.5px 13.25px' }}/>
+                  <path d="M9 17h6" stroke="#4F46E5" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
               </div>
-              <div className="min-w-0">
-                <p className="text-white font-bold text-xs sm:text-sm truncate">MISA AI</p>
-                <p className="text-blue-100 text-[10px] sm:text-xs truncate">
-                  MISA AI • Online
-                </p>
+              <div>
+                <p className="text-white font-bold text-sm">MISA AI</p>
+                <p className="text-white/70 text-xs">Your Car Care Assistant</p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-            <Link
-              href="/ai-booking"
-              className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
-            >
-                Open
-            </Link>
-              <Link
-                href="/ai-booking"
-                className="text-blue-100 hover:text-white text-[10px] sm:text-xs font-semibold whitespace-nowrap"
-              >
-                V2
-              </Link>
             </div>
             <button
               onClick={() => {
                 setSuggestionModal(null);
                 setIsChatOpen(false);
+                setShowPrimeInChat(false);
+                setShowOtherServices(false);
+                setChatMessages([{ id: 'm0', role: 'assistant', text: `Hi! I'm MISA AI. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikhा dunga.\n\nAapko kis type ka issue aa raha hai?` }]);
               }}
-              className="text-white/80 hover:text-white text-xl sm:text-2xl flex-shrink-0"
+              className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all"
             >
-              ×
+              <X className="w-4 h-4 text-white" />
             </button>
           </div>
-          <div ref={chatScrollRef} className="h-64 sm:h-72 md:h-80 bg-gray-50 p-3 sm:p-4 overflow-y-auto">
+
+          {/* Chat Content Area */}
+          {showPrimeInChat ? (
+            <div className="h-80 sm:h-96 bg-gray-50 p-4 overflow-y-auto">
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-purple-700 rounded-2xl p-4 text-white">
+                  <h3 className="text-base font-bold text-yellow-300 mb-1">
+                    Get MyFNG <span className="text-white">Prime</span> Membership
+                  </h3>
+                  <p className="text-yellow-300 text-lg font-bold mb-3">@ just ₹699/year!</p>
+                  
+                  <div className="inline-flex items-center gap-1.5 bg-white/15 border border-white/20 px-2.5 py-1 rounded-full text-xs font-semibold mb-3">
+                    <Clock className="w-3 h-3" />
+                    LIMITED TIME OFFER
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-1.5 mb-4">
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">%</span><span>10% Off Periodic Packages</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">💰</span><span>5% Cashback to Wallet</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">🔧</span><span>Free Top-Up & Inspection (2x)</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">🔍</span><span>Free Car Scanning (2x)</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">📋</span><span>Free Insurance Claim Help</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">💬</span><span>Prime Personal WhatsApp Group</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">⏰</span><span>Priority Slot Booking</span></div>
+                    <div className="flex items-center gap-2 text-sm"><span className="text-yellow-300">🛡️</span><span>6-Month Extended Warranty</span></div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-black text-white px-3 py-2.5 rounded-lg hover:bg-gray-900 transition-all">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 2.302a1 1 0 0 1 0 1.38l-2.302 2.302L15.396 13l2.302-2.492zM5.864 2.658L16.8 8.99l-2.302 2.302L5.864 2.658z"/></svg>
+                      <div className="text-left"><div className="text-[8px] leading-tight opacity-70">GET IT ON</div><div className="text-xs font-semibold leading-tight">Google Play</div></div>
+                    </a>
+                    <a href="https://apps.apple.com/in/app/myfng/id123456789" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-black text-white px-3 py-2.5 rounded-lg hover:bg-gray-900 transition-all">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                      <div className="text-left"><div className="text-[8px] leading-tight opacity-70">DOWNLOAD ON THE</div><div className="text-xs font-semibold leading-tight">App Store</div></div>
+                    </a>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setShowPrimeInChat(false)} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-700 py-1.5 bg-white rounded-lg border border-gray-200">← Back to options</button>
+              </div>
+            </div>
+          ) : showOtherServices ? (
+            <div className="h-80 sm:h-96 bg-gray-50 p-4 overflow-y-auto">
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <p className="text-sm font-bold text-gray-700 mb-3">Select a Service</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { name: 'AC Service', category: 'AC SERVICE', icon: '/icon-ac-service.png' },
+                    { name: 'Battery', category: 'BATTERY SERVICE', icon: '/icon-battery-service.png' },
+                    { name: 'Brake', category: 'BRAKE SERVICE', icon: '/icon-brake-service.png' },
+                    { name: 'Engine', category: 'ENGINE SERVICE', icon: '/icon-engine-service.png' },
+                    { name: 'Clutch', category: 'CLUTCH SERVICE', icon: '/icon-clutch-service.png' },
+                    { name: 'Tyre & Wheel', category: 'TYRE', icon: '/icon-tyre-service.png' },
+                    { name: 'Detailing', category: 'DETAILING SERVICE', icon: '/icon-detailing-service.png' },
+                    { name: 'Denting', category: 'DENTING', icon: '/icon-denting-service.png' },
+                    { name: 'Electrical', category: 'ELECTRICAL', icon: '/icon-electrical-service.png' },
+                    { name: 'Suspension', category: 'SUSPENSION', icon: '/icon-suspension-service.png' },
+                  ].map((s) => (
+                    <button
+                      key={s.category}
+                      type="button"
+                      onClick={() => { window.location.href = `/book-service?prefill_category=${encodeURIComponent(s.category)}`; }}
+                      className="p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all text-center group"
+                    >
+                      <div className="w-12 h-12 mx-auto mb-1.5 flex items-center justify-center">
+                        <img src={s.icon} alt={s.name} className="w-full h-full object-contain" style={{ mixBlendMode: 'darken' }} />
+                      </div>
+                      <div className="text-[11px] font-semibold text-gray-700 leading-tight group-hover:text-blue-700">{s.name}</div>
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setShowOtherServices(false)} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-700 py-1.5 bg-white rounded-lg border border-gray-200">← Back to options</button>
+              </div>
+            </div>
+          ) : (
+          <div ref={chatScrollRef} className="h-80 sm:h-96 bg-gray-50 p-4 overflow-y-auto">
             {chatMessages.map((m) => {
               const isUser = m.role === 'user';
               return (
-                <div key={m.id} className={`mb-3 sm:mb-4 ${isUser ? 'flex justify-end' : 'flex'}`}>
+                <div key={m.id} className={`mb-4 ${isUser ? 'flex justify-end' : 'flex'}`}>
                   {!isUser && (
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-brand-primary/10 rounded-full flex items-center justify-center flex-shrink-0 mr-1.5 sm:mr-2">
-                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-primary" />
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mr-2">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <rect x="4" y="8" width="16" height="12" rx="3" fill="#3B82F6" opacity="0.2"/>
+                        <rect x="8" y="12" width="3" height="2.5" rx="1" fill="#2563EB" className="animate-blink" style={{ transformOrigin: '9.5px 13.25px' }}/>
+                        <rect x="13" y="12" width="3" height="2.5" rx="1" fill="#2563EB" className="animate-blink" style={{ transformOrigin: '14.5px 13.25px' }}/>
+                        <path d="M9 17h6" stroke="#2563EB" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
                     </div>
                   )}
-                  <div className={`max-w-[85%]`}>
+                  <div className={`max-w-[80%]`}>
                     <div
                       className={
                         isUser
-                          ? 'bg-brand-primary p-2.5 sm:p-3 rounded-xl sm:rounded-2xl rounded-tr-none shadow-sm text-xs sm:text-sm text-white'
-                          : 'bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-xs sm:text-sm text-gray-700'
+                          ? 'bg-blue-600 p-3 rounded-2xl rounded-tr-sm shadow-sm text-sm text-white'
+                          : 'bg-white p-3 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-sm text-gray-700'
                       }
                     >
                       {m.text.split('\n').map((line, idx) => {
@@ -2212,26 +2281,77 @@ export default function HomePage() {
             })}
 
             {chatLoading && (
-              <div className="flex gap-1.5 sm:gap-2 mb-3 sm:mb-4">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-brand-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-primary" />
+              <div className="flex gap-2 mb-4">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <rect x="4" y="8" width="16" height="12" rx="3" fill="#3B82F6" opacity="0.2"/>
+                    <rect x="8" y="12" width="3" height="2.5" rx="1" fill="#2563EB" className="animate-blink" style={{ transformOrigin: '9.5px 13.25px' }}/>
+                    <rect x="13" y="12" width="3" height="2.5" rx="1" fill="#2563EB" className="animate-blink" style={{ transformOrigin: '14.5px 13.25px' }}/>
+                    <path d="M9 17h6" stroke="#2563EB" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
                 </div>
-                <div className="bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-xs sm:text-sm text-gray-700">
-                  Typing...
+                <div className="bg-white p-3 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-sm text-gray-500">
+                  <span className="inline-flex gap-1">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </span>
                 </div>
               </div>
             )}
+
+            {/* Quick Action Buttons - show only when no messages yet */}
+            {chatMessages.length <= 1 && !chatLoading && !showPrimeInChat && !showOtherServices && (
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPrimeInChat(true)}
+                  className="p-2.5 bg-white border border-purple-200 rounded-xl hover:bg-purple-50 hover:border-purple-300 transition-all text-center group"
+                >
+                  <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-1.5">
+                    <Crown className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-[11px] font-semibold text-gray-900 leading-tight group-hover:text-purple-700">Prime</div>
+                  <div className="text-[9px] text-gray-500 leading-tight">Membership</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/book-service?prefill_category=PERIODIC'; }}
+                  className="p-2.5 bg-white border border-blue-200 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-all text-center group"
+                >
+                  <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-1.5">
+                    <Wrench className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-[11px] font-semibold text-gray-900 leading-tight group-hover:text-blue-700">Periodic</div>
+                  <div className="text-[9px] text-gray-500 leading-tight">Service</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowOtherServices(true)}
+                  className="p-2.5 bg-white border border-green-200 rounded-xl hover:bg-green-50 hover:border-green-300 transition-all text-center group"
+                >
+                  <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center mb-1.5">
+                    <Car className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-[11px] font-semibold text-gray-900 leading-tight group-hover:text-green-700">Other</div>
+                  <div className="text-[9px] text-gray-500 leading-tight">Services</div>
+                </button>
+              </div>
+            )}
           </div>
-          <div className="p-2.5 sm:p-3 border-t border-gray-100 bg-white">
-            <div className="flex gap-1.5 sm:gap-2">
+          )}
+
+          {/* Input Area */}
+          <div className="p-3 border-t border-gray-100 bg-white">
+            <div className="flex gap-2 items-center">
               <input
                 id="chat-draft"
                 name="chat-draft"
                 type="text"
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm focus:outline-none focus:border-brand-primary"
+                placeholder="Type here..."
+                className="flex-1 bg-gray-100 border-0 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -2245,9 +2365,9 @@ export default function HomePage() {
                   sendChatMessage(chatDraft);
                 }}
                 disabled={chatLoading}
-                className="bg-brand-primary text-white p-1.5 sm:p-2 rounded-full hover:bg-brand-primary-hover flex-shrink-0 disabled:opacity-60"
+                className="w-9 h-9 bg-blue-600 text-white rounded-full hover:bg-blue-700 flex items-center justify-center flex-shrink-0 disabled:opacity-60 transition-all"
               >
-                <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -2255,6 +2375,25 @@ export default function HomePage() {
       )}
 
       <Footer />
+
+      {/* MISA AI Bot Icon */}
+      {!isChatOpen && (
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-20 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-xl hover:shadow-2xl hover:scale-110 transition-all flex items-center justify-center group"
+          aria-label="Open MISA AI Chat"
+        >
+          <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none">
+            <rect x="4" y="8" width="16" height="12" rx="3" fill="white" opacity="0.95"/>
+            <rect x="9" y="4" width="6" height="5" rx="2" fill="white" opacity="0.7"/>
+            <line x1="12" y1="2" x2="12" y2="4" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+            <circle cx="12" cy="2" r="1" fill="white"/>
+            <rect x="8" y="12" width="3" height="2.5" rx="1" fill="#4F46E5" className="animate-blink" style={{ transformOrigin: '9.5px 13.25px' }}/>
+            <rect x="13" y="12" width="3" height="2.5" rx="1" fill="#4F46E5" className="animate-blink" style={{ transformOrigin: '14.5px 13.25px' }}/>
+            <path d="M9 17h6" stroke="#4F46E5" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </button>
+      )}
 
       {/* Scroll to Top */}
       {showScrollTop && (
