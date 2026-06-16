@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { MapPin, Loader2, ChevronDown, Search, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
@@ -38,59 +39,126 @@ function AppDownloadBanner({ onClose }: { onClose: () => void }) {
   const { hours, minutes, seconds } = useCountdown();
   const pad = (n: number) => String(n).padStart(2, '0');
 
+  const timerDigits = (compact = false) => (
+    <div className={`flex items-center ${compact ? 'gap-0.5' : 'gap-1'}`}>
+      <span
+        className={`inline-flex items-center justify-center rounded bg-white/25 font-bold tabular-nums ${
+          compact
+            ? 'min-w-[1.25rem] h-5 px-0.5 text-[10px]'
+            : 'min-w-[1.5rem] h-6 px-1 text-xs sm:text-sm'
+        }`}
+      >
+        {pad(hours)}
+      </span>
+      <span className={compact ? 'text-[10px] font-bold' : 'text-xs font-bold'}>:</span>
+      <span
+        className={`inline-flex items-center justify-center rounded bg-white/25 font-bold tabular-nums ${
+          compact
+            ? 'min-w-[1.25rem] h-5 px-0.5 text-[10px]'
+            : 'min-w-[1.5rem] h-6 px-1 text-xs sm:text-sm'
+        }`}
+      >
+        {pad(minutes)}
+      </span>
+      <span className={compact ? 'text-[10px] font-bold' : 'text-xs font-bold'}>:</span>
+      <span
+        className={`inline-flex items-center justify-center rounded bg-white/25 font-bold tabular-nums ${
+          compact
+            ? 'min-w-[1.25rem] h-5 px-0.5 text-[10px]'
+            : 'min-w-[1.5rem] h-6 px-1 text-xs sm:text-sm'
+        }`}
+      >
+        {pad(seconds)}
+      </span>
+    </div>
+  );
+
+  const storeButtons = (compact = false) => (
+    <div className={`flex items-center ${compact ? 'gap-1' : 'gap-2'}`}>
+      <a
+        href="https://play.google.com/store/apps/details?id=com.myfng.app"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`inline-flex items-center justify-center bg-white text-blue-700 hover:bg-blue-50 rounded-md font-bold transition-all shadow-sm whitespace-nowrap ${
+          compact
+            ? 'gap-1 px-2 py-1 h-7 text-[9px]'
+            : 'gap-1.5 px-3 py-1.5 h-8 text-xs sm:text-sm'
+        }`}
+      >
+        <svg viewBox="0 0 24 24" className={`fill-current flex-shrink-0 ${compact ? 'w-3 h-3' : 'w-4 h-4'}`} xmlns="http://www.w3.org/2000/svg">
+          <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-1.4l2.237 1.296a1 1 0 0 1 0 1.794l-2.237 1.296-2.532-2.543 2.532-2.843zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z" />
+        </svg>
+        Google Play
+      </a>
+      <a
+        href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`inline-flex items-center justify-center bg-white text-blue-700 hover:bg-blue-50 rounded-md font-bold transition-all shadow-sm whitespace-nowrap ${
+          compact
+            ? 'gap-1 px-2 py-1 h-7 text-[9px]'
+            : 'gap-1.5 px-3 py-1.5 h-8 text-xs sm:text-sm'
+        }`}
+      >
+        <svg viewBox="0 0 24 24" className={`fill-current flex-shrink-0 ${compact ? 'w-3 h-3' : 'w-4 h-4'}`} xmlns="http://www.w3.org/2000/svg">
+          <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+        </svg>
+        App Store
+      </a>
+    </div>
+  );
+
   return (
-    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 text-white relative">
-      <div className="container mx-auto px-2 pr-8 sm:px-10 md:px-12 py-1.5 sm:py-2 flex items-center justify-between sm:justify-center gap-2 sm:gap-3 md:gap-4">
-        {/* Left: text */}
-        <span className="text-[9px] sm:text-xs md:text-sm font-bold sm:whitespace-nowrap min-w-0">
-          📱 Download MyFNG App &amp; Get 10% OFF
-          <br className="sm:hidden" />
-          <span className="hidden sm:inline"> | </span>
-          <span className="text-yellow-200">Limited-Time Launch Offer →</span>
-        </span>
-
-        {/* Right: timer + buttons */}
-        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
-          <div className="flex items-center gap-0.5 sm:gap-1">
-            <span className="inline-flex items-center justify-center w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded bg-white/20 text-[8px] sm:text-xs md:text-sm font-bold tabular-nums">{pad(hours)}</span>
-            <span className="text-[8px] sm:text-xs font-bold">:</span>
-            <span className="inline-flex items-center justify-center w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded bg-white/20 text-[8px] sm:text-xs md:text-sm font-bold tabular-nums">{pad(minutes)}</span>
-            <span className="text-[8px] sm:text-xs font-bold">:</span>
-            <span className="inline-flex items-center justify-center w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded bg-white/20 text-[8px] sm:text-xs md:text-sm font-bold tabular-nums">{pad(seconds)}</span>
-          </div>
-          <a
-            href="https://play.google.com/store/apps/details?id=com.myfng.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 bg-white text-blue-700 hover:bg-blue-50 rounded sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all shadow-sm"
-          >
-            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-1.4l2.237 1.296a1 1 0 0 1 0 1.794l-2.237 1.296-2.532-2.543 2.532-2.843zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/></svg>
-            <span className="hidden sm:inline">Android</span>
-          </a>
-          <a
-            href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 bg-white text-blue-700 hover:bg-blue-50 rounded sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all shadow-sm"
-          >
-            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-            <span className="hidden sm:inline">iOS</span>
-          </a>
+    <div className="text-white relative">
+      {/* Mobile only: compact red strip with offer + timer */}
+      <div className="lg:hidden bg-red-600">
+        <div className="container mx-auto px-3 py-1 pr-8 flex items-center justify-center gap-2">
+          <span className="text-[10px] font-bold text-yellow-100 whitespace-nowrap">
+            Limited-Time Launch Offer →
+          </span>
+          {timerDigits(true)}
         </div>
-
-        <button
-          onClick={onClose}
-          className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 p-0.5 sm:p-1 rounded-full hover:bg-white/20 transition-all"
-          aria-label="Close banner"
-        >
-          <X className="w-3 h-3 sm:w-4 sm:h-4" />
-        </button>
       </div>
+
+      {/* Blue download strip */}
+      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700">
+        <div className="container mx-auto px-3 lg:px-6 py-1.5 lg:py-2 pr-8 lg:pr-10 flex items-center gap-2 lg:gap-4 lg:justify-center">
+          <p className="text-[11px] lg:text-sm font-bold leading-snug min-w-0 flex-1 break-words lg:flex-none lg:whitespace-nowrap">
+            Download MyFNG App &amp;
+            <br className="lg:hidden" />
+            <span className="hidden lg:inline"> </span>
+            Get 10% OFF
+          </p>
+
+          {/* Desktop only: offer + timer inside blue banner */}
+          <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
+            <span className="text-sm font-bold text-yellow-200 whitespace-nowrap">
+              Limited-Time Launch Offer →
+            </span>
+            {timerDigits(false)}
+          </div>
+
+          <div className="flex-shrink-0 lg:flex-shrink-0">
+            <div className="lg:hidden">{storeButtons(true)}</div>
+            <div className="hidden lg:block">{storeButtons(false)}</div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={onClose}
+        className="absolute right-1.5 lg:right-3 top-1 lg:top-1.5 p-0.5 rounded-full hover:bg-white/20 transition-all z-10"
+        aria-label="Close banner"
+      >
+        <X className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+      </button>
     </div>
   );
 }
 
 export default function Navbar() {
+  const pathname = usePathname();
+  const isHomePage = pathname === '/';
   const [showAppBanner, setShowAppBanner] = useState(true);
   const [cityName, setCityName] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(true);
@@ -292,37 +360,46 @@ export default function Navbar() {
         <AppDownloadBanner onClose={() => setShowAppBanner(false)} />
       )}
       <div className="bg-white/95 backdrop-blur-sm shadow-sm">
-      <nav className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4">
+      <nav className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 relative">
         <div className="flex items-center justify-between gap-2 sm:gap-4">
-          {/* Mobile hamburger (left side, only on small screens) */}
-          <div className="lg:hidden relative flex-shrink-0" ref={hamburgerRef}>
-            <button
-              onClick={() => setShowHamburgerMenu((v) => !v)}
-              className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700"
-              aria-label="Open navigation menu"
-            >
-              {showHamburgerMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            {/* Mobile hamburger (left side, only on small screens) */}
+            <div className="lg:hidden relative flex-shrink-0 w-9 sm:w-10" ref={hamburgerRef}>
+              <button
+                onClick={() => setShowHamburgerMenu((v) => !v)}
+                className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all text-gray-700"
+                aria-label="Open navigation menu"
+              >
+                {showHamburgerMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
 
-            {showHamburgerMenu && (
-              <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 py-2 max-h-[80vh] overflow-y-auto">
-                {NAV_LINKS}
-                <div className="px-4 pt-3 pb-1 border-t border-gray-100 mt-1">
-                  <Link
-                    href="/book-service"
-                    onClick={() => setShowHamburgerMenu(false)}
-                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all"
-                  >
-                    📅 Book Your Service Now
-                  </Link>
+              {showHamburgerMenu && (
+                <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 py-2 max-h-[80vh] overflow-y-auto">
+                  {NAV_LINKS}
+                  <div className="px-4 pt-3 pb-1 border-t border-gray-100 mt-1">
+                    <Link
+                      href="/book-service"
+                      onClick={() => setShowHamburgerMenu(false)}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all"
+                    >
+                      📅 Book Your Service Now
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            <Link href="/" className="hidden lg:flex items-center min-w-0 flex-shrink-0">
+              <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
+            </Link>
           </div>
 
-          <Link href="/" className="flex items-center min-w-0 flex-shrink-0">
-            <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
-          </Link>
+          {/* Mobile logo (right on other pages, centered on home — see absolute logo below) */}
+          {!isHomePage && (
+            <Link href="/" className="lg:hidden flex items-center min-w-0 flex-shrink-0">
+              <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 w-auto flex-shrink-0" />
+            </Link>
+          )}
 
           {/* Desktop nav (visible on lg+) */}
           <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
@@ -349,7 +426,7 @@ export default function Navbar() {
             <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
+          <div className={`items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0 ${isHomePage ? 'flex' : 'hidden lg:flex'}`}>
             {isDetecting ? (
               <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-50 rounded-full border border-blue-200 text-xs sm:text-sm text-gray-500">
                 <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
@@ -439,6 +516,16 @@ export default function Navbar() {
             ) : null}
           </div>
         </div>
+
+        {/* Mobile home: logo centered between hamburger and location */}
+        {isHomePage && (
+          <Link
+            href="/"
+            className="lg:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-auto"
+          >
+            <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 w-auto flex-shrink-0" />
+          </Link>
+        )}
       </nav>
       </div>
     </header>

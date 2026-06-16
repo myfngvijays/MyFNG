@@ -33,7 +33,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Home', href: '/', icon: Home, matchPrefixes: ['/'] },
   { label: 'Services', href: '/services', icon: Wrench, matchPrefixes: ['/services', '/car-services'] },
-  { label: 'AI Booking', href: '/ai-booking', icon: Bot, matchPrefixes: ['/ai-booking'] },
+  { label: 'MISA AI', href: '/ai-booking', icon: Bot, matchPrefixes: ['/ai-booking'] },
   {
     label: 'Roadside',
     href: '/car-roadside-assitance',

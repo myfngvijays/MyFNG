@@ -11,6 +11,19 @@ import { formatDateDMY } from "@/lib/utils";
 
 const BLOGS_PER_PAGE = 8;
 
+function getVisiblePageNumbers(currentPage: number, totalPages: number, maxVisible = 5): number[] {
+  if (totalPages <= maxVisible) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  if (currentPage <= 3) {
+    return Array.from({ length: maxVisible }, (_, i) => i + 1);
+  }
+  if (currentPage >= totalPages - 2) {
+    return Array.from({ length: maxVisible }, (_, i) => totalPages - maxVisible + i + 1);
+  }
+  return Array.from({ length: maxVisible }, (_, i) => currentPage - 2 + i);
+}
+
 interface Blog {
   id: string;
   title: string;
@@ -315,34 +328,39 @@ export default function BlogPageClient() {
                   ))}
                 </div>
                 {totalPages > 1 ? (
-                  <div className="flex items-center justify-center gap-2 mt-8">
+                  <div className="flex items-center justify-center gap-2 mt-8 px-2">
                     <button
                       type="button"
                       onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-2 rounded-md border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 rounded-md border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                       Prev
                     </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <button
-                        key={page}
-                        type="button"
-                        onClick={() => handlePageChange(page)}
-                        className={`px-3 py-2 rounded-md border text-sm ${
-                          currentPage === page
-                            ? 'bg-brand-primary text-white border-brand-primary'
-                            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
+                    <span className="text-sm text-gray-600 whitespace-nowrap sm:hidden">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <div className="hidden sm:flex items-center gap-2">
+                      {getVisiblePageNumbers(currentPage, totalPages).map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => handlePageChange(page)}
+                          className={`min-w-[2.25rem] px-3 py-2 rounded-md border text-sm ${
+                            currentPage === page
+                              ? 'bg-brand-primary text-white border-brand-primary'
+                              : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
                     <button
                       type="button"
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-2 rounded-md border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 rounded-md border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                       Next
                     </button>
