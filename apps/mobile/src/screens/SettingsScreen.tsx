@@ -40,6 +40,8 @@ import { apiFetch } from '../lib/api';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
 import { BookingDraft, getBookingDrafts, removeBookingDraft } from '../lib/bookingDraft';
+import { dismissVehicleKeys, getDismissedVehicleKeys, saveDismissedVehicleKeys } from '../lib/dismissedVehicles';
+import VehicleImage from '../components/VehicleImage';
 
 type Props = {
   navigation: any;
@@ -64,9 +66,6 @@ const LEGAL_MENU: MenuItem[] = [
   { id: 'delete', label: 'Delete Account', icon: 'trash' },
 ];
 
-const CAR_IMAGE_BASE_URL = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images';
-
-// Maps a free-text service name to the PublicServicePackages category id (1-9).
 function mapServiceNameToCategoryId(serviceName: string): string {
   const s = String(serviceName || '').toLowerCase();
   if (/\bac\b|air ?condition|cooling/.test(s)) return '2';
@@ -81,46 +80,72 @@ function mapServiceNameToCategoryId(serviceName: string): string {
   return '1';
 }
 
-function getVehicleImageUris(vehicle: any): { primary: string; fallback: string } {
-  const rawMake = String(vehicle?.make || vehicle?.vehicle_make || '').trim();
-  const rawModel = String(vehicle?.model || vehicle?.model_name || vehicle?.vehicle_model || '').trim();
-  const make = rawMake.toLowerCase().replace(/\s+/g, '-');
-  const model = rawModel.toLowerCase().replace(/\s+/g, '-');
-  const defaultImg = `${CAR_IMAGE_BASE_URL}/default-car.png`;
-  if (!make) {
-    return { primary: defaultImg, fallback: defaultImg };
-  }
-  const brandImg = `${CAR_IMAGE_BASE_URL}/${make}.png`;
-  if (!model) {
-    return { primary: brandImg, fallback: defaultImg };
-  }
-  const makePart = make.split('-')[0];
-  const folderName = `${make}-cars`;
-  const fileName = `${makePart}-${model}.png`;
-  return { primary: `${CAR_IMAGE_BASE_URL}/${folderName}/${fileName}`, fallback: brandImg };
+
+function getVehicleKey(vehicle: any, index = 0): string {
+  const INVALID_PLATES = new Set(['', 'NA', 'N/A', 'NONE', 'NULL', 'UNDEFINED']);
+  const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
+  const normalizedPlate = INVALID_PLATES.has(plate) ? '' : plate;
+  if (normalizedPlate) return normalizedPlate;
+  const make = String(vehicle?.make || vehicle?.vehicle_make || '').trim().toUpperCase();
+  const model = String(vehicle?.model || vehicle?.vehicle_model || '').trim().toUpperCase();
+  const makeModel = `${make}-${model}`.trim();
+  if (makeModel && makeModel !== '-') return makeModel;
+  return `vehicle-${index}`;
 }
 
-function VehicleImage({ vehicle, style }: { vehicle: any; style: any }) {
-  const uris = useMemo(() => getVehicleImageUris(vehicle), [vehicle]);
-  const [src, setSrc] = useState(uris.primary);
-  const [errored, setErrored] = useState(false);
-  useEffect(() => {
-    setSrc(uris.primary);
-    setErrored(false);
-  }, [uris.primary]);
-  return (
-    <Image
-      source={{ uri: src }}
-      style={style}
-      resizeMode="contain"
-      onError={() => {
-        if (!errored && src !== uris.fallback) {
-          setSrc(uris.fallback);
-          setErrored(true);
-        }
-      }}
-    />
-  );
+const EPHEMERAL_DISMISS_KEY = /^vehicle-\d+$/i;
+
+function sanitizeDismissedKeys(keys: string[]): string[] {
+  return keys.filter((key) => key && !EPHEMERAL_DISMISS_KEY.test(key));
+}
+
+function getStableVehicleDismissKeys(vehicle: any): string[] {
+  const keys = new Set<string>();
+  keys.add(getVehicleKey(vehicle));
+  const INVALID_PLATES = new Set(['', 'NA', 'N/A', 'NONE', 'NULL', 'UNDEFINED']);
+  const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
+  if (plate && !INVALID_PLATES.has(plate)) keys.add(plate);
+  const make = String(vehicle?.make || vehicle?.vehicle_make || '').trim().toUpperCase();
+  const model = String(vehicle?.model || vehicle?.vehicle_model || '').trim().toUpperCase();
+  const makeModel = `${make}-${model}`.trim();
+  if (makeModel && makeModel !== '-') keys.add(makeModel);
+  return Array.from(keys);
+}
+
+function isVehicleDismissed(vehicle: any, dismissed: Set<string>): boolean {
+  return getStableVehicleDismissKeys(vehicle).some((key) => dismissed.has(key));
+}
+
+function normalizeFuelSelection(raw: any): 'Petrol' | 'Diesel' | 'CNG' | '' {
+  const fuel = String(raw || '').trim().toLowerCase();
+  if (fuel.includes('petrol')) return 'Petrol';
+  if (fuel.includes('diesel')) return 'Diesel';
+  if (fuel.includes('cng')) return 'CNG';
+  return '';
+}
+
+function isVehicleProfileIncomplete(vehicle: any): boolean {
+  if (!vehicle?.id) return true;
+  if (!String(vehicle?.fuel_type || '').trim()) return true;
+  if (!vehicle?.year) return true;
+  return false;
+}
+
+function mapSavedVehicleRecord(v: any) {
+  const INVALID_PLATES = new Set(['', 'NA', 'N/A', 'NONE', 'NULL', 'UNDEFINED']);
+  const rawPlate = String(v?.vehicle_number || '').trim().toUpperCase();
+  const plate = INVALID_PLATES.has(rawPlate) ? '' : rawPlate;
+  return {
+    id: v?.id || null,
+    vehicle_number: plate || null,
+    make: String(v?.make || '').trim() || null,
+    model: String(v?.model || '').trim() || null,
+    fuel_type: v?.fuel_type || null,
+    year: v?.year || null,
+    vin: v?.vin || null,
+    insurance_expiry: v?.insurance_expiry || null,
+    odometer_km: v?.odometer_km ?? null,
+  };
 }
 
 export default function SettingsScreen({ navigation, route }: Props) {
@@ -137,6 +162,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const activeSubPageRef = useRef(activeSubPage);
   activeSubPageRef.current = activeSubPage;
   const [vehicleEntryOnly, setVehicleEntryOnly] = useState(false);
+  const [dismissedVehicleKeys, setDismissedVehicleKeys] = useState<string[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
@@ -599,6 +625,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setCartLeads(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []);
       setWalletBalance(Number(walletRes?.wallet?.current_balance || 0));
       setReferralCode(String(referralRes?.code?.code || ''));
+      const phone = String(customer?.phone || '').trim();
+      const storageKey = phone || String(customer?.id || '').trim();
+      if (storageKey) {
+        const rawDismissed = await getDismissedVehicleKeys(storageKey);
+        const dismissed = sanitizeDismissedKeys(rawDismissed);
+        setDismissedVehicleKeys(dismissed);
+        if (dismissed.length !== rawDismissed.length) {
+          await saveDismissedVehicleKeys(storageKey, dismissed);
+        }
+      } else {
+        setDismissedVehicleKeys([]);
+      }
     } catch (_err) {
       // Keep UI usable even if one endpoint fails.
     } finally {
@@ -631,6 +669,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           setShowAddAddress(false);
           setWalletBalance(0);
           setReferralCode('');
+          setDismissedVehicleKeys([]);
           return;
         }
         await hydrateCustomerData();
@@ -674,6 +713,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const allAssociatedVehicles = useMemo(() => {
     const map = new Map<string, any>();
+    const occupiedMakeModels = new Set<string>();
     const INVALID_PLATES = new Set(['', 'NA', 'N/A', 'NONE', 'NULL', 'UNDEFINED']);
     const normalizePlate = (raw: any) => {
       const plate = String(raw || '').trim().toUpperCase();
@@ -687,14 +727,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const model = String(v?.model || '').trim();
       const key = plate || `${make}-${model}`.trim().toUpperCase();
       if (!key) return;
-      map.set(key, {
-        id: v?.id || null,
-        vehicle_number: plate || null,
-        make: make || null,
-        model: model || null,
-        fuel_type: v?.fuel_type || null,
-        year: v?.year || null,
-      });
+      map.set(key, mapSavedVehicleRecord({ ...v, vehicle_number: plate || null }));
+      if (make && model) occupiedMakeModels.add(`${make}-${model}`.trim().toUpperCase());
     });
 
     // Add order-derived vehicles only if they aren't already covered by a saved vehicle.
@@ -705,9 +739,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
       if (!make && !model && !plate) return;
       const key = plate || `${make}-${model}`.trim().toUpperCase();
       if (!key) return;
-      // If a saved vehicle already matches by plate OR make-model, skip.
       const makeModelKey = `${make}-${model}`.trim().toUpperCase();
-      if (map.has(key) || (makeModelKey && map.has(makeModelKey))) return;
+      if (map.has(key) || (makeModelKey && (map.has(makeModelKey) || occupiedMakeModels.has(makeModelKey)))) return;
       map.set(key, {
         id: null,
         vehicle_number: plate || null,
@@ -715,53 +748,118 @@ export default function SettingsScreen({ navigation, route }: Props) {
         model: model || null,
         fuel_type: o?.fuel_type || null,
         year: o?.year || null,
+        vin: null,
+        insurance_expiry: null,
+        odometer_km: null,
       });
     });
 
-    return Array.from(map.values());
-  }, [orders, vehicles]);
+    const dismissed = new Set(sanitizeDismissedKeys(dismissedVehicleKeys));
+    return Array.from(map.values()).filter((vehicle) => !isVehicleDismissed(vehicle, dismissed));
+  }, [orders, vehicles, dismissedVehicleKeys]);
 
   useEffect(() => {
     if (!allAssociatedVehicles.length) {
       setSelectedVehicleKey(null);
       return;
     }
-    const currentExists = allAssociatedVehicles.some((v, idx) => {
-      const plate = String(v?.vehicle_number || '').trim().toUpperCase();
-      const key = plate || `vehicle-${idx}`;
-      return key === selectedVehicleKey;
-    });
+    if (vehicleEntryOnly) return;
+    const currentExists = allAssociatedVehicles.some((v, idx) => getVehicleKey(v, idx) === selectedVehicleKey);
     if (!currentExists) {
       const first = allAssociatedVehicles[0];
-      const firstPlate = String(first?.vehicle_number || '').trim().toUpperCase();
-      setSelectedVehicleKey(firstPlate || 'vehicle-0');
+      setSelectedVehicleKey(first ? getVehicleKey(first, 0) : null);
     }
-  }, [allAssociatedVehicles, selectedVehicleKey]);
+  }, [allAssociatedVehicles, selectedVehicleKey, vehicleEntryOnly]);
 
   const selectedVehicle = useMemo(() => {
-    if (!allAssociatedVehicles.length) return primaryVehicle;
-    const found = allAssociatedVehicles.find((v, idx) => {
-      const plate = String(v?.vehicle_number || '').trim().toUpperCase();
-      const key = plate || `vehicle-${idx}`;
-      return key === selectedVehicleKey;
-    });
-    return found || allAssociatedVehicles[0] || primaryVehicle;
-  }, [allAssociatedVehicles, selectedVehicleKey, primaryVehicle]);
+    if (vehicleEntryOnly) return null;
+    if (!allAssociatedVehicles.length) return null;
+    if (!selectedVehicleKey) return allAssociatedVehicles[0];
+    const found = allAssociatedVehicles.find((v, idx) => getVehicleKey(v, idx) === selectedVehicleKey);
+    return found || allAssociatedVehicles[0];
+  }, [allAssociatedVehicles, selectedVehicleKey, vehicleEntryOnly]);
 
-  const vehicleCarouselData = useMemo(() => {
-    if (allAssociatedVehicles.length > 0) return allAssociatedVehicles;
-    if (selectedVehicle) return [selectedVehicle];
-    return [];
-  }, [allAssociatedVehicles, selectedVehicle]);
+  const vehicleCarouselData = useMemo(() => allAssociatedVehicles, [allAssociatedVehicles]);
 
   const activeVehicleIndex = useMemo(() => {
-    const idx = vehicleCarouselData.findIndex((vehicle, index) => {
-      const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
-      const key = plate || `vehicle-${index}`;
-      return key === selectedVehicleKey;
-    });
+    const idx = vehicleCarouselData.findIndex((vehicle, index) => getVehicleKey(vehicle, index) === selectedVehicleKey);
     return idx >= 0 ? idx : 0;
   }, [vehicleCarouselData, selectedVehicleKey]);
+
+  const clearVehicleForm = useCallback(() => {
+    setCarSearch('');
+    setSelectedCar(null);
+    setCarSuggestions([]);
+    setCarSearchFocused(false);
+    setFuelType('');
+    setCarNumberParts(['']);
+    setRegDate('');
+    setRegDateValue(new Date());
+    setChassisNumber('');
+    setInsuranceExpiry('');
+    setInsuranceExpiryValue(new Date());
+    setOdometerReading('');
+  }, []);
+
+  const fillVehicleFormFromRecord = useCallback((vehicle: any) => {
+    const vMake = String(vehicle?.make || vehicle?.vehicle_make || '').trim();
+    const vModel = String(vehicle?.model || vehicle?.vehicle_model || '').trim();
+    const label = [vMake, vModel].filter(Boolean).join(' ');
+
+    setSelectedCar(vMake && vModel ? { make: vMake, model: vModel, raw: vehicle } : null);
+    setCarSearch(label);
+    setCarSuggestions([]);
+    setCarSearchFocused(false);
+    setFuelType(normalizeFuelSelection(vehicle?.fuel_type));
+
+    const vehicleYear = String(vehicle?.year || '').trim();
+    if (vehicleYear) {
+      setRegDate(vehicleYear);
+      const parsed = new Date(Number(vehicleYear), 0, 1);
+      if (!Number.isNaN(parsed.getTime())) setRegDateValue(parsed);
+    } else {
+      setRegDate('');
+      setRegDateValue(new Date());
+    }
+
+    const rawPlate = String(vehicle?.vehicle_number || '').toUpperCase();
+    setCarNumberParts([rawPlate.replace(/[^A-Z0-9]/g, '')]);
+
+    const vin = String(vehicle?.vin || '').trim();
+    setChassisNumber(vin ? vin.slice(-5).toUpperCase() : '');
+
+    if (vehicle?.insurance_expiry) {
+      const iso = String(vehicle.insurance_expiry).split('T')[0];
+      const [yyyy, mm, dd] = iso.split('-');
+      if (dd && mm && yyyy) {
+        setInsuranceExpiry(`${dd}-${mm}-${yyyy}`);
+        setInsuranceExpiryValue(new Date(Number(yyyy), Number(mm) - 1, Number(dd)));
+      } else {
+        setInsuranceExpiry('');
+        setInsuranceExpiryValue(new Date());
+      }
+    } else {
+      setInsuranceExpiry('');
+      setInsuranceExpiryValue(new Date());
+    }
+
+    setOdometerReading(vehicle?.odometer_km != null && vehicle?.odometer_km !== '' ? String(vehicle.odometer_km) : '');
+  }, []);
+
+  const openVehicleEditor = useCallback((vehicle: any, index = 0, addMode = false) => {
+    const key = getVehicleKey(vehicle, index);
+    if (addMode) {
+      clearVehicleForm();
+      setVehicleEntryOnly(true);
+      setSelectedVehicleKey(null);
+    } else {
+      setVehicleEntryOnly(false);
+      setSelectedVehicleKey(key);
+      fillVehicleFormFromRecord(vehicle);
+    }
+    setProfileStep(2);
+    setActiveSubPage('My Profile');
+  }, [clearVehicleForm, fillVehicleFormFromRecord]);
 
   const persistProfile = async (collapseEditor = true) => {
     try {
@@ -873,34 +971,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (activeSubPage !== 'My Profile') return;
+    if (vehicleEntryOnly) return;
     if (!selectedVehicle) return;
-
-    const searchText = [selectedVehicle?.make, selectedVehicle?.model].filter(Boolean).join(' ').trim();
-    if (searchText) {
-      setCarSearch(searchText);
-      setSelectedCar({
-        make: String(selectedVehicle?.make || '').trim(),
-        model: String(selectedVehicle?.model || '').trim(),
-      });
-    }
-
-    if (selectedVehicle?.fuel_type) {
-      const vehicleFuel = String(selectedVehicle.fuel_type).trim().toLowerCase();
-      if (vehicleFuel.includes('petrol')) setFuelType('Petrol');
-      else if (vehicleFuel.includes('diesel')) setFuelType('Diesel');
-      else if (vehicleFuel.includes('cng')) setFuelType('CNG');
-    }
-
-    const vehicleYear = String(selectedVehicle?.year || '').trim();
-    if (vehicleYear) {
-      setRegDate((prev) => prev || vehicleYear);
-    }
-
-    const rawVehicleNumber = String(selectedVehicle?.vehicle_number || '').toUpperCase();
-    if (!rawVehicleNumber) return;
-    const compact = rawVehicleNumber.replace(/[^A-Z0-9]/g, '');
-    setCarNumberParts([compact]);
-  }, [activeSubPage, selectedVehicle]);
+    fillVehicleFormFromRecord(selectedVehicle);
+  }, [activeSubPage, selectedVehicle, vehicleEntryOnly, fillVehicleFormFromRecord]);
 
   useEffect(() => {
     if (activeSubPage !== 'My Profile') return;
@@ -1285,26 +1359,64 @@ export default function SettingsScreen({ navigation, route }: Props) {
       is_default: true,
     };
 
-    const existingVehicle = allAssociatedVehicles.find((v: any) =>
-      String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber,
+    const existingSaved = (vehicles || []).find(
+      (v: any) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber,
     );
+    const existingVehicle = existingSaved
+      || allAssociatedVehicles.find((v: any) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber);
+
+    const addingNewVehicle = vehicleEntryOnly;
+
+    const applySavedVehicle = (savedVehicle: any) => {
+      if (!savedVehicle) return;
+      setVehicles((prev) => {
+        const idx = prev.findIndex(
+          (v) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber,
+        );
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = savedVehicle;
+          return next;
+        }
+        return [savedVehicle, ...prev];
+      });
+      const stableKeys = getStableVehicleDismissKeys(savedVehicle);
+      setDismissedVehicleKeys((prev) => prev.filter((key) => !stableKeys.includes(key)));
+    };
 
     try {
+      let savedVehicle: any = null;
       if (existingVehicle?.id) {
-        await apiFetch(`/api/customer/vehicles/${existingVehicle.id}`, {
+        const res = await apiFetch<any>(`/api/customer/vehicles/${existingVehicle.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(vehiclePayload),
         });
+        savedVehicle = res?.vehicle || { ...existingVehicle, ...vehiclePayload };
       } else {
-        await apiFetch('/api/customer/vehicles', {
+        const res = await apiFetch<any>('/api/customer/vehicles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(vehiclePayload),
         });
+        savedVehicle = res?.vehicle || { id: null, ...vehiclePayload };
       }
+      applySavedVehicle(savedVehicle);
       await hydrateCustomerData();
-      Alert.alert('Saved', 'Profile and car details have been updated.');
+      const storageKey = profileForm.phone.trim() || customerId || '';
+      if (storageKey) {
+        const cleaned = sanitizeDismissedKeys(await getDismissedVehicleKeys(storageKey));
+        const stableKeys = getStableVehicleDismissKeys(savedVehicle);
+        const nextDismissed = cleaned.filter((key) => !stableKeys.includes(key));
+        if (nextDismissed.length !== cleaned.length) {
+          await saveDismissedVehicleKeys(storageKey, nextDismissed);
+        }
+        setDismissedVehicleKeys(nextDismissed);
+      }
+      setVehicleEntryOnly(false);
+      setSelectedVehicleKey(vehicleNumber);
+      setActiveSubPage(null);
+      Alert.alert('Saved', addingNewVehicle ? 'Your vehicle has been saved.' : 'Profile and car details have been updated.');
     } catch (err: any) {
       const message = String(err?.message || '');
       if (message.toLowerCase().includes('duplicate') || message.includes('unique_vehicle_per_customer')) {
@@ -1313,13 +1425,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
           const list: any[] = vRes?.vehicles || [];
           const match = list.find((v) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber);
           if (match?.id) {
-            await apiFetch(`/api/customer/vehicles/${match.id}`, {
+            const res = await apiFetch<any>(`/api/customer/vehicles/${match.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(vehiclePayload),
             });
+            applySavedVehicle(res?.vehicle || { ...match, ...vehiclePayload });
             await hydrateCustomerData();
-            Alert.alert('Saved', 'Profile and car details have been updated.');
+            setVehicleEntryOnly(false);
+            setSelectedVehicleKey(vehicleNumber);
+            setActiveSubPage(null);
+            Alert.alert('Saved', addingNewVehicle ? 'Your vehicle has been saved.' : 'Profile and car details have been updated.');
             return;
           }
         } catch (_e2) {}
@@ -1886,18 +2002,58 @@ export default function SettingsScreen({ navigation, route }: Props) {
   ]);
 
   const onPressAddVehicle = () => {
-    if (isLoggedIn) {
-      setVehicleEntryOnly(true);
-    } else {
-      setVehicleEntryOnly(false);
-    }
+    clearVehicleForm();
+    setVehicleEntryOnly(true);
+    setSelectedVehicleKey(null);
     setProfileStep(2);
-    setCarSearch('');
-    setSelectedCar(null);
-    setFuelType('');
-    setCarNumberParts(['']);
     setActiveSubPage('My Profile');
   };
+
+  const handleDeleteVehicle = useCallback((vehicle: any, index = 0) => {
+    const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
+    const label = [vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || plate || 'this vehicle';
+    const dismissKeys = getStableVehicleDismissKeys(vehicle);
+    const storageKey = profileForm.phone.trim() || customerId || '';
+
+    const removeFromList = async () => {
+      try {
+        if (vehicle?.id) {
+          await apiFetch(`/api/customer/vehicles/${vehicle.id}`, { method: 'DELETE' });
+          await hydrateCustomerData();
+        } else {
+          if (!storageKey) {
+            Alert.alert('Remove failed', 'Please login again to remove this vehicle.');
+            return;
+          }
+          await dismissVehicleKeys(storageKey, dismissKeys);
+          setDismissedVehicleKeys((prev) => Array.from(new Set([...prev, ...dismissKeys])));
+        }
+        const removedKey = getVehicleKey(vehicle, index);
+        if (selectedVehicleKey && dismissKeys.includes(selectedVehicleKey)) {
+          setSelectedVehicleKey(null);
+          clearVehicleForm();
+        } else if (selectedVehicleKey === removedKey) {
+          setSelectedVehicleKey(null);
+          clearVehicleForm();
+        }
+        if (vehicleEntryOnly) setVehicleEntryOnly(false);
+        Alert.alert('Removed', 'Vehicle removed from your list.');
+      } catch (err: any) {
+        Alert.alert('Remove failed', err?.message || 'Unable to remove vehicle.');
+      }
+    };
+
+    Alert.alert(
+      vehicle?.id ? 'Delete vehicle?' : 'Remove vehicle?',
+      vehicle?.id
+        ? `Remove ${label}${plate ? ` (${plate})` : ''} from your vehicles?`
+        : `Remove ${label} from your list? Your past bookings will not be cancelled.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: vehicle?.id ? 'Delete' : 'Remove', style: 'destructive', onPress: () => { void removeFromList(); } },
+      ],
+    );
+  }, [selectedVehicleKey, vehicleEntryOnly, clearVehicleForm, hydrateCustomerData, profileForm.phone, customerId]);
 
   useEffect(() => {
     if (activeSubPage !== 'My Profile' && vehicleEntryOnly) {
@@ -1967,7 +2123,35 @@ export default function SettingsScreen({ navigation, route }: Props) {
       )}
 
       <View style={styles.vehicleCard}>
-        <Text style={styles.cardHeading}>Your Vehicles</Text>
+        <View style={styles.vehicleCardHeaderRow}>
+          <Text style={styles.cardHeading}>Your Vehicles</Text>
+          {vehicleCarouselData.length > 0 ? (
+            <View style={styles.vehicleCardActions}>
+              <TouchableOpacity
+                style={styles.vehicleActionBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  const item = vehicleCarouselData[activeVehicleIndex];
+                  if (item) openVehicleEditor(item, activeVehicleIndex, false);
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Ionicons name="pencil" size={14} color={COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.vehicleActionBtn, styles.vehicleDeleteBtn]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  const item = vehicleCarouselData[activeVehicleIndex];
+                  if (item) handleDeleteVehicle(item, activeVehicleIndex);
+                }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Ionicons name="trash-outline" size={14} color="#DC2626" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
         {vehicleCarouselData.length > 0 ? (
           <FlatList
             ref={vehiclePagerRef}
@@ -1985,12 +2169,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
               return plate || `vehicle-${index}`;
             }}
             renderItem={({ item, index }) => {
-              const plate = String(item?.vehicle_number || '').trim().toUpperCase();
+              const INVALID_PLATES = new Set(['', 'NA', 'N/A', 'NONE', 'NULL', 'UNDEFINED']);
+              const rawPlate = String(item?.vehicle_number || '').trim().toUpperCase();
+              const plate = INVALID_PLATES.has(rawPlate) ? '' : rawPlate;
+              const incomplete = isVehicleProfileIncomplete(item);
               return (
                 <View style={[styles.vehicleSwipeCard, { width: vehicleCardWidth }]}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={styles.numberPlateBadge}>
-                      <Text style={styles.numberPlateText} numberOfLines={1}>{plate || `VEHICLE ${index + 1}`}</Text>
+                      <Text style={styles.numberPlateText} numberOfLines={1}>
+                        {plate || `VEHICLE ${index + 1}`}
+                      </Text>
                     </View>
                     <Text style={styles.vehicleName} numberOfLines={1}>
                       {[item?.make, item?.model].filter(Boolean).join(' ') || 'Add your first vehicle'}
@@ -2001,6 +2190,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       </View>
                       <Text style={styles.vehicleYear}>{item?.year ? String(item.year) : '-'}</Text>
                     </View>
+                    {incomplete ? (
+                      <View style={styles.completeDetailsBadge}>
+                        <Ionicons name="alert-circle" size={11} color="#B45309" />
+                        <Text style={styles.completeDetailsBadgeText}>Complete your details</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <VehicleImage vehicle={item} style={styles.vehicleImage} />
                 </View>
@@ -2011,9 +2206,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               const index = Math.round(offset / vehicleCardSnapInterval);
               const vehicle = vehicleCarouselData[index];
               if (!vehicle) return;
-              const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
-              const key = plate || `vehicle-${index}`;
-              setSelectedVehicleKey(key);
+              setSelectedVehicleKey(getVehicleKey(vehicle, index));
             }}
           />
         ) : (
@@ -2167,6 +2360,25 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
             </View>
 
+            {!vehicleEntryOnly && selectedVehicle && isVehicleProfileIncomplete(selectedVehicle) ? (
+              <View style={styles.completeDetailsBanner}>
+                <Ionicons name="information-circle" size={18} color="#B45309" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.completeDetailsBannerTitle}>Complete your vehicle details</Text>
+                  <Text style={styles.completeDetailsBannerSub}>
+                    Add fuel type, registration year, and maintenance info for better service recommendations.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {vehicleEntryOnly ? (
+              <View style={styles.addVehicleHintBanner}>
+                <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                <Text style={styles.addVehicleHintText}>Adding a new vehicle — fill in the details below.</Text>
+              </View>
+            ) : null}
+
             {/* Step 1: Owner Information */}
             <View style={{
               borderRadius: 18,
@@ -2275,10 +2487,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           const vMake = v.make || v.vehicle_make || '';
                           const vModel = v.model || v.vehicle_model || '';
                           const label = [vMake, vModel].filter(Boolean).join(' ') || 'Vehicle';
-                          const isActive = carSearch === label;
+                          const vehicleKey = getVehicleKey(v, idx);
+                          const isActive = !vehicleEntryOnly && vehicleKey === selectedVehicleKey;
                           return (
                             <TouchableOpacity
-                              key={v.vehicle_number || idx}
+                              key={vehicleKey}
                               style={{
                                 paddingHorizontal: 14,
                                 paddingVertical: 10,
@@ -2289,18 +2502,16 @@ export default function SettingsScreen({ navigation, route }: Props) {
                               }}
                               activeOpacity={0.85}
                               onPress={() => {
-                                setSelectedCar({ make: vMake, model: vModel, raw: v });
-                                setCarSearch(label);
-                                setCarSuggestions([]);
-                                setCarSearchFocused(false);
-                                if (v.fuel_type) setFuelType(v.fuel_type);
-                                if (v.vehicle_number) {
-                                  setCarNumberParts([String(v.vehicle_number).replace(/[^A-Z0-9]/gi, '').toUpperCase()]);
-                                }
+                                setVehicleEntryOnly(false);
+                                setSelectedVehicleKey(vehicleKey);
+                                fillVehicleFormFromRecord(v);
                               }}
                             >
                               <Text style={{ fontSize: 12, fontWeight: '800', color: isActive ? '#FFFFFF' : '#374151' }}>{label}</Text>
                               {v.vehicle_number ? <Text style={{ fontSize: 10, fontWeight: '700', color: isActive ? 'rgba(255,255,255,0.8)' : '#9CA3AF', marginTop: 2 }}>{v.vehicle_number}</Text> : null}
+                              {isVehicleProfileIncomplete(v) ? (
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: isActive ? '#FEF3C7' : '#B45309', marginTop: 3 }}>Complete details</Text>
+                              ) : null}
                             </TouchableOpacity>
                           );
                         })}
@@ -2310,19 +2521,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
                             paddingVertical: 10,
                             borderRadius: 12,
                             borderWidth: 1.5,
-                            borderColor: STEP_COLORS[2].accent,
-                            backgroundColor: '#FFFFFF',
+                            borderColor: vehicleEntryOnly ? STEP_COLORS[2].accent : '#E2E8F0',
+                            backgroundColor: vehicleEntryOnly ? STEP_COLORS[2].bg : '#FFFFFF',
                             flexDirection: 'row',
                             alignItems: 'center',
                             gap: 4,
                           }}
                           activeOpacity={0.85}
                           onPress={() => {
-                            setSelectedCar(null);
-                            setCarSearch('');
-                            setCarSuggestions([]);
-                            setFuelType('');
-                            setCarNumberParts(['']);
+                            clearVehicleForm();
+                            setVehicleEntryOnly(true);
+                            setSelectedVehicleKey(null);
                           }}
                         >
                           <Ionicons name="add-circle-outline" size={16} color={STEP_COLORS[2].accent} />
@@ -4631,8 +4840,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.primary, borderStyle: 'dashed', marginTop: 4 }}
                 onPress={() => {
                   setShowVehiclePicker(false);
-                  setVehicleEntryOnly(true);
-                  setActiveSubPage('My Profile');
+                  onPressAddVehicle();
                 }}
               >
                 <Ionicons name="add" size={18} color={COLORS.primary} />
@@ -4671,9 +4879,22 @@ const styles = StyleSheet.create({
   iconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   iconCircleGhost: { width: 36, height: 36 },
   vehicleCard: { backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB', padding: 16 },
-  cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
+  vehicleCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
   vehiclePagerContent: { paddingRight: 10 },
   vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F8FBFF', paddingHorizontal: 14, paddingVertical: 12, marginRight: 10, gap: 10 },
+  vehicleCardActions: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  vehicleActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDeleteBtn: { borderColor: '#FECACA', backgroundColor: '#FEF2F2' },
   vehicleDotsRow: { marginTop: 10, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   vehicleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#D1D5DB' },
   vehicleDotActive: { width: 16, backgroundColor: COLORS.primary },
@@ -4684,7 +4905,42 @@ const styles = StyleSheet.create({
   vehicleTag: { backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   vehicleTagText: { fontSize: 9, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleYear: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
-  vehicleImage: { width: 130, height: 92, borderRadius: 12, flexShrink: 0 },
+  vehicleImage: { width: 158, height: 100, flexShrink: 0 },
+  completeDetailsBadge: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  completeDetailsBadgeText: { fontSize: 10, fontWeight: '800', color: '#B45309' },
+  completeDetailsBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 12,
+  },
+  completeDetailsBannerTitle: { fontSize: 13, fontWeight: '800', color: '#92400E' },
+  completeDetailsBannerSub: { marginTop: 2, fontSize: 11, fontWeight: '600', color: '#B45309', lineHeight: 15 },
+  addVehicleHintBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 12,
+  },
+  addVehicleHintText: { flex: 1, fontSize: 12, fontWeight: '700', color: COLORS.primary },
   addVehicleBtn: { marginTop: 12, borderRadius: 12, backgroundColor: COLORS.primary, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },

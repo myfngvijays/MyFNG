@@ -19,6 +19,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { ENV } from '../config/environment';
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
+import BotFace from '../components/BotFace';
 
 const stripEmojis = (text: string) =>
   text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{2700}-\u{27BF}\u{2B50}\u{2B55}\u{231A}-\u{23F3}\u{23E9}-\u{23EF}\u{25AA}-\u{25FE}\u{2934}-\u{2935}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').replace(/\s{2,}/g, ' ').trim();
@@ -336,7 +337,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
             <Ionicons name="arrow-back" size={20} color={COLORS.secondary} />
           </TouchableOpacity>
           <View style={styles.botAvatar}>
-            <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+            <BotFace size={28} />
           </View>
           <View style={styles.headerTextWrap}>
             <Text style={styles.headerTitle}>Misa AI</Text>
@@ -563,7 +564,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
   },

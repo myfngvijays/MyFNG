@@ -186,6 +186,8 @@ export const PRIME_MEMBERSHIP = {
   badge: 'MEMBERSHIP',
   price: '₹699',
   priceNum: 699,
+  originalPrice: '₹999',
+  originalPriceNum: 999,
   period: '/ Year',
   tagline: 'Your Car. Our Responsibility.',
   benefits: [

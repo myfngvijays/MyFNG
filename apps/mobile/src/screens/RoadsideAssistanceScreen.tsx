@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
   Animated,
-  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -12,10 +11,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
+import PrimeBanner from '../components/PrimeBanner';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall } from '../lib/phone';
 
 type Props = { navigation: any; route: any };
+
+const RSA_PHONE = '+919610448949';
 
 const RSA_SERVICES = [
   { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', icon: 'flash' as const, bg: '#F97316' },
@@ -88,7 +90,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             <TouchableOpacity
               style={s.rsaEmergencyBtn}
               activeOpacity={0.85}
-              onPress={() => openPhoneCall('+919152307030')}
+              onPress={() => openPhoneCall(RSA_PHONE)}
             >
               <Ionicons name="call" size={18} color="#DC2626" />
               <Text style={s.rsaEmergencyBtnText}>Call Emergency Helpline</Text>
@@ -106,7 +108,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                   key={svc.name}
                   style={s.serviceItem}
                   activeOpacity={0.8}
-                  onPress={() => Linking.openURL('https://wa.me/919152307030?text=Hi%2C+I+need+' + encodeURIComponent(svc.name))}
+                  onPress={() => openPhoneCall(RSA_PHONE)}
                 >
                   <View style={[s.serviceIcon, { backgroundColor: svc.bg }]}>
                     <Ionicons name={svc.icon} size={20} color="#FFFFFF" />
@@ -119,6 +121,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           </View>
 
           {/* ── Pricing Section ── */}
+          <PrimeBanner onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })} style={{ marginBottom: 16 }} />
           <Text style={s.pricingHeading}>Pricing</Text>
           <Text style={s.pricingSub}>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</Text>
 
@@ -134,7 +137,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                 <Text style={s.priceBulletText}>{t}</Text>
               </View>
             ))}
-            <TouchableOpacity style={s.towingBtn} onPress={() => openPhoneCall('+919152307030')}>
+            <TouchableOpacity style={s.towingBtn} onPress={() => openPhoneCall(RSA_PHONE)}>
               <Text style={s.towingBtnText}>Request Towing</Text>
             </TouchableOpacity>
           </View>
@@ -151,8 +154,9 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                 <Text style={s.priceBulletText}>{t}</Text>
               </View>
             ))}
-            <TouchableOpacity style={s.whatsappBtn} onPress={() => Linking.openURL('https://wa.me/919152307030')}>
-              <Text style={s.whatsappBtnText}>WhatsApp for Quote</Text>
+            <TouchableOpacity style={s.callQuoteBtn} onPress={() => openPhoneCall(RSA_PHONE)}>
+              <Ionicons name="call" size={16} color="#FFFFFF" />
+              <Text style={s.callQuoteBtnText}>Call Now for Quote</Text>
             </TouchableOpacity>
           </View>
 
@@ -382,11 +386,17 @@ const s = StyleSheet.create({
     backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center',
   },
   towingBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  whatsappBtn: {
-    marginTop: 16, height: 50, borderRadius: 16,
-    backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center',
+  callQuoteBtn: {
+    marginTop: 16,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#2563EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  whatsappBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  callQuoteBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 
   /* ── Reviews ── */
   sectionTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },

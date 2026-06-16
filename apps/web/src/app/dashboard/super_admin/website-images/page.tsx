@@ -55,6 +55,12 @@ export default function WebsiteImagesHubPage() {
             Icon={Car}
           />
           <Tile
+            title="Vehicle Images"
+            subtitle="Manage car model images shown in app Your Vehicles"
+            href="/dashboard/super_admin/website-images/vehicle-images"
+            Icon={Car}
+          />
+          <Tile
             title="Home Carousel Images"
             subtitle="Manage app hero carousel banners (up to 10)"
             href="/dashboard/super_admin/website-images/home-carousel"

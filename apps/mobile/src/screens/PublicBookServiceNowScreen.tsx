@@ -29,6 +29,7 @@ import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottom
 import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
+import VehicleImage from '../components/VehicleImage';
 
 const SERVICE_ICON_BASE = 'https://myfng.in';
 function getCategoryIconUrl(category: string): string {
@@ -102,15 +103,6 @@ function formatCar(m: CarModelRow) {
   return `${m.make} ${m.model_name}${v}`.trim();
 }
 
-const CAR_IMG_BASE = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images';
-function getCarImageUrl(make?: string, model?: string): string {
-  const m = (make || '').trim().toLowerCase().replace(/\s+/g, '-');
-  const md = (model || '').trim().toLowerCase().replace(/\s+/g, '-');
-  if (!m) return `${CAR_IMG_BASE}/default-car.png`;
-  if (!md) return `${CAR_IMG_BASE}/${m}.png`;
-  const makePart = m.split('-')[0];
-  return `${CAR_IMG_BASE}/${m}-cars/${makePart}-${md}.png`;
-}
 
 function inr(n: number) {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -1728,11 +1720,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           }
                         }}
                       >
-                        <Image
-                          source={{ uri: getCarImageUrl(v.make, v.model) }}
-                          style={styles.savedVehicleImg}
-                          resizeMode="contain"
-                        />
+                        <VehicleImage make={v.make} model={v.model} style={styles.savedVehicleImg} />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.savedVehicleName}>{[v.make, v.model].filter(Boolean).join(' ') || 'Vehicle'}</Text>
                           {v.vehicle_number ? <Text style={styles.savedVehicleNumber}>{v.vehicle_number}</Text> : null}

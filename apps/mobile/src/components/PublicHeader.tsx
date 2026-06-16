@@ -12,7 +12,7 @@ type PublicHeaderProps = {
 };
 
 export default function PublicHeader({
-  city = 'Mumbai, Maharashtra',
+  city = 'Mumbai',
   onPressSearch,
   onPressSettings,
 }: PublicHeaderProps) {

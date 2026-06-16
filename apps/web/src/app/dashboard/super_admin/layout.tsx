@@ -127,6 +127,12 @@ const navigationItems: NavItem[] = [
         description: 'Manage Car Brand Logos',
       },
       {
+        name: 'Vehicle Images',
+        href: '/dashboard/super_admin/website-images/vehicle-images',
+        icon: Car,
+        description: 'Manage vehicle model images for app profile',
+      },
+      {
         name: 'Home Carousel Images',
         href: '/dashboard/super_admin/website-images/home-carousel',
         icon: ImageIcon,

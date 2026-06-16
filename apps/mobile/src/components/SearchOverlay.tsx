@@ -1,6 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Dimensions,
+  Image,
+  Modal,
+  ScrollView,
+  Share,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '../constants/theme';
+import PrimeBanner from './PrimeBanner';
+import { getServiceIconSource } from '../lib/serviceIcons';
 
 type SearchItem = {
   id: string;
@@ -19,7 +35,6 @@ type Props = {
 };
 
 const ALL_ITEMS: SearchItem[] = [
-  // ── Car Services ──
   { id: 'periodic', title: 'Periodic Service', category: 'Car Service', icon: 'construct',
     screen: 'PublicServicePackages', params: { selectedServiceId: '1' },
     keywords: ['periodic', 'general service', 'basic service', 'maintenance', 'oil change', 'oil filter', 'air filter', '60 point check', 'regular service', 'annual service'] },
@@ -47,8 +62,6 @@ const ALL_ITEMS: SearchItem[] = [
   { id: 'denting', title: 'Denting & Painting', category: 'Car Service', icon: 'color-palette',
     screen: 'PublicServicePackages', params: { selectedServiceId: '9' },
     keywords: ['denting', 'painting', 'dent', 'scratch', 'body work', 'bumper', 'fender', 'paint', 'body repair'] },
-
-  // ── RSA ──
   { id: 'rsa', title: 'Roadside Assistance', category: 'Emergency', icon: 'call',
     screen: 'RoadsideAssistance', keywords: ['rsa', 'roadside', 'emergency', 'breakdown', 'stuck', 'towing', 'stranded'] },
   { id: 'rsa-jumpstart', title: 'Battery Jumpstart', category: 'RSA Service', icon: 'flash',
@@ -59,18 +72,12 @@ const ALL_ITEMS: SearchItem[] = [
     screen: 'RoadsideAssistance', keywords: ['fuel', 'petrol', 'diesel', 'fuel delivery', 'ran out of fuel', 'no fuel'] },
   { id: 'rsa-flat', title: 'Flat Tyre Assistance', category: 'RSA Service', icon: 'ellipse-outline',
     screen: 'RoadsideAssistance', keywords: ['flat tyre', 'puncture', 'tyre burst', 'spare tyre'] },
-
-  // ── Booking ──
   { id: 'ai', title: 'AI Assistant', category: 'Booking', icon: 'sparkles',
     screen: 'AIBooking', keywords: ['ai', 'chatbot', 'assistant', 'book', 'booking', 'quick book'] },
   { id: 'book-service', title: 'Book Service Now', category: 'Booking', icon: 'calendar',
     screen: 'PublicBookServiceNow', keywords: ['book now', 'book service', 'schedule', 'appointment'] },
-
-  // ── Find ──
   { id: 'locator', title: 'Workshop Locator', category: 'Find Us', icon: 'location',
     screen: 'PublicWorkshopLocator', keywords: ['workshop', 'locator', 'near me', 'nearest workshop', 'garage', 'find workshop'] },
-
-  // ── Account / Settings ──
   { id: 'profile', title: 'My Profile', category: 'Account', icon: 'person',
     screen: 'Settings', params: { subPage: 'My Profile' },
     keywords: ['profile', 'my profile', 'name', 'email', 'phone', 'account'] },
@@ -103,14 +110,56 @@ const ALL_ITEMS: SearchItem[] = [
     keywords: ['terms', 'conditions', 'legal', 'agreement'] },
 ];
 
-const POPULAR_CHIPS = ['Periodic Service', 'RSA', 'Brake Pads', 'Oil Change', 'Clutch Work'];
+const CAR_SERVICES = ALL_ITEMS.filter((item) => item.category === 'Car Service');
+const RSA_ITEM = ALL_ITEMS.find((item) => item.id === 'rsa')!;
+const DISPLAY_SERVICES = [...CAR_SERVICES, RSA_ITEM];
+const POPULAR_ITEMS = [
+  ALL_ITEMS.find((item) => item.id === 'periodic')!,
+  ALL_ITEMS.find((item) => item.id === 'brakes')!,
+  ALL_ITEMS.find((item) => item.id === 'denting')!,
+  RSA_ITEM,
+];
+const QUICK_ACTIONS = [
+  ALL_ITEMS.find((item) => item.id === 'orders')!,
+  ALL_ITEMS.find((item) => item.id === 'help')!,
+  ALL_ITEMS.find((item) => item.id === 'privacy')!,
+  ALL_ITEMS.find((item) => item.id === 'terms')!,
+];
+const GRID_ITEM_WIDTH = (Dimensions.get('window').width - 32 - 30) / 4;
+
+function getGridTitle(item: SearchItem) {
+  if (item.id === 'rsa') return 'RSA';
+  if (item.id === 'brakes') return 'Brakes';
+  if (item.id === 'denting') return 'Denting & Painting';
+  return item.title;
+}
+
+function ServiceIcon({ item, size = 46 }: { item: SearchItem; size?: number }) {
+  const iconSource = getServiceIconSource(item.id === 'rsa' ? 'RSA' : item.title);
+  if (iconSource) {
+    return <Image source={iconSource} style={{ width: size, height: size, marginBottom: 6 }} resizeMode="contain" />;
+  }
+  return <Ionicons name={item.icon} size={size * 0.6} color={COLORS.primary} style={{ marginBottom: 6 }} />;
+}
+
+function ServiceGridItem({ item, onPress }: { item: SearchItem; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.serviceGridItem} activeOpacity={0.85} onPress={onPress}>
+      <ServiceIcon item={item} />
+      <Text style={styles.serviceGridText} numberOfLines={2}>
+        {getGridTitle(item)}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function SearchOverlay({ visible, onClose, navigation }: Props) {
   const [query, setQuery] = useState('');
+  const insets = useSafeAreaInsets();
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return ALL_ITEMS;
+    if (!q) return [];
     return ALL_ITEMS.filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
@@ -118,6 +167,11 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
         item.keywords.some((kw) => kw.includes(q) || q.includes(kw)),
     );
   }, [query]);
+
+  const handleClose = () => {
+    setQuery('');
+    onClose();
+  };
 
   const handleSelect = (item: SearchItem) => {
     setQuery('');
@@ -130,117 +184,183 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <View style={styles.topRow}>
-          <View style={styles.inputWrap}>
-            <Ionicons name="search" size={18} color="#9CA3AF" />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search services, help, or features..."
-              placeholderTextColor="#9CA3AF"
-              style={styles.input}
-              autoFocus
-            />
-            {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery('')}>
-                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <View style={styles.screen}>
+          <View style={[styles.topRow, { paddingTop: Math.max(insets.top, 12) }]}>
+            <TouchableOpacity onPress={handleClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
+            <View style={styles.inputWrap}>
+              <Ionicons name="search" size={18} color="#9CA3AF" />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search services, help, or features..."
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
+                autoFocus
+                returnKeyType="search"
+              />
+              {query.length > 0 ? (
+                <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.cancelBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => { setQuery(''); onClose(); }} style={styles.cancelBtn}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
-          </TouchableOpacity>
+
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {!query ? (
+              <>
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Popular Searches</Text>
+                  <View style={styles.serviceGrid}>
+                    {POPULAR_ITEMS.map((item) => (
+                      <ServiceGridItem key={item.id} item={item} onPress={() => handleSelect(item)} />
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Services</Text>
+                  <View style={styles.serviceGrid}>
+                    {DISPLAY_SERVICES.map((item) => (
+                      <ServiceGridItem key={item.id} item={item} onPress={() => handleSelect(item)} />
+                    ))}
+                  </View>
+                </View>
+
+                <PrimeBanner onPress={() => handleSelect(ALL_ITEMS.find((i) => i.id === 'membership')!)} />
+
+                <View style={styles.section}>
+                  <View style={styles.serviceGrid}>
+                    {QUICK_ACTIONS.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.serviceGridItem}
+                        activeOpacity={0.85}
+                        onPress={() => handleSelect(item)}
+                      >
+                        <View style={styles.quickActionIconWrap}>
+                          <Ionicons name={item.icon} size={22} color={COLORS.primary} />
+                        </View>
+                        <Text style={styles.serviceGridText} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.results}>
+                {results.map((item) => (
+                  <TouchableOpacity key={item.id} style={styles.resultRow} onPress={() => handleSelect(item)}>
+                    <View style={styles.resultIcon}>
+                      {getServiceIconSource(item.title) ? (
+                        <Image source={getServiceIconSource(item.title)!} style={styles.resultIconImage} resizeMode="contain" />
+                      ) : (
+                        <Ionicons name={item.icon} size={16} color="#6B7280" />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resultTitle}>{item.title}</Text>
+                      <Text style={styles.resultSub}>{item.category}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
+                ))}
+                {results.length === 0 ? (
+                  <View style={styles.emptyWrap}>
+                    <Ionicons name="search-outline" size={40} color="#D1D5DB" />
+                    <Text style={styles.emptyTitle}>No results for "{query}"</Text>
+                    <Text style={styles.emptySub}>Try different keywords or browse services above</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </ScrollView>
         </View>
-
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {!query ? (
-            <>
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Popular Searches</Text>
-                <View style={styles.chips}>
-                  {POPULAR_CHIPS.map((label) => (
-                    <TouchableOpacity key={label} style={styles.chip} onPress={() => setQuery(label)}>
-                      <Text style={styles.chipText}>{label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Quick Links</Text>
-                <View style={styles.quickGrid}>
-                  <TouchableOpacity
-                    style={[styles.quickCard, styles.quickBlue]}
-                    onPress={() => handleSelect(ALL_ITEMS.find((i) => i.id === 'periodic')!)}
-                  >
-                    <Ionicons name="construct" size={18} color="#2563EB" />
-                    <Text style={styles.quickText}>Services</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.quickCard, styles.quickRed]}
-                    onPress={() => handleSelect(ALL_ITEMS.find((i) => i.id === 'rsa')!)}
-                  >
-                    <Ionicons name="call" size={18} color="#DC2626" />
-                    <Text style={styles.quickText}>RSA</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </>
-          ) : null}
-
-          <View style={styles.results}>
-            {results.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.resultRow}
-                onPress={() => handleSelect(item)}
-              >
-                <View style={styles.resultIcon}>
-                  <Ionicons name={item.icon} size={16} color="#6B7280" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.resultTitle}>{item.title}</Text>
-                  <Text style={styles.resultSub}>{item.category}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-              </TouchableOpacity>
-            ))}
-            {query.length > 0 && results.length === 0 && (
-              <View style={styles.emptyWrap}>
-                <Ionicons name="search-outline" size={40} color="#D1D5DB" />
-                <Text style={styles.emptyTitle}>No results for "{query}"</Text>
-                <Text style={styles.emptySub}>Try different keywords or browse Quick Links above</Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
   screen: { flex: 1, backgroundColor: '#FFFFFF' },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  inputWrap: { flex: 1, minHeight: 48, borderRadius: 16, backgroundColor: '#F3F4F6', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputWrap: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   input: { flex: 1, fontSize: 14, color: '#111827', fontWeight: '600' },
   cancelBtn: { paddingHorizontal: 4, paddingVertical: 8 },
-  cancelBtnText: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
-  content: { padding: 16, gap: 16 },
+  cancelBtnText: { fontSize: 14, fontWeight: '700', color: '#2563EB' },
+  content: { padding: 16, gap: 16, paddingBottom: 32 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 10, fontWeight: '800', color: '#9CA3AF', letterSpacing: 1.2, textTransform: 'uppercase' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderRadius: 999, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, paddingVertical: 8 },
-  chipText: { color: '#4B5563', fontSize: 12, fontWeight: '700' },
-  quickGrid: { flexDirection: 'row', gap: 10 },
-  quickCard: { flex: 1, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  quickBlue: { backgroundColor: '#EFF6FF' },
-  quickRed: { backgroundColor: '#FEF2F2' },
-  quickText: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  quickActionIconWrap: {
+    width: 46,
+    height: 46,
+    marginBottom: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  serviceGridItem: {
+    width: GRID_ITEM_WIDTH,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+  },
+  serviceIcon: {
+    width: 46,
+    height: 46,
+    marginBottom: 6,
+  },
+  serviceGridText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#374151',
+    textAlign: 'center',
+    lineHeight: 12,
+  },
   results: { gap: 8 },
   resultRow: { borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  resultIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  resultIcon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  resultIconImage: { width: 32, height: 32 },
   resultTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
   resultSub: { marginTop: 2, fontSize: 10, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8 },
   emptyWrap: { paddingVertical: 40, alignItems: 'center', gap: 8 },

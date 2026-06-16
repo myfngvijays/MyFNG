@@ -2,15 +2,50 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+function getMetroCity(parts: { district?: string; city?: string; state?: string; area?: string }): string {
+  const blob = [parts.city, parts.district, parts.state, parts.area].join(' ').toLowerCase();
+  if (/mumbai|thane|navi mumbai|panvel|kalyan|dombivli|badlapur|ambernath|ulhasnagar|bhiwandi|vasai|virar|palghar|mira bhayandar|mira-bhayandar|raigad/.test(blob)) {
+    return 'Mumbai';
+  }
+  if (/pune|pimpri|chinchwad|hadapsar|wagholi|baner/.test(blob)) return 'Pune';
+  if (/bengaluru|bangalore/.test(blob)) return 'Bangalore';
+  if (/delhi|new delhi|noida|gurugram|gurgaon|ghaziabad|faridabad/.test(blob)) return 'Delhi NCR';
+  if (/hyderabad|secunderabad/.test(blob)) return 'Hyderabad';
+  if (/chennai/.test(blob)) return 'Chennai';
+  if (/kolkata|howrah/.test(blob)) return 'Kolkata';
+  return parts.city || parts.district || parts.state || 'India';
+}
+
+function isWeakAreaName(value: string): boolean {
+  const lower = value.toLowerCase();
+  return lower.includes('industrial estate') || lower.includes('m.i.d.c') || lower.includes('midc') || lower.length > 28;
+}
+
+function formatHeaderLabel(parts: { district?: string; city?: string; state?: string; area?: string }): string | null {
+  const metro = getMetroCity(parts);
+  const districtCandidates = [parts.district, parts.city, parts.area].filter(Boolean) as string[];
+  let district = '';
+  for (const candidate of districtCandidates) {
+    if (isWeakAreaName(candidate)) continue;
+    district = candidate;
+    break;
+  }
+  if (!district) district = parts.district || parts.city || metro;
+  if (district.toLowerCase() === metro.toLowerCase()) return metro;
+  return `${district}, ${metro}`;
+}
+
 function pickShortLabel(result: any): string | null {
   const comps: any[] = Array.isArray(result?.address_components) ? result.address_components : [];
   const byType = (type: string) =>
     comps.find((c) => Array.isArray(c?.types) && c.types.includes(type))?.long_name || '';
 
-  const locality = byType('locality') || byType('sublocality') || byType('administrative_area_level_2');
+  const district = byType('administrative_area_level_2') || byType('locality') || byType('administrative_area_level_3');
+  const city = byType('locality') || byType('administrative_area_level_2') || '';
   const state = byType('administrative_area_level_1');
-  const label = [locality, state].filter(Boolean).join(', ').trim();
-  return label || null;
+  const area = byType('sublocality_level_2') || byType('sublocality_level_1') || byType('neighborhood') || byType('route') || '';
+
+  return formatHeaderLabel({ district, city, state, area });
 }
 
 function extractComponents(result: any) {
@@ -21,6 +56,7 @@ function extractComponents(result: any) {
   return {
     pincode: byType('postal_code') || '',
     city: byType('locality') || byType('sublocality_level_1') || byType('administrative_area_level_2') || '',
+    district: byType('administrative_area_level_2') || byType('administrative_area_level_3') || byType('locality') || '',
     state: byType('administrative_area_level_1') || '',
     area: byType('sublocality_level_2') || byType('sublocality_level_1') || byType('neighborhood') || byType('route') || '',
     building: byType('premise') || byType('subpremise') || '',
@@ -64,11 +100,13 @@ export async function GET(request: NextRequest) {
         provider: 'google',
         address: address || null,
         shortLabel: shortLabel || null,
+        headerLabel: shortLabel || null,
         pincode: components?.pincode || null,
         city: components?.city || null,
         state: components?.state || null,
         area: components?.area || null,
         building: components?.building || null,
+        district: components?.district || null,
       },
       { status: 200 }
     );

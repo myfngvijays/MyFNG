@@ -19,8 +19,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import PublicHeader from '../components/PublicHeader';
+import { detectHeaderLocation } from '../lib/locationDisplay';
 import LiveTrackingModal from '../components/LiveTrackingModal';
 import SearchOverlay from '../components/SearchOverlay';
+import PrimeBanner from '../components/PrimeBanner';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall } from '../lib/phone';
 import { COLORS } from '../constants/theme';
@@ -34,8 +36,6 @@ import {
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { ENV } from '../config/environment';
 import { supabase } from '../lib/supabase';
-import * as Location from 'expo-location';
-
 type Props = {
   navigation: any;
 };
@@ -206,28 +206,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          if (active) setDetectedCity('India');
-          return;
-        }
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&format=json&zoom=14&addressdetails=1`;
-        const res = await fetch(url, { headers: { 'User-Agent': 'MyFNG-App/1.0' } });
-        if (!res.ok) return;
-        const json = await res.json();
-        const addr = json?.address || {};
-        const district = addr.suburb || addr.city_district || addr.neighbourhood || addr.village || addr.town || addr.city || addr.county || '';
-        const state = addr.state || '';
-        if (active && district) {
-          setDetectedCity(state ? `${district}, ${state}` : district);
-        } else if (active && state) {
-          setDetectedCity(state);
-        }
-      } catch {
-        if (active) setDetectedCity('India');
-      }
+      const label = await detectHeaderLocation();
+      if (active) setDetectedCity(label);
     })();
     return () => { active = false; };
   }, []);
@@ -445,6 +425,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
     if (tab === 'account') navigation.navigate('Settings');
   };
 
+  const openPrimeMembership = () => navigation.navigate('Settings', { subPage: 'Membership' });
+
   // Search navigation is now handled inside SearchOverlay directly
 
   return (
@@ -596,6 +578,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
+            <PrimeBanner onPress={openPrimeMembership} />
+          </Section>
+
+          <Section>
             <TouchableOpacity
               style={styles.locatorCard}
               onPress={() => navigation.navigate('PublicWorkshopLocator', { city: detectedCity })}
@@ -643,21 +629,25 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <SectionTitle title="Why MyFNG" />
+            <Text style={styles.whySectionHeading}>Why MyFNG</Text>
             <View style={styles.uspRow}>
               {([
                 ['4.8/5', 'RATING', 'star' as const],
                 ['17K+', 'CARS', 'trophy' as const],
                 ['100+', 'WORKSHOPS', 'construct' as const],
-                ['Original', 'PARTS', 'shield-checkmark' as const],
+                ['Warranty', 'PARTS', 'shield-checkmark' as const],
                 ['Live', 'UPDATES', 'eye' as const],
               ] as const).map(([value, label, icon]) => (
                 <View key={label} style={styles.uspItem}>
                   <View style={styles.uspIconWrap}>
-                    <Ionicons name={icon} size={20} color={COLORS.primary} />
+                    <Ionicons name={icon} size={18} color={COLORS.primary} />
                   </View>
-                  <Text style={styles.uspValue}>{value}</Text>
-                  <Text style={styles.uspLabel}>{label}</Text>
+                  <Text style={styles.uspValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                    {value}
+                  </Text>
+                  <Text style={styles.uspLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                    {label}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -735,6 +725,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 ))}
               </View>
             </Animated.View>
+          </Section>
+
+          <Section>
+            <PrimeBanner onPress={openPrimeMembership} />
           </Section>
 
           <Section>
@@ -859,6 +853,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 </View>
               </View>
             </View>
+          </Section>
+
+          <Section>
+            <PrimeBanner onPress={openPrimeMembership} />
           </Section>
 
           <Section>
@@ -1447,46 +1445,51 @@ const styles = StyleSheet.create({
   howDotFillActive: {
     backgroundColor: '#004AAD',
   },
+  whySectionHeading: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
   uspRow: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#F3F4F6',
-    paddingVertical: 16,
-    paddingHorizontal: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   uspItem: {
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   uspIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   uspValue: {
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.primary,
     fontWeight: '800',
-    marginBottom: 2,
+    marginBottom: 1,
+    textAlign: 'center',
   },
   uspLabel: {
-    fontSize: 8.5,
+    fontSize: 7.5,
     color: '#9CA3AF',
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0,
+    textAlign: 'center',
+    lineHeight: 10,
   },
   gridTwo: {
     flexDirection: 'row',
