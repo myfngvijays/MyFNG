@@ -13,8 +13,29 @@ import 'leaflet/dist/leaflet.css';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: "My FNG - India's First AI-Powered Car Service Booking Platform",
-  description: 'Professional workshop management and service platform',
+  metadataBase: new URL('https://myfng.in'),
+  title: {
+    default: "My FNG - India's First AI-Powered Car Service Booking Platform",
+    template: '%s | MyFNG',
+  },
+  description:
+    "India's first AI-powered car service booking platform. Book periodic service, AC repair, engine service & more at verified workshops in Mumbai, Pune & Thane.",
+  keywords: [
+    'car service near me',
+    'car repair near me',
+    'best mechanic near me',
+    'car servicing Mumbai',
+    'car servicing Pune',
+    'MYFNG',
+  ],
+  authors: [{ name: 'MYFNG' }],
+  creator: 'MYFNG',
+  publisher: 'MYFNG',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
   icons: {
     icon: [
       { url: '/favicon.ico' },

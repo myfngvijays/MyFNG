@@ -1,10 +1,16 @@
 import { FileText, Mail, Phone } from 'lucide-react';
 import { AccordionCard } from '@/components/shared/PolicyAccordion';
 
-export const metadata = {
+import { buildPageMetadata } from '@/lib/seo/metadata';
+
+export const metadata = buildPageMetadata({
   title: 'Terms and Conditions | MyFNG',
-  description: 'MyFNG Terms and Conditions',
-};
+  description:
+    'Read MYFNG Terms and Conditions for car service bookings, workshop policies, payments, cancellations and customer responsibilities.',
+  keywords: ['MYFNG terms and conditions', 'car service terms', 'booking policy'],
+  canonicalPath: '/terms-and-conditions',
+  noindex: true,
+});
 
 function NumberedHeading({ number, title }: { number: string; title: string }) {
   return (

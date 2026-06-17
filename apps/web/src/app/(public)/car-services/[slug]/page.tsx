@@ -8,6 +8,9 @@ import Image from 'next/image';
 import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
 import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
+import { buildPageMetadata, SITE_URL } from '@/lib/seo/metadata';
+import { breadcrumbSchema, serviceSchema } from '@/lib/seo/schemas';
+import JsonLd from '@/components/seo/JsonLd';
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
@@ -18,29 +21,24 @@ export async function generateMetadata(
 
   if (!service) return {};
 
-  const canonicalUrl = `https://myfng.in/car-services/${marketingSlug}`;
+  const description = makeShortDescription(service.longDescription) || service.description;
+  const title = `${service.title} | MyFNG`;
 
-  return {
-    title: `${service.title} | MyFNG`,
-    description: makeShortDescription(service.longDescription) || service.description,
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    openGraph: {
-      title: `${service.title} | MyFNG`,
-      description: makeShortDescription(service.longDescription) || service.description,
-      url: canonicalUrl,
-      siteName: 'MyFNG',
-      type: 'website',
-      images: service.image ? [{ url: service.image, alt: service.title }] : undefined,
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: `${service.title} | MyFNG`,
-      description: makeShortDescription(service.longDescription) || service.description,
-      images: service.image ? [service.image] : undefined,
-    },
-  };
+  return buildPageMetadata({
+    title,
+    description,
+    keywords: [
+      service.title.toLowerCase(),
+      `${service.title} near me`,
+      'car service Mumbai',
+      'car service Pune',
+      'MYFNG',
+    ],
+    keyphrase: `${service.title} near me`,
+    canonicalPath: `/car-services/${marketingSlug}`,
+    ogImage: service.image?.startsWith('http') ? service.image : `${SITE_URL}${service.image}`,
+    city: 'Mumbai',
+  });
 }
 
 export default async function CarServiceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -53,8 +51,27 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
     notFound();
   }
 
+  const description = makeShortDescription(service.longDescription) || service.description;
+  const serviceUrl = `${SITE_URL}/car-services/${marketingSlug}`;
+  const serviceImage = service.image?.startsWith('http') ? service.image : `${SITE_URL}${service.image}`;
+
   return (
     <div className="min-h-screen bg-white">
+      <JsonLd
+        data={[
+          serviceSchema({
+            name: service.title,
+            description,
+            url: serviceUrl,
+            image: serviceImage,
+          }),
+          breadcrumbSchema([
+            { name: 'Home', url: SITE_URL },
+            { name: 'Car Services', url: `${SITE_URL}/car-services` },
+            { name: service.title, url: serviceUrl },
+          ]),
+        ]}
+      />
       <Navbar />
       <AppDownloadPopup />
 

@@ -1,10 +1,16 @@
 import { Shield, Mail, MapPin } from 'lucide-react';
 import { AccordionCard } from '@/components/shared/PolicyAccordion';
 
-export const metadata = {
+import { buildPageMetadata } from '@/lib/seo/metadata';
+
+export const metadata = buildPageMetadata({
   title: 'Privacy Policy | MyFNG',
-  description: 'MyFNG Privacy Policy',
-};
+  description:
+    'Read MYFNG Privacy Policy. Learn how we collect, use and protect your personal data when you book car services on myfng.in.',
+  keywords: ['MYFNG privacy policy', 'data protection', 'car service privacy'],
+  canonicalPath: '/privacy-policy',
+  noindex: true,
+});
 
 function SubHeading({ label, title }: { label: string; title: string }) {
   return (

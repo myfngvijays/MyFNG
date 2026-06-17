@@ -59,10 +59,15 @@ const nextConfig = {
   // For Hostinger deployment - standalone mode
   output: 'standalone',
 
+  // Full <head> in first HTML chunk (cleaner document structure in view-source)
+  htmlLimitedBots: /.*/,
+
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
     },
+    // Keep tag boundaries readable before pretty-print patch runs
+    serverMinification: false,
   },
 
   async redirects() {
