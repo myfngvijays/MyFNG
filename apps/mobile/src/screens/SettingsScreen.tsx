@@ -37,8 +37,15 @@ import {
 import { COLORS } from '../constants/theme';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { apiFetch } from '../lib/api';
+import {
+  formatMembershipExpiry,
+  getMembershipDisplay,
+  getProfileCardTheme,
+  isMembershipActive,
+} from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
+import { fetchPrimeMembershipConfig, type PrimeMembershipDisplay } from '../lib/membershipPlan';
 import { BookingDraft, getBookingDrafts, removeBookingDraft } from '../lib/bookingDraft';
 import { dismissVehicleKeys, getDismissedVehicleKeys, saveDismissedVehicleKeys } from '../lib/dismissedVehicles';
 import VehicleImage from '../components/VehicleImage';
@@ -215,6 +222,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [selectedMembershipIdx, setSelectedMembershipIdx] = useState(0);
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [addSecondCar, setAddSecondCar] = useState(false);
+  const [primeMembershipConfig, setPrimeMembershipConfig] = useState<PrimeMembershipDisplay | null>(null);
   const [showReferTnC, setShowReferTnC] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
   const [walletRewardPoints, setWalletRewardPoints] = useState(0);
@@ -277,6 +285,30 @@ export default function SettingsScreen({ navigation, route }: Props) {
   // Legal sections are now rendered inline (fully expanded). No modal state needed.
   const [faqModal, setFaqModal] = useState<{ question: string; answer: string } | null>(null);
 
+  const membershipDisplay = useMemo(() => getMembershipDisplay(currentMembership), [currentMembership]);
+  const hasActiveMembership = useMemo(() => isMembershipActive(currentMembership), [currentMembership]);
+
+  const planDisplayName = (code: string, fallbackName: string) => {
+    const c = String(code || '').toUpperCase();
+    if (c === 'PRIME') return 'MyFNG Prime';
+    if (c === 'PRIME_PLUS') return 'MyFNG Prime Plus';
+    if (c === 'PRIME_ELITE') return 'MyFNG Elite';
+    if (c === 'BRONZE') return 'MyFNG Go';
+    if (c === 'SILVER') return 'MyFNG Pro';
+    if (c === 'GOLD') return 'MyFNG Max';
+    return fallbackName;
+  };
+
+  const planDisplayColor = (code: string) => {
+    const c = String(code || '').toUpperCase();
+    if (c === 'PRIME') return '#004AAD';
+    if (c === 'PRIME_PLUS') return '#D97706';
+    if (c === 'PRIME_ELITE') return '#7C3AED';
+    if (c === 'BRONZE') return '#3B82F6';
+    if (c === 'SILVER') return '#8B5CF6';
+    if (c === 'GOLD') return '#F97316';
+    return COLORS.primary;
+  };
   const supportFaqs = useMemo(() => {
     if (!selectedFaqCategory) return [];
     return SUPPORT_FAQ_CATEGORIES[selectedFaqCategory] || [];
@@ -550,6 +582,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         apiFetch<any>('/api/customer/wallet'),
         apiFetch<any>('/api/customer/referral'),
         apiFetch<any>('/api/customer/leads'),
+        apiFetch<any>('/api/customer/membership'),
       ]);
       const valueOf = (i: number) => (settled[i]?.status === 'fulfilled' ? (settled[i] as PromiseFulfilledResult<any>).value : null);
       const profileRes = valueOf(0);
@@ -558,6 +591,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const walletRes = valueOf(3);
       const referralRes = valueOf(4);
       const leadsRes = valueOf(5);
+      const membershipRes = valueOf(6);
 
       const customer = profileRes?.customer || {};
       setCustomerId(customer?.id ? String(customer.id) : null);
@@ -625,6 +659,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setCartLeads(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []);
       setWalletBalance(Number(walletRes?.wallet?.current_balance || 0));
       setReferralCode(String(referralRes?.code?.code || ''));
+      if (membershipRes?.membership) {
+        setCurrentMembership(membershipRes.membership);
+      } else {
+        setCurrentMembership(null);
+      }
       const phone = String(customer?.phone || '').trim();
       const storageKey = phone || String(customer?.id || '').trim();
       if (storageKey) {
@@ -1132,10 +1171,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
         const displayPlans = dbPlans.length > 0
           ? dbPlans.map((p: any) => ({
               id: p.id,
-              name: p.code === 'BRONZE' ? 'MyFNG Go' : p.code === 'SILVER' ? 'MyFNG Pro' : p.code === 'GOLD' ? 'MyFNG Max' : p.name,
+              name: planDisplayName(p.code, p.name),
               price: `₹${Number(p.price || 0).toLocaleString('en-IN')}`,
               priceNum: Number(p.price || 0),
-              color: p.code === 'BRONZE' ? '#3B82F6' : p.code === 'SILVER' ? '#8B5CF6' : '#F97316',
+              color: planDisplayColor(p.code),
               code: p.code,
               raw: p,
             }))
@@ -1154,12 +1193,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
           setMembershipBenefits(dbBenefits);
         }
 
+        const pubConfig = await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null);
+        if (!cancelled && pubConfig) setPrimeMembershipConfig(pubConfig);
+
         if (isLoggedIn) {
           const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
-          if (!cancelled && memRes?.membership) {
-            setCurrentMembership(memRes.membership);
-            const currentIdx = displayPlans.findIndex((dp: any) => dp.id === memRes.membership.plan_id);
-            if (currentIdx >= 0) setSelectedMembershipIdx(currentIdx);
+          if (!cancelled) {
+            if (memRes?.membership) {
+              setCurrentMembership(memRes.membership);
+              const currentIdx = displayPlans.findIndex((dp: any) => dp.id === memRes.membership.plan_id);
+              if (currentIdx >= 0) setSelectedMembershipIdx(currentIdx);
+            } else {
+              setCurrentMembership(null);
+            }
           }
         }
       } catch (_err) {
@@ -1241,8 +1287,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
       Alert.alert('Membership', 'Plan details not available. Please try again.');
       return;
     }
-    if (currentMembership?.plan_id === plan.raw.id) {
-      Alert.alert('Already subscribed', `You are already on ${plan.name}.`);
+    if (currentMembership?.plan_id === plan.raw.id && isMembershipActive(currentMembership)) {
+      Alert.alert('Already subscribed', `You are already a ${membershipDisplay?.label || plan.name}.`);
       return;
     }
     try {
@@ -1286,7 +1332,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
       const paymentResult = await RazorpayCheckout.open(options);
 
-      await apiFetch('/api/customer/membership/subscribe', {
+      const subRes = await apiFetch<any>('/api/customer/membership/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1297,9 +1343,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
         }),
       });
 
-      Alert.alert('Success', `You are now a ${plan.name} member!`);
-      const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
-      if (memRes?.membership) setCurrentMembership(memRes.membership);
+      if (subRes?.error || !subRes?.success) {
+        throw new Error(subRes?.error || subRes?.details || 'Membership activation failed after payment. Contact support with your payment ID.');
+      }
+
+      Alert.alert('Success', `You are now a ${plan.name} member! Check your profile for your membership badge.`);
+      if (subRes?.membership) {
+        setCurrentMembership(subRes.membership);
+      } else {
+        const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
+        if (memRes?.membership) setCurrentMembership(memRes.membership);
+      }
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
       if (cancelled) {
@@ -2311,53 +2365,158 @@ export default function SettingsScreen({ navigation, route }: Props) {
         const STEP_NEXT_BTN_STYLE = { marginTop: 14, borderRadius: 12, paddingVertical: 14, alignItems: 'center' as const };
         const STEP_NEXT_BTN_TEXT_STYLE = { color: '#FFFFFF', fontSize: 14, fontWeight: '700' as const };
         const PLATE_BOX_STYLE = { flex: 1, paddingVertical: 14, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF', textAlign: 'center' as const, fontSize: 15, fontWeight: '800' as const, color: '#1E293B', textTransform: 'uppercase' as const };
+        const profileTheme = getProfileCardTheme(currentMembership);
+        const membershipExpiry = formatMembershipExpiry(currentMembership);
+        const isPrimeMember = hasActiveMembership && Boolean(membershipDisplay);
         return (
           <View style={{ padding: 14, paddingBottom: 28, gap: 14, backgroundColor: '#F0F7FF' }}>
-            {/* Vibrant Header Banner */}
+            {/* Compact Profile Header */}
             <View style={{
-              backgroundColor: '#0046AD',
-              borderRadius: 24,
-              paddingTop: 28,
-              paddingBottom: 22,
-              paddingHorizontal: 20,
-              alignItems: 'center',
+              backgroundColor: profileTheme.headerBg,
+              borderRadius: 20,
               overflow: 'hidden',
-              elevation: 10,
-              shadowColor: '#0046AD',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.3,
-              shadowRadius: 16,
+              elevation: 8,
+              shadowColor: profileTheme.headerBg,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.25,
+              shadowRadius: 12,
             }}>
-              <View pointerEvents="none" style={{ position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, backgroundColor: '#0084FF', opacity: 0.5 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', bottom: -80, left: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: '#F97316', opacity: 0.2 }} />
-              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5, backgroundColor: '#F97316' }} />
-              <View style={{ width: 82, height: 82, marginBottom: 14, position: 'relative', zIndex: 10 }}>
-                <TouchableOpacity activeOpacity={0.6} onPress={pickAndUploadProfileImage} style={{ width: 82, height: 82, borderRadius: 41, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 3, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                  {profileImageUrl ? (
-                    <Image source={{ uri: profileImageUrl }} style={{ width: 82, height: 82 }} />
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, backgroundColor: profileTheme.topBar }} />
+
+              {/* Row 1: photo · name · verified icon */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 14, gap: 12 }}>
+                <View style={{ width: 58, height: 58, position: 'relative' }}>
+                  <TouchableOpacity
+                    activeOpacity={0.6}
+                    onPress={pickAndUploadProfileImage}
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: 29,
+                      backgroundColor: 'rgba(255,255,255,0.18)',
+                      borderWidth: 2,
+                      borderColor: 'rgba(255,255,255,0.4)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {profileImageUrl ? (
+                      <Image source={{ uri: profileImageUrl }} style={{ width: 58, height: 58 }} />
+                    ) : (
+                      <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '900' }}>
+                        {(profileForm.name || 'G').trim().charAt(0).toUpperCase()}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={pickAndUploadProfileImage}
+                    style={{
+                      position: 'absolute',
+                      bottom: -2,
+                      right: -2,
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      backgroundColor: profileTheme.headerAccent,
+                      borderWidth: 2,
+                      borderColor: '#FFFFFF',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons
+                      name="camera"
+                      size={10}
+                      color={profileTheme.stripBg === profileTheme.headerAccent ? profileTheme.stripText : '#FFFFFF'}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <Text
+                  style={{ flex: 1, color: '#FFFFFF', fontSize: 20, fontWeight: '900' }}
+                  numberOfLines={1}
+                >
+                  {isLoggedIn ? (profileForm.name || 'MyFNG Customer') : 'Guest User'}
+                </Text>
+
+                {isPrimeMember ? (
+                  <View style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: profileTheme.headerAccent,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <Ionicons name="diamond" size={16} color={profileTheme.crownColor} />
+                  </View>
+                ) : (
+                  <View style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: '#10B981',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <Ionicons name="shield-checkmark" size={16} color="#FFFFFF" />
+                  </View>
+                )}
+              </View>
+
+              {/* Row 2: membership strip — same structure for all users */}
+              <TouchableOpacity
+                activeOpacity={isPrimeMember ? 1 : 0.75}
+                onPress={isPrimeMember ? undefined : () => setActiveSubPage('Membership')}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                  backgroundColor: profileTheme.stripBg,
+                  gap: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                  {profileTheme.showCrown ? (
+                    <Ionicons name="ribbon" size={15} color={profileTheme.crownColor} />
                   ) : (
-                    <Text style={{ color: '#FFFFFF', fontSize: 32, fontWeight: '900' }}>
-                      {(profileForm.name || 'G').trim().charAt(0).toUpperCase()}
-                    </Text>
+                    <Ionicons name="person" size={14} color={profileTheme.stripText} />
                   )}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={pickAndUploadProfileImage} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: '#0084FF', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="camera" size={12} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-              <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '900', textAlign: 'center' }}>
-                {isLoggedIn ? (profileForm.name || 'MyFNG Customer') : 'Guest User'}
-              </Text>
-              <View style={{ marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: '#10B981' }}>
-                  <Ionicons name="shield-checkmark" size={11} color="#FFFFFF" />
-                  <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>VERIFIED CUSTOMER</Text>
+                  <Text style={{ color: profileTheme.stripText, fontSize: 12, fontWeight: '800' }} numberOfLines={1}>
+                    {profileTheme.label}
+                  </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}>
-                  <Ionicons name="star" size={11} color="#FCD34D" />
-                  <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>MyFNG MEMBER</Text>
-                </View>
-              </View>
+
+                {isPrimeMember && membershipExpiry ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    backgroundColor: 'rgba(15,43,91,0.1)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 999,
+                    flexShrink: 0,
+                  }}>
+                    <Ionicons name="calendar" size={12} color={profileTheme.stripText} />
+                    <Text style={{ color: profileTheme.stripText, fontSize: 10, fontWeight: '700' }}>
+                      Till {membershipExpiry}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    <Text style={{ color: profileTheme.stripMuted, fontSize: 11, fontWeight: '700' }}>
+                      {profileTheme.cta || 'Get Prime →'}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={13} color={profileTheme.stripMuted} />
+                  </View>
+                )}
+              </TouchableOpacity>
             </View>
 
             {!vehicleEntryOnly && selectedVehicle && isVehicleProfileIncomplete(selectedVehicle) ? (
@@ -2931,22 +3090,43 @@ export default function SettingsScreen({ navigation, route }: Props) {
           </View>
         );
       case 'Membership': {
-        const isPrimeCurrent = Boolean(currentMembership);
+        const isPrimeCurrent = hasActiveMembership;
+        const activeExpiry = formatMembershipExpiry(currentMembership);
+        const primeUI = primeMembershipConfig || PRIME_MEMBERSHIP;
+        const addonPriceNum = Number((primeUI.addOn as any)?.priceNum ?? 299);
         return (
           <View style={styles.subWrap}>
+            {isPrimeCurrent && membershipDisplay ? (
+              <View style={styles.primeActivatedBanner}>
+                <View style={[styles.primeActivatedIconWrap, { backgroundColor: membershipDisplay.headerBg }]}>
+                  <Ionicons name="ribbon" size={22} color={membershipDisplay.crownColor} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.primeActivatedTitle}>Already activated on your profile</Text>
+                  <Text style={styles.primeActivatedSub}>
+                    You're a {membershipDisplay.label}
+                    {activeExpiry ? ` · Valid until ${activeExpiry}` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={22} color="#047857" />
+              </View>
+            ) : null}
             {/* Prime price card */}
             <View style={styles.primeCard}>
               <View style={styles.primeRow}>
-                <Text style={styles.primeName}>{PRIME_MEMBERSHIP.name}</Text>
+                <Text style={styles.primeName}>{primeUI.name}</Text>
                 <View style={styles.primeBadge}>
-                  <Text style={styles.primeBadgeText}>{PRIME_MEMBERSHIP.badge}</Text>
+                  <Text style={styles.primeBadgeText}>{primeUI.badge}</Text>
                 </View>
               </View>
               <View style={styles.primePriceRow}>
-                <Text style={styles.primePriceAmount}>{PRIME_MEMBERSHIP.price}</Text>
-                <Text style={styles.primePricePeriod}>{PRIME_MEMBERSHIP.period}</Text>
+                {primeUI.originalPrice ? (
+                  <Text style={styles.primeOriginalPrice}>{primeUI.originalPrice}</Text>
+                ) : null}
+                <Text style={styles.primePriceAmount}>{primeUI.price}</Text>
+                <Text style={styles.primePricePeriod}>{primeUI.period}</Text>
               </View>
-              <Text style={styles.primeTagline}>{PRIME_MEMBERSHIP.tagline}</Text>
+              <Text style={styles.primeTagline}>{primeUI.tagline}</Text>
               {isPrimeCurrent ? (
                 <View style={styles.primeActiveBadge}>
                   <Ionicons name="checkmark-circle" size={14} color="#047857" />
@@ -2957,17 +3137,21 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
             {/* Benefits card */}
             <View style={styles.primeBenefitsCard}>
-              <Text style={styles.primeBenefitsLabel}>BENEFITS FOR {PRIME_MEMBERSHIP.name.toUpperCase()}</Text>
-              {PRIME_MEMBERSHIP.benefits.map((b, idx) => (
+              <Text style={styles.primeBenefitsLabel}>BENEFITS FOR {primeUI.name.toUpperCase()}</Text>
+              {primeUI.benefits.map((b: any, idx: number) => (
                 <View
-                  key={idx}
+                  key={`${b.title}-${idx}`}
                   style={[
                     styles.primeBenefitRow,
-                    idx === PRIME_MEMBERSHIP.benefits.length - 1 ? { borderBottomWidth: 0 } : null,
+                    idx === primeUI.benefits.length - 1 ? { borderBottomWidth: 0 } : null,
                   ]}
                 >
                   <View style={styles.primeBenefitIcon}>
-                    <Ionicons name={b.icon as any} size={17} color={COLORS.primary} />
+                    {b.iconUrl ? (
+                      <Image source={{ uri: b.iconUrl }} style={{ width: 18, height: 18 }} resizeMode="contain" />
+                    ) : (
+                      <Ionicons name={b.icon as any} size={17} color={COLORS.primary} />
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.primeBenefitTitle}>{b.title}</Text>
@@ -2988,19 +3172,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 size={22}
                 color={addSecondCar ? COLORS.primary : '#9CA3AF'}
               />
-              <Ionicons name={PRIME_MEMBERSHIP.addOn.icon as any} size={22} color={COLORS.primary} />
+              <Ionicons name={primeUI.addOn.icon as any} size={22} color={COLORS.primary} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.primeAddonTitle}>{PRIME_MEMBERSHIP.addOn.title}</Text>
-                <Text style={styles.primeAddonSub}>{PRIME_MEMBERSHIP.addOn.description}</Text>
+                <Text style={styles.primeAddonTitle}>{primeUI.addOn.title}</Text>
+                <Text style={styles.primeAddonSub}>{primeUI.addOn.description}</Text>
               </View>
-              <Text style={styles.primeAddonPrice}>{PRIME_MEMBERSHIP.addOn.price}</Text>
+              <Text style={styles.primeAddonPrice}>{primeUI.addOn.price}</Text>
             </TouchableOpacity>
 
             {/* Total price display */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 10 }}>
               <Text style={{ fontSize: 14, color: '#6B7280' }}>Total</Text>
               <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A1A1A' }}>
-                ₹{addSecondCar ? PRIME_MEMBERSHIP.priceNum + 299 : PRIME_MEMBERSHIP.priceNum}
+                ₹{addSecondCar ? primeUI.priceNum + addonPriceNum : primeUI.priceNum}
               </Text>
             </View>
 
@@ -3016,7 +3200,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </Text>
             </TouchableOpacity>
 
-            <Text style={styles.primeFooterNote}>{PRIME_MEMBERSHIP.footerNote}</Text>
+            <Text style={styles.primeFooterNote}>{primeUI.footerNote}</Text>
           </View>
         );
       }
@@ -5068,9 +5252,30 @@ const styles = StyleSheet.create({
   primeBadge: { backgroundColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   primeBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   primePriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 6 },
+  primeOriginalPrice: { fontSize: 14, fontWeight: '700', color: '#9CA3AF', textDecorationLine: 'line-through' },
   primePriceAmount: { fontSize: 30, fontWeight: '800', color: COLORS.primary },
   primePricePeriod: { fontSize: 14, color: '#8A8A8A', fontWeight: '500' },
   primeTagline: { marginTop: 6, fontSize: 12, color: '#0088E8', fontStyle: 'italic', fontWeight: '500' },
+  primeActivatedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  primeActivatedIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primeActivatedTitle: { fontSize: 14, fontWeight: '800', color: '#065F46' },
+  primeActivatedSub: { fontSize: 12, color: '#047857', marginTop: 3, lineHeight: 17 },
   primeActiveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#ECFDF5', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   primeActiveText: { fontSize: 10, fontWeight: '900', color: '#047857', letterSpacing: 0.5 },
   primeBenefitsCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, marginTop: 12 },

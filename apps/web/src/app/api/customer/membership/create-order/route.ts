@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   if (!plan) return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
 
-  const SECOND_CAR_ADDON_PRICE = 299;
+  const SECOND_CAR_ADDON_PRICE = Number(plan.second_car_addon_price) || 299;
   const baseAmount = Number(plan.price || 0);
   const amount = baseAmount + (addSecondCar ? SECOND_CAR_ADDON_PRICE : 0);
   if (amount <= 0) return NextResponse.json({ error: 'Plan has no price' }, { status: 400 });

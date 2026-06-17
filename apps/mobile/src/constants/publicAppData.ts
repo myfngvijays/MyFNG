@@ -181,6 +181,158 @@ export const MEMBERSHIP_PLANS = [
   { name: 'MyFNG Max', price: '₹2,999', color: '#F97316' },
 ];
 
+export type CustomerReview = {
+  name: string;
+  car: string;
+  stars: number;
+  text: string;
+  date: string;
+};
+
+/** Fallback reviews for home screen until admin-managed customer_reviews table is populated */
+export const CUSTOMER_REVIEWS: CustomerReview[] = [
+  {
+    name: 'Rahul Sharma',
+    car: 'Hyundai Creta',
+    stars: 5,
+    text: 'Booked in 60 seconds via Misa AI — no calls, no follow-ups. Live tracking from pickup to delivery was brilliant.',
+    date: 'Jan 2025',
+  },
+  {
+    name: 'Priya Patel',
+    car: 'Maruti Swift',
+    stars: 5,
+    text: 'Fully transparent pricing upfront. Got photo and video updates during service. Free pickup & drop made it effortless.',
+    date: 'Feb 2025',
+  },
+  {
+    name: 'Amit Verma',
+    car: 'Honda City',
+    stars: 4,
+    text: 'Quick AI chatbot booking and genuine OEM parts used. My City runs smoother than ever after the comprehensive service.',
+    date: 'Mar 2025',
+  },
+  {
+    name: 'Sneha Reddy',
+    car: 'Tata Nexon',
+    stars: 5,
+    text: 'Real-time tracking of my car from doorstep pickup to workshop and back. Felt completely in control the whole time.',
+    date: 'Apr 2025',
+  },
+  {
+    name: 'Karan Mehta',
+    car: 'Kia Seltos',
+    stars: 5,
+    text: 'Only MyFNG certified workshops — that trust factor matters. Expert technicians and quality check before handover.',
+    date: 'May 2025',
+  },
+  {
+    name: 'Ananya Joshi',
+    car: 'MG Hector',
+    stars: 5,
+    text: 'MyFNG Prime saved me 10% on periodic service plus 5% cashback to wallet. Best membership decision for car owners.',
+    date: 'Jun 2025',
+  },
+  {
+    name: 'Vikram Singh',
+    car: 'Toyota Innova',
+    stars: 5,
+    text: 'Doorstep pickup at 9 AM, car back by evening with full service documentation. Zero hassle, zero surprises on bill.',
+    date: 'Jul 2025',
+  },
+  {
+    name: 'Meera Nair',
+    car: 'Volkswagen Polo',
+    stars: 5,
+    text: 'Loved the video updates during denting work. Transparent process — I could see exactly what was being done.',
+    date: 'Aug 2025',
+  },
+  {
+    name: 'Arjun Malhotra',
+    car: 'Mahindra XUV700',
+    stars: 5,
+    text: 'Service came with proper warranty coverage and detailed invoice. No hidden charges — price matched the AI quote exactly.',
+    date: 'Sep 2025',
+  },
+  {
+    name: 'Divya Iyer',
+    car: 'Hyundai Venue',
+    stars: 4,
+    text: 'Misa AI understood my issue instantly and booked the right package. Verified workshop did a thorough job.',
+    date: 'Oct 2025',
+  },
+  {
+    name: 'Ravi Deshmukh',
+    car: 'Maruti Ertiga',
+    stars: 5,
+    text: 'Genuine parts only — they showed me the part boxes before fitting. That level of transparency is rare.',
+    date: 'Nov 2025',
+  },
+  {
+    name: 'Kavya Shah',
+    car: 'Honda Amaze',
+    stars: 5,
+    text: 'Prime membership cashback hit my wallet automatically after billing. Plus priority slot booking saved my weekend.',
+    date: 'Dec 2025',
+  },
+  {
+    name: 'Sanjay Gupta',
+    car: 'Ford EcoSport',
+    stars: 5,
+    text: 'Quality check done as per MY FNG process before delivery. Car came back spotless with service report on WhatsApp.',
+    date: 'Jan 2026',
+  },
+  {
+    name: 'Pooja Bansal',
+    car: 'Skoda Rapid',
+    stars: 5,
+    text: 'Free pickup and drop at no extra cost — saved me half a day. AI booking took less than a minute on the app.',
+    date: 'Feb 2026',
+  },
+  {
+    name: 'Nikhil Rao',
+    car: 'Renault Kiger',
+    stars: 5,
+    text: 'What you see is what you pay. Upfront AI pricing with full breakdown — finally a car service app that means it.',
+    date: 'Mar 2026',
+  },
+  {
+    name: 'Ishita Verma',
+    car: 'Toyota Glanza',
+    stars: 5,
+    text: 'Got live updates at every stage — pickup, workshop arrival, service progress, and delivery. Felt like tracking a parcel!',
+    date: 'Apr 2026',
+  },
+  {
+    name: 'Manish Kapoor',
+    car: 'Tata Punch',
+    stars: 4,
+    text: 'Expert technicians, transparent pricing, and the whole thing booked via AI chat — no waiting on hold for anyone.',
+    date: 'May 2026',
+  },
+  {
+    name: 'Lavanya Krishnan',
+    car: 'Hyundai i20',
+    stars: 5,
+    text: 'Prime gave me extended warranty on the service plus free car scanning. Peace of mind for the whole year.',
+    date: 'Jun 2026',
+  },
+  {
+    name: 'Rohit Agarwal',
+    car: 'BMW 3 Series',
+    stars: 5,
+    text: 'Premium car, premium care. Certified workshop, OEM parts, photo updates, and doorstep delivery — end-to-end excellence.',
+    date: 'Jul 2026',
+  },
+  {
+    name: 'Nisha Pillai',
+    car: 'Maruti Brezza',
+    stars: 5,
+    text: 'From AI booking to final delivery — smoothest car service experience in Mumbai. MyFNG owns the experience, truly.',
+    date: 'Aug 2026',
+  },
+];
+
 export const PRIME_MEMBERSHIP = {
   name: 'MY FNG Prime',
   badge: 'MEMBERSHIP',

@@ -70,7 +70,7 @@ export default function CustomerMembershipScreen({ navigation }: any) {
 
       const paymentResult = await RazorpayCheckout.open(options);
 
-      await apiFetch('/api/customer/membership/subscribe', {
+      const subRes = await apiFetch<any>('/api/customer/membership/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -81,7 +81,11 @@ export default function CustomerMembershipScreen({ navigation }: any) {
         }),
       });
 
-      Alert.alert('Success', `Membership activated successfully!`);
+      if (subRes?.error || !subRes?.success) {
+        throw new Error(subRes?.error || subRes?.details || 'Membership activation failed after payment.');
+      }
+
+      Alert.alert('Success', 'Membership activated successfully! Check your profile for your badge.');
       await load();
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');

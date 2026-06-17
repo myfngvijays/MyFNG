@@ -31,6 +31,7 @@ import {
   POPULAR_PACKAGES as PACKAGE_ITEMS,
   SPARE_PART_BRANDS,
   FAQ_CATEGORIES,
+  CUSTOMER_REVIEWS,
   type PublicBrand,
 } from '../constants/publicAppData';
 import { getCustomerSessionToken } from '../lib/customerSession';
@@ -136,13 +137,6 @@ const HOW_IT_WORKS = [
   { id: '05', title: 'Delivery & Warranty', desc: 'Your car is delivered back with service documentation and warranty coverage.', color: '#004AAD', icon: 'trophy' as const },
 ];
 
-
-const REVIEWS = [
-  { name: 'Rahul Sharma', car: 'Hyundai Creta', stars: 5, text: 'Excellent service! My Creta feels brand new after the comprehensive service. The live tracking was amazing.', date: 'Oct 2024' },
-  { name: 'Priya Patel', car: 'Maruti Swift', stars: 5, text: 'Very transparent process. Got photo updates during the service. Pickup and drop was super convenient.', date: 'Nov 2024' },
-  { name: 'Amit Verma', car: 'Honda City', stars: 4, text: 'Quick booking through AI chatbot. Quality parts used. Will definitely use again for my City.', date: 'Dec 2024' },
-];
-
 const HEADLINES = [
   { prefix: 'Book Your Car Service in 60 Seconds - ', highlight: 'Powered by AI', suffix: '' },
   { prefix: "India's ", highlight: '#1 AI-Powered', suffix: ' Car Service Booking Platform' },
@@ -161,7 +155,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
-  const [reviews, setReviews] = useState(REVIEWS);
+  const [reviews, setReviews] = useState(CUSTOMER_REVIEWS);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
@@ -578,7 +572,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <PrimeBanner onPress={openPrimeMembership} />
+            <PrimeBanner onPress={openPrimeMembership} animated />
           </Section>
 
           <Section>
@@ -728,7 +722,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <PrimeBanner onPress={openPrimeMembership} />
+            <PrimeBanner onPress={openPrimeMembership} animated />
           </Section>
 
           <Section>
@@ -856,7 +850,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <PrimeBanner onPress={openPrimeMembership} />
+            <PrimeBanner onPress={openPrimeMembership} animated />
           </Section>
 
           <Section>
@@ -869,7 +863,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {reviews.slice(0, 3).map((review) => (
-                <View key={review.name} style={styles.reviewCard}>
+                <View key={`${review.name}-${review.date}`} style={styles.reviewCard}>
                   <View style={styles.reviewStars}>
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Ionicons key={i} name={i < review.stars ? 'star' : 'star-outline'} size={12} color="#F59E0B" />
@@ -968,7 +962,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <Text style={styles.reviewModalTitle}>All Reviews</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={styles.reviewModalScroll}>
                 {reviews.map((review) => (
-                  <View key={review.name} style={styles.reviewModalCard}>
+                  <View key={`${review.name}-${review.date}`} style={styles.reviewModalCard}>
                     <View style={styles.reviewStars}>
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Ionicons key={i} name={i < review.stars ? 'star' : 'star-outline'} size={14} color="#F59E0B" />

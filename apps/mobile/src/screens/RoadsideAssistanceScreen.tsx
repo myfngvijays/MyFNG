@@ -121,7 +121,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           </View>
 
           {/* ── Pricing Section ── */}
-          <PrimeBanner onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })} style={{ marginBottom: 16 }} />
+          <PrimeBanner onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })} style={{ marginBottom: 16 }} animated />
           <Text style={s.pricingHeading}>Pricing</Text>
           <Text style={s.pricingSub}>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</Text>
 

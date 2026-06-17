@@ -444,6 +444,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
           <PrimeBanner
             onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
             style={{ marginTop: 16, marginBottom: 16 }}
+            animated
           />
           <Text style={s.sectionHeading}>Why MyFNG</Text>
           <View style={s.whyCard}>

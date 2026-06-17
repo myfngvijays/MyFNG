@@ -235,7 +235,7 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
                   </View>
                 </View>
 
-                <PrimeBanner onPress={() => handleSelect(ALL_ITEMS.find((i) => i.id === 'membership')!)} />
+                <PrimeBanner onPress={() => handleSelect(ALL_ITEMS.find((i) => i.id === 'membership')!)} animated />
 
                 <View style={styles.section}>
                   <View style={styles.serviceGrid}>

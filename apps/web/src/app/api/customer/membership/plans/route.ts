@@ -12,14 +12,18 @@ export async function GET() {
     .from('membership_plans')
     .select('*')
     .eq('active', true)
-    .order('price', { ascending: true });
+    .order('display_order', { ascending: true });
   if (error) return NextResponse.json({ error: 'Failed to fetch plans' }, { status: 500 });
 
   const planIds = (plans || []).map((p: any) => p.id);
   const { data: benefits } = planIds.length
-    ? await supabaseAdmin.from('membership_benefits').select('*').in('plan_id', planIds)
+    ? await supabaseAdmin
+        .from('membership_benefits')
+        .select('*')
+        .in('plan_id', planIds)
+        .eq('active', true)
+        .order('display_order', { ascending: true })
     : { data: [] as any[] };
 
   return NextResponse.json({ plans: plans || [], benefits: benefits || [] });
 }
-

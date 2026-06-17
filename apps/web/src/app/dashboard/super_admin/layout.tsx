@@ -36,6 +36,7 @@ import {
   ClipboardList,
   Bell,
   Star,
+  Crown,
 } from 'lucide-react';
 
 type NavItem = {
@@ -149,6 +150,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/website-images/customer-reviews',
         icon: Star,
         description: 'Manage app home screen reviews',
+      },
+      {
+        name: 'Membership Plans',
+        href: '/dashboard/super_admin/membership-plans',
+        icon: Crown,
+        description: 'Manage Prime tiers, pricing & benefits',
       },
     ],
   },

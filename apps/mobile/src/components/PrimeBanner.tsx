@@ -1,42 +1,103 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PRIME_MEMBERSHIP } from '../constants/publicAppData';
 import { COLORS } from '../constants/theme';
 
+const CYCLE_BLUE = COLORS.primary;
+const CYCLE_RED = '#DC2626';
+
 type PrimeBannerProps = {
   onPress: () => void;
   style?: ViewStyle;
+  /** Smooth blue ↔ red background cycle */
+  animated?: boolean;
 };
 
-export default function PrimeBanner({ onPress, style }: PrimeBannerProps) {
-  return (
-    <TouchableOpacity style={[styles.banner, style]} activeOpacity={0.9} onPress={onPress}>
-      <View style={styles.decor1} />
-      <View style={styles.decor2} />
-      <View style={styles.left}>
-        <View style={styles.badgePill}>
-          <Ionicons name="diamond" size={9} color="#FFD166" />
-          <Text style={styles.badgePillText}>PRIME</Text>
+export default function PrimeBanner({ onPress, style, animated = false }: PrimeBannerProps) {
+  const colorAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!animated) return;
+
+    const loop = Animated.loop(
+      Animated.timing(colorAnim, {
+        toValue: 1,
+        duration: 6000,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [animated, colorAnim]);
+
+  const backgroundColor = colorAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [CYCLE_BLUE, CYCLE_RED, CYCLE_BLUE],
+  });
+
+  if (!animated) {
+    return (
+      <TouchableOpacity style={[styles.banner, style]} activeOpacity={0.9} onPress={onPress}>
+        <View style={styles.decor1} />
+        <View style={styles.decor2} />
+        <View style={styles.left}>
+          <View style={styles.badgePill}>
+            <Ionicons name="diamond" size={9} color="#FFD166" />
+            <Text style={styles.badgePillText}>PRIME</Text>
+          </View>
+          <Text style={styles.title}>MyFNG{'\n'}Prime</Text>
         </View>
-        <Text style={styles.title}>MyFNG{'\n'}Prime</Text>
-      </View>
-      <View style={styles.center}>
-        <Text style={styles.benefit} numberOfLines={2}>
-          10% off on all services
-        </Text>
-        <Text style={styles.benefitSub} numberOfLines={2}>
-          + 5% cashback to wallet
-        </Text>
-      </View>
-      <View style={styles.priceBlock}>
-        <Text style={styles.originalPrice}>{PRIME_MEMBERSHIP.originalPrice}</Text>
-        <Text style={styles.price}>{PRIME_MEMBERSHIP.price}</Text>
-        <Text style={styles.period}>per year</Text>
-      </View>
-      <View style={styles.arrow}>
-        <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
-      </View>
+        <View style={styles.center}>
+          <Text style={styles.benefit} numberOfLines={2}>
+            10% off on all services
+          </Text>
+          <Text style={styles.benefitSub} numberOfLines={2}>
+            + 5% cashback to wallet
+          </Text>
+        </View>
+        <View style={styles.priceBlock}>
+          <Text style={styles.originalPrice}>{PRIME_MEMBERSHIP.originalPrice}</Text>
+          <Text style={styles.price}>{PRIME_MEMBERSHIP.price}</Text>
+          <Text style={styles.period}>per year</Text>
+        </View>
+        <View style={styles.arrow}>
+          <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+      <Animated.View style={[styles.banner, style, { backgroundColor }]}>
+        <View style={styles.decor1} />
+        <View style={styles.decor2} />
+        <View style={styles.left}>
+          <View style={styles.badgePill}>
+            <Ionicons name="diamond" size={9} color="#FFD166" />
+            <Text style={styles.badgePillText}>PRIME</Text>
+          </View>
+          <Text style={styles.title}>MyFNG{'\n'}Prime</Text>
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.benefit} numberOfLines={2}>
+            10% off on all services
+          </Text>
+          <Text style={styles.benefitSub} numberOfLines={2}>
+            + 5% cashback to wallet
+          </Text>
+        </View>
+        <View style={styles.priceBlock}>
+          <Text style={styles.originalPrice}>{PRIME_MEMBERSHIP.originalPrice}</Text>
+          <Text style={styles.price}>{PRIME_MEMBERSHIP.price}</Text>
+          <Text style={styles.period}>per year</Text>
+        </View>
+        <View style={styles.arrow}>
+          <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+        </View>
+      </Animated.View>
     </TouchableOpacity>
   );
 }

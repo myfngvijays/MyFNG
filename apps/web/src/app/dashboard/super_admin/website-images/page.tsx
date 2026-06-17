@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React from 'react';
 import Link from 'next/link';
-import { Image as ImageIcon, Car, ChevronRight, Megaphone, Star } from 'lucide-react';
+import { Image as ImageIcon, Car, ChevronRight, Megaphone, Star, Crown } from 'lucide-react';
 
 function Tile({
   title,
@@ -77,6 +77,12 @@ export default function WebsiteImagesHubPage() {
             subtitle="Manage reviews shown in 'What Our Customers Say' section"
             href="/dashboard/super_admin/website-images/customer-reviews"
             Icon={Star}
+          />
+          <Tile
+            title="Membership Plans"
+            subtitle="Prime pricing, benefits, tagline & 2nd car add-on"
+            href="/dashboard/super_admin/membership-plans"
+            Icon={Crown}
           />
         </div>
       </div>

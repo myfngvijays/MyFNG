@@ -37,7 +37,14 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const endsAt = new Date(now.getTime() + Number(plan.duration_days || 365) * 24 * 60 * 60 * 1000);
 
+  // Expire any previous active memberships for this customer
   await supabaseAdmin
+    .from('customer_memberships')
+    .update({ status: 'EXPIRED', updated_at: now.toISOString() })
+    .eq('customer_id', customer.id)
+    .eq('status', 'ACTIVE');
+
+  const { data: inserted, error: insertError } = await supabaseAdmin
     .from('customer_memberships')
     .insert({
       customer_id: customer.id,
@@ -47,15 +54,29 @@ export async function POST(request: NextRequest) {
       ends_at: endsAt.toISOString(),
       auto_renew: Boolean(body.auto_renew),
       source: 'PURCHASE',
-      payment_id: razorpayPaymentId,
-      order_id: razorpayOrderId,
-    });
+      has_second_car: Boolean(body.add_second_car),
+    })
+    .select('*, plan:membership_plans(*)')
+    .single();
+
+  if (insertError || !inserted) {
+    console.error('[membership/subscribe] insert failed:', insertError);
+    return NextResponse.json(
+      { error: 'Membership activation failed', details: insertError?.message || 'Could not save membership' },
+      { status: 500 },
+    );
+  }
 
   await logCustomerEvent(supabaseAdmin, customer.id, 'membership_subscribed', 'membership', {
     planId,
     paymentId: razorpayPaymentId,
     orderId: razorpayOrderId,
   });
-  return NextResponse.json({ success: true, plan_id: plan.id, ends_at: endsAt.toISOString() });
-}
 
+  return NextResponse.json({
+    success: true,
+    plan_id: plan.id,
+    ends_at: endsAt.toISOString(),
+    membership: inserted,
+  });
+}

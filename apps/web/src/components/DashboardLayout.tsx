@@ -636,6 +636,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             { href: '/dashboard/super_admin/website-images/home-carousel', icon: <Globe className="w-5 h-5" />, label: 'Home Carousel' },
             { href: '/dashboard/super_admin/website-images/promo-banners', icon: <Megaphone className="w-5 h-5" />, label: 'Promo Banners' },
             { href: '/dashboard/super_admin/website-images/customer-reviews', icon: <Star className="w-5 h-5" />, label: 'Customer Reviews' },
+            { href: '/dashboard/super_admin/membership-plans', icon: <Star className="w-5 h-5" />, label: 'Membership Plans' },
           ],
         },
         { href: '/dashboard/super_admin/leads', icon: <FileText className="w-5 h-5" />, label: 'All Leads' },

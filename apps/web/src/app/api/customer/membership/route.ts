@@ -8,10 +8,14 @@ export async function GET() {
   if ('response' in ctx) return ctx.response;
   const { customer, supabaseAdmin } = ctx;
 
+  const nowIso = new Date().toISOString();
+
   const { data: active } = await supabaseAdmin
     .from('customer_memberships')
     .select('*, plan:membership_plans(*)')
     .eq('customer_id', customer.id)
+    .eq('status', 'ACTIVE')
+    .gt('ends_at', nowIso)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -25,4 +29,3 @@ export async function GET() {
 
   return NextResponse.json({ membership: active || null, usage: usage || [] });
 }
-
