@@ -7,7 +7,9 @@
 const http = require('http');
 const { formatHtml } = require('./format-html');
 
-const ENABLED = process.env.PRETTY_HTML !== '0';
+// Dev mode uses streaming/HMR — pretty-print patch breaks next dev responses.
+const ENABLED =
+  process.env.PRETTY_HTML !== '0' && process.env.NODE_ENV === 'production';
 
 function isPageRoute(pathname) {
   const path = (pathname || '/').split('?')[0];

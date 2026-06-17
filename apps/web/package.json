@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "node --require ./scripts/html-pretty-patch.js ./node_modules/next/dist/bin/next dev",
+    "dev": "next dev",
     "build": "next build",
     "start": "node --require ./scripts/html-pretty-patch.js ./scripts/start-server.js",
     "start:plain": "node ./scripts/start-server.js",
