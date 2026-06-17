@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Platform, Text as RNText } from 'react-native';
+import { Platform, Text as RNText } from 'react-native';
 
 if (Platform.OS === 'ios') {
   try {
@@ -36,6 +36,13 @@ import PublicServicePackagesScreen from './src/screens/PublicServicePackagesScre
 import PublicWorkshopLocatorScreen from './src/screens/PublicWorkshopLocatorScreen';
 import RoadsideAssistanceScreen from './src/screens/RoadsideAssistanceScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import SmartToolWebScreen from './src/screens/smartTools/SmartToolWebScreen';
+import CarHealthCheckScreen from './src/screens/smartTools/CarHealthCheckScreen';
+import FuelCostCalculatorScreen from './src/screens/smartTools/FuelCostCalculatorScreen';
+import AuthorisedPricingScreen from './src/screens/smartTools/AuthorisedPricingScreen';
+import ResaleValueScreen from './src/screens/smartTools/ResaleValueScreen';
+import CarQuizGameScreen from './src/screens/smartTools/CarQuizGameScreen';
+import CarPartsPriceScreen from './src/screens/smartTools/CarPartsPriceScreen';
 import CustomerRegistrationScreen from './src/screens/dashboard/customer/CustomerRegistrationScreen';
 import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
 import SplashScreen from './src/screens/SplashScreen';
@@ -50,7 +57,7 @@ const Stack = createNativeStackNavigator();
 
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const isCustomerSessionUser =
@@ -95,7 +102,7 @@ function AppContent() {
     } catch (error) {
       if (__DEV__) console.error('Error checking user:', error);
     } finally {
-      setIsLoading(false);
+      setAuthReady(true);
     }
   };
 
@@ -178,22 +185,16 @@ function AppContent() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#004AAD" />
-        <Text style={styles.loadingText}>Loading MyFNG...</Text>
-      </View>
-    );
+  if (showSplash || !authReady) {
+    return <SplashScreen durationMs={4000} onComplete={() => setShowSplash(false)} />;
   }
 
-  if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
-  }
+  const isLoggedIn = Boolean(user && userProfile);
+  const initialRoute = isLoggedIn ? 'Dashboard' : 'PublicHome';
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
         {!user || !userProfile || isCustomerSessionUser ? (
           <>
             {/* Public Home (marketing + navigation hub) */}
@@ -208,6 +209,13 @@ function AppContent() {
             <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
             <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
             <Stack.Screen name="RoadsideAssistance" component={RoadsideAssistanceScreen} />
+            <Stack.Screen name="SmartToolWeb" component={SmartToolWebScreen} />
+            <Stack.Screen name="CarHealthCheck" component={CarHealthCheckScreen} />
+            <Stack.Screen name="FuelCostCalculator" component={FuelCostCalculatorScreen} />
+            <Stack.Screen name="AuthorisedPricing" component={AuthorisedPricingScreen} />
+            <Stack.Screen name="ResaleValue" component={ResaleValueScreen} />
+            <Stack.Screen name="CarQuizGame" component={CarQuizGameScreen} />
+            <Stack.Screen name="CarPartsPrice" component={CarPartsPriceScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Login">
               {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
@@ -253,17 +261,3 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F0F7FF',
-  },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-});

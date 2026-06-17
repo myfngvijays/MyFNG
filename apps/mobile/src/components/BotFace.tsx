@@ -1,8 +1,18 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 
-export default function BotFace({ size = 28 }: { size?: number }) {
+type BotFaceProps = {
+  size?: number;
+  /** Robot scale inside the outer box (0–1). Keeps the bot centered with padding. */
+  scale?: number;
+  /** Background circle color — adds subtle contrast on white so the same bot stays visible. */
+  surface?: 'blue' | 'white';
+};
+
+export default function BotFace({ size = 28, scale = 0.68, surface = 'blue' }: BotFaceProps) {
   const blinkAnim = useRef(new Animated.Value(1)).current;
+  const botSize = size * scale;
+  const onWhiteSurface = surface === 'white';
 
   useEffect(() => {
     const runBlink = () => {
@@ -15,62 +25,68 @@ export default function BotFace({ size = 28 }: { size?: number }) {
     runBlink();
   }, [blinkAnim]);
 
-  const eyeSize = size * 0.22;
-  const faceSize = size;
+  const eyeSize = botSize * 0.2;
+  const faceWidth = botSize * 0.82;
+  const faceHeight = botSize * 0.52;
+  const antennaBall = botSize * 0.14;
+  const antennaStemW = botSize * 0.06;
+  const antennaStemH = botSize * 0.16;
 
   return (
-    <View style={{ width: faceSize, height: faceSize, alignItems: 'center', justifyContent: 'center' }}>
-      <View
-        style={{
-          width: faceSize * 0.85,
-          height: faceSize * 0.65,
-          borderRadius: faceSize * 0.2,
-          backgroundColor: 'rgba(255,255,255,0.25)',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'row',
-          gap: faceSize * 0.18,
-        }}
-      >
-        <Animated.View
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: botSize, height: botSize, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ alignItems: 'center', marginBottom: botSize * 0.02 }}>
+          <View
+            style={{
+              width: antennaBall,
+              height: antennaBall,
+              borderRadius: antennaBall / 2,
+              backgroundColor: 'rgba(255,255,255,0.85)',
+            }}
+          />
+          <View
+            style={{
+              width: antennaStemW,
+              height: antennaStemH,
+              backgroundColor: 'rgba(255,255,255,0.55)',
+              borderRadius: antennaStemW / 2,
+            }}
+          />
+        </View>
+        <View
           style={{
-            width: eyeSize,
-            height: eyeSize,
-            borderRadius: eyeSize / 2,
-            backgroundColor: '#FFFFFF',
-            transform: [{ scaleY: blinkAnim }],
+            width: faceWidth,
+            height: faceHeight,
+            borderRadius: faceHeight * 0.38,
+            backgroundColor: 'rgba(255,255,255,0.92)',
+            borderWidth: onWhiteSurface ? 1 : 0,
+            borderColor: '#DBEAFE',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            gap: faceWidth * 0.16,
           }}
-        />
-        <Animated.View
-          style={{
-            width: eyeSize,
-            height: eyeSize,
-            borderRadius: eyeSize / 2,
-            backgroundColor: '#FFFFFF',
-            transform: [{ scaleY: blinkAnim }],
-          }}
-        />
+        >
+          <Animated.View
+            style={{
+              width: eyeSize,
+              height: eyeSize,
+              borderRadius: eyeSize / 2,
+              backgroundColor: '#2563EB',
+              transform: [{ scaleY: blinkAnim }],
+            }}
+          />
+          <Animated.View
+            style={{
+              width: eyeSize,
+              height: eyeSize,
+              borderRadius: eyeSize / 2,
+              backgroundColor: '#2563EB',
+              transform: [{ scaleY: blinkAnim }],
+            }}
+          />
+        </View>
       </View>
-      <View
-        style={{
-          width: faceSize * 0.06,
-          height: faceSize * 0.22,
-          backgroundColor: 'rgba(255,255,255,0.3)',
-          position: 'absolute',
-          top: -faceSize * 0.15,
-          borderRadius: faceSize * 0.04,
-        }}
-      />
-      <View
-        style={{
-          width: faceSize * 0.15,
-          height: faceSize * 0.15,
-          borderRadius: faceSize * 0.08,
-          backgroundColor: 'rgba(255,255,255,0.4)',
-          position: 'absolute',
-          top: -faceSize * 0.28,
-        }}
-      />
     </View>
   );
 }

@@ -24,6 +24,7 @@ import LiveTrackingModal from '../components/LiveTrackingModal';
 import SearchOverlay from '../components/SearchOverlay';
 import PrimeBanner from '../components/PrimeBanner';
 import ReferAndFooter from '../components/ReferAndFooter';
+import SmartToolsSection from '../components/SmartToolsSection';
 import { openPhoneCall } from '../lib/phone';
 import { COLORS } from '../constants/theme';
 import {
@@ -170,10 +171,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const loanFade = useRef(new Animated.Value(1)).current;
   const howFade = useRef(new Animated.Value(1)).current;
   const howSlide = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    navigation.navigate('AIBooking', { city: detectedCity });
-  }, []);
 
   useEffect(() => {
     Animated.loop(
@@ -621,6 +618,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
               ))}
             </View>
           </Section>
+
+          <SmartToolsSection navigation={navigation} city={detectedCity} />
 
           <Section>
             <Text style={styles.whySectionHeading}>Why MyFNG</Text>

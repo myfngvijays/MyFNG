@@ -337,7 +337,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
             <Ionicons name="arrow-back" size={20} color={COLORS.secondary} />
           </TouchableOpacity>
           <View style={styles.botAvatar}>
-            <BotFace size={28} />
+            <BotFace size={40} scale={0.58} surface="blue" />
           </View>
           <View style={styles.headerTextWrap}>
             <Text style={styles.headerTitle}>Misa AI</Text>

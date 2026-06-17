@@ -6,8 +6,10 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type SplashScreenProps = {
   onComplete: () => void;
@@ -16,236 +18,256 @@ type SplashScreenProps = {
 
 const SERVICE_ITEMS = [
   { name: 'AC Service', icon: 'snow-outline' as const },
-  { name: 'Brakes', icon: 'disc-outline' as const },
-  { name: 'Periodic Service', icon: 'construct' as const, active: true },
-  { name: 'Engine', icon: 'pulse-outline' as const },
-  { name: 'Oil Change', icon: 'water-outline' as const },
+  { name: 'Brakes Service', icon: 'disc-outline' as const },
+  { name: 'Periodic Service', icon: 'construct' as const },
+  { name: 'Denting Service', icon: 'hammer-outline' as const },
+  { name: 'Detailing Service', icon: 'sparkles-outline' as const },
 ];
 
-const DOT_COUNT = 5;
+// Appear: 1 AI Booking → 2 Live Tracking → 3 Free Pickup → 4 Genuine Parts
+const USP_ITEMS = [
+  { label: 'AI Booking', icon: 'chatbubble-ellipses' as const, bg: '#EFF6FF', color: '#2563EB', side: 'left' as const, roadY: 0.44 },
+  { label: 'Live Tracking', icon: 'locate' as const, bg: '#ECFDF5', color: '#10B981', side: 'right' as const, roadY: 0.34 },
+  { label: 'Free Pickup', icon: 'car-outline' as const, bg: '#F5F3FF', color: '#7C3AED', side: 'left' as const, roadY: 0.3 },
+  { label: 'Genuine Parts', icon: 'shield-checkmark' as const, bg: '#FFF7ED', color: '#EA580C', side: 'right' as const, roadY: 0.2 },
+];
+
+const ROAD_DASH_COUNT = 12;
+const SERVICE_SLOT = 62;
+const ACTIVE_SERVICE_INDEX = 2; // Periodic Service — fixed center
+const USP_STAGGER_MS = 700;
+
+/** Distance from screen edge — wider road (lower Y) keeps pills near the edges. */
+function roadSideOffset(roadY: number) {
+  return 1 + (1 - roadY) * 14;
+}
 
 export default function SplashScreen({
   onComplete,
-  durationMs = 2400,
+  durationMs = 4000,
 }: SplashScreenProps) {
+  const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
+
   const logoFade = useRef(new Animated.Value(0)).current;
-  const logoY = useRef(new Animated.Value(-30)).current;
-  const carFade = useRef(new Animated.Value(0)).current;
-  const carScale = useRef(new Animated.Value(0.7)).current;
-
-  const pillLeftFade = useRef(new Animated.Value(0)).current;
-  const pillLeftX = useRef(new Animated.Value(-30)).current;
-  const pillRightFade = useRef(new Animated.Value(0)).current;
-  const pillRightX = useRef(new Animated.Value(30)).current;
-  const pillBob = useRef(new Animated.Value(0)).current;
-
+  const logoY = useRef(new Animated.Value(-20)).current;
+  const sceneFade = useRef(new Animated.Value(0)).current;
+  const carDrive = useRef(new Animated.Value(0)).current;
+  const roadFlow = useRef(new Animated.Value(0)).current;
   const serviceFade = useRef(new Animated.Value(0)).current;
   const badgeFade = useRef(new Animated.Value(0)).current;
-  const badgeY = useRef(new Animated.Value(10)).current;
 
-  const roadLeftFade = useRef(new Animated.Value(0)).current;
-  const roadRightFade = useRef(new Animated.Value(0)).current;
-  const dotsFade = useRef(new Animated.Value(0)).current;
-  const dotsTravel = useRef(new Animated.Value(0)).current;
-
-  const dotAnims = useMemo(
-    () => Array.from({ length: DOT_COUNT }, () => new Animated.Value(0.2)),
+  const uspSlides = useMemo(() => USP_ITEMS.map(() => new Animated.Value(0)), []);
+  const uspFades = useMemo(() => USP_ITEMS.map(() => new Animated.Value(0)), []);
+  const dashAnims = useMemo(
+    () => Array.from({ length: ROAD_DASH_COUNT }, () => new Animated.Value(0)),
     []
   );
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(logoFade, { toValue: 1, duration: 350, delay: 80, useNativeDriver: true }),
-        Animated.timing(logoY, { toValue: 0, duration: 350, delay: 80, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(carFade, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.spring(carScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(roadLeftFade, { toValue: 1, duration: 250, useNativeDriver: true }),
-        Animated.timing(roadRightFade, { toValue: 1, duration: 250, useNativeDriver: true }),
-        Animated.timing(dotsFade, { toValue: 1, duration: 250, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(pillLeftFade, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(pillLeftX, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(pillRightFade, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(pillRightX, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]),
-    ]).start();
-
-    Animated.timing(serviceFade, { toValue: 1, duration: 350, delay: 600, useNativeDriver: true }).start();
     Animated.parallel([
-      Animated.timing(badgeFade, { toValue: 1, duration: 300, delay: 800, useNativeDriver: true }),
-      Animated.timing(badgeY, { toValue: 0, duration: 300, delay: 800, useNativeDriver: true }),
+      Animated.timing(logoFade, { toValue: 1, duration: 380, delay: 50, useNativeDriver: true }),
+      Animated.timing(logoY, { toValue: 0, duration: 380, delay: 50, useNativeDriver: true }),
     ]).start();
 
-    // Continuous floating bob for both pills
-    const bobLoop = Animated.loop(
+    Animated.timing(sceneFade, { toValue: 1, duration: 420, delay: 220, useNativeDriver: true }).start();
+
+    USP_ITEMS.forEach((usp, i) => {
       Animated.sequence([
-        Animated.timing(pillBob, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(pillBob, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.delay(700 + i * USP_STAGGER_MS),
+        Animated.parallel([
+          Animated.timing(uspSlides[i], {
+            toValue: 1,
+            duration: 480,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(uspFades[i], {
+            toValue: 1,
+            duration: 420,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    });
+
+    Animated.timing(serviceFade, { toValue: 1, duration: 320, delay: 1100, useNativeDriver: true }).start();
+    Animated.timing(badgeFade, { toValue: 1, duration: 300, delay: 1300, useNativeDriver: true }).start();
+
+    const driveLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(carDrive, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(carDrive, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     );
-    bobLoop.start();
+    driveLoop.start();
 
-    // Continuous downward "travel" effect on dotted connector
-    const dotsLoop = Animated.loop(
-      Animated.timing(dotsTravel, {
+    const roadLoop = Animated.loop(
+      Animated.timing(roadFlow, {
         toValue: 1,
-        duration: 1400,
+        duration: 900,
         easing: Easing.linear,
         useNativeDriver: true,
       })
     );
-    dotsLoop.start();
+    roadLoop.start();
 
-    // Sequential dot pulse to create flowing effect
-    const dotSequence = Animated.loop(
+    const dashLoop = Animated.loop(
       Animated.stagger(
-        180,
-        dotAnims.map((d) =>
+        70,
+        dashAnims.map((d) =>
           Animated.sequence([
-            Animated.timing(d, { toValue: 1, duration: 350, useNativeDriver: true }),
-            Animated.timing(d, { toValue: 0.2, duration: 350, useNativeDriver: true }),
+            Animated.timing(d, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(d, { toValue: 0.15, duration: 400, useNativeDriver: true }),
           ])
         )
       )
     );
-    dotSequence.start();
+    dashLoop.start();
 
     const timer = setTimeout(onComplete, durationMs);
     return () => {
       clearTimeout(timer);
-      bobLoop.stop();
-      dotsLoop.stop();
-      dotSequence.stop();
+      driveLoop.stop();
+      roadLoop.stop();
+      dashLoop.stop();
     };
   }, [
     durationMs,
     onComplete,
     logoFade,
     logoY,
-    carFade,
-    carScale,
-    pillLeftFade,
-    pillLeftX,
-    pillRightFade,
-    pillRightX,
-    pillBob,
+    sceneFade,
+    carDrive,
+    roadFlow,
     serviceFade,
     badgeFade,
-    badgeY,
-    roadLeftFade,
-    roadRightFade,
-    dotsFade,
-    dotsTravel,
-    dotAnims,
+    uspSlides,
+    uspFades,
+    dashAnims,
   ]);
 
-  const pillBobY = pillBob.interpolate({ inputRange: [0, 1], outputRange: [0, -6] });
-  const pillBobYReverse = pillBob.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+  const carBobY = carDrive.interpolate({ inputRange: [0, 1], outputRange: [2, -3] });
+  const carScale = carDrive.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.015, 1] });
+  const roadShift = roadFlow.interpolate({ inputRange: [0, 1], outputRange: [0, 32] });
 
   return (
-    <View style={s.container}>
-      {/* Background watermark */}
-      <Text style={s.watermark}>MyFNG</Text>
+    <View style={[s.container, { paddingBottom: insets.bottom + 6 }]}>
+      <Text style={[s.watermark, { top: insets.top + screenHeight * 0.22 }]}>MyFNG</Text>
 
-      {/* Logo + Subtitle */}
-      <Animated.View style={[s.logoWrap, { opacity: logoFade, transform: [{ translateY: logoY }] }]}>
+      <Animated.View
+        style={[
+          s.logoWrap,
+          { paddingTop: insets.top + 4, opacity: logoFade, transform: [{ translateY: logoY }] },
+        ]}
+      >
         <Image source={require('../../assets/logo.png')} style={s.logo} resizeMode="contain" />
         <Text style={s.subtitle}>India&apos;s #1 AI car service booking platform</Text>
       </Animated.View>
 
-      {/* Car + Floating Pills + Road Lanes + Dotted Connector */}
-      <View style={s.carSection}>
-        {/* Diagonal road lane lines emanating from back of car */}
-        <Animated.View
-          style={[
-            s.roadLineLeft,
-            { opacity: roadLeftFade },
-          ]}
-        />
-        <Animated.View
-          style={[
-            s.roadLineRight,
-            { opacity: roadRightFade },
-          ]}
-        />
+      <Animated.View style={[s.roadScene, { opacity: sceneFade }]}>
+        <View style={s.roadVanish} pointerEvents="none">
+          <View style={s.roadEdgeLeft} />
+          <View style={s.roadEdgeRight} />
+
+          {Array.from({ length: ROAD_DASH_COUNT }).map((_, i) => (
+            <Animated.View
+              key={`dash-${i}`}
+              style={[
+                s.roadDash,
+                {
+                  top: `${6 + i * 7.2}%`,
+                  opacity: dashAnims[i],
+                  transform: [{ translateY: roadShift }],
+                },
+              ]}
+            />
+          ))}
+        </View>
+
+        {USP_ITEMS.map((usp, i) => {
+          const slideFrom = usp.side === 'left' ? -90 : 90;
+          const edge = roadSideOffset(usp.roadY);
+          return (
+            <Animated.View
+              key={usp.label}
+              style={[
+                s.uspPill,
+                {
+                  top: `${usp.roadY * 100}%`,
+                  left: usp.side === 'left' ? `${edge}%` : undefined,
+                  right: usp.side === 'right' ? `${edge}%` : undefined,
+                  opacity: uspFades[i],
+                  zIndex: 4 + i,
+                  transform: [
+                    {
+                      translateX: uspSlides[i].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [slideFrom, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={[s.uspIcon, { backgroundColor: usp.bg }]}>
+                <Ionicons name={usp.icon} size={12} color={usp.color} />
+              </View>
+              <Text style={s.uspText}>{usp.label}</Text>
+            </Animated.View>
+          );
+        })}
 
         <Animated.View
           style={[
-            s.pillLeft,
-            { opacity: pillLeftFade, transform: [{ translateX: pillLeftX }, { translateY: pillBobY }] },
+            s.carWrap,
+            {
+              transform: [{ translateY: carBobY }, { scale: carScale }],
+            },
           ]}
         >
-          <View style={s.pillIcon}>
-            <Ionicons name="chatbubble-ellipses" size={14} color="#2563EB" />
-          </View>
-          <Text style={s.pillText}>AI Booking</Text>
+          <Image source={require('../../assets/splash-car.png')} style={s.carImage} resizeMode="contain" />
+        </Animated.View>
+      </Animated.View>
+
+      <View style={s.bottomBlock}>
+        <Animated.View style={[s.serviceRow, { opacity: serviceFade }]}>
+          {SERVICE_ITEMS.map((svc, i) => {
+            const isCenter = i === ACTIVE_SERVICE_INDEX;
+            return (
+              <View key={svc.name} style={[s.serviceSlot, { width: SERVICE_SLOT }]}>
+                <View
+                  style={[
+                    s.serviceIconBg,
+                    isCenter ? s.serviceIconLarge : s.serviceIconSmall,
+                  ]}
+                >
+                  <Ionicons
+                    name={svc.icon}
+                    size={isCenter ? 28 : 18}
+                    color={isCenter ? '#FFFFFF' : '#9CA3AF'}
+                  />
+                </View>
+                <Text
+                  style={[s.serviceName, isCenter && s.serviceNameActive]}
+                  numberOfLines={isCenter ? 2 : 1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {svc.name}
+                </Text>
+              </View>
+            );
+          })}
         </Animated.View>
 
-        <Animated.View style={[s.carWrap, { opacity: carFade, transform: [{ scale: carScale }] }]}>
-          <Image
-            source={require('../../assets/splash-car.png')}
-            style={s.carImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            s.pillRight,
-            { opacity: pillRightFade, transform: [{ translateX: pillRightX }, { translateY: pillBobYReverse }] },
-          ]}
-        >
-          <View style={[s.pillIcon, { backgroundColor: '#ECFDF5' }]}>
-            <Ionicons name="locate" size={14} color="#10B981" />
-          </View>
-          <Text style={s.pillText}>Live Tracking</Text>
+        <Animated.View style={[s.badge, { opacity: badgeFade }]}>
+          <Text style={s.badgeText}>
+            Trusted by <Text style={s.flag}>🇮🇳</Text>{' '}
+            <Text style={s.badgeBold}>10000+ Car Owners</Text>
+          </Text>
         </Animated.View>
       </View>
-
-      {/* Animated dotted connector between car and active service icon */}
-      <Animated.View style={[s.dotsConnector, { opacity: dotsFade }]} pointerEvents="none">
-        {dotAnims.map((d, i) => (
-          <Animated.View
-            key={i}
-            style={[
-              s.connectorDot,
-              {
-                opacity: d,
-                transform: [
-                  {
-                    scale: d.interpolate({ inputRange: [0.2, 1], outputRange: [0.7, 1.1] }),
-                  },
-                ],
-              },
-            ]}
-          />
-        ))}
-      </Animated.View>
-
-      {/* Service Icons Row */}
-      <Animated.View style={[s.serviceRow, { opacity: serviceFade }]}>
-        {SERVICE_ITEMS.map((svc) => (
-          <View key={svc.name} style={s.serviceItem}>
-            <View style={[s.serviceIconBg, svc.active && s.serviceIconBgActive]}>
-              <Ionicons name={svc.icon} size={svc.active ? 26 : 22} color={svc.active ? '#FFFFFF' : '#9CA3AF'} />
-            </View>
-            <Text style={[s.serviceName, svc.active && s.serviceNameActive]}>{svc.name}</Text>
-          </View>
-        ))}
-      </Animated.View>
-
-      {/* Trust Badge */}
-      <Animated.View style={[s.badge, { opacity: badgeFade, transform: [{ translateY: badgeY }] }]}>
-        <Text style={s.badgeText}>
-          Trusted by <Text style={s.badgeBold}>10000+ Car Owners</Text>
-        </Text>
-      </Animated.View>
     </View>
   );
 }
@@ -254,153 +276,196 @@ const s = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F0F7FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
   },
   watermark: {
     position: 'absolute',
-    top: '30%',
+    alignSelf: 'center',
     fontSize: 100,
     fontWeight: '900',
     color: 'rgba(37,99,235,0.04)',
     letterSpacing: -3,
   },
-
-  logoWrap: { alignItems: 'center', marginBottom: 16 },
-  logo: { width: 220, height: 70 },
-  subtitle: {
-    color: '#6B7280', fontSize: 11, marginTop: 4,
-    textAlign: 'center', fontWeight: '700', letterSpacing: -0.3,
+  logoWrap: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
-
-  carSection: {
+  logo: {
+    width: 218,
+    height: 68,
+  },
+  subtitle: {
+    color: '#6B7280',
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: 'center',
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  roadScene: {
+    flex: 1,
     width: '100%',
+    minHeight: 200,
+    marginTop: 2,
+    overflow: 'hidden',
+  },
+  roadVanish: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+  },
+  roadEdgeLeft: {
+    position: 'absolute',
+    bottom: 24,
+    left: '12%',
+    width: 3,
+    height: '92%',
+    backgroundColor: 'rgba(37,99,235,0.5)',
+    borderRadius: 2,
+    transform: [{ rotate: '10deg' }],
+  },
+  roadEdgeRight: {
+    position: 'absolute',
+    bottom: 24,
+    right: '12%',
+    width: 3,
+    height: '92%',
+    backgroundColor: 'rgba(37,99,235,0.5)',
+    borderRadius: 2,
+    transform: [{ rotate: '-10deg' }],
+  },
+  roadDash: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: 4,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: 'rgba(37,99,235,0.4)',
+  },
+  uspPill: {
+    position: 'absolute',
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    maxWidth: 118,
+  },
+  uspIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 20,
-    minHeight: 160,
   },
-  carWrap: { width: 200, height: 160, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  carImage: { width: 200, height: 150 },
-
-  roadLineLeft: {
+  uspText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#111827',
+    flexShrink: 1,
+  },
+  carWrap: {
     position: 'absolute',
-    width: 2,
-    height: 90,
-    backgroundColor: 'rgba(37,99,235,0.55)',
-    borderRadius: 2,
-    bottom: -20,
-    left: '38%',
-    transform: [{ rotate: '18deg' }],
-    zIndex: 0,
-  },
-  roadLineRight: {
-    position: 'absolute',
-    width: 2,
-    height: 90,
-    backgroundColor: 'rgba(37,99,235,0.55)',
-    borderRadius: 2,
-    bottom: -20,
-    right: '38%',
-    transform: [{ rotate: '-18deg' }],
-    zIndex: 0,
-  },
-
-  dotsConnector: {
-    flexDirection: 'column',
+    bottom: 24,
+    alignSelf: 'center',
+    width: '94%',
+    height: '62%',
+    maxHeight: 268,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 36,
-    marginTop: -10,
-    marginBottom: 4,
-  },
-  connectorDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#2563EB',
-    marginVertical: 1,
-  },
-
-  pillLeft: {
-    position: 'absolute',
-    left: 8,
-    top: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    justifyContent: 'flex-end',
     zIndex: 2,
   },
-  pillRight: {
-    position: 'absolute',
-    right: 8,
-    bottom: 20,
-    flexDirection: 'row',
+  carImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bottomBlock: {
+    width: '100%',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-    zIndex: 2,
+    paddingTop: 4,
   },
-  pillIcon: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pillText: { fontSize: 11, fontWeight: '800', color: '#111827' },
-
   serviceRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 14,
-    marginTop: 8,
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    minHeight: 104,
   },
-  serviceItem: { alignItems: 'center', gap: 8 },
+  serviceSlot: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 5,
+    paddingHorizontal: 2,
+  },
   serviceIconBg: {
-    width: 56, height: 56, borderRadius: 20,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E5E7EB',
-    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  serviceIconBgActive: {
-    width: 72, height: 72,
-    backgroundColor: '#2563EB', borderWidth: 0,
-    shadowColor: '#2563EB', shadowOpacity: 0.4,
-    shadowRadius: 20, shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+  serviceIconLarge: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    borderWidth: 0,
+    backgroundColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
-  serviceName: { fontSize: 9, fontWeight: '700', color: '#9CA3AF' },
-  serviceNameActive: { color: '#2563EB' },
-
-  badge: {
-    marginTop: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E5E7EB',
-    paddingHorizontal: 24, paddingVertical: 10,
+  serviceIconSmall: {
+    width: 46,
+    height: 46,
     borderRadius: 16,
-    flexDirection: 'row', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.05,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
+    opacity: 0.85,
+  },
+  serviceName: {
+    fontSize: 7,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    maxWidth: 60,
+  },
+  serviceNameActive: {
+    fontSize: 8,
+    color: '#2563EB',
+    fontWeight: '800',
+    maxWidth: 62,
+    lineHeight: 10,
+  },
+  badge: {
+    marginTop: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 22,
+    paddingVertical: 9,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  badgeText: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
-  badgeBold: { color: '#1F2937', fontWeight: '700' },
+  badgeText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  badgeBold: {
+    color: '#1F2937',
+    fontWeight: '700',
+  },
+  flag: {
+    fontSize: 13,
+  },
 });

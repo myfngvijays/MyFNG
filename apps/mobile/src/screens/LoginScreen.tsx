@@ -14,12 +14,14 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
+  const insets = useSafeAreaInsets();
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
   const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('sms');
   const [customerStep, setCustomerStep] = useState<'input' | 'otp'>('input');
@@ -377,9 +379,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <TouchableOpacity
-        style={styles.skipButton}
+        style={[styles.skipButton, { top: insets.top + 14 }]}
         onPress={() => navigation?.navigate?.('PublicHome')}
         activeOpacity={0.8}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Text style={styles.skipText}>Skip</Text>
         <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
@@ -581,11 +584,10 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     position: 'absolute',
-    right: 24,
-    top: 32,
+    right: 20,
     zIndex: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,

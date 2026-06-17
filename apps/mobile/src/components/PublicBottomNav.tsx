@@ -80,7 +80,7 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
                     activeOpacity={0.85}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
-                    <BotFace size={32} />
+                    <BotFace size={64} scale={0.52} surface="blue" />
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.aiLabel} numberOfLines={1}>{tab.label}</Text>
