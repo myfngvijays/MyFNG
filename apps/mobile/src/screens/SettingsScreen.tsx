@@ -26,7 +26,7 @@ import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { clearCustomerSessionToken, getCustomerSessionToken } from '../lib/customerSession';
+import { clearCustomerSessionToken, getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
 import { supabase } from '../lib/supabase';
 import {
   LEGAL_SECTIONS,
@@ -45,7 +45,13 @@ import {
 } from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
-import { fetchPrimeMembershipConfig, type PrimeMembershipDisplay } from '../lib/membershipPlan';
+import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type PrimeMembershipDisplay } from '../lib/membershipPlan';
+import { PRIME_VALUE_ADDON, PRIME_VALUE_PRICE } from '../constants/primeMembershipValueCard';
+import PrimeMembershipValueCard, {
+  type GuestVehicleForm,
+  type LinkedMembershipVehicle,
+  type MembershipVehicleOption,
+} from '../components/PrimeMembershipValueCard';
 import { BookingDraft, getBookingDrafts, removeBookingDraft } from '../lib/bookingDraft';
 import { dismissVehicleKeys, getDismissedVehicleKeys, saveDismissedVehicleKeys } from '../lib/dismissedVehicles';
 import VehicleImage from '../components/VehicleImage';
@@ -220,8 +226,28 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [membershipBenefits, setMembershipBenefits] = useState<any[]>([]);
   const [currentMembership, setCurrentMembership] = useState<any | null>(null);
   const [selectedMembershipIdx, setSelectedMembershipIdx] = useState(0);
+  const [selectedAppPlanIdx, setSelectedAppPlanIdx] = useState(0);
+  const [appMembershipPlans, setAppMembershipPlans] = useState<PrimeMembershipDisplay[]>([]);
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [addSecondCar, setAddSecondCar] = useState(false);
+  const [membershipActivating, setMembershipActivating] = useState(false);
+  const [membershipPrimaryVehicleKey, setMembershipPrimaryVehicleKey] = useState<string | null>(null);
+  const [membershipSecondVehicleKey, setMembershipSecondVehicleKey] = useState<string | null>(null);
+  const [membershipSecondVehicleFormMode, setMembershipSecondVehicleFormMode] = useState(false);
+  const [membershipGuestForm, setMembershipGuestForm] = useState<GuestVehicleForm>({
+    name: '',
+    phone: '',
+    vehicleNumber: '',
+    make: '',
+    model: '',
+    carSearchDisplay: '',
+  });
+  const [membershipGuestSecondForm, setMembershipGuestSecondForm] = useState({
+    vehicleNumber: '',
+    make: '',
+    model: '',
+    carSearchDisplay: '',
+  });
   const [primeMembershipConfig, setPrimeMembershipConfig] = useState<PrimeMembershipDisplay | null>(null);
   const [showReferTnC, setShowReferTnC] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
@@ -820,6 +846,135 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const vehicleCarouselData = useMemo(() => allAssociatedVehicles, [allAssociatedVehicles]);
 
+  const membershipVehicleOptions = useMemo<MembershipVehicleOption[]>(
+    () =>
+      allAssociatedVehicles.map((v, idx) => ({
+        key: getVehicleKey(v, idx),
+        vehicle_number: v.vehicle_number,
+        make: v.make,
+        model: v.model || v.model_name,
+        label: [v.make, v.model || v.model_name, v.vehicle_number].filter(Boolean).join(' · '),
+      })),
+    [allAssociatedVehicles],
+  );
+
+  const membershipLinkedVehicles = useMemo(() => {
+    if (!currentMembership || !hasActiveMembership) {
+      return {
+        primary: null as LinkedMembershipVehicle | null,
+        second: null as LinkedMembershipVehicle | null,
+        primaryKey: null as string | null,
+      };
+    }
+
+    const toLinked = (make?: string, model?: string, vehicle_number?: string): LinkedMembershipVehicle => {
+      const plate = vehicle_number ? String(vehicle_number).trim().toUpperCase() : undefined;
+      const name = [make, model].filter(Boolean).join(' ');
+      return {
+        make,
+        model,
+        vehicle_number: plate,
+        label: name || plate || 'Your car',
+      };
+    };
+
+    let primary: LinkedMembershipVehicle | null = null;
+    let primaryKey: string | null = null;
+    const snap = currentMembership.primary_vehicle_snapshot;
+    if (snap && (snap.make || snap.model || snap.vehicle_number)) {
+      primary = toLinked(snap.make, snap.model, snap.vehicle_number);
+    }
+
+    if (currentMembership.primary_vehicle_id) {
+      const idx = allAssociatedVehicles.findIndex(
+        (v) => String(v.id) === String(currentMembership.primary_vehicle_id),
+      );
+      if (idx >= 0) {
+        const v = allAssociatedVehicles[idx];
+        primaryKey = getVehicleKey(v, idx);
+        if (!primary) {
+          primary = toLinked(v.make, v.model || v.model_name, v.vehicle_number);
+        }
+      }
+    }
+
+    if (!primary && membershipVehicleOptions.length === 1) {
+      const v = membershipVehicleOptions[0];
+      primary = toLinked(v.make, v.model, v.vehicle_number);
+      primaryKey = v.key;
+    }
+
+    if (!primary && membershipVehicleOptions.length > 0) {
+      const defaultIdx = allAssociatedVehicles.findIndex((v) => Boolean(v?.is_default));
+      const idx = defaultIdx >= 0 ? defaultIdx : 0;
+      const v = allAssociatedVehicles[idx];
+      const opt = membershipVehicleOptions.find((o) => o.key === getVehicleKey(v, idx)) || membershipVehicleOptions[idx];
+      primary = toLinked(v.make, v.model || v.model_name, v.vehicle_number);
+      primaryKey = opt?.key || getVehicleKey(v, idx);
+    }
+
+    if (!primary && membershipPrimaryVehicleKey) {
+      const v = membershipVehicleOptions.find((o) => o.key === membershipPrimaryVehicleKey);
+      if (v) primary = toLinked(v.make, v.model, v.vehicle_number);
+    }
+
+    let second: LinkedMembershipVehicle | null = null;
+    if (currentMembership.has_second_car) {
+      const ss = currentMembership.second_vehicle_snapshot;
+      if (ss && (ss.make || ss.model || ss.vehicle_number)) {
+        second = toLinked(ss.make, ss.model, ss.vehicle_number);
+      } else if (currentMembership.second_vehicle_id) {
+        const v = allAssociatedVehicles.find(
+          (row) => String(row.id) === String(currentMembership.second_vehicle_id),
+        );
+        if (v) second = toLinked(v.make, v.model || v.model_name, v.vehicle_number);
+      }
+    }
+
+    return { primary, second, primaryKey };
+  }, [
+    currentMembership,
+    hasActiveMembership,
+    allAssociatedVehicles,
+    membershipVehicleOptions,
+    membershipPrimaryVehicleKey,
+  ]);
+
+  useEffect(() => {
+    if (activeSubPage !== 'Membership') return;
+
+    if (hasActiveMembership && currentMembership) {
+      if (membershipLinkedVehicles.primaryKey) {
+        setMembershipPrimaryVehicleKey(membershipLinkedVehicles.primaryKey);
+      } else if (membershipVehicleOptions.length === 1) {
+        setMembershipPrimaryVehicleKey(membershipVehicleOptions[0].key);
+      }
+
+      if (!currentMembership.has_second_car) {
+        const excludeKey = membershipLinkedVehicles.primaryKey || membershipPrimaryVehicleKey;
+        const otherCars = membershipVehicleOptions.filter((v) => v.key !== excludeKey);
+        setMembershipSecondVehicleFormMode(otherCars.length === 0);
+      }
+    } else if (membershipVehicleOptions.length && !membershipPrimaryVehicleKey) {
+      setMembershipPrimaryVehicleKey(membershipVehicleOptions[0].key);
+    }
+
+    setMembershipGuestForm((prev) => ({
+      ...prev,
+      name: prev.name || profileForm.name || '',
+      phone: prev.phone || profileForm.phone || '',
+    }));
+  }, [
+    activeSubPage,
+    hasActiveMembership,
+    currentMembership,
+    membershipLinkedVehicles.primaryKey,
+    membershipVehicleOptions,
+    membershipPrimaryVehicleKey,
+    profileForm.name,
+    profileForm.phone,
+  ]);
+
   const activeVehicleIndex = useMemo(() => {
     const idx = vehicleCarouselData.findIndex((vehicle, index) => getVehicleKey(vehicle, index) === selectedVehicleKey);
     return idx >= 0 ? idx : 0;
@@ -1178,23 +1333,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
               code: p.code,
               raw: p,
             }))
-          : MEMBERSHIP_PLANS.map((p, idx) => ({
-              id: String(idx),
-              name: p.name,
-              price: p.price,
-              priceNum: idx === 0 ? 499 : idx === 1 ? 1499 : 2999,
-              color: p.color,
-              code: idx === 0 ? 'BRONZE' : idx === 1 ? 'SILVER' : 'GOLD',
-              raw: null,
-            }));
+          : [];
+
+        const pubPlans = await fetchAppMembershipPlans(ENV.API_URL).catch(() => []);
+        const pubConfig = pubPlans[0] || (await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null));
 
         if (!cancelled) {
           setMembershipPlans(displayPlans);
           setMembershipBenefits(dbBenefits);
+          setAppMembershipPlans(pubPlans);
+          setSelectedAppPlanIdx(0);
+          if (pubConfig) setPrimeMembershipConfig(pubConfig);
         }
-
-        const pubConfig = await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null);
-        if (!cancelled && pubConfig) setPrimeMembershipConfig(pubConfig);
 
         if (isLoggedIn) {
           const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
@@ -1210,17 +1360,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
         }
       } catch (_err) {
         if (!cancelled) {
-          setMembershipPlans(
-            MEMBERSHIP_PLANS.map((p, idx) => ({
-              id: String(idx),
-              name: p.name,
-              price: p.price,
-              priceNum: idx === 0 ? 499 : idx === 1 ? 1499 : 2999,
-              color: p.color,
-              code: idx === 0 ? 'BRONZE' : idx === 1 ? 'SILVER' : 'GOLD',
-              raw: null,
-            })),
-          );
+          setMembershipPlans([]);
+          setAppMembershipPlans([]);
         }
       } finally {
         if (!cancelled) setMembershipLoading(false);
@@ -1273,16 +1414,97 @@ export default function SettingsScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleMembershipUpgrade = async () => {
-    if (!isLoggedIn) {
-      setVehicleEntryOnly(false);
-      setActiveSubPage('My Profile');
-      return;
-    }
-    const plan =
+  const resolveMembershipPlan = () => {
+    return (
+      membershipPlans.find((p: any) => {
+        const selected = appMembershipPlans[selectedAppPlanIdx];
+        return selected?.planId && p?.raw?.id === selected.planId;
+      }) ||
       membershipPlans.find((p: any) => String(p?.code || '').toUpperCase() === 'PRIME' && p?.raw?.id) ||
       membershipPlans.find((p: any) => p?.raw?.id) ||
-      membershipPlans[selectedMembershipIdx];
+      membershipPlans[selectedMembershipIdx]
+    );
+  };
+
+  const vehicleSnapshotFromOption = (v: MembershipVehicleOption | null | undefined) => ({
+    vehicle_number: String(v?.vehicle_number || '').trim().toUpperCase(),
+    make: String(v?.make || '').trim(),
+    model: String(v?.model || '').trim(),
+    vehicle_id: null,
+  });
+
+  const saveVehicleForMember = async (payload: { vehicle_number: string; make: string; model: string }) => {
+    const res = await apiFetch<any>('/api/customer/vehicles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vehicle_number: payload.vehicle_number,
+        make: payload.make,
+        model: payload.model,
+        is_default: false,
+      }),
+    });
+    return res?.vehicle || null;
+  };
+
+  const resolveSecondVehicleForMembership = async (forAddonOnly = false) => {
+    const otherOptions = forAddonOnly
+      ? membershipVehicleOptions
+      : membershipVehicleOptions.filter((v) => v.key !== membershipPrimaryVehicleKey);
+    if (membershipSecondVehicleFormMode || otherOptions.length === 0) {
+      const sNum = membershipGuestSecondForm.vehicleNumber.trim().toUpperCase();
+      const sMake = membershipGuestSecondForm.make.trim();
+      const sModel = membershipGuestSecondForm.model.trim();
+      if (!sNum || !sMake || !sModel) {
+        throw new Error('Please enter 2nd car number and search-select the car model.');
+      }
+      const saved = await saveVehicleForMember({ vehicle_number: sNum, make: sMake, model: sModel });
+      const secondVehicleId = saved?.id ? String(saved.id) : null;
+      return {
+        secondVehicleId,
+        secondSnapshot: { vehicle_number: sNum, make: sMake, model: sModel, vehicle_id: secondVehicleId },
+      };
+    }
+    if (membershipSecondVehicleKey) {
+      const second = membershipVehicleOptions.find((v) => v.key === membershipSecondVehicleKey);
+      const rawSecond = allAssociatedVehicles.find((v, idx) => getVehicleKey(v, idx) === membershipSecondVehicleKey);
+      const secondVehicleId = rawSecond?.id ? String(rawSecond.id) : null;
+      return {
+        secondVehicleId,
+        secondSnapshot: { ...vehicleSnapshotFromOption(second), vehicle_id: secondVehicleId },
+      };
+    }
+    throw new Error('Please select or add your 2nd car.');
+  };
+
+  const openRazorpay = async (orderRes: any, description: string) => {
+    let RazorpayCheckout: any = null;
+    try {
+      RazorpayCheckout = require('react-native-razorpay')?.default;
+    } catch {
+      RazorpayCheckout = null;
+    }
+    if (!RazorpayCheckout) {
+      throw new Error('Payment module is not available. Please update the app.');
+    }
+    return RazorpayCheckout.open({
+      key: orderRes.razorpay_key,
+      amount: orderRes.amount_paise,
+      currency: 'INR',
+      name: 'MyFNG',
+      description,
+      order_id: orderRes.order_id,
+      prefill: {
+        contact: membershipGuestForm.phone || profileForm.phone || '',
+        name: membershipGuestForm.name || profileForm.name || '',
+        email: profileForm.email || '',
+      },
+      theme: { color: '#023D95' },
+    });
+  };
+
+  const handleMembershipUpgrade = async () => {
+    const plan = resolveMembershipPlan();
     if (!plan?.raw?.id) {
       Alert.alert('Membership', 'Plan details not available. Please try again.');
       return;
@@ -1291,7 +1513,93 @@ export default function SettingsScreen({ navigation, route }: Props) {
       Alert.alert('Already subscribed', `You are already a ${membershipDisplay?.label || plan.name}.`);
       return;
     }
+
+    const wasGuestCheckout = !isLoggedIn;
+    setMembershipActivating(true);
     try {
+      let primaryVehicleId: string | null = null;
+      let secondVehicleId: string | null = null;
+      let primarySnapshot: Record<string, unknown> = {};
+      let secondSnapshot: Record<string, unknown> | null = null;
+
+      const ensureLoggedInGuest = async () => {
+        const name = membershipGuestForm.name.trim();
+        const phone = membershipGuestForm.phone.replace(/\D/g, '').slice(-10);
+        const vehicleNumber = membershipGuestForm.vehicleNumber.trim().toUpperCase();
+        const make = membershipGuestForm.make.trim();
+        const model = membershipGuestForm.model.trim();
+        if (!name || phone.length !== 10 || !vehicleNumber || !make || !model) {
+          throw new Error('Please enter your name, mobile, car number and search-select your car model.');
+        }
+        if (addSecondCar) {
+          const sNum = membershipGuestSecondForm.vehicleNumber.trim().toUpperCase();
+          const sMake = membershipGuestSecondForm.make.trim();
+          const sModel = membershipGuestSecondForm.model.trim();
+          if (!sNum || !sMake || !sModel) {
+            throw new Error('Please enter 2nd car number and search-select the car model.');
+          }
+        }
+        const prepRes = await fetch(`${ENV.API_URL}/api/public/membership/prepare-buyer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: name,
+            phone,
+            add_second_car: addSecondCar,
+            primary_vehicle: { vehicle_number: vehicleNumber, make, model },
+            second_vehicle: addSecondCar
+              ? {
+                  vehicle_number: membershipGuestSecondForm.vehicleNumber.trim().toUpperCase(),
+                  make: membershipGuestSecondForm.make.trim(),
+                  model: membershipGuestSecondForm.model.trim(),
+                }
+              : null,
+          }),
+        });
+        const prep = await prepRes.json().catch(() => ({}));
+        if (!prepRes.ok) {
+          throw new Error(prep?.details || prep?.error || 'Could not save your details.');
+        }
+        if (prep.session_token) await setCustomerSessionToken(prep.session_token);
+        setIsLoggedIn(true);
+        await hydrateCustomerData();
+        primaryVehicleId = prep.primary_vehicle_id || null;
+        secondVehicleId = prep.second_vehicle_id || null;
+        primarySnapshot = prep.primary_vehicle || {};
+        secondSnapshot = prep.second_vehicle || null;
+      };
+
+      if (!isLoggedIn) {
+        await ensureLoggedInGuest();
+      } else if (membershipVehicleOptions.length > 0 && membershipPrimaryVehicleKey) {
+        const primary = membershipVehicleOptions.find((v) => v.key === membershipPrimaryVehicleKey);
+        primarySnapshot = vehicleSnapshotFromOption(primary);
+        const rawPrimary = allAssociatedVehicles.find((v, idx) => getVehicleKey(v, idx) === membershipPrimaryVehicleKey);
+        primaryVehicleId = rawPrimary?.id ? String(rawPrimary.id) : null;
+
+        if (addSecondCar) {
+          const resolved = await resolveSecondVehicleForMembership();
+          secondVehicleId = resolved.secondVehicleId;
+          secondSnapshot = resolved.secondSnapshot;
+        }
+      } else {
+        const vehicleNumber = membershipGuestForm.vehicleNumber.trim().toUpperCase();
+        const make = membershipGuestForm.make.trim();
+        const model = membershipGuestForm.model.trim();
+        if (!vehicleNumber || !make || !model) {
+          throw new Error('Please enter your car number and search-select your car model.');
+        }
+        const saved = await saveVehicleForMember({ vehicle_number: vehicleNumber, make, model });
+        primaryVehicleId = saved?.id ? String(saved.id) : null;
+        primarySnapshot = { vehicle_number: vehicleNumber, make, model, vehicle_id: primaryVehicleId };
+
+        if (addSecondCar) {
+          const resolved = await resolveSecondVehicleForMembership();
+          secondVehicleId = resolved.secondVehicleId;
+          secondSnapshot = resolved.secondSnapshot;
+        }
+      }
+
       const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1303,40 +1611,21 @@ export default function SettingsScreen({ navigation, route }: Props) {
         return;
       }
 
-      let RazorpayCheckout: any = null;
-      try {
-        RazorpayCheckout = require('react-native-razorpay')?.default;
-      } catch {
-        RazorpayCheckout = null;
-      }
-
-      if (!RazorpayCheckout) {
-        Alert.alert('Error', 'Payment module is not available. Please update the app.');
-        return;
-      }
-
-      const options = {
-        key: orderRes.razorpay_key,
-        amount: orderRes.amount_paise,
-        currency: 'INR',
-        name: 'MyFNG',
-        description: addSecondCar ? `${plan.name} Membership + 2nd Car` : `${plan.name} Membership`,
-        order_id: orderRes.order_id,
-        prefill: {
-          contact: profileForm.phone || '',
-          name: profileForm.name || '',
-          email: profileForm.email || '',
-        },
-        theme: { color: '#004AAD' },
-      };
-
-      const paymentResult = await RazorpayCheckout.open(options);
+      const paymentResult = await openRazorpay(
+        orderRes,
+        addSecondCar ? `${plan.name} Membership + 2nd Car` : `${plan.name} Membership`,
+      );
 
       const subRes = await apiFetch<any>('/api/customer/membership/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           plan_id: plan.raw.id,
+          add_second_car: addSecondCar,
+          primary_vehicle_id: primaryVehicleId,
+          second_vehicle_id: secondVehicleId,
+          primary_vehicle_snapshot: primarySnapshot,
+          second_vehicle_snapshot: secondSnapshot,
           razorpay_payment_id: paymentResult.razorpay_payment_id,
           razorpay_order_id: paymentResult.razorpay_order_id,
           razorpay_signature: paymentResult.razorpay_signature,
@@ -1347,13 +1636,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
         throw new Error(subRes?.error || subRes?.details || 'Membership activation failed after payment. Contact support with your payment ID.');
       }
 
-      Alert.alert('Success', `You are now a ${plan.name} member! Check your profile for your membership badge.`);
+      Alert.alert(
+        'Success',
+        wasGuestCheckout
+          ? `You are now a ${plan.name} member! Your MyFNG account is ready — same mobile number se login rahega.`
+          : `You are now a ${plan.name} member! Check your profile for your membership badge.`,
+      );
       if (subRes?.membership) {
         setCurrentMembership(subRes.membership);
       } else {
         const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
         if (memRes?.membership) setCurrentMembership(memRes.membership);
       }
+      await hydrateCustomerData();
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
       if (cancelled) {
@@ -1361,6 +1656,73 @@ export default function SettingsScreen({ navigation, route }: Props) {
       } else {
         Alert.alert('Upgrade failed', err?.message || 'Unable to upgrade membership. Please try again.');
       }
+    } finally {
+      setMembershipActivating(false);
+    }
+  };
+
+  const handleSecondCarAddonUpgrade = async () => {
+    if (!isLoggedIn) {
+      Alert.alert('Login required', 'Please log in to add 2nd car to your membership.');
+      return;
+    }
+    if (!isMembershipActive(currentMembership)) {
+      Alert.alert('Membership', 'You need an active Prime membership before adding a 2nd car.');
+      return;
+    }
+    if (currentMembership?.has_second_car) {
+      Alert.alert('Already added', '2nd car add-on is already active on your membership.');
+      return;
+    }
+
+    setMembershipActivating(true);
+    try {
+      const { secondVehicleId, secondSnapshot } = await resolveSecondVehicleForMembership(true);
+
+      const orderRes = await apiFetch<any>('/api/customer/membership/add-second-car/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!orderRes?.order_id) {
+        Alert.alert('Error', orderRes?.error || 'Could not create payment order. Please try again.');
+        return;
+      }
+
+      const paymentResult = await openRazorpay(orderRes, 'MyFNG Prime — 2nd Car Add-On');
+      const subRes = await apiFetch<any>('/api/customer/membership/add-second-car/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          second_vehicle_id: secondVehicleId,
+          second_vehicle_snapshot: secondSnapshot,
+          razorpay_payment_id: paymentResult.razorpay_payment_id,
+          razorpay_order_id: paymentResult.razorpay_order_id,
+          razorpay_signature: paymentResult.razorpay_signature,
+        }),
+      });
+
+      if (subRes?.error || !subRes?.success) {
+        throw new Error(subRes?.error || subRes?.details || '2nd car add-on failed after payment.');
+      }
+
+      Alert.alert('Success', '2nd car add-on is now active on your membership!');
+      if (subRes?.membership) {
+        setCurrentMembership(subRes.membership);
+      } else {
+        const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
+        if (memRes?.membership) setCurrentMembership(memRes.membership);
+      }
+      await hydrateCustomerData();
+    } catch (err: any) {
+      const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      if (cancelled) {
+        Alert.alert('Payment Cancelled', 'No charges were made.');
+      } else {
+        Alert.alert('Add-on failed', err?.message || 'Unable to add 2nd car. Please try again.');
+      }
+    } finally {
+      setMembershipActivating(false);
     }
   };
 
@@ -3092,115 +3454,71 @@ export default function SettingsScreen({ navigation, route }: Props) {
       case 'Membership': {
         const isPrimeCurrent = hasActiveMembership;
         const activeExpiry = formatMembershipExpiry(currentMembership);
-        const primeUI = primeMembershipConfig || PRIME_MEMBERSHIP;
-        const addonPriceNum = Number((primeUI.addOn as any)?.priceNum ?? 299);
+        const primeUI = appMembershipPlans[selectedAppPlanIdx] || primeMembershipConfig || PRIME_MEMBERSHIP;
+        const planPrice = Number(primeUI.priceNum || PRIME_VALUE_PRICE);
+        const addonPrice = Number((primeUI.addOn as any)?.priceNum ?? PRIME_VALUE_ADDON);
+        const valueCard = (primeUI as any).valueCard;
         return (
           <View style={styles.subWrap}>
-            {isPrimeCurrent && membershipDisplay ? (
-              <View style={styles.primeActivatedBanner}>
-                <View style={[styles.primeActivatedIconWrap, { backgroundColor: membershipDisplay.headerBg }]}>
-                  <Ionicons name="ribbon" size={22} color={membershipDisplay.crownColor} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.primeActivatedTitle}>Already activated on your profile</Text>
-                  <Text style={styles.primeActivatedSub}>
-                    You're a {membershipDisplay.label}
-                    {activeExpiry ? ` · Valid until ${activeExpiry}` : ''}
-                  </Text>
-                </View>
-                <Ionicons name="checkmark-circle" size={22} color="#047857" />
-              </View>
+            {appMembershipPlans.length > 1 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                {appMembershipPlans.map((p, idx) => (
+                  <TouchableOpacity
+                    key={p.planId || p.name}
+                    onPress={() => setSelectedAppPlanIdx(idx)}
+                    style={[
+                      styles.primePlanChip,
+                      selectedAppPlanIdx === idx ? styles.primePlanChipActive : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.primePlanChipText,
+                        selectedAppPlanIdx === idx ? styles.primePlanChipTextActive : null,
+                      ]}
+                    >
+                      {p.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             ) : null}
-            {/* Prime price card */}
-            <View style={styles.primeCard}>
-              <View style={styles.primeRow}>
-                <Text style={styles.primeName}>{primeUI.name}</Text>
-                <View style={styles.primeBadge}>
-                  <Text style={styles.primeBadgeText}>{primeUI.badge}</Text>
-                </View>
-              </View>
-              <View style={styles.primePriceRow}>
-                {primeUI.originalPrice ? (
-                  <Text style={styles.primeOriginalPrice}>{primeUI.originalPrice}</Text>
-                ) : null}
-                <Text style={styles.primePriceAmount}>{primeUI.price}</Text>
-                <Text style={styles.primePricePeriod}>{primeUI.period}</Text>
-              </View>
-              <Text style={styles.primeTagline}>{primeUI.tagline}</Text>
-              {isPrimeCurrent ? (
-                <View style={styles.primeActiveBadge}>
-                  <Ionicons name="checkmark-circle" size={14} color="#047857" />
-                  <Text style={styles.primeActiveText}>ACTIVE</Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Benefits card */}
-            <View style={styles.primeBenefitsCard}>
-              <Text style={styles.primeBenefitsLabel}>BENEFITS FOR {primeUI.name.toUpperCase()}</Text>
-              {primeUI.benefits.map((b: any, idx: number) => (
-                <View
-                  key={`${b.title}-${idx}`}
-                  style={[
-                    styles.primeBenefitRow,
-                    idx === primeUI.benefits.length - 1 ? { borderBottomWidth: 0 } : null,
-                  ]}
-                >
-                  <View style={styles.primeBenefitIcon}>
-                    {b.iconUrl ? (
-                      <Image source={{ uri: b.iconUrl }} style={{ width: 18, height: 18 }} resizeMode="contain" />
-                    ) : (
-                      <Ionicons name={b.icon as any} size={17} color={COLORS.primary} />
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.primeBenefitTitle}>{b.title}</Text>
-                    <Text style={styles.primeBenefitSub}>{b.description}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            {/* Add-on card (selectable) */}
-            <TouchableOpacity
-              style={[styles.primeAddonCard, addSecondCar ? { borderColor: COLORS.primary, backgroundColor: '#E8F2FF' } : null]}
-              onPress={() => setAddSecondCar(!addSecondCar)}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name={addSecondCar ? 'checkbox' : 'square-outline'}
-                size={22}
-                color={addSecondCar ? COLORS.primary : '#9CA3AF'}
-              />
-              <Ionicons name={primeUI.addOn.icon as any} size={22} color={COLORS.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.primeAddonTitle}>{primeUI.addOn.title}</Text>
-                <Text style={styles.primeAddonSub}>{primeUI.addOn.description}</Text>
-              </View>
-              <Text style={styles.primeAddonPrice}>{primeUI.addOn.price}</Text>
-            </TouchableOpacity>
-
-            {/* Total price display */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 10 }}>
-              <Text style={{ fontSize: 14, color: '#6B7280' }}>Total</Text>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#1A1A1A' }}>
-                ₹{addSecondCar ? primeUI.priceNum + addonPriceNum : primeUI.priceNum}
-              </Text>
-            </View>
-
-            {/* CTA */}
-            <TouchableOpacity
-              style={[styles.memUpgradeBtn, { marginTop: 14 }, isPrimeCurrent ? { backgroundColor: '#9CA3AF' } : null]}
-              onPress={handleMembershipUpgrade}
-              disabled={isPrimeCurrent}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.memUpgradeBtnText}>
-                {isPrimeCurrent ? 'Already Active' : 'Activate Now  →'}
-              </Text>
-            </TouchableOpacity>
-
-            <Text style={styles.primeFooterNote}>{primeUI.footerNote}</Text>
+            <PrimeMembershipValueCard
+            isLoggedIn={isLoggedIn}
+            isActive={isPrimeCurrent}
+            hasSecondCarAddon={Boolean(currentMembership?.has_second_car)}
+            linkedPrimaryVehicle={membershipLinkedVehicles.primary}
+            linkedSecondVehicle={membershipLinkedVehicles.second}
+            linkedPrimaryVehicleKey={membershipLinkedVehicles.primaryKey}
+            activeExpiry={activeExpiry || undefined}
+            membershipLabel={membershipDisplay?.label}
+            vehicles={membershipVehicleOptions}
+            primaryVehicleKey={membershipPrimaryVehicleKey}
+            onPrimaryVehicleKeyChange={setMembershipPrimaryVehicleKey}
+            addSecondCar={addSecondCar}
+            onAddSecondCarChange={setAddSecondCar}
+            secondVehicleKey={membershipSecondVehicleKey}
+            onSecondVehicleKeyChange={setMembershipSecondVehicleKey}
+            showSecondVehicleForm={membershipSecondVehicleFormMode}
+            onShowSecondVehicleFormChange={setMembershipSecondVehicleFormMode}
+            guestForm={membershipGuestForm}
+            onGuestFormChange={(patch) => setMembershipGuestForm((prev) => ({ ...prev, ...patch }))}
+            guestSecondForm={membershipGuestSecondForm}
+            onGuestSecondFormChange={(patch) => setMembershipGuestSecondForm((prev) => ({ ...prev, ...patch }))}
+            onActivate={handleMembershipUpgrade}
+            onBuySecondCarAddon={handleSecondCarAddonUpgrade}
+            activating={membershipActivating}
+            planName={primeUI.name || 'MyFNG Prime'}
+            planPrice={planPrice}
+            addonPrice={addonPrice}
+            tagline={primeUI.tagline}
+            valueCard={valueCard}
+            addonIcon={(primeUI.addOn as any)?.icon}
+            addonIconUrl={(primeUI.addOn as any)?.iconUrl}
+            addonTitle={(primeUI.addOn as any)?.title}
+            addonDescription={(primeUI.addOn as any)?.description}
+            footerNote={primeUI.footerNote}
+          />
           </View>
         );
       }
@@ -5247,6 +5565,18 @@ const styles = StyleSheet.create({
   memUpgradeBtn: { borderRadius: 14, backgroundColor: '#1E3A5F', minHeight: 50, alignItems: 'center', justifyContent: 'center' },
   memUpgradeBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   primeCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, borderWidth: 2, borderColor: COLORS.primary },
+  primePlanChip: {
+    marginRight: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  primePlanChipActive: { borderColor: COLORS.primary, backgroundColor: '#E6F0FB' },
+  primePlanChipText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  primePlanChipTextActive: { color: COLORS.primary },
   primeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   primeName: { fontSize: 22, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.5 },
   primeBadge: { backgroundColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },

@@ -44,20 +44,44 @@ export async function POST(request: NextRequest) {
     .eq('customer_id', customer.id)
     .eq('status', 'ACTIVE');
 
-  const { data: inserted, error: insertError } = await supabaseAdmin
+  const insertPayload = {
+    customer_id: customer.id,
+    plan_id: plan.id,
+    status: 'ACTIVE',
+    starts_at: now.toISOString(),
+    ends_at: endsAt.toISOString(),
+    auto_renew: Boolean(body.auto_renew),
+    source: 'PURCHASE',
+    has_second_car: Boolean(body.add_second_car),
+    primary_vehicle_id: body.primary_vehicle_id || null,
+    second_vehicle_id: body.second_vehicle_id || null,
+    primary_vehicle_snapshot: body.primary_vehicle_snapshot || {},
+    second_vehicle_snapshot: body.second_vehicle_snapshot || {},
+  };
+
+  let inserted: any = null;
+  let insertError: any = null;
+  ({ data: inserted, error: insertError } = await supabaseAdmin
     .from('customer_memberships')
-    .insert({
-      customer_id: customer.id,
-      plan_id: plan.id,
-      status: 'ACTIVE',
-      starts_at: now.toISOString(),
-      ends_at: endsAt.toISOString(),
-      auto_renew: Boolean(body.auto_renew),
-      source: 'PURCHASE',
-      has_second_car: Boolean(body.add_second_car),
-    })
+    .insert(insertPayload)
     .select('*, plan:membership_plans(*)')
-    .single();
+    .single());
+
+  if (insertError && /does not exist|column/i.test(insertError.message || '')) {
+    ({ data: inserted, error: insertError } = await supabaseAdmin
+      .from('customer_memberships')
+      .insert({
+        customer_id: customer.id,
+        plan_id: plan.id,
+        status: 'ACTIVE',
+        starts_at: now.toISOString(),
+        ends_at: endsAt.toISOString(),
+        auto_renew: Boolean(body.auto_renew),
+        source: 'PURCHASE',
+      })
+      .select('*, plan:membership_plans(*)')
+      .single());
+  }
 
   if (insertError || !inserted) {
     console.error('[membership/subscribe] insert failed:', insertError);

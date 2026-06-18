@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit, Trash2, X, Save, Upload, Crown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Save, Crown, ChevronUp, ChevronDown } from 'lucide-react';
+import MembershipIconField from '@/components/admin/MembershipIconField';
+import MembershipValueCardPreview from '@/components/admin/MembershipValueCardPreview';
 
 type BenefitRow = {
   id: string;
@@ -11,6 +13,9 @@ type BenefitRow = {
   description?: string | null;
   icon?: string | null;
   icon_url?: string | null;
+  icon_class?: string | null;
+  value_label?: string | null;
+  value_prefix?: string | null;
   display_order: number;
   active: boolean;
 };
@@ -28,12 +33,21 @@ type PlanRow = {
   duration_days: number;
   display_order: number;
   footer_note?: string | null;
+  total_benefits_value?: number | null;
+  value_column_label?: string | null;
+  total_benefits_label?: string | null;
+  save_label?: string | null;
+  price_hero_label?: string | null;
+  price_hero_sub?: string | null;
   second_car_addon_price?: number | null;
   second_car_addon_title?: string | null;
   second_car_addon_description?: string | null;
   second_car_addon_icon?: string | null;
+  second_car_addon_icon_class?: string | null;
+  second_car_addon_icon_url?: string | null;
   active: boolean;
   benefits?: BenefitRow[];
+  legacy?: boolean;
 };
 
 const EMPTY_FORM = {
@@ -44,14 +58,23 @@ const EMPTY_FORM = {
   original_price: 999,
   tagline: 'Your Car. Our Responsibility.',
   badge: 'MEMBERSHIP',
-  period_label: '/ Year',
+  period_label: '/ year',
   duration_days: 365,
   display_order: 0,
-  footer_note: 'Valid 12 months from activation · Linked to registered mobile number',
+  footer_note:
+    'Valid 12 months from activation · Linked to registered mobile number · Free pickup & drop included as standard',
+  total_benefits_value: 6650,
+  value_column_label: 'VALUE',
+  total_benefits_label: 'Total Benefits Value',
+  save_label: 'You Save',
+  price_hero_label: 'YOU PAY ONLY',
+  price_hero_sub: 'All benefits · One full year · One car',
   second_car_addon_price: 299,
   second_car_addon_title: '2nd Car Add-On',
-  second_car_addon_description: "Cover your family's second car — same benefits",
+  second_car_addon_description: 'Same benefits, same membership period as primary car',
   second_car_addon_icon: 'car-sport',
+  second_car_addon_icon_class: '',
+  second_car_addon_icon_url: '',
   active: true,
 };
 
@@ -60,6 +83,9 @@ const EMPTY_BENEFIT = {
   description: '',
   icon: 'pricetag',
   icon_url: '',
+  icon_class: '',
+  value_label: '',
+  value_prefix: '',
   display_order: 0,
   active: true,
 };
@@ -68,77 +94,10 @@ function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
 }
 
-function PreviewCard({ plan, benefits }: { plan: typeof EMPTY_FORM; benefits: BenefitRow[] }) {
-  const activeBenefits = benefits.filter((b) => b.active);
-  return (
-    <div className="mx-auto w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-lg overflow-hidden">
-      <div className="bg-[#F8FAFC] px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-500">App Preview</div>
-      <div className="p-4 space-y-3">
-        <div className="rounded-2xl border-2 border-[#004AAD] bg-white p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="text-xl font-extrabold text-[#004AAD]">{plan.name || 'MyFNG Prime'}</div>
-              <span className="mt-1 inline-block rounded-full bg-[#004AAD] px-2 py-0.5 text-[10px] font-bold text-white">
-                {plan.badge || 'MEMBERSHIP'}
-              </span>
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            {plan.original_price ? (
-              <span className="text-sm text-gray-400 line-through">{inr(Number(plan.original_price))}</span>
-            ) : null}
-            <span className="text-3xl font-extrabold text-[#004AAD]">{inr(Number(plan.price || 0))}</span>
-            <span className="text-sm text-gray-500">{plan.period_label || '/ Year'}</span>
-          </div>
-          {plan.tagline ? <p className="mt-2 text-sm italic text-[#0088E8]">{plan.tagline}</p> : null}
-        </div>
-
-        <div className="rounded-2xl bg-white p-4 border border-gray-100">
-          <div className="text-[11px] font-bold tracking-widest text-[#004AAD] mb-3">
-            BENEFITS FOR {(plan.name || 'MEMBERSHIP').toUpperCase()}
-          </div>
-          <div className="space-y-3">
-            {activeBenefits.length === 0 ? (
-              <p className="text-sm text-gray-400">No benefits added yet</p>
-            ) : (
-              activeBenefits.map((b) => (
-                <div key={b.id || b.title} className="flex gap-3 border-b border-gray-100 pb-3 last:border-0 last:pb-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E6F0FB] overflow-hidden">
-                    {b.icon_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={b.icon_url} alt="" className="h-6 w-6 object-contain" />
-                    ) : (
-                      <span className="text-xs font-bold text-[#004AAD]">{b.icon?.slice(0, 2) || '★'}</span>
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-gray-900">{b.title}</div>
-                    {b.description ? <div className="text-xs text-gray-500 mt-0.5">{b.description}</div> : null}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-dashed border-[#0088E8] bg-[#F2F6FC] p-3 flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-[#E6F0FB] flex items-center justify-center text-[#004AAD] text-xs font-bold">🚗</div>
-          <div className="flex-1">
-            <div className="text-sm font-bold text-[#004AAD]">{plan.second_car_addon_title || '2nd Car Add-On'}</div>
-            <div className="text-xs text-gray-500">{plan.second_car_addon_description || ''}</div>
-          </div>
-          <div className="text-sm font-extrabold text-[#004AAD]">+{inr(Number(plan.second_car_addon_price || 0))}</div>
-        </div>
-
-        {plan.footer_note ? <p className="text-center text-[10px] text-gray-400">{plan.footer_note}</p> : null}
-      </div>
-    </div>
-  );
-}
-
 export default function MembershipPlansPage() {
   const [rows, setRows] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PlanRow | null>(null);
@@ -148,21 +107,54 @@ export default function MembershipPlansPage() {
   const [editingBenefitId, setEditingBenefitId] = useState<string | null>(null);
   const [uploadingIcon, setUploadingIcon] = useState(false);
 
+  const appRows = useMemo(
+    () => rows.filter((r) => !r.legacy && !['BRONZE', 'SILVER', 'GOLD'].includes(String(r.code || '').toUpperCase())),
+    [rows],
+  );
+  const legacyRows = useMemo(
+    () => rows.filter((r) => r.legacy || ['BRONZE', 'SILVER', 'GOLD'].includes(String(r.code || '').toUpperCase())),
+    [rows],
+  );
+
+  function formatApiError(json: any, fallback: string) {
+    return [json?.details, json?.hint, json?.error].filter(Boolean).join('\n') || fallback;
+  }
+
   async function fetchRows() {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch('/api/super_admin/membership-plans');
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.details || 'Failed to load');
+      if (!res.ok) {
+        const msg = [json?.details, json?.hint, json?.error].filter(Boolean).join(' — ') || 'Failed to load';
+        throw new Error(msg);
+      }
       setRows(json.data || []);
     } catch (e: any) {
-      alert(e?.message || 'Failed to load membership plans');
+      setFetchError(e?.message || 'Failed to load membership plans');
+      setRows([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => { fetchRows(); }, []);
+
+  useEffect(() => {
+    const id = 'flaticon-uicons-admin';
+    if (typeof document === 'undefined' || document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css';
+    document.head.appendChild(link);
+  }, []);
+
+  const computedSave = useMemo(
+    () => Math.max(0, Number(form.total_benefits_value || 0) - Number(form.price || 0)),
+    [form.total_benefits_value, form.price],
+  );
 
   function openAdd() {
     setEditing(null);
@@ -187,10 +179,18 @@ export default function MembershipPlansPage() {
       duration_days: r.duration_days || 365,
       display_order: r.display_order || 0,
       footer_note: r.footer_note || '',
+      total_benefits_value: Number(r.total_benefits_value ?? 6650),
+      value_column_label: r.value_column_label || 'VALUE',
+      total_benefits_label: r.total_benefits_label || 'Total Benefits Value',
+      save_label: r.save_label || 'You Save',
+      price_hero_label: r.price_hero_label || 'YOU PAY ONLY',
+      price_hero_sub: r.price_hero_sub || 'All benefits · One full year · One car',
       second_car_addon_price: Number(r.second_car_addon_price || 299),
       second_car_addon_title: r.second_car_addon_title || '2nd Car Add-On',
       second_car_addon_description: r.second_car_addon_description || '',
       second_car_addon_icon: r.second_car_addon_icon || 'car-sport',
+      second_car_addon_icon_class: r.second_car_addon_icon_class || '',
+      second_car_addon_icon_url: r.second_car_addon_icon_url || '',
       active: r.active,
     });
     setBenefits(r.benefits || []);
@@ -210,8 +210,41 @@ export default function MembershipPlansPage() {
         body: JSON.stringify(form),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.details || 'Save failed');
-      setModalOpen(false);
+      if (!res.ok) throw new Error(formatApiError(json, 'Save failed'));
+      if (!editing && json.data) {
+        const created = { ...json.data, benefits: [] } as PlanRow;
+        setEditing(created);
+        setBenefits([]);
+        setBenefitDraft({ ...EMPTY_BENEFIT, display_order: 1 });
+        setForm({
+          code: created.code,
+          name: created.name,
+          description: created.description || '',
+          price: Number(created.price || 0),
+          original_price: created.original_price != null ? Number(created.original_price) : 999,
+          tagline: created.tagline || '',
+          badge: created.badge || 'MEMBERSHIP',
+          period_label: created.period_label || '/ Year',
+          duration_days: created.duration_days || 365,
+          display_order: created.display_order || 0,
+          footer_note: created.footer_note || '',
+          total_benefits_value: Number(created.total_benefits_value ?? 6650),
+          value_column_label: created.value_column_label || 'VALUE',
+          total_benefits_label: created.total_benefits_label || 'Total Benefits Value',
+          save_label: created.save_label || 'You Save',
+          price_hero_label: created.price_hero_label || 'YOU PAY ONLY',
+          price_hero_sub: created.price_hero_sub || 'All benefits · One full year · One car',
+          second_car_addon_price: Number(created.second_car_addon_price || 299),
+          second_car_addon_title: created.second_car_addon_title || '2nd Car Add-On',
+          second_car_addon_description: created.second_car_addon_description || '',
+          second_car_addon_icon: created.second_car_addon_icon || 'car-sport',
+          second_car_addon_icon_class: created.second_car_addon_icon_class || '',
+          second_car_addon_icon_url: created.second_car_addon_icon_url || '',
+          active: created.active,
+        });
+      } else {
+        setModalOpen(false);
+      }
       await fetchRows();
     } catch (err: any) {
       alert(err?.message || 'Could not save plan');
@@ -223,9 +256,9 @@ export default function MembershipPlansPage() {
   async function deletePlan(id: string) {
     if (!confirm('Delete this membership plan and all its benefits?')) return;
     const res = await fetch(`/api/super_admin/membership-plans/${id}`, { method: 'DELETE' });
+    const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      alert(json?.error || 'Delete failed');
+      alert(formatApiError(json, 'Delete failed'));
       return;
     }
     await fetchRows();
@@ -266,7 +299,7 @@ export default function MembershipPlansPage() {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      alert(json?.error || 'Could not save benefit');
+      alert(formatApiError(json, 'Could not save benefit'));
       return;
     }
     setBenefitDraft({ ...EMPTY_BENEFIT, display_order: benefits.length + 1 });
@@ -325,6 +358,47 @@ export default function MembershipPlansPage() {
     [benefits],
   );
 
+  function renderPlanCard(r: PlanRow, legacy = false) {
+    return (
+      <div key={r.id} className={`rounded-2xl border bg-white shadow-sm overflow-hidden flex flex-col ${legacy ? 'border-gray-100 opacity-90' : 'border-gray-200'}`}>
+        <div className="p-4 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="text-lg font-bold text-gray-900">{r.name}</div>
+              <div className="text-xs text-gray-500 font-mono mt-0.5">{r.code}</div>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {legacy ? (
+                <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-500">LEGACY</span>
+              ) : null}
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                {r.active ? 'ACTIVE' : 'INACTIVE'}
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            {r.original_price ? <span className="text-sm text-gray-400 line-through">{inr(Number(r.original_price))}</span> : null}
+            <span className="text-xl font-extrabold text-blue-700">{inr(Number(r.price))}</span>
+            <span className="text-xs text-gray-500">{r.period_label || '/ Year'}</span>
+          </div>
+          {r.tagline ? <p className="text-xs italic text-blue-600 mt-2">{r.tagline}</p> : null}
+          <p className="text-xs text-gray-500 mt-2">
+            {r.benefits?.length || 0} benefits · value {inr(Number(r.total_benefits_value || 0))} · pay {inr(Number(r.price))}
+            {!legacy ? ` · 2nd car +${inr(Number(r.second_car_addon_price || 0))}` : ' · not shown in app'}
+          </p>
+        </div>
+        <div className="border-t border-gray-100 p-3 flex gap-2">
+          <button onClick={() => openEdit(r)} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-blue-50 text-blue-700 py-2 text-sm font-semibold hover:bg-blue-100">
+            <Edit className="h-4 w-4" /> Edit
+          </button>
+          <button onClick={() => deletePlan(r.id)} className="inline-flex items-center justify-center rounded-lg bg-red-50 text-red-600 px-3 hover:bg-red-100">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
@@ -333,7 +407,7 @@ export default function MembershipPlansPage() {
             <Crown className="h-6 w-6 text-amber-500" /> Membership Plans
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Create & manage Prime, Prime Plus and future tiers — pricing, tagline, benefits & 2nd car add-on shown in the mobile app.
+            MyFNG Prime is the active plan. Use <strong>Add Plan</strong> when you launch Prime Plus, Elite, or other tiers.
           </p>
         </div>
         <button
@@ -344,44 +418,51 @@ export default function MembershipPlansPage() {
         </button>
       </div>
 
+      {fetchError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 mb-4">
+          <strong>Could not load plans.</strong> {fetchError}
+        </div>
+      ) : null}
+
+      {!loading && !fetchError && appRows.some((r) => !(r.benefits?.length)) ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-4">
+          <strong>Benefits or value fields missing?</strong> Run{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">database/149_membership_admin.sql</code> then{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">database/152_membership_value_card_cms.sql</code> in Supabase.
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600">Loading…</div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && !fetchError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>No plans yet.</strong> App uses hardcoded defaults until you add plans here. Run <code className="text-xs bg-amber-100 px-1 rounded">database/149_membership_admin.sql</code> in Supabase first.
+          <strong>No plans in database.</strong> Add a plan here, or run{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">database/149_membership_admin.sql</code> in Supabase to unlock tagline, benefits &amp; 2nd-car CMS fields for existing plans.
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {rows.map((r) => (
-            <div key={r.id} className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col">
-              <div className="p-4 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-lg font-bold text-gray-900">{r.name}</div>
-                    <div className="text-xs text-gray-500 font-mono mt-0.5">{r.code}</div>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {r.active ? 'ACTIVE' : 'INACTIVE'}
-                  </span>
-                </div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  {r.original_price ? <span className="text-sm text-gray-400 line-through">{inr(Number(r.original_price))}</span> : null}
-                  <span className="text-xl font-extrabold text-blue-700">{inr(Number(r.price))}</span>
-                  <span className="text-xs text-gray-500">{r.period_label}</span>
-                </div>
-                {r.tagline ? <p className="text-xs italic text-blue-600 mt-2">{r.tagline}</p> : null}
-                <p className="text-xs text-gray-500 mt-2">{r.benefits?.length || 0} benefits · 2nd car +{inr(Number(r.second_car_addon_price || 0))}</p>
+        <div className="space-y-8">
+          <div>
+            <h2 className="text-sm font-bold text-gray-700 mb-3">App plans (shown in Android &amp; iOS)</h2>
+            {appRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                No app plans yet. Click <strong>Add Plan</strong> to create MyFNG Prime tiers.
               </div>
-              <div className="border-t border-gray-100 p-3 flex gap-2">
-                <button onClick={() => openEdit(r)} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-blue-50 text-blue-700 py-2 text-sm font-semibold hover:bg-blue-100">
-                  <Edit className="h-4 w-4" /> Edit
-                </button>
-                <button onClick={() => deletePlan(r.id)} className="inline-flex items-center justify-center rounded-lg bg-red-50 text-red-600 px-3 hover:bg-red-100">
-                  <Trash2 className="h-4 w-4" />
-                </button>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {appRows.map((r) => renderPlanCard(r))}
+              </div>
+            )}
+          </div>
+
+          {legacyRows.length > 0 ? (
+            <div>
+              <h2 className="text-sm font-bold text-gray-500 mb-1">Legacy plans (database only — hidden from app)</h2>
+              <p className="text-xs text-gray-400 mb-3">Bronze / Silver / Gold are old tiers. Deactivate or delete only if no customers are subscribed.</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {legacyRows.map((r) => renderPlanCard(r, true))}
               </div>
             </div>
-          ))}
+          ) : null}
         </div>
       )}
 
@@ -420,19 +501,58 @@ export default function MembershipPlansPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-600">Tagline</label>
+                  <label className="text-xs font-bold text-gray-600">Tagline (header subtitle)</label>
                   <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm italic" value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} placeholder="Your Car. Our Responsibility." />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-gray-600">Badge Text</label>
-                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} />
+                    <label className="text-xs font-bold text-gray-600">Duration (days)</label>
+                    <input type="number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: Number(e.target.value) })} />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-600">Period Label</label>
-                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.period_label} onChange={(e) => setForm({ ...form, period_label: e.target.value })} />
+                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.period_label} onChange={(e) => setForm({ ...form, period_label: e.target.value })} placeholder="/ year" />
                   </div>
                 </div>
+
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-3">
+                  <div className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Value Card — Pricing Band</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Total Benefits Value (₹)</label>
+                      <input type="number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.total_benefits_value} onChange={(e) => setForm({ ...form, total_benefits_value: Number(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">You Save (auto)</label>
+                      <input readOnly className="mt-1 w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm font-bold text-emerald-700" value={inr(computedSave)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Value Column Label</label>
+                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.value_column_label} onChange={(e) => setForm({ ...form, value_column_label: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Total Benefits Label</label>
+                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.total_benefits_label} onChange={(e) => setForm({ ...form, total_benefits_label: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Save Label</label>
+                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.save_label} onChange={(e) => setForm({ ...form, save_label: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Price Hero Label</label>
+                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.price_hero_label} onChange={(e) => setForm({ ...form, price_hero_label: e.target.value })} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600">Price Hero Subtext</label>
+                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.price_hero_sub} onChange={(e) => setForm({ ...form, price_hero_sub: e.target.value })} />
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-gray-600">Footer Note</label>
                   <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.footer_note} onChange={(e) => setForm({ ...form, footer_note: e.target.value })} />
@@ -446,18 +566,31 @@ export default function MembershipPlansPage() {
                       <input type="number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.second_car_addon_price} onChange={(e) => setForm({ ...form, second_car_addon_price: Number(e.target.value) })} />
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-gray-600">Icon Name (Ionicons)</label>
-                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.second_car_addon_icon} onChange={(e) => setForm({ ...form, second_car_addon_icon: e.target.value })} />
+                      <label className="text-xs font-bold text-gray-600">Add-On Title</label>
+                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.second_car_addon_title} onChange={(e) => setForm({ ...form, second_car_addon_title: e.target.value })} />
                     </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-600">Add-On Title</label>
-                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.second_car_addon_title} onChange={(e) => setForm({ ...form, second_car_addon_title: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-600">Add-On Description</label>
                     <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.second_car_addon_description} onChange={(e) => setForm({ ...form, second_car_addon_description: e.target.value })} />
                   </div>
+                  <MembershipIconField
+                    value={{
+                      icon: form.second_car_addon_icon || '',
+                      icon_url: form.second_car_addon_icon_url || '',
+                      icon_class: form.second_car_addon_icon_class || '',
+                    }}
+                    onChange={(patch) =>
+                      setForm({
+                        ...form,
+                        second_car_addon_icon: patch.icon ?? form.second_car_addon_icon,
+                        second_car_addon_icon_url: patch.icon_url ?? form.second_car_addon_icon_url,
+                        second_car_addon_icon_class: patch.icon_class ?? form.second_car_addon_icon_class,
+                      })
+                    }
+                    ioniconsPlaceholder="car-sport"
+                    flaticonPlaceholder="fi fi-rr-cars"
+                  />
                 </div>
 
                 <label className="flex items-center gap-2 text-sm font-semibold">
@@ -474,34 +607,59 @@ export default function MembershipPlansPage() {
                     <div className="text-sm font-bold text-gray-900">Benefits of {form.name}</div>
                     {sortedBenefits.map((b, idx) => (
                       <div key={b.id} className="rounded-lg border p-3 flex gap-2 items-start">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E6F0FB] overflow-hidden">
+                          {b.icon_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={b.icon_url} alt="" className="h-5 w-5 object-contain" />
+                          ) : b.icon_class ? (
+                            <i className={b.icon_class} style={{ fontSize: 16, color: '#023D95' }} />
+                          ) : (
+                            <span className="text-[10px] font-bold text-[#023D95]">{b.icon?.slice(0, 2)}</span>
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-sm">{b.title}</div>
                           <div className="text-xs text-gray-500 truncate">{b.description}</div>
+                          {b.value_label ? (
+                            <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
+                              {b.value_prefix ? `${b.value_prefix} ` : ''}{b.value_label}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex flex-col gap-1">
                           <button type="button" onClick={() => moveBenefit(idx, -1)} className="p-1 rounded hover:bg-gray-100"><ChevronUp className="h-4 w-4" /></button>
                           <button type="button" onClick={() => moveBenefit(idx, 1)} className="p-1 rounded hover:bg-gray-100"><ChevronDown className="h-4 w-4" /></button>
                         </div>
-                        <button type="button" onClick={() => { setEditingBenefitId(b.id); setBenefitDraft({ title: b.title, description: b.description || '', icon: b.icon || '', icon_url: b.icon_url || '', display_order: b.display_order, active: b.active }); }} className="text-blue-600 text-xs font-bold">Edit</button>
+                        <button type="button" onClick={() => { setEditingBenefitId(b.id); setBenefitDraft({ title: b.title, description: b.description || '', icon: b.icon || '', icon_url: b.icon_url || '', icon_class: b.icon_class || '', value_label: b.value_label || '', value_prefix: b.value_prefix || '', display_order: b.display_order, active: b.active }); }} className="text-blue-600 text-xs font-bold">Edit</button>
                         <button type="button" onClick={() => deleteBenefit(b.id)} className="text-red-600"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     ))}
 
                     <div className="rounded-xl border border-dashed border-gray-300 p-3 space-y-2 bg-gray-50">
                       <div className="text-xs font-bold text-gray-600">{editingBenefitId ? 'Edit Benefit' : 'Add Benefit'}</div>
-                      <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Headline" value={benefitDraft.title} onChange={(e) => setBenefitDraft({ ...benefitDraft, title: e.target.value })} />
+                      <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Benefit title" value={benefitDraft.title} onChange={(e) => setBenefitDraft({ ...benefitDraft, title: e.target.value })} />
                       <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Sub text / description" value={benefitDraft.description} onChange={(e) => setBenefitDraft({ ...benefitDraft, description: e.target.value })} />
                       <div className="grid grid-cols-2 gap-2">
-                        <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Ionicons name e.g. pricetag" value={benefitDraft.icon} onChange={(e) => setBenefitDraft({ ...benefitDraft, icon: e.target.value })} />
-                        <label className="inline-flex items-center justify-center gap-1 rounded-lg border bg-white px-3 py-2 text-xs font-semibold cursor-pointer hover:bg-gray-50">
-                          <Upload className="h-3.5 w-3.5" /> {uploadingIcon ? 'Uploading…' : 'Upload Icon'}
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBenefitIcon(f); }} />
-                        </label>
+                        <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Value prefix e.g. Up to" value={benefitDraft.value_prefix} onChange={(e) => setBenefitDraft({ ...benefitDraft, value_prefix: e.target.value })} />
+                        <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Value e.g. ₹1,000" value={benefitDraft.value_label} onChange={(e) => setBenefitDraft({ ...benefitDraft, value_label: e.target.value })} />
                       </div>
-                      {benefitDraft.icon_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={benefitDraft.icon_url} alt="" className="h-10 w-10 object-contain rounded border bg-white" />
-                      ) : null}
+                      <MembershipIconField
+                        value={{
+                          icon: benefitDraft.icon,
+                          icon_url: benefitDraft.icon_url,
+                          icon_class: benefitDraft.icon_class,
+                        }}
+                        onChange={(patch) =>
+                          setBenefitDraft({
+                            ...benefitDraft,
+                            icon: patch.icon ?? benefitDraft.icon,
+                            icon_url: patch.icon_url ?? benefitDraft.icon_url,
+                            icon_class: patch.icon_class ?? benefitDraft.icon_class,
+                          })
+                        }
+                        uploading={uploadingIcon}
+                        onUpload={uploadBenefitIcon}
+                      />
                       <button type="button" onClick={saveBenefit} className="w-full rounded-lg bg-gray-900 text-white py-2 text-sm font-bold">
                         {editingBenefitId ? 'Update Benefit' : 'Add Benefit'}
                       </button>
@@ -512,8 +670,8 @@ export default function MembershipPlansPage() {
                 )}
               </form>
 
-              <div className="p-5 bg-gray-50 max-h-[80vh] overflow-y-auto">
-                <PreviewCard plan={form} benefits={sortedBenefits} />
+              <div className="p-5 bg-gray-50 max-h-[80vh] overflow-y-auto sticky top-0">
+                <MembershipValueCardPreview plan={form} benefits={sortedBenefits} />
               </div>
             </div>
           </div>

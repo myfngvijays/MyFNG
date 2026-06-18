@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { filterAppMembershipPlans, sortMembershipRows } from '@/lib/membership-plans-db';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -19,29 +20,38 @@ export async function GET() {
       .from('membership_plans')
       .select('*')
       .eq('active', true)
-      .order('display_order', { ascending: true });
+      .order('created_at', { ascending: true });
 
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch plans', details: error.message }, { status: 500 });
     }
 
-    const planIds = (plans || []).map((p: any) => p.id);
+    const sortedPlans = sortMembershipRows(filterAppMembershipPlans(plans || []));
+
+    const planIds = sortedPlans.map((p: any) => p.id);
     const { data: benefits } = planIds.length
       ? await supabase
           .from('membership_benefits')
           .select('*')
           .in('plan_id', planIds)
-          .eq('active', true)
-          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: true })
       : { data: [] as any[] };
 
+    const sortedBenefits = [...(benefits || [])]
+      .filter((b) => b.active !== false)
+      .sort((a, b) => {
+        const orderDiff = (Number(a.display_order) || 0) - (Number(b.display_order) || 0);
+        if (orderDiff !== 0) return orderDiff;
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      });
+
     const benefitsByPlan: Record<string, any[]> = {};
-    for (const b of benefits || []) {
+    for (const b of sortedBenefits) {
       benefitsByPlan[b.plan_id] = benefitsByPlan[b.plan_id] || [];
       benefitsByPlan[b.plan_id].push(b);
     }
 
-    const data = (plans || []).map((p: any) => ({ ...p, benefits: benefitsByPlan[p.id] || [] }));
+    const data = sortedPlans.map((p: any) => ({ ...p, benefits: benefitsByPlan[p.id] || [] }));
     return NextResponse.json({ plans: data });
   } catch (e: any) {
     return NextResponse.json({ error: 'Internal server error', details: e?.message }, { status: 500 });
