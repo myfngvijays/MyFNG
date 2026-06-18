@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { FAQ_CATEGORIES } from '../constants/publicAppData';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
-import PrimeBanner from '../components/PrimeBanner';
+import MembershipBannerSlot from '../components/MembershipBannerSlot';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { supabase } from '../lib/supabase';
@@ -441,10 +441,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
           </View>
 
           {/* Why MyFNG */}
-          <PrimeBanner
-            onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
+          <MembershipBannerSlot
+            screen="services"
+            slot="before_why_myfng"
+            navigation={navigation}
             style={{ marginTop: 16, marginBottom: 16 }}
-            animated
           />
           <Text style={s.sectionHeading}>Why MyFNG</Text>
           <View style={s.whyCard}>

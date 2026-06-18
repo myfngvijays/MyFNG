@@ -1,11 +1,26 @@
 import { PRIME_MEMBERSHIP } from '../constants/publicAppData';
 import {
+  normalizeMembershipType,
+  parseAppPlacements,
+  type AppPlacements,
+  type MembershipType,
+} from './membershipPlacements';
+import { supabase } from './supabase';
+import {
   PRIME_VALUE_BENEFITS,
   PRIME_VALUE_FOOTER,
   PRIME_VALUE_TOTAL,
 } from '../constants/primeMembershipValueCard';
 
 export type PrimeMembershipDisplay = typeof PRIME_MEMBERSHIP;
+
+export type AppMembershipPlan = ReturnType<typeof mapDbPlanToPrimeDisplay> & {
+  planId?: string;
+  planCode?: string;
+  membershipType: MembershipType;
+  appPlacements: AppPlacements;
+  accentColor?: string;
+};
 
 export type ValueCardBenefit = {
   icon: string;
@@ -118,20 +133,80 @@ export function mapDbPlanToPrimeDisplay(plan: any, benefits: any[] = []): PrimeM
     footerNote: valueCard.footerNote,
     planId: plan?.id ? String(plan.id) : undefined,
     planCode: plan?.code ? String(plan.code) : undefined,
-  } as PrimeMembershipDisplay & { planId?: string; planCode?: string; valueCard: ValueCardConfig; addOn: { priceNum: number; iconUrl?: string; iconClass?: string } };
+    membershipType: normalizeMembershipType(plan?.membership_type),
+    appPlacements: parseAppPlacements(plan?.app_placements, normalizeMembershipType(plan?.membership_type)),
+    accentColor: plan?.accent_color ? String(plan.accent_color) : undefined,
+  } as AppMembershipPlan;
+}
+
+function mapPublicPlansPayload(plans: any[]): AppMembershipPlan[] {
+  return sortPlans(plans.filter((p) => isAppMembershipPlan(p?.code) && p?.app_visible !== false)).map((plan) =>
+    mapDbPlanToPrimeDisplay(plan, plan.benefits || []),
+  ) as AppMembershipPlan[];
+}
+
+async function fetchMembershipPlansFromSupabase(): Promise<AppMembershipPlan[]> {
+  const { data: plans, error } = await supabase
+    .from('membership_plans')
+    .select('*')
+    .eq('active', true)
+    .order('display_order', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error || !plans?.length) return [];
+
+  const visiblePlans = plans.filter((p) => isAppMembershipPlan(p.code) && p.app_visible !== false);
+  const planIds = visiblePlans.map((p) => p.id);
+
+  const { data: benefits } = planIds.length
+    ? await supabase
+        .from('membership_benefits')
+        .select('*')
+        .in('plan_id', planIds)
+        .order('display_order', { ascending: true })
+        .order('created_at', { ascending: true })
+    : { data: [] as any[] };
+
+  const benefitsByPlan: Record<string, any[]> = {};
+  for (const benefit of benefits || []) {
+    if (benefit?.active === false) continue;
+    benefitsByPlan[benefit.plan_id] = benefitsByPlan[benefit.plan_id] || [];
+    benefitsByPlan[benefit.plan_id].push(benefit);
+  }
+
+  return mapPublicPlansPayload(
+    visiblePlans.map((plan) => ({
+      ...plan,
+      benefits: benefitsByPlan[plan.id] || [],
+    })),
+  );
+}
+
+async function fetchMembershipPlansFromApi(apiUrl: string): Promise<AppMembershipPlan[]> {
+  const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/public/membership-plans`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) return [];
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return [];
+  const json = await res.json();
+  const plans: any[] = Array.isArray(json?.plans) ? json.plans : [];
+  if (!plans.length) return [];
+  return mapPublicPlansPayload(plans);
 }
 
 export async function fetchAppMembershipPlans(
   apiUrl: string,
-): Promise<(PrimeMembershipDisplay & { planId?: string; planCode?: string })[]> {
+): Promise<AppMembershipPlan[]> {
   try {
-    const res = await fetch(`${apiUrl}/api/public/membership-plans`);
-    if (!res.ok) return [];
-    const json = await res.json();
-    const plans: any[] = Array.isArray(json?.plans) ? json.plans : [];
-    return sortPlans(plans.filter((p) => isAppMembershipPlan(p?.code))).map((plan) =>
-      mapDbPlanToPrimeDisplay(plan, plan.benefits || []),
-    );
+    const fromApi = await fetchMembershipPlansFromApi(apiUrl);
+    if (fromApi.length) return fromApi;
+  } catch {
+    // fall through to Supabase
+  }
+
+  try {
+    return await fetchMembershipPlansFromSupabase();
   } catch {
     return [];
   }

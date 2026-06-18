@@ -813,7 +813,7 @@ export default function HomePage() {
       </div>
 
       {/* 1. Hero Section: AI-Powered & Futuristic - Updated Clean Look */}
-      <section className="relative pt-24 pb-8 sm:pt-24 sm:pb-10 lg:pt-24 lg:pb-12 lg:min-h-[calc(100vh-84px)] overflow-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
+      <section className="relative pt-32 pb-8 sm:pt-36 sm:pb-10 md:pt-40 lg:pt-44 lg:pb-12 lg:min-h-[calc(100vh-84px)] overflow-x-hidden bg-gradient-to-br from-blue-50 via-white to-blue-50">
         {/* Background Elements */}
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
         <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full bg-gradient-to-l from-blue-100/40 to-transparent transform skew-x-12 translate-x-1/4"></div>
@@ -823,12 +823,12 @@ export default function HomePage() {
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl animate-float" style={{animationDelay: '1.5s'}}></div>
 
         <div className="container mx-auto px-4 sm:px-6 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-6 sm:gap-8 lg:gap-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 items-start gap-6 sm:gap-8 lg:gap-10">
             
             {/* Left Content – higher z so buttons are never covered by right visual */}
-            <div className="lg:col-span-6 text-center lg:text-left w-full relative z-20">
+            <div className="lg:col-span-6 text-center lg:text-left w-full relative z-20 pt-1 sm:pt-2">
               {/* AI Badge */}
-              <div className="mb-4 lg:mb-5 flex justify-center lg:justify-start">
+              <div className="mb-4 lg:mb-5 flex justify-center lg:justify-start overflow-visible">
                 <AIFeatureBadge text="Powered by Advanced AI Technology" />
               </div>
               

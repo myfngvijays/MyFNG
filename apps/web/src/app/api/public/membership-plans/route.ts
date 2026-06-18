@@ -16,17 +16,27 @@ export async function GET() {
     const supabase = getAdmin();
     if (!supabase) return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
 
-    const { data: plans, error } = await supabase
+    let query = supabase
       .from('membership_plans')
       .select('*')
-      .eq('active', true)
-      .order('created_at', { ascending: true });
+      .eq('active', true);
+
+    let { data: plans, error } = await query.order('created_at', { ascending: true });
+
+    if (error && /app_visible|membership_type|app_placements/i.test(error.message)) {
+      ({ data: plans, error } = await supabase
+        .from('membership_plans')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: true }));
+    }
 
     if (error) {
       return NextResponse.json({ error: 'Failed to fetch plans', details: error.message }, { status: 500 });
     }
 
-    const sortedPlans = sortMembershipRows(filterAppMembershipPlans(plans || []));
+    const visiblePlans = (plans || []).filter((p: any) => p.app_visible !== false);
+    const sortedPlans = sortMembershipRows(filterAppMembershipPlans(visiblePlans));
 
     const planIds = sortedPlans.map((p: any) => p.id);
     const { data: benefits } = planIds.length

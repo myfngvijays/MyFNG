@@ -15,8 +15,13 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
-import PrimeBanner from './PrimeBanner';
-import { getServiceIconSource } from '../lib/serviceIcons';
+import PrimeBanner, { type PrimeBannerPlan } from './PrimeBanner';
+import { PrimeMembershipIcon, RSAMembershipIcon } from './MembershipPromoVisuals';
+import { useAppMembershipPlans } from '../hooks/useAppMembershipPlans';
+import type { AppMembershipPlan } from '../lib/membershipPlan';
+import type { MembershipType } from '../lib/membershipPlacements';
+import { getServiceIconSource, RSA_ICON_RED_SOURCE } from '../lib/serviceIcons';
+import { SMART_TOOLS, SMART_TOOL_WEB_URLS, type SmartToolItem } from '../constants/smartTools';
 
 type SearchItem = {
   id: string;
@@ -32,6 +37,7 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   navigation: any;
+  city?: string;
 };
 
 const ALL_ITEMS: SearchItem[] = [
@@ -108,11 +114,36 @@ const ALL_ITEMS: SearchItem[] = [
   { id: 'terms', title: 'Terms of Use', category: 'Legal', icon: 'document-text',
     screen: 'Settings', params: { subPage: 'Terms of Use' },
     keywords: ['terms', 'conditions', 'legal', 'agreement'] },
+  { id: 'tool-car-health', title: 'Car Health Check', category: 'Smart Tools', icon: 'pulse',
+    screen: 'CarHealthCheck',
+    keywords: ['health', 'health check', 'car health', 'diagnostic', 'inspection', 'score'] },
+  { id: 'tool-fuel', title: 'Fuel Cost Calculator', category: 'Smart Tools', icon: 'speedometer',
+    screen: 'FuelCostCalculator',
+    keywords: ['fuel', 'petrol', 'diesel', 'mileage', 'trip cost', 'calculator', 'fuel cost'] },
+  { id: 'tool-compare', title: 'Compare Service Cost', category: 'Smart Tools', icon: 'git-compare',
+    screen: 'AuthorisedPricing',
+    keywords: ['compare', 'pricing', 'authorised', 'service cost', 'price compare', 'dealer'] },
+  { id: 'tool-loan', title: 'Loan Against Car', category: 'Smart Tools', icon: 'cash',
+    screen: 'SmartToolWeb', params: { title: 'Loan Against Car', url: SMART_TOOL_WEB_URLS.car_loan },
+    keywords: ['loan', 'car loan', 'finance', 'against car', 'cash'] },
+  { id: 'tool-resale', title: 'Car Resale Value', category: 'Smart Tools', icon: 'trending-up',
+    screen: 'ResaleValue',
+    keywords: ['resale', 'sell car', 'value', 'market price', 'used car'] },
+  { id: 'tool-quiz', title: 'Car Quiz', category: 'Smart Tools', icon: 'game-controller',
+    screen: 'CarQuizGame',
+    keywords: ['quiz', 'game', 'car quiz', 'trivia', 'challenge'] },
+  { id: 'tool-parking', title: 'Nearby Parking', category: 'Smart Tools', icon: 'location',
+    screen: 'SmartToolWeb', params: { title: 'Nearby Parking', url: SMART_TOOL_WEB_URLS.parking_finder, useLocation: true },
+    keywords: ['parking', 'nearby parking', 'park', 'find parking'] },
+  { id: 'tool-parts', title: 'Check Parts Price', category: 'Smart Tools', icon: 'construct',
+    screen: 'CarPartsPrice',
+    keywords: ['parts', 'spare parts', 'parts price', 'genuine parts', 'oem'] },
 ];
 
 const CAR_SERVICES = ALL_ITEMS.filter((item) => item.category === 'Car Service');
 const RSA_ITEM = ALL_ITEMS.find((item) => item.id === 'rsa')!;
-const DISPLAY_SERVICES = [...CAR_SERVICES, RSA_ITEM];
+const POPULAR_SERVICE_IDS = new Set(['periodic', 'brakes', 'denting', 'rsa']);
+const DISPLAY_SERVICES = CAR_SERVICES.filter((item) => !POPULAR_SERVICE_IDS.has(item.id));
 const POPULAR_ITEMS = [
   ALL_ITEMS.find((item) => item.id === 'periodic')!,
   ALL_ITEMS.find((item) => item.id === 'brakes')!,
@@ -126,18 +157,34 @@ const QUICK_ACTIONS = [
   ALL_ITEMS.find((item) => item.id === 'terms')!,
 ];
 const GRID_ITEM_WIDTH = (Dimensions.get('window').width - 32 - 30) / 4;
-
 function getGridTitle(item: SearchItem) {
   if (item.id === 'rsa') return 'RSA';
   if (item.id === 'brakes') return 'Brakes';
   if (item.id === 'denting') return 'Denting & Painting';
+  if (item.id.startsWith('membership-plan-')) return item.title;
   return item.title;
 }
 
+function MembershipPlanIcon({ membershipType, size = 46, compact = false }: { membershipType?: MembershipType; size?: number; compact?: boolean }) {
+  if (membershipType === 'RSA') return <RSAMembershipIcon size={size} compact={compact} />;
+  return <PrimeMembershipIcon size={size} compact={compact} />;
+}
+
 function ServiceIcon({ item, size = 46 }: { item: SearchItem; size?: number }) {
-  const iconSource = getServiceIconSource(item.id === 'rsa' ? 'RSA' : item.title);
+  if (item.id.startsWith('membership-plan-')) {
+    return <MembershipPlanIcon membershipType={item.params?.membershipType} size={size} />;
+  }
+
+  const isRsa = item.id === 'rsa';
+  const iconSource = isRsa ? RSA_ICON_RED_SOURCE : getServiceIconSource(item.title);
   if (iconSource) {
-    return <Image source={iconSource} style={{ width: size, height: size, marginBottom: 6 }} resizeMode="contain" />;
+    return (
+      <Image
+        source={iconSource}
+        style={{ width: size, height: size, marginBottom: 6 }}
+        resizeMode="contain"
+      />
+    );
   }
   return <Ionicons name={item.icon} size={size * 0.6} color={COLORS.primary} style={{ marginBottom: 6 }} />;
 }
@@ -153,24 +200,101 @@ function ServiceGridItem({ item, onPress }: { item: SearchItem; onPress: () => v
   );
 }
 
-export default function SearchOverlay({ visible, onClose, navigation }: Props) {
+function SmartToolGridItem({ tool, onPress }: { tool: SmartToolItem; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.serviceGridItem} activeOpacity={0.85} onPress={onPress}>
+      <View style={[styles.smartToolIconWrap, { backgroundColor: tool.bg }]}>
+        <Ionicons name={tool.icon} size={20} color={tool.color} />
+      </View>
+      <Text style={styles.serviceGridText} numberOfLines={2}>
+        {tool.title}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+export default function SearchOverlay({ visible, onClose, navigation, city }: Props) {
   const [query, setQuery] = useState('');
   const insets = useSafeAreaInsets();
+  const { getPlansForGlobalSlot } = useAppMembershipPlans();
+  const searchGridPlans = getPlansForGlobalSlot('search_grid');
+  const searchBannerPlans = getPlansForGlobalSlot('search_banner');
+
+  const membershipSearchItems = useMemo<SearchItem[]>(
+    () =>
+      searchGridPlans.map((plan) => ({
+        id: `membership-plan-${plan.planCode || plan.planId || plan.name}`,
+        title: plan.name,
+        category: 'Membership',
+        icon: 'diamond' as const,
+        screen: 'Settings',
+        params: {
+          subPage: 'Membership',
+          membershipType: plan.membershipType,
+          planCode: plan.planCode,
+        },
+        keywords: ['membership', 'prime', 'myfng prime', 'subscribe', 'plan', 'premium', 'buy', String(plan.name || '').toLowerCase()],
+      })),
+    [searchGridPlans],
+  );
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return ALL_ITEMS.filter(
+    return [...ALL_ITEMS, ...membershipSearchItems].filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.category.toLowerCase().includes(q) ||
         item.keywords.some((kw) => kw.includes(q) || q.includes(kw)),
     );
-  }, [query]);
+  }, [query, membershipSearchItems]);
+
+  const openMembershipPlan = (plan: AppMembershipPlan) => {
+    setQuery('');
+    onClose();
+    navigation.navigate('Settings', {
+      subPage: 'Membership',
+      membershipType: plan.membershipType,
+      planCode: plan.planCode,
+    });
+  };
+
+  const toBannerPlan = (plan: AppMembershipPlan): PrimeBannerPlan => ({
+    name: plan.name,
+    badge: plan.badge,
+    price: plan.price,
+    originalPrice: plan.originalPrice,
+    period: plan.period?.replace('/', '').trim() || 'year',
+    benefitLine1: plan.benefits?.[0]?.title || (plan.membershipType === 'RSA' ? 'Priority RSA dispatch' : '10% off on all services'),
+    benefitLine2: plan.benefits?.[1]?.title || (plan.membershipType === 'RSA' ? 'Discounted towing rates' : '5% cashback to wallet'),
+    membershipType: plan.membershipType,
+  });
 
   const handleClose = () => {
     setQuery('');
     onClose();
+  };
+
+  const openSmartTool = (tool: SmartToolItem) => {
+    setQuery('');
+    onClose();
+    if (tool.id === 'car_loan') {
+      navigation.navigate('SmartToolWeb', {
+        title: 'Loan Against Car',
+        url: SMART_TOOL_WEB_URLS.car_loan,
+      });
+      return;
+    }
+    if (tool.id === 'parking_finder') {
+      navigation.navigate('SmartToolWeb', {
+        title: 'Nearby Parking',
+        url: SMART_TOOL_WEB_URLS.parking_finder,
+        useLocation: true,
+        city,
+      });
+      return;
+    }
+    navigation.navigate(tool.screen);
   };
 
   const handleSelect = (item: SearchItem) => {
@@ -180,7 +304,11 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
       Share.share({ message: 'Join MyFNG and get rewards on your first car service booking. Use code MYFNG500.' });
       return;
     }
-    navigation.navigate(item.screen, { city: 'Mumbai', ...item.params });
+    if (item.id === 'tool-parking' && item.params) {
+      navigation.navigate(item.screen, { city, ...item.params });
+      return;
+    }
+    navigation.navigate(item.screen, { city: city || 'Mumbai', ...item.params });
   };
 
   return (
@@ -227,15 +355,44 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
                 </View>
 
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Services</Text>
+                  <Text style={styles.sectionTitle}>Other Services</Text>
                   <View style={styles.serviceGrid}>
                     {DISPLAY_SERVICES.map((item) => (
                       <ServiceGridItem key={item.id} item={item} onPress={() => handleSelect(item)} />
                     ))}
+                    {searchGridPlans.map((plan) => (
+                      <TouchableOpacity
+                        key={plan.planId || plan.planCode || plan.name}
+                        style={styles.serviceGridItem}
+                        activeOpacity={0.85}
+                        onPress={() => openMembershipPlan(plan)}
+                      >
+                        <MembershipPlanIcon membershipType={plan.membershipType} size={46} />
+                        <Text style={styles.serviceGridText} numberOfLines={2}>
+                          {plan.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
 
-                <PrimeBanner onPress={() => handleSelect(ALL_ITEMS.find((i) => i.id === 'membership')!)} animated />
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Smart Tools</Text>
+                  <View style={styles.serviceGrid}>
+                    {SMART_TOOLS.map((tool) => (
+                      <SmartToolGridItem key={tool.id} tool={tool} onPress={() => openSmartTool(tool)} />
+                    ))}
+                  </View>
+                </View>
+
+                {searchBannerPlans.map((plan) => (
+                  <PrimeBanner
+                    key={plan.planId || plan.planCode || plan.name}
+                    plan={toBannerPlan(plan)}
+                    animated
+                    onPress={() => openMembershipPlan(plan)}
+                  />
+                ))}
 
                 <View style={styles.section}>
                   <View style={styles.serviceGrid}>
@@ -259,11 +416,17 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
               </>
             ) : (
               <View style={styles.results}>
-                {results.map((item) => (
+                {results.map((item) => {
+                  const isRsa = item.id === 'rsa';
+                  const isMembership = item.id.startsWith('membership-plan-');
+                  const iconSource = isRsa ? RSA_ICON_RED_SOURCE : getServiceIconSource(item.title);
+                  return (
                   <TouchableOpacity key={item.id} style={styles.resultRow} onPress={() => handleSelect(item)}>
                     <View style={styles.resultIcon}>
-                      {getServiceIconSource(item.title) ? (
-                        <Image source={getServiceIconSource(item.title)!} style={styles.resultIconImage} resizeMode="contain" />
+                      {isMembership ? (
+                        <MembershipPlanIcon membershipType={item.params?.membershipType} size={28} compact />
+                      ) : iconSource ? (
+                        <Image source={iconSource} style={styles.resultIconImage} resizeMode="contain" />
                       ) : (
                         <Ionicons name={item.icon} size={16} color="#6B7280" />
                       )}
@@ -274,7 +437,8 @@ export default function SearchOverlay({ visible, onClose, navigation }: Props) {
                     </View>
                     <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
                 {results.length === 0 ? (
                   <View style={styles.emptyWrap}>
                     <Ionicons name="search-outline" size={40} color="#D1D5DB" />
@@ -333,6 +497,37 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  smartToolIconWrap: {
+    width: 46,
+    height: 46,
+    marginBottom: 6,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  membershipIconWrap: {
+    width: 46,
+    height: 46,
+    marginBottom: 6,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    overflow: 'hidden',
+  },
+  membershipResultIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
   serviceGrid: {
     flexDirection: 'row',

@@ -4,9 +4,9 @@ import { Sparkles } from 'lucide-react';
 
 export default function AIFeatureBadge({ text }: { text: string }) {
   return (
-    <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-full px-4 py-2 animate-pulse-glow">
-      <Sparkles className="w-4 h-4 text-blue-500 animate-float" />
-      <span className="text-sm font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+    <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-500/20 bg-gradient-to-r from-blue-500/10 to-purple-500/10 px-3 py-1.5 sm:px-4 sm:py-2">
+      <Sparkles className="h-4 w-4 flex-shrink-0 text-blue-500" />
+      <span className="text-xs sm:text-sm font-semibold leading-snug bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
         {text}
       </span>
     </div>

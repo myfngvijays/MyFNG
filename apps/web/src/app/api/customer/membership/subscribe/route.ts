@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
+import { recordCouponRedemption } from '@/lib/coupon-validate';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -96,6 +97,26 @@ export async function POST(request: NextRequest) {
     paymentId: razorpayPaymentId,
     orderId: razorpayOrderId,
   });
+
+  const couponId = String(body.coupon_id || body.coupon_meta?.coupon_id || '');
+  if (couponId) {
+    try {
+      await recordCouponRedemption(supabaseAdmin, {
+        couponId,
+        customerPhone: customer.phone || null,
+        meta: {
+          type: 'membership',
+          plan_id: plan.id,
+          payment_id: razorpayPaymentId,
+          order_id: razorpayOrderId,
+          coupon_code: body.coupon_code || body.coupon_meta?.code || null,
+          discount_amount: Number(body.coupon_meta?.discount_amount || body.discount_amount || 0),
+        },
+      });
+    } catch (redemptionErr) {
+      console.error('[membership/subscribe] coupon redemption failed:', redemptionErr);
+    }
+  }
 
   return NextResponse.json({
     success: true,

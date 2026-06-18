@@ -3,7 +3,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Edit, Trash2, X, Save, Crown, ChevronUp, ChevronDown } from 'lucide-react';
 import MembershipIconField from '@/components/admin/MembershipIconField';
+import MembershipPlacementFields from '@/components/admin/MembershipPlacementFields';
 import MembershipValueCardPreview from '@/components/admin/MembershipValueCardPreview';
+import {
+  defaultPlacementsForType,
+  normalizeMembershipType,
+  parseAppPlacements,
+  countEnabledPlacements,
+  type AppPlacements,
+  type MembershipType,
+} from '@/lib/membership-placements';
 
 type BenefitRow = {
   id: string;
@@ -46,6 +55,9 @@ type PlanRow = {
   second_car_addon_icon_class?: string | null;
   second_car_addon_icon_url?: string | null;
   active: boolean;
+  membership_type?: MembershipType;
+  app_visible?: boolean;
+  app_placements?: AppPlacements;
   benefits?: BenefitRow[];
   legacy?: boolean;
 };
@@ -76,6 +88,9 @@ const EMPTY_FORM = {
   second_car_addon_icon_class: '',
   second_car_addon_icon_url: '',
   active: true,
+  membership_type: 'SERVICE' as MembershipType,
+  app_visible: true,
+  app_placements: defaultPlacementsForType('SERVICE'),
 };
 
 const EMPTY_BENEFIT = {
@@ -114,6 +129,14 @@ export default function MembershipPlansPage() {
   const legacyRows = useMemo(
     () => rows.filter((r) => r.legacy || ['BRONZE', 'SILVER', 'GOLD'].includes(String(r.code || '').toUpperCase())),
     [rows],
+  );
+  const serviceRows = useMemo(
+    () => appRows.filter((r) => normalizeMembershipType(r.membership_type) === 'SERVICE'),
+    [appRows],
+  );
+  const rsaRows = useMemo(
+    () => appRows.filter((r) => normalizeMembershipType(r.membership_type) === 'RSA'),
+    [appRows],
   );
 
   function formatApiError(json: any, fallback: string) {
@@ -156,9 +179,14 @@ export default function MembershipPlansPage() {
     [form.total_benefits_value, form.price],
   );
 
-  function openAdd() {
+  function openAdd(type: MembershipType = 'SERVICE') {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, display_order: rows.length + 1 });
+    setForm({
+      ...EMPTY_FORM,
+      membership_type: type,
+      app_placements: defaultPlacementsForType(type),
+      display_order: rows.length + 1,
+    });
     setBenefits([]);
     setBenefitDraft({ ...EMPTY_BENEFIT });
     setEditingBenefitId(null);
@@ -192,6 +220,9 @@ export default function MembershipPlansPage() {
       second_car_addon_icon_class: r.second_car_addon_icon_class || '',
       second_car_addon_icon_url: r.second_car_addon_icon_url || '',
       active: r.active,
+      membership_type: normalizeMembershipType(r.membership_type),
+      app_visible: r.app_visible !== false,
+      app_placements: parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)),
     });
     setBenefits(r.benefits || []);
     setBenefitDraft({ ...EMPTY_BENEFIT, display_order: (r.benefits?.length || 0) + 1 });
@@ -241,6 +272,9 @@ export default function MembershipPlansPage() {
           second_car_addon_icon_class: created.second_car_addon_icon_class || '',
           second_car_addon_icon_url: created.second_car_addon_icon_url || '',
           active: created.active,
+          membership_type: normalizeMembershipType(created.membership_type),
+          app_visible: created.app_visible !== false,
+          app_placements: parseAppPlacements(created.app_placements, normalizeMembershipType(created.membership_type)),
         });
       } else {
         setModalOpen(false);
@@ -370,10 +404,19 @@ export default function MembershipPlansPage() {
             <div className="flex flex-col items-end gap-1">
               {legacy ? (
                 <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-500">LEGACY</span>
-              ) : null}
+              ) : (
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${normalizeMembershipType(r.membership_type) === 'RSA' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {normalizeMembershipType(r.membership_type) === 'RSA' ? 'RSA' : 'SERVICE'}
+                </span>
+              )}
               <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                 {r.active ? 'ACTIVE' : 'INACTIVE'}
               </span>
+              {!legacy ? (
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.app_visible !== false ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {r.app_visible !== false ? 'IN APP' : 'HIDDEN IN APP'}
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
@@ -385,6 +428,7 @@ export default function MembershipPlansPage() {
           <p className="text-xs text-gray-500 mt-2">
             {r.benefits?.length || 0} benefits · value {inr(Number(r.total_benefits_value || 0))} · pay {inr(Number(r.price))}
             {!legacy ? ` · 2nd car +${inr(Number(r.second_car_addon_price || 0))}` : ' · not shown in app'}
+            {!legacy ? ` · ${countEnabledPlacements(parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)))} app slots` : ''}
           </p>
         </div>
         <div className="border-t border-gray-100 p-3 flex gap-2">
@@ -407,15 +451,23 @@ export default function MembershipPlansPage() {
             <Crown className="h-6 w-6 text-amber-500" /> Membership Plans
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            MyFNG Prime is the active plan. Use <strong>Add Plan</strong> when you launch Prime Plus, Elite, or other tiers.
+            Manage <strong>Service</strong> (MyFNG Prime) and <strong>RSA</strong> memberships separately. Control screen placement and hide/show in Android &amp; iOS apps.
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" /> Add Plan
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => openAdd('SERVICE')}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4" /> Add Service Plan
+          </button>
+          <button
+            onClick={() => openAdd('RSA')}
+            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-white font-semibold shadow hover:bg-red-700"
+          >
+            <Plus className="h-4 w-4" /> Add RSA Plan
+          </button>
+        </div>
       </div>
 
       {fetchError ? (
@@ -428,7 +480,8 @@ export default function MembershipPlansPage() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-4">
           <strong>Benefits or value fields missing?</strong> Run{' '}
           <code className="text-xs bg-amber-100 px-1 rounded">database/149_membership_admin.sql</code> then{' '}
-          <code className="text-xs bg-amber-100 px-1 rounded">database/152_membership_value_card_cms.sql</code> in Supabase.
+          <code className="text-xs bg-amber-100 px-1 rounded">database/152_membership_value_card_cms.sql</code> and{' '}
+          <code className="text-xs bg-amber-100 px-1 rounded">database/153_membership_app_placements.sql</code> in Supabase.
         </div>
       ) : null}
 
@@ -442,14 +495,29 @@ export default function MembershipPlansPage() {
       ) : (
         <div className="space-y-8">
           <div>
-            <h2 className="text-sm font-bold text-gray-700 mb-3">App plans (shown in Android &amp; iOS)</h2>
-            {appRows.length === 0 ? (
+            <h2 className="text-sm font-bold text-gray-700 mb-1">Service memberships (MyFNG Prime)</h2>
+            <p className="text-xs text-gray-500 mb-3">Shown on Home, Services, Search &amp; Settings — placement per plan.</p>
+            {serviceRows.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
-                No app plans yet. Click <strong>Add Plan</strong> to create MyFNG Prime tiers.
+                No service plans yet. Click <strong>Add Service Plan</strong>.
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {appRows.map((r) => renderPlanCard(r))}
+                {serviceRows.map((r) => renderPlanCard(r))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h2 className="text-sm font-bold text-gray-700 mb-1">RSA memberships</h2>
+            <p className="text-xs text-gray-500 mb-3">Roadside Assistance screen slots — before pricing, reviews, FAQs, etc.</p>
+            {rsaRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-red-100 bg-red-50/40 px-4 py-6 text-sm text-gray-600">
+                No RSA plans yet. Click <strong>Add RSA Plan</strong>.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {rsaRows.map((r) => renderPlanCard(r))}
               </div>
             )}
           </div>
@@ -478,12 +546,38 @@ export default function MembershipPlansPage() {
               <form onSubmit={savePlan} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-gray-600">Plan Code</label>
-                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="PRIME" required />
+                    <label className="text-xs font-bold text-gray-600">Membership Type</label>
+                    <select
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                      value={form.membership_type}
+                      onChange={(e) => {
+                        const membership_type = normalizeMembershipType(e.target.value);
+                        setForm({
+                          ...form,
+                          membership_type,
+                          app_placements: defaultPlacementsForType(membership_type),
+                        });
+                      }}
+                    >
+                      <option value="SERVICE">Service (MyFNG Prime)</option>
+                      <option value="RSA">RSA (Roadside Assistance)</option>
+                    </select>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-600">Display Order</label>
                     <input type="number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-gray-600">Plan Code</label>
+                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="PRIME" required />
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 text-sm font-semibold pb-2">
+                      <input type="checkbox" checked={form.app_visible} onChange={(e) => setForm({ ...form, app_visible: e.target.checked })} />
+                      Show in app (Android &amp; iOS)
+                    </label>
                   </div>
                 </div>
                 <div>
@@ -593,9 +687,15 @@ export default function MembershipPlansPage() {
                   />
                 </div>
 
+                <MembershipPlacementFields
+                  membershipType={form.membership_type}
+                  placements={form.app_placements}
+                  onChange={(app_placements) => setForm({ ...form, app_placements })}
+                />
+
                 <label className="flex items-center gap-2 text-sm font-semibold">
                   <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
-                  Active (visible in app)
+                  Active (backend — purchases &amp; existing members stay valid)
                 </label>
 
                 <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-white font-bold hover:bg-blue-700 disabled:opacity-60">

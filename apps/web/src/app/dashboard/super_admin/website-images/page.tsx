@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React from 'react';
 import Link from 'next/link';
-import { Image as ImageIcon, Car, ChevronRight, Megaphone, Star, Crown } from 'lucide-react';
+import { Image as ImageIcon, Car, ChevronRight, Megaphone, Star, Crown, ShieldAlert } from 'lucide-react';
 
 function Tile({
   title,
@@ -65,6 +65,12 @@ export default function WebsiteImagesHubPage() {
             subtitle="Manage app hero carousel banners (up to 10)"
             href="/dashboard/super_admin/website-images/home-carousel"
             Icon={ImageIcon}
+          />
+          <Tile
+            title="RSA Hero Banner"
+            subtitle="Single top banner on mobile RSA screen (Android + iOS)"
+            href="/dashboard/super_admin/website-images/rsa-hero"
+            Icon={ShieldAlert}
           />
           <Tile
             title="Promo Banners"

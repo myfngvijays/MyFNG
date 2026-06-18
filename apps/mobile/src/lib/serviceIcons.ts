@@ -3,6 +3,7 @@ import { ImageSourcePropType } from 'react-native';
 const SERVICE_ICON_BASE = 'https://myfng.in';
 export const RSA_ICON_URL = `${SERVICE_ICON_BASE}/icon-rsa-service.png`;
 export const RSA_ICON_SOURCE: ImageSourcePropType = require('../../assets/icon-rsa-service.png');
+export const RSA_ICON_RED_SOURCE: ImageSourcePropType = require('../../assets/icon-rsa-service-red.png');
 
 export function getServiceIconUrl(name: string): string {
   const c = name.toUpperCase();

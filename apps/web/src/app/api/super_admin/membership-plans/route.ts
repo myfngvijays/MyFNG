@@ -1,6 +1,6 @@
 import {
   insertMembershipPlan,
-  MIGRATION_149_HINT,
+  migrationHintForPlanError,
   sortMembershipRows,
 } from '@/lib/membership-plans-db';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
@@ -36,7 +36,7 @@ export async function GET() {
     const { data: plans, error } = await db.from(PLANS).select('*').order('created_at', { ascending: true });
 
     if (error) {
-      const hint = /does not exist/i.test(error.message) ? MIGRATION_149_HINT : undefined;
+      const hint = migrationHintForPlanError(error.message);
       return NextResponse.json({ error: 'Failed to fetch plans', details: error.message, hint }, { status: 500 });
     }
 
@@ -46,7 +46,7 @@ export async function GET() {
       : { data: [] as any[], error: null };
 
     if (benefitsError) {
-      const hint = /does not exist/i.test(benefitsError.message) ? MIGRATION_149_HINT : undefined;
+      const hint = migrationHintForPlanError(benefitsError.message);
       return NextResponse.json({ error: 'Failed to fetch benefits', details: benefitsError.message, hint }, { status: 500 });
     }
 
@@ -87,9 +87,8 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       const hint =
-        /does not exist/i.test(error.message) ? MIGRATION_149_HINT : /duplicate key|unique/i.test(error.message)
-          ? 'A plan with this code already exists.'
-          : undefined;
+        migrationHintForPlanError(error.message) ||
+        (/duplicate key|unique/i.test(error.message) ? 'A plan with this code already exists.' : undefined);
       return NextResponse.json({ error: 'Failed to create plan', details: error.message, hint }, { status: 500 });
     }
     return NextResponse.json({ data, message: 'Plan created successfully' });

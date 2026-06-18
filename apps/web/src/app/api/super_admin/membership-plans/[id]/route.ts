@@ -1,6 +1,6 @@
 import {
   deleteMembershipPlan,
-  MIGRATION_149_HINT,
+  migrationHintForPlanError,
   updateMembershipPlan,
 } from '@/lib/membership-plans-db';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
@@ -26,7 +26,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { data, error } = await updateMembershipPlan(supabaseAdmin, id, body);
 
     if (error) {
-      const hint = /does not exist/i.test(error.message) ? MIGRATION_149_HINT : undefined;
+      const hint = migrationHintForPlanError(error.message);
       return NextResponse.json({ error: 'Failed to update plan', details: error.message, hint }, { status: 500 });
     }
     return NextResponse.json({ data, message: 'Plan updated successfully' });

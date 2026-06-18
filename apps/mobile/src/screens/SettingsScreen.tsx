@@ -45,7 +45,8 @@ import {
 } from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
-import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type PrimeMembershipDisplay } from '../lib/membershipPlan';
+import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type AppMembershipPlan, type PrimeMembershipDisplay } from '../lib/membershipPlan';
+import { normalizeMembershipType } from '../lib/membershipPlacements';
 import { PRIME_VALUE_ADDON, PRIME_VALUE_PRICE } from '../constants/primeMembershipValueCard';
 import PrimeMembershipValueCard, {
   type GuestVehicleForm,
@@ -55,10 +56,14 @@ import PrimeMembershipValueCard, {
 import { BookingDraft, getBookingDrafts, removeBookingDraft } from '../lib/bookingDraft';
 import { dismissVehicleKeys, getDismissedVehicleKeys, saveDismissedVehicleKeys } from '../lib/dismissedVehicles';
 import VehicleImage from '../components/VehicleImage';
+import {
+  consumePendingMembershipCart,
+  isMembershipCartItem,
+} from '../lib/membershipCart';
 
 type Props = {
   navigation: any;
-  route: { params?: { initialSubPage?: string | null; subPage?: string | null } };
+  route: { params?: { initialSubPage?: string | null; subPage?: string | null; membershipType?: 'SERVICE' | 'RSA'; planCode?: string } };
 };
 
 type MenuItem = { id: string; label: string; icon: keyof typeof Ionicons.glyphMap };
@@ -227,7 +232,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [currentMembership, setCurrentMembership] = useState<any | null>(null);
   const [selectedMembershipIdx, setSelectedMembershipIdx] = useState(0);
   const [selectedAppPlanIdx, setSelectedAppPlanIdx] = useState(0);
-  const [appMembershipPlans, setAppMembershipPlans] = useState<PrimeMembershipDisplay[]>([]);
+  const [appMembershipPlans, setAppMembershipPlans] = useState<AppMembershipPlan[]>([]);
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [addSecondCar, setAddSecondCar] = useState(false);
   const [membershipActivating, setMembershipActivating] = useState(false);
@@ -356,7 +361,20 @@ export default function SettingsScreen({ navigation, route }: Props) {
     }
     return Number(cartServerCart?.subtotal || cartSelectedService?.price || 0);
   }, [cartItems, cartServerCart, cartSelectedService]);
+  const cartMembershipItems = useMemo(
+    () => (cartItems || []).filter((it: any) => isMembershipCartItem(it)),
+    [cartItems],
+  );
+  const cartServiceOnlyItems = useMemo(
+    () => (cartItems || []).filter((it: any) => !isMembershipCartItem(it)),
+    [cartItems],
+  );
+  const isMembershipOnlyCart = cartMembershipItems.length > 0 && cartServiceOnlyItems.length === 0;
   const couponDiscount = useMemo(() => Number(cartCouponResult?.discount_amount || 0), [cartCouponResult]);
+  const membershipPayAmount = useMemo(
+    () => Math.max(0, subtotal - couponDiscount),
+    [subtotal, couponDiscount],
+  );
   const walletUsed = useMemo(() => Math.min(Number(walletBalance || 0), Math.max(0, subtotal - couponDiscount)), [walletBalance, subtotal, couponDiscount]);
   const referralUsed = useMemo(() => 0, []);
   const finalAmount = useMemo(() => Math.max(0, subtotal - couponDiscount - walletUsed - referralUsed), [subtotal, couponDiscount, walletUsed, referralUsed]);
@@ -461,6 +479,45 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setCartItems([]);
     } finally {
       setCartLoading(false);
+    }
+  }, []);
+
+  const flushPendingMembershipCart = useCallback(async () => {
+    const pending = await consumePendingMembershipCart();
+    if (!pending?.planId) return;
+    try {
+      const cartRes = await apiFetch<any>('/api/customer/cart').catch(() => null);
+      const existingItems = Array.isArray(cartRes?.items) ? cartRes.items : [];
+      for (const item of existingItems.filter(isMembershipCartItem)) {
+        if (item?.id) {
+          await apiFetch(`/api/customer/cart?item_id=${encodeURIComponent(String(item.id))}`, {
+            method: 'DELETE',
+          });
+        }
+      }
+      const addSecondCar = Boolean(pending.addSecondCar);
+      const label = `${pending.membershipType === 'RSA' ? 'RSA' : 'Prime'} ${pending.planName} Membership${addSecondCar ? ' + 2nd Car' : ''}`;
+      await apiFetch('/api/customer/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_type: label,
+          quantity: 1,
+          unit_price: pending.priceNum,
+          metadata: {
+            item_type: 'membership',
+            plan_id: pending.planId,
+            plan_code: pending.planCode,
+            membership_type: pending.membershipType,
+            accent_color: pending.accentColor || null,
+            add_second_car: addSecondCar,
+            addon_price: addSecondCar ? Number(pending.addonPrice || 0) : 0,
+            second_vehicle: addSecondCar && pending.secondVehicle ? pending.secondVehicle : null,
+          },
+        }),
+      });
+    } catch {
+      // keep cart usable
     }
   }, []);
 
@@ -1220,9 +1277,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
     if (!isLoggedIn) return;
-    loadCart();
-    fetchCartCoupons();
-  }, [activeSubPage, isLoggedIn, loadCart, fetchCartCoupons]);
+    (async () => {
+      await flushPendingMembershipCart();
+      await loadCart();
+      fetchCartCoupons();
+    })();
+  }, [activeSubPage, isLoggedIn, loadCart, fetchCartCoupons, flushPendingMembershipCart]);
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
@@ -1336,13 +1396,26 @@ export default function SettingsScreen({ navigation, route }: Props) {
           : [];
 
         const pubPlans = await fetchAppMembershipPlans(ENV.API_URL).catch(() => []);
-        const pubConfig = pubPlans[0] || (await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null));
+        const membershipTypeFilter = route?.params?.membershipType
+          ? normalizeMembershipType(route.params.membershipType)
+          : undefined;
+        const settingsPlans = pubPlans.filter(
+          (plan) =>
+            plan.appPlacements.settings_page !== false &&
+            (!membershipTypeFilter || plan.membershipType === membershipTypeFilter),
+        );
+        const visiblePlans = settingsPlans.length > 0 ? settingsPlans : pubPlans;
+        const planCodeFilter = String(route?.params?.planCode || '').trim().toUpperCase();
+        const initialPlanIdx = planCodeFilter
+          ? Math.max(0, visiblePlans.findIndex((p) => String(p.planCode || '').toUpperCase() === planCodeFilter))
+          : 0;
+        const pubConfig = visiblePlans[initialPlanIdx] || visiblePlans[0] || (await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null));
 
         if (!cancelled) {
           setMembershipPlans(displayPlans);
           setMembershipBenefits(dbBenefits);
-          setAppMembershipPlans(pubPlans);
-          setSelectedAppPlanIdx(0);
+          setAppMembershipPlans(visiblePlans);
+          setSelectedAppPlanIdx(initialPlanIdx >= 0 ? initialPlanIdx : 0);
           if (pubConfig) setPrimeMembershipConfig(pubConfig);
         }
 
@@ -1368,7 +1441,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [activeSubPage, isLoggedIn]);
+  }, [activeSubPage, isLoggedIn, route?.params?.membershipType, route?.params?.planCode]);
 
   const selectedPlanBenefits = useMemo(() => {
     if (!membershipPlans.length) return [];
@@ -2328,6 +2401,130 @@ export default function SettingsScreen({ navigation, route }: Props) {
     cartCouponResult,
     cartItems,
     cartServerCart,
+    hydrateCustomerData,
+    loadCart,
+  ]);
+
+  const handleMembershipCartPay = useCallback(async () => {
+    const item = cartMembershipItems[0];
+    const planId = String(item?.metadata?.plan_id || '');
+    if (!planId) {
+      Alert.alert('Cart', 'Membership plan details are missing. Please add the plan again.');
+      return;
+    }
+    if (!selectedVehicle) {
+      Alert.alert('Vehicle required', 'Please add your car in My Profile before purchasing membership.');
+      return;
+    }
+
+    setCartBookingLoading(true);
+    try {
+      const rawPrimary = allAssociatedVehicles.find(
+        (v, idx) => getVehicleKey(v, idx) === selectedVehicleKey || v === selectedVehicle,
+      );
+      const primaryVehicleId = rawPrimary?.id ? String(rawPrimary.id) : null;
+      const primarySnapshot = {
+        vehicle_number: String(selectedVehicle?.vehicle_number || '').trim().toUpperCase(),
+        make: selectedVehicle?.make || '',
+        model: selectedVehicle?.model || '',
+        vehicle_id: primaryVehicleId,
+      };
+
+      const addSecondCar = Boolean(item?.metadata?.add_second_car);
+      let secondVehicleId: string | null = null;
+      let secondSnapshot: Record<string, unknown> | null = null;
+      if (addSecondCar) {
+        const secondMeta = item?.metadata?.second_vehicle || {};
+        const sNum = String(secondMeta?.vehicle_number || '').trim().toUpperCase();
+        const sMake = String(secondMeta?.make || '').trim();
+        const sModel = String(secondMeta?.model || '').trim();
+        if (!sNum || !sMake || !sModel) {
+          Alert.alert('2nd Car Required', '2nd car details are missing. Please remove and re-add the plan from RSA screen.');
+          return;
+        }
+        const saved = await saveVehicleForMember({ vehicle_number: sNum, make: sMake, model: sModel });
+        secondVehicleId = saved?.id ? String(saved.id) : null;
+        secondSnapshot = { vehicle_number: sNum, make: sMake, model: sModel, vehicle_id: secondVehicleId };
+      }
+
+      const couponCode = cartCouponResult?.coupon?.code || null;
+      const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: planId,
+          add_second_car: addSecondCar,
+          coupon_code: couponCode,
+        }),
+      });
+
+      if (!orderRes?.order_id) {
+        Alert.alert('Error', orderRes?.error || 'Could not create payment order. Please try again.');
+        return;
+      }
+
+      const paymentResult = await openRazorpay(
+        orderRes,
+        String(item?.service_type || 'Membership'),
+      );
+
+      const subRes = await apiFetch<any>('/api/customer/membership/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: planId,
+          add_second_car: addSecondCar,
+          primary_vehicle_id: primaryVehicleId,
+          second_vehicle_id: secondVehicleId,
+          primary_vehicle_snapshot: primarySnapshot,
+          second_vehicle_snapshot: secondSnapshot,
+          razorpay_payment_id: paymentResult.razorpay_payment_id,
+          razorpay_order_id: paymentResult.razorpay_order_id,
+          razorpay_signature: paymentResult.razorpay_signature,
+          coupon_code: couponCode,
+          coupon_id: cartCouponResult?.coupon?.id || orderRes?.coupon_meta?.coupon_id || null,
+          coupon_meta: orderRes?.coupon_meta || cartCouponResult?.coupon_meta || null,
+          discount_amount: orderRes?.discount_amount || cartCouponResult?.discount_amount || 0,
+        }),
+      });
+
+      if (subRes?.error || !subRes?.success) {
+        throw new Error(subRes?.error || subRes?.details || 'Membership activation failed after payment.');
+      }
+
+      for (const cartItem of cartMembershipItems) {
+        if (cartItem?.id) {
+          await apiFetch(`/api/customer/cart?item_id=${encodeURIComponent(String(cartItem.id))}`, {
+            method: 'DELETE',
+          });
+        }
+      }
+
+      setCartCouponResult(null);
+      setCoupon('');
+      Alert.alert('Success', `Your ${String(item?.service_type || 'membership')} is now active!`);
+      if (subRes?.membership) {
+        setCurrentMembership(subRes.membership);
+      }
+      await hydrateCustomerData();
+      await loadCart();
+      setActiveSubPage('Membership');
+    } catch (err: any) {
+      const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      if (cancelled) {
+        Alert.alert('Payment Cancelled', 'Membership purchase was cancelled. No charges were made.');
+      } else {
+        Alert.alert('Payment failed', err?.message || 'Unable to complete membership purchase.');
+      }
+    } finally {
+      setCartBookingLoading(false);
+    }
+  }, [
+    cartMembershipItems,
+    selectedVehicle,
+    selectedVehicleKey,
+    allAssociatedVehicles,
+    cartCouponResult,
     hydrateCustomerData,
     loadCart,
   ]);
@@ -3518,6 +3715,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             addonTitle={(primeUI.addOn as any)?.title}
             addonDescription={(primeUI.addOn as any)?.description}
             footerNote={primeUI.footerNote}
+            membershipType={primeUI.membershipType}
           />
           </View>
         );
@@ -4229,14 +4427,35 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 </View>
               ) : cartItems.length > 0 ? (
                 cartItems.map((item: any, idx: number) => {
-                  const checklist = Array.isArray(item?.metadata?.items) ? item.metadata.items : (cartSelectedService?.items || []);
+                  const isMembership = isMembershipCartItem(item);
+                  const checklist = isMembership
+                    ? (Array.isArray(item?.metadata?.benefits) ? item.metadata.benefits : [])
+                    : Array.isArray(item?.metadata?.items)
+                      ? item.metadata.items
+                      : (cartSelectedService?.items || []);
                   return (
                     <View key={String(item?.id || idx)} style={{ marginTop: idx === 0 ? 0 : 12, paddingTop: idx === 0 ? 0 : 12, borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: '#F3F4F6' }}>
                       <View style={cstyles.serviceHeaderRow}>
                         <Text style={cstyles.serviceTitle}>{String(item?.service_type || 'Service')}</Text>
                         <Text style={cstyles.servicePrice}>₹{Math.round(Number(item?.total_price || 0)).toLocaleString('en-IN')}</Text>
                       </View>
-                      {(checklist || []).slice(0, 4).map((line: string) => (
+                      {isMembership && item?.metadata?.period ? (
+                        <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '600', marginBottom: 6 }}>
+                          {String(item.metadata.period).replace(/^\//, '').trim()}
+                        </Text>
+                      ) : null}
+                      {isMembership && item?.metadata?.add_second_car ? (
+                        <View style={[cstyles.serviceBulletRow, { marginBottom: 6 }]}>
+                          <Ionicons name="car-sport" size={14} color="#2563EB" />
+                          <Text style={cstyles.serviceBulletText}>
+                            2nd Car Add-On included
+                            {item?.metadata?.second_vehicle?.vehicle_number
+                              ? ` · ${String(item.metadata.second_vehicle.vehicle_number).toUpperCase()}`
+                              : ''}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {(checklist || []).slice(0, isMembership ? 5 : 4).map((line: string) => (
                         <View key={line} style={cstyles.serviceBulletRow}>
                           <Ionicons name="checkmark" size={14} color="#22C55E" />
                           <Text style={cstyles.serviceBulletText}>{line}</Text>
@@ -4250,17 +4469,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         >
                           <Text style={cstyles.removeBtnText}>{cartSyncing ? 'Removing...' : 'Remove'}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                          style={cstyles.editBtn}
-                          onPress={() => {
-                            const cityParam = pickupForm.city?.trim() || undefined;
-                            const serviceName = String(item?.service_type || cartSelectedService?.name || '');
-                            const categoryId = mapServiceNameToCategoryId(serviceName);
-                            navigation.navigate('PublicServicePackages', { city: cityParam, selectedServiceId: categoryId } as never);
-                          }}
-                        >
-                          <Text style={cstyles.editBtnText}>Edit Service</Text>
-                        </TouchableOpacity>
+                        {!isMembership ? (
+                          <TouchableOpacity
+                            style={cstyles.editBtn}
+                            onPress={() => {
+                              const cityParam = pickupForm.city?.trim() || undefined;
+                              const serviceName = String(item?.service_type || cartSelectedService?.name || '');
+                              const categoryId = mapServiceNameToCategoryId(serviceName);
+                              navigation.navigate('PublicServicePackages', { city: cityParam, selectedServiceId: categoryId } as never);
+                            }}
+                          >
+                            <Text style={cstyles.editBtnText}>Edit Service</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     </View>
                   );
@@ -4337,6 +4558,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </View>
             </View>
 
+            {!isMembershipOnlyCart ? (
+            <>
             <Text style={cstyles.sectionHeading}>SERVICE MODE</Text>
             <View style={cstyles.sectionCard}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
@@ -4724,11 +4947,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 <Text style={[cstyles.modeText, cartPaymentMode === 'pay_later' && cstyles.modeTextActive]}>Pay Later</Text>
               </TouchableOpacity>
             </View>
+            </>
+            ) : null}
 
               <View style={cstyles.sectionCard}>
                 <Text style={cstyles.summaryTitle}>Price Summary</Text>
                 <View style={cstyles.summaryRow}>
-                  <Text style={cstyles.summaryLabel}>Service Total</Text>
+                  <Text style={cstyles.summaryLabel}>{isMembershipOnlyCart ? 'Membership Total' : 'Service Total'}</Text>
                   <Text style={cstyles.summaryValue}>₹{subtotal.toLocaleString('en-IN')}</Text>
                 </View>
                 {couponDiscount > 0 ? (
@@ -4737,7 +4962,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{Math.round(couponDiscount).toLocaleString('en-IN')}</Text>
                   </View>
                 ) : null}
-                {walletUsed > 0 ? (
+                {walletUsed > 0 && !isMembershipOnlyCart ? (
                   <View style={cstyles.summaryRow}>
                     <Text style={cstyles.summaryLabel}>Wallet Used</Text>
                     <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{walletUsed.toLocaleString('en-IN')}</Text>
@@ -4745,7 +4970,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 ) : null}
                 <View style={[cstyles.summaryRow, cstyles.summaryFinalRow]}>
                   <Text style={cstyles.finalLabel}>Final Amount</Text>
-                  <Text style={cstyles.finalValue}>₹{Math.round(finalAmount).toLocaleString('en-IN')}</Text>
+                  <Text style={cstyles.finalValue}>
+                    ₹{(isMembershipOnlyCart ? membershipPayAmount : Math.round(finalAmount)).toLocaleString('en-IN')}
+                  </Text>
                 </View>
               </View>
             </>
@@ -4830,14 +5057,23 @@ export default function SettingsScreen({ navigation, route }: Props) {
             ) : null}
 
             <View style={cstyles.noteWrap}>
-              <View style={cstyles.noteRow}>
-                <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
-                <Text style={cstyles.noteText}>Service time may vary depending on vehicle condition and workshop workload.</Text>
-              </View>
-              <View style={cstyles.noteRow}>
-                <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
-                <Text style={cstyles.noteText}>Final cost may change if additional parts or repairs are required after inspection.</Text>
-              </View>
+              {!isMembershipOnlyCart ? (
+                <>
+                  <View style={cstyles.noteRow}>
+                    <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
+                    <Text style={cstyles.noteText}>Service time may vary depending on vehicle condition and workshop workload.</Text>
+                  </View>
+                  <View style={cstyles.noteRow}>
+                    <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
+                    <Text style={cstyles.noteText}>Final cost may change if additional parts or repairs are required after inspection.</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={cstyles.noteRow}>
+                  <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
+                  <Text style={cstyles.noteText}>Apply coupon code above to get discount. Membership activates instantly after successful payment.</Text>
+                </View>
+              )}
             </View>
 
             <TouchableOpacity
@@ -4846,12 +5082,22 @@ export default function SettingsScreen({ navigation, route }: Props) {
               onPress={() => {
                 if (activeDraft) {
                   navigation.navigate('PublicBookServiceNow', { resumeDraft: activeDraft });
+                } else if (isMembershipOnlyCart) {
+                  handleMembershipCartPay();
                 } else {
                   handleProceedToBook();
                 }
               }}
             >
-              <Text style={cstyles.bookNowBtnText}>{cartBookingLoading ? 'Booking...' : (activeDraft ? 'Continue Booking' : 'Proceed to Book')}</Text>
+              <Text style={cstyles.bookNowBtnText}>
+                {cartBookingLoading
+                  ? 'Processing...'
+                  : activeDraft
+                    ? 'Continue Booking'
+                    : isMembershipOnlyCart
+                      ? `Pay Now — ₹${Math.round(membershipPayAmount).toLocaleString('en-IN')}`
+                      : 'Proceed to Book'}
+              </Text>
             </TouchableOpacity>
           </View>
         );

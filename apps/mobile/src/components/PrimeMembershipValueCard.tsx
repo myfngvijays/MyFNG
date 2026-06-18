@@ -19,6 +19,7 @@ import {
   PRIME_VALUE_TOTAL,
 } from '../constants/primeMembershipValueCard';
 import type { ValueCardBenefit, ValueCardConfig } from '../lib/membershipPlan';
+import type { MembershipType } from '../lib/membershipPlacements';
 import MembershipBenefitIcon, { benefitIconStyles } from './MembershipBenefitIcon';
 import CarModelSearchField from './CarModelSearchField';
 
@@ -81,7 +82,41 @@ type Props = {
   addonTitle?: string;
   addonDescription?: string;
   footerNote?: string;
+  membershipType?: MembershipType;
+  accentColor?: string;
+  preview?: boolean;
+  previewInteractiveAddon?: boolean;
+  previewCtaLabel?: string;
+  pricePeriodLabel?: string;
+  onPreviewPress?: () => void;
+  style?: object;
 };
+
+function hexWithAlpha(hex: string, alphaHex: string) {
+  const clean = hex.replace('#', '');
+  if (clean.length === 6) return `#${clean}${alphaHex}`;
+  return hex;
+}
+
+function themeFromAccent(accentColor: string | undefined, isRsa: boolean) {
+  const accent = accentColor || '#023D95';
+  return {
+    headerBg: accent,
+    headerSub: hexWithAlpha(accent, '99'),
+    accent,
+    accentBorder: hexWithAlpha(accent, '40'),
+    benefitIconBg: hexWithAlpha(accent, '18'),
+    benefitValue: accent,
+    totalBandBg: hexWithAlpha(accent, '0C'),
+    priceHeroBg: accent,
+    priceHeroSub: hexWithAlpha(accent, '99'),
+    activateBg: accent,
+    linkedBg: hexWithAlpha(accent, '0C'),
+    linkedBorder: hexWithAlpha(accent, '40'),
+    linkedHeading: accent,
+    headerEmoji: isRsa ? '🛟' : '👑',
+  };
+}
 
 function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
@@ -138,16 +173,17 @@ function VehiclePicker({
   );
 }
 
-function BenefitValue({ prefix, label }: { prefix?: string; label: string }) {
+function BenefitValue({ prefix, label, accentColor = '#023D95' }: { prefix?: string; label: string; accentColor?: string }) {
+  if (!label) return <Text style={styles.bValueMuted}>—</Text>;
   if (prefix) {
     return (
       <View style={styles.bValueStack}>
         <Text style={styles.bValuePrefix}>{prefix}</Text>
-        <Text style={styles.bValue}>{label}</Text>
+        <Text style={[styles.bValue, { color: accentColor }]}>{label}</Text>
       </View>
     );
   }
-  return <Text style={styles.bValue}>{label}</Text>;
+  return <Text style={[styles.bValue, { color: accentColor }]}>{label}</Text>;
 }
 
 function GuestCarSection({
@@ -276,9 +312,19 @@ export default function PrimeMembershipValueCard({
   addonTitle = '2nd Car Add-On',
   addonDescription = "same benefits, same membership period as primary car",
   footerNote,
+  membershipType = 'SERVICE',
+  accentColor,
+  preview = false,
+  previewInteractiveAddon = false,
+  previewCtaLabel,
+  pricePeriodLabel = '/ year',
+  onPreviewPress,
+  style,
 }: Props) {
+  const isRsa = membershipType === 'RSA';
+  const theme = themeFromAccent(accentColor, isRsa);
   const canBuySecondCarAddon = isActive && !hasSecondCarAddon && Boolean(onBuySecondCarAddon);
-  const showFullPurchase = !isActive;
+  const showFullPurchase = !isActive && !preview;
   const totalPay = planPrice + (addSecondCar ? addonPrice : 0);
   const primaryOptions = vehicles;
 
@@ -312,7 +358,7 @@ export default function PrimeMembershipValueCard({
       : vehicles.filter((v) => v.key !== primaryVehicleKey);
     const showAddForm = showSecondVehicleForm || pickerOptions.length === 0;
     return (
-    <View style={styles.detailsSection}>
+    <View style={[styles.detailsSection, preview ? styles.detailsSectionPreview : null]}>
       {isLoggedIn ? (
         pickerOptions.length > 0 && !showAddForm ? (
           <VehiclePicker
@@ -345,195 +391,270 @@ export default function PrimeMembershipValueCard({
     );
   };
 
-  return (
-    <ScrollView style={styles.wrap} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>{planName}</Text>
-            <Text style={styles.headerSub}>{headerTagline}</Text>
-          </View>
-          <View style={styles.crownWrap}>
-            <Text style={styles.crownEmoji}>👑</Text>
-          </View>
+  const cardBody = (
+    <View style={[styles.card, preview ? styles.cardPreview : null]}>
+      <View style={[styles.header, preview ? styles.headerPreview : null, { backgroundColor: theme.headerBg }]}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>{planName}</Text>
+          <Text style={[styles.headerSub, { color: theme.headerSub }]}>{headerTagline}</Text>
         </View>
+        <View style={styles.crownWrap}>
+          <Text style={styles.crownEmoji}>{theme.headerEmoji}</Text>
+        </View>
+      </View>
 
-        {isActive ? (
-          <View style={styles.activeBanner}>
-            <Ionicons name="checkmark-circle" size={18} color="#047857" />
-            <Text style={styles.activeBannerText}>
-              {membershipLabel || 'Prime Member'} active{activeExpiry ? ` · until ${activeExpiry}` : ''}
-              {hasSecondCarAddon ? ' · 2nd car included' : ''}
-            </Text>
-          </View>
-        ) : null}
+      {isActive ? (
+        <View style={styles.activeBanner}>
+          <Ionicons name="checkmark-circle" size={18} color="#047857" />
+          <Text style={styles.activeBannerText}>
+            {membershipLabel || 'Prime Member'} active{activeExpiry ? ` · until ${activeExpiry}` : ''}
+            {hasSecondCarAddon ? ' · 2nd car included' : ''}
+          </Text>
+        </View>
+      ) : null}
 
-        {isActive && isLoggedIn && linkedPrimaryVehicle ? (
-          <View style={styles.linkedCarsSection}>
-            <Text style={styles.linkedCarsHeading}>Your membership covers</Text>
+      {isActive && isLoggedIn && linkedPrimaryVehicle ? (
+        <View style={[styles.linkedCarsSection, { backgroundColor: theme.linkedBg, borderColor: theme.linkedBorder }]}>
+          <Text style={[styles.linkedCarsHeading, { color: theme.linkedHeading }]}>Your membership covers</Text>
+          <LinkedVehicleCard
+            title="Primary car"
+            vehicle={linkedPrimaryVehicle}
+            badge="ACTIVE"
+            validUntil={activeExpiry}
+          />
+          {hasSecondCarAddon && linkedSecondVehicle ? (
             <LinkedVehicleCard
-              title="Primary car"
-              vehicle={linkedPrimaryVehicle}
-              badge="ACTIVE"
+              title="2nd car add-on"
+              vehicle={linkedSecondVehicle}
+              badge="ADD-ON"
               validUntil={activeExpiry}
             />
-            {hasSecondCarAddon && linkedSecondVehicle ? (
-              <LinkedVehicleCard
-                title="2nd car add-on"
-                vehicle={linkedSecondVehicle}
-                badge="ADD-ON"
-                validUntil={activeExpiry}
-              />
-            ) : null}
-          </View>
-        ) : null}
+          ) : null}
+        </View>
+      ) : null}
 
-        <View style={styles.benefitsSection}>
-          <View style={styles.benefitsHead}>
-            <Text style={[styles.benefitsHeadText, styles.benefitsHeadLeft]}>{benefitsHead}</Text>
-            <Text style={styles.benefitsHeadText}>{valueColumnLabel}</Text>
-          </View>
-          {cardBenefits.map((b, idx) => (
-            <View key={`${b.title}-${idx}`} style={[styles.bRow, idx === cardBenefits.length - 1 ? styles.bRowLast : null]}>
-              <View style={styles.bLeft}>
-                <View style={styles.bIcon}>
-                  <MembershipBenefitIcon icon={b.icon} iconUrl={b.iconUrl} size={15} />
-                </View>
-                <View style={styles.bTextWrap}>
-                  <Text style={styles.bTitle}>{b.title}</Text>
-                  <Text style={styles.bSub}>{b.description}</Text>
-                </View>
+      <View style={[styles.benefitsSection, preview ? styles.benefitsSectionPreview : null]}>
+        <View style={styles.benefitsHead}>
+          <Text style={[styles.benefitsHeadText, styles.benefitsHeadLeft]}>{benefitsHead}</Text>
+          <Text style={styles.benefitsHeadText}>{valueColumnLabel}</Text>
+        </View>
+        {cardBenefits.map((b, idx) => (
+          <View key={`${b.title}-${idx}`} style={[styles.bRow, idx === cardBenefits.length - 1 ? styles.bRowLast : null]}>
+            <View style={styles.bLeft}>
+              <View style={[styles.bIcon, { backgroundColor: theme.benefitIconBg }]}>
+                <MembershipBenefitIcon icon={b.icon} iconUrl={b.iconUrl} size={15} />
               </View>
-              <BenefitValue prefix={b.valuePrefix} label={b.valueLabel} />
+              <View style={styles.bTextWrap}>
+                <Text style={styles.bTitle}>{b.title}</Text>
+                <Text style={styles.bSub}>{b.description}</Text>
+              </View>
             </View>
-          ))}
-        </View>
-
-        <View style={styles.totalBand}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>{totalBenefitsLabel}</Text>
-            <Text style={[styles.totalValue, styles.totalStrike]}>{inr(totalBenefitsValue)}</Text>
+            <BenefitValue prefix={b.valuePrefix} label={b.valueLabel} accentColor={theme.benefitValue} />
           </View>
-          <View style={styles.saveRow}>
-            <Text style={styles.saveLabel}>{saveLabel}</Text>
-            <Text style={styles.saveValue}>{inr(saveAmount)}</Text>
-          </View>
-        </View>
+        ))}
+      </View>
 
-        {!isActive ? (
-        <View style={styles.priceHero}>
+      <View style={[styles.totalBand, preview ? styles.totalBandPreview : null, { backgroundColor: theme.totalBandBg }]}>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>{totalBenefitsLabel}</Text>
+          <Text style={[styles.totalValue, styles.totalStrike, { color: theme.benefitValue }]}>{inr(totalBenefitsValue)}</Text>
+        </View>
+        <View style={styles.saveRow}>
+          <Text style={styles.saveLabel}>{saveLabel}</Text>
+          <Text style={styles.saveValue}>{inr(saveAmount)}</Text>
+        </View>
+      </View>
+
+      {!isActive ? (
+        <View style={[styles.priceHero, preview ? styles.priceHeroPreview : null, { backgroundColor: theme.priceHeroBg }]}>
           <Text style={styles.priceHeroLabel}>{priceHeroLabel}</Text>
-          <Text style={styles.priceHeroAmount}>
-            {inr(planPrice)} <Text style={styles.priceHeroPeriod}>/ year</Text>
-          </Text>
-          <Text style={styles.priceHeroSub}>{priceHeroSub}</Text>
+          <Text style={[styles.priceHeroAmount, preview ? styles.priceHeroAmountPreview : null]}>{inr(planPrice)}</Text>
+          {pricePeriodLabel ? (
+            <Text style={[styles.priceHeroPeriod, preview ? styles.priceHeroPeriodPreview : null, { color: theme.priceHeroSub }]}>
+              {pricePeriodLabel.replace(/^\s*\/?\s*/, '')}
+            </Text>
+          ) : null}
+          <Text style={[styles.priceHeroSub, { color: theme.priceHeroSub }]}>{priceHeroSub}</Text>
         </View>
-        ) : null}
+      ) : null}
 
-        {showFullPurchase ? (
-          <>
-            <View style={styles.detailsSection}>
-              <Text style={styles.detailsTitle}>Which car is this membership for?</Text>
-              {isLoggedIn ? (
-                <>
-                  <VehiclePicker
-                    title="Primary car"
-                    options={primaryOptions}
-                    selectedKey={primaryVehicleKey}
-                    onSelect={onPrimaryVehicleKeyChange}
-                  />
-                  {primaryOptions.length === 0 ? (
-                    <GuestCarSection form={guestForm} onChange={onGuestFormChange} includeProfileFields={false} />
-                  ) : null}
-                </>
-              ) : (
-                <GuestCarSection form={guestForm} onChange={onGuestFormChange} />
-              )}
-            </View>
+      {preview && !isActive ? (
+        <>
+          {previewInteractiveAddon ? (
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.addon,
+                  preview ? styles.addonPreviewCompact : null,
+                  addSecondCar ? styles.addonActive : null,
+                  { borderColor: theme.accentBorder },
+                ]}
+                onPress={() => onAddSecondCarChange(!addSecondCar)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name={addSecondCar ? 'checkbox' : 'square-outline'} size={20} color={addSecondCar ? theme.accent : '#9CA3AF'} />
+                <View style={benefitIconStyles.wrap}>
+                  <MembershipBenefitIcon icon={addonIcon} iconUrl={addonIconUrl} size={14} />
+                </View>
+                <Text style={[styles.addonText, preview ? styles.addonTextCompact : null]}>
+                  <Text style={[styles.addonBold, { color: theme.accent }]}>{addonTitle}</Text>
+                  {'\n'}
+                  <Text style={styles.addonDesc}>{addonDescription}</Text>
+                </Text>
+                <Text style={[styles.addonPrice, { color: theme.accent }]}>+{inr(addonPrice)}</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.addon, addSecondCar ? styles.addonActive : null]}
-              onPress={() => onAddSecondCarChange(!addSecondCar)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name={addSecondCar ? 'checkbox' : 'square-outline'} size={20} color={addSecondCar ? COLORS.primary : '#9CA3AF'} />
+              {addSecondCar ? renderSecondCarDetails(false) : null}
+
+              <View style={[styles.checkoutRow, preview ? styles.checkoutRowPreview : null]}>
+                <Text style={styles.checkoutLabel}>Total payable</Text>
+                <Text style={[styles.checkoutAmount, { color: theme.accent }]}>{inr(totalPay)}</Text>
+              </View>
+            </>
+          ) : (
+            <View style={[styles.addon, styles.addonPreview, { borderColor: theme.accentBorder }]}>
               <View style={benefitIconStyles.wrap}>
                 <MembershipBenefitIcon icon={addonIcon} iconUrl={addonIconUrl} size={14} />
               </View>
               <Text style={styles.addonText}>
-                <Text style={styles.addonBold}>{addonTitle}</Text> — {addonDescription}
+                <Text style={[styles.addonBold, { color: theme.accent }]}>{addonTitle}</Text> — {addonDescription}
               </Text>
-              <Text style={styles.addonPrice}>+{inr(addonPrice)}</Text>
-            </TouchableOpacity>
+              <Text style={[styles.addonPrice, { color: theme.accent }]}>+{inr(addonPrice)}</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={[styles.cta, styles.previewCta, previewInteractiveAddon ? styles.previewCtaCompact : null, { backgroundColor: theme.activateBg }]}
+            onPress={onPreviewPress}
+            activeOpacity={0.9}
+          >
+            <Text style={[styles.ctaText, previewInteractiveAddon ? styles.previewCtaTextCompact : null]}>
+              {previewCtaLabel || (isRsa ? 'Get RSA Membership' : 'Get Prime Membership')} — {inr(previewInteractiveAddon ? totalPay : planPrice)} →
+            </Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
 
-            {addSecondCar ? (
-              <Text style={styles.addonPeriodNote}>
-                2nd car bhi primary car ke saath same date tak valid hogi — alag renewal nahi.
+      {showFullPurchase ? (
+        <>
+          <View style={styles.detailsSection}>
+            <Text style={styles.detailsTitle}>Which car is this membership for?</Text>
+            {isLoggedIn ? (
+              <>
+                <VehiclePicker
+                  title="Primary car"
+                  options={primaryOptions}
+                  selectedKey={primaryVehicleKey}
+                  onSelect={onPrimaryVehicleKeyChange}
+                />
+                {primaryOptions.length === 0 ? (
+                  <GuestCarSection form={guestForm} onChange={onGuestFormChange} includeProfileFields={false} />
+                ) : null}
+              </>
+            ) : (
+              <GuestCarSection form={guestForm} onChange={onGuestFormChange} />
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.addon, addSecondCar ? styles.addonActive : null]}
+            onPress={() => onAddSecondCarChange(!addSecondCar)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={addSecondCar ? 'checkbox' : 'square-outline'} size={20} color={addSecondCar ? COLORS.primary : '#9CA3AF'} />
+            <View style={benefitIconStyles.wrap}>
+              <MembershipBenefitIcon icon={addonIcon} iconUrl={addonIconUrl} size={14} />
+            </View>
+            <Text style={styles.addonText}>
+              <Text style={styles.addonBold}>{addonTitle}</Text> — {addonDescription}
+            </Text>
+            <Text style={styles.addonPrice}>+{inr(addonPrice)}</Text>
+          </TouchableOpacity>
+
+          {addSecondCar ? (
+            <Text style={styles.addonPeriodNote}>
+              2nd car bhi primary car ke saath same date tak valid hogi — alag renewal nahi.
+            </Text>
+          ) : null}
+
+          {addSecondCar ? renderSecondCarDetails(false) : null}
+
+          <View style={styles.checkoutRow}>
+            <Text style={styles.checkoutLabel}>Total payable</Text>
+            <Text style={styles.checkoutAmount}>{inr(totalPay)}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.cta, { backgroundColor: theme.activateBg }]}
+            onPress={onActivate}
+            disabled={activating}
+            activeOpacity={0.9}
+          >
+            {activating ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.ctaText}>
+                {isRsa ? 'Activate RSA Membership' : 'Activate Prime'} — {inr(totalPay)} →
               </Text>
-            ) : null}
+            )}
+          </TouchableOpacity>
+        </>
+      ) : null}
 
-            {addSecondCar ? renderSecondCarDetails(false) : null}
-
-            <View style={styles.checkoutRow}>
-              <Text style={styles.checkoutLabel}>Total payable</Text>
-              <Text style={styles.checkoutAmount}>{inr(totalPay)}</Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.cta}
-              onPress={onActivate}
-              disabled={activating}
-              activeOpacity={0.9}
-            >
-              {activating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.ctaText}>Activate Prime — {inr(totalPay)} →</Text>
-              )}
-            </TouchableOpacity>
-          </>
-        ) : null}
-
-        {canBuySecondCarAddon ? (
-          <View style={styles.addonUpgradeSection}>
-            <Text style={styles.addonUpgradeTitle}>Add 2nd Car to your membership</Text>
-            <Text style={styles.addonUpgradeSub}>
-              2nd car primary car ke saath same membership period mein chalegi
-              {activeExpiry ? ` · valid until ${activeExpiry}` : ''}. Alag saal ki renewal nahi hogi.
-            </Text>
-            {renderSecondCarDetails(true)}
-            <View style={styles.checkoutRow}>
-              <Text style={styles.checkoutLabel}>2nd car add-on</Text>
-              <Text style={styles.checkoutAmount}>{inr(addonPrice)}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.ctaAddon}
-              onPress={onBuySecondCarAddon}
-              disabled={activating}
-              activeOpacity={0.9}
-            >
-              {activating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.ctaText}>Add 2nd Car — {inr(addonPrice)} →</Text>
-              )}
-            </TouchableOpacity>
+      {canBuySecondCarAddon ? (
+        <View style={styles.addonUpgradeSection}>
+          <Text style={styles.addonUpgradeTitle}>Add 2nd Car to your membership</Text>
+          <Text style={styles.addonUpgradeSub}>
+            2nd car primary car ke saath same membership period mein chalegi
+            {activeExpiry ? ` · valid until ${activeExpiry}` : ''}. Alag saal ki renewal nahi hogi.
+          </Text>
+          {renderSecondCarDetails(true)}
+          <View style={styles.checkoutRow}>
+            <Text style={styles.checkoutLabel}>2nd car add-on</Text>
+            <Text style={styles.checkoutAmount}>{inr(addonPrice)}</Text>
           </View>
-        ) : null}
+          <TouchableOpacity
+            style={styles.ctaAddon}
+            onPress={onBuySecondCarAddon}
+            disabled={activating}
+            activeOpacity={0.9}
+          >
+            {activating ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.ctaText}>Add 2nd Car — {inr(addonPrice)} →</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
-        {isActive && hasSecondCarAddon && linkedSecondVehicle ? (
-          <View style={styles.addonDoneBanner}>
-            <Ionicons name="car-sport" size={18} color={COLORS.primary} />
-            <Text style={styles.addonDoneText}>
-              2nd car active: {linkedSecondVehicle.label}
-              {linkedSecondVehicle.vehicle_number ? ` · ${linkedSecondVehicle.vehicle_number}` : ''}
-              {activeExpiry ? ` · valid until ${activeExpiry}` : ''}
-            </Text>
-          </View>
-        ) : null}
+      {isActive && hasSecondCarAddon && linkedSecondVehicle ? (
+        <View style={styles.addonDoneBanner}>
+          <Ionicons name="car-sport" size={18} color={COLORS.primary} />
+          <Text style={styles.addonDoneText}>
+            2nd car active: {linkedSecondVehicle.label}
+            {linkedSecondVehicle.vehicle_number ? ` · ${linkedSecondVehicle.vehicle_number}` : ''}
+            {activeExpiry ? ` · valid until ${activeExpiry}` : ''}
+          </Text>
+        </View>
+      ) : null}
 
-        <Text style={styles.foot}>{cardFooter}</Text>
+      <Text style={styles.foot}>{cardFooter}</Text>
+    </View>
+  );
+
+  if (preview) {
+    return (
+      <View style={[styles.previewOuter, style]}>
+        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} bounces={false}>
+          {cardBody}
+        </ScrollView>
       </View>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.wrap} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {cardBody}
     </ScrollView>
   );
 }
@@ -541,6 +662,25 @@ export default function PrimeMembershipValueCard({
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
   content: { paddingBottom: 24 },
+  previewOuter: {
+    marginBottom: 16,
+  },
+  previewCta: {
+    marginHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  previewCtaCompact: {
+    marginHorizontal: 16,
+    paddingVertical: 14,
+  },
+  previewCtaTextCompact: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  addonPreview: {
+    borderStyle: 'dashed',
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 24,
@@ -551,6 +691,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  cardPreview: {
+    borderRadius: 20,
+  },
   header: {
     backgroundColor: '#023D95',
     paddingHorizontal: 18,
@@ -558,6 +701,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  headerPreview: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   headerLeft: { flex: 1, paddingRight: 12 },
   headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
@@ -624,6 +771,7 @@ const styles = StyleSheet.create({
   },
   linkedCarBadgeText: { fontSize: 9, fontWeight: '800', color: '#047857' },
   benefitsSection: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 6 },
+  benefitsSectionPreview: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
   benefitsHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -660,6 +808,7 @@ const styles = StyleSheet.create({
   bValueStack: { alignItems: 'flex-end' },
   bValuePrefix: { fontSize: 9, fontWeight: '600', color: '#64748B', lineHeight: 11 },
   bValue: { fontSize: 12, fontWeight: '800', color: '#023D95' },
+  bValueMuted: { fontSize: 12, fontWeight: '700', color: '#9CA3AF' },
   totalBand: {
     marginHorizontal: 20,
     marginTop: 6,
@@ -667,6 +816,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  totalBandPreview: {
+    marginHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 13, color: '#555', fontWeight: '600' },
@@ -692,10 +846,17 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
   },
+  priceHeroPreview: {
+    marginHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
   priceHeroLabel: { fontSize: 11, letterSpacing: 1, color: 'rgba(255,255,255,0.85)' },
-  priceHeroAmount: { fontSize: 34, fontWeight: '800', color: '#fff', marginTop: 2 },
-  priceHeroPeriod: { fontSize: 16, fontWeight: '500', opacity: 0.85 },
-  priceHeroSub: { fontSize: 11, color: '#9ec3f0', marginTop: 4, textAlign: 'center' },
+  priceHeroAmount: { fontSize: 34, fontWeight: '800', color: '#fff', marginTop: 2, textAlign: 'center' },
+  priceHeroAmountPreview: { fontSize: 30, lineHeight: 34 },
+  priceHeroPeriod: { fontSize: 16, fontWeight: '500', opacity: 0.85, marginTop: 2, textAlign: 'center' },
+  priceHeroPeriodPreview: { fontSize: 13, fontWeight: '600', lineHeight: 18, opacity: 1 },
+  priceHeroSub: { fontSize: 11, color: '#9ec3f0', marginTop: 6, textAlign: 'center', lineHeight: 16 },
   detailsSection: {
     marginHorizontal: 20,
     marginTop: 14,
@@ -705,9 +866,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  detailsSectionPreview: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 14,
+  },
   detailsTitle: { fontSize: 13, fontWeight: '800', color: '#1A1A1A', marginBottom: 8 },
-  vehicleBlock: { gap: 8 },
-  vehicleBlockTitle: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 2 },
+  vehicleBlock: { gap: 10 },
+  vehicleBlockTitle: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 4 },
   vehicleHint: { fontSize: 12, color: '#64748B' },
   vehicleChip: {
     flexDirection: 'row',
@@ -724,14 +890,14 @@ const styles = StyleSheet.create({
   vehicleChipTextActive: { color: COLORS.primary },
   addVehicleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 },
   addVehicleBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
-  guestForm: { gap: 8 },
+  guestForm: { gap: 10 },
   input: {
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingVertical: 11,
+    fontSize: 13,
     backgroundColor: '#fff',
     color: '#111',
   },
@@ -739,19 +905,25 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 12,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     backgroundColor: '#f8fafc',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  addonPreviewCompact: {
+    marginHorizontal: 16,
+    alignItems: 'center',
+  },
   addonActive: { borderColor: COLORS.primary, backgroundColor: '#E8F2FF' },
   addonText: { flex: 1, fontSize: 12, color: '#555', lineHeight: 16 },
+  addonTextCompact: { fontSize: 11, lineHeight: 15 },
+  addonDesc: { fontSize: 10, color: '#64748B', lineHeight: 14, marginTop: 2 },
   addonBold: { fontWeight: '800', color: '#023D95' },
-  addonPrice: { fontWeight: '800', color: '#023D95', fontSize: 13 },
+  addonPrice: { fontWeight: '800', color: '#023D95', fontSize: 13, marginTop: 2 },
   addonPeriodNote: {
     marginHorizontal: 20,
     marginTop: -4,
@@ -766,12 +938,20 @@ const styles = StyleSheet.create({
   checkoutRow: {
     marginHorizontal: 20,
     marginTop: 14,
+    marginBottom: 4,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  checkoutLabel: { fontSize: 14, color: '#64748B', fontWeight: '600' },
-  checkoutAmount: { fontSize: 18, fontWeight: '800', color: '#111' },
+  checkoutRowPreview: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  checkoutLabel: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  checkoutAmount: { fontSize: 20, fontWeight: '800', color: '#111' },
   cta: {
     marginHorizontal: 20,
     marginTop: 12,

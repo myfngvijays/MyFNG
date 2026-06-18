@@ -1,7 +1,18 @@
+import {
+  defaultPlacementsForType,
+  normalizeMembershipType,
+} from './membership-placements';
+
 export const LEGACY_MEMBERSHIP_CODES = new Set(['BRONZE', 'SILVER', 'GOLD']);
 
 export const MIGRATION_149_HINT =
   'Run `database/149_membership_admin.sql` in Supabase SQL editor to enable tagline, benefits icons, display order & 2nd-car fields.';
+
+export const MIGRATION_153_HINT =
+  'Run `database/153_membership_app_placements.sql` for SERVICE/RSA type, app hide/show & screen placement slots.';
+
+export const MIGRATION_154_HINT =
+  'Run `database/154_rsa_membership_plans_seed.sql` for 5 RSA tiers (Basic, Family, Plus, Premium, Elite) with shared benefits.';
 
 export function isAppMembershipPlan(code: unknown): boolean {
   return !LEGACY_MEMBERSHIP_CODES.has(String(code || '').toUpperCase());
@@ -12,24 +23,35 @@ export function filterAppMembershipPlans<T extends { code?: string }>(plans: T[]
 }
 
 function isMissingColumnError(message: string) {
-  return /does not exist/i.test(message);
+  const msg = String(message || '');
+  return (
+    /does not exist/i.test(msg) ||
+    /schema cache/i.test(msg) ||
+    /could not find the '[^']+' column/i.test(msg)
+  );
 }
 
-function normalizePlanCode(raw: unknown) {
-  return String(raw || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_]/g, '_');
+function isVisibilityColumnError(message: string) {
+  return /app_placements|app_visible|membership_type|accent_color/i.test(String(message || ''));
 }
 
-export function buildPlanBasePayload(body: Record<string, unknown>) {
+function omitKeys<T extends Record<string, unknown>>(obj: T, keys: string[]): Partial<T> {
+  const next = { ...obj };
+  for (const key of keys) delete next[key];
+  return next;
+}
+
+const PLAN_VISIBILITY_KEYS = ['membership_type', 'app_visible', 'app_placements', 'accent_color'] as const;
+
+export function buildPlanVisibilityPayload(body: Record<string, unknown>) {
+  const membershipType = normalizeMembershipType(body.membership_type);
   return {
-    code: normalizePlanCode(body.code),
-    name: String(body.name || '').trim(),
-    description: body.description || null,
-    price: Number(body.price) || 0,
-    duration_days: Number(body.duration_days) || 365,
-    active: body.active !== undefined ? !!body.active : true,
+    membership_type: membershipType,
+    app_visible: body.app_visible !== undefined ? !!body.app_visible : true,
+    app_placements:
+      body.app_placements && typeof body.app_placements === 'object' && !Array.isArray(body.app_placements)
+        ? body.app_placements
+        : defaultPlacementsForType(membershipType),
   };
 }
 
@@ -53,6 +75,33 @@ export function buildPlanExtendedPayload(body: Record<string, unknown>) {
     save_label: body.save_label || 'You Save',
     price_hero_label: body.price_hero_label || 'YOU PAY ONLY',
     price_hero_sub: body.price_hero_sub || 'All benefits · One full year · One car',
+    accent_color: body.accent_color || null,
+    ...buildPlanVisibilityPayload(body),
+  };
+}
+
+export function migrationHintForPlanError(message: string): string | undefined {
+  if (/accent_color/i.test(message)) return MIGRATION_154_HINT;
+  if (isVisibilityColumnError(message)) return MIGRATION_153_HINT;
+  if (isMissingColumnError(message)) return MIGRATION_149_HINT;
+  return undefined;
+}
+
+function normalizePlanCode(raw: unknown) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, '_');
+}
+
+export function buildPlanBasePayload(body: Record<string, unknown>) {
+  return {
+    code: normalizePlanCode(body.code),
+    name: String(body.name || '').trim(),
+    description: body.description || null,
+    price: Number(body.price) || 0,
+    duration_days: Number(body.duration_days) || 365,
+    active: body.active !== undefined ? !!body.active : true,
   };
 }
 
@@ -76,6 +125,10 @@ const PLAN_EXTENDED_UPDATE_KEYS = [
   'save_label',
   'price_hero_label',
   'price_hero_sub',
+  'membership_type',
+  'app_visible',
+  'app_placements',
+  'accent_color',
 ] as const;
 
 export function buildPlanUpdatePayload(body: Record<string, unknown>) {
@@ -103,6 +156,15 @@ export function buildPlanUpdatePayload(body: Record<string, unknown>) {
   if (body.total_benefits_value !== undefined) {
     updates.total_benefits_value = Number(body.total_benefits_value) || 0;
   }
+  if (body.membership_type !== undefined) {
+    updates.membership_type = normalizeMembershipType(body.membership_type);
+  }
+  if (body.app_visible !== undefined) {
+    updates.app_visible = !!body.app_visible;
+  }
+  if (body.app_placements !== undefined) {
+    updates.app_placements = body.app_placements;
+  }
 
   return updates;
 }
@@ -115,23 +177,36 @@ function pickBaseUpdateFields(updates: Record<string, unknown>) {
   return base;
 }
 
+function omitVisibilityFields(payload: Record<string, unknown>) {
+  return omitKeys(payload, [...PLAN_VISIBILITY_KEYS]);
+}
+
 export async function insertMembershipPlan(db: any, body: Record<string, unknown>) {
   const base = buildPlanBasePayload(body);
   const extended = buildPlanExtendedPayload(body);
+  const withoutVisibility = omitVisibilityFields(extended);
 
   let result = await db.from('membership_plans').insert({ ...base, ...extended }).select().single();
+
   if (result.error && isMissingColumnError(result.error.message)) {
-    result = await db.from('membership_plans').insert(base).select().single();
-    if (!result.error && result.data?.id) {
-      const extResult = await db
-        .from('membership_plans')
-        .update(extended)
-        .eq('id', result.data.id)
-        .select()
-        .single();
-      if (!extResult.error && extResult.data) result.data = extResult.data;
+    const visibilityOnly = isVisibilityColumnError(result.error.message);
+    const fallbackPayload = visibilityOnly ? withoutVisibility : extended;
+    result = await db.from('membership_plans').insert({ ...base, ...fallbackPayload }).select().single();
+
+    if (result.error && isMissingColumnError(result.error.message)) {
+      result = await db.from('membership_plans').insert(base).select().single();
+      if (!result.error && result.data?.id) {
+        const extResult = await db
+          .from('membership_plans')
+          .update(withoutVisibility)
+          .eq('id', result.data.id)
+          .select()
+          .single();
+        if (!extResult.error && extResult.data) result.data = extResult.data;
+      }
     }
   }
+
   return result;
 }
 
@@ -139,9 +214,18 @@ export async function updateMembershipPlan(db: any, id: string, body: Record<str
   const updates = buildPlanUpdatePayload(body);
 
   let result = await db.from('membership_plans').update(updates).eq('id', id).select().single();
+
   if (result.error && isMissingColumnError(result.error.message)) {
-    result = await db.from('membership_plans').update(pickBaseUpdateFields(updates)).eq('id', id).select().single();
+    const fallbackUpdates = isVisibilityColumnError(result.error.message)
+      ? omitVisibilityFields(updates)
+      : pickBaseUpdateFields(updates);
+    result = await db.from('membership_plans').update(fallbackUpdates).eq('id', id).select().single();
+
+    if (result.error && isMissingColumnError(result.error.message)) {
+      result = await db.from('membership_plans').update(pickBaseUpdateFields(updates)).eq('id', id).select().single();
+    }
   }
+
   return result;
 }
 

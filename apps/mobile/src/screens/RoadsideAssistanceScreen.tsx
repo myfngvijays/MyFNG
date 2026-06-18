@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Animated,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -11,13 +11,24 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
-import PrimeBanner from '../components/PrimeBanner';
+import RSAMembershipPlansSection from '../components/RSAMembershipPlansSection';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall } from '../lib/phone';
+import { supabase } from '../lib/supabase';
 
 type Props = { navigation: any; route: any };
 
 const RSA_PHONE = '+919610448949';
+
+const DEFAULT_RSA_HERO_IMAGE =
+  'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.PNG';
+
+type RsaHeroBanner = {
+  image_url: string;
+  route_name: string;
+  route_params?: Record<string, unknown> | null;
+  title?: string | null;
+};
 
 const RSA_SERVICES = [
   { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', icon: 'flash' as const, bg: '#F97316' },
@@ -58,6 +69,65 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
   const [showAllFaqs, setShowAllFaqs] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [heroBanner, setHeroBanner] = useState<RsaHeroBanner>({
+    image_url: DEFAULT_RSA_HERO_IMAGE,
+    route_name: 'RoadsideAssistance',
+    route_params: {},
+    title: 'RSA 24/7',
+  });
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('rsa_screen_hero_banners')
+          .select('image_url, route_name, route_params, title')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!active || error || !data?.image_url) return;
+        setHeroBanner({
+          image_url: String(data.image_url),
+          route_name: String(data.route_name || 'RoadsideAssistance'),
+          route_params: (data.route_params as Record<string, unknown>) || {},
+          title: data.title ? String(data.title) : null,
+        });
+      } catch {
+        // keep default hero image
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleHeroPress = () => {
+    const routeName = heroBanner.route_name || 'RoadsideAssistance';
+    const params = { ...(heroBanner.route_params || {}) } as Record<string, unknown>;
+    Object.keys(params).forEach((key) => {
+      if (params[key] === '__CITY__') params[key] = city || '';
+    });
+
+    if (routeName.startsWith('Settings__')) {
+      const subPageMap: Record<string, string> = {
+        Settings__MyProfile: 'My Profile',
+        Settings__Membership: 'Membership',
+        Settings__YourAddresses: 'Your Addresses',
+        Settings__OrderHistory: 'Order History',
+        Settings__Cart: 'Cart',
+        Settings__Notifications: 'Notifications',
+      };
+      navigation.navigate('Settings', { subPage: subPageMap[routeName] || null, ...params });
+      return;
+    }
+
+    if (routeName === 'RoadsideAssistance') return;
+    navigation.navigate(routeName as never, params as never);
+  };
 
   return (
     <SafeAreaView style={s.safe}>
@@ -68,7 +138,14 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
 
-          {/* ── RSA Emergency Card (red, matching Home) ── */}
+          {/* ── RSA Hero Banner (same style as Home hero — admin-managed) ── */}
+          <View style={s.heroCard}>
+            <TouchableOpacity activeOpacity={0.92} onPress={handleHeroPress} style={s.heroTouchable}>
+              <Image source={{ uri: heroBanner.image_url }} style={s.heroFullImage} resizeMode="cover" />
+            </TouchableOpacity>
+          </View>
+
+          {/* ── RSA Emergency Card (red) ── */}
           <View style={s.rsaHeroCard}>
             <Text style={s.rsaHeroTitle}>Roadside Assistance</Text>
             <Text style={s.rsaHeroSub}>Quick on-road solutions for every car emergency.</Text>
@@ -120,8 +197,9 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             </View>
           </View>
 
+          <RSAMembershipPlansSection navigation={navigation} />
+
           {/* ── Pricing Section ── */}
-          <PrimeBanner onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })} style={{ marginBottom: 16 }} animated />
           <Text style={s.pricingHeading}>Pricing</Text>
           <Text style={s.pricingSub}>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</Text>
 
@@ -160,6 +238,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </View>
 
+
           {/* ── Reviews Slider ── */}
           <View style={s.reviewHeaderRow}>
             <Text style={s.sectionTitle}>What Our Customers Say</Text>
@@ -193,6 +272,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             <Text style={s.showMoreBtnText}>Show More Reviews</Text>
             <Ionicons name="chevron-down" size={16} color="#2563EB" />
           </TouchableOpacity>
+
 
           {/* ── FAQs Section ── */}
           <Text style={s.faqHeading}>Frequently Asked Questions</Text>
@@ -297,11 +377,32 @@ const s = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
   },
   headerTitle: { fontSize: 20, fontWeight: '900', color: '#111827' },
-  content: { paddingHorizontal: 16, paddingBottom: 140 },
+  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 140 },
+
+  heroCard: {
+    marginTop: 8,
+    marginBottom: 16,
+    borderRadius: 32,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  heroTouchable: {
+    width: '100%',
+    aspectRatio: 16 / 8,
+  },
+  heroFullImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 32,
+  },
 
   /* ── RSA Hero (Red Card) ── */
   rsaHeroCard: {
-    marginTop: 12,
+    marginTop: 0,
     borderRadius: 32,
     backgroundColor: '#DC2626',
     padding: 24,

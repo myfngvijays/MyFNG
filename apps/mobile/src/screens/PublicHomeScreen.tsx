@@ -22,7 +22,7 @@ import PublicHeader from '../components/PublicHeader';
 import { detectHeaderLocation } from '../lib/locationDisplay';
 import LiveTrackingModal from '../components/LiveTrackingModal';
 import SearchOverlay from '../components/SearchOverlay';
-import PrimeBanner from '../components/PrimeBanner';
+import MembershipBannerSlot from '../components/MembershipBannerSlot';
 import ReferAndFooter from '../components/ReferAndFooter';
 import SmartToolsSection from '../components/SmartToolsSection';
 import { openPhoneCall } from '../lib/phone';
@@ -416,8 +416,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
     if (tab === 'account') navigation.navigate('Settings');
   };
 
-  const openPrimeMembership = () => navigation.navigate('Settings', { subPage: 'Membership' });
-
   // Search navigation is now handled inside SearchOverlay directly
 
   return (
@@ -569,7 +567,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <PrimeBanner onPress={openPrimeMembership} animated />
+            <MembershipBannerSlot screen="home" slot="after_services" navigation={navigation} />
           </Section>
 
           <Section>
@@ -618,8 +616,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
               ))}
             </View>
           </Section>
-
-          <SmartToolsSection navigation={navigation} city={detectedCity} />
 
           <Section>
             <Text style={styles.whySectionHeading}>Why MyFNG</Text>
@@ -721,7 +717,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <PrimeBanner onPress={openPrimeMembership} animated />
+            <MembershipBannerSlot screen="home" slot="after_loan_card" navigation={navigation} />
           </Section>
 
           <Section>
@@ -805,6 +801,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
           </Section>
 
+          <SmartToolsSection navigation={navigation} city={detectedCity} />
+
           <Section>
             <SectionTitle title="Brands We Service" />
             <View style={styles.brandCarouselClip}>
@@ -849,7 +847,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <PrimeBanner onPress={openPrimeMembership} animated />
+            <MembershipBannerSlot screen="home" slot="before_reviews" navigation={navigation} />
           </Section>
 
           <Section>
@@ -951,7 +949,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
         </ScrollView>
 
         <PublicPillNav activeTab="home" onPressTab={onNavPress} />
-        <SearchOverlay visible={showSearchOverlay} onClose={() => setShowSearchOverlay(false)} navigation={navigation} />
+        <SearchOverlay
+          visible={showSearchOverlay}
+          onClose={() => setShowSearchOverlay(false)}
+          navigation={navigation}
+          city={detectedCity}
+        />
         <LiveTrackingModal visible={showTrackingModal} onClose={() => setShowTrackingModal(false)} />
 
         <Modal visible={showAllReviews} transparent animationType="slide" onRequestClose={() => setShowAllReviews(false)}>
