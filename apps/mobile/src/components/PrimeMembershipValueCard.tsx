@@ -371,11 +371,6 @@ export default function PrimeMembershipValueCard({
         {isActive && isLoggedIn && linkedPrimaryVehicle ? (
           <View style={styles.linkedCarsSection}>
             <Text style={styles.linkedCarsHeading}>Your membership covers</Text>
-            {activeExpiry ? (
-              <Text style={styles.linkedCarsSub}>
-                Dono cars ki validity same hai · membership {activeExpiry} tak active
-              </Text>
-            ) : null}
             <LinkedVehicleCard
               title="Primary car"
               vehicle={linkedPrimaryVehicle}
@@ -598,7 +593,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   linkedCarsHeading: { fontSize: 12, fontWeight: '800', color: '#023D95', letterSpacing: 0.3 },
-  linkedCarsSub: { fontSize: 11, fontWeight: '600', color: '#475569', lineHeight: 16 },
   linkedCarCard: {
     flexDirection: 'row',
     alignItems: 'center',
