@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,12 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { ENV } from '../config/environment';
+import { setCustomerSessionToken } from '../lib/customerSession';
 import { COLORS } from '../constants/theme';
 import {
   PRIME_VALUE_ADDON,
@@ -89,8 +93,27 @@ type Props = {
   previewCtaLabel?: string;
   pricePeriodLabel?: string;
   onPreviewPress?: () => void;
+  onGuestAuthenticated?: () => void | Promise<void>;
   style?: object;
 };
+
+const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
+
+const PRIME_MEMBERSHIP_TERMS = [
+  'Membership is valid for 12 months from the date of activation.',
+  'All benefits apply to the vehicle registered on your MyFNG account.',
+  'Free pickup & drop is included with eligible services during membership.',
+  '2nd car add-on (if selected) expires on the same date as your primary car.',
+  'Membership is non-transferable and linked to your verified mobile number.',
+];
+
+const RSA_MEMBERSHIP_TERMS = [
+  'RSA coverage is valid for the plan duration selected at purchase.',
+  'Assistance applies to registered vehicle(s) linked to your membership.',
+  'Service calls are subject to plan limits and fair usage policy.',
+  '2nd car add-on (if selected) shares the same validity as the primary car.',
+  'Membership is non-refundable after activation and tied to your mobile number.',
+];
 
 function hexWithAlpha(hex: string, alphaHex: string) {
   const clean = hex.replace('#', '');
@@ -186,16 +209,279 @@ function BenefitValue({ prefix, label, accentColor = '#023D95' }: { prefix?: str
   return <Text style={[styles.bValue, { color: accentColor }]}>{label}</Text>;
 }
 
+function GuestPhoneOtpSection({
+  phone,
+  name,
+  verified,
+  onVerified,
+}: {
+  phone: string;
+  name: string;
+  verified: boolean;
+  onVerified: () => void | Promise<void>;
+}) {
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpValue, setOtpValue] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms'>('whatsapp');
+  const [otpConfirmation, setOtpConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
+
+  const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+
+  const handleSendWhatsAppOtp = async () => {
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpChannel('whatsapp');
+    try {
+      const payload = JSON.stringify({ phone: cleanPhone });
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-mobile-client': 'true',
+      };
+      let res: Response | null = null;
+      let json: any = {};
+      try {
+        res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-otp`, {
+          method: 'POST',
+          headers,
+          body: payload,
+        });
+        json = await res.json().catch(() => ({}));
+      } catch {
+        res = null;
+      }
+      if (!res || res.status === 404) {
+        res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+          method: 'POST',
+          headers,
+          body: payload,
+        });
+        json = await res.json().catch(() => ({}));
+      }
+      if (!res.ok) throw new Error(json?.error || 'Failed to send OTP');
+      setOtpSent(true);
+    } catch (error: any) {
+      Alert.alert('OTP Failed', error?.message || 'Unable to send WhatsApp OTP. Try SMS instead.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleSendSmsOtp = async () => {
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpChannel('sms');
+    try {
+      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
+      if (__DEV__ || isTestNumber) {
+        try {
+          auth().settings.appVerificationDisabledForTesting = true;
+        } catch {}
+      }
+      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`);
+      setOtpConfirmation(result);
+      setOtpSent(true);
+    } catch (error: any) {
+      const code = error?.code as string | undefined;
+      if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
+        Alert.alert(
+          'SMS Unavailable',
+          'SMS verification is not available on this device. Please use WhatsApp OTP instead.',
+          [
+            { text: 'Use WhatsApp', onPress: () => handleSendWhatsAppOtp() },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+        );
+      } else {
+        Alert.alert('OTP Failed', error?.message || 'Unable to send SMS OTP.');
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpValue.trim().length < 4) {
+      Alert.alert('Invalid OTP', 'Please enter the OTP sent to your number');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      let sessionToken: string | null = null;
+      if (otpChannel === 'whatsapp') {
+        const payload = JSON.stringify({
+          phone: cleanPhone,
+          otp: otpValue.trim(),
+          displayName: name.trim() || undefined,
+        });
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'x-mobile-client': 'true',
+        };
+        let res: Response | null = null;
+        let json: any = {};
+        try {
+          res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
+            method: 'POST',
+            headers,
+            body: payload,
+          });
+          json = await res.json().catch(() => ({}));
+        } catch {
+          res = null;
+        }
+        if (!res || res.status === 404) {
+          res = await fetch(`${ENV.API_URL}/api/booking/verify-otp`, {
+            method: 'POST',
+            headers,
+            body: payload,
+          });
+          json = await res.json().catch(() => ({}));
+          if (res.ok && json?.verified) {
+            res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
+              method: 'POST',
+              headers,
+              body: payload,
+            });
+            json = await res.json().catch(() => ({}));
+          }
+        }
+        if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
+        sessionToken = json?.session_token || null;
+      } else {
+        if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
+        const userCredential = await otpConfirmation.confirm(otpValue.trim());
+        if (!userCredential?.user) throw new Error('OTP verification failed');
+        const idToken = await userCredential.user.getIdToken();
+        const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
+          body: JSON.stringify({
+            idToken,
+            displayName: name.trim() || undefined,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Verification failed');
+        sessionToken = json?.session_token || null;
+      }
+      if (!sessionToken) throw new Error('Session token not received');
+      await setCustomerSessionToken(sessionToken);
+      await onVerified();
+    } catch (error: any) {
+      Alert.alert('Verification Failed', error?.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  if (verified) {
+    return (
+      <View style={styles.otpVerifiedRow}>
+        <Ionicons name="checkmark-circle" size={16} color="#059669" />
+        <Text style={styles.otpVerifiedText}>Mobile verified via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}</Text>
+      </View>
+    );
+  }
+
+  if (!otpSent) {
+    return (
+      <View style={styles.otpBtnRow}>
+        <TouchableOpacity
+          style={styles.otpWhatsAppBtn}
+          onPress={handleSendWhatsAppOtp}
+          disabled={otpLoading || cleanPhone.length !== 10}
+          activeOpacity={0.85}
+        >
+          {otpLoading && otpChannel === 'whatsapp' ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
+              <Text style={styles.otpWhatsAppBtnText}>WhatsApp OTP</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.otpSmsBtnAlt}
+          onPress={handleSendSmsOtp}
+          disabled={otpLoading || cleanPhone.length !== 10}
+          activeOpacity={0.85}
+        >
+          {otpLoading && otpChannel === 'sms' ? (
+            <ActivityIndicator color={COLORS.primary} size="small" />
+          ) : (
+            <>
+              <Ionicons name="chatbubble-ellipses" size={16} color={COLORS.primary} />
+              <Text style={styles.otpSmsBtnAltText}>SMS OTP</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.otpVerifyBlock}>
+      <View style={styles.otpSentRow}>
+        <Ionicons
+          name={otpChannel === 'whatsapp' ? 'logo-whatsapp' : 'chatbubble-ellipses'}
+          size={14}
+          color={otpChannel === 'whatsapp' ? '#25D366' : COLORS.primary}
+        />
+        <Text style={styles.otpSentText}>
+          OTP sent via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to +91 {cleanPhone}
+        </Text>
+      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Enter 6-digit OTP"
+        keyboardType="number-pad"
+        maxLength={6}
+        value={otpValue}
+        onChangeText={setOtpValue}
+      />
+      <View style={styles.otpActionRow}>
+        <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendWhatsAppOtp : handleSendSmsOtp} disabled={otpLoading}>
+          <Text style={styles.otpActionLink}>Resend OTP</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={otpChannel === 'whatsapp' ? handleSendSmsOtp : handleSendWhatsAppOtp} disabled={otpLoading}>
+          <Text style={styles.otpActionMuted}>Try {otpChannel === 'whatsapp' ? 'SMS' : 'WhatsApp'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.otpVerifyBtn} onPress={handleVerifyOtp} disabled={otpLoading}>
+          {otpLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.otpVerifyBtnText}>Verify</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function GuestCarSection({
   form,
   onChange,
   title,
   includeProfileFields = true,
+  showPhoneOtp = false,
+  guestPhoneVerified = false,
+  onGuestPhoneVerified,
 }: {
   form: GuestVehicleForm | Pick<GuestVehicleForm, 'vehicleNumber' | 'make' | 'model' | 'carSearchDisplay'>;
   onChange: (patch: Partial<GuestVehicleForm>) => void;
   title?: string;
   includeProfileFields?: boolean;
+  showPhoneOtp?: boolean;
+  guestPhoneVerified?: boolean;
+  onGuestPhoneVerified?: () => void | Promise<void>;
 }) {
   const showNamePhone = includeProfileFields && 'name' in form;
   const carDisplay =
@@ -220,7 +506,16 @@ function GuestCarSection({
             maxLength={10}
             value={(form as GuestVehicleForm).phone}
             onChangeText={(phone) => onChange({ phone: phone.replace(/\D/g, '').slice(0, 10) })}
+            editable={!guestPhoneVerified}
           />
+          {showPhoneOtp && onGuestPhoneVerified ? (
+            <GuestPhoneOtpSection
+              phone={(form as GuestVehicleForm).phone}
+              name={(form as GuestVehicleForm).name}
+              verified={guestPhoneVerified}
+              onVerified={onGuestPhoneVerified}
+            />
+          ) : null}
         </>
       ) : null}
       <TextInput
@@ -319,6 +614,7 @@ export default function PrimeMembershipValueCard({
   previewCtaLabel,
   pricePeriodLabel = '/ year',
   onPreviewPress,
+  onGuestAuthenticated,
   style,
 }: Props) {
   const isRsa = membershipType === 'RSA';
@@ -327,6 +623,46 @@ export default function PrimeMembershipValueCard({
   const showFullPurchase = !isActive && !preview;
   const totalPay = planPrice + (addSecondCar ? addonPrice : 0);
   const primaryOptions = vehicles;
+  const [guestDetailsOpen, setGuestDetailsOpen] = useState(false);
+  const [guestPhoneVerified, setGuestPhoneVerified] = useState(isLoggedIn);
+  const [termsExpanded, setTermsExpanded] = useState(false);
+  const membershipTerms = isRsa ? RSA_MEMBERSHIP_TERMS : PRIME_MEMBERSHIP_TERMS;
+
+  useEffect(() => {
+    if (isLoggedIn) setGuestPhoneVerified(true);
+  }, [isLoggedIn]);
+
+  const handleGuestPhoneVerified = async () => {
+    setGuestPhoneVerified(true);
+    await onGuestAuthenticated?.();
+  };
+
+  const handleActivatePress = () => {
+    if (!isLoggedIn && !guestDetailsOpen) {
+      setGuestDetailsOpen(true);
+      return;
+    }
+    if (!isLoggedIn) {
+      const name = guestForm.name.trim();
+      const phone = guestForm.phone.replace(/\D/g, '').slice(-10);
+      const vehicleNumber = guestForm.vehicleNumber.trim().toUpperCase();
+      const make = guestForm.make.trim();
+      const model = guestForm.model.trim();
+      if (!name || phone.length !== 10) {
+        Alert.alert('Add Your Details', 'Please enter your name and mobile number.');
+        return;
+      }
+      if (!guestPhoneVerified) {
+        Alert.alert('Verify Mobile', 'Please verify your mobile number with WhatsApp or SMS OTP.');
+        return;
+      }
+      if (!vehicleNumber || !make || !model) {
+        Alert.alert('Add Your Details', 'Please enter car number and search-select your car model.');
+        return;
+      }
+    }
+    onActivate();
+  };
 
   const cardBenefits: ValueCardBenefit[] =
     valueCard?.benefits && valueCard.benefits.length > 0
@@ -466,15 +802,21 @@ export default function PrimeMembershipValueCard({
       </View>
 
       {!isActive ? (
-        <View style={[styles.priceHero, preview ? styles.priceHeroPreview : null, { backgroundColor: theme.priceHeroBg }]}>
+        <View style={[styles.priceHero, preview ? styles.priceHeroPreview : styles.priceHeroCompact, { backgroundColor: theme.priceHeroBg }]}>
           <Text style={styles.priceHeroLabel}>{priceHeroLabel}</Text>
-          <Text style={[styles.priceHeroAmount, preview ? styles.priceHeroAmountPreview : null]}>{inr(planPrice)}</Text>
-          {pricePeriodLabel ? (
-            <Text style={[styles.priceHeroPeriod, preview ? styles.priceHeroPeriodPreview : null, { color: theme.priceHeroSub }]}>
-              {pricePeriodLabel.replace(/^\s*\/?\s*/, '')}
+          <View style={styles.priceHeroPriceGroupCentered}>
+            <Text style={[styles.priceHeroAmount, preview ? styles.priceHeroAmountPreview : styles.priceHeroAmountCompact]}>
+              {inr(planPrice)}
             </Text>
-          ) : null}
-          <Text style={[styles.priceHeroSub, { color: theme.priceHeroSub }]}>{priceHeroSub}</Text>
+            {pricePeriodLabel ? (
+              <Text style={[styles.priceHeroPeriodInline, preview ? styles.priceHeroPeriodPreview : null]}>
+                / {pricePeriodLabel.replace(/^\s*\/?\s*/, '')}
+              </Text>
+            ) : null}
+          </View>
+          <Text style={styles.priceHeroSubOnBlue} numberOfLines={2}>
+            {priceHeroSub}
+          </Text>
         </View>
       ) : null}
 
@@ -536,24 +878,53 @@ export default function PrimeMembershipValueCard({
 
       {showFullPurchase ? (
         <>
-          <View style={styles.detailsSection}>
-            <Text style={styles.detailsTitle}>Which car is this membership for?</Text>
-            {isLoggedIn ? (
-              <>
-                <VehiclePicker
-                  title="Primary car"
-                  options={primaryOptions}
-                  selectedKey={primaryVehicleKey}
-                  onSelect={onPrimaryVehicleKeyChange}
+          {!isLoggedIn ? (
+            guestDetailsOpen ? (
+              <View style={styles.detailsSection}>
+                <View style={styles.detailsSectionHeader}>
+                  <Text style={styles.detailsTitle}>Your details</Text>
+                  <TouchableOpacity onPress={() => setGuestDetailsOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={styles.collapseDetailsText}>Hide</Text>
+                  </TouchableOpacity>
+                </View>
+                <GuestCarSection
+                  form={guestForm}
+                  onChange={onGuestFormChange}
+                  showPhoneOtp
+                  guestPhoneVerified={guestPhoneVerified}
+                  onGuestPhoneVerified={handleGuestPhoneVerified}
                 />
-                {primaryOptions.length === 0 ? (
-                  <GuestCarSection form={guestForm} onChange={onGuestFormChange} includeProfileFields={false} />
-                ) : null}
-              </>
+              </View>
             ) : (
-              <GuestCarSection form={guestForm} onChange={onGuestFormChange} />
-            )}
-          </View>
+              <TouchableOpacity
+                style={[styles.addDetailsBtn, { borderColor: theme.accentBorder }]}
+                onPress={() => setGuestDetailsOpen(true)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.addDetailsIcon, { backgroundColor: theme.benefitIconBg }]}>
+                  <Ionicons name="person-add-outline" size={18} color={theme.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.addDetailsTitle, { color: theme.accent }]}>Add Your Details</Text>
+                  <Text style={styles.addDetailsSub}>Name, mobile & car info for membership</Text>
+                </View>
+                <Ionicons name="chevron-down" size={18} color={theme.accent} />
+              </TouchableOpacity>
+            )
+          ) : (
+            <View style={styles.detailsSection}>
+              <Text style={styles.detailsTitle}>Which car is this membership for?</Text>
+              <VehiclePicker
+                title="Primary car"
+                options={primaryOptions}
+                selectedKey={primaryVehicleKey}
+                onSelect={onPrimaryVehicleKeyChange}
+              />
+              {primaryOptions.length === 0 ? (
+                <GuestCarSection form={guestForm} onChange={onGuestFormChange} includeProfileFields={false} />
+              ) : null}
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.addon, addSecondCar ? styles.addonActive : null]}
@@ -570,12 +941,6 @@ export default function PrimeMembershipValueCard({
             <Text style={styles.addonPrice}>+{inr(addonPrice)}</Text>
           </TouchableOpacity>
 
-          {addSecondCar ? (
-            <Text style={styles.addonPeriodNote}>
-              2nd car bhi primary car ke saath same date tak valid hogi — alag renewal nahi.
-            </Text>
-          ) : null}
-
           {addSecondCar ? renderSecondCarDetails(false) : null}
 
           <View style={styles.checkoutRow}>
@@ -583,9 +948,30 @@ export default function PrimeMembershipValueCard({
             <Text style={styles.checkoutAmount}>{inr(totalPay)}</Text>
           </View>
 
+          <View style={styles.termsSection}>
+            <TouchableOpacity
+              style={styles.termsHeader}
+              onPress={() => setTermsExpanded((v) => !v)}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.termsHeaderText, { color: theme.accent }]}>Terms & Conditions</Text>
+              <Ionicons name={termsExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={theme.accent} />
+            </TouchableOpacity>
+            {termsExpanded ? (
+              <View style={styles.termsPoints}>
+                {membershipTerms.map((point) => (
+                  <View key={point} style={styles.termsPointRow}>
+                    <Text style={[styles.termsBullet, { color: theme.accent }]}>•</Text>
+                    <Text style={styles.termsPointText}>{point}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+
           <TouchableOpacity
             style={[styles.cta, { backgroundColor: theme.activateBg }]}
-            onPress={onActivate}
+            onPress={handleActivatePress}
             disabled={activating}
             activeOpacity={0.9}
           >
@@ -843,20 +1229,83 @@ const styles = StyleSheet.create({
     marginTop: 14,
     backgroundColor: '#023D95',
     borderRadius: 16,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   priceHeroPreview: {
     marginHorizontal: 16,
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
-  priceHeroLabel: { fontSize: 11, letterSpacing: 1, color: 'rgba(255,255,255,0.85)' },
-  priceHeroAmount: { fontSize: 34, fontWeight: '800', color: '#fff', marginTop: 2, textAlign: 'center' },
+  priceHeroCompact: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  priceHeroPriceGroupCentered: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  priceHeroLabel: {
+    fontSize: 10,
+    letterSpacing: 1,
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  priceHeroAmount: { fontSize: 34, fontWeight: '800', color: '#fff', textAlign: 'center' },
   priceHeroAmountPreview: { fontSize: 30, lineHeight: 34 },
-  priceHeroPeriod: { fontSize: 16, fontWeight: '500', opacity: 0.85, marginTop: 2, textAlign: 'center' },
-  priceHeroPeriodPreview: { fontSize: 13, fontWeight: '600', lineHeight: 18, opacity: 1 },
-  priceHeroSub: { fontSize: 11, color: '#9ec3f0', marginTop: 6, textAlign: 'center', lineHeight: 16 },
+  priceHeroAmountCompact: { fontSize: 32, lineHeight: 36 },
+  priceHeroPeriodInline: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+  },
+  priceHeroPeriodPreview: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  priceHeroSubOnBlue: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  addDetailsBtn: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    backgroundColor: '#F8FAFC',
+  },
+  addDetailsIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addDetailsTitle: { fontSize: 14, fontWeight: '800' },
+  addDetailsSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  detailsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  collapseDetailsText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   detailsSection: {
     marginHorizontal: 20,
     marginTop: 14,
@@ -891,6 +1340,68 @@ const styles = StyleSheet.create({
   addVehicleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 },
   addVehicleBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
   guestForm: { gap: 10 },
+  otpBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 },
+  otpWhatsAppBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#25D366',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+  },
+  otpWhatsAppBtnText: { fontSize: 12.5, fontWeight: '800', color: '#FFFFFF' },
+  otpSmsBtnAlt: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  otpSmsBtnAltText: { fontSize: 12.5, fontWeight: '800', color: COLORS.primary },
+  otpVerifyBlock: { gap: 8, marginTop: 2 },
+  otpSentRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  otpSentText: { flex: 1, fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  otpActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  otpActionLink: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  otpActionMuted: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
+  otpVerifyBtn: {
+    marginLeft: 'auto',
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  otpVerifyBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  otpVerifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  otpVerifiedText: { color: '#059669', fontSize: 12, fontWeight: '700' },
+  termsSection: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 10,
+  },
+  termsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  termsHeaderText: { fontSize: 12, fontWeight: '800' },
+  termsPoints: { marginTop: 8, gap: 6 },
+  termsPointRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  termsBullet: { fontSize: 12, lineHeight: 17, fontWeight: '800' },
+  termsPointText: { flex: 1, fontSize: 11, color: '#64748B', lineHeight: 17 },
   input: {
     borderWidth: 1,
     borderColor: '#CBD5E1',
@@ -924,15 +1435,6 @@ const styles = StyleSheet.create({
   addonDesc: { fontSize: 10, color: '#64748B', lineHeight: 14, marginTop: 2 },
   addonBold: { fontWeight: '800', color: '#023D95' },
   addonPrice: { fontWeight: '800', color: '#023D95', fontSize: 13, marginTop: 2 },
-  addonPeriodNote: {
-    marginHorizontal: 20,
-    marginTop: -4,
-    marginBottom: 8,
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#047857',
-    lineHeight: 16,
-  },
   backLink: { marginBottom: 8 },
   backLinkText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   checkoutRow: {

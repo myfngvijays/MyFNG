@@ -104,13 +104,17 @@ export async function POST(request: NextRequest) {
       await recordCouponRedemption(supabaseAdmin, {
         couponId,
         customerPhone: customer.phone || null,
+        discountAmount: Number(body.coupon_meta?.discount_amount || body.discount_amount || 0),
+        appliedByRole: 'CUSTOMER',
+        idempotencyKey: `membership:${razorpayOrderId}:${couponId}`,
         meta: {
           type: 'membership',
+          channel: 'MEMBERSHIP',
+          customer_name: customer.full_name || null,
           plan_id: plan.id,
           payment_id: razorpayPaymentId,
           order_id: razorpayOrderId,
           coupon_code: body.coupon_code || body.coupon_meta?.code || null,
-          discount_amount: Number(body.coupon_meta?.discount_amount || body.discount_amount || 0),
         },
       });
     } catch (redemptionErr) {

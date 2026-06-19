@@ -37,6 +37,7 @@ import {
   Bell,
   Star,
   Crown,
+  Sparkles,
 } from 'lucide-react';
 
 type NavItem = {
@@ -196,6 +197,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/coupons',
     icon: Ticket,
     description: 'Create/manage coupons'
+  },
+  {
+    name: 'Advance Coupon Management',
+    href: '/dashboard/super_admin/advance-coupons',
+    icon: Sparkles,
+    description: 'PCMS — campaigns, automation & analytics'
   },
   {
     name: 'Send Notification',

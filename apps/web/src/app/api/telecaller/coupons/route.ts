@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { couponAppliesToChannel } from '@/lib/coupon-rules';
 
 function normalizeArrayField(value: any): string[] | null {
   if (value == null) return null;
@@ -64,6 +65,7 @@ export async function GET(request: NextRequest) {
 
     const filtered = (coupons || [])
       .filter((c: any) => isNowWithinWindow(c, nowIso))
+      .filter((c: any) => couponAppliesToChannel(c, 'TELECALLER'))
       .filter((c: any) => {
         const applicableCities = normalizeArrayField(c.applicable_city_ids);
         const applicableServiceTypes = normalizeArrayField(c.applicable_service_type_ids);

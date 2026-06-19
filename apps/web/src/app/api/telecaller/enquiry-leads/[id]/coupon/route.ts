@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-
-function normalizeCode(code: string) {
-  return code.trim().toUpperCase();
-}
+import { validateCouponForCheckout, redeemCouponAtomic } from '@/lib/coupon-service';
 
 export async function POST(
   request: NextRequest,
@@ -30,6 +27,7 @@ export async function POST(
 
     const body = await request.json().catch(() => ({}));
     const rawCode = String(body?.code || '').trim();
+    const nowIso = new Date().toISOString();
 
     const { data: lead, error: leadErr } = await supabase
       .from('enquiry_hub')
@@ -53,16 +51,13 @@ export async function POST(
     if (serviceLeadId) {
       const { data } = await supabaseAdmin
         .from('service_leads')
-        .select('id, service_type_ids, estimated_amount, customer_phone')
+        .select('id, service_type_ids, estimated_amount, customer_phone, customer_name, lead_number, city_id')
         .eq('id', serviceLeadId)
         .maybeSingle();
       serviceLead = data || null;
     }
 
-    const nowIso = new Date().toISOString();
-
     if (!rawCode) {
-      // Clear coupon
       const meta = { ...(lead as any)?.meta, coupon: null };
       await supabaseAdmin.from('enquiry_hub').update({ meta, updated_at: nowIso }).eq('id', leadId);
       if (serviceLeadId) {
@@ -74,98 +69,63 @@ export async function POST(
       return NextResponse.json({ success: true, coupon: null });
     }
 
-    const code = normalizeCode(rawCode);
-    const { data: coupon, error: couponError } = await supabaseAdmin
-      .from('coupons')
-      .select('*')
-      .ilike('code', code)
-      .eq('is_active', true)
-      .maybeSingle();
+    const subtotal = Number(serviceLead?.estimated_amount || body?.subtotal || 0);
+    const couponResult = await validateCouponForCheckout(
+      supabaseAdmin,
+      rawCode,
+      {
+        subtotal,
+        customer_phone: serviceLead?.customer_phone || body?.customer_phone || null,
+        service_type_ids: Array.isArray(serviceLead?.service_type_ids) ? serviceLead.service_type_ids : [],
+        city_id: serviceLead?.city_id || body?.city_id || null,
+        channel: 'TELECALLER',
+      },
+      { serviceBooking: true },
+    );
 
-    if (couponError || !coupon) {
-      return NextResponse.json({ error: 'Invalid or inactive coupon.' }, { status: 400 });
+    if (!couponResult.valid) {
+      return NextResponse.json({ error: couponResult.error }, { status: 400 });
     }
 
-    if (coupon.start_at && String(coupon.start_at) > nowIso) {
-      return NextResponse.json({ error: 'Coupon is not active yet.' }, { status: 400 });
-    }
-    if (coupon.end_at && String(coupon.end_at) < nowIso) {
-      return NextResponse.json({ error: 'Coupon has expired.' }, { status: 400 });
-    }
-
-    const subtotal = Number(serviceLead?.estimated_amount || 0);
-    if (coupon.min_order_value && subtotal < Number(coupon.min_order_value || 0)) {
-      return NextResponse.json(
-        { error: `Minimum order value is ₹${coupon.min_order_value}.` },
-        { status: 400 }
-      );
-    }
-
-    let discountAmount = 0;
-    let freeServiceMeta: any = null;
-
-    if (coupon.coupon_kind === 'TOTAL_DISCOUNT') {
-      if (!coupon.discount_mode || !coupon.discount_value || subtotal <= 0) {
-        return NextResponse.json({ error: 'Invalid discount configuration.' }, { status: 400 });
-      }
-      if (coupon.discount_mode === 'AMOUNT') {
-        discountAmount = Math.min(Number(coupon.discount_value || 0), subtotal);
-      } else if (coupon.discount_mode === 'PERCENT') {
-        discountAmount = (subtotal * Number(coupon.discount_value || 0)) / 100;
-      }
-    } else if (coupon.coupon_kind === 'FREE_SERVICE') {
-      const serviceTypeIds = Array.isArray(serviceLead?.service_type_ids) ? serviceLead.service_type_ids : [];
-      const matchesService =
-        (coupon.target_service_type_id && serviceTypeIds.includes(coupon.target_service_type_id)) ||
-        Boolean(coupon.target_custom_label);
-      if (!matchesService) {
-        return NextResponse.json(
-          { error: 'Coupon is not applicable to selected services.' },
-          { status: 400 }
-        );
-      }
-      freeServiceMeta = {
-        target_service_type_id: coupon.target_service_type_id || null,
-        target_subservice_id: coupon.target_subservice_id || null,
-        target_custom_label: coupon.target_custom_label || null,
-        matched_label: coupon.target_custom_label || null,
-        original_price: 0,
-      };
-    }
-
-    const couponMeta = {
-      coupon_id: coupon.id,
-      code: coupon.code,
-      coupon_kind: coupon.coupon_kind,
-      discount_mode: coupon.discount_mode,
-      discount_value: coupon.discount_value,
-      min_order_value: coupon.min_order_value,
-      discount_amount: Number(discountAmount || 0),
-      computed_on_subtotal: subtotal,
-      free_service: freeServiceMeta,
-      validated_at: nowIso,
-    };
-
+    const couponMeta = couponResult.couponMeta;
+    const discountAmount = couponResult.discountAmount;
     const meta = { ...(lead as any)?.meta, coupon: couponMeta };
     await supabaseAdmin.from('enquiry_hub').update({ meta, updated_at: nowIso }).eq('id', leadId);
 
     if (serviceLeadId) {
       await supabaseAdmin
         .from('service_leads')
-        .update({ coupon_code: coupon.code, discount_amount: discountAmount, coupon_meta: couponMeta })
+        .update({
+          coupon_code: couponMeta.code,
+          discount_amount: discountAmount,
+          coupon_meta: couponMeta,
+        })
         .eq('id', serviceLeadId);
     }
 
-    await supabaseAdmin.from('coupon_redemptions').insert({
-      coupon_id: coupon.id,
-      service_lead_id: serviceLeadId,
-      applied_by_role: 'TELECALLER',
-      applied_by_user_id: userProfile?.id || null,
-      discount_amount_applied: discountAmount,
+    const redeemed = await redeemCouponAtomic(supabaseAdmin, {
+      couponId: String(couponMeta.coupon_id),
+      customerPhone:
+        serviceLead?.customer_phone ||
+        (lead as any)?.customer_phone ||
+        body?.customer_phone ||
+        null,
+      discountAmount,
+      appliedByRole: 'TELECALLER',
+      appliedByUserId: userProfile?.id || null,
+      serviceLeadId,
+      idempotencyKey: serviceLeadId ? `telecaller-enquiry:${leadId}:${couponMeta.code}` : null,
       meta: {
-        customer_phone: serviceLead?.customer_phone || null,
+        enquiry_lead_id: leadId,
+        channel: 'TELECALLER',
+        customer_name: serviceLead?.customer_name || (lead as any)?.customer_name || null,
+        lead_number: serviceLead?.lead_number || (lead as any)?.lead_number || null,
       },
     });
+
+    if (!redeemed.success) {
+      return NextResponse.json({ error: redeemed.error || 'Could not redeem coupon' }, { status: 400 });
+    }
 
     return NextResponse.json({ success: true, coupon: couponMeta });
   } catch (error: any) {

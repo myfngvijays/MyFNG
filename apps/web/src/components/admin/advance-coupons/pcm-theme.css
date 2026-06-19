@@ -1,0 +1,73 @@
+.pcm-shell {
+  --pcm-bg: #f9fafb;
+  --pcm-fg: #111827;
+  --pcm-primary: #2563eb;
+  --pcm-primary-dark: #1d4ed8;
+  --pcm-primary-fg: #ffffff;
+  --pcm-card: #ffffff;
+  --pcm-muted: #eff6ff;
+  --pcm-muted-fg: #6b7280;
+  --pcm-accent: #dbeafe;
+  --pcm-border: #e5e7eb;
+  color: var(--pcm-fg);
+  background: var(--pcm-bg);
+}
+
+.pcm-shell .pcm-nav-active {
+  background: var(--pcm-primary);
+  color: var(--pcm-primary-fg);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+}
+
+.pcm-shell .pcm-nav-item:hover {
+  background: var(--pcm-accent);
+}
+
+.pcm-shell .pcm-tab-active {
+  background: var(--pcm-primary);
+  color: var(--pcm-primary-fg);
+  border-color: var(--pcm-primary);
+}
+
+.pcm-shell .pcm-tab-inactive {
+  background: #ffffff;
+  color: #374151;
+  border-color: var(--pcm-border);
+}
+
+.pcm-shell .pcm-tab-inactive:hover {
+  background: var(--pcm-muted);
+}
+
+.pcm-shell .pcm-card {
+  background: var(--pcm-card);
+  border-color: var(--pcm-border);
+}
+
+.pcm-shell .pcm-btn-primary {
+  background: var(--pcm-primary);
+  color: var(--pcm-primary-fg);
+}
+
+.pcm-shell .pcm-btn-primary:hover {
+  background: var(--pcm-primary-dark);
+}
+
+.pcm-shell .pcm-hero {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%);
+}
+
+.pcm-shell .pcm-pro-tip {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(219, 234, 254, 0.95));
+  border-color: rgba(37, 99, 235, 0.2);
+  color: #1e3a8a;
+}
+
+.pcm-shell .pcm-text-primary {
+  color: var(--pcm-primary);
+}
+
+.pcm-shell .pcm-bg-primary-soft {
+  background: var(--pcm-muted);
+  color: #1d4ed8;
+}

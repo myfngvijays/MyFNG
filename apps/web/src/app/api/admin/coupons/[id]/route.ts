@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { logCouponAudit } from '@/lib/coupon-rules';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -52,6 +53,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       applicable_city_ids: body?.applicable_city_ids ?? null,
       applicable_workshop_ids: body?.applicable_workshop_ids ?? null,
       applicable_service_type_ids: body?.applicable_service_type_ids ?? null,
+      campaign_name: body?.campaign_name ?? null,
+      applicable_channels: body?.applicable_channels ?? undefined,
+      max_discount_amount: body?.max_discount_amount != null ? Number(body.max_discount_amount) : null,
+      first_order_only: body?.first_order_only ?? undefined,
+      is_public: body?.is_public ?? undefined,
     };
 
     Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
@@ -64,6 +70,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .single();
 
     if (error) throw error;
+    await logCouponAudit(supabaseAdmin, {
+      coupon_id: id,
+      action: 'UPDATE',
+      actor_user_id: gate.userId,
+      details: payload,
+    });
     return NextResponse.json({ coupon: data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

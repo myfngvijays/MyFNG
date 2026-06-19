@@ -109,6 +109,7 @@ export default function BookServicePage() {
   const [couponMeta, setCouponMeta] = useState<any | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
   
   // Workshop State (for self come option)
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -193,6 +194,14 @@ export default function BookServicePage() {
     }, 1000);
     return () => clearInterval(timer);
   }, [otpSent, otpVerified, otpTimer]);
+
+  useEffect(() => {
+    if (currentStep !== steps.length - 1) return;
+    fetch('/api/coupons/active?channel=WEB')
+      .then((res) => res.json())
+      .then((json) => setAvailableCoupons(Array.isArray(json?.coupons) ? json.coupons : []))
+      .catch(() => setAvailableCoupons([]));
+  }, [currentStep, steps.length]);
 
   // Auto-detect location when step 1 is active (only once)
   useEffect(() => {
@@ -1221,12 +1230,13 @@ export default function BookServicePage() {
     }, 300);
   };
 
-  const applyCoupon = async () => {
-    const code = couponCode.trim();
+  const applyCoupon = async (overrideCode?: string) => {
+    const code = String(overrideCode || couponCode).trim();
     if (!code) {
       setCouponError('Please enter a coupon code.');
       return;
     }
+    if (overrideCode) setCouponCode(code.toUpperCase());
     setIsValidatingCoupon(true);
     setCouponError(null);
     try {
@@ -1240,6 +1250,8 @@ export default function BookServicePage() {
             service_type_ids: formData.selectedServices,
             service_items: serviceItemsForCoupon,
             customer_phone: formData.customerPhone,
+            channel: 'WEB',
+            city_id: formData.city || null,
           },
         }),
       });
@@ -3628,6 +3640,23 @@ export default function BookServicePage() {
                     <h4 className="font-bold text-sm sm:text-base text-gray-900 mb-3">
                       Apply Coupon <span className="text-xs font-semibold text-gray-500">(Optional)</span>
                     </h4>
+                    {availableCoupons.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {availableCoupons.map((c) => (
+                          <button
+                            key={c.id || c.code}
+                            type="button"
+                            onClick={() => {
+                              setCouponCode(String(c.code || '').toUpperCase());
+                              void applyCoupon(String(c.code || '').toUpperCase());
+                            }}
+                            className="px-3 py-2 rounded-lg border border-brand-primary/30 bg-brand-primary/5 text-xs font-bold text-brand-primary"
+                          >
+                            {c.code}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                       <input
                         type="text"

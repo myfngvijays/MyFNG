@@ -74,6 +74,7 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'membership', label: 'Membership', icon: 'trophy' },
   { id: 'orders', label: 'Order History', icon: 'receipt' },
   { id: 'cart', label: 'Cart', icon: 'cart' },
+  { id: 'coupons', label: 'My Coupons', icon: 'pricetag' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
 
@@ -236,6 +237,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [addSecondCar, setAddSecondCar] = useState(false);
   const [membershipActivating, setMembershipActivating] = useState(false);
+  const [membershipGuestCheckout, setMembershipGuestCheckout] = useState(false);
   const [membershipPrimaryVehicleKey, setMembershipPrimaryVehicleKey] = useState<string | null>(null);
   const [membershipSecondVehicleKey, setMembershipSecondVehicleKey] = useState<string | null>(null);
   const [membershipSecondVehicleFormMode, setMembershipSecondVehicleFormMode] = useState(false);
@@ -282,6 +284,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [cartCouponResult, setCartCouponResult] = useState<any>(null);
   const [cartCouponLoading, setCartCouponLoading] = useState(false);
   const [cartAvailableCoupons, setCartAvailableCoupons] = useState<any[]>([]);
+  const [myCoupons, setMyCoupons] = useState<any[]>([]);
+  const [myCouponsLoading, setMyCouponsLoading] = useState(false);
   const [cartSelectedService, setCartSelectedService] = useState<{ name: string; price: number; items: string[] } | null>(null);
   const [cartLeads, setCartLeads] = useState<any[]>([]);
   const [cartDrafts, setCartDrafts] = useState<BookingDraft[]>([]);
@@ -423,7 +427,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
         lead_context: {
           subtotal,
           customer_phone: profileForm.phone || null,
+          customer_id: customerId || null,
           service_items: serviceItems,
+          channel: isMembershipOnlyCart ? 'MEMBERSHIP' : 'MOBILE',
         },
       };
       const res = await fetch(`${ENV.API_URL}/api/coupons/validate`, {
@@ -445,17 +451,33 @@ export default function SettingsScreen({ navigation, route }: Props) {
     } finally {
       setCartCouponLoading(false);
     }
-  }, [coupon, subtotal, profileForm.phone, cartItems, cartSelectedService]);
+  }, [coupon, subtotal, profileForm.phone, customerId, cartItems, cartSelectedService, isMembershipOnlyCart]);
 
   const fetchCartCoupons = useCallback(async () => {
     try {
-      const res = await fetch(`${ENV.API_URL}/api/coupons/active`);
+      const channel = isMembershipOnlyCart ? 'MEMBERSHIP' : 'MOBILE';
+      const res = await fetch(`${ENV.API_URL}/api/coupons/active?channel=${channel}`);
       const json = await res.json().catch(() => ({}));
-      setCartAvailableCoupons(Array.isArray(json?.coupons) ? json.coupons : []);
+      const active = Array.isArray(json?.coupons) ? json.coupons : [];
+      let merged = active;
+      if (isLoggedIn) {
+        try {
+          const myRes = await apiFetch<any>('/api/customer/coupons/my');
+          const mine = Array.isArray(myRes?.coupons) ? myRes.coupons : [];
+          const map = new Map<string, any>();
+          [...mine, ...active].forEach((c) => {
+            if (c?.id || c?.code) map.set(String(c.id || c.code), c);
+          });
+          merged = Array.from(map.values());
+        } catch {
+          merged = active;
+        }
+      }
+      setCartAvailableCoupons(merged);
     } catch {
       setCartAvailableCoupons([]);
     }
-  }, []);
+  }, [isLoggedIn, isMembershipOnlyCart]);
 
   const describeCartCoupon = (c: any): string => {
     const mode = String(c?.discount_mode || '').toUpperCase();
@@ -1275,6 +1297,24 @@ export default function SettingsScreen({ navigation, route }: Props) {
   }, [activeSubPage, isLoggedIn]);
 
   useEffect(() => {
+    if (activeSubPage !== 'My Coupons') return;
+    if (!isLoggedIn) return;
+    let cancelled = false;
+    setMyCouponsLoading(true);
+    (async () => {
+      try {
+        const res = await apiFetch<any>('/api/customer/coupons/my');
+        if (!cancelled) setMyCoupons(Array.isArray(res?.coupons) ? res.coupons : []);
+      } catch {
+        if (!cancelled) setMyCoupons([]);
+      } finally {
+        if (!cancelled) setMyCouponsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeSubPage, isLoggedIn]);
+
+  useEffect(() => {
     if (activeSubPage !== 'Cart') return;
     if (!isLoggedIn) return;
     (async () => {
@@ -1412,7 +1452,24 @@ export default function SettingsScreen({ navigation, route }: Props) {
         const pubConfig = visiblePlans[initialPlanIdx] || visiblePlans[0] || (await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null));
 
         if (!cancelled) {
-          setMembershipPlans(displayPlans);
+          const syncedPlans =
+            displayPlans.length > 0
+              ? displayPlans
+              : visiblePlans.map((p) => ({
+                  id: p.planId,
+                  name: p.name,
+                  price: p.price,
+                  priceNum: p.priceNum,
+                  color: planDisplayColor(p.planCode || 'PRIME'),
+                  code: p.planCode,
+                  raw: {
+                    id: p.planId,
+                    code: p.planCode,
+                    name: p.name,
+                    price: p.priceNum,
+                  },
+                }));
+          setMembershipPlans(syncedPlans);
           setMembershipBenefits(dbBenefits);
           setAppMembershipPlans(visiblePlans);
           setSelectedAppPlanIdx(initialPlanIdx >= 0 ? initialPlanIdx : 0);
@@ -1488,15 +1545,35 @@ export default function SettingsScreen({ navigation, route }: Props) {
   };
 
   const resolveMembershipPlan = () => {
-    return (
-      membershipPlans.find((p: any) => {
-        const selected = appMembershipPlans[selectedAppPlanIdx];
-        return selected?.planId && p?.raw?.id === selected.planId;
-      }) ||
-      membershipPlans.find((p: any) => String(p?.code || '').toUpperCase() === 'PRIME' && p?.raw?.id) ||
-      membershipPlans.find((p: any) => p?.raw?.id) ||
-      membershipPlans[selectedMembershipIdx]
-    );
+    const selectedApp = appMembershipPlans[selectedAppPlanIdx];
+    const fromDb =
+      membershipPlans.find((p: any) => selectedApp?.planId && (p?.raw?.id === selectedApp.planId || p?.id === selectedApp.planId)) ||
+      membershipPlans.find((p: any) => String(p?.code || '').toUpperCase() === String(selectedApp?.planCode || 'PRIME').toUpperCase() && (p?.raw?.id || p?.id)) ||
+      membershipPlans.find((p: any) => p?.raw?.id || p?.id) ||
+      membershipPlans[selectedMembershipIdx];
+
+    if (fromDb?.raw?.id || fromDb?.id) {
+      const planId = fromDb.raw?.id || fromDb.id;
+      return {
+        ...fromDb,
+        raw: fromDb.raw || { id: planId, code: fromDb.code, name: fromDb.name },
+      };
+    }
+
+    if (selectedApp?.planId) {
+      return {
+        id: selectedApp.planId,
+        name: selectedApp.name,
+        code: selectedApp.planCode,
+        raw: {
+          id: selectedApp.planId,
+          code: selectedApp.planCode,
+          name: selectedApp.name,
+        },
+      };
+    }
+
+    return fromDb;
   };
 
   const vehicleSnapshotFromOption = (v: MembershipVehicleOption | null | undefined) => ({
@@ -1578,16 +1655,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const handleMembershipUpgrade = async () => {
     const plan = resolveMembershipPlan();
-    if (!plan?.raw?.id) {
+    const planId = plan?.raw?.id || plan?.id;
+    if (!planId) {
       Alert.alert('Membership', 'Plan details not available. Please try again.');
       return;
     }
-    if (currentMembership?.plan_id === plan.raw.id && isMembershipActive(currentMembership)) {
+    if (currentMembership?.plan_id === planId && isMembershipActive(currentMembership)) {
       Alert.alert('Already subscribed', `You are already a ${membershipDisplay?.label || plan.name}.`);
       return;
     }
 
-    const wasGuestCheckout = !isLoggedIn;
+    const wasGuestCheckout = membershipGuestCheckout;
     setMembershipActivating(true);
     try {
       let primaryVehicleId: string | null = null;
@@ -1595,56 +1673,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
       let primarySnapshot: Record<string, unknown> = {};
       let secondSnapshot: Record<string, unknown> | null = null;
 
-      const ensureLoggedInGuest = async () => {
-        const name = membershipGuestForm.name.trim();
-        const phone = membershipGuestForm.phone.replace(/\D/g, '').slice(-10);
-        const vehicleNumber = membershipGuestForm.vehicleNumber.trim().toUpperCase();
-        const make = membershipGuestForm.make.trim();
-        const model = membershipGuestForm.model.trim();
-        if (!name || phone.length !== 10 || !vehicleNumber || !make || !model) {
-          throw new Error('Please enter your name, mobile, car number and search-select your car model.');
-        }
-        if (addSecondCar) {
-          const sNum = membershipGuestSecondForm.vehicleNumber.trim().toUpperCase();
-          const sMake = membershipGuestSecondForm.make.trim();
-          const sModel = membershipGuestSecondForm.model.trim();
-          if (!sNum || !sMake || !sModel) {
-            throw new Error('Please enter 2nd car number and search-select the car model.');
-          }
-        }
-        const prepRes = await fetch(`${ENV.API_URL}/api/public/membership/prepare-buyer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            full_name: name,
-            phone,
-            add_second_car: addSecondCar,
-            primary_vehicle: { vehicle_number: vehicleNumber, make, model },
-            second_vehicle: addSecondCar
-              ? {
-                  vehicle_number: membershipGuestSecondForm.vehicleNumber.trim().toUpperCase(),
-                  make: membershipGuestSecondForm.make.trim(),
-                  model: membershipGuestSecondForm.model.trim(),
-                }
-              : null,
-          }),
-        });
-        const prep = await prepRes.json().catch(() => ({}));
-        if (!prepRes.ok) {
-          throw new Error(prep?.details || prep?.error || 'Could not save your details.');
-        }
-        if (prep.session_token) await setCustomerSessionToken(prep.session_token);
-        setIsLoggedIn(true);
-        await hydrateCustomerData();
-        primaryVehicleId = prep.primary_vehicle_id || null;
-        secondVehicleId = prep.second_vehicle_id || null;
-        primarySnapshot = prep.primary_vehicle || {};
-        secondSnapshot = prep.second_vehicle || null;
-      };
-
       if (!isLoggedIn) {
-        await ensureLoggedInGuest();
-      } else if (membershipVehicleOptions.length > 0 && membershipPrimaryVehicleKey) {
+        Alert.alert('Verify Mobile', 'Please verify your mobile number with WhatsApp or SMS OTP in Add Your Details.');
+        return;
+      }
+
+      if (membershipVehicleOptions.length > 0 && membershipPrimaryVehicleKey) {
         const primary = membershipVehicleOptions.find((v) => v.key === membershipPrimaryVehicleKey);
         primarySnapshot = vehicleSnapshotFromOption(primary);
         const rawPrimary = allAssociatedVehicles.find((v, idx) => getVehicleKey(v, idx) === membershipPrimaryVehicleKey);
@@ -1676,7 +1710,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: plan.raw.id, add_second_car: addSecondCar }),
+        body: JSON.stringify({ plan_id: planId, add_second_car: addSecondCar }),
       });
 
       if (!orderRes?.order_id) {
@@ -1693,7 +1727,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          plan_id: plan.raw.id,
+          plan_id: planId,
           add_second_car: addSecondCar,
           primary_vehicle_id: primaryVehicleId,
           second_vehicle_id: secondVehicleId,
@@ -1722,6 +1756,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         if (memRes?.membership) setCurrentMembership(memRes.membership);
       }
       await hydrateCustomerData();
+      setMembershipGuestCheckout(false);
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
       if (cancelled) {
@@ -3703,6 +3738,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
             guestSecondForm={membershipGuestSecondForm}
             onGuestSecondFormChange={(patch) => setMembershipGuestSecondForm((prev) => ({ ...prev, ...patch }))}
             onActivate={handleMembershipUpgrade}
+            onGuestAuthenticated={async () => {
+              setMembershipGuestCheckout(true);
+              setIsLoggedIn(true);
+              await hydrateCustomerData();
+            }}
             onBuySecondCarAddon={handleSecondCarAddonUpgrade}
             activating={membershipActivating}
             planName={primeUI.name || 'MyFNG Prime'}
@@ -4277,6 +4317,102 @@ export default function SettingsScreen({ navigation, route }: Props) {
           </ScrollView>
         );
       }
+      case 'My Coupons':
+        if (!isLoggedIn) {
+          return (
+            <View style={styles.subWrap}>
+              <View style={cstyles.loginGate}>
+                <View style={cstyles.lockCircle}>
+                  <Ionicons name="lock-closed" size={32} color="#9CA3AF" />
+                </View>
+                <Text style={cstyles.loginGateTitle}>Login Required</Text>
+                <Text style={cstyles.loginGateSub}>Login to view your personal{'\n'}and public coupons.</Text>
+                <TouchableOpacity style={cstyles.loginNowBtn} onPress={() => navigation.navigate('Login' as never)}>
+                  <Text style={cstyles.loginNowBtnText}>Login Now</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        }
+        return (
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+            <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
+              Tap a coupon to copy code or use it in your cart checkout.
+            </Text>
+            {myCouponsLoading ? (
+              <Text style={{ color: '#64748B', textAlign: 'center', marginTop: 24 }}>Loading coupons...</Text>
+            ) : myCoupons.length === 0 ? (
+              <View style={{ alignItems: 'center', marginTop: 40, gap: 8 }}>
+                <Ionicons name="pricetag-outline" size={40} color="#CBD5E1" />
+                <Text style={{ color: '#64748B', fontWeight: '600' }}>No coupons available</Text>
+                <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
+                  Check back later for offers or ask support for a personal coupon.
+                </Text>
+              </View>
+            ) : (
+              myCoupons.map((c) => {
+                const code = String(c?.code || '').toUpperCase();
+                const offer = describeCartCoupon(c);
+                const isAssigned = Boolean(c?.assigned);
+                return (
+                  <TouchableOpacity
+                    key={String(c?.id || code)}
+                    activeOpacity={0.85}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 14,
+                      padding: 14,
+                      marginBottom: 10,
+                      borderWidth: 1,
+                      borderColor: isAssigned ? '#BFDBFE' : '#E2E8F0',
+                      borderLeftWidth: 4,
+                      borderLeftColor: isAssigned ? '#2563EB' : COLORS.primary,
+                    }}
+                    onPress={async () => {
+                      if (!code) return;
+                      await Clipboard.setStringAsync(code);
+                      Alert.alert('Copied', `${code} copied to clipboard.`);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#1E293B', letterSpacing: 1 }}>{code}</Text>
+                      {isAssigned ? (
+                        <View style={{ backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#1D4ED8' }}>FOR YOU</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={{ marginTop: 6, fontSize: 14, fontWeight: '700', color: COLORS.primary }}>{offer}</Text>
+                    {c?.description ? (
+                      <Text style={{ marginTop: 4, fontSize: 12, color: '#64748B' }}>{String(c.description)}</Text>
+                    ) : null}
+                    {c?.min_order_value ? (
+                      <Text style={{ marginTop: 4, fontSize: 11, color: '#94A3B8' }}>
+                        Min order ₹{Number(c.min_order_value).toLocaleString('en-IN')}
+                      </Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 10,
+                        alignSelf: 'flex-start',
+                        backgroundColor: '#EFF6FF',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                      }}
+                      onPress={() => {
+                        setCoupon(code);
+                        setActiveSubPage('Cart');
+                      }}
+                    >
+                      <Text style={{ color: '#1D4ED8', fontWeight: '700', fontSize: 12 }}>Use in Cart</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+        );
       case 'Cart':
         if (!isLoggedIn) {
           return (

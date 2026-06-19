@@ -323,6 +323,35 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
         .filter((st: any) => formData.service_type_ids.includes(st.id))
         .map((st: any) => st.name);
 
+      let couponMeta: Record<string, unknown> | null = null;
+      let discountAmount = 0;
+      const couponCode = String(formData.coupon_code || '').trim().toUpperCase();
+      if (couponCode) {
+        const validated = await apiFetch<any>('/api/coupons/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: couponCode,
+            lead_context: {
+              channel: 'TELECALLER',
+              customer_phone: formData.customer_phone || null,
+              service_type_ids: formData.service_type_ids,
+              subservice_ids: formData.subservice_ids,
+              city_id: formData.city_id || null,
+              subtotal: 0,
+              reserve_only: true,
+            },
+          }),
+        });
+        if (!validated?.valid) {
+          Alert.alert('Invalid Coupon', String(validated?.error || 'Coupon cannot be applied to this lead.'));
+          setLoading(false);
+          return;
+        }
+        couponMeta = validated.coupon_meta || null;
+        discountAmount = Number(validated.discount_amount || 0);
+      }
+
       // Create lead
       const { data: lead, error: leadError } = await supabase
         .from('service_leads')
@@ -360,7 +389,9 @@ export default function TelecallerCreateLeadScreen({ navigation }: any) {
           description: formData.description || null,
           problem_description: formData.problem_description || null,
           payment_mode: formData.payment_mode || null,
-          coupon_code: formData.coupon_code || null,
+          coupon_code: couponCode || null,
+          discount_amount: discountAmount,
+          coupon_meta: couponMeta,
           
           pickup_required: formData.pickup_required,
           pickup_address: formData.pickup_required ? (formData.pickup_address || formData.customer_address) : null,

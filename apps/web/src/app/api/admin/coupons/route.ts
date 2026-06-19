@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { logCouponAudit } from '@/lib/coupon-rules';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -108,7 +109,14 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ coupons: withCounts });
+    return NextResponse.json({
+      coupons: withCounts,
+      analytics: {
+        total_coupons: withCounts.length,
+        active_coupons: withCounts.filter((c: any) => c.is_active).length,
+        total_redemptions: withCounts.reduce((sum: number, c: any) => sum + Number(c.usage_count || 0), 0),
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
@@ -141,6 +149,12 @@ export async function POST(request: NextRequest) {
       applicable_city_ids: body?.applicable_city_ids || null,
       applicable_workshop_ids: body?.applicable_workshop_ids || null,
       applicable_service_type_ids: body?.applicable_service_type_ids || null,
+      campaign_name: body?.campaign_name || null,
+      applicable_channels: body?.applicable_channels || ['ALL'],
+      max_discount_amount: body?.max_discount_amount != null ? Number(body.max_discount_amount) : null,
+      first_order_only: body?.first_order_only ?? false,
+      is_public: body?.is_public ?? true,
+      created_by: gate.userId,
     };
 
     if (!payload.code) {
@@ -157,6 +171,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+    await logCouponAudit(supabaseAdmin, {
+      coupon_id: data.id,
+      action: 'CREATE',
+      actor_user_id: gate.userId,
+      details: { code: data.code },
+    });
     return NextResponse.json({ coupon: data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

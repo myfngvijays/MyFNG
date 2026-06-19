@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { filterBookingLeads, enrichBookingLead } from '@/lib/booking-lead-utils';
+import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 
 type ServiceLead = Record<string, any>;
 type ChatbotBooking = Record<string, any>;
@@ -10,6 +12,8 @@ type CsvRow = Record<string, string>;
 type ActiveTab = 'service_leads' | 'chatbot_bookings' | 'upload_crm';
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
+const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'OTHER'] as const;
+const COUPON_OPTIONS = ['ALL', 'YES', 'NO'] as const;
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -31,6 +35,51 @@ function formatCurrency(value?: number | string | null) {
   return `Rs ${num.toLocaleString('en-IN')}`;
 }
 
+function SourceBadge({ label, source }: { label: string; source: string }) {
+  const styles =
+    source === 'APP'
+      ? 'bg-emerald-100 text-emerald-800'
+      : source === 'WEBSITE'
+        ? 'bg-blue-100 text-blue-800'
+        : 'bg-gray-100 text-gray-700';
+  const Icon = source === 'APP' ? Smartphone : source === 'WEBSITE' ? Globe : UserRound;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}>
+      <Icon className="w-3 h-3 shrink-0" />
+      {label}
+    </span>
+  );
+}
+
+function CouponBadge({ code, discount }: { code?: string | null; discount?: number | null }) {
+  if (!code && !discount) return <span className="text-gray-400 text-xs">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+      {code ? (
+        <span className="inline-flex items-center gap-1 font-semibold text-orange-700">
+          <Ticket className="w-3 h-3 shrink-0" />
+          {code}
+        </span>
+      ) : null}
+      {discount ? (
+        <span className="text-emerald-700 font-medium">-Rs {Number(discount).toLocaleString('en-IN')}</span>
+      ) : null}
+    </span>
+  );
+}
+
+function getServiceLabel(lead: ServiceLead) {
+  if (lead.service_display) return String(lead.service_display);
+  if (lead.service_type) {
+    return String(lead.service_type)
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  }
+  return '-';
+}
+
 function prettifyKey(key: string) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 }
@@ -39,6 +88,8 @@ export default function SuperAdminBookingsPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('service_leads');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
+  const [couponFilter, setCouponFilter] = useState<(typeof COUPON_OPTIONS)[number]>('ALL');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +99,23 @@ export default function SuperAdminBookingsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Record<string, any> | null>(null);
   const [detailTitle, setDetailTitle] = useState('');
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLead, setEditLead] = useState<ServiceLead | null>(null);
+  const [editForm, setEditForm] = useState({
+    customer_name: '',
+    customer_phone: '',
+    vehicle_number: '',
+    city: '',
+    status: 'NEW',
+    lead_source: 'Website',
+    estimated_amount: '',
+    coupon_code: '',
+    discount_amount: '',
+    service_type: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // CSV upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,9 +243,31 @@ export default function SuperAdminBookingsPage() {
     setUploadResult(null);
   };
 
+  const displayedChatbotBookings = useMemo(() => {
+    if (!searchTerm.trim()) return chatbotBookings;
+    const q = searchTerm.trim().toLowerCase();
+    return chatbotBookings.filter((b) =>
+      [b.customer_name, b.phone_number, b.city, b.service_name, b.car_model, b.status]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [chatbotBookings, searchTerm]);
+
+  const displayedServiceLeads = useMemo(
+    () =>
+      filterBookingLeads(serviceLeads, {
+        source: sourceFilter,
+        hasCoupon: couponFilter,
+        search: searchTerm,
+      }),
+    [serviceLeads, sourceFilter, couponFilter, searchTerm],
+  );
+
   const activeData = useMemo(
-    () => (activeTab === 'service_leads' ? serviceLeads : chatbotBookings),
-    [activeTab, serviceLeads, chatbotBookings]
+    () => (activeTab === 'service_leads' ? displayedServiceLeads : displayedChatbotBookings),
+    [activeTab, displayedServiceLeads, displayedChatbotBookings],
   );
 
   const fetchData = useCallback(async () => {
@@ -190,7 +280,7 @@ export default function SuperAdminBookingsPage() {
         activeTab === 'service_leads' ? '/api/super_admin/leads' : '/api/super_admin/chatbot-bookings';
 
       const query = new URLSearchParams();
-      if (searchTerm.trim()) query.set('search', searchTerm.trim());
+      query.set('limit', '500');
       if (statusFilter !== 'ALL') query.set('status', statusFilter);
 
       const res = await fetch(`${endpoint}?${query.toString()}`);
@@ -202,16 +292,18 @@ export default function SuperAdminBookingsPage() {
       }
 
       if (activeTab === 'service_leads') {
-        setServiceLeads(Array.isArray(payload?.leads) ? payload.leads : []);
+        const rows = Array.isArray(payload?.leads) ? payload.leads : [];
+        setServiceLeads(rows.map((lead: ServiceLead) => enrichBookingLead(lead)));
       } else {
-        setChatbotBookings(Array.isArray(payload?.bookings) ? payload.bookings : []);
+        const rows = Array.isArray(payload?.bookings) ? payload.bookings : [];
+        setChatbotBookings(rows);
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, searchTerm, statusFilter]);
+  }, [activeTab, statusFilter]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -226,6 +318,69 @@ export default function SuperAdminBookingsPage() {
     setDetailOpen(true);
   };
 
+  const openEdit = (lead: ServiceLead, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditLead(lead);
+    setEditForm({
+      customer_name: lead.customer_name || '',
+      customer_phone: lead.customer_phone || '',
+      vehicle_number: lead.vehicle_number || '',
+      city: lead.city || '',
+      status: lead.status || 'NEW',
+      lead_source: lead.lead_source || 'Website',
+      estimated_amount: lead.estimated_amount != null ? String(lead.estimated_amount) : '',
+      coupon_code: lead.coupon_code || lead.coupon_display_code || '',
+      discount_amount: lead.discount_amount != null ? String(lead.discount_amount) : '',
+      service_type: lead.service_display || lead.service_type || '',
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editLead?.id) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/super_admin/leads/${editLead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editForm,
+          estimated_amount: editForm.estimated_amount === '' ? null : Number(editForm.estimated_amount),
+          discount_amount: editForm.discount_amount === '' ? 0 : Number(editForm.discount_amount),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Update failed');
+      toast.success('Lead updated');
+      setEditOpen(false);
+      setEditLead(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err?.message || 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteLead = async (lead: ServiceLead, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!lead?.id) return;
+    if (!window.confirm(`Delete lead ${lead.lead_number || lead.id}? This cannot be undone.`)) return;
+    setDeletingId(String(lead.id));
+    try {
+      const res = await fetch(`/api/super_admin/leads/${lead.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Delete failed');
+      toast.success('Lead deleted');
+      setServiceLeads((prev) => prev.filter((row) => row.id !== lead.id));
+      if (detailOpen && detailItem?.id === lead.id) setDetailOpen(false);
+    } catch (err: any) {
+      toast.error(err?.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
@@ -236,7 +391,7 @@ export default function SuperAdminBookingsPage() {
                 <ClipboardList className="w-6 h-6 text-brand-primary" />
                 Bookings & Leads
               </h1>
-              <p className="text-sm text-gray-600 mt-1">View bookings submitted from website form and AI bot.</p>
+              <p className="text-sm text-gray-600 mt-1">Website, App & AI bookings — filter by source and coupon.</p>
             </div>
 
             <div className="w-full lg:w-[420px] relative">
@@ -247,7 +402,7 @@ export default function SuperAdminBookingsPage() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name, phone, vehicle, city..."
+                placeholder="Search by name, phone, vehicle, city, coupon..."
                 className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -292,7 +447,66 @@ export default function SuperAdminBookingsPage() {
             </button>
           </div>
 
+          {activeTab === 'service_leads' ? (
+            <div className="mt-4 rounded-xl border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-orange-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-700 mb-3">
+                Filter bookings — App vs Website & Coupon
+              </p>
+              <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600">Source:</span>
+                  {SOURCE_OPTIONS.map((source) => (
+                    <button
+                      key={source}
+                      type="button"
+                      onClick={() => setSourceFilter(source)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition ${
+                        sourceFilter === source
+                          ? source === 'APP'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : source === 'WEBSITE'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                              : 'bg-gray-800 text-white border-gray-800 shadow-sm'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {source === 'APP' ? <Smartphone className="w-3.5 h-3.5" /> : null}
+                      {source === 'WEBSITE' ? <Globe className="w-3.5 h-3.5" /> : null}
+                      {source === 'ALL' ? 'All Sources' : source === 'APP' ? 'App Booking' : source === 'WEBSITE' ? 'Website' : 'Other'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600">Coupon:</span>
+                  {COUPON_OPTIONS.map((coupon) => (
+                    <button
+                      key={coupon}
+                      type="button"
+                      onClick={() => setCouponFilter(coupon)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition ${
+                        couponFilter === coupon
+                          ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {coupon === 'YES' ? <Ticket className="w-3.5 h-3.5" /> : null}
+                      {coupon === 'ALL' ? 'All' : coupon === 'YES' ? 'With Coupon' : 'No Coupon'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {serviceLeads.length > 0 ? (
+                <p className="mt-3 text-xs text-gray-600">
+                  Showing <strong className="text-emerald-700">{displayedServiceLeads.length}</strong> of{' '}
+                  <strong>{serviceLeads.length}</strong> leads
+                  {sourceFilter !== 'ALL' || couponFilter !== 'ALL' || searchTerm.trim() ? ' · filtered' : ''}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {activeTab !== 'upload_crm' && (
+            <>
             <div className="mt-4 flex flex-wrap gap-2">
               {STATUS_OPTIONS.map((status) => (
                 <button
@@ -309,6 +523,8 @@ export default function SuperAdminBookingsPage() {
                 </button>
               ))}
             </div>
+
+            </>
           )}
         </div>
       </div>
@@ -428,79 +644,123 @@ export default function SuperAdminBookingsPage() {
           </div>
         ) : (
           <>
-            <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
               {activeTab === 'service_leads' ? (
-                <table className="w-full">
+                <table className="w-full min-w-[1280px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      <th className="px-4 py-3">Lead #</th>
-                      <th className="px-4 py-3">Customer</th>
-                      <th className="px-4 py-3">Phone</th>
-                      <th className="px-4 py-3">Vehicle</th>
-                      <th className="px-4 py-3">City</th>
-                      <th className="px-4 py-3">Service</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Amount</th>
-                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Source</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Customer</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Phone</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Vehicle</th>
+                      <th className="px-4 py-3 whitespace-nowrap">City</th>
+                      <th className="px-4 py-3 min-w-[180px]">Service</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Coupon</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Amount</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Date</th>
+                      <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {serviceLeads.map((lead) => (
+                    {displayedServiceLeads.map((lead) => {
+                      const serviceLabel = getServiceLabel(lead);
+                      return (
                       <tr
                         key={String(lead.id || `${lead.lead_number}-${lead.created_at}`)}
                         onClick={() => openDetail('Service Lead Details', lead)}
                         className="border-b border-gray-100 hover:bg-blue-50/50 cursor-pointer transition"
                       >
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">{lead.lead_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-800">{lead.customer_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{lead.customer_phone || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{lead.vehicle_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{lead.city || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{lead.service_display || (lead.service_type ? lead.service_type.replace(/_/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '-')}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className="inline-flex px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <SourceBadge label={lead.booking_source_label || 'Website'} source={lead.booking_source || 'WEBSITE'} />
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-800 max-w-[140px]">
+                          <span className="block truncate" title={lead.customer_name || ''}>{lead.customer_name || '-'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
+                          <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <CouponBadge code={lead.coupon_display_code} discount={lead.coupon_display_discount} />
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <span className="inline-flex px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold whitespace-nowrap">
                             {lead.status || '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{formatCurrency(lead.estimated_amount)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{formatDateTime(lead.created_at)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(lead.estimated_amount)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(lead.created_at)}</td>
+                        <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              title="Edit lead"
+                              onClick={(e) => openEdit(lead, e)}
+                              className="p-1.5 rounded-lg border border-gray-200 hover:bg-blue-50 text-blue-600"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Delete lead"
+                              disabled={deletingId === String(lead.id)}
+                              onClick={(e) => deleteLead(lead, e)}
+                              className="p-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-600 disabled:opacity-50"
+                            >
+                              {deletingId === String(lead.id) ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               ) : (
-                <table className="w-full">
+                <table className="w-full min-w-[960px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      <th className="px-4 py-3">Customer</th>
-                      <th className="px-4 py-3">Phone</th>
-                      <th className="px-4 py-3">Car Model</th>
-                      <th className="px-4 py-3">City</th>
-                      <th className="px-4 py-3">Service</th>
-                      <th className="px-4 py-3">Price</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Customer</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Phone</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Car Model</th>
+                      <th className="px-4 py-3 whitespace-nowrap">City</th>
+                      <th className="px-4 py-3 min-w-[160px]">Service</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Price</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Date</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {chatbotBookings.map((booking) => (
+                    {displayedChatbotBookings.map((booking) => (
                       <tr
                         key={String(booking.id || `${booking.session_id}-${booking.created_at}`)}
                         onClick={() => openDetail('AI Booking Details', booking)}
                         className="border-b border-gray-100 hover:bg-blue-50/50 cursor-pointer transition"
                       >
-                        <td className="px-4 py-3 text-sm text-gray-800">{booking.customer_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{booking.phone_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{booking.car_model || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{booking.city || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{booking.service_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{formatCurrency(booking.quoted_price)}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className="inline-flex px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">
+                        <td className="px-4 py-3 text-sm text-gray-800 max-w-[140px]">
+                          <span className="block truncate" title={booking.customer_name || ''}>{booking.customer_name || '-'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{booking.phone_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{booking.car_model || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{booking.city || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px]">
+                          <span className="block truncate" title={booking.service_name || ''}>{booking.service_name || '-'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(booking.quoted_price)}</td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <span className="inline-flex px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold whitespace-nowrap">
                             {booking.status || '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{formatDateTime(booking.created_at)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(booking.created_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -510,14 +770,17 @@ export default function SuperAdminBookingsPage() {
 
             <div className="grid grid-cols-1 gap-3 lg:hidden">
               {activeData.map((item) => (
-                <button
-                  type="button"
+                <div
                   key={String(item.id || `${item.session_id || item.lead_number}-${item.created_at}`)}
-                  onClick={() =>
-                    openDetail(activeTab === 'service_leads' ? 'Service Lead Details' : 'AI Booking Details', item)
-                  }
-                  className="text-left bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+                  className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
                 >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openDetail(activeTab === 'service_leads' ? 'Service Lead Details' : 'AI Booking Details', item)
+                    }
+                    className="text-left w-full"
+                  >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-bold text-gray-900">
@@ -528,6 +791,14 @@ export default function SuperAdminBookingsPage() {
                       <p className="text-xs text-gray-500 mt-0.5">
                         {activeTab === 'service_leads' ? item.customer_phone || '-' : item.phone_number || '-'}
                       </p>
+                      {activeTab === 'service_leads' ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <SourceBadge label={item.booking_source_label || 'Website'} source={item.booking_source || 'WEBSITE'} />
+                          {item.has_coupon_applied ? (
+                            <CouponBadge code={item.coupon_display_code} discount={item.coupon_display_discount} />
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                     <span className="inline-flex px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">
                       {item.status || '-'}
@@ -558,12 +829,108 @@ export default function SuperAdminBookingsPage() {
                       <p className="font-medium text-gray-800">{formatDateTime(item.created_at)}</p>
                     </div>
                   </div>
-                </button>
+                  </button>
+                  {activeTab === 'service_leads' && item.id ? (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(item)}
+                        className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-lg border border-blue-200 text-blue-700 text-xs font-semibold"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === String(item.id)}
+                        onClick={() => deleteLead(item)}
+                        className="flex-1 inline-flex items-center justify-center gap-1 py-2 rounded-lg border border-rose-200 text-rose-700 text-xs font-semibold disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ))}
             </div>
           </>
         )}
       </div>
+
+      {editOpen && editLead ? (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Edit Lead {editLead.lead_number || ''}</h3>
+              <button type="button" onClick={() => setEditOpen(false)} className="p-2 rounded-lg hover:bg-gray-100">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto max-h-[calc(90vh-140px)] space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-500">Customer Name</label>
+                  <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.customer_name} onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Phone</label>
+                  <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.customer_phone} onChange={(e) => setEditForm((f) => ({ ...f, customer_phone: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Vehicle</label>
+                  <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.vehicle_number} onChange={(e) => setEditForm((f) => ({ ...f, vehicle_number: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">City</label>
+                  <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.city} onChange={(e) => setEditForm((f) => ({ ...f, city: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Status</label>
+                  <select className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
+                    {STATUS_OPTIONS.filter((s) => s !== 'ALL').map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Lead Source</label>
+                  <select className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.lead_source} onChange={(e) => setEditForm((f) => ({ ...f, lead_source: e.target.value }))}>
+                    {LEAD_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-500">Service</label>
+                  <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.service_type} onChange={(e) => setEditForm((f) => ({ ...f, service_type: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Amount (Rs)</label>
+                  <input type="number" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.estimated_amount} onChange={(e) => setEditForm((f) => ({ ...f, estimated_amount: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Coupon Code</label>
+                  <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.coupon_code} onChange={(e) => setEditForm((f) => ({ ...f, coupon_code: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Discount (Rs)</label>
+                  <input type="number" className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.discount_amount} onChange={(e) => setEditForm((f) => ({ ...f, discount_amount: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button type="button" className="px-4 py-2 rounded-lg border text-sm" onClick={() => setEditOpen(false)}>Cancel</button>
+              <button
+                type="button"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
+                onClick={saveEdit}
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {detailOpen && detailItem && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -573,13 +940,25 @@ export default function SuperAdminBookingsPage() {
                 <Car className="w-5 h-5 text-brand-primary" />
                 {detailTitle}
               </h3>
-              <button
-                type="button"
-                onClick={() => setDetailOpen(false)}
-                className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {detailItem.id && detailTitle.includes('Service Lead') ? (
+                  <>
+                    <button type="button" onClick={() => { setDetailOpen(false); openEdit(detailItem); }} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700">
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => deleteLead(detailItem)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700">
+                      Delete
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setDetailOpen(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)]">
@@ -588,7 +967,11 @@ export default function SuperAdminBookingsPage() {
                   <div key={key} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                     <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">{prettifyKey(key)}</p>
                     <p className="text-sm text-gray-900 mt-1 break-words">
-                      {value === null || value === undefined || value === '' ? '-' : String(value)}
+                      {value === null || value === undefined || value === ''
+                        ? '-'
+                        : typeof value === 'object'
+                          ? JSON.stringify(value, null, 2)
+                          : String(value)}
                     </p>
                   </div>
                 ))}

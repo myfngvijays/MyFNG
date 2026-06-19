@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { enrichBookingLead, filterBookingLeads } from '@/lib/booking-lead-utils';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -49,7 +50,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = String(searchParams.get('search') || '').trim();
     const status = String(searchParams.get('status') || 'ALL').trim().toUpperCase();
-    const limit = Math.min(Number(searchParams.get('limit') || 200), 500);
+    const source = String(searchParams.get('source') || 'ALL').trim().toUpperCase();
+    const hasCoupon = String(searchParams.get('has_coupon') || 'ALL').trim().toUpperCase();
+    const limit = Math.min(Number(searchParams.get('limit') || 500), 1000);
 
     let query = supabaseAdmin
       .from('service_leads')
@@ -70,6 +73,9 @@ export async function GET(request: NextRequest) {
           `vehicle_number.ilike.%${search}%`,
           `city.ilike.%${search}%`,
           `service_type.ilike.%${search}%`,
+          `coupon_code.ilike.%${search}%`,
+          `lead_source.ilike.%${search}%`,
+          `created_from.ilike.%${search}%`,
         ].join(',')
       );
     }
@@ -80,7 +86,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch service leads' }, { status: 500 });
     }
 
-    const leads = (data || []) as any[];
+    let leads = (data || []).map((lead) => enrichBookingLead(lead as Record<string, any>));
+
+    leads = filterBookingLeads(leads, { source, hasCoupon, search: '' });
 
     const allServiceTypeIds = new Set<string>();
     for (const lead of leads) {
@@ -111,7 +119,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ leads });
+    return NextResponse.json({
+      leads,
+      summary: {
+        total_fetched: (data || []).length,
+        total_filtered: leads.length,
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: 'Internal server error', details: error?.message }, { status: 500 });
   }

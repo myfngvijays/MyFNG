@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
+import { validateCouponForCheckout, redeemCouponAtomic } from '@/lib/coupon-service';
+import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
 
 type BookingPayload = {
   lead?: Record<string, any>;
@@ -242,7 +243,8 @@ export async function POST(request: NextRequest) {
 
     const serviceLeadType = toServiceLeadType(String(lead?.lead_type || 'NORMAL'));
     const enquiryLeadType = toEnquiryLeadType(String(lead?.lead_type || 'NORMAL'));
-    const leadSource = String(lead?.lead_source || 'Website').trim();
+    const isMobileClient = request.headers.get('x-mobile-client') === 'true';
+    const leadSource = normalizeLeadSource(lead?.lead_source, { isMobileClient });
     if (!serviceLeadType || !enquiryLeadType) {
       return NextResponse.json({ error: 'Invalid lead_type' }, { status: 400 });
     }
@@ -274,98 +276,27 @@ export async function POST(request: NextRequest) {
     let couponMeta: any = null;
 
     if (body?.coupon?.code) {
-      const code = normalizeCode(String(body.coupon.code || ''));
-      const { data: coupon, error } = await supabaseAdmin
-        .from('coupons')
-        .select('*')
-        .ilike('code', code)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (!coupon || error) {
-        return NextResponse.json({ error: 'Invalid or inactive coupon.' }, { status: 400 });
-      }
-
-      if (coupon.start_at && String(coupon.start_at) > nowIso) {
-        return NextResponse.json({ error: 'Coupon is not active yet.' }, { status: 400 });
-      }
-      if (coupon.end_at && String(coupon.end_at) < nowIso) {
-        return NextResponse.json({ error: 'Coupon has expired.' }, { status: 400 });
-      }
-
+      const channel = String(body?.coupon?.lead_context?.channel || (request.headers.get('x-mobile-client') ? 'MOBILE' : 'WEB')).toUpperCase();
       const subtotal = Number(body?.coupon?.lead_context?.subtotal || lead?.estimated_amount || 0);
-      if (coupon.min_order_value && subtotal < Number(coupon.min_order_value || 0)) {
-        return NextResponse.json(
-          { error: `Minimum order value is ₹${coupon.min_order_value}.` },
-          { status: 400 }
-        );
+      const couponResult = await validateCouponForCheckout(
+        supabaseAdmin,
+        String(body.coupon.code || ''),
+        {
+          ...(body.coupon.lead_context || {}),
+          subtotal,
+          customer_phone: body?.coupon?.lead_context?.customer_phone || customerPhone,
+          channel,
+        },
+        { serviceBooking: true },
+      );
+
+      if (!couponResult.valid) {
+        return NextResponse.json({ error: couponResult.error }, { status: 400 });
       }
 
-      if (coupon.usage_limit_total) {
-        const { count } = await supabaseAdmin
-          .from('coupon_redemptions')
-          .select('id', { count: 'exact', head: true })
-          .eq('coupon_id', coupon.id);
-        if ((count || 0) >= Number(coupon.usage_limit_total || 0)) {
-          return NextResponse.json({ error: 'Coupon usage limit reached.' }, { status: 400 });
-        }
-      }
-
-      if (coupon.usage_limit_per_customer) {
-        const phone = normalizePhone(body?.coupon?.lead_context?.customer_phone || customerPhone);
-        if (phone) {
-          const { count } = await supabaseAdmin
-            .from('coupon_redemptions')
-            .select('id', { count: 'exact', head: true })
-            .eq('coupon_id', coupon.id)
-            .contains('meta', { customer_phone: phone });
-          if ((count || 0) >= Number(coupon.usage_limit_per_customer || 0)) {
-            return NextResponse.json({ error: 'Coupon already used by customer.' }, { status: 400 });
-          }
-        }
-      }
-
-      let freeServiceMeta: any = null;
-      if (coupon.coupon_kind === 'TOTAL_DISCOUNT') {
-        if (!coupon.discount_mode || !coupon.discount_value || subtotal <= 0) {
-          return NextResponse.json({ error: 'Invalid discount configuration.' }, { status: 400 });
-        }
-        if (coupon.discount_mode === 'AMOUNT') {
-          discountAmount = Math.min(Number(coupon.discount_value || 0), subtotal);
-        } else if (coupon.discount_mode === 'PERCENT') {
-          discountAmount = (subtotal * Number(coupon.discount_value || 0)) / 100;
-        }
-      } else if (coupon.coupon_kind === 'FREE_SERVICE') {
-        const freeService = findFreeServicePrice(coupon, body?.coupon?.lead_context);
-        if (!freeService.matched) {
-          return NextResponse.json(
-            { error: 'Coupon is not applicable to selected services.' },
-            { status: 400 }
-          );
-        }
-        discountAmount = Math.max(0, Number(freeService.price || 0));
-        freeServiceMeta = {
-          target_service_type_id: coupon.target_service_type_id || null,
-          target_subservice_id: coupon.target_subservice_id || null,
-          target_custom_label: coupon.target_custom_label || null,
-          matched_label: freeService.matchLabel || null,
-          original_price: freeService.price || 0,
-        };
-      }
-
-      couponCode = coupon.code;
-      couponMeta = {
-        coupon_id: coupon.id,
-        code: coupon.code,
-        coupon_kind: coupon.coupon_kind,
-        discount_mode: coupon.discount_mode,
-        discount_value: coupon.discount_value,
-        min_order_value: coupon.min_order_value,
-        discount_amount: Number(discountAmount || 0),
-        computed_on_subtotal: Number(body?.coupon?.lead_context?.subtotal || 0),
-        free_service: freeServiceMeta,
-        validated_at: nowIso,
-      };
+      couponCode = String(couponResult.coupon.code || '');
+      discountAmount = couponResult.discountAmount;
+      couponMeta = couponResult.couponMeta;
     }
 
     const serviceLeadPayload = {
@@ -373,6 +304,7 @@ export async function POST(request: NextRequest) {
       lead_number: leadNumber,
       lead_type: serviceLeadType,
       lead_source: leadSource,
+      created_from: lead?.created_from || (isMobileClient ? 'MOBILE_APP' : 'WEB'),
       status: lead?.status || 'NEW',
       customer_name: customerName,
       customer_phone: customerPhone,
@@ -395,17 +327,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (couponMeta?.coupon_id) {
-      await supabaseAdmin.from('coupon_redemptions').insert({
-        coupon_id: couponMeta.coupon_id,
-        service_lead_id: serviceLead?.id || null,
-        applied_by_role: 'CUSTOMER',
-        applied_by_user_id: null,
-        discount_amount_applied: discountAmount,
+      const redeemed = await redeemCouponAtomic(supabaseAdmin, {
+        couponId: String(couponMeta.coupon_id),
+        customerPhone,
+        discountAmount,
+        appliedByRole: 'CUSTOMER',
+        serviceLeadId: serviceLead?.id || null,
+        idempotencyKey: serviceLead?.id ? `lead:${serviceLead.id}` : null,
         meta: {
-          customer_phone: customerPhone,
           lead_source: leadSource,
+          channel: body?.coupon?.lead_context?.channel || (request.headers.get('x-mobile-client') ? 'MOBILE' : 'WEB'),
+          customer_name: customerName,
+          lead_number: leadNumber,
         },
       });
+      if (!redeemed.success) {
+        console.error('[bookings/create] coupon redemption failed:', redeemed.error);
+      }
     }
 
     // Persist booked vehicle to the customer's profile garage (if registered).

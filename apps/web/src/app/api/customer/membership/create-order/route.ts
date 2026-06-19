@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
-import { validateCouponForCheckout } from '@/lib/coupon-validate';
+import { validateCouponForCheckout } from '@/lib/coupon-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,8 +46,10 @@ export async function POST(request: NextRequest) {
     const couponResult = await validateCouponForCheckout(supabaseAdmin, couponCode, {
       subtotal: grossAmount,
       customer_phone: customer.phone || null,
+      customer_id: customer.id,
+      channel: 'MEMBERSHIP',
       service_items: [{ label: `${plan.name} Membership`, price: grossAmount }],
-    });
+    }, { membershipOnly: true });
     if (!couponResult.valid) {
       return NextResponse.json({ error: couponResult.error }, { status: 400 });
     }

@@ -42,6 +42,7 @@ export default function BookServiceScreen({ navigation }: any) {
             service_type_ids: [],
             service_items: [],
             customer_phone: formData.phone,
+            channel: 'MOBILE',
           },
         }),
       });

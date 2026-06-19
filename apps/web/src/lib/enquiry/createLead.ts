@@ -7,11 +7,26 @@ export const LEAD_SOURCES = [
   'WhatsApp',
   'Website',
   'App Booking',
+  'App Booking (Cart)',
   'Banner/Offline',
   'Reference',
   'Partner',
   'Other',
 ] as const;
+
+/** Normalize app/web lead_source values for storage and filters */
+export function normalizeLeadSource(
+  raw: string | null | undefined,
+  options?: { isMobileClient?: boolean },
+) {
+  const value = String(raw || '').trim();
+  if (!value) {
+    return options?.isMobileClient ? 'App Booking' : 'Website';
+  }
+  if (/^app booking/i.test(value)) return 'App Booking';
+  if (value === 'WEB') return 'Website';
+  return value;
+}
 
 export const LEAD_TYPES = ['CAR_SERVICE', 'HOME_CAR_SERVICE', 'RSA', 'NORMAL', 'HOME_SERVICE'] as const;
 

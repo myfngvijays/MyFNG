@@ -612,6 +612,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/super_admin/workshops/public-pages', icon: <Globe className="w-5 h-5" />, label: 'Public Pages' },
         { href: '/dashboard/super_admin/additional-jobs-master', icon: <ClipboardCheck className="w-5 h-5" />, label: 'Additional Jobs Master' },
         { href: '/dashboard/super_admin/coupons', icon: <Tag className="w-5 h-5" />, label: 'Coupons' },
+        { href: '/dashboard/super_admin/advance-coupons', icon: <Tag className="w-5 h-5" />, label: 'Advance Coupons' },
         { href: '/dashboard/super_admin/manual-invoices', icon: <FileText className="w-5 h-5" />, label: 'Manual Invoices' },
         { href: '/dashboard/super_admin/telecaller-distribution', icon: <Phone className="w-5 h-5" />, label: 'Telecaller Distribution' },
         {

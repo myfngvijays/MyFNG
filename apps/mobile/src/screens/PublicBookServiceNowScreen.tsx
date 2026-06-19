@@ -800,7 +800,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     // Public, unauthenticated fetch (booking flow works for logged-out users too).
     // The coupons table has RLS so a direct anon Supabase query won't work — must go via the API.
     try {
-      const res = await fetch(`${ENV.API_URL}/api/coupons/active`);
+      const res = await fetch(`${ENV.API_URL}/api/coupons/active?channel=MOBILE`);
       const json = await res.json().catch(() => ({}));
       const list = Array.isArray(json?.coupons) ? json.coupons : [];
       setAvailableCoupons(list);
@@ -839,6 +839,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             service_type_ids: form.selectedServices,
             service_items: serviceItemsForCoupon,
             customer_phone: form.customerPhone,
+            channel: 'MOBILE',
+            city_id: form.city || null,
           },
         }),
       });
