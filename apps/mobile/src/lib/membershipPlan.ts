@@ -5,6 +5,10 @@ import {
   type AppPlacements,
   type MembershipType,
 } from './membershipPlacements';
+import {
+  parseCardPlacements,
+  type CardPlacements,
+} from './membershipCardPlacements';
 import { supabase } from './supabase';
 import {
   PRIME_VALUE_BENEFITS,
@@ -19,7 +23,12 @@ export type AppMembershipPlan = ReturnType<typeof mapDbPlanToPrimeDisplay> & {
   planCode?: string;
   membershipType: MembershipType;
   appPlacements: AppPlacements;
+  cardPlacements: CardPlacements;
+  cardBenefitLine1: string;
+  cardBenefitLine2: string;
+  cardAnimated: boolean;
   accentColor?: string;
+  accentTextColor?: string;
 };
 
 export type ValueCardBenefit = {
@@ -135,7 +144,12 @@ export function mapDbPlanToPrimeDisplay(plan: any, benefits: any[] = []): PrimeM
     planCode: plan?.code ? String(plan.code) : undefined,
     membershipType: normalizeMembershipType(plan?.membership_type),
     appPlacements: parseAppPlacements(plan?.app_placements, normalizeMembershipType(plan?.membership_type)),
+    cardPlacements: parseCardPlacements(plan?.card_placements, normalizeMembershipType(plan?.membership_type)),
+    cardBenefitLine1: String(plan?.card_benefit_line_1 || '10% off on all services'),
+    cardBenefitLine2: String(plan?.card_benefit_line_2 || '5% cashback to wallet'),
+    cardAnimated: plan?.card_animated !== false,
     accentColor: plan?.accent_color ? String(plan.accent_color) : undefined,
+    accentTextColor: plan?.accent_text_color ? String(plan.accent_text_color) : undefined,
   } as AppMembershipPlan;
 }
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type CouponChannel = 'WEB' | 'MOBILE' | 'MEMBERSHIP' | 'TELECALLER' | 'ALL';
+export type CouponChannel = 'WEB' | 'ANDROID' | 'IOS' | 'MOBILE' | 'MEMBERSHIP' | 'TELECALLER' | 'ALL';
 
 export type CouponScopeContext = {
   channel?: CouponChannel | string | null;
@@ -39,9 +39,12 @@ export function parseChannelArray(value: unknown): CouponChannel[] {
 
 export function couponAppliesToChannel(coupon: any, channel?: string | null): boolean {
   const channels = parseChannelArray(coupon?.applicable_channels);
-  if (channels.includes('ALL')) return true;
+  if (channels.length === 0 || channels.includes('ALL')) return true;
   const normalized = String(channel || 'WEB').trim().toUpperCase();
-  return channels.includes(normalized as CouponChannel);
+  if (channels.includes(normalized as CouponChannel)) return true;
+  if ((normalized === 'ANDROID' || normalized === 'IOS') && channels.includes('MOBILE')) return true;
+  if (normalized === 'MOBILE' && (channels.includes('ANDROID') || channels.includes('IOS'))) return true;
+  return false;
 }
 
 export function couponAppliesToCity(coupon: any, cityId?: string | null): boolean {
@@ -60,10 +63,37 @@ export function couponAppliesToWorkshop(coupon: any, workshopId?: string | null)
 
 export function couponAppliesToServiceTypes(coupon: any, serviceTypeIds?: string[]): boolean {
   const allowed = parseIdArray(coupon?.applicable_service_type_ids);
-  if (allowed.length === 0) return true;
+  const allowedCategories = parseIdArray(coupon?.applicable_category_ids);
+  if (allowed.length === 0 && allowedCategories.length === 0) return true;
   const selected = new Set((serviceTypeIds || []).map(String));
   if (selected.size === 0) return false;
-  return allowed.some((id) => selected.has(id));
+  if (allowed.length > 0 && allowed.some((id) => selected.has(id))) return true;
+  return false;
+}
+
+export async function couponAppliesToServices(
+  supabaseAdmin: SupabaseClient,
+  coupon: any,
+  serviceTypeIds?: string[],
+): Promise<boolean> {
+  const allowedTypes = parseIdArray(coupon?.applicable_service_type_ids);
+  const allowedCategories = parseIdArray(coupon?.applicable_category_ids);
+  if (allowedTypes.length === 0 && allowedCategories.length === 0) return true;
+
+  const selected = (serviceTypeIds || []).map(String).filter(Boolean);
+  if (selected.length === 0) return false;
+
+  if (allowedTypes.length > 0 && allowedTypes.some((id) => selected.includes(id))) return true;
+
+  if (allowedCategories.length > 0) {
+    const { data } = await supabaseAdmin
+      .from('service_types')
+      .select('id, category_uuid')
+      .in('id', selected);
+    return (data || []).some((row: any) => allowedCategories.includes(String(row?.category_uuid || '')));
+  }
+
+  return false;
 }
 
 export async function customerHasPriorOrders(
@@ -111,7 +141,8 @@ export async function validateCouponScope(
     return { ok: false, error: 'Coupon is not valid for this workshop.' };
   }
 
-  if (!couponAppliesToServiceTypes(coupon, context.service_type_ids)) {
+  const serviceOk = await couponAppliesToServices(supabaseAdmin, coupon, context.service_type_ids);
+  if (!serviceOk) {
     return { ok: false, error: 'Coupon is not applicable to selected services.' };
   }
 

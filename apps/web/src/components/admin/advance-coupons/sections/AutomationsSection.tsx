@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 import {
   ACTION_LABELS,
+  AUTOMATION_PLATFORM_CHANNELS,
+  channelsForAutomationForm,
+  formatAutomationChannelLabels,
   formatAutomationConditions,
   TRIGGER_LABELS,
 } from '@/lib/coupon-automation-templates';
@@ -25,10 +28,17 @@ type TabId = 'rules' | 'templates' | 'history' | 'coupon-rules';
 const TRIGGER_OPTIONS = Object.entries(TRIGGER_LABELS).map(([value, label]) => ({ value, label }));
 const ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label }));
 
-function formatChannels(channels: unknown) {
-  if (!Array.isArray(channels) || !channels.length) return 'All channels';
-  return channels.join(', ');
-}
+type ModalMode = 'create' | 'template' | 'edit';
+
+const emptyForm = {
+  name: '',
+  description: '',
+  trigger_type: 'NEW_SIGNUP',
+  action_type: 'ASSIGN_COUPON',
+  coupon_id: '',
+  channels: [] as string[],
+  is_active: true,
+};
 
 export default function PcmAutomationsSection() {
   const [tab, setTab] = useState<TabId>('rules');
@@ -42,14 +52,10 @@ export default function PcmAutomationsSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({
-    name: '',
-    description: '',
-    trigger_type: 'NEW_SIGNUP',
-    action_type: 'ASSIGN_COUPON',
-    coupon_id: '',
-    is_active: true,
-  });
+  const [modalMode, setModalMode] = useState<ModalMode>('create');
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,7 +102,7 @@ export default function PcmAutomationsSection() {
         code: c.code,
         trigger: c.first_order_only ? 'First order only' : 'Checkout apply',
         conditions: [
-          formatChannels(c.applicable_channels),
+          formatAutomationChannelLabels(c.applicable_channels),
           c.min_order_value ? `Min ₹${c.min_order_value}` : null,
           Array.isArray(c.applicable_city_ids) && c.applicable_city_ids.length ? `${c.applicable_city_ids.length} cities` : null,
           c.is_public === false ? 'Assigned customers only' : null,
@@ -108,50 +114,116 @@ export default function PcmAutomationsSection() {
       }));
   }, [coupons]);
 
-  const activateTemplate = async (templateKey: string) => {
-    setSaving(true);
-    setError('');
-    try {
-      const res = await fetch('/api/admin/coupons/automations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template_key: templateKey }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Could not activate template');
-      await load();
-      setTab('rules');
-    } catch (err: any) {
-      setError(err?.message || 'Failed');
-    } finally {
-      setSaving(false);
-    }
+  const toggleChannel = (channel: string) => {
+    setForm((f) => ({
+      ...f,
+      channels: f.channels.includes(channel)
+        ? f.channels.filter((c) => c !== channel)
+        : [...f.channels, channel],
+    }));
   };
 
-  const createAutomation = async () => {
+  const openCreateModal = () => {
+    setModalMode('create');
+    setEditingRuleId(null);
+    setSelectedTemplateKey(null);
+    setForm(emptyForm);
+    setShowModal(true);
+  };
+
+  const openTemplateModal = (tpl: any) => {
+    setModalMode('template');
+    setEditingRuleId(null);
+    setSelectedTemplateKey(tpl.key);
+    setForm({
+      name: tpl.name,
+      description: tpl.description,
+      trigger_type: tpl.trigger_type,
+      action_type: tpl.action_type,
+      coupon_id: '',
+      channels: channelsForAutomationForm(tpl.conditions?.channels),
+      is_active: true,
+    });
+    setShowModal(true);
+  };
+
+  const openEditModal = (rule: any) => {
+    setModalMode('edit');
+    setEditingRuleId(rule.id);
+    setSelectedTemplateKey(rule.template_key || null);
+    setForm({
+      name: rule.name || '',
+      description: rule.description || '',
+      trigger_type: rule.trigger_type || 'NEW_SIGNUP',
+      action_type: rule.action_type || 'ASSIGN_COUPON',
+      coupon_id: rule.coupon_id || rule.coupon?.id || '',
+      channels: channelsForAutomationForm(rule.conditions?.channels),
+      is_active: rule.is_active !== false,
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setModalMode('create');
+    setEditingRuleId(null);
+    setSelectedTemplateKey(null);
+    setForm(emptyForm);
+  };
+
+  const buildConditionsPayload = () => {
+    const base =
+      modalMode === 'template' && selectedTemplateKey
+        ? (templates.find((t) => t.key === selectedTemplateKey)?.conditions as Record<string, unknown>) || {}
+        : {};
+    return {
+      ...base,
+      channels: form.channels.length ? form.channels : ['ALL'],
+    };
+  };
+
+  const saveAutomation = async () => {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/admin/coupons/automations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          coupon_id: form.coupon_id || null,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Could not create automation');
-      setShowModal(false);
-      setForm({
-        name: '',
-        description: '',
-        trigger_type: 'NEW_SIGNUP',
-        action_type: 'ASSIGN_COUPON',
-        coupon_id: '',
-        is_active: true,
-      });
+      const conditions = buildConditionsPayload();
+      if (modalMode === 'edit' && editingRuleId) {
+        const res = await fetch(`/api/admin/coupons/automations/${editingRuleId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.name,
+            description: form.description,
+            trigger_type: form.trigger_type,
+            action_type: form.action_type,
+            coupon_id: form.coupon_id || null,
+            conditions,
+            is_active: form.is_active,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || 'Could not update automation');
+      } else {
+        const res = await fetch('/api/admin/coupons/automations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.name,
+            description: form.description,
+            trigger_type: form.trigger_type,
+            action_type: form.action_type,
+            coupon_id: form.coupon_id || null,
+            conditions,
+            is_active: form.is_active,
+            ...(modalMode === 'template' && selectedTemplateKey ? { template_key: selectedTemplateKey } : {}),
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || 'Could not create automation');
+      }
+      closeModal();
       await load();
+      if (modalMode === 'template') setTab('rules');
     } catch (err: any) {
       setError(err?.message || 'Failed');
     } finally {
@@ -197,7 +269,7 @@ export default function PcmAutomationsSection() {
           <button
             type="button"
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white pcm-btn-primary"
-            onClick={() => setShowModal(true)}
+            onClick={openCreateModal}
             disabled={migrationRequired}
           >
             <Plus className="w-4 h-4" />
@@ -307,6 +379,14 @@ export default function PcmAutomationsSection() {
                     <button
                       type="button"
                       className="p-2 rounded-lg border border-[#e6e0da] hover:bg-[#f7f3ec]"
+                      title="Edit rule"
+                      onClick={() => openEditModal(rule)}
+                    >
+                      <Settings2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-2 rounded-lg border border-[#e6e0da] hover:bg-[#f7f3ec]"
                       title={rule.is_active ? 'Pause' : 'Activate'}
                       onClick={() => toggleAutomation(rule.id, !rule.is_active)}
                     >
@@ -338,13 +418,14 @@ export default function PcmAutomationsSection() {
               <div className="mt-3 text-xs text-[#72665e] space-y-1">
                 <p><strong>Trigger:</strong> {TRIGGER_LABELS[tpl.trigger_type]}</p>
                 <p><strong>Action:</strong> {ACTION_LABELS[tpl.action_type]}</p>
+                <p><strong>Channels:</strong> {formatAutomationChannelLabels(tpl.conditions?.channels)}</p>
               </div>
               <button
                 type="button"
                 disabled={saving || migrationRequired || tpl.already_used}
                 className="mt-4 w-full py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
                 style={{ background: tpl.already_used ? '#9ca3af' : 'var(--pcm-primary)' }}
-                onClick={() => activateTemplate(tpl.key)}
+                onClick={() => openTemplateModal(tpl)}
               >
                 {tpl.already_used ? 'Already Added' : 'Use Template'}
               </button>
@@ -413,8 +494,13 @@ export default function PcmAutomationsSection() {
 
       {showModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="pcm-card rounded-xl border w-full max-w-lg p-6 shadow-xl">
-            <h3 className="text-lg font-bold mb-4">Create Automation Rule</h3>
+          <div className="pcm-card rounded-xl border w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold mb-1">
+              {modalMode === 'template' ? 'Activate Template' : modalMode === 'edit' ? 'Edit Automation Rule' : 'Create Automation Rule'}
+            </h3>
+            {modalMode === 'template' ? (
+              <p className="text-sm text-[#72665e] mb-4">Pick a coupon and platforms before activating this template.</p>
+            ) : null}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-[#72665e]">Rule name</label>
@@ -423,6 +509,7 @@ export default function PcmAutomationsSection() {
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Mumbai welcome offer"
+                  readOnly={modalMode === 'template'}
                 />
               </div>
               <div>
@@ -432,36 +519,46 @@ export default function PcmAutomationsSection() {
                   rows={2}
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  readOnly={modalMode === 'template'}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-[#72665e]">Trigger</label>
-                  <select
-                    className="w-full mt-1 px-3 py-2 rounded-lg border border-[#e6e0da] text-sm"
-                    value={form.trigger_type}
-                    onChange={(e) => setForm((f) => ({ ...f, trigger_type: e.target.value }))}
-                  >
-                    {TRIGGER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+              {modalMode === 'create' || modalMode === 'edit' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-[#72665e]">Trigger</label>
+                    <select
+                      className="w-full mt-1 px-3 py-2 rounded-lg border border-[#e6e0da] text-sm"
+                      value={form.trigger_type}
+                      onChange={(e) => setForm((f) => ({ ...f, trigger_type: e.target.value }))}
+                    >
+                      {TRIGGER_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-[#72665e]">Action</label>
+                    <select
+                      className="w-full mt-1 px-3 py-2 rounded-lg border border-[#e6e0da] text-sm"
+                      value={form.action_type}
+                      onChange={(e) => setForm((f) => ({ ...f, action_type: e.target.value }))}
+                    >
+                      {ACTION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-[#72665e]">Action</label>
-                  <select
-                    className="w-full mt-1 px-3 py-2 rounded-lg border border-[#e6e0da] text-sm"
-                    value={form.action_type}
-                    onChange={(e) => setForm((f) => ({ ...f, action_type: e.target.value }))}
-                  >
-                    {ACTION_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+              ) : (
+                <div className="rounded-lg bg-[#f7f3ec] px-3 py-2 text-xs text-[#72665e] space-y-1">
+                  <p><strong>Trigger:</strong> {TRIGGER_LABELS[form.trigger_type]}</p>
+                  <p><strong>Action:</strong> {ACTION_LABELS[form.action_type]}</p>
                 </div>
-              </div>
+              )}
               <div>
-                <label className="text-xs font-semibold text-[#72665e]">Link coupon (optional)</label>
+                <label className="text-xs font-semibold text-[#72665e]">
+                  Link coupon {modalMode === 'template' ? '(required)' : '(optional)'}
+                </label>
                 <select
                   className="w-full mt-1 px-3 py-2 rounded-lg border border-[#e6e0da] text-sm"
                   value={form.coupon_id}
@@ -469,23 +566,59 @@ export default function PcmAutomationsSection() {
                 >
                   <option value="">Select coupon…</option>
                   {coupons.filter((c) => c.is_active).map((c) => (
-                    <option key={c.id} value={c.id}>{c.code}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.code}{c.description ? ` · ${c.description}` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="text-xs font-semibold text-[#72665e] mb-2 block">
+                  Platforms (select one or more; leave empty for all)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {AUTOMATION_PLATFORM_CHANNELS.map((ch) => {
+                    const active = form.channels.includes(ch.id);
+                    return (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                          active
+                            ? 'bg-[#e54800] text-white border-[#e54800]'
+                            : 'bg-white text-gray-700 border-gray-300'
+                        }`}
+                        onClick={() => toggleChannel(ch.id)}
+                      >
+                        {ch.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
-              <button type="button" className="px-4 py-2 rounded-lg border text-sm" onClick={() => setShowModal(false)}>
+              <button type="button" className="px-4 py-2 rounded-lg border text-sm" onClick={closeModal}>
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={saving || !form.name.trim()}
+                disabled={
+                  saving
+                  || !form.name.trim()
+                  || (modalMode === 'template' && !form.coupon_id)
+                }
                 className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
                 style={{ background: 'var(--pcm-primary)' }}
-                onClick={createAutomation}
+                onClick={saveAutomation}
               >
-                {saving ? 'Saving…' : 'Create Rule'}
+                {saving
+                  ? 'Saving…'
+                  : modalMode === 'template'
+                    ? 'Activate Template'
+                    : modalMode === 'edit'
+                      ? 'Save Changes'
+                      : 'Create Rule'}
               </button>
             </div>
           </div>

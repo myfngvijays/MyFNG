@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
 import { recordCouponRedemption } from '@/lib/coupon-validate';
+import { debitWallet } from '@/lib/wallet-service';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,32 @@ export async function POST(request: NextRequest) {
       { error: 'Membership activation failed', details: insertError?.message || 'Could not save membership' },
       { status: 500 },
     );
+  }
+
+  const walletDeduction = Number(body.wallet_deduction || 0);
+  const vehicleNumber = String(
+    body.primary_vehicle_snapshot?.vehicle_number || body.vehicle_number || '',
+  ).trim();
+  if (walletDeduction > 0) {
+    try {
+      await debitWallet(supabaseAdmin, customer.id, walletDeduction, {
+        source: 'MEMBERSHIP_REDEEM',
+        idempotencyKey: `membership:${razorpayOrderId}`,
+        channel: 'MEMBERSHIP',
+        vehicleNumber: vehicleNumber || null,
+        metadata: {
+          label: 'Used for Membership Purchase',
+          plan_id: plan.id,
+          plan_name: plan.name,
+          payment_id: razorpayPaymentId,
+          order_id: razorpayOrderId,
+          usage_percent: 30,
+          vehicle_number: vehicleNumber || null,
+        },
+      });
+    } catch (walletErr: any) {
+      console.error('[membership/subscribe] wallet debit failed:', walletErr);
+    }
   }
 
   await logCustomerEvent(supabaseAdmin, customer.id, 'membership_subscribed', 'membership', {

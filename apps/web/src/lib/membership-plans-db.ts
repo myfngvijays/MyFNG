@@ -1,4 +1,7 @@
 import {
+  defaultCardPlacementsForType,
+} from './membership-card-placements';
+import {
   defaultPlacementsForType,
   normalizeMembershipType,
 } from './membership-placements';
@@ -13,6 +16,12 @@ export const MIGRATION_153_HINT =
 
 export const MIGRATION_154_HINT =
   'Run `database/154_rsa_membership_plans_seed.sql` for 5 RSA tiers (Basic, Family, Plus, Premium, Elite) with shared benefits.';
+
+export const MIGRATION_155_HINT =
+  'Run `database/155_membership_cards.sql` for animated promo card text & multi-slot card_placements.';
+
+export const MIGRATION_161_HINT =
+  'Run `database/161_membership_accent_text_color.sql` for text color on membership accent backgrounds.';
 
 export function isAppMembershipPlan(code: unknown): boolean {
   return !LEGACY_MEMBERSHIP_CODES.has(String(code || '').toUpperCase());
@@ -35,6 +44,10 @@ function isVisibilityColumnError(message: string) {
   return /app_placements|app_visible|membership_type|accent_color/i.test(String(message || ''));
 }
 
+function isCardColumnError(message: string) {
+  return /card_benefit_line|card_animated|card_placements/i.test(String(message || ''));
+}
+
 function omitKeys<T extends Record<string, unknown>>(obj: T, keys: string[]): Partial<T> {
   const next = { ...obj };
   for (const key of keys) delete next[key];
@@ -42,6 +55,7 @@ function omitKeys<T extends Record<string, unknown>>(obj: T, keys: string[]): Pa
 }
 
 const PLAN_VISIBILITY_KEYS = ['membership_type', 'app_visible', 'app_placements', 'accent_color'] as const;
+const PLAN_CARD_KEYS = ['card_benefit_line_1', 'card_benefit_line_2', 'card_animated', 'card_placements'] as const;
 
 export function buildPlanVisibilityPayload(body: Record<string, unknown>) {
   const membershipType = normalizeMembershipType(body.membership_type);
@@ -52,6 +66,19 @@ export function buildPlanVisibilityPayload(body: Record<string, unknown>) {
       body.app_placements && typeof body.app_placements === 'object' && !Array.isArray(body.app_placements)
         ? body.app_placements
         : defaultPlacementsForType(membershipType),
+  };
+}
+
+export function buildPlanCardPayload(body: Record<string, unknown>) {
+  const membershipType = normalizeMembershipType(body.membership_type);
+  return {
+    card_benefit_line_1: body.card_benefit_line_1 != null ? String(body.card_benefit_line_1) : null,
+    card_benefit_line_2: body.card_benefit_line_2 != null ? String(body.card_benefit_line_2) : null,
+    card_animated: body.card_animated !== undefined ? !!body.card_animated : true,
+    card_placements:
+      body.card_placements && typeof body.card_placements === 'object' && !Array.isArray(body.card_placements)
+        ? body.card_placements
+        : defaultCardPlacementsForType(membershipType),
   };
 }
 
@@ -74,13 +101,19 @@ export function buildPlanExtendedPayload(body: Record<string, unknown>) {
     total_benefits_label: body.total_benefits_label || 'Total Benefits Value',
     save_label: body.save_label || 'You Save',
     price_hero_label: body.price_hero_label || 'YOU PAY ONLY',
-    price_hero_sub: body.price_hero_sub || 'All benefits · One full year · One car',
-    accent_color: body.accent_color || null,
+    price_hero_sub:
+      String(body.price_hero_sub || '').trim() ||
+      (normalizeMembershipType(body.membership_type) === 'RSA' ? null : 'All benefits · One full year · One car'),
+    accent_color: body.accent_color ? String(body.accent_color) : null,
+    accent_text_color: body.accent_text_color ? String(body.accent_text_color) : null,
     ...buildPlanVisibilityPayload(body),
+    ...buildPlanCardPayload(body),
   };
 }
 
 export function migrationHintForPlanError(message: string): string | undefined {
+  if (isCardColumnError(message)) return MIGRATION_155_HINT;
+  if (/accent_text_color/i.test(message)) return MIGRATION_161_HINT;
   if (/accent_color/i.test(message)) return MIGRATION_154_HINT;
   if (isVisibilityColumnError(message)) return MIGRATION_153_HINT;
   if (isMissingColumnError(message)) return MIGRATION_149_HINT;
@@ -129,6 +162,11 @@ const PLAN_EXTENDED_UPDATE_KEYS = [
   'app_visible',
   'app_placements',
   'accent_color',
+  'accent_text_color',
+  'card_benefit_line_1',
+  'card_benefit_line_2',
+  'card_animated',
+  'card_placements',
 ] as const;
 
 export function buildPlanUpdatePayload(body: Record<string, unknown>) {
@@ -165,6 +203,18 @@ export function buildPlanUpdatePayload(body: Record<string, unknown>) {
   if (body.app_placements !== undefined) {
     updates.app_placements = body.app_placements;
   }
+  if (body.card_benefit_line_1 !== undefined) {
+    updates.card_benefit_line_1 = body.card_benefit_line_1 == null ? null : String(body.card_benefit_line_1);
+  }
+  if (body.card_benefit_line_2 !== undefined) {
+    updates.card_benefit_line_2 = body.card_benefit_line_2 == null ? null : String(body.card_benefit_line_2);
+  }
+  if (body.card_animated !== undefined) {
+    updates.card_animated = !!body.card_animated;
+  }
+  if (body.card_placements !== undefined) {
+    updates.card_placements = body.card_placements;
+  }
 
   return updates;
 }
@@ -181,16 +231,27 @@ function omitVisibilityFields(payload: Record<string, unknown>) {
   return omitKeys(payload, [...PLAN_VISIBILITY_KEYS]);
 }
 
+function omitCardFields(payload: Record<string, unknown>) {
+  return omitKeys(payload, [...PLAN_CARD_KEYS]);
+}
+
 export async function insertMembershipPlan(db: any, body: Record<string, unknown>) {
   const base = buildPlanBasePayload(body);
   const extended = buildPlanExtendedPayload(body);
   const withoutVisibility = omitVisibilityFields(extended);
+  const withoutCard = omitCardFields(extended);
+  const withoutExtended = { ...withoutVisibility, ...withoutCard };
 
   let result = await db.from('membership_plans').insert({ ...base, ...extended }).select().single();
 
   if (result.error && isMissingColumnError(result.error.message)) {
     const visibilityOnly = isVisibilityColumnError(result.error.message);
-    const fallbackPayload = visibilityOnly ? withoutVisibility : extended;
+    const cardOnly = isCardColumnError(result.error.message);
+    const fallbackPayload = cardOnly
+      ? withoutCard
+      : visibilityOnly
+        ? withoutVisibility
+        : extended;
     result = await db.from('membership_plans').insert({ ...base, ...fallbackPayload }).select().single();
 
     if (result.error && isMissingColumnError(result.error.message)) {
@@ -198,7 +259,7 @@ export async function insertMembershipPlan(db: any, body: Record<string, unknown
       if (!result.error && result.data?.id) {
         const extResult = await db
           .from('membership_plans')
-          .update(withoutVisibility)
+          .update(withoutExtended)
           .eq('id', result.data.id)
           .select()
           .single();
@@ -216,9 +277,11 @@ export async function updateMembershipPlan(db: any, id: string, body: Record<str
   let result = await db.from('membership_plans').update(updates).eq('id', id).select().single();
 
   if (result.error && isMissingColumnError(result.error.message)) {
-    const fallbackUpdates = isVisibilityColumnError(result.error.message)
-      ? omitVisibilityFields(updates)
-      : pickBaseUpdateFields(updates);
+    const fallbackUpdates = isCardColumnError(result.error.message)
+      ? omitCardFields(updates)
+      : isVisibilityColumnError(result.error.message)
+        ? omitVisibilityFields(updates)
+        : pickBaseUpdateFields(updates);
     result = await db.from('membership_plans').update(fallbackUpdates).eq('id', id).select().single();
 
     if (result.error && isMissingColumnError(result.error.message)) {

@@ -88,7 +88,9 @@ type Props = {
   footerNote?: string;
   membershipType?: MembershipType;
   accentColor?: string;
+  accentTextColor?: string;
   preview?: boolean;
+  embedded?: boolean;
   previewInteractiveAddon?: boolean;
   previewCtaLabel?: string;
   pricePeriodLabel?: string;
@@ -121,18 +123,21 @@ function hexWithAlpha(hex: string, alphaHex: string) {
   return hex;
 }
 
-function themeFromAccent(accentColor: string | undefined, isRsa: boolean) {
+function themeFromAccent(accentColor: string | undefined, isRsa: boolean, accentTextColor?: string) {
   const accent = accentColor || '#023D95';
+  const onAccent = accentTextColor || '#FFFFFF';
   return {
     headerBg: accent,
-    headerSub: hexWithAlpha(accent, '99'),
+    onAccent,
+    onAccentMuted: hexWithAlpha(onAccent, 'D9'),
+    onAccentSoft: hexWithAlpha(onAccent, 'BF'),
+    headerSub: hexWithAlpha(onAccent, '99'),
     accent,
     accentBorder: hexWithAlpha(accent, '40'),
     benefitIconBg: hexWithAlpha(accent, '18'),
     benefitValue: accent,
     totalBandBg: hexWithAlpha(accent, '0C'),
     priceHeroBg: accent,
-    priceHeroSub: hexWithAlpha(accent, '99'),
     activateBg: accent,
     linkedBg: hexWithAlpha(accent, '0C'),
     linkedBorder: hexWithAlpha(accent, '40'),
@@ -609,7 +614,9 @@ export default function PrimeMembershipValueCard({
   footerNote,
   membershipType = 'SERVICE',
   accentColor,
+  accentTextColor,
   preview = false,
+  embedded = false,
   previewInteractiveAddon = false,
   previewCtaLabel,
   pricePeriodLabel = '/ year',
@@ -618,9 +625,9 @@ export default function PrimeMembershipValueCard({
   style,
 }: Props) {
   const isRsa = membershipType === 'RSA';
-  const theme = themeFromAccent(accentColor, isRsa);
+  const theme = themeFromAccent(accentColor, isRsa, accentTextColor);
   const canBuySecondCarAddon = isActive && !hasSecondCarAddon && Boolean(onBuySecondCarAddon);
-  const showFullPurchase = !isActive && !preview;
+  const showFullPurchase = !isActive && (!preview || embedded);
   const totalPay = planPrice + (addSecondCar ? addonPrice : 0);
   const primaryOptions = vehicles;
   const [guestDetailsOpen, setGuestDetailsOpen] = useState(false);
@@ -731,7 +738,7 @@ export default function PrimeMembershipValueCard({
     <View style={[styles.card, preview ? styles.cardPreview : null]}>
       <View style={[styles.header, preview ? styles.headerPreview : null, { backgroundColor: theme.headerBg }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>{planName}</Text>
+          <Text style={[styles.headerTitle, { color: theme.onAccent }]}>{planName}</Text>
           <Text style={[styles.headerSub, { color: theme.headerSub }]}>{headerTagline}</Text>
         </View>
         <View style={styles.crownWrap}>
@@ -802,21 +809,70 @@ export default function PrimeMembershipValueCard({
       </View>
 
       {!isActive ? (
-        <View style={[styles.priceHero, preview ? styles.priceHeroPreview : styles.priceHeroCompact, { backgroundColor: theme.priceHeroBg }]}>
-          <Text style={styles.priceHeroLabel}>{priceHeroLabel}</Text>
-          <View style={styles.priceHeroPriceGroupCentered}>
-            <Text style={[styles.priceHeroAmount, preview ? styles.priceHeroAmountPreview : styles.priceHeroAmountCompact]}>
-              {inr(planPrice)}
-            </Text>
-            {pricePeriodLabel ? (
-              <Text style={[styles.priceHeroPeriodInline, preview ? styles.priceHeroPeriodPreview : null]}>
-                / {pricePeriodLabel.replace(/^\s*\/?\s*/, '')}
-              </Text>
-            ) : null}
-          </View>
-          <Text style={styles.priceHeroSubOnBlue} numberOfLines={2}>
-            {priceHeroSub}
+        <View
+          style={[
+            styles.priceHero,
+            preview ? styles.priceHeroPreview : styles.priceHeroCompact,
+            isRsa ? styles.priceHeroRsa : null,
+            { backgroundColor: theme.priceHeroBg },
+          ]}
+        >
+          <Text style={[styles.priceHeroLabel, isRsa ? styles.priceHeroLabelRsa : null, { color: theme.onAccentMuted }]}>
+            {priceHeroLabel}
           </Text>
+          {isRsa ? (
+            <>
+              <Text
+                style={[
+                  styles.priceHeroAmount,
+                  styles.priceHeroAmountRsa,
+                  preview ? styles.priceHeroAmountPreviewRsa : styles.priceHeroAmountCompactRsa,
+                  { color: theme.onAccent },
+                ]}
+              >
+                {inr(planPrice)}
+              </Text>
+              {pricePeriodLabel ? (
+                <Text
+                  style={[
+                    styles.priceHeroPeriodStacked,
+                    preview ? styles.priceHeroPeriodStackedPreview : null,
+                    { color: theme.onAccentMuted },
+                  ]}
+                >
+                  {pricePeriodLabel.replace(/^\s*\/?\s*/, '')}
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <View style={styles.priceHeroPriceGroupCentered}>
+                <Text
+                  style={[
+                    styles.priceHeroAmount,
+                    preview ? styles.priceHeroAmountPreview : styles.priceHeroAmountCompact,
+                    { color: theme.onAccent },
+                  ]}
+                >
+                  {inr(planPrice)}
+                </Text>
+                {pricePeriodLabel ? (
+                  <Text
+                    style={[
+                      styles.priceHeroPeriodInline,
+                      preview ? styles.priceHeroPeriodPreview : null,
+                      { color: theme.onAccentMuted },
+                    ]}
+                  >
+                    / {pricePeriodLabel.replace(/^\s*\/?\s*/, '')}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={[styles.priceHeroSubOnBlue, { color: theme.onAccentSoft }]} numberOfLines={2}>
+                {priceHeroSub}
+              </Text>
+            </>
+          )}
         </View>
       ) : null}
 
@@ -869,8 +925,8 @@ export default function PrimeMembershipValueCard({
             onPress={onPreviewPress}
             activeOpacity={0.9}
           >
-            <Text style={[styles.ctaText, previewInteractiveAddon ? styles.previewCtaTextCompact : null]}>
-              {previewCtaLabel || (isRsa ? 'Get RSA Membership' : 'Get Prime Membership')} — {inr(previewInteractiveAddon ? totalPay : planPrice)} →
+            <Text style={[styles.ctaText, previewInteractiveAddon ? styles.previewCtaTextCompact : null, { color: theme.onAccent }]}>
+              {previewCtaLabel || `${isRsa ? 'Get RSA Membership' : 'Get Prime Membership'} — ${inr(previewInteractiveAddon ? totalPay : planPrice)} →`}
             </Text>
           </TouchableOpacity>
         </>
@@ -976,9 +1032,9 @@ export default function PrimeMembershipValueCard({
             activeOpacity={0.9}
           >
             {activating ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={theme.onAccent} />
             ) : (
-              <Text style={styles.ctaText}>
+              <Text style={[styles.ctaText, { color: theme.onAccent }]}>
                 {isRsa ? 'Activate RSA Membership' : 'Activate Prime'} — {inr(totalPay)} →
               </Text>
             )}
@@ -1028,12 +1084,24 @@ export default function PrimeMembershipValueCard({
     </View>
   );
 
+  if (embedded) {
+    return (
+      <View style={[styles.previewOuter, style]}>
+        {cardBody}
+      </View>
+    );
+  }
+
   if (preview) {
     return (
       <View style={[styles.previewOuter, style]}>
-        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} bounces={false}>
-          {cardBody}
-        </ScrollView>
+        {previewInteractiveAddon ? (
+          cardBody
+        ) : (
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} bounces={false}>
+            {cardBody}
+          </ScrollView>
+        )}
       </View>
     );
   }
@@ -1236,8 +1304,8 @@ const styles = StyleSheet.create({
   },
   priceHeroPreview: {
     marginHorizontal: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   priceHeroCompact: {
     marginHorizontal: 20,
@@ -1245,6 +1313,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 12,
+  },
+  priceHeroRsa: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   priceHeroPriceGroupCentered: {
     flexDirection: 'row',
@@ -1260,9 +1332,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
   },
+  priceHeroLabelRsa: {
+    fontSize: 9,
+    letterSpacing: 0.8,
+  },
   priceHeroAmount: { fontSize: 34, fontWeight: '800', color: '#fff', textAlign: 'center' },
   priceHeroAmountPreview: { fontSize: 30, lineHeight: 34 },
   priceHeroAmountCompact: { fontSize: 32, lineHeight: 36 },
+  priceHeroAmountRsa: { marginTop: 4 },
+  priceHeroAmountPreviewRsa: { fontSize: 22, lineHeight: 26 },
+  priceHeroAmountCompactRsa: { fontSize: 24, lineHeight: 28 },
   priceHeroPeriodInline: {
     fontSize: 15,
     fontWeight: '500',
@@ -1270,6 +1349,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   priceHeroPeriodPreview: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  priceHeroPeriodStacked: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  priceHeroPeriodStackedPreview: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 3,
+  },
   priceHeroSubOnBlue: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.75)',

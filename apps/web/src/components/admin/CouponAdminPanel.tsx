@@ -5,6 +5,7 @@ import {
   Plus,
   Ticket,
   Search,
+  ChevronDown,
   Loader2,
   Download,
   BarChart3,
@@ -13,12 +14,30 @@ import {
   History,
   UserPlus,
 } from 'lucide-react';
+import { PcmCouponSearchBar } from '@/components/admin/advance-coupons/shared';
+import {
+  applyCouponTypeDefaults,
+  channelsForForm,
+  COUPON_PLATFORM_CHANNELS,
+  couponTypeFilterOptions,
+  couponTypeLabel,
+  DEFAULT_COUPON_TYPES,
+  inferCouponTypeSlug,
+  type CouponTypeRecord,
+} from '@/lib/coupon-types';
+import {
+  bookableServiceLabel,
+  serviceSelectionKeysFromCoupon,
+  splitServiceSelectionKeys,
+  type BookableServiceOption,
+} from '@/lib/coupon-service-options';
 
-type ChannelId = 'ALL' | 'WEB' | 'MOBILE' | 'MEMBERSHIP' | 'TELECALLER';
+type ChannelId = 'WEB' | 'ANDROID' | 'IOS' | 'MEMBERSHIP' | 'TELECALLER';
 
 type CouponForm = {
   code: string;
   campaign_name: string;
+  coupon_type_slug: string;
   coupon_kind: 'TOTAL_DISCOUNT' | 'FREE_SERVICE';
   discount_mode: 'AMOUNT' | 'PERCENT' | '';
   discount_value: string;
@@ -36,6 +55,7 @@ type CouponForm = {
   applicable_channels: ChannelId[];
   applicable_city_ids: string[];
   applicable_workshop_ids: string[];
+  applicable_category_ids: string[];
   applicable_service_type_ids: string[];
 };
 
@@ -62,6 +82,7 @@ type BulkForm = {
 const emptyForm: CouponForm = {
   code: '',
   campaign_name: '',
+  coupon_type_slug: 'flat',
   coupon_kind: 'TOTAL_DISCOUNT',
   discount_mode: 'AMOUNT',
   discount_value: '',
@@ -76,9 +97,10 @@ const emptyForm: CouponForm = {
   is_public: true,
   first_order_only: false,
   description: '',
-  applicable_channels: ['ALL'],
+  applicable_channels: [],
   applicable_city_ids: [],
   applicable_workshop_ids: [],
+  applicable_category_ids: [],
   applicable_service_type_ids: [],
 };
 
@@ -99,12 +121,22 @@ const emptyBulk: BulkForm = {
   description: '',
   is_public: false,
   first_order_only: false,
-  applicable_channels: ['MOBILE'],
+  applicable_channels: ['ANDROID', 'IOS'],
 };
 
 function parseChannels(value: unknown): ChannelId[] {
-  if (Array.isArray(value) && value.length) return value.map(String) as ChannelId[];
-  return ['ALL'];
+  return channelsForForm(value);
+}
+
+type CouponStatusFilter = 'all' | 'active' | 'paused' | 'expired' | 'inactive';
+
+function couponLifecycleStatus(coupon: any): Exclude<CouponStatusFilter, 'all'> {
+  const now = Date.now();
+  const end = coupon.end_at ? new Date(coupon.end_at).getTime() : null;
+  if (end != null && end < now) return 'expired';
+  if (coupon.is_paused) return 'paused';
+  if (!coupon.is_active) return 'inactive';
+  return 'active';
 }
 
 function downloadCsv(filename: string, rows: string[][]) {
@@ -134,11 +166,22 @@ export default function CouponAdminPanel({
   const [analytics, setAnalytics] = useState<any>(null);
   const [redemptions, setRedemptions] = useState<any[]>([]);
   const [redemptionSummary, setRedemptionSummary] = useState<any>(null);
-  const [options, setOptions] = useState<any>({ cities: [], workshops: [], service_types: [], channels: [], batches: [] });
+  const [options, setOptions] = useState<any>({
+    cities: [],
+    workshops: [],
+    service_types: [],
+    bookable_services: [] as BookableServiceOption[],
+    channels: [],
+    batches: [],
+    coupon_types: DEFAULT_COUPON_TYPES,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<CouponStatusFilter>('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [newTypeLabel, setNewTypeLabel] = useState('');
+  const [addingType, setAddingType] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<any | null>(null);
@@ -215,21 +258,42 @@ export default function CouponAdminPanel({
     if (tab === 'audit') fetchAuditLogs();
   }, [tab, fetchRedemptions, fetchAuditLogs]);
 
+  const couponTypes: CouponTypeRecord[] = options.coupon_types?.length ? options.coupon_types : DEFAULT_COUPON_TYPES;
+  const typeFilterOptions = useMemo(() => couponTypeFilterOptions(couponTypes), [couponTypes]);
+  const bookableServices: BookableServiceOption[] = options.bookable_services?.length
+    ? options.bookable_services
+    : [];
+  const selectedServiceKeys = useMemo(
+    () => serviceSelectionKeysFromCoupon(
+      {
+        applicable_category_ids: form.applicable_category_ids,
+        applicable_service_type_ids: form.applicable_service_type_ids,
+      },
+      options.service_types || [],
+    ),
+    [form.applicable_category_ids, form.applicable_service_type_ids, options.service_types],
+  );
+
   const filteredCoupons = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return coupons.filter((c) => {
-      if (statusFilter === 'active' && !c.is_active) return false;
-      if (statusFilter === 'inactive' && c.is_active) return false;
+      const lifecycle = couponLifecycleStatus(c);
+      if (statusFilter !== 'all' && lifecycle !== statusFilter) return false;
+      if (typeFilter !== 'all') {
+        const slug = c.coupon_type_slug || inferCouponTypeSlug(c);
+        if (slug !== typeFilter) return false;
+      }
       if (!term) return true;
-      return [c.code, c.description, c.campaign_name, c.coupon_kind].filter(Boolean).some((v: string) =>
+      return [c.code, c.description, c.campaign_name].filter(Boolean).some((v: string) =>
         String(v).toLowerCase().includes(term),
       );
     });
-  }, [coupons, searchTerm, statusFilter]);
+  }, [coupons, searchTerm, statusFilter, typeFilter]);
 
   const openCreate = () => {
     setEditingCoupon(null);
     setForm(emptyForm);
+    setNewTypeLabel('');
     setShowModal(true);
   };
 
@@ -243,9 +307,13 @@ export default function CouponAdminPanel({
 
   const openEdit = (coupon: any) => {
     setEditingCoupon(coupon);
+    const typeSlug = coupon.coupon_type_slug || inferCouponTypeSlug(coupon);
+    const serviceKeys = serviceSelectionKeysFromCoupon(coupon, options.service_types || []);
+    const { applicable_category_ids } = splitServiceSelectionKeys(serviceKeys);
     setForm({
       code: coupon.code || '',
       campaign_name: coupon.campaign_name || '',
+      coupon_type_slug: typeSlug,
       coupon_kind: coupon.coupon_kind || 'TOTAL_DISCOUNT',
       discount_mode: coupon.discount_mode || '',
       discount_value: coupon.discount_value != null ? String(coupon.discount_value) : '',
@@ -263,8 +331,10 @@ export default function CouponAdminPanel({
       applicable_channels: parseChannels(coupon.applicable_channels),
       applicable_city_ids: Array.isArray(coupon.applicable_city_ids) ? coupon.applicable_city_ids.map(String) : [],
       applicable_workshop_ids: Array.isArray(coupon.applicable_workshop_ids) ? coupon.applicable_workshop_ids.map(String) : [],
-      applicable_service_type_ids: Array.isArray(coupon.applicable_service_type_ids) ? coupon.applicable_service_type_ids.map(String) : [],
+      applicable_category_ids,
+      applicable_service_type_ids: [],
     });
+    setNewTypeLabel('');
     setShowModal(true);
   };
 
@@ -281,16 +351,18 @@ export default function CouponAdminPanel({
       usage_limit_total: source.usage_limit_total ? Number(source.usage_limit_total) : null,
       usage_limit_per_customer: source.usage_limit_per_customer ? Number(source.usage_limit_per_customer) : null,
       description: source.description || null,
-      applicable_channels: source.applicable_channels?.length ? source.applicable_channels : ['ALL'],
+      applicable_channels: source.applicable_channels?.length ? source.applicable_channels : null,
       first_order_only: source.first_order_only ?? false,
       is_public: source.is_public ?? true,
     };
     if (!isBulk) {
       base.code = (source as CouponForm).code.trim();
+      base.coupon_type_slug = (source as CouponForm).coupon_type_slug || null;
       base.target_custom_label = (source as CouponForm).target_custom_label || null;
       base.is_active = (source as CouponForm).is_active;
       base.applicable_city_ids = (source as CouponForm).applicable_city_ids;
       base.applicable_workshop_ids = (source as CouponForm).applicable_workshop_ids;
+      base.applicable_category_ids = (source as CouponForm).applicable_category_ids;
       base.applicable_service_type_ids = (source as CouponForm).applicable_service_type_ids;
     }
     return base;
@@ -298,6 +370,10 @@ export default function CouponAdminPanel({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.coupon_type_slug === '__new__') {
+      setError('Please add the new coupon type or pick an existing one.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -490,9 +566,9 @@ export default function CouponAdminPanel({
         ...filteredCoupons.map((c) => [
           c.code,
           c.campaign_name || '',
-          c.coupon_kind,
+          c.coupon_type_slug || inferCouponTypeSlug(c),
           c.discount_mode === 'PERCENT' ? `${c.discount_value}%` : String(c.discount_value || ''),
-          (parseChannels(c.applicable_channels) || ['ALL']).join('|'),
+          (parseChannels(c.applicable_channels).length ? parseChannels(c.applicable_channels).join('|') : 'ALL'),
           String(c.usage_count || 0),
           c.is_active ? 'active' : 'inactive',
         ]),
@@ -516,16 +592,57 @@ export default function CouponAdminPanel({
   };
 
   const toggleChannel = (channels: ChannelId[], channel: ChannelId, setter: (next: ChannelId[]) => void) => {
-    if (channel === 'ALL') {
-      setter(['ALL']);
+    setter(
+      channels.includes(channel)
+        ? channels.filter((c) => c !== channel)
+        : [...channels, channel],
+    );
+  };
+
+  const handleCouponTypeChange = (slug: string) => {
+    if (slug === '__new__') {
+      setForm((prev) => ({ ...prev, coupon_type_slug: '__new__' }));
+      setNewTypeLabel('');
       return;
     }
-    const withoutAll = channels.filter((c) => c !== 'ALL');
-    const next = withoutAll.includes(channel)
-      ? withoutAll.filter((c) => c !== channel)
-      : [...withoutAll, channel];
-    setter(next.length ? next : ['ALL']);
+    const defaults = applyCouponTypeDefaults(slug);
+    setForm((prev) => ({
+      ...prev,
+      coupon_type_slug: slug,
+      ...defaults,
+    }));
+    setNewTypeLabel('');
   };
+
+  const createNewCouponType = async () => {
+    const label = newTypeLabel.trim();
+    if (!label) return;
+    setAddingType(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/coupons/types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to add coupon type');
+      const created = json.type as CouponTypeRecord;
+      setOptions((prev: any) => ({
+        ...prev,
+        coupon_types: [...(prev.coupon_types || []), created].sort(
+          (a: CouponTypeRecord, b: CouponTypeRecord) => (a.display_order || 0) - (b.display_order || 0),
+        ),
+      }));
+      handleCouponTypeChange(created.slug);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to add coupon type');
+    } finally {
+      setAddingType(false);
+    }
+  };
+
+  const platformChannels = (options.channels?.length ? options.channels : COUPON_PLATFORM_CHANNELS) as Array<{ id: ChannelId; label: string }>;
 
   const ChannelPicker = ({
     value,
@@ -535,13 +652,19 @@ export default function CouponAdminPanel({
     onChange: (next: ChannelId[]) => void;
   }) => (
     <div className="flex flex-wrap gap-2">
-      {(options.channels || []).map((ch: any) => {
+      {platformChannels.map((ch) => {
         const active = value.includes(ch.id);
         return (
           <button
             key={ch.id}
             type="button"
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${active ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white text-gray-700 border-gray-300'}`}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+              active
+                ? embedded
+                  ? 'bg-[#e54800] text-white border-[#e54800]'
+                  : 'bg-brand-primary text-white border-brand-primary'
+                : 'bg-white text-gray-700 border-gray-300'
+            }`}
             onClick={() => toggleChannel(value, ch.id, onChange)}
           >
             {ch.label}
@@ -550,6 +673,46 @@ export default function CouponAdminPanel({
       })}
     </div>
   );
+
+  const MultiSelectList = ({
+    title,
+    items,
+    selected,
+    onChange,
+    getLabel,
+    getValue,
+  }: {
+    title: string;
+    items: any[];
+    selected: string[];
+    onChange: (next: string[]) => void;
+    getLabel: (item: any) => string;
+    getValue: (item: any) => string;
+  }) => {
+    const toggle = (id: string) => {
+      onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+    };
+    return (
+      <div className="rounded-lg border border-gray-200 p-3 bg-gray-50/50">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-semibold text-gray-800">{title}</div>
+          {selected.length > 0 ? <span className="text-xs text-gray-500">{selected.length} selected</span> : null}
+        </div>
+        <div className="max-h-40 overflow-y-auto space-y-0.5 rounded-md border border-gray-200 bg-white p-2">
+          {items.length === 0 ? <p className="text-xs text-gray-400 px-1 py-2">No options available</p> : null}
+          {items.map((item) => {
+            const id = getValue(item);
+            return (
+              <label key={id} className="flex items-center gap-2 text-sm py-1.5 px-1 rounded hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} />
+                <span className="truncate">{getLabel(item)}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={embedded ? 'space-y-4' : 'p-6 space-y-6'}>
@@ -593,6 +756,13 @@ export default function CouponAdminPanel({
                 onClick={() => setTab('bulk')}
               >
                 <Layers className="w-4 h-4" /> Bulk Generate
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 rounded-lg border border-[#e6e0da] text-sm font-semibold text-[#15110d] hover:bg-[#f7f3ec] flex items-center gap-2"
+                onClick={exportAllCoupons}
+              >
+                <Download className="w-4 h-4" /> Export CSV
               </button>
               {tab === 'coupons' ? (
                 <button
@@ -675,20 +845,59 @@ export default function CouponAdminPanel({
 
       {tab === 'coupons' ? (
         <>
-          <div className="bg-white rounded-lg border shadow-sm p-4 flex flex-col md:flex-row gap-3">
-            <div className="flex items-center gap-2 flex-1">
-              <Search className="w-4 h-4 text-gray-400" />
-              <input className="w-full text-sm outline-none" placeholder="Search code, campaign, description..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          {embedded ? (
+            <PcmCouponSearchBar
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              statusValue={statusFilter}
+              onStatusChange={(v) => setStatusFilter(v as CouponStatusFilter)}
+              typeValue={typeFilter}
+              onTypeChange={setTypeFilter}
+              typeOptions={typeFilterOptions}
+            />
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="search"
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-sm placeholder:text-gray-400 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                  placeholder="Search by name or code..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="relative w-full sm:w-auto">
+                <select
+                  className="appearance-none w-full sm:w-auto min-w-[140px] rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-9 text-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as CouponStatusFilter)}
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="expired">Expired</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              </div>
+              <div className="relative w-full sm:w-auto">
+                <select
+                  className="appearance-none w-full sm:w-auto min-w-[140px] rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-9 text-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20"
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                >
+                  {typeFilterOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              </div>
+              <button className="btn btn-secondary text-xs flex items-center gap-1 shrink-0" onClick={exportAllCoupons}>
+                <Download className="w-4 h-4" /> Export CSV
+              </button>
             </div>
-            <select className="input max-w-[180px]" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <button className="btn btn-secondary text-xs flex items-center gap-1" onClick={exportAllCoupons}>
-              <Download className="w-4 h-4" /> Export CSV
-            </button>
-          </div>
+          )}
 
           <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
             <table className="w-full text-sm">
@@ -715,13 +924,17 @@ export default function CouponAdminPanel({
                   <tr key={coupon.id} className="border-t">
                     <td className="px-4 py-3 font-semibold">{coupon.code}</td>
                     <td className="px-4 py-3">{coupon.campaign_name || '—'}</td>
-                    <td className="px-4 py-3">{coupon.coupon_kind}</td>
+                    <td className="px-4 py-3">{couponTypeLabel(couponTypes, coupon.coupon_type_slug || inferCouponTypeSlug(coupon))}</td>
                     <td className="px-4 py-3">
                       {coupon.coupon_kind === 'FREE_SERVICE'
                         ? coupon.target_custom_label || 'Free Service'
                         : `${coupon.discount_mode === 'PERCENT' ? `${coupon.discount_value}%` : `₹${coupon.discount_value}`}`}
                     </td>
-                    <td className="px-4 py-3">{(parseChannels(coupon.applicable_channels) || ['ALL']).join(', ')}</td>
+                    <td className="px-4 py-3">
+                      {parseChannels(coupon.applicable_channels).length
+                        ? parseChannels(coupon.applicable_channels).join(', ')
+                        : 'All Platforms'}
+                    </td>
                     <td className="px-4 py-3">{coupon.usage_count ?? 0}</td>
                     <td className="px-4 py-3"><span className={coupon.is_active ? 'text-green-700' : 'text-gray-500'}>{coupon.is_active ? 'Active' : 'Inactive'}</span></td>
                     <td className="px-4 py-3">
@@ -762,7 +975,7 @@ export default function CouponAdminPanel({
               <input className="input" type="datetime-local" value={bulkForm.end_at} onChange={(e) => setBulkForm({ ...bulkForm, end_at: e.target.value })} />
             </div>
             <div>
-              <div className="text-xs font-semibold text-gray-600 mb-2">Applicable Platforms</div>
+              <div className="text-xs font-semibold text-gray-600 mb-2">Platforms (select one or more; leave empty for all)</div>
               <ChannelPicker value={bulkForm.applicable_channels} onChange={(next) => setBulkForm({ ...bulkForm, applicable_channels: next })} />
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={bulkForm.first_order_only} onChange={(e) => setBulkForm({ ...bulkForm, first_order_only: e.target.checked })} /> First order only</label>
@@ -1058,19 +1271,42 @@ export default function CouponAdminPanel({
                 <input className="input" placeholder="Coupon Code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} />
                 <input className="input" placeholder="Campaign Name" value={form.campaign_name} onChange={(e) => setForm({ ...form, campaign_name: e.target.value })} />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select className="input" value={form.coupon_kind} onChange={(e) => setForm({ ...form, coupon_kind: e.target.value as CouponForm['coupon_kind'] })}>
-                  <option value="TOTAL_DISCOUNT">Total Discount</option>
-                  <option value="FREE_SERVICE">Free Service</option>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Coupon Type</label>
+                <select
+                  className="input"
+                  value={form.coupon_type_slug}
+                  onChange={(e) => handleCouponTypeChange(e.target.value)}
+                >
+                  {couponTypes.map((t) => (
+                    <option key={t.slug} value={t.slug}>{t.label}</option>
+                  ))}
+                  <option value="__new__">+ Add new type...</option>
                 </select>
-                {form.coupon_kind === 'TOTAL_DISCOUNT' ? (
-                  <select className="input" value={form.discount_mode} onChange={(e) => setForm({ ...form, discount_mode: e.target.value as CouponForm['discount_mode'] })}>
-                    <option value="AMOUNT">Flat Amount (₹)</option>
-                    <option value="PERCENT">Percent (%)</option>
-                  </select>
-                ) : (
-                  <input className="input" placeholder="Free service label" value={form.target_custom_label} onChange={(e) => setForm({ ...form, target_custom_label: e.target.value })} />
-                )}
+                {form.coupon_type_slug === '__new__' ? (
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                    <input
+                      className="input flex-1"
+                      placeholder="New coupon type name"
+                      value={newTypeLabel}
+                      onChange={(e) => setNewTypeLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          createNewCouponType();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary shrink-0"
+                      disabled={addingType || !newTypeLabel.trim()}
+                      onClick={createNewCouponType}
+                    >
+                      {addingType ? 'Adding...' : 'Add Type'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               {form.coupon_kind === 'TOTAL_DISCOUNT' ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1078,7 +1314,9 @@ export default function CouponAdminPanel({
                   <input className="input" placeholder="Min Order Value" value={form.min_order_value} onChange={(e) => setForm({ ...form, min_order_value: e.target.value })} />
                   <input className="input" placeholder="Max Discount Cap (for %)" value={form.max_discount_amount} onChange={(e) => setForm({ ...form, max_discount_amount: e.target.value })} />
                 </div>
-              ) : null}
+              ) : (
+                <input className="input" placeholder="Free service label" value={form.target_custom_label} onChange={(e) => setForm({ ...form, target_custom_label: e.target.value })} />
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input className="input" type="datetime-local" value={form.start_at} onChange={(e) => setForm({ ...form, start_at: e.target.value })} />
                 <input className="input" type="datetime-local" value={form.end_at} onChange={(e) => setForm({ ...form, end_at: e.target.value })} />
@@ -1088,21 +1326,43 @@ export default function CouponAdminPanel({
                 <input className="input" placeholder="Per Customer Limit" value={form.usage_limit_per_customer} onChange={(e) => setForm({ ...form, usage_limit_per_customer: e.target.value })} />
               </div>
               <div>
-                <div className="text-xs font-semibold text-gray-600 mb-2">Platforms (Website / App / Membership / Telecaller)</div>
+                <div className="text-xs font-semibold text-gray-600 mb-2">Platforms (select one or more; leave empty for all)</div>
                 <ChannelPicker value={form.applicable_channels} onChange={(next) => setForm({ ...form, applicable_channels: next })} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <select multiple className="input min-h-[120px]" value={form.applicable_city_ids} onChange={(e) => setForm({ ...form, applicable_city_ids: Array.from(e.target.selectedOptions).map((o) => o.value) })}>
-                  {options.cities?.map((city: any) => (<option key={city.id} value={city.id}>{city.name}</option>))}
-                </select>
-                <select multiple className="input min-h-[120px]" value={form.applicable_workshop_ids} onChange={(e) => setForm({ ...form, applicable_workshop_ids: Array.from(e.target.selectedOptions).map((o) => o.value) })}>
-                  {options.workshops?.map((w: any) => (<option key={w.id} value={w.id}>{w.name}</option>))}
-                </select>
-                <select multiple className="input min-h-[120px]" value={form.applicable_service_type_ids} onChange={(e) => setForm({ ...form, applicable_service_type_ids: Array.from(e.target.selectedOptions).map((o) => o.value) })}>
-                  {options.service_types?.map((s: any) => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                </select>
+                <MultiSelectList
+                  title="Cities"
+                  items={options.cities || []}
+                  selected={form.applicable_city_ids}
+                  onChange={(next) => setForm({ ...form, applicable_city_ids: next })}
+                  getLabel={(city) => city.name}
+                  getValue={(city) => String(city.id)}
+                />
+                <MultiSelectList
+                  title="Service Centers / Workshops"
+                  items={options.workshops || []}
+                  selected={form.applicable_workshop_ids}
+                  onChange={(next) => setForm({ ...form, applicable_workshop_ids: next })}
+                  getLabel={(w) => w.name}
+                  getValue={(w) => String(w.id)}
+                />
+                <MultiSelectList
+                  title="Services"
+                  items={bookableServices}
+                  selected={selectedServiceKeys}
+                  onChange={(keys) => {
+                    const split = splitServiceSelectionKeys(keys);
+                    setForm({
+                      ...form,
+                      applicable_category_ids: split.applicable_category_ids,
+                      applicable_service_type_ids: split.applicable_service_type_ids,
+                    });
+                  }}
+                  getLabel={(item) => bookableServiceLabel(item)}
+                  getValue={(item) => item.key}
+                />
               </div>
-              <p className="text-xs text-gray-500">Leave city/workshop/service selections empty to allow all.</p>
+              <p className="text-xs text-gray-500">Leave city, workshop, or service selections empty to allow all. Pick service categories like Periodic, AC, Brake, Engine.</p>
               <textarea className="input" placeholder="Description shown to customers" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               <div className="flex flex-wrap gap-4 text-sm">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Active</label>

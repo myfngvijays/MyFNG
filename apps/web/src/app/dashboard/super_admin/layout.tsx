@@ -158,6 +158,12 @@ const navigationItems: NavItem[] = [
         icon: Crown,
         description: 'Manage Prime tiers, pricing & benefits',
       },
+      {
+        name: 'Membership Cards',
+        href: '/dashboard/super_admin/membership-cards',
+        icon: Crown,
+        description: 'Animated promo cards, text & screen placements',
+      },
     ],
   },
   {

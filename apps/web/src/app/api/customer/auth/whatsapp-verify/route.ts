@@ -5,6 +5,7 @@ import {
   getSessionCookieName,
   getSessionMaxAgeSeconds,
 } from '@/lib/customer-session';
+import { creditWelcomeBonus } from '@/lib/wallet-service';
 import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
   }
 
   let customerId: string;
+  let isNewCustomer = false;
   const { data: existing } = await supabaseAdmin
     .from('customers')
     .select('id, full_name')
@@ -116,6 +118,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
     }
     customerId = inserted.id;
+    isNewCustomer = true;
+  }
+
+  if (isNewCustomer) {
+    try {
+      await creditWelcomeBonus(supabaseAdmin, customerId);
+    } catch (welcomeErr) {
+      console.error('[whatsapp-verify] welcome bonus failed:', welcomeErr);
+    }
   }
 
   const token = generateSessionToken();

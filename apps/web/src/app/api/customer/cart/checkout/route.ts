@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureWalletAccount, logCustomerEvent, requireCustomer } from '@/lib/customer-api';
+import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
+import {
+  debitWallet,
+  resolveWalletDeduction,
+} from '@/lib/wallet-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,28 +27,37 @@ export async function POST(request: NextRequest) {
   if (!items || items.length === 0) return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
 
   const subtotal = (items || []).reduce((sum: number, x: any) => sum + Number(x.total_price || 0), 0);
-  let walletDeduction = 0;
-  if (useWallet) {
-    const wallet = await ensureWalletAccount(supabaseAdmin, customer.id);
-    walletDeduction = Math.min(Number(wallet.current_balance || 0), subtotal);
-    if (walletDeduction > 0) {
-      const nextBalance = Number(wallet.current_balance || 0) - walletDeduction;
-      await supabaseAdmin.from('wallet_transactions').insert({
-        wallet_account_id: wallet.id,
-        customer_id: customer.id,
-        transaction_type: 'DEBIT',
-        amount: walletDeduction,
-        balance_after: nextBalance,
-        source: 'ORDER_REDEEM',
-        idempotency_key: `checkout:${cart.id}`,
-        metadata: { cart_id: cart.id },
-      });
-      await supabaseAdmin.from('wallet_accounts').update({
-        current_balance: nextBalance,
-        lifetime_debited: Number(wallet.lifetime_debited || 0) + walletDeduction,
-        updated_at: new Date().toISOString(),
-      }).eq('id', wallet.id);
-    }
+  const hasMembership = (items || []).some((x: any) => String(x.item_type || '').toUpperCase() === 'MEMBERSHIP');
+  const channel = hasMembership ? 'MEMBERSHIP' : 'SERVICE';
+
+  const resolved = await resolveWalletDeduction(
+    supabaseAdmin,
+    customer.id,
+    subtotal,
+    channel,
+    useWallet,
+    vehicleNumber || null,
+  );
+
+  if (resolved.blocked && useWallet) {
+    return NextResponse.json({ error: resolved.reason || 'Wallet cannot be used for this vehicle' }, { status: 400 });
+  }
+
+  let walletDeduction = resolved.deduction;
+  if (walletDeduction > 0) {
+    await debitWallet(supabaseAdmin, customer.id, walletDeduction, {
+      source: hasMembership ? 'MEMBERSHIP_REDEEM' : 'ORDER_REDEEM',
+      idempotencyKey: `checkout:${cart.id}`,
+      channel,
+      vehicleNumber: vehicleNumber || null,
+      metadata: {
+        label: hasMembership ? 'Used for Membership Purchase' : 'Used for Service Booking',
+        cart_id: cart.id,
+        subtotal,
+        usage_percent: hasMembership ? 30 : 10,
+        vehicle_number: vehicleNumber || null,
+      },
+    });
   }
 
   const finalAmount = subtotal - walletDeduction;
@@ -82,8 +95,8 @@ export async function POST(request: NextRequest) {
     subtotal,
     walletDeduction,
     finalAmount,
+    channel,
   });
 
-  return NextResponse.json({ success: true, lead, amount_payable: finalAmount });
+  return NextResponse.json({ success: true, lead, amount_payable: finalAmount, wallet_deduction: walletDeduction });
 }
-

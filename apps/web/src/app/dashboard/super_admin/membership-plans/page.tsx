@@ -60,7 +60,17 @@ type PlanRow = {
   app_placements?: AppPlacements;
   benefits?: BenefitRow[];
   legacy?: boolean;
+  accent_color?: string | null;
+  accent_text_color?: string | null;
 };
+
+const DEFAULT_SERVICE_ACCENT = '#023D95';
+const DEFAULT_RSA_ACCENT = '#F97316';
+const DEFAULT_ACCENT_TEXT = '#FFFFFF';
+
+function defaultAccentForType(type: MembershipType | string) {
+  return normalizeMembershipType(type) === 'RSA' ? DEFAULT_RSA_ACCENT : DEFAULT_SERVICE_ACCENT;
+}
 
 const EMPTY_FORM = {
   code: '',
@@ -91,6 +101,21 @@ const EMPTY_FORM = {
   membership_type: 'SERVICE' as MembershipType,
   app_visible: true,
   app_placements: defaultPlacementsForType('SERVICE'),
+  accent_color: DEFAULT_SERVICE_ACCENT,
+  accent_text_color: DEFAULT_ACCENT_TEXT,
+};
+
+const RSA_FORM_DEFAULTS = {
+  tagline: 'Perfect for single-car owners',
+  badge: 'RSA BASIC',
+  period_label: '1 Year · 2 Services',
+  duration_days: 365,
+  footer_note: 'Valid 12 months · 2 RSA service calls included · Linked to registered mobile',
+  total_benefits_value: 2500,
+  price_hero_label: 'YOU PAY ONLY',
+  price_hero_sub: '',
+  second_car_addon_description: 'Same RSA benefits for your second car',
+  accent_color: DEFAULT_RSA_ACCENT,
 };
 
 const EMPTY_BENEFIT = {
@@ -179,10 +204,21 @@ export default function MembershipPlansPage() {
     [form.total_benefits_value, form.price],
   );
 
+  const isRsaForm = normalizeMembershipType(form.membership_type) === 'RSA';
+
   function openAdd(type: MembershipType = 'SERVICE') {
     setEditing(null);
     setForm({
       ...EMPTY_FORM,
+      ...(type === 'RSA'
+        ? {
+            ...RSA_FORM_DEFAULTS,
+            price: 999,
+            original_price: 1299,
+          }
+        : {
+            accent_color: DEFAULT_SERVICE_ACCENT,
+          }),
       membership_type: type,
       app_placements: defaultPlacementsForType(type),
       display_order: rows.length + 1,
@@ -212,7 +248,10 @@ export default function MembershipPlansPage() {
       total_benefits_label: r.total_benefits_label || 'Total Benefits Value',
       save_label: r.save_label || 'You Save',
       price_hero_label: r.price_hero_label || 'YOU PAY ONLY',
-      price_hero_sub: r.price_hero_sub || 'All benefits · One full year · One car',
+      price_hero_sub:
+        normalizeMembershipType(r.membership_type) === 'RSA'
+          ? r.price_hero_sub || ''
+          : r.price_hero_sub || 'All benefits · One full year · One car',
       second_car_addon_price: Number(r.second_car_addon_price || 299),
       second_car_addon_title: r.second_car_addon_title || '2nd Car Add-On',
       second_car_addon_description: r.second_car_addon_description || '',
@@ -223,6 +262,8 @@ export default function MembershipPlansPage() {
       membership_type: normalizeMembershipType(r.membership_type),
       app_visible: r.app_visible !== false,
       app_placements: parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)),
+      accent_color: r.accent_color || defaultAccentForType(r.membership_type),
+      accent_text_color: r.accent_text_color || DEFAULT_ACCENT_TEXT,
     });
     setBenefits(r.benefits || []);
     setBenefitDraft({ ...EMPTY_BENEFIT, display_order: (r.benefits?.length || 0) + 1 });
@@ -235,10 +276,14 @@ export default function MembershipPlansPage() {
     setSaving(true);
     try {
       const url = editing ? `/api/super_admin/membership-plans/${editing.id}` : '/api/super_admin/membership-plans';
+      const payload = {
+        ...form,
+        ...(isRsaForm ? { price_hero_sub: '' } : {}),
+      };
       const res = await fetch(url, {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(formatApiError(json, 'Save failed'));
@@ -264,7 +309,10 @@ export default function MembershipPlansPage() {
           total_benefits_label: created.total_benefits_label || 'Total Benefits Value',
           save_label: created.save_label || 'You Save',
           price_hero_label: created.price_hero_label || 'YOU PAY ONLY',
-          price_hero_sub: created.price_hero_sub || 'All benefits · One full year · One car',
+          price_hero_sub:
+            normalizeMembershipType(created.membership_type) === 'RSA'
+              ? created.price_hero_sub || ''
+              : created.price_hero_sub || 'All benefits · One full year · One car',
           second_car_addon_price: Number(created.second_car_addon_price || 299),
           second_car_addon_title: created.second_car_addon_title || '2nd Car Add-On',
           second_car_addon_description: created.second_car_addon_description || '',
@@ -275,6 +323,8 @@ export default function MembershipPlansPage() {
           membership_type: normalizeMembershipType(created.membership_type),
           app_visible: created.app_visible !== false,
           app_placements: parseAppPlacements(created.app_placements, normalizeMembershipType(created.membership_type)),
+          accent_color: created.accent_color || defaultAccentForType(created.membership_type),
+          accent_text_color: created.accent_text_color || DEFAULT_ACCENT_TEXT,
         });
       } else {
         setModalOpen(false);
@@ -393,6 +443,8 @@ export default function MembershipPlansPage() {
   );
 
   function renderPlanCard(r: PlanRow, legacy = false) {
+    const isRsa = normalizeMembershipType(r.membership_type) === 'RSA';
+    const accent = r.accent_color || defaultAccentForType(r.membership_type);
     return (
       <div key={r.id} className={`rounded-2xl border bg-white shadow-sm overflow-hidden flex flex-col ${legacy ? 'border-gray-100 opacity-90' : 'border-gray-200'}`}>
         <div className="p-4 flex-1">
@@ -419,16 +471,27 @@ export default function MembershipPlansPage() {
               ) : null}
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
+          <div className="mt-3 flex items-baseline gap-2 flex-wrap">
             {r.original_price ? <span className="text-sm text-gray-400 line-through">{inr(Number(r.original_price))}</span> : null}
-            <span className="text-xl font-extrabold text-blue-700">{inr(Number(r.price))}</span>
-            <span className="text-xs text-gray-500">{r.period_label || '/ Year'}</span>
+            <span className="text-xl font-extrabold" style={{ color: accent }}>
+              {inr(Number(r.price))}
+            </span>
+            <span className="text-xs text-gray-500">
+              {isRsa ? String(r.period_label || '').replace(/^\s*\/?\s*/, '') : r.period_label || '/ Year'}
+            </span>
+            {r.accent_color ? (
+              <span
+                className="inline-block h-3 w-3 rounded-full border border-gray-200"
+                style={{ backgroundColor: accent }}
+                title={`Accent ${accent}`}
+              />
+            ) : null}
           </div>
           {r.tagline ? <p className="text-xs italic text-blue-600 mt-2">{r.tagline}</p> : null}
           <p className="text-xs text-gray-500 mt-2">
             {r.benefits?.length || 0} benefits · value {inr(Number(r.total_benefits_value || 0))} · pay {inr(Number(r.price))}
             {!legacy ? ` · 2nd car +${inr(Number(r.second_car_addon_price || 0))}` : ' · not shown in app'}
-            {!legacy ? ` · ${countEnabledPlacements(parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)))} app slots` : ''}
+            {!legacy ? ` · ${countEnabledPlacements(parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)))} value slots` : ''}
           </p>
         </div>
         <div className="border-t border-gray-100 p-3 flex gap-2">
@@ -552,10 +615,22 @@ export default function MembershipPlansPage() {
                       value={form.membership_type}
                       onChange={(e) => {
                         const membership_type = normalizeMembershipType(e.target.value);
+                        const switchingToRsa = membership_type === 'RSA';
                         setForm({
                           ...form,
                           membership_type,
                           app_placements: defaultPlacementsForType(membership_type),
+                          ...(switchingToRsa
+                            ? {
+                                ...RSA_FORM_DEFAULTS,
+                                price_hero_sub: '',
+                                period_label: form.period_label?.replace(/^\s*\/?\s*/, '') || RSA_FORM_DEFAULTS.period_label,
+                              }
+                            : {
+                                price_hero_sub: form.price_hero_sub || 'All benefits · One full year · One car',
+                                period_label: form.period_label?.startsWith('/') ? form.period_label : `/ ${form.period_label || 'year'}`,
+                                accent_color: form.accent_color || DEFAULT_SERVICE_ACCENT,
+                              }),
                         });
                       }}
                     >
@@ -604,8 +679,86 @@ export default function MembershipPlansPage() {
                     <input type="number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: Number(e.target.value) })} />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-600">Period Label</label>
-                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.period_label} onChange={(e) => setForm({ ...form, period_label: e.target.value })} placeholder="/ year" />
+                    <label className="text-xs font-bold text-gray-600">
+                      {isRsaForm ? 'Period · Services Label' : 'Period Label'}
+                    </label>
+                    <input
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                      value={form.period_label}
+                      onChange={(e) => setForm({ ...form, period_label: e.target.value })}
+                      placeholder={isRsaForm ? '15 Years · 30 Services' : '/ year'}
+                    />
+                    {isRsaForm ? (
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Shown below price in the app (e.g. <strong>15 Years · 30 Services</strong>). No leading slash.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-3">
+                  <div className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Card Colors</div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600">Accent Color (header, price box &amp; CTA)</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="color"
+                        className="h-10 w-14 rounded-lg border cursor-pointer"
+                        value={form.accent_color || defaultAccentForType(form.membership_type)}
+                        onChange={(e) => setForm({ ...form, accent_color: e.target.value })}
+                      />
+                      <input
+                        className="flex-1 rounded-lg border px-3 py-2 text-sm font-mono"
+                        value={form.accent_color}
+                        onChange={(e) => setForm({ ...form, accent_color: e.target.value })}
+                        placeholder={defaultAccentForType(form.membership_type)}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600">Text on Accent (header, price, buttons)</label>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <input
+                        type="color"
+                        className="h-10 w-14 rounded-lg border cursor-pointer"
+                        value={form.accent_text_color || DEFAULT_ACCENT_TEXT}
+                        onChange={(e) => setForm({ ...form, accent_text_color: e.target.value })}
+                      />
+                      <input
+                        className="flex-1 min-w-[120px] rounded-lg border px-3 py-2 text-sm font-mono"
+                        value={form.accent_text_color}
+                        onChange={(e) => setForm({ ...form, accent_text_color: e.target.value })}
+                        placeholder={DEFAULT_ACCENT_TEXT}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, accent_text_color: '#FFFFFF' })}
+                        className="rounded-lg border bg-white px-3 py-2 text-xs font-bold text-gray-800 hover:bg-gray-50"
+                      >
+                        White
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, accent_text_color: '#111827' })}
+                        className="rounded-lg border bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800"
+                      >
+                        Dark
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Light accent background? Use <strong>Dark</strong> text. Dark accent? Use <strong>White</strong>.
+                    </p>
+                  </div>
+                  <div
+                    className="rounded-xl px-4 py-3 text-center"
+                    style={{
+                      backgroundColor: form.accent_color || defaultAccentForType(form.membership_type),
+                      color: form.accent_text_color || DEFAULT_ACCENT_TEXT,
+                    }}
+                  >
+                    <div className="text-[10px] font-bold tracking-wider opacity-90">YOU PAY ONLY</div>
+                    <div className="text-2xl font-extrabold mt-1">₹999</div>
+                    <div className="text-xs font-semibold mt-1 opacity-90">Preview text on accent</div>
                   </div>
                 </div>
 
@@ -641,10 +794,18 @@ export default function MembershipPlansPage() {
                       <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.price_hero_label} onChange={(e) => setForm({ ...form, price_hero_label: e.target.value })} />
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-600">Price Hero Subtext</label>
-                    <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.price_hero_sub} onChange={(e) => setForm({ ...form, price_hero_sub: e.target.value })} />
-                  </div>
+                  {isRsaForm ? (
+                    <p className="text-[11px] text-violet-800 bg-violet-50 rounded-lg px-3 py-2 border border-violet-100">
+                      RSA app layout: <strong>{form.price_hero_label || 'YOU PAY ONLY'}</strong> → price →{' '}
+                      <strong>{form.period_label?.replace(/^\s*\/?\s*/, '') || '15 Years · 30 Services'}</strong>.
+                      The extra subtext line is not shown in the app for RSA plans.
+                    </p>
+                  ) : (
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Price Hero Subtext</label>
+                      <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.price_hero_sub} onChange={(e) => setForm({ ...form, price_hero_sub: e.target.value })} />
+                    </div>
+                  )}
                 </div>
 
                 <div>

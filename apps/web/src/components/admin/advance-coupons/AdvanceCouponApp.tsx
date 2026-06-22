@@ -12,7 +12,6 @@ import {
   Bell,
   Settings,
   Sparkles,
-  Plus,
   Layers,
 } from 'lucide-react';
 import './pcm-theme.css';
@@ -118,14 +117,6 @@ export default function AdvanceCouponApp() {
                 if (e.key === 'Enter') applyHeaderSearch();
               }}
             />
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white pcm-btn-primary"
-              onClick={() => setSection('coupons?action=create')}
-            >
-              <Plus className="w-4 h-4" />
-              Create Coupon
-            </button>
           </div>
         </div>
       </div>

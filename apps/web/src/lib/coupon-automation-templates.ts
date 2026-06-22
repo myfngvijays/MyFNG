@@ -16,7 +16,7 @@ export const COUPON_AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     description: 'Auto-assign a welcome coupon when a customer registers on app or web.',
     trigger_type: 'NEW_SIGNUP',
     action_type: 'ASSIGN_COUPON',
-    conditions: { channels: ['WEB', 'MOBILE'] },
+    conditions: { channels: ['WEB', 'ANDROID', 'IOS'] },
     icon: '👋',
     category: 'onboarding',
   },
@@ -66,7 +66,7 @@ export const COUPON_AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     description: 'Auto-apply city-specific coupon for customers in selected cities.',
     trigger_type: 'CHECKOUT_APPLY',
     action_type: 'AUTO_APPLY',
-    conditions: { city_ids: [], channels: ['WEB', 'MOBILE'] },
+    conditions: { city_ids: [], channels: ['WEB', 'ANDROID', 'IOS'] },
     icon: '🏙️',
     category: 'geo',
   },
@@ -86,7 +86,7 @@ export const COUPON_AUTOMATION_TEMPLATES: AutomationTemplate[] = [
     description: 'Auto-apply coupon when cart subtotal crosses a threshold.',
     trigger_type: 'CHECKOUT_APPLY',
     action_type: 'AUTO_APPLY',
-    conditions: { min_order_value: 2000, channels: ['WEB', 'MOBILE'] },
+    conditions: { min_order_value: 2000, channels: ['WEB', 'ANDROID', 'IOS'] },
     icon: '💰',
     category: 'lifecycle',
   },
@@ -109,11 +109,60 @@ export const ACTION_LABELS: Record<string, string> = {
   NOTIFY_CUSTOMER: 'Notify customer (SMS/Push)',
 };
 
+export const AUTOMATION_PLATFORM_CHANNELS = [
+  { id: 'WEB', label: 'Website' },
+  { id: 'ANDROID', label: 'Android App' },
+  { id: 'IOS', label: 'iOS App' },
+  { id: 'MEMBERSHIP', label: 'Membership Checkout' },
+  { id: 'TELECALLER', label: 'Telecaller Panel' },
+] as const;
+
+export const AUTOMATION_CHANNEL_LABELS: Record<string, string> = {
+  WEB: 'Website',
+  ANDROID: 'Android App',
+  IOS: 'iOS App',
+  MOBILE: 'Mobile App',
+  MEMBERSHIP: 'Membership Checkout',
+  TELECALLER: 'Telecaller Panel',
+  ALL: 'All Platforms',
+};
+
+/** Expand legacy MOBILE → Android + iOS for the form. Empty = all platforms. */
+export function channelsForAutomationForm(channels: unknown): string[] {
+  const raw = Array.isArray(channels) ? channels.map((c) => String(c).toUpperCase()) : [];
+  if (!raw.length || raw.includes('ALL')) return [];
+  const out = new Set<string>();
+  for (const ch of raw) {
+    if (ch === 'MOBILE') {
+      out.add('ANDROID');
+      out.add('IOS');
+    } else {
+      out.add(ch);
+    }
+  }
+  return AUTOMATION_PLATFORM_CHANNELS.map((c) => c.id).filter((id) => out.has(id));
+}
+
+export function formatAutomationChannelLabels(channels: unknown): string {
+  const raw = Array.isArray(channels) ? channels.map((c) => String(c).toUpperCase()) : [];
+  if (!raw.length || raw.includes('ALL')) return 'All platforms';
+  const labels = new Set<string>();
+  for (const ch of raw) {
+    if (ch === 'MOBILE') {
+      labels.add(AUTOMATION_CHANNEL_LABELS.ANDROID);
+      labels.add(AUTOMATION_CHANNEL_LABELS.IOS);
+    } else {
+      labels.add(AUTOMATION_CHANNEL_LABELS[ch] || ch);
+    }
+  }
+  return Array.from(labels).join(', ');
+}
+
 export function formatAutomationConditions(conditions: Record<string, unknown>) {
   const parts: string[] = [];
   const channels = conditions.channels;
   if (Array.isArray(channels) && channels.length && !channels.includes('ALL')) {
-    parts.push(`Channels: ${channels.join(', ')}`);
+    parts.push(`Channels: ${formatAutomationChannelLabels(channels)}`);
   }
   if (conditions.inactive_days) parts.push(`Inactive ${conditions.inactive_days}+ days`);
   if (conditions.min_order_value) parts.push(`Min order ₹${conditions.min_order_value}`);

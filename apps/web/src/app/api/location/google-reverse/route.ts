@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         shortLabel: shortLabel || null,
         headerLabel: shortLabel || null,
         pincode: components?.pincode || null,
-        city: components?.city || null,
+        city: components?.city || components?.district || null,
         state: components?.state || null,
         area: components?.area || null,
         building: components?.building || null,

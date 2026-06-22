@@ -109,15 +109,20 @@ export async function POST(request: NextRequest) {
     if (templateKey) {
       const template = COUPON_AUTOMATION_TEMPLATES.find((t) => t.key === templateKey);
       if (!template) return NextResponse.json({ error: 'Unknown template' }, { status: 400 });
+      const customConditions =
+        body?.conditions && typeof body.conditions === 'object' ? body.conditions : {};
       payload = {
         ...payload,
         name: payload.name || template.name,
         description: payload.description || template.description,
         trigger_type: template.trigger_type,
         action_type: template.action_type,
-        conditions: template.conditions,
+        conditions: { ...template.conditions, ...customConditions },
+        coupon_id: body?.coupon_id || null,
         template_key: templateKey,
       };
+    } else if (body?.conditions && typeof body.conditions === 'object') {
+      payload.conditions = body.conditions;
     }
 
     if (!payload.name || !payload.trigger_type || !payload.action_type) {

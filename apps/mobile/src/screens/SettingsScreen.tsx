@@ -36,6 +36,8 @@ import {
 } from '../constants/publicAppData';
 import { COLORS } from '../constants/theme';
 import ReferAndFooter from '../components/ReferAndFooter';
+import WalletScreenContent from '../components/WalletScreenContent';
+import { calculateWalletUsage, fetchWalletVehicleBlocked } from '../lib/wallet';
 import { apiFetch } from '../lib/api';
 import {
   formatMembershipExpiry,
@@ -46,7 +48,7 @@ import {
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
 import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type AppMembershipPlan, type PrimeMembershipDisplay } from '../lib/membershipPlan';
-import { normalizeMembershipType } from '../lib/membershipPlacements';
+import { normalizeMembershipType, isPlacementEnabled } from '../lib/membershipPlacements';
 import { PRIME_VALUE_ADDON, PRIME_VALUE_PRICE } from '../constants/primeMembershipValueCard';
 import PrimeMembershipValueCard, {
   type GuestVehicleForm,
@@ -60,6 +62,8 @@ import {
   consumePendingMembershipCart,
   isMembershipCartItem,
 } from '../lib/membershipCart';
+import { membershipActivateButtonLabel } from '../lib/addMembershipPlanToCart';
+import MembershipPlanCartCard from '../components/MembershipPlanCartCard';
 
 type Props = {
   navigation: any;
@@ -72,6 +76,7 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'profile', label: 'My Profile', icon: 'person' },
   { id: 'addresses', label: 'Your Addresses', icon: 'location' },
   { id: 'membership', label: 'Membership', icon: 'trophy' },
+  { id: 'wallet', label: 'Your Wallet', icon: 'wallet' },
   { id: 'orders', label: 'Order History', icon: 'receipt' },
   { id: 'cart', label: 'Cart', icon: 'cart' },
   { id: 'coupons', label: 'My Coupons', icon: 'pricetag' },
@@ -194,6 +199,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [walletWelcomeExpiresAt, setWalletWelcomeExpiresAt] = useState<string | null>(null);
+  const [useWalletForCart, setUseWalletForCart] = useState(true);
+  const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
+  const [walletBlockReason, setWalletBlockReason] = useState<string | null>(null);
   const [referralCode, setReferralCode] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
@@ -261,9 +270,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [walletRewardPoints, setWalletRewardPoints] = useState(0);
   const [walletEarnedCashback, setWalletEarnedCashback] = useState(0);
   const [walletReferralRewards, setWalletReferralRewards] = useState(0);
-  const [walletAddAmount, setWalletAddAmount] = useState('');
   const [walletTxFilter, setWalletTxFilter] = useState<'ALL' | 'CREDIT' | 'DEBIT'>('ALL');
-  const [walletPromoCode, setWalletPromoCode] = useState('');
   const [orderFilter, setOrderFilter] = useState<'All' | 'Completed' | 'Upcoming' | 'Ongoing' | 'Cancelled'>('All');
   const [orderDetailModal, setOrderDetailModal] = useState<any>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
@@ -379,9 +386,34 @@ export default function SettingsScreen({ navigation, route }: Props) {
     () => Math.max(0, subtotal - couponDiscount),
     [subtotal, couponDiscount],
   );
-  const walletUsed = useMemo(() => Math.min(Number(walletBalance || 0), Math.max(0, subtotal - couponDiscount)), [walletBalance, subtotal, couponDiscount]);
+  const walletChannel = isMembershipOnlyCart ? 'MEMBERSHIP' : 'SERVICE';
+  const payableBeforeWallet = useMemo(
+    () => Math.max(0, subtotal - couponDiscount),
+    [subtotal, couponDiscount],
+  );
+  const walletUsed = useMemo(() => {
+    if (!useWalletForCart || !isLoggedIn || walletVehicleBlocked) return 0;
+    return calculateWalletUsage(payableBeforeWallet, Number(walletBalance || 0), walletChannel, walletVehicleBlocked);
+  }, [useWalletForCart, isLoggedIn, payableBeforeWallet, walletBalance, walletChannel, walletVehicleBlocked]);
+  const walletMaxUsable = useMemo(() => {
+    if (!isLoggedIn || walletVehicleBlocked || payableBeforeWallet <= 0) return 0;
+    return calculateWalletUsage(payableBeforeWallet, Number(walletBalance || 0), walletChannel, walletVehicleBlocked);
+  }, [isLoggedIn, payableBeforeWallet, walletBalance, walletChannel, walletVehicleBlocked]);
+  const membershipActivateLabel = useMemo(
+    () => membershipActivateButtonLabel(cartMembershipItems[0]?.metadata?.membership_type),
+    [cartMembershipItems],
+  );
+
+  useEffect(() => {
+    if (!isMembershipOnlyCart) return;
+    setCartCouponResult(null);
+    setCoupon('');
+  }, [isMembershipOnlyCart]);
   const referralUsed = useMemo(() => 0, []);
-  const finalAmount = useMemo(() => Math.max(0, subtotal - couponDiscount - walletUsed - referralUsed), [subtotal, couponDiscount, walletUsed, referralUsed]);
+  const finalAmount = useMemo(
+    () => Math.max(0, payableBeforeWallet - walletUsed - referralUsed),
+    [payableBeforeWallet, walletUsed, referralUsed],
+  );
   const formattedCartDate = useMemo(
     () =>
       cartDate.toLocaleDateString('en-IN', {
@@ -629,15 +661,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
         return;
       }
       const { latitude, longitude } = (position as any).coords;
-      const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
-      const p = (places && places[0]) || {};
-      setPickupForm((prev) => ({
-        ...prev,
-        line1: prev.line1 || String((p as any).name || (p as any).street || '').trim(),
-        line2: prev.line2 || String((p as any).district || (p as any).subregion || '').trim(),
-        city: prev.city || String((p as any).city || (p as any).subregion || '').trim(),
-        pincode: prev.pincode || String((p as any).postalCode || '').trim(),
-      }));
+      await fillAddressFieldsFromCoords(latitude, longitude, (fields) => {
+        setPickupForm((prev) => ({
+          ...prev,
+          line1: prev.line1 || fields.line1 || prev.line1,
+          line2: prev.line2 || fields.line2 || fields.area || prev.line2,
+          city: prev.city || fields.city || prev.city,
+          pincode: prev.pincode || fields.pincode || prev.pincode,
+        }));
+      });
     } catch (_err) {
       Alert.alert('Location', 'Unable to autofill address. Please enter manually.');
     } finally {
@@ -762,7 +794,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
       setOrders(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []);
       setCartLeads(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []);
-      setWalletBalance(Number(walletRes?.wallet?.current_balance || 0));
+      setWalletBalance(Number(walletRes?.wallet?.spendable_balance ?? walletRes?.wallet?.current_balance ?? 0));
+      setWalletWelcomeExpiresAt(walletRes?.wallet?.welcome_bonus_expires_at || null);
+      if (Array.isArray(walletRes?.transactions)) {
+        setWalletTransactions(walletRes.transactions);
+      }
+      setWalletEarnedCashback(Number(walletRes?.totals?.earned_cashback || 0));
+      setWalletReferralRewards(Number(walletRes?.totals?.referral_rewards || 0));
+      setWalletRewardPoints(Number(walletRes?.totals?.reward_points || 0));
       setReferralCode(String(referralRes?.code?.code || ''));
       if (membershipRes?.membership) {
         setCurrentMembership(membershipRes.membership);
@@ -812,6 +851,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           setCartServerCart(null);
           setShowAddAddress(false);
           setWalletBalance(0);
+          setWalletWelcomeExpiresAt(null);
           setReferralCode('');
           setDismissedVehicleKeys([]);
           return;
@@ -936,6 +976,36 @@ export default function SettingsScreen({ navigation, route }: Props) {
       })),
     [allAssociatedVehicles],
   );
+
+  const walletCheckPlate = useMemo(() => {
+    const fromSelected = String(selectedVehicle?.vehicle_number || '').trim().toUpperCase();
+    if (fromSelected) return fromSelected;
+    const fromGuest = membershipGuestForm.vehicleNumber.trim().toUpperCase();
+    if (fromGuest) return fromGuest;
+    const fromMembership = membershipVehicleOptions.find((v) => v.key === membershipPrimaryVehicleKey);
+    return String(fromMembership?.vehicle_number || '').trim().toUpperCase();
+  }, [
+    selectedVehicle?.vehicle_number,
+    membershipGuestForm.vehicleNumber,
+    membershipPrimaryVehicleKey,
+    membershipVehicleOptions,
+  ]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !walletCheckPlate) {
+      setWalletVehicleBlocked(false);
+      setWalletBlockReason(null);
+      return;
+    }
+    let cancelled = false;
+    fetchWalletVehicleBlocked(apiFetch, walletCheckPlate).then((res) => {
+      if (!cancelled) {
+        setWalletVehicleBlocked(res.blocked);
+        setWalletBlockReason(res.reason || null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [isLoggedIn, walletCheckPlate]);
 
   const membershipLinkedVehicles = useMemo(() => {
     if (!currentMembership || !hasActiveMembership) {
@@ -1281,15 +1351,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const txRes = await apiFetch<any>('/api/customer/wallet/transactions').catch(() => null);
-        const txs: any[] = Array.isArray(txRes?.transactions) ? txRes.transactions : [];
+        const walletRes = await apiFetch<any>('/api/customer/wallet').catch(() => null);
+        const txs: any[] = Array.isArray(walletRes?.transactions) ? walletRes.transactions : [];
         if (!cancelled) {
           setWalletTransactions(txs);
-          const credits = txs.filter((t: any) => t.transaction_type === 'CREDIT');
-          const cashback = credits.filter((t: any) => String(t.source || '').includes('CASHBACK')).reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
-          const referral = credits.filter((t: any) => String(t.source || '').includes('REFERRAL')).reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
-          setWalletEarnedCashback(cashback);
-          setWalletReferralRewards(referral);
+          setWalletBalance(Number(walletRes?.wallet?.spendable_balance ?? walletRes?.wallet?.current_balance ?? 0));
+          setWalletWelcomeExpiresAt(walletRes?.wallet?.welcome_bonus_expires_at || null);
+          setWalletEarnedCashback(Number(walletRes?.totals?.earned_cashback || 0));
+          setWalletReferralRewards(Number(walletRes?.totals?.referral_rewards || 0));
+          setWalletRewardPoints(Number(walletRes?.totals?.reward_points || 0));
         }
       } catch (_e) { /* keep UI usable */ }
     })();
@@ -1441,7 +1511,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           : undefined;
         const settingsPlans = pubPlans.filter(
           (plan) =>
-            plan.appPlacements.settings_page !== false &&
+            isPlacementEnabled(plan.appPlacements, 'settings_page') &&
             (!membershipTypeFilter || plan.membershipType === membershipTypeFilter),
         );
         const visiblePlans = settingsPlans.length > 0 ? settingsPlans : pubPlans;
@@ -1710,7 +1780,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: planId, add_second_car: addSecondCar }),
+        body: JSON.stringify({
+          plan_id: planId,
+          add_second_car: addSecondCar,
+          use_wallet: useWalletForCart && !walletVehicleBlocked,
+          vehicle_number: primarySnapshot?.vehicle_number || null,
+          second_vehicle_number: secondSnapshot?.vehicle_number || null,
+        }),
       });
 
       if (!orderRes?.order_id) {
@@ -1736,6 +1812,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           razorpay_payment_id: paymentResult.razorpay_payment_id,
           razorpay_order_id: paymentResult.razorpay_order_id,
           razorpay_signature: paymentResult.razorpay_signature,
+          wallet_deduction: Number(orderRes?.wallet_deduction || 0),
         }),
       });
 
@@ -2003,7 +2080,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         address: String(googleData?.address || ''),
         shortLabel: String(googleData?.shortLabel || ''),
         pincode: String(googleData?.pincode || ''),
-        city: String(googleData?.city || ''),
+        city: String(googleData?.city || googleData?.district || ''),
         state: String(googleData?.state || ''),
         area: String(googleData?.area || ''),
         building: String(googleData?.building || ''),
@@ -2017,15 +2094,68 @@ export default function SettingsScreen({ navigation, route }: Props) {
     if (!fallbackRes.ok) {
       throw new Error(String(fallbackData?.error || googleData?.error || 'Unable to fetch nearby address.'));
     }
+    const displayName = String(fallbackData?.displayName || '');
+    const shortLabel = String(fallbackData?.shortLabel || '');
+    const parsed = parseReverseAddress(displayName, shortLabel);
     return {
-      address: String(fallbackData?.displayName || ''),
-      shortLabel: String(fallbackData?.shortLabel || ''),
-      pincode: '',
-      city: '',
-      state: '',
-      area: '',
+      address: displayName,
+      shortLabel,
+      pincode: String(fallbackData?.pincode || parsed.pincode || ''),
+      city: String(fallbackData?.city || parsed.city || ''),
+      state: String(fallbackData?.state || parsed.state || ''),
+      area: String(fallbackData?.area || parsed.area || shortLabel || ''),
       building: '',
     };
+  };
+
+  const fillAddressFieldsFromCoords = async (
+    latitude: number,
+    longitude: number,
+    apply: (fields: {
+      area?: string;
+      city?: string;
+      state?: string;
+      pincode?: string;
+      building?: string;
+      line1?: string;
+      line2?: string;
+    }) => void,
+  ) => {
+    const reverseAddress = await fetchReverseAddress(latitude, longitude);
+    apply({
+      area: reverseAddress.area || undefined,
+      city: reverseAddress.city || undefined,
+      state: reverseAddress.state || undefined,
+      pincode: reverseAddress.pincode || undefined,
+      building: reverseAddress.building || undefined,
+      line2: reverseAddress.area || undefined,
+      line1: reverseAddress.building || undefined,
+    });
+
+    const needsCityOrPin = !reverseAddress.city || !reverseAddress.pincode;
+    if (needsCityOrPin) {
+      const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
+      apply({
+        area: reverseAddress.area || parsed.area || undefined,
+        city: reverseAddress.city || parsed.city || undefined,
+        pincode: reverseAddress.pincode || parsed.pincode || undefined,
+        state: reverseAddress.state || parsed.state || undefined,
+      });
+    }
+
+    try {
+      const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const p = (places && places[0]) || {};
+      apply({
+        line1: String((p as any).name || (p as any).street || '').trim() || undefined,
+        line2: String((p as any).district || (p as any).subregion || (p as any).street || '').trim() || undefined,
+        city: String((p as any).city || (p as any).subregion || '').trim() || undefined,
+        pincode: String((p as any).postalCode || '').replace(/\D/g, '').slice(0, 6) || undefined,
+        state: String((p as any).region || '').trim() || undefined,
+      });
+    } catch {
+      // expo geocode is best-effort
+    }
   };
 
   const handleFetchCurrentLocation = async () => {
@@ -2100,21 +2230,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setGeoPoint({ latitude, longitude });
 
       try {
-        const reverseAddress = await fetchReverseAddress(latitude, longitude);
-        if (reverseAddress.pincode) setNewAddrPincode(reverseAddress.pincode);
-        if (reverseAddress.city) setNewAddrCity(reverseAddress.city);
-        if (reverseAddress.state) setNewAddrState(reverseAddress.state);
-        if (reverseAddress.area) {
-          setNewAddrArea(reverseAddress.area);
-        } else {
-          const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
-          if (parsed.area) setNewAddrArea(parsed.area);
-        }
-        if (!reverseAddress.pincode) {
-          const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
-          if (parsed.pincode) setNewAddrPincode(parsed.pincode);
-          if (!reverseAddress.city && parsed.city) setNewAddrCity(parsed.city);
-        }
+        await fillAddressFieldsFromCoords(latitude, longitude, (fields) => {
+          if (fields.area) setNewAddrArea((prev) => prev || fields.area || '');
+          if (fields.city) setNewAddrCity((prev) => prev || fields.city || '');
+          if (fields.state) setNewAddrState((prev) => prev || fields.state || '');
+          if (fields.pincode) setNewAddrPincode((prev) => prev || fields.pincode || '');
+          if (fields.building) setNewAddrLine2((prev) => prev || fields.building || '');
+        });
       } catch (revErr: any) {
         Alert.alert(
           'Location captured',
@@ -2365,6 +2487,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
         ? finalAmount
         : Number(cartServerCart?.grand_total || subtotal || 0);
       const payload = {
+        subtotal: Number(subtotal || bookingAmount),
+        discount_amount: Number(cartCouponResult?.discount_amount || 0),
+        use_wallet: useWalletForCart && !walletVehicleBlocked,
         lead: {
           lead_number: leadNumber,
           created_from: 'MOBILE_APP',
@@ -2395,13 +2520,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
           discount_amount: Number(cartCouponResult?.discount_amount || 0),
         },
       };
-      const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
+      const json = await apiFetch<any>('/api/customer/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
       try {
         for (const it of cartItems) {
           if (it?.id) {
@@ -2482,7 +2605,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         secondSnapshot = { vehicle_number: sNum, make: sMake, model: sModel, vehicle_id: secondVehicleId };
       }
 
-      const couponCode = cartCouponResult?.coupon?.code || null;
+      const couponCode = null;
       const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2490,6 +2613,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
           plan_id: planId,
           add_second_car: addSecondCar,
           coupon_code: couponCode,
+          use_wallet: useWalletForCart && !walletVehicleBlocked,
+          vehicle_number: primarySnapshot.vehicle_number || null,
+          second_vehicle_number: secondSnapshot?.vehicle_number || null,
         }),
       });
 
@@ -2520,6 +2646,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           coupon_id: cartCouponResult?.coupon?.id || orderRes?.coupon_meta?.coupon_id || null,
           coupon_meta: orderRes?.coupon_meta || cartCouponResult?.coupon_meta || null,
           discount_amount: orderRes?.discount_amount || cartCouponResult?.discount_amount || 0,
+          wallet_deduction: Number(orderRes?.wallet_deduction || 0),
         }),
       });
 
@@ -2593,7 +2720,22 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const serviceNames = draft.serviceNames ? Object.values(draft.serviceNames).join(', ') : 'CAR_SERVICE';
       const totalDraftPrice = draft.servicePrices ? Object.values(draft.servicePrices).reduce((s, p) => s + p, 0) : 0;
 
+      const draftPayable = Math.max(0, totalDraftPrice);
+      const draftPlate = draft.vehicleNumber?.trim().toUpperCase() || '';
+      let draftVehicleBlocked = walletVehicleBlocked;
+      if (draftPlate && draftPlate !== walletCheckPlate) {
+        const check = await fetchWalletVehicleBlocked(apiFetch, draftPlate);
+        draftVehicleBlocked = check.blocked;
+      }
+      const draftWalletUsed = isLoggedIn && useWalletForCart && !draftVehicleBlocked
+        ? calculateWalletUsage(draftPayable, Number(walletBalance || 0), 'SERVICE', draftVehicleBlocked)
+        : 0;
+      const draftFinal = Math.max(0, draftPayable - draftWalletUsed);
+
       const payload = {
+        subtotal: draftPayable,
+        discount_amount: 0,
+        use_wallet: isLoggedIn && useWalletForCart && !draftVehicleBlocked,
         lead: {
           lead_number: leadNumber,
           created_from: 'MOBILE_APP',
@@ -2616,7 +2758,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           address: draft.pickupAddress || null,
           customer_address: draft.pickupAddress || null,
           preferred_slot_start: `${draft.pickupDate}T${draft.pickupTime}:00`,
-          estimated_amount: totalDraftPrice > 0 ? totalDraftPrice : null,
+          estimated_amount: draftFinal > 0 ? draftFinal : null,
           payment_mode: draft.paymentMethod || 'pay_later',
           payment_status: (draft.paymentMethod || 'pay_later') === 'pay_now' ? 'PENDING' : 'PENDING_AT_SERVICE',
           lead_priority: 'NORMAL',
@@ -2624,13 +2766,22 @@ export default function SettingsScreen({ navigation, route }: Props) {
         },
       };
 
-      const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+      const json = isLoggedIn
+        ? await apiFetch<any>('/api/customer/bookings/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        : await (async () => {
+            const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lead: payload.lead }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data?.error || 'Failed to create booking');
+            return data;
+          })();
 
       await removeBookingDraft(draft.id);
       setCartDrafts((prev) => prev.filter((d) => d.id !== draft.id));
@@ -3715,6 +3866,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 ))}
               </ScrollView>
             ) : null}
+            {isPrimeCurrent ? (
             <PrimeMembershipValueCard
             isLoggedIn={isLoggedIn}
             isActive={isPrimeCurrent}
@@ -3756,240 +3908,30 @@ export default function SettingsScreen({ navigation, route }: Props) {
             addonDescription={(primeUI.addOn as any)?.description}
             footerNote={primeUI.footerNote}
             membershipType={primeUI.membershipType}
+            accentColor={primeUI.accentColor}
+            accentTextColor={primeUI.accentTextColor}
           />
+            ) : (
+              <MembershipPlanCartCard plan={primeUI} navigation={navigation} />
+            )}
           </View>
         );
       }
-      case 'Your Wallet': {
-        const bal = isLoggedIn ? Number(walletBalance || 0) : 0;
-        const pts = isLoggedIn ? walletRewardPoints : 0;
-        const ecb = isLoggedIn ? walletEarnedCashback : 0;
-        const rr = isLoggedIn ? walletReferralRewards : 0;
-        const filteredTx = walletTransactions.filter((t: any) =>
-          walletTxFilter === 'ALL' ? true : t.transaction_type === walletTxFilter
-        );
+      case 'Your Wallet':
         return (
-          <ScrollView style={styles.subWrap} showsVerticalScrollIndicator={false}>
-            {/* ── Screen 1: Balance Card ── */}
-            <View style={wstyles.balanceCard}>
-              <View style={wstyles.balanceCardInner}>
-                <View>
-                  <Text style={wstyles.balanceLabel}>AVAILABLE BALANCE</Text>
-                  <Text style={wstyles.balanceAmount}>₹{bal.toLocaleString('en-IN')}</Text>
-                </View>
-                <View style={wstyles.walletIconCircle}>
-                  <Ionicons name="wallet" size={22} color="#FFFFFF" />
-                </View>
-              </View>
-              <View style={wstyles.rewardRow}>
-                <View style={wstyles.rewardPtsWrap}>
-                  <Ionicons name="star" size={14} color="#FFD700" />
-                  <Text style={wstyles.rewardPtsLabel}>REWARD POINTS</Text>
-                </View>
-                <Text style={wstyles.rewardPtsValue}>{pts} Pts</Text>
-                <TouchableOpacity>
-                  <Text style={wstyles.convertBtn}>CONVERT</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* ── Screen 2: Add Money ── */}
-            <View style={wstyles.sectionCard}>
-              <View style={wstyles.sectionRow}>
-                <Ionicons name="add-circle-outline" size={20} color="#1A3C6E" />
-                <Text style={wstyles.sectionRowTitle}>Add Money</Text>
-              </View>
-              <View style={wstyles.addMoneyInputRow}>
-                <Text style={wstyles.rupeePrefix}>₹</Text>
-                <TextInput
-                  style={wstyles.addMoneyInput}
-                  placeholder="Enter Amount"
-                  placeholderTextColor="#999"
-                  keyboardType="numeric"
-                  value={walletAddAmount}
-                  onChangeText={setWalletAddAmount}
-                />
-              </View>
-              <View style={wstyles.quickAmountRow}>
-                {[100, 500, 1000].map((amt) => (
-                  <TouchableOpacity key={amt} style={wstyles.quickAmountChip}
-                    onPress={() => setWalletAddAmount(String(amt))}>
-                    <Text style={wstyles.quickAmountText}>+₹{amt}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={wstyles.payMethodRow}>
-                <TouchableOpacity style={[wstyles.payMethodChip, wstyles.payMethodActive]}>
-                  <Ionicons name="phone-portrait-outline" size={14} color="#1A3C6E" />
-                  <Text style={wstyles.payMethodTextActive}>UPI</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={wstyles.payMethodChip}>
-                  <Ionicons name="card-outline" size={14} color="#999" />
-                  <Text style={wstyles.payMethodText}>Card</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={wstyles.payLabel}>PAY VIA UPI / CARD</Text>
-              <TouchableOpacity style={wstyles.proceedBtn} activeOpacity={0.8}>
-                <Text style={wstyles.proceedBtnText}>Proceed to Add Money</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* ── Screen 3: Cashback & Points ── */}
-            <View style={wstyles.sectionCard}>
-              <View style={wstyles.cashbackRow}>
-                <View style={wstyles.cashbackBox}>
-                  <View style={[wstyles.cashbackIcon, { backgroundColor: '#E8F5E9' }]}>
-                    <Ionicons name="gift" size={20} color="#4CAF50" />
-                  </View>
-                  <Text style={wstyles.cashbackLabel}>EARNED CASHBACK</Text>
-                  <Text style={wstyles.cashbackAmount}>₹{ecb.toLocaleString('en-IN')}</Text>
-                  <Text style={wstyles.cashbackSub}>Till now</Text>
-                </View>
-                <View style={wstyles.cashbackBox}>
-                  <View style={[wstyles.cashbackIcon, { backgroundColor: '#E3F2FD' }]}>
-                    <Ionicons name="people" size={20} color="#2196F3" />
-                  </View>
-                  <Text style={wstyles.cashbackLabel}>REFERRAL REWARDS</Text>
-                  <Text style={wstyles.cashbackAmount}>₹{rr.toLocaleString('en-IN')}</Text>
-                  <Text style={wstyles.cashbackSub}>Currently active</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Points Conversion */}
-            <TouchableOpacity style={wstyles.sectionCard} activeOpacity={0.7}>
-              <View style={wstyles.conversionRow}>
-                <View style={wstyles.conversionLeft}>
-                  <View style={[wstyles.cashbackIcon, { backgroundColor: '#FFF3E0' }]}>
-                    <Ionicons name="swap-horizontal" size={20} color="#FF9800" />
-                  </View>
-                  <View>
-                    <Text style={wstyles.conversionTitle}>Points Conversion</Text>
-                    <Text style={wstyles.conversionSub}>Convert Points → Wallet Money</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#999" />
-              </View>
-            </TouchableOpacity>
-
-            {/* Offers & Bonuses */}
-            <View style={wstyles.sectionCard}>
-              <View style={wstyles.sectionRow}>
-                <Ionicons name="pricetag" size={18} color="#1A3C6E" />
-                <Text style={wstyles.sectionRowTitle}>Offers & Bonuses</Text>
-              </View>
-              <View style={wstyles.offerRow}>
-                <View style={wstyles.offerLeft}>
-                  <View style={[wstyles.offerBadge, { backgroundColor: '#FFEBEE' }]}>
-                    <Ionicons name="gift" size={16} color="#E53935" />
-                  </View>
-                  <View>
-                    <Text style={wstyles.offerTag}>GET50</Text>
-                    <Text style={wstyles.offerDesc}>Flat ₹50 Cashback</Text>
-                  </View>
-                </View>
-                <TouchableOpacity>
-                  <Text style={wstyles.offerApply}>APPLY</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={wstyles.promoRow}>
-                <TextInput
-                  style={wstyles.promoInput}
-                  placeholder="Enter Promo Code"
-                  placeholderTextColor="#999"
-                  value={walletPromoCode}
-                  onChangeText={setWalletPromoCode}
-                />
-                <TouchableOpacity>
-                  <Text style={wstyles.offerApply}>APPLY</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* ── Screen 4: Redeem / Use Balance ── */}
-            <View style={wstyles.sectionCard}>
-              <Text style={wstyles.redeemHeader}>REDEEM / USE BALANCE</Text>
-              <View style={wstyles.redeemRow}>
-                <TouchableOpacity style={wstyles.redeemOption}>
-                  <Ionicons name="construct" size={24} color="#1A3C6E" />
-                  <Text style={wstyles.redeemLabel}>Pay for Service</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[wstyles.redeemOption, wstyles.redeemOptionActive]}>
-                  <Ionicons name="ribbon" size={24} color="#1A3C6E" />
-                  <Text style={wstyles.redeemLabelActive}>Buy Membership</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Withdraw to Bank */}
-            <View style={wstyles.sectionCard}>
-              <View style={wstyles.withdrawRow}>
-                <View style={[wstyles.cashbackIcon, { backgroundColor: '#E8EAF6' }]}>
-                  <Ionicons name="business" size={20} color="#3F51B5" />
-                </View>
-                <View>
-                  <Text style={wstyles.withdrawTitle}>Withdraw to Bank</Text>
-                  <Text style={wstyles.withdrawSub}>Transfer to Bank / UPI</Text>
-                </View>
-              </View>
-              <TouchableOpacity style={wstyles.withdrawBtn} activeOpacity={0.8}>
-                <Text style={wstyles.withdrawBtnText}>Withdraw Money  →</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* ── Screen 5: Transactions ── */}
-            <View style={wstyles.sectionCard}>
-              <View style={wstyles.txHeaderRow}>
-                <View style={[wstyles.cashbackIcon, { backgroundColor: '#FFF3E0' }]}>
-                  <Ionicons name="time" size={20} color="#FF9800" />
-                </View>
-                <Text style={wstyles.txHeaderTitle}>Transactions</Text>
-              </View>
-              <View style={wstyles.txFilterRow}>
-                {(['ALL', 'CREDIT', 'DEBIT'] as const).map((f) => (
-                  <TouchableOpacity key={f}
-                    style={[wstyles.txFilterChip, walletTxFilter === f && wstyles.txFilterChipActive]}
-                    onPress={() => setWalletTxFilter(f)}>
-                    <Text style={[wstyles.txFilterText, walletTxFilter === f && wstyles.txFilterTextActive]}>{f}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {filteredTx.length === 0 ? (
-                <Text style={wstyles.txEmpty}>No transactions yet.</Text>
-              ) : (
-                filteredTx.slice(0, 20).map((tx: any, idx: number) => {
-                  const isCredit = tx.transaction_type === 'CREDIT';
-                  const src = String(tx.source || '');
-                  let icon: keyof typeof Ionicons.glyphMap = isCredit ? 'add-circle' : 'remove-circle';
-                  let iconColor = isCredit ? '#4CAF50' : '#E53935';
-                  let label = isCredit ? 'Added to Wallet' : 'Payment';
-                  if (src.includes('REFERRAL')) { icon = 'people'; iconColor = '#FF9800'; label = 'Referral Bonus'; }
-                  else if (src.includes('CASHBACK')) { icon = 'gift'; iconColor = '#4CAF50'; label = 'Cashback'; }
-                  else if (src.includes('SERVICE') || src.includes('BOOKING')) { icon = 'construct'; iconColor = '#E53935'; label = tx.metadata?.service_name || 'Service Payment'; }
-                  const dt = tx.created_at ? new Date(tx.created_at) : null;
-                  return (
-                    <View key={tx.id || idx} style={wstyles.txRow}>
-                      <View style={[wstyles.txIconWrap, { backgroundColor: `${iconColor}15` }]}>
-                        <Ionicons name={icon} size={20} color={iconColor} />
-                      </View>
-                      <View style={wstyles.txInfo}>
-                        <Text style={wstyles.txLabel}>{label}</Text>
-                        <Text style={wstyles.txDate}>
-                          {dt ? `${dt.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })} • Success` : ''}
-                        </Text>
-                      </View>
-                      <Text style={[wstyles.txAmount, { color: isCredit ? '#4CAF50' : '#E53935' }]}>
-                        {isCredit ? '+' : '-'} ₹{Number(tx.amount || 0).toLocaleString('en-IN')}
-                      </Text>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-            <View style={{ height: 30 }} />
-          </ScrollView>
+          <WalletScreenContent
+            balance={isLoggedIn ? Number(walletBalance || 0) : 0}
+            rewardPoints={isLoggedIn ? walletRewardPoints : 0}
+            earnedCashback={isLoggedIn ? walletEarnedCashback : 0}
+            referralRewards={isLoggedIn ? walletReferralRewards : 0}
+            welcomeBonusExpiresAt={walletWelcomeExpiresAt}
+            transactions={walletTransactions}
+            txFilter={walletTxFilter}
+            onTxFilterChange={setWalletTxFilter}
+            onBookService={() => setActiveSubPage('Cart')}
+            onBuyMembership={() => setActiveSubPage('Membership')}
+          />
         );
-      }
       case 'Refer & Earn':
         return (
           <View style={styles.subWrap}>
@@ -4432,6 +4374,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
         }
 
         const activeDraft = cartDrafts.find((d) => d.id === cartSelectedDraftId) || (cartDrafts.length > 0 ? cartDrafts[0] : null);
+        const draftBlocksCheckout = Boolean(activeDraft && !isMembershipOnlyCart && cartItems.length === 0);
+        const showCartCheckout = cartItems.length > 0 && !draftBlocksCheckout;
         const draftCar = activeDraft?.carModel;
         const displayVehicle = draftCar
           ? { make: draftCar.make, model: draftCar.model_name, vehicle_number: activeDraft?.vehicleNumber || '', fuel_type: draftCar.variant || '' }
@@ -4454,7 +4398,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     {String(displayVehicle?.vehicle_number || '').toUpperCase() || '—'} • {String(displayVehicle?.fuel_type || 'Petrol').toUpperCase()}
                   </Text>
                 </View>
-                {!activeDraft ? (
+                {!draftBlocksCheckout ? (
                   <TouchableOpacity style={cstyles.changeChip} onPress={() => {
                     if (allAssociatedVehicles.length > 1) {
                       setShowVehiclePicker(true);
@@ -4515,13 +4459,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         <View key={draft.id} style={{ position: 'relative' }}>
                           <TouchableOpacity
                             style={[cstyles.resumeCard, isSelected ? cstyles.resumeCardActive : null]}
-                            onPress={() => {
-                              if (!hasService) {
-                                navigation.navigate('PublicBookServiceNow', { resumeDraft: draft });
-                              } else {
-                                setCartSelectedDraftId(draft.id);
-                              }
-                            }}
+                            onPress={() => navigation.navigate('PublicBookServiceNow', { resumeDraft: draft })}
                           >
                             <Text style={cstyles.resumeLeadNumber}>{carLabel || 'DRAFT'}</Text>
                             <Text style={cstyles.resumePlanName} numberOfLines={1}>{serviceName}</Text>
@@ -4625,8 +4563,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
               ) : null}
             </View>
 
-            {!activeDraft ? (
+            {showCartCheckout ? (
             <>
+            {!isMembershipOnlyCart ? (
             <View style={cstyles.sectionCard}>
               <Text style={cstyles.subHeading}>APPLY COUPON</Text>
 
@@ -4693,6 +4632,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               </View>
             </View>
+            ) : null}
 
             {!isMembershipOnlyCart ? (
             <>
@@ -5066,6 +5006,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </>
             ) : null}
 
+            {!isMembershipOnlyCart ? (
+            <>
             <Text style={cstyles.sectionHeading}>PAYMENT MODE</Text>
             <View style={cstyles.modeRow}>
               <TouchableOpacity
@@ -5085,29 +5027,89 @@ export default function SettingsScreen({ navigation, route }: Props) {
             </View>
             </>
             ) : null}
+            </>
+            ) : null}
 
-              <View style={cstyles.sectionCard}>
+            {isLoggedIn && payableBeforeWallet > 0 ? (
+              <View style={[cstyles.sectionCard, isMembershipOnlyCart ? cstyles.checkoutCardCompact : null]}>
+                <View style={cstyles.walletCardHeader}>
+                  <View style={cstyles.walletIconWrap}>
+                    <Ionicons name="wallet-outline" size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={cstyles.walletHeaderText}>
+                    <Text style={cstyles.walletTitle}>Wallet Balance</Text>
+                    <Text style={cstyles.walletHint}>
+                      {isMembershipOnlyCart ? 'Up to 30% on membership' : 'Up to 10% on this order'}
+                    </Text>
+                  </View>
+                  <View style={cstyles.walletToggleWrap}>
+                    <Switch
+                      style={Platform.OS === 'ios' ? cstyles.walletSwitch : undefined}
+                      value={useWalletForCart && !walletVehicleBlocked}
+                      onValueChange={setUseWalletForCart}
+                      disabled={walletVehicleBlocked}
+                      trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
+                      thumbColor="#FFFFFF"
+                      ios_backgroundColor="#CBD5E1"
+                    />
+                  </View>
+                </View>
+
+                <View style={cstyles.walletStatsRow}>
+                  <View style={cstyles.walletStatBox}>
+                    <Text style={cstyles.walletStatLabel}>Available</Text>
+                    <Text style={cstyles.walletStatValue}>₹{Math.round(Number(walletBalance || 0)).toLocaleString('en-IN')}</Text>
+                  </View>
+                  <View style={cstyles.walletStatDivider} />
+                  <View style={cstyles.walletStatBox}>
+                    <Text style={cstyles.walletStatLabel}>Max usable</Text>
+                    <Text style={[cstyles.walletStatValue, cstyles.walletStatValueAccent]}>
+                      ₹{Math.round(walletMaxUsable).toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                </View>
+
+                {useWalletForCart && walletUsed > 0 ? (
+                  <View style={cstyles.walletAppliedPill}>
+                    <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                    <Text style={cstyles.walletAppliedText}>
+                      {isMembershipOnlyCart
+                        ? `₹${Math.round(walletUsed).toLocaleString('en-IN')} applied · Pay ₹${Math.round(finalAmount).toLocaleString('en-IN')} to activate`
+                        : `₹${Math.round(walletUsed).toLocaleString('en-IN')} will be applied at checkout`}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {walletVehicleBlocked ? (
+                  <Text style={cstyles.walletBlocked}>
+                    {walletBlockReason || 'Wallet cannot be used — this vehicle is linked to another account.'}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+              <View style={[cstyles.sectionCard, isMembershipOnlyCart ? cstyles.checkoutCardCompact : null]}>
                 <Text style={cstyles.summaryTitle}>Price Summary</Text>
                 <View style={cstyles.summaryRow}>
                   <Text style={cstyles.summaryLabel}>{isMembershipOnlyCart ? 'Membership Total' : 'Service Total'}</Text>
-                  <Text style={cstyles.summaryValue}>₹{subtotal.toLocaleString('en-IN')}</Text>
+                  <Text style={cstyles.summaryValue}>₹{Math.round(subtotal).toLocaleString('en-IN')}</Text>
                 </View>
                 {couponDiscount > 0 ? (
                   <View style={cstyles.summaryRow}>
                     <Text style={cstyles.summaryLabel}>Coupon Discount</Text>
-                    <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{Math.round(couponDiscount).toLocaleString('en-IN')}</Text>
+                    <Text style={[cstyles.summaryValue, cstyles.summaryValueDiscount]}>- ₹{Math.round(couponDiscount).toLocaleString('en-IN')}</Text>
                   </View>
                 ) : null}
-                {walletUsed > 0 && !isMembershipOnlyCart ? (
+                {walletUsed > 0 ? (
                   <View style={cstyles.summaryRow}>
-                    <Text style={cstyles.summaryLabel}>Wallet Used</Text>
-                    <Text style={[cstyles.summaryValue, { color: '#16A34A' }]}>- ₹{walletUsed.toLocaleString('en-IN')}</Text>
+                    <Text style={cstyles.summaryLabel}>Wallet Discount</Text>
+                    <Text style={[cstyles.summaryValue, cstyles.summaryValueDiscount]}>- ₹{Math.round(walletUsed).toLocaleString('en-IN')}</Text>
                   </View>
                 ) : null}
                 <View style={[cstyles.summaryRow, cstyles.summaryFinalRow]}>
                   <Text style={cstyles.finalLabel}>Final Amount</Text>
                   <Text style={cstyles.finalValue}>
-                    ₹{(isMembershipOnlyCart ? membershipPayAmount : Math.round(finalAmount)).toLocaleString('en-IN')}
+                    ₹{Math.round(finalAmount).toLocaleString('en-IN')}
                   </Text>
                 </View>
               </View>
@@ -5115,7 +5117,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             ) : null}
 
             {/* Booking Summary from Draft */}
-            {activeDraft && (activeDraft.selectedServices?.length || activeDraft.pickupDate || activeDraft.carModel) ? (
+            {draftBlocksCheckout && (activeDraft.selectedServices?.length || activeDraft.pickupDate || activeDraft.carModel) ? (
               <>
                 <Text style={cstyles.sectionHeading}>BOOKING SUMMARY</Text>
                 <View style={cstyles.sectionCard}>
@@ -5192,6 +5194,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
               </>
             ) : null}
 
+            {(showCartCheckout || draftBlocksCheckout) ? (
+            <>
+            {showCartCheckout ? (
             <View style={cstyles.noteWrap}>
               {!isMembershipOnlyCart ? (
                 <>
@@ -5207,16 +5212,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
               ) : (
                 <View style={cstyles.noteRow}>
                   <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
-                  <Text style={cstyles.noteText}>Apply coupon code above to get discount. Membership activates instantly after successful payment.</Text>
+                  <Text style={cstyles.noteText}>Use wallet balance (up to 30%), then pay the remaining amount to activate membership instantly.</Text>
                 </View>
               )}
             </View>
+            ) : null}
 
             <TouchableOpacity
               style={cstyles.bookNowBtn}
               disabled={cartBookingLoading}
               onPress={() => {
-                if (activeDraft) {
+                if (draftBlocksCheckout && activeDraft) {
                   navigation.navigate('PublicBookServiceNow', { resumeDraft: activeDraft });
                 } else if (isMembershipOnlyCart) {
                   handleMembershipCartPay();
@@ -5228,13 +5234,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
               <Text style={cstyles.bookNowBtnText}>
                 {cartBookingLoading
                   ? 'Processing...'
-                  : activeDraft
+                  : draftBlocksCheckout
                     ? 'Continue Booking'
                     : isMembershipOnlyCart
-                      ? `Pay Now — ₹${Math.round(membershipPayAmount).toLocaleString('en-IN')}`
+                      ? `${membershipActivateLabel} — ₹${Math.round(finalAmount).toLocaleString('en-IN')}`
                       : 'Proceed to Book'}
               </Text>
             </TouchableOpacity>
+            </>
+            ) : null}
           </View>
         );
       case 'Notifications':
@@ -5552,10 +5560,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
           style={{ flex: 1, transform: [{ translateX: swipeAnim }] }}
           {...panResponder.panHandlers}
         >
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {subPageContent}
-            <ReferAndFooter hideRefer />
-          </ScrollView>
+          {activeSubPage === 'Your Wallet' ? (
+            subPageContent
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {subPageContent}
+              <ReferAndFooter hideRefer />
+            </ScrollView>
+          )}
         </Animated.View>
       ) : (
         renderMain()
@@ -6045,97 +6057,6 @@ const styles = StyleSheet.create({
   refTncItem: { fontSize: 11, fontWeight: '500', color: '#6B7280', lineHeight: 16 },
 });
 
-const wstyles = StyleSheet.create({
-  balanceCard: { borderRadius: 16, overflow: 'hidden', marginBottom: 14 },
-  balanceCardInner: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14,
-    backgroundColor: '#1A3C6E',
-    borderTopLeftRadius: 16, borderTopRightRadius: 16,
-  },
-  balanceLabel: { fontSize: 10, fontWeight: '700', color: '#B0C4DE', letterSpacing: 1 },
-  balanceAmount: { fontSize: 32, fontWeight: '900', color: '#FFFFFF', marginTop: 2 },
-  walletIconCircle: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-  rewardRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D2A52',
-    paddingHorizontal: 20, paddingVertical: 10,
-    borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
-  },
-  rewardPtsWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-  rewardPtsLabel: { fontSize: 9, fontWeight: '700', color: '#B0C4DE', letterSpacing: 0.5 },
-  rewardPtsValue: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', marginRight: 12 },
-  convertBtn: { fontSize: 11, fontWeight: '900', color: '#4FC3F7', letterSpacing: 0.5 },
-
-  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  sectionRowTitle: { fontSize: 15, fontWeight: '700', color: '#1A3C6E' },
-
-  addMoneyInputRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 14, marginBottom: 10 },
-  rupeePrefix: { fontSize: 16, fontWeight: '600', color: '#999', marginRight: 4 },
-  addMoneyInput: { flex: 1, fontSize: 15, fontWeight: '500', color: '#1A1A1A', paddingVertical: 12 },
-  quickAmountRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  quickAmountChip: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: '#F9FAFB' },
-  quickAmountText: { fontSize: 13, fontWeight: '600', color: '#1A3C6E' },
-
-  payMethodRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
-  payMethodChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
-  payMethodActive: { borderColor: '#1A3C6E', backgroundColor: '#EBF0FA' },
-  payMethodText: { fontSize: 12, fontWeight: '600', color: '#999' },
-  payMethodTextActive: { fontSize: 12, fontWeight: '700', color: '#1A3C6E' },
-  payLabel: { fontSize: 9, fontWeight: '700', color: '#999', letterSpacing: 0.5, textAlign: 'center', marginVertical: 8 },
-  proceedBtn: { backgroundColor: '#1A3C6E', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
-  proceedBtnText: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
-
-  cashbackRow: { flexDirection: 'row', gap: 12 },
-  cashbackBox: { flex: 1, alignItems: 'center', paddingVertical: 10 },
-  cashbackIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  cashbackLabel: { fontSize: 8, fontWeight: '700', color: '#999', letterSpacing: 0.5, marginBottom: 4, textAlign: 'center' },
-  cashbackAmount: { fontSize: 22, fontWeight: '900', color: '#1A1A1A' },
-  cashbackSub: { fontSize: 10, fontWeight: '500', color: '#999', marginTop: 2 },
-
-  conversionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  conversionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  conversionTitle: { fontSize: 14, fontWeight: '700', color: '#1A1A1A' },
-  conversionSub: { fontSize: 11, fontWeight: '500', color: '#999' },
-
-  offerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  offerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  offerBadge: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  offerTag: { fontSize: 12, fontWeight: '800', color: '#1A3C6E' },
-  offerDesc: { fontSize: 11, fontWeight: '500', color: '#6B7280' },
-  offerApply: { fontSize: 12, fontWeight: '900', color: '#1A3C6E' },
-  promoRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 4 },
-  promoInput: { flex: 1, fontSize: 13, fontWeight: '500', color: '#1A1A1A', paddingVertical: 8 },
-
-  redeemHeader: { fontSize: 10, fontWeight: '800', color: '#999', letterSpacing: 1, marginBottom: 14 },
-  redeemRow: { flexDirection: 'row', gap: 12 },
-  redeemOption: { flex: 1, alignItems: 'center', paddingVertical: 16, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, gap: 8 },
-  redeemOptionActive: { borderColor: '#1A3C6E', backgroundColor: '#EBF0FA' },
-  redeemLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  redeemLabelActive: { fontSize: 12, fontWeight: '700', color: '#1A3C6E' },
-
-  withdrawRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  withdrawTitle: { fontSize: 14, fontWeight: '700', color: '#1A1A1A' },
-  withdrawSub: { fontSize: 11, fontWeight: '500', color: '#999' },
-  withdrawBtn: { backgroundColor: '#1A3C6E', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  withdrawBtnText: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
-
-  txHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  txHeaderTitle: { fontSize: 16, fontWeight: '800', color: '#1A1A1A' },
-  txFilterRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  txFilterChip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#F3F4F6' },
-  txFilterChipActive: { backgroundColor: '#1A3C6E' },
-  txFilterText: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
-  txFilterTextActive: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-  txEmpty: { fontSize: 13, fontWeight: '500', color: '#999', textAlign: 'center', paddingVertical: 20 },
-  txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  txIconWrap: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  txInfo: { flex: 1 },
-  txLabel: { fontSize: 13, fontWeight: '700', color: '#1A1A1A' },
-  txDate: { fontSize: 11, fontWeight: '500', color: '#999', marginTop: 2 },
-  txAmount: { fontSize: 14, fontWeight: '800' },
-});
-
 const ostyles = StyleSheet.create({
   loginGate: { alignItems: 'center', paddingVertical: 50 },
   lockCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
@@ -6340,13 +6261,59 @@ const cstyles = StyleSheet.create({
   },
   pickupManageText: { fontSize: 12, fontWeight: '800', color: '#1D4ED8' },
 
-  summaryTitle: { fontSize: 24, fontWeight: '800', color: '#111827', marginBottom: 12 },
+  checkoutCardCompact: { paddingVertical: 14, paddingHorizontal: 14 },
+  summaryTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 10 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  summaryLabel: { fontSize: 14, fontWeight: '500', color: '#6B7280' },
-  summaryValue: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  summaryFinalRow: { marginTop: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
-  finalLabel: { fontSize: 28, fontWeight: '800', color: '#111827' },
-  finalValue: { fontSize: 34, fontWeight: '900', color: '#1D4ED8' },
+  summaryLabel: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  summaryValue: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  summaryValueDiscount: { color: '#16A34A' },
+  summaryFinalRow: { marginTop: 2, marginBottom: 0, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  walletCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  walletHeaderText: { flex: 1, minWidth: 0, paddingRight: 4 },
+  walletIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletTitle: { fontSize: 14, fontWeight: '800', color: '#111827' },
+  walletHint: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 2, lineHeight: 15 },
+  walletToggleWrap: { justifyContent: 'center', alignItems: 'center' },
+  walletSwitch: { transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] },
+  walletStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  walletStatBox: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8 },
+  walletStatLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
+  walletStatValue: { fontSize: 16, fontWeight: '800', color: '#111827', marginTop: 3 },
+  walletStatValueAccent: { color: '#1D4ED8' },
+  walletStatDivider: { width: 1, alignSelf: 'stretch', backgroundColor: '#E2E8F0' },
+  walletAppliedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  walletAppliedText: { flex: 1, fontSize: 11, fontWeight: '700', color: '#047857', lineHeight: 15 },
+  walletRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  walletSub: { fontSize: 12, fontWeight: '500', color: '#64748B', marginTop: 3 },
+  walletBlocked: { fontSize: 11, fontWeight: '600', color: '#DC2626', marginTop: 8, lineHeight: 15 },
+  finalLabel: { fontSize: 15, fontWeight: '800', color: '#111827' },
+  finalValue: { fontSize: 20, fontWeight: '900', color: '#1D4ED8' },
 
   noteWrap: { gap: 8, paddingHorizontal: 2 },
   noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },

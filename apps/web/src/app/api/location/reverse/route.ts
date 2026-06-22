@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+function extractNominatimAddress(data: any) {
+  const a = data?.address || {};
+  const pincodeRaw = String(a.postcode || '').replace(/\D/g, '');
+  const pincode = pincodeRaw.length >= 6 ? pincodeRaw.slice(0, 6) : pincodeRaw;
+  const city = String(
+    a.city || a.town || a.village || a.municipality || a.city_district || a.state_district || a.county || '',
+  ).trim();
+  const state = String(a.state || a.region || '').trim();
+  const area = [a.suburb, a.neighbourhood, a.quarter, a.road, a.residential]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  return { pincode, city, state, area };
+}
+
 function buildShortLabel(data: any): string {
   const a = data?.address || {};
   const district = a?.state_district || a?.city_district || a?.city || a?.town || a?.county || '';
@@ -63,12 +78,17 @@ export async function GET(request: NextRequest) {
 
     const displayName = String(data?.display_name || '').trim();
     const shortLabel = buildShortLabel(data);
+    const parsed = extractNominatimAddress(data);
     return NextResponse.json(
       {
         success: true,
         displayName: displayName || null,
         shortLabel: shortLabel || null,
         headerLabel: shortLabel || null,
+        pincode: parsed.pincode || null,
+        city: parsed.city || null,
+        state: parsed.state || null,
+        area: parsed.area || shortLabel || null,
       },
       { status: 200 }
     );

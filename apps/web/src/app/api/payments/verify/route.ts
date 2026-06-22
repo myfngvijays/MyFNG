@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import crypto from 'crypto';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
 import { generateSeriesDocumentNumber } from '@/lib/utils/invoiceUtils';
+import { creditMembershipCashbackOnFullPayment } from '@/lib/wallet-service';
 import { sendTemplateMessage, normalizePhoneNumber } from '@/lib/services/whatsappService';
 
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
@@ -334,6 +335,20 @@ export async function POST(request: Request) {
                 payment_id: paymentId,
               }
             });
+        }
+
+        if (isFullPayment) {
+          const { supabaseAdmin } = getSupabaseAdmin();
+          if (supabaseAdmin) {
+            await creditMembershipCashbackOnFullPayment(supabaseAdmin, {
+              id: invoiceId,
+              lead_id: invoice.lead_id,
+              final_amount: invoiceAmount,
+              total_amount: invoice.total_amount,
+              invoice_number: invoice.invoice_number,
+              lead: invoice.lead,
+            });
+          }
         }
       }
     }

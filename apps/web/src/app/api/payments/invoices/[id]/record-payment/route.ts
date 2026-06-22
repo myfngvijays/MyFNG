@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { createFinanceEvent } from '@/lib/services/financeEventService';
+import { creditMembershipCashbackOnFullPayment } from '@/lib/wallet-service';
 import { createNotification, notifyCSETeam, notifyTelecallerTeamlead, notifyWorkshopRoles } from '@/lib/notifications';
 import { calculateTaxes, generateSeriesDocumentNumber, getPlaceOfSupply, roundOff } from '@/lib/utils/invoiceUtils';
 import type { Database } from '@/types/database';
@@ -802,6 +803,19 @@ export async function POST(
 
       // Auto-generate receipt for full payments (Step 5: Receipt Generation)
       if (isFullPayment && !is_cod) {
+        try {
+          await creditMembershipCashbackOnFullPayment(supabaseAdmin, {
+            id: invoiceId,
+            lead_id: invoice.lead_id,
+            final_amount: (updatedInvoice as any)?.final_amount || invoice.final_amount,
+            total_amount: (updatedInvoice as any)?.total_amount || (invoice as any).total_amount,
+            invoice_number: invoice.invoice_number,
+            lead: invoice.lead,
+          });
+        } catch (cashbackErr) {
+          console.warn('Non-blocking: membership cashback after payment failed:', cashbackErr);
+        }
+
         try {
           // Call receipt generation API
           const receiptResponse = await fetch(

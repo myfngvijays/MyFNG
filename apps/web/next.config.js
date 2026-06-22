@@ -3,6 +3,9 @@ const nextConfig = {
   // Temporarily disabled static export for build with API routes
   // output: 'export',
 
+  // xlsx is CJS; keep it external so Turbopack resolves from node_modules reliably
+  serverExternalPackages: ['xlsx'],
+
   // Next 16 route type generation is stricter; keep builds unblocked
   // while route handler typings are progressively updated.
   typescript: {

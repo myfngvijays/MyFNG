@@ -32,16 +32,12 @@ export const SERVICES_PLACEMENT_OPTIONS: Array<{ key: ServicesPlacementSlot; lab
 
 export const GLOBAL_PLACEMENT_OPTIONS: Array<{ key: keyof AppPlacements; label: string }> = [
   { key: 'settings_page', label: 'Settings → Membership page (full value card)' },
-  { key: 'search_banner', label: 'Search overlay — banner strip' },
-  { key: 'search_grid', label: 'Search overlay — Buy MyFNG Prime grid tile' },
 ];
 
 export function defaultPlacementsForType(type: MembershipType): AppPlacements {
   if (type === 'RSA') {
     return {
-      settings_page: true,
-      search_banner: false,
-      search_grid: false,
+      settings_page: false,
       rsa: {
         before_pricing: true,
       },
@@ -49,11 +45,7 @@ export function defaultPlacementsForType(type: MembershipType): AppPlacements {
   }
   return {
     settings_page: true,
-    search_banner: true,
-    search_grid: true,
     home: {
-      after_services: true,
-      after_loan_card: true,
       before_reviews: true,
     },
     services: {
@@ -66,7 +58,108 @@ export function parseAppPlacements(raw: unknown, membershipType: MembershipType 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return defaultPlacementsForType(membershipType);
   }
-  return raw as AppPlacements;
+  const src = raw as AppPlacements;
+  if (Object.keys(src).length === 0) {
+    return defaultPlacementsForType(membershipType);
+  }
+  return src;
+}
+
+function clearScreenSlot(
+  placements: AppPlacements,
+  screen: 'home' | 'rsa' | 'services',
+  options: Array<{ key: string }>,
+): AppPlacements {
+  const section: Record<string, boolean> = {};
+  for (const opt of options) {
+    section[opt.key] = false;
+  }
+  return { ...placements, [screen]: section };
+}
+
+function selectScreenSlot<T extends string>(
+  placements: AppPlacements,
+  screen: 'home' | 'rsa' | 'services',
+  options: Array<{ key: T }>,
+  slot: T,
+): AppPlacements {
+  const section: Partial<Record<T, boolean>> = {};
+  for (const opt of options) {
+    section[opt.key] = opt.key === slot;
+  }
+  return { ...placements, [screen]: section };
+}
+
+function getActiveScreenSlot<T extends string>(
+  placements: AppPlacements,
+  screen: 'home' | 'rsa' | 'services',
+  options: Array<{ key: T }>,
+): T | null {
+  const section = placements[screen] as Partial<Record<T, boolean>> | undefined;
+  for (const opt of options) {
+    if (section?.[opt.key]) return opt.key;
+  }
+  return null;
+}
+
+function moveScreenSlot<T extends string>(
+  placements: AppPlacements,
+  screen: 'home' | 'rsa' | 'services',
+  options: Array<{ key: T }>,
+  direction: 'up' | 'down',
+): AppPlacements {
+  const active = getActiveScreenSlot(placements, screen, options);
+  const idx = active ? options.findIndex((o) => o.key === active) : 0;
+  const nextIdx = direction === 'up' ? Math.max(0, idx - 1) : Math.min(options.length - 1, idx + 1);
+  return selectScreenSlot(placements, screen, options, options[nextIdx].key);
+}
+
+export function clearHomeSlot(placements: AppPlacements): AppPlacements {
+  return clearScreenSlot(placements, 'home', HOME_PLACEMENT_OPTIONS);
+}
+
+export function clearServicesSlot(placements: AppPlacements): AppPlacements {
+  return clearScreenSlot(placements, 'services', SERVICES_PLACEMENT_OPTIONS);
+}
+
+export function clearRsaSlot(placements: AppPlacements): AppPlacements {
+  return clearScreenSlot(placements, 'rsa', RSA_PLACEMENT_OPTIONS);
+}
+
+export function selectHomeSlot(placements: AppPlacements, slot: HomePlacementSlot): AppPlacements {
+  return selectScreenSlot(placements, 'home', HOME_PLACEMENT_OPTIONS, slot);
+}
+
+export function getActiveHomeSlot(placements: AppPlacements): HomePlacementSlot | null {
+  return getActiveScreenSlot(placements, 'home', HOME_PLACEMENT_OPTIONS);
+}
+
+export function moveHomeSlot(placements: AppPlacements, direction: 'up' | 'down'): AppPlacements {
+  return moveScreenSlot(placements, 'home', HOME_PLACEMENT_OPTIONS, direction);
+}
+
+export function selectServicesSlot(placements: AppPlacements, slot: ServicesPlacementSlot): AppPlacements {
+  return selectScreenSlot(placements, 'services', SERVICES_PLACEMENT_OPTIONS, slot);
+}
+
+export function getActiveServicesSlot(placements: AppPlacements): ServicesPlacementSlot | null {
+  return getActiveScreenSlot(placements, 'services', SERVICES_PLACEMENT_OPTIONS);
+}
+
+export function moveServicesSlot(placements: AppPlacements, direction: 'up' | 'down'): AppPlacements {
+  return moveScreenSlot(placements, 'services', SERVICES_PLACEMENT_OPTIONS, direction);
+}
+
+export function selectRsaSlot(placements: AppPlacements, slot: RsaPlacementSlot): AppPlacements {
+  return selectScreenSlot(placements, 'rsa', RSA_PLACEMENT_OPTIONS, slot);
+}
+
+export function getActiveRsaSlot(placements: AppPlacements): RsaPlacementSlot | null {
+  return getActiveScreenSlot(placements, 'rsa', RSA_PLACEMENT_OPTIONS);
+}
+
+export function moveRsaSlot(placements: AppPlacements, direction: 'up' | 'down'): AppPlacements {
+  return moveScreenSlot(placements, 'rsa', RSA_PLACEMENT_OPTIONS, direction);
 }
 
 export function normalizeMembershipType(raw: unknown): MembershipType {
@@ -90,8 +183,6 @@ export function isPlacementEnabled(
 export function countEnabledPlacements(placements: AppPlacements): number {
   let count = 0;
   if (placements.settings_page) count += 1;
-  if (placements.search_banner) count += 1;
-  if (placements.search_grid) count += 1;
   for (const slot of Object.values(placements.home || {})) if (slot) count += 1;
   for (const slot of Object.values(placements.rsa || {})) if (slot) count += 1;
   for (const slot of Object.values(placements.services || {})) if (slot) count += 1;

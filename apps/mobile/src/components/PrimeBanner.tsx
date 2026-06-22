@@ -28,9 +28,10 @@ type PrimeBannerProps = {
   plan?: PrimeBannerPlan;
 };
 
-function splitTitle(name: string) {
+function displayTitle(name: string) {
   const trimmed = name.trim();
-  if (!trimmed || trimmed.length <= 10) return trimmed;
+  if (!trimmed) return 'Membership';
+  if (trimmed.length <= 16) return trimmed;
   const parts = trimmed.split(/\s+/);
   if (parts.length <= 1) return trimmed;
   const mid = Math.ceil(parts.length / 2);
@@ -40,23 +41,30 @@ function splitTitle(name: string) {
 function displayBadge(plan: PrimeBannerPlan | undefined, isRsa: boolean) {
   const raw = String(plan?.badge || '').trim().toUpperCase();
   if (isRsa) {
-    if (!raw || raw === 'MEMBERSHIP') return 'RSA MEMBERSHIP';
-    return raw;
+    if (!raw || raw === 'MEMBERSHIP') return 'RSA';
+    return raw.length > 10 ? raw.slice(0, 10) : raw;
   }
-  return raw || 'PRIME';
+  return raw && raw !== 'MEMBERSHIP' ? raw : 'PRIME';
+}
+
+function formatBenefitSub(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('+') ? trimmed : `+ ${trimmed}`;
 }
 
 export default function PrimeBanner({ onPress, style, animated = false, plan }: PrimeBannerProps) {
   const colorAnim = useRef(new Animated.Value(0)).current;
   const isRsa = plan?.membershipType === 'RSA';
 
-  const title = splitTitle(plan?.name || (isRsa ? 'RSA Membership' : PRIME_MEMBERSHIP.name));
+  const title = displayTitle(plan?.name || (isRsa ? 'RSA Membership' : PRIME_MEMBERSHIP.name));
   const badge = displayBadge(plan, isRsa);
   const benefitLine1 = plan?.benefitLine1 || '10% off on all services';
   const benefitLine2 = plan?.benefitLine2 || '5% cashback to wallet';
   const originalPrice = plan?.originalPrice || PRIME_MEMBERSHIP.originalPrice;
   const price = plan?.price || PRIME_MEMBERSHIP.price;
-  const period = plan?.period ? `per ${plan.period}` : 'per year';
+  const periodRaw = plan?.period?.replace(/^\//, '').trim() || 'year';
+  const period = periodRaw === 'year' ? 'per yr' : `per ${periodRaw}`;
 
   useEffect(() => {
     if (!animated) return;
@@ -86,32 +94,46 @@ export default function PrimeBanner({ onPress, style, animated = false, plan }: 
     <>
       <View style={styles.decor1} />
       <View style={styles.decor2} />
-      <View style={styles.left}>
-        <View style={styles.badgePill}>
-          {isRsa ? (
-            <Image source={RSA_ICON_RED_SOURCE} style={styles.rsaBadgeIcon} resizeMode="contain" />
-          ) : (
-            <Ionicons name="diamond" size={9} color="#FFD166" />
-          )}
-          <Text style={styles.badgePillText}>{badge}</Text>
+
+      <View style={styles.mainRow}>
+        <View style={styles.titleCol}>
+          <View style={styles.badgePill}>
+            {isRsa ? (
+              <Image source={RSA_ICON_RED_SOURCE} style={styles.rsaBadgeIcon} resizeMode="contain" />
+            ) : (
+              <Ionicons name="diamond" size={8} color="#FFD166" />
+            )}
+            <Text style={styles.badgePillText} numberOfLines={1}>
+              {badge}
+            </Text>
+          </View>
+          <Text style={styles.title} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>
+            {title}
+          </Text>
         </View>
-        <Text style={styles.title}>{title}</Text>
-      </View>
-      <View style={styles.center}>
-        <Text style={styles.benefit} numberOfLines={2}>
-          {benefitLine1}
-        </Text>
-        <Text style={styles.benefitSub} numberOfLines={2}>
-          {benefitLine2 ? (benefitLine2.startsWith('+') ? benefitLine2 : `+ ${benefitLine2}`) : ''}
-        </Text>
-      </View>
-      <View style={styles.priceBlock}>
-        {originalPrice ? <Text style={styles.originalPrice}>{originalPrice}</Text> : null}
-        <Text style={styles.price}>{price}</Text>
-        <Text style={styles.period}>{period}</Text>
-      </View>
-      <View style={styles.arrow}>
-        <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+
+        <View style={styles.benefitCol}>
+          <Text style={styles.benefit} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>
+            {benefitLine1}
+          </Text>
+          {benefitLine2 ? (
+            <Text style={styles.benefitSub} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {formatBenefitSub(benefitLine2)}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.priceCol}>
+          {originalPrice ? <Text style={styles.originalPrice}>{originalPrice}</Text> : null}
+          <Text style={styles.price} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+            {price}
+          </Text>
+          <Text style={styles.period}>{period}</Text>
+        </View>
+
+        <View style={styles.arrow}>
+          <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+        </View>
       </View>
     </>
   );
@@ -133,39 +155,41 @@ export default function PrimeBanner({ onPress, style, animated = false, plan }: 
 
 const styles = StyleSheet.create({
   banner: {
-    height: 88,
+    minHeight: 84,
     borderRadius: 16,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     overflow: 'hidden',
+    justifyContent: 'center',
   },
   decor1: {
     position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    top: -40,
-    left: -30,
+    borderColor: 'rgba(255,255,255,0.1)',
+    top: -36,
+    left: -24,
   },
   decor2: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    bottom: -20,
-    right: 60,
+    borderColor: 'rgba(255,255,255,0.07)',
+    bottom: -24,
+    right: 48,
   },
-  left: {
-    width: 78,
-    marginRight: 6,
-    justifyContent: 'flex-start',
-    paddingTop: 6,
+  mainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleCol: {
+    width: 68,
     flexShrink: 0,
   },
   badgePill: {
@@ -173,79 +197,79 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 3,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     borderRadius: 999,
-    paddingHorizontal: 7,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    marginBottom: 5,
-    marginTop: -2,
+    marginBottom: 4,
+    maxWidth: 68,
   },
   badgePillText: {
-    fontSize: 8,
+    fontSize: 7,
     fontWeight: '800',
     color: '#FFD166',
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
   },
   rsaBadgeIcon: {
-    width: 11,
-    height: 11,
+    width: 9,
+    height: 9,
   },
   title: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '900',
     color: '#FFFFFF',
-    lineHeight: 20,
+    lineHeight: 16,
   },
-  center: {
+  benefitCol: {
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
-    paddingRight: 4,
+    paddingHorizontal: 2,
   },
   benefit: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: '700',
     color: '#FFFFFF',
-    lineHeight: 14,
+    lineHeight: 13,
   },
   benefitSub: {
     marginTop: 2,
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.88)',
-    lineHeight: 12,
+    color: 'rgba(255,255,255,0.86)',
+    lineHeight: 11,
   },
-  priceBlock: {
+  priceCol: {
+    width: 58,
     alignItems: 'flex-end',
     justifyContent: 'center',
-    marginRight: 6,
     flexShrink: 0,
   },
   originalPrice: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.72)',
-    textDecorationLine: 'line-through',
-    lineHeight: 12,
-    marginBottom: 1,
-  },
-  price: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#FFD166',
-    lineHeight: 22,
-  },
-  period: {
     fontSize: 9,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.65)',
+    textDecorationLine: 'line-through',
     lineHeight: 11,
   },
+  price: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#FFD166',
+    lineHeight: 19,
+  },
+  period: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.82)',
+    lineHeight: 10,
+    marginTop: 1,
+  },
   arrow: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

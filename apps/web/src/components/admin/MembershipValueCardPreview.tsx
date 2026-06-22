@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { MembershipIconPreview } from './MembershipIconField';
+import { normalizeMembershipType } from '@/lib/membership-placements';
 
 export type PreviewBenefit = {
   id?: string;
@@ -34,23 +35,44 @@ export type PreviewPlanForm = {
   second_car_addon_icon?: string | null;
   second_car_addon_icon_class?: string | null;
   second_car_addon_icon_url?: string | null;
+  membership_type?: string;
+  accent_color?: string | null;
+  accent_text_color?: string | null;
 };
 
 function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
 }
 
-function BenefitValue({ prefix, label }: { prefix?: string | null; label?: string | null }) {
+function hexWithAlpha(hex: string, alphaHex: string) {
+  const clean = hex.replace('#', '');
+  if (clean.length === 6) return `#${clean}${alphaHex}`;
+  return hex;
+}
+
+function formatPeriodForRsa(raw?: string | null) {
+  return String(raw || '')
+    .replace(/^\s*\/?\s*/, '')
+    .trim();
+}
+
+function BenefitValue({ prefix, label, accent }: { prefix?: string | null; label?: string | null; accent: string }) {
   if (!label) return <span className="text-xs text-gray-400">—</span>;
   if (prefix) {
     return (
       <div className="text-right leading-tight">
         <div className="text-[9px] font-semibold text-gray-500">{prefix}</div>
-        <div className="text-xs font-extrabold text-[#023D95]">{label}</div>
+        <div className="text-xs font-extrabold" style={{ color: accent }}>
+          {label}
+        </div>
       </div>
     );
   }
-  return <div className="text-xs font-extrabold text-[#023D95]">{label}</div>;
+  return (
+    <div className="text-xs font-extrabold" style={{ color: accent }}>
+      {label}
+    </div>
+  );
 }
 
 export default function MembershipValueCardPreview({
@@ -65,23 +87,37 @@ export default function MembershipValueCardPreview({
   const price = Number(plan.price || 0);
   const saveAmount = Math.max(0, totalValue - price);
   const benefitsHead = `BENEFITS FOR ${String(plan.name || 'MYFNG PRIME').toUpperCase()}`;
+  const isRsa = normalizeMembershipType(plan.membership_type) === 'RSA';
+  const accent = plan.accent_color || (isRsa ? '#F97316' : '#023D95');
+  const onAccent = plan.accent_text_color || '#FFFFFF';
+  const iconBg = hexWithAlpha(accent, '18');
+  const totalBandBg = hexWithAlpha(accent, '0C');
+  const totalBandBorder = hexWithAlpha(accent, '40');
+  const headerSub = hexWithAlpha(onAccent, '99');
+  const rsaPeriod = formatPeriodForRsa(plan.period_label);
 
   return (
     <div className="mx-auto w-full max-w-sm">
-      <div className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">App Preview (Value Card)</div>
+      <div className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">
+        App Preview ({isRsa ? 'RSA Value Card' : 'Service Value Card'})
+      </div>
       <div className="rounded-3xl bg-white shadow-xl overflow-hidden border border-gray-100">
-        <div className="bg-[#023D95] px-5 py-3.5 flex items-center justify-between">
+        <div className="px-5 py-3.5 flex items-center justify-between" style={{ backgroundColor: accent, color: onAccent }}>
           <div>
-            <div className="text-white text-xl font-extrabold">{plan.name || 'MyFNG Prime'}</div>
+            <div className="text-xl font-extrabold">{plan.name || 'MyFNG Prime'}</div>
             {plan.tagline ? (
-              <div className="text-[#9ec3f0] text-xs italic mt-0.5">{plan.tagline}</div>
+              <div className="text-xs italic mt-0.5" style={{ color: headerSub }}>
+                {plan.tagline}
+              </div>
             ) : null}
           </div>
-          <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center text-xl">👑</div>
+          <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center text-xl">
+            {isRsa ? '🛟' : '👑'}
+          </div>
         </div>
 
         <div className="px-5 pt-4 pb-2">
-          <div className="flex items-center justify-between text-[11px] font-extrabold tracking-wide text-[#023D95] mb-3">
+          <div className="flex items-center justify-between text-[11px] font-extrabold tracking-wide mb-3" style={{ color: accent }}>
             <span className="flex-1 pr-2">{benefitsHead}</span>
             <span>{plan.value_column_label || 'VALUE'}</span>
           </div>
@@ -94,7 +130,10 @@ export default function MembershipValueCardPreview({
                   key={b.id || `${b.title}-${idx}`}
                   className={`flex items-start gap-3 py-3 ${idx < activeBenefits.length - 1 ? 'border-b border-gray-100' : ''}`}
                 >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E6F0FB] overflow-hidden">
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden"
+                    style={{ backgroundColor: iconBg }}
+                  >
                     <MembershipIconPreview icon={b.icon} icon_url={b.icon_url} icon_class={b.icon_class} size={16} />
                   </div>
                   <div className="flex-1 min-w-0 pr-2">
@@ -103,17 +142,22 @@ export default function MembershipValueCardPreview({
                       <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{b.description}</div>
                     ) : null}
                   </div>
-                  <BenefitValue prefix={b.value_prefix} label={b.value_label} />
+                  <BenefitValue prefix={b.value_prefix} label={b.value_label} accent={accent} />
                 </div>
               ))
             )}
           </div>
         </div>
 
-        <div className="mx-5 rounded-xl bg-[#F0F7FF] border border-[#BFDBFE] px-4 py-3 space-y-1.5">
+        <div
+          className="mx-5 rounded-xl px-4 py-3 space-y-1.5 border"
+          style={{ backgroundColor: totalBandBg, borderColor: totalBandBorder }}
+        >
           <div className="flex justify-between items-center">
             <span className="text-xs font-bold text-gray-700">{plan.total_benefits_label || 'Total Benefits Value'}</span>
-            <span className="text-sm font-extrabold text-gray-400 line-through">{inr(totalValue)}</span>
+            <span className="text-sm font-extrabold line-through" style={{ color: accent }}>
+              {inr(totalValue)}
+            </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-xs font-bold text-emerald-700">{plan.save_label || 'You Save'}</span>
@@ -121,21 +165,40 @@ export default function MembershipValueCardPreview({
           </div>
         </div>
 
-        <div className="px-5 py-4 text-center">
-          <div className="text-[10px] font-bold tracking-[0.2em] text-gray-500">
-            {plan.price_hero_label || 'YOU PAY ONLY'}
+        <div className="px-4 py-4">
+          <div
+            className="rounded-xl px-3 py-3 text-center"
+            style={{ backgroundColor: accent, color: onAccent }}
+          >
+            <div className={`font-semibold tracking-wide opacity-90 ${isRsa ? 'text-[9px]' : 'text-[10px]'}`}>
+              {plan.price_hero_label || 'YOU PAY ONLY'}
+            </div>
+            {isRsa ? (
+              <>
+                <div className="text-[22px] font-extrabold leading-tight mt-1">{inr(price)}</div>
+                {rsaPeriod ? (
+                  <div className="text-[11px] font-semibold mt-1 opacity-90">{rsaPeriod}</div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-center gap-1 mt-1">
+                  <span className="text-[28px] font-extrabold leading-none">{inr(price)}</span>
+                  <span className="text-sm font-medium opacity-90">{plan.period_label || '/ year'}</span>
+                </div>
+                {plan.price_hero_sub ? (
+                  <div className="text-[11px] opacity-75 mt-1.5">{plan.price_hero_sub}</div>
+                ) : null}
+              </>
+            )}
           </div>
-          <div className="text-3xl font-extrabold text-[#023D95] mt-1">
-            {inr(price)}
-            <span className="text-sm font-semibold text-gray-500 ml-1">{plan.period_label || '/ year'}</span>
-          </div>
-          {plan.price_hero_sub ? (
-            <div className="text-[11px] text-gray-500 mt-1">{plan.price_hero_sub}</div>
-          ) : null}
         </div>
 
-        <div className="mx-5 mb-4 rounded-xl border border-dashed border-[#BFDBFE] bg-[#F8FAFC] p-3 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-[#E6F0FB] flex items-center justify-center overflow-hidden shrink-0">
+        <div
+          className="mx-5 mb-4 rounded-xl border border-dashed p-3 flex items-center gap-3"
+          style={{ borderColor: totalBandBorder, backgroundColor: '#F8FAFC' }}
+        >
+          <div className="h-9 w-9 rounded-lg flex items-center justify-center overflow-hidden shrink-0" style={{ backgroundColor: iconBg }}>
             <MembershipIconPreview
               icon={plan.second_car_addon_icon}
               icon_url={plan.second_car_addon_icon_url}
@@ -144,10 +207,12 @@ export default function MembershipValueCardPreview({
             />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-[#023D95]">{plan.second_car_addon_title || '2nd Car Add-On'}</div>
+            <div className="text-sm font-bold" style={{ color: accent }}>
+              {plan.second_car_addon_title || '2nd Car Add-On'}
+            </div>
             <div className="text-[11px] text-gray-500 truncate">{plan.second_car_addon_description || ''}</div>
           </div>
-          <div className="text-sm font-extrabold text-[#023D95] shrink-0">
+          <div className="text-sm font-extrabold shrink-0" style={{ color: accent }}>
             +{inr(Number(plan.second_car_addon_price || 0))}
           </div>
         </div>

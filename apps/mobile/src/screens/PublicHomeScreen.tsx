@@ -22,7 +22,7 @@ import PublicHeader from '../components/PublicHeader';
 import { detectHeaderLocation } from '../lib/locationDisplay';
 import LiveTrackingModal from '../components/LiveTrackingModal';
 import SearchOverlay from '../components/SearchOverlay';
-import MembershipBannerSlot from '../components/MembershipBannerSlot';
+import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
 import SmartToolsSection from '../components/SmartToolsSection';
 import { openPhoneCall } from '../lib/phone';
@@ -567,7 +567,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <MembershipBannerSlot screen="home" slot="after_services" navigation={navigation} />
+            <MembershipCardsBlock screen="home" slot="after_services" navigation={navigation} />
           </Section>
 
           <Section>
@@ -717,7 +717,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <MembershipBannerSlot screen="home" slot="after_loan_card" navigation={navigation} />
+            <MembershipCardsBlock screen="home" slot="after_loan_card" navigation={navigation} />
           </Section>
 
           <Section>
@@ -804,6 +804,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
           <SmartToolsSection navigation={navigation} city={detectedCity} />
 
           <Section>
+            <MembershipCardsBlock screen="home" slot="after_smart_tools" navigation={navigation} bannerOnly />
+          </Section>
+
+          <Section>
             <SectionTitle title="Brands We Service" />
             <View style={styles.brandCarouselClip}>
               <Animated.View style={[styles.brandCarouselRow, { transform: [{ translateX: brandScrollX }] }]}>
@@ -847,7 +851,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <MembershipBannerSlot screen="home" slot="before_reviews" navigation={navigation} />
+            <MembershipCardsBlock screen="home" slot="before_reviews" navigation={navigation} />
           </Section>
 
           <Section>

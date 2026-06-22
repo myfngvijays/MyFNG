@@ -1,5 +1,98 @@
 import React from 'react';
-import { TrendingDown, TrendingUp } from 'lucide-react';
+import { ChevronDown, Search, TrendingDown, TrendingUp } from 'lucide-react';
+
+const pcmSelectClass =
+  'appearance-none w-full sm:w-auto min-w-[140px] pl-3 pr-9 py-2.5 text-sm rounded-lg border border-[#e6e0da] bg-white text-[#15110d] focus:outline-none focus:ring-2 focus:ring-[#e54800]/20 focus:border-[#e54800] cursor-pointer';
+
+function PcmFilterSelect({
+  value,
+  onChange,
+  options,
+  'aria-label': ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  'aria-label'?: string;
+}) {
+  return (
+    <div className="relative w-full sm:w-auto">
+      <select
+        className={pcmSelectClass}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ca3af]" />
+    </div>
+  );
+}
+
+export function PcmCouponSearchBar({
+  searchValue,
+  onSearchChange,
+  statusValue,
+  onStatusChange,
+  typeValue,
+  onTypeChange,
+  typeOptions,
+}: {
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  statusValue: string;
+  onStatusChange: (value: string) => void;
+  typeValue: string;
+  onTypeChange: (value: string) => void;
+  typeOptions?: Array<{ value: string; label: string }>;
+}) {
+  const types = typeOptions?.length
+    ? typeOptions
+    : [
+        { value: 'all', label: 'All Types' },
+        { value: 'flat', label: 'Flat Discount' },
+        { value: 'percent', label: 'Percentage Discount' },
+        { value: 'free_service', label: 'Free Service' },
+      ];
+
+  return (
+    <div className="flex flex-col sm:flex-row gap-3">
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ca3af]" />
+        <input
+          type="search"
+          className="w-full rounded-lg border border-[#e6e0da] bg-white py-2.5 pl-9 pr-3 text-sm text-[#15110d] placeholder:text-[#9ca3af] focus:border-[#e54800] focus:outline-none focus:ring-2 focus:ring-[#e54800]/20"
+          placeholder="Search by name or code..."
+          value={searchValue}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+      </div>
+      <PcmFilterSelect
+        aria-label="Filter by status"
+        value={statusValue}
+        onChange={onStatusChange}
+        options={[
+          { value: 'all', label: 'All Status' },
+          { value: 'active', label: 'Active' },
+          { value: 'paused', label: 'Paused' },
+          { value: 'expired', label: 'Expired' },
+          { value: 'inactive', label: 'Inactive' },
+        ]}
+      />
+      <PcmFilterSelect
+        aria-label="Filter by type"
+        value={typeValue}
+        onChange={onTypeChange}
+        options={types}
+      />
+    </div>
+  );
+}
 
 export function PcmPageHeader({
   title,

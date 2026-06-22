@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       applicable_city_ids: body?.applicable_city_ids || null,
       applicable_workshop_ids: body?.applicable_workshop_ids || null,
       applicable_service_type_ids: body?.applicable_service_type_ids || null,
-      applicable_channels: body?.applicable_channels || ['ALL'],
+      applicable_channels: body?.applicable_channels?.length ? body.applicable_channels : null,
       max_discount_amount: body?.max_discount_amount != null ? Number(body.max_discount_amount) : null,
       first_order_only: body?.first_order_only ?? false,
       is_public: body?.is_public ?? false,

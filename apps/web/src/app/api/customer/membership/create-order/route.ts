@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
 import { validateCouponForCheckout } from '@/lib/coupon-service';
+import {
+  getWalletVehicleEligibility,
+  resolveWalletDeduction,
+} from '@/lib/wallet-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +27,9 @@ export async function POST(request: NextRequest) {
   const planId = String(body.plan_id || '');
   const addSecondCar = Boolean(body.add_second_car);
   const couponCode = String(body.coupon_code || '').trim().toUpperCase();
+  const useWallet = body.use_wallet !== false;
+  const vehicleNumber = body.vehicle_number ? String(body.vehicle_number) : null;
+  const secondVehicleNumber = body.second_vehicle_number ? String(body.second_vehicle_number) : null;
   if (!planId) return NextResponse.json({ error: 'plan_id is required' }, { status: 400 });
 
   const { data: plan } = await supabaseAdmin
@@ -57,8 +64,41 @@ export async function POST(request: NextRequest) {
     couponMeta = couponResult.couponMeta;
   }
 
-  const amount = Math.max(0, grossAmount - discountAmount);
-  if (amount <= 0) return NextResponse.json({ error: 'Invalid payable amount after discount' }, { status: 400 });
+  const amountBeforeWallet = Math.max(0, grossAmount - discountAmount);
+  if (amountBeforeWallet <= 0) return NextResponse.json({ error: 'Invalid payable amount after discount' }, { status: 400 });
+
+  if (useWallet && vehicleNumber) {
+    const primaryCheck = await getWalletVehicleEligibility(supabaseAdmin, customer.id, vehicleNumber);
+    if (primaryCheck.blocked) {
+      return NextResponse.json({ error: primaryCheck.reason || 'Wallet cannot be used for this vehicle' }, { status: 400 });
+    }
+  }
+  if (useWallet && secondVehicleNumber) {
+    const secondCheck = await getWalletVehicleEligibility(supabaseAdmin, customer.id, secondVehicleNumber);
+    if (secondCheck.blocked) {
+      return NextResponse.json({ error: secondCheck.reason || 'Wallet cannot be used for this vehicle' }, { status: 400 });
+    }
+  }
+
+  const resolved = await resolveWalletDeduction(
+    supabaseAdmin,
+    customer.id,
+    amountBeforeWallet,
+    'MEMBERSHIP',
+    useWallet,
+    vehicleNumber,
+  );
+
+  if (resolved.blocked && useWallet) {
+    return NextResponse.json({ error: resolved.reason || 'Wallet cannot be used for this vehicle' }, { status: 400 });
+  }
+
+  const walletDeduction = resolved.deduction;
+
+  const amount = Math.max(0, amountBeforeWallet - walletDeduction);
+  if (amount <= 0 && walletDeduction <= 0) {
+    return NextResponse.json({ error: 'Invalid payable amount' }, { status: 400 });
+  }
 
   const amountInPaise = Math.round(amount * 100);
 
@@ -81,6 +121,9 @@ export async function POST(request: NextRequest) {
         add_second_car: addSecondCar ? 'yes' : 'no',
         coupon_code: couponCode || '',
         discount_amount: String(discountAmount),
+        wallet_deduction: String(walletDeduction),
+        gross_amount: String(grossAmount),
+        amount_before_wallet: String(amountBeforeWallet),
       },
     }),
   });
@@ -99,6 +142,8 @@ export async function POST(request: NextRequest) {
     amount,
     gross_amount: grossAmount,
     discount_amount: discountAmount,
+    wallet_deduction: walletDeduction,
+    amount_before_wallet: amountBeforeWallet,
     coupon_meta: couponMeta,
     currency: 'INR',
     razorpay_key: razorpayKeyId,

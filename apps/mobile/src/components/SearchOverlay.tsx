@@ -15,10 +15,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
-import PrimeBanner, { type PrimeBannerPlan } from './PrimeBanner';
 import { PrimeMembershipIcon, RSAMembershipIcon } from './MembershipPromoVisuals';
-import { useAppMembershipPlans } from '../hooks/useAppMembershipPlans';
-import type { AppMembershipPlan } from '../lib/membershipPlan';
+import MembershipCardsBlock from './MembershipCardsBlock';
 import type { MembershipType } from '../lib/membershipPlacements';
 import { getServiceIconSource, RSA_ICON_RED_SOURCE } from '../lib/serviceIcons';
 import { SMART_TOOLS, SMART_TOOL_WEB_URLS, type SmartToolItem } from '../constants/smartTools';
@@ -216,59 +214,17 @@ function SmartToolGridItem({ tool, onPress }: { tool: SmartToolItem; onPress: ()
 export default function SearchOverlay({ visible, onClose, navigation, city }: Props) {
   const [query, setQuery] = useState('');
   const insets = useSafeAreaInsets();
-  const { getPlansForGlobalSlot } = useAppMembershipPlans();
-  const searchGridPlans = getPlansForGlobalSlot('search_grid');
-  const searchBannerPlans = getPlansForGlobalSlot('search_banner');
-
-  const membershipSearchItems = useMemo<SearchItem[]>(
-    () =>
-      searchGridPlans.map((plan) => ({
-        id: `membership-plan-${plan.planCode || plan.planId || plan.name}`,
-        title: plan.name,
-        category: 'Membership',
-        icon: 'diamond' as const,
-        screen: 'Settings',
-        params: {
-          subPage: 'Membership',
-          membershipType: plan.membershipType,
-          planCode: plan.planCode,
-        },
-        keywords: ['membership', 'prime', 'myfng prime', 'subscribe', 'plan', 'premium', 'buy', String(plan.name || '').toLowerCase()],
-      })),
-    [searchGridPlans],
-  );
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return [...ALL_ITEMS, ...membershipSearchItems].filter(
+    return ALL_ITEMS.filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.category.toLowerCase().includes(q) ||
         item.keywords.some((kw) => kw.includes(q) || q.includes(kw)),
     );
-  }, [query, membershipSearchItems]);
-
-  const openMembershipPlan = (plan: AppMembershipPlan) => {
-    setQuery('');
-    onClose();
-    navigation.navigate('Settings', {
-      subPage: 'Membership',
-      membershipType: plan.membershipType,
-      planCode: plan.planCode,
-    });
-  };
-
-  const toBannerPlan = (plan: AppMembershipPlan): PrimeBannerPlan => ({
-    name: plan.name,
-    badge: plan.badge,
-    price: plan.price,
-    originalPrice: plan.originalPrice,
-    period: plan.period?.replace('/', '').trim() || 'year',
-    benefitLine1: plan.benefits?.[0]?.title || (plan.membershipType === 'RSA' ? 'Priority RSA dispatch' : '10% off on all services'),
-    benefitLine2: plan.benefits?.[1]?.title || (plan.membershipType === 'RSA' ? 'Discounted towing rates' : '5% cashback to wallet'),
-    membershipType: plan.membershipType,
-  });
+  }, [query]);
 
   const handleClose = () => {
     setQuery('');
@@ -354,27 +310,18 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
                   </View>
                 </View>
 
+                <MembershipCardsBlock screen="search" slot="after_popular_searches" navigation={navigation} bannerOnly spacing="compact" />
+
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Other Services</Text>
                   <View style={styles.serviceGrid}>
                     {DISPLAY_SERVICES.map((item) => (
                       <ServiceGridItem key={item.id} item={item} onPress={() => handleSelect(item)} />
                     ))}
-                    {searchGridPlans.map((plan) => (
-                      <TouchableOpacity
-                        key={plan.planId || plan.planCode || plan.name}
-                        style={styles.serviceGridItem}
-                        activeOpacity={0.85}
-                        onPress={() => openMembershipPlan(plan)}
-                      >
-                        <MembershipPlanIcon membershipType={plan.membershipType} size={46} />
-                        <Text style={styles.serviceGridText} numberOfLines={2}>
-                          {plan.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
                   </View>
                 </View>
+
+                <MembershipCardsBlock screen="search" slot="after_other_services" navigation={navigation} bannerOnly spacing="compact" />
 
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Smart Tools</Text>
@@ -385,16 +332,10 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
                   </View>
                 </View>
 
-                {searchBannerPlans.map((plan) => (
-                  <PrimeBanner
-                    key={plan.planId || plan.planCode || plan.name}
-                    plan={toBannerPlan(plan)}
-                    animated
-                    onPress={() => openMembershipPlan(plan)}
-                  />
-                ))}
+                <MembershipCardsBlock screen="search" slot="after_smart_tools" navigation={navigation} bannerOnly spacing="compact" />
 
                 <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Legal and Support</Text>
                   <View style={styles.serviceGrid}>
                     {QUICK_ACTIONS.map((item) => (
                       <TouchableOpacity

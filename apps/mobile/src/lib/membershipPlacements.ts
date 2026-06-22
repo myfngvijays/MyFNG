@@ -16,34 +16,30 @@ export type AppPlacements = {
 export function defaultPlacementsForType(type: MembershipType): AppPlacements {
   if (type === 'RSA') {
     return {
-      settings_page: true,
-      search_banner: false,
-      search_grid: false,
+      settings_page: false,
       rsa: { before_pricing: true },
     };
   }
   return {
     settings_page: true,
-    search_banner: true,
-    search_grid: true,
-    home: {
-      after_services: true,
-      after_loan_card: true,
-      before_reviews: true,
-    },
+    home: { before_reviews: true },
     services: { before_why_myfng: true },
   };
-}
-
-export function normalizeMembershipType(raw: unknown): MembershipType {
-  return String(raw || 'SERVICE').toUpperCase() === 'RSA' ? 'RSA' : 'SERVICE';
 }
 
 export function parseAppPlacements(raw: unknown, membershipType: MembershipType = 'SERVICE'): AppPlacements {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return defaultPlacementsForType(membershipType);
   }
-  return raw as AppPlacements;
+  const src = raw as AppPlacements;
+  if (Object.keys(src).length === 0) {
+    return defaultPlacementsForType(membershipType);
+  }
+  return src;
+}
+
+export function normalizeMembershipType(raw: unknown): MembershipType {
+  return String(raw || 'SERVICE').toUpperCase() === 'RSA' ? 'RSA' : 'SERVICE';
 }
 
 export function isPlacementEnabled(placements: AppPlacements, path: string): boolean {
@@ -57,12 +53,12 @@ export function isPlacementEnabled(placements: AppPlacements, path: string): boo
   return Boolean((section as Record<string, unknown>)[slot]);
 }
 
-export function hasAnySearchGridPlan(plans: Array<{ appPlacements: AppPlacements }>): boolean {
-  return plans.some((p) => Boolean(p.appPlacements.search_grid));
+export function hasAnySearchGridPlan(_plans: Array<{ appPlacements: AppPlacements }>): boolean {
+  return false;
 }
 
-export function hasAnySearchBannerPlan(plans: Array<{ appPlacements: AppPlacements }>): boolean {
-  return plans.some((p) => Boolean(p.appPlacements.search_banner));
+export function hasAnySearchBannerPlan(_plans: Array<{ appPlacements: AppPlacements }>): boolean {
+  return false;
 }
 
 export function getSettingsPlans<T extends { membershipType: MembershipType; appPlacements: AppPlacements }>(
@@ -71,7 +67,7 @@ export function getSettingsPlans<T extends { membershipType: MembershipType; app
 ): T[] {
   return plans.filter(
     (p) =>
-      Boolean(p.appPlacements.settings_page) &&
+      isPlacementEnabled(p.appPlacements, 'settings_page') &&
       (membershipType ? p.membershipType === membershipType : true),
   );
 }

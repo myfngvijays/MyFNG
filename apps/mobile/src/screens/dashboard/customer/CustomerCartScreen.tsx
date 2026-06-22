@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch
 import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
+import { calculateWalletUsage, fetchWalletVehicleBlocked } from '../../../lib/wallet';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CustomerCartScreen({ navigation }: any) {
@@ -12,11 +13,34 @@ export default function CustomerCartScreen({ navigation }: any) {
   const [price, setPrice] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [useWallet, setUseWallet] = useState(true);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
+  const [walletBlockReason, setWalletBlockReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!vehicleNumber.trim()) {
+      setWalletVehicleBlocked(false);
+      setWalletBlockReason(null);
+      return;
+    }
+    let cancelled = false;
+    fetchWalletVehicleBlocked(apiFetch, vehicleNumber.trim()).then((res) => {
+      if (!cancelled) {
+        setWalletVehicleBlocked(res.blocked);
+        setWalletBlockReason(res.reason || null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [vehicleNumber]);
 
   const load = async () => {
-    const res = await apiFetch<{ cart: any; items: any[] }>('/api/customer/cart');
+    const [res, walletRes] = await Promise.all([
+      apiFetch<{ cart: any; items: any[] }>('/api/customer/cart'),
+      apiFetch<any>('/api/customer/wallet').catch(() => null),
+    ]);
     setCart(res.cart || null);
     setItems(res.items || []);
+    setWalletBalance(Number(walletRes?.wallet?.spendable_balance ?? walletRes?.wallet?.current_balance ?? 0));
   };
 
   useEffect(() => {
@@ -24,6 +48,11 @@ export default function CustomerCartScreen({ navigation }: any) {
   }, []);
 
   const subtotal = useMemo(() => items.reduce((s, x) => s + Number(x.total_price || 0), 0), [items]);
+  const walletUsed = useMemo(
+    () => (useWallet && !walletVehicleBlocked ? calculateWalletUsage(subtotal, walletBalance, 'SERVICE', walletVehicleBlocked) : 0),
+    [useWallet, subtotal, walletBalance, walletVehicleBlocked],
+  );
+  const finalAmount = useMemo(() => Math.max(0, subtotal - walletUsed), [subtotal, walletUsed]);
 
   const addItem = async () => {
     if (!serviceType.trim()) return;
@@ -102,10 +131,24 @@ export default function CustomerCartScreen({ navigation }: any) {
           <Text style={styles.label}>Checkout</Text>
           <TextInput style={styles.input} placeholder="Vehicle number (optional)" value={vehicleNumber} onChangeText={setVehicleNumber} />
           <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Use Wallet</Text>
-            <Switch value={useWallet} onValueChange={setUseWallet} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.switchLabel}>Use Wallet (Get up to 10%)</Text>
+              <Text style={styles.walletHint}>Available ₹{walletBalance.toLocaleString('en-IN')}</Text>
+              {walletVehicleBlocked ? (
+                <Text style={styles.walletBlocked}>
+                  {walletBlockReason || 'Wallet cannot be used — this vehicle is linked to another account.'}
+                </Text>
+              ) : null}
+            </View>
+            <Switch
+              value={useWallet && !walletVehicleBlocked}
+              onValueChange={setUseWallet}
+              disabled={walletVehicleBlocked}
+            />
           </View>
           <Text style={styles.total}>Subtotal: ₹{subtotal.toFixed(2)}</Text>
+          {walletUsed > 0 ? <Text style={styles.walletUsed}>Wallet: -₹{walletUsed.toFixed(2)}</Text> : null}
+          <Text style={styles.finalTotal}>Payable: ₹{finalAmount.toFixed(2)}</Text>
           <TouchableOpacity style={[styles.btn, { backgroundColor: COLORS.success }]} onPress={checkout}>
             <Text style={styles.btnText}>Checkout</Text>
           </TouchableOpacity>
@@ -154,7 +197,11 @@ const styles = StyleSheet.create({
   empty: { color: COLORS.textSecondary },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   switchLabel: { color: COLORS.textHeading, fontWeight: '600' },
+  walletHint: { color: COLORS.textSecondary, fontSize: SIZES.xs, marginTop: 2 },
+  walletBlocked: { color: COLORS.danger, fontSize: SIZES.xs, marginTop: 4, lineHeight: 16, fontWeight: '600' },
   total: { color: COLORS.textHeading, fontWeight: '700', marginBottom: SPACING.sm },
+  walletUsed: { color: COLORS.success, fontWeight: '700', marginBottom: 4 },
+  finalTotal: { color: COLORS.textHeading, fontWeight: '800', marginBottom: SPACING.sm },
   meta: { marginTop: SPACING.sm, color: COLORS.textSecondary, fontSize: SIZES.xs },
 });
 

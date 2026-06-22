@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import RSAMembershipPlansSection from '../components/RSAMembershipPlansSection';
+import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { openPhoneCall } from '../lib/phone';
 import { supabase } from '../lib/supabase';
@@ -197,9 +198,12 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             </View>
           </View>
 
-          <RSAMembershipPlansSection navigation={navigation} />
+          <RSAMembershipPlansSection navigation={navigation} slot="after_services" />
+          <MembershipCardsBlock screen="rsa" slot="after_services" navigation={navigation} bannerOnly />
 
           {/* ── Pricing Section ── */}
+          <RSAMembershipPlansSection navigation={navigation} slot="before_pricing" />
+          <MembershipCardsBlock screen="rsa" slot="before_pricing" navigation={navigation} bannerOnly />
           <Text style={s.pricingHeading}>Pricing</Text>
           <Text style={s.pricingSub}>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</Text>
 
@@ -239,6 +243,9 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           </View>
 
 
+          <RSAMembershipPlansSection navigation={navigation} slot="before_reviews" />
+          <MembershipCardsBlock screen="rsa" slot="before_reviews" navigation={navigation} bannerOnly />
+
           {/* ── Reviews Slider ── */}
           <View style={s.reviewHeaderRow}>
             <Text style={s.sectionTitle}>What Our Customers Say</Text>
@@ -273,6 +280,9 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             <Ionicons name="chevron-down" size={16} color="#2563EB" />
           </TouchableOpacity>
 
+
+          <RSAMembershipPlansSection navigation={navigation} slot="before_faqs" />
+          <MembershipCardsBlock screen="rsa" slot="before_faqs" navigation={navigation} bannerOnly />
 
           {/* ── FAQs Section ── */}
           <Text style={s.faqHeading}>Frequently Asked Questions</Text>
