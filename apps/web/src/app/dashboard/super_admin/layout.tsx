@@ -38,6 +38,7 @@ import {
   Star,
   Crown,
   Sparkles,
+  Smartphone,
 } from 'lucide-react';
 
 type NavItem = {
@@ -177,6 +178,12 @@ const navigationItems: NavItem[] = [
     description: 'User & Role Management'
   },
   {
+    name: 'App Customers',
+    href: '/dashboard/super_admin/customer-insights',
+    icon: Smartphone,
+    description: 'App users, bookings, wallet & membership'
+  },
+  {
     name: 'Manual Invoice',
     href: '/dashboard/super_admin/manual-invoices',
     icon: FileText,
@@ -197,12 +204,6 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/rsa',
     icon: AlertTriangle,
     description: 'RSA tools & mappings'
-  },
-  {
-    name: 'Coupons',
-    href: '/dashboard/super_admin/coupons',
-    icon: Ticket,
-    description: 'Create/manage coupons'
   },
   {
     name: 'Advance Coupon Management',

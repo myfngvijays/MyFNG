@@ -63,6 +63,11 @@ import {
   isMembershipCartItem,
 } from '../lib/membershipCart';
 import { membershipActivateButtonLabel } from '../lib/addMembershipPlanToCart';
+import {
+  submitMembershipBenefitClaim,
+  type MembershipBenefitStatusRow,
+  type MembershipClaimHistoryRow,
+} from '../lib/membershipClaims';
 import MembershipPlanCartCard from '../components/MembershipPlanCartCard';
 
 type Props = {
@@ -264,6 +269,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
     model: '',
     carSearchDisplay: '',
   });
+  const [membershipBenefitStatuses, setMembershipBenefitStatuses] = useState<MembershipBenefitStatusRow[]>([]);
+  const [membershipClaimHistory, setMembershipClaimHistory] = useState<MembershipClaimHistoryRow[]>([]);
+  const [claimingBenefitCode, setClaimingBenefitCode] = useState<string | null>(null);
   const [primeMembershipConfig, setPrimeMembershipConfig] = useState<PrimeMembershipDisplay | null>(null);
   const [showReferTnC, setShowReferTnC] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState<any[]>([]);
@@ -1088,6 +1096,76 @@ export default function SettingsScreen({ navigation, route }: Props) {
     membershipVehicleOptions,
     membershipPrimaryVehicleKey,
   ]);
+
+  useEffect(() => {
+    if (activeSubPage !== 'Membership' || !isLoggedIn || !hasActiveMembership) {
+      setMembershipBenefitStatuses([]);
+      setMembershipClaimHistory([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const res = await apiFetch<{ benefits?: MembershipBenefitStatusRow[]; history?: MembershipClaimHistoryRow[] }>(
+        '/api/customer/membership/benefits-status',
+      ).catch(() => null);
+      if (cancelled || !res) return;
+      setMembershipBenefitStatuses(Array.isArray(res.benefits) ? res.benefits : []);
+      setMembershipClaimHistory(Array.isArray(res.history) ? res.history : []);
+    })();
+    return () => { cancelled = true; };
+  }, [activeSubPage, isLoggedIn, hasActiveMembership, currentMembership?.id]);
+
+  const refreshMembershipClaimData = async () => {
+    const res = await apiFetch<{ benefits?: MembershipBenefitStatusRow[]; history?: MembershipClaimHistoryRow[] }>(
+      '/api/customer/membership/benefits-status',
+    ).catch(() => null);
+    if (!res) return;
+    setMembershipBenefitStatuses(Array.isArray(res.benefits) ? res.benefits : []);
+    setMembershipClaimHistory(Array.isArray(res.history) ? res.history : []);
+  };
+
+  const handleMembershipBenefitClaim = async (payload: { benefitCode: string; benefitTitle: string }) => {
+    if (claimingBenefitCode) return;
+
+    const vehicle = membershipLinkedVehicles.primary || membershipLinkedVehicles.second;
+    if (!vehicle?.vehicle_number) {
+      Alert.alert('Vehicle required', 'Add a car to your membership before claiming this benefit.');
+      return;
+    }
+
+    setClaimingBenefitCode(payload.benefitCode);
+    try {
+      const res = await submitMembershipBenefitClaim(payload.benefitCode, {
+        vehicle_number: vehicle.vehicle_number,
+        make: vehicle.make,
+        model: vehicle.model,
+        vehicle_label: vehicle.label,
+      });
+      if (!res?.success) {
+        throw new Error(res?.error || 'Unable to claim this benefit.');
+      }
+
+      if (Array.isArray(res.benefits)) setMembershipBenefitStatuses(res.benefits);
+      if (Array.isArray(res.history)) setMembershipClaimHistory(res.history);
+      else await refreshMembershipClaimData();
+      await hydrateCustomerData();
+
+      const leadNumber = res.lead?.lead_number || '';
+      const vehicleLabel = res.claim?.vehicle_label || vehicle.label || vehicle.vehicle_number;
+      Alert.alert(
+        'Benefit Claimed',
+        `${payload.benefitTitle} claimed for ${vehicleLabel}${leadNumber ? `.\n\nBooking #${leadNumber} created.` : '.'}\n\nOur team will contact you shortly.`,
+        [
+          { text: 'View Orders', onPress: () => setActiveSubPage('Order History') },
+          { text: 'OK' },
+        ],
+      );
+    } catch (error: any) {
+      Alert.alert('Claim Failed', error?.message || 'Unable to claim this benefit. Please try again.');
+    } finally {
+      setClaimingBenefitCode(null);
+    }
+  };
 
   useEffect(() => {
     if (activeSubPage !== 'Membership') return;
@@ -3910,6 +3988,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
             membershipType={primeUI.membershipType}
             accentColor={primeUI.accentColor}
             accentTextColor={primeUI.accentTextColor}
+            benefitStatuses={membershipBenefitStatuses}
+            claimHistory={membershipClaimHistory}
+            claimingBenefitCode={claimingBenefitCode}
+            onClaimBenefit={handleMembershipBenefitClaim}
           />
             ) : (
               <MembershipPlanCartCard plan={primeUI} navigation={navigation} />
@@ -4204,6 +4286,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </View>
                     <Text style={ostyles.carModel}>{carModel || 'Vehicle'}</Text>
                     <Text style={ostyles.serviceType}>{(order.service_display || order.service_type || 'Service').replace(/_/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}</Text>
+                    {order.membership_claim?.benefit_title ? (
+                      <View style={ostyles.membershipClaimBadge}>
+                        <Ionicons name="diamond" size={11} color="#B45309" />
+                        <Text style={ostyles.membershipClaimBadgeText}>
+                          Membership Claim · {order.membership_claim.benefit_title}
+                          {order.membership_claim.vehicle_number ? ` · ${order.membership_claim.vehicle_number}` : ''}
+                        </Text>
+                      </View>
+                    ) : null}
 
                     <View style={ostyles.detailRow}>
                       <View style={ostyles.detailCol}>
@@ -6096,6 +6187,18 @@ const ostyles = StyleSheet.create({
 
   carModel: { fontSize: 18, fontWeight: '800', color: '#1A1A1A', marginBottom: 2 },
   serviceType: { fontSize: 13, fontWeight: '500', color: '#6B7280', marginBottom: 14 },
+  membershipClaimBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 12,
+  },
+  membershipClaimBadgeText: { fontSize: 10, fontWeight: '700', color: '#92400E', flexShrink: 1 },
 
   detailRow: { flexDirection: 'row', gap: 20, marginBottom: 14 },
   detailCol: { flex: 1 },

@@ -14,6 +14,7 @@ export type PreviewBenefit = {
   value_label?: string | null;
   value_prefix?: string | null;
   active?: boolean;
+  show_claim_button?: boolean;
 };
 
 export type PreviewPlanForm = {
@@ -83,6 +84,7 @@ export default function MembershipValueCardPreview({
   benefits: PreviewBenefit[];
 }) {
   const activeBenefits = benefits.filter((b) => b.active !== false);
+  const hasClaimButtons = activeBenefits.some((b) => b.show_claim_button === true);
   const totalValue = Number(plan.total_benefits_value || 0);
   const price = Number(plan.price || 0);
   const saveAmount = Math.max(0, totalValue - price);
@@ -116,6 +118,15 @@ export default function MembershipValueCardPreview({
           </div>
         </div>
 
+        {hasClaimButtons ? (
+          <div className="mx-5 mt-3 mb-1 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <span className="text-sm leading-none">✓</span>
+            <span className="text-[11px] font-semibold text-emerald-800">
+              Active members see Claim buttons on highlighted benefits
+            </span>
+          </div>
+        ) : null}
+
         <div className="px-5 pt-4 pb-2">
           <div className="flex items-center justify-between text-[11px] font-extrabold tracking-wide mb-3" style={{ color: accent }}>
             <span className="flex-1 pr-2">{benefitsHead}</span>
@@ -142,7 +153,14 @@ export default function MembershipValueCardPreview({
                       <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{b.description}</div>
                     ) : null}
                   </div>
-                  <BenefitValue prefix={b.value_prefix} label={b.value_label} accent={accent} />
+                  <div className="flex flex-col items-end gap-1.5 shrink-0 min-w-[72px]">
+                    <BenefitValue prefix={b.value_prefix} label={b.value_label} accent={accent} />
+                    {b.show_claim_button ? (
+                      <span className="rounded-full bg-[#004AAD] px-2.5 py-1 text-[10px] font-extrabold text-white">
+                        Claim
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ))
             )}

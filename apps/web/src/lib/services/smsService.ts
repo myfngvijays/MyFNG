@@ -55,18 +55,34 @@ export const SMS_TEMPLATES = {
  * Send SMS via Twilio
  */
 async function sendViaTwilio(phone: string, message: string): Promise<boolean> {
-  try {
-    // In production, use actual Twilio API
-    // const twilio = require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-    // const result = await twilio.messages.create({
-    //   body: message,
-    //   from: TWILIO_PHONE_NUMBER,
-    //   to: phone,
-    // });
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    console.error('[SMS] Twilio credentials are not configured');
+    return false;
+  }
 
-    // Simulated success
-    console.log('[SMS] Twilio SMS sent to:', phone);
-    console.log('[SMS] Message:', message);
+  try {
+    const params = new URLSearchParams({
+      To: phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`,
+      From: TWILIO_PHONE_NUMBER,
+      Body: message,
+    });
+    const authHeader = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      },
+    );
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      console.error('[SMS] Twilio send failed:', errorText);
+      return false;
+    }
     return true;
   } catch (error) {
     console.error('Twilio SMS error:', error);
@@ -78,24 +94,28 @@ async function sendViaTwilio(phone: string, message: string): Promise<boolean> {
  * Send SMS via MSG91
  */
 async function sendViaMSG91(phone: string, message: string): Promise<boolean> {
-  try {
-    // In production, use actual MSG91 API
-    // const response = await fetch('https://api.msg91.com/api/v5/flow/', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     'authkey': MSG91_AUTH_KEY,
-    //   },
-    //   body: JSON.stringify({
-    //     sender: MSG91_SENDER_ID,
-    //     mobiles: phone,
-    //     message: message,
-    //   }),
-    // });
+  if (!MSG91_AUTH_KEY) {
+    console.error('[SMS] MSG91_AUTH_KEY is not configured');
+    return false;
+  }
 
-    // Simulated success
-    console.log('[SMS] MSG91 SMS sent to:', phone);
-    console.log('[SMS] Message:', message);
+  try {
+    const digits = phone.replace(/\D/g, '');
+    const mobile = digits.startsWith('91') ? digits.slice(2) : digits;
+    const params = new URLSearchParams({
+      authkey: MSG91_AUTH_KEY,
+      mobiles: mobile,
+      message,
+      sender: MSG91_SENDER_ID || 'MYFNG',
+      route: '4',
+      country: '91',
+    });
+    const response = await fetch(`https://control.msg91.com/api/sendhttp.php?${params.toString()}`);
+    const body = (await response.text()).trim();
+    if (!response.ok || !body || /invalid|error|missing/i.test(body)) {
+      console.error('[SMS] MSG91 send failed:', body);
+      return false;
+    }
     return true;
   } catch (error) {
     console.error('MSG91 SMS error:', error);
@@ -123,10 +143,13 @@ export async function sendSMS(
 
     // Send via configured provider
     let success = false;
-    if (SMS_PROVIDER === 'TWILIO') {
-      success = await sendViaTwilio(fullPhone, message);
-    } else if (SMS_PROVIDER === 'MSG91') {
+    if (SMS_PROVIDER === 'MSG91') {
       success = await sendViaMSG91(fullPhone, message);
+    } else if (SMS_PROVIDER === 'TWILIO') {
+      success = await sendViaTwilio(fullPhone, message);
+    } else {
+      console.error('[SMS] Unsupported SMS provider:', SMS_PROVIDER);
+      success = false;
     }
 
     // Log notification

@@ -346,6 +346,7 @@ export function buildBenefitExtendedPayload(body: Record<string, unknown>) {
     value_prefix: body.value_prefix || null,
     display_order: Number(body.display_order) || 0,
     active: body.active !== undefined ? !!body.active : true,
+    show_claim_button: body.show_claim_button !== undefined ? !!body.show_claim_button : false,
     updated_at: new Date().toISOString(),
   };
 }
@@ -375,6 +376,7 @@ export async function updateMembershipBenefit(db: any, id: string, body: Record<
   if (body.benefit_code !== undefined) updates.benefit_code = body.benefit_code;
   if (body.display_order !== undefined) updates.display_order = Number(body.display_order) || 0;
   if (body.active !== undefined) updates.active = !!body.active;
+  if (body.show_claim_button !== undefined) updates.show_claim_button = !!body.show_claim_button;
 
   let result = await db.from('membership_benefits').update(updates).eq('id', id).select().single();
   if (result.error && isMissingColumnError(result.error.message)) {

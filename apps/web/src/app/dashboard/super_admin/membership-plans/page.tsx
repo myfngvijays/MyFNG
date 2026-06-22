@@ -27,6 +27,7 @@ type BenefitRow = {
   value_prefix?: string | null;
   display_order: number;
   active: boolean;
+  show_claim_button?: boolean;
 };
 
 type PlanRow = {
@@ -128,6 +129,7 @@ const EMPTY_BENEFIT = {
   value_prefix: '',
   display_order: 0,
   active: true,
+  show_claim_button: false,
 };
 
 function inr(n: number) {
@@ -441,6 +443,26 @@ export default function MembershipPlansPage() {
     () => [...benefits].sort((a, b) => a.display_order - b.display_order),
     [benefits],
   );
+
+  const previewBenefits = useMemo(() => {
+    if (!editingBenefitId) return sortedBenefits;
+    return sortedBenefits.map((b) =>
+      b.id === editingBenefitId
+        ? {
+            ...b,
+            title: benefitDraft.title,
+            description: benefitDraft.description,
+            icon: benefitDraft.icon,
+            icon_url: benefitDraft.icon_url,
+            icon_class: benefitDraft.icon_class,
+            value_label: benefitDraft.value_label,
+            value_prefix: benefitDraft.value_prefix,
+            active: benefitDraft.active,
+            show_claim_button: Boolean(benefitDraft.show_claim_button),
+          }
+        : b,
+    );
+  }, [sortedBenefits, editingBenefitId, benefitDraft]);
 
   function renderPlanCard(r: PlanRow, legacy = false) {
     const isRsa = normalizeMembershipType(r.membership_type) === 'RSA';
@@ -886,12 +908,15 @@ export default function MembershipPlansPage() {
                               {b.value_prefix ? `${b.value_prefix} ` : ''}{b.value_label}
                             </div>
                           ) : null}
+                          <div className={`text-[10px] font-bold mt-1 inline-block px-2 py-0.5 rounded-full ${b.show_claim_button ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                            Claim button: {b.show_claim_button ? 'ON' : 'OFF'}
+                          </div>
                         </div>
                         <div className="flex flex-col gap-1">
                           <button type="button" onClick={() => moveBenefit(idx, -1)} className="p-1 rounded hover:bg-gray-100"><ChevronUp className="h-4 w-4" /></button>
                           <button type="button" onClick={() => moveBenefit(idx, 1)} className="p-1 rounded hover:bg-gray-100"><ChevronDown className="h-4 w-4" /></button>
                         </div>
-                        <button type="button" onClick={() => { setEditingBenefitId(b.id); setBenefitDraft({ title: b.title, description: b.description || '', icon: b.icon || '', icon_url: b.icon_url || '', icon_class: b.icon_class || '', value_label: b.value_label || '', value_prefix: b.value_prefix || '', display_order: b.display_order, active: b.active }); }} className="text-blue-600 text-xs font-bold">Edit</button>
+                        <button type="button" onClick={() => { setEditingBenefitId(b.id); setBenefitDraft({ title: b.title, description: b.description || '', icon: b.icon || '', icon_url: b.icon_url || '', icon_class: b.icon_class || '', value_label: b.value_label || '', value_prefix: b.value_prefix || '', display_order: b.display_order, active: b.active, show_claim_button: Boolean(b.show_claim_button) }); }} className="text-blue-600 text-xs font-bold">Edit</button>
                         <button type="button" onClick={() => deleteBenefit(b.id)} className="text-red-600"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     ))}
@@ -921,6 +946,26 @@ export default function MembershipPlansPage() {
                         uploading={uploadingIcon}
                         onUpload={uploadBenefitIcon}
                       />
+                      <label className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={Boolean(benefitDraft.show_claim_button)}
+                          onChange={(e) => setBenefitDraft({ ...benefitDraft, show_claim_button: e.target.checked })}
+                        />
+                        <span className="text-xs text-gray-700">
+                          <span className="font-bold block text-gray-900">Show Claim button in app</span>
+                          Active members will see a Claim button on this benefit in the membership page.
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(benefitDraft.active)}
+                          onChange={(e) => setBenefitDraft({ ...benefitDraft, active: e.target.checked })}
+                        />
+                        Benefit active (visible on membership card)
+                      </label>
                       <button type="button" onClick={saveBenefit} className="w-full rounded-lg bg-gray-900 text-white py-2 text-sm font-bold">
                         {editingBenefitId ? 'Update Benefit' : 'Add Benefit'}
                       </button>
@@ -932,7 +977,7 @@ export default function MembershipPlansPage() {
               </form>
 
               <div className="p-5 bg-gray-50 max-h-[80vh] overflow-y-auto sticky top-0">
-                <MembershipValueCardPreview plan={form} benefits={sortedBenefits} />
+                <MembershipValueCardPreview plan={form} benefits={previewBenefits} />
               </div>
             </div>
           </div>

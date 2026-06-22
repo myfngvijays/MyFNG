@@ -11,22 +11,26 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
+import {
+  shouldSkipFirebaseSmsOnSimulator,
+  sendFirebaseSmsOtp,
+  isIosSimulator,
+  isFirebaseIosClientError,
+  firebaseTestOtpHint,
+} from '../lib/firebasePhoneAuth';
 
 type Step = 'phone' | 'otp';
-
-// Phone numbers we register in Firebase Console as "Phone numbers for testing".
-// Includes the App Store reviewer demo number so OTP works without APNs/SMS.
-// Reviewer demo: phone 7007543565 / OTP 454545 (configured in Firebase Console).
-const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
+type OtpChannel = 'sms' | 'whatsapp';
 
 export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState(route?.params?.initialPhone || '');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms');
   const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
 
   useEffect(() => {
@@ -36,7 +40,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     }
   }, [route?.params?.initialPhone]);
 
-  const handleSendOtp = async () => {
+  const handleSendWhatsAppOtp = async () => {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
@@ -44,29 +48,82 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     }
 
     setLoading(true);
+    setOtpChannel('whatsapp');
+    setConfirmation(null);
     try {
-      // Disable app verification for pre-registered Firebase test numbers
-      // (App Store reviewer + dev). Prevents native iOS crash on devices
-      // without APNs / cellular (e.g. iPad with no SIM).
-      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
-      if (__DEV__ || isTestNumber) {
-        try {
-          auth().settings.appVerificationDisabledForTesting = true;
-        } catch {
-          // settings may not be available in all environments
-        }
+      const payload = JSON.stringify({ phone: cleanPhone });
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-mobile-client': 'true',
+      };
+
+      let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-otp`, {
+        method: 'POST',
+        headers,
+        body: payload,
+      });
+      let json = await res.json().catch(() => ({}));
+
+      if (res.status === 404) {
+        res = await fetch(`${ENV.API_URL}/api/booking/send-otp`, {
+          method: 'POST',
+          headers,
+          body: payload,
+        });
+        json = await res.json().catch(() => ({}));
       }
-      const phoneWithCountry = `+91${cleanPhone}`;
-      const result = await auth().signInWithPhoneNumber(phoneWithCountry);
+
+      if (!res.ok) {
+        throw new Error(json?.error || `Unable to send WhatsApp OTP (HTTP ${res.status})`);
+      }
+
+      setStep('otp');
+      Alert.alert('OTP Sent', `WhatsApp OTP sent to +91${cleanPhone}`);
+    } catch (error: any) {
+      Alert.alert('Send OTP Failed', error?.message || 'Unable to send WhatsApp OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendSmsOtp = async () => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {
+      Alert.alert(
+        'Simulator SMS unavailable',
+        'iOS Simulator par real SMS nahi aata. WhatsApp OTP bhej rahe hain.',
+        [{ text: 'OK', onPress: () => handleSendWhatsAppOtp() }],
+      );
+      return;
+    }
+
+    setLoading(true);
+    setOtpChannel('sms');
+    try {
+      const result = await sendFirebaseSmsOtp(cleanPhone);
       setConfirmation(result);
       setStep('otp');
-      Alert.alert('OTP Sent', `OTP sent to ${phoneWithCountry}`);
+      const testHint = firebaseTestOtpHint(cleanPhone);
+      Alert.alert('OTP Sent', testHint || `OTP sent to +91${cleanPhone}`);
     } catch (error: any) {
+      if (__DEV__ && isIosSimulator() && isFirebaseIosClientError(error)) {
+        await handleSendWhatsAppOtp();
+        return;
+      }
       const code = error?.code as string | undefined;
       if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
         Alert.alert(
-          'Verification Unavailable',
-          'Phone verification is unavailable on this device. Please try a real iPhone with a SIM, or use email login.'
+          'SMS Unavailable',
+          'SMS verification is unavailable on this device. Use WhatsApp OTP instead.',
+          [
+            { text: 'Use WhatsApp', onPress: () => handleSendWhatsAppOtp() },
+            { text: 'Cancel', style: 'cancel' },
+          ],
         );
       } else {
         Alert.alert('Send OTP Failed', error?.message || 'Unable to send OTP. Please try again.');
@@ -76,7 +133,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     }
   };
 
-  const handleVerifyOtp = async () => {
+  const handleVerifySmsOtp = async () => {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
@@ -136,6 +193,72 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     }
   };
 
+  const handleVerifyWhatsAppOtp = async () => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!/^\d{6}$/.test(otp.trim())) {
+      Alert.alert('Invalid OTP', 'Please enter the 6-digit OTP sent on WhatsApp');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = JSON.stringify({
+        phone: cleanPhone,
+        otp: otp.trim(),
+      });
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-mobile-client': 'true',
+      };
+
+      let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
+        method: 'POST',
+        headers,
+        body: payload,
+      });
+      let json = await res.json().catch(() => ({}));
+
+      if (res.status === 404) {
+        const verifyRes = await fetch(`${ENV.API_URL}/api/booking/verify-otp`, {
+          method: 'POST',
+          headers,
+          body: payload,
+        });
+        const verifyJson = await verifyRes.json().catch(() => ({}));
+        if (!verifyRes.ok || !verifyJson?.verified) {
+          throw new Error(verifyJson?.error || `Verification failed (HTTP ${verifyRes.status})`);
+        }
+        res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
+          method: 'POST',
+          headers,
+          body: payload,
+        });
+        json = await res.json().catch(() => ({}));
+      }
+
+      if (!res.ok) {
+        throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
+      }
+      if (!json?.session_token) {
+        throw new Error('Session token not received');
+      }
+
+      await setCustomerSessionToken(String(json.session_token));
+      Alert.alert('Login Successful', 'You are now logged in as customer');
+      navigation.goBack();
+    } catch (error: any) {
+      Alert.alert('OTP Verification Failed', error?.message || 'Invalid OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = otpChannel === 'whatsapp' ? handleVerifyWhatsAppOtp : handleVerifySmsOtp;
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -145,6 +268,12 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
         <View style={styles.card}>
           <Text style={styles.title}>Customer Login</Text>
           <Text style={styles.subtitle}>Login with mobile number and OTP</Text>
+
+          {__DEV__ && isIosSimulator() && step === 'phone' ? (
+            <Text style={styles.simulatorHint}>
+              iOS Simulator: real SMS phone par nahi aayega. WhatsApp OTP use karein, ya test number 7007543565 (OTP 454545).
+            </Text>
+          ) : null}
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Mobile Number</Text>
@@ -161,7 +290,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
           {step === 'otp' && (
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>OTP</Text>
+              <Text style={styles.label}>OTP ({otpChannel === 'sms' ? 'SMS' : 'WhatsApp'})</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Enter OTP"
@@ -175,13 +304,30 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
           )}
 
           {step === 'phone' ? (
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleSendOtp}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Send OTP</Text>}
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[styles.button, loading && otpChannel === 'sms' && styles.buttonDisabled]}
+                onPress={handleSendSmsOtp}
+                disabled={loading}
+              >
+                {loading && otpChannel === 'sms' ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Send OTP via SMS</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.whatsappButton, loading && otpChannel === 'whatsapp' && styles.buttonDisabled]}
+                onPress={handleSendWhatsAppOtp}
+                disabled={loading}
+              >
+                {loading && otpChannel === 'whatsapp' ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Send OTP via WhatsApp</Text>
+                )}
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <TouchableOpacity
@@ -197,6 +343,8 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
                 disabled={loading}
                 onPress={() => {
                   setOtp('');
+                  setConfirmation(null);
+                  setOtpChannel('sms');
                   setStep('phone');
                 }}
               >
@@ -238,41 +386,54 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: '#111827',
+    marginBottom: 4,
   },
   subtitle: {
-    marginTop: 4,
-    marginBottom: 18,
     fontSize: 14,
     color: '#6B7280',
+    marginBottom: 20,
+  },
+  simulatorHint: {
+    marginBottom: 12,
+    fontSize: 12,
+    color: '#92400E',
+    lineHeight: 16,
   },
   inputContainer: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   label: {
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
     color: '#374151',
     marginBottom: 6,
-    fontWeight: '600',
   },
   input: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
     borderRadius: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
     color: '#111827',
     backgroundColor: '#FFF',
   },
   button: {
-    marginTop: 8,
-    backgroundColor: '#0088E8',
+    backgroundColor: '#004AAD',
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
+    marginBottom: 10,
+  },
+  whatsappButton: {
+    backgroundColor: '#25D366',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 10,
   },
   buttonDisabled: {
-    opacity: 0.65,
+    opacity: 0.7,
   },
   buttonText: {
     color: '#FFF',
@@ -280,12 +441,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   linkButton: {
-    marginTop: 12,
+    paddingVertical: 10,
     alignItems: 'center',
   },
   linkText: {
-    color: '#0088E8',
+    color: '#004AAD',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
-

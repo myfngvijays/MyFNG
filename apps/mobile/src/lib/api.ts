@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { ENV } from '../config/environment';
 import { getCustomerSessionToken } from './customerSession';
 import auth from '@react-native-firebase/auth';
+import { Platform } from 'react-native';
 
 type JsonValue = Record<string, any> | any[] | null;
 
@@ -39,6 +40,8 @@ export async function apiFetch<T = JsonValue>(
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> | undefined),
+    'X-App-Platform': Platform.OS,
+    'x-mobile-client': 'true',
   };
   if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
   if (customerSessionToken) headers['x-customer-session'] = customerSessionToken;

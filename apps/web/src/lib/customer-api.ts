@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { getCustomerFromSession } from '@/lib/customer-session';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { persistCustomerAppPlatform, normalizeAppPlatform } from '@/lib/app-platform';
 
 export async function requireCustomer() {
   const { customer } = await getCustomerFromSession();
@@ -11,6 +13,15 @@ export async function requireCustomer() {
   if (!supabaseAdmin) {
     return { response: NextResponse.json({ error: 'Server config error' }, { status: 500 }) };
   }
+
+  const headerStore = await headers();
+  const appPlatform =
+    normalizeAppPlatform(headerStore.get('x-app-platform')) ||
+    normalizeAppPlatform(headerStore.get('X-App-Platform'));
+  if (appPlatform && headerStore.get('x-mobile-client') === 'true') {
+    void persistCustomerAppPlatform(supabaseAdmin, customer.id, appPlatform);
+  }
+
   return { customer, supabaseAdmin };
 }
 

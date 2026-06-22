@@ -566,8 +566,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
           </Section>
 
-          <Section>
-            <MembershipCardsBlock screen="home" slot="after_services" navigation={navigation} />
+          <Section tight>
+            <MembershipCardsBlock screen="home" slot="after_services" navigation={navigation} spacing="compact" />
           </Section>
 
           <Section>
@@ -716,8 +716,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </Animated.View>
           </Section>
 
-          <Section>
-            <MembershipCardsBlock screen="home" slot="after_loan_card" navigation={navigation} />
+          <Section tight>
+            <MembershipCardsBlock screen="home" slot="after_loan_card" navigation={navigation} spacing="compact" />
           </Section>
 
           <Section>
@@ -803,8 +803,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <SmartToolsSection navigation={navigation} city={detectedCity} />
 
-          <Section>
-            <MembershipCardsBlock screen="home" slot="after_smart_tools" navigation={navigation} bannerOnly />
+          <Section tight>
+            <MembershipCardsBlock screen="home" slot="after_smart_tools" navigation={navigation} bannerOnly spacing="compact" />
           </Section>
 
           <Section>
@@ -850,8 +850,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
           </Section>
 
-          <Section>
-            <MembershipCardsBlock screen="home" slot="before_reviews" navigation={navigation} />
+          <Section tight>
+            <MembershipCardsBlock screen="home" slot="before_reviews" navigation={navigation} spacing="compact" />
           </Section>
 
           <Section>
@@ -1023,8 +1023,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
   );
 }
 
-function Section({ children }: { children: React.ReactNode }) {
-  return <View style={styles.section}>{children}</View>;
+function Section({ children, tight = false }: { children: React.ReactNode; tight?: boolean }) {
+  return <View style={[styles.section, tight ? styles.sectionTight : null]}>{children}</View>;
 }
 
 function SectionTitle({ title }: { title: string }) {
@@ -1051,13 +1051,16 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 8,
+  },
+  sectionTight: {
+    paddingVertical: 2,
   },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   sectionLine: {
     flex: 1,
@@ -1770,7 +1773,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   reviewBadge: {
     flexDirection: 'row',
@@ -1884,7 +1887,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   blogReadMore: {
     fontSize: 11,
@@ -1967,8 +1970,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    marginTop: 4,
-    paddingVertical: 10,
+    marginTop: 0,
+    paddingVertical: 6,
   },
   showMoreBtnText: {
     fontSize: 12,

@@ -189,6 +189,9 @@ export async function getCustomerFromSession(): Promise<{
   }
 
   if (existingCustomer) {
+    if (existingCustomer.is_active === false) {
+      return { customer: null, session: null };
+    }
     await supabaseAdmin
       .from('customers')
       .update({

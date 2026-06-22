@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
+import { parseMembershipClaimMeta } from '@/lib/membership-benefits-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
 
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time_slot')
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time_slot, meta')
     .eq('customer_phone', customer.phone)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -164,6 +165,7 @@ export async function GET(request: Request) {
       amount_display: displayAmount,
       preferred_time: r.preferred_time_slot || null,
       workshop_name: workshopNameById[String(r.workshop_id || '')] || '',
+      membership_claim: parseMembershipClaimMeta(r.meta),
     };
   });
 

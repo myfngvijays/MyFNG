@@ -32,6 +32,8 @@ export type AppMembershipPlan = ReturnType<typeof mapDbPlanToPrimeDisplay> & {
 };
 
 export type ValueCardBenefit = {
+  benefitCode?: string;
+  showClaimButton?: boolean;
   icon: string;
   iconUrl?: string;
   iconClass?: string;
@@ -81,6 +83,8 @@ export function mapDbPlanToPrimeDisplay(plan: any, benefits: any[] = []): PrimeM
     .filter((b) => b?.active !== false)
     .sort((a, b) => Number(a.display_order || 0) - Number(b.display_order || 0))
     .map((b) => ({
+      benefitCode: b.benefit_code ? String(b.benefit_code) : undefined,
+      showClaimButton: b.show_claim_button === true,
       icon: String(b.icon || 'star'),
       iconUrl: b.icon_url ? String(b.icon_url) : undefined,
       iconClass: b.icon_class ? String(b.icon_class) : undefined,
@@ -95,6 +99,8 @@ export function mapDbPlanToPrimeDisplay(plan: any, benefits: any[] = []): PrimeM
 
   const valueCard: ValueCardConfig = {
     benefits: mappedBenefits.length > 0 ? mappedBenefits : PRIME_VALUE_BENEFITS.map((b) => ({
+      benefitCode: b.benefitCode,
+      showClaimButton: Boolean(b.showClaimButton),
       icon: b.icon,
       title: b.title,
       description: b.description,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ensureWalletAccount } from '@/lib/customer-api';
 import { generateSessionToken, getSessionMaxAgeSeconds } from '@/lib/customer-session';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { resolveAppPlatformFromRequest } from '@/lib/app-platform';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const phone = normalizePhone(body.phone);
     const name = String(body.full_name || body.name || '').trim();
+    const appPlatform = resolveAppPlatformFromRequest(request, body?.platform);
     const primary = body.primary_vehicle || body.vehicle || {};
     const second = body.second_vehicle || null;
 
@@ -99,15 +101,14 @@ export async function POST(request: NextRequest) {
 
     let customerId = existingCustomer?.id as string | undefined;
     if (customerId) {
-      await supabaseAdmin
-        .from('customers')
-        .update({
-          full_name: name || existingCustomer?.full_name,
-          phone,
-          updated_at: new Date().toISOString(),
-          last_login_at: new Date().toISOString(),
-        })
-        .eq('id', customerId);
+      const updatePayload: Record<string, unknown> = {
+        full_name: name || existingCustomer?.full_name,
+        phone,
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString(),
+      };
+      if (appPlatform) updatePayload.app_platform = appPlatform;
+      await supabaseAdmin.from('customers').update(updatePayload).eq('id', customerId);
     } else {
       const { data: inserted, error: insertErr } = await supabaseAdmin
         .from('customers')
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
           full_name: name,
           phone_verified: false,
           is_active: true,
+          app_platform: appPlatform,
           last_login_at: new Date().toISOString(),
         })
         .select('id')
@@ -164,6 +166,7 @@ export async function POST(request: NextRequest) {
       token,
       expires_at: expiresAt.toISOString(),
       user_agent: userAgent,
+      app_platform: appPlatform,
     });
     if (sessionErr) {
       return NextResponse.json({ error: 'Failed to create session', details: sessionErr.message }, { status: 500 });

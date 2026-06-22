@@ -12,6 +12,14 @@ import {
   getSessionMaxAgeSeconds,
 } from '@/lib/customer-session';
 import { creditWelcomeBonus } from '@/lib/wallet-service';
+import {
+  resolveAppPlatformFromRequest,
+} from '@/lib/app-platform';
+import {
+  customerAccountBlockMessage,
+  isCustomerAccountBlocked,
+  resolveCustomerAccountStatus,
+} from '@/lib/customer-account-admin';
 import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +29,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const idToken = typeof body?.idToken === 'string' ? body.idToken.trim() : null;
     const displayName = typeof body?.displayName === 'string' ? body.displayName.trim() || null : null;
+    const appPlatform = resolveAppPlatformFromRequest(request, body?.platform);
 
     if (!idToken) {
       return NextResponse.json({ error: 'idToken is required' }, { status: 400 });
@@ -56,15 +65,20 @@ export async function POST(request: NextRequest) {
     let isNewCustomer = false;
     const { data: byPhone } = await supabaseAdmin
       .from('customers')
-      .select('id, full_name')
+      .select('id, full_name, is_active, account_status')
       .eq('phone', normalizedPhone)
       .maybeSingle();
     const { data: byUid } = await supabaseAdmin
       .from('customers')
-      .select('id, full_name')
+      .select('id, full_name, is_active, account_status')
       .eq('firebase_uid', decoded.uid)
       .maybeSingle();
     const existing = byPhone || byUid;
+
+    if (existing && isCustomerAccountBlocked(existing.is_active, existing.account_status)) {
+      const status = resolveCustomerAccountStatus(existing.account_status, existing.is_active);
+      return NextResponse.json({ error: customerAccountBlockMessage(status) }, { status: 403 });
+    }
 
     if (existing) {
       customerId = existing.id;
@@ -76,6 +90,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       };
       if (displayName && !existing.full_name) updatePayload.full_name = displayName;
+      if (appPlatform) updatePayload.app_platform = appPlatform;
       await supabaseAdmin.from('customers').update(updatePayload).eq('id', customerId);
     } else {
       const { data: inserted, error: insertErr } = await supabaseAdmin
@@ -86,6 +101,7 @@ export async function POST(request: NextRequest) {
           full_name: displayName || `User ${normalizedPhone.slice(-4)}`,
           phone_verified: true,
           is_active: true,
+          app_platform: appPlatform,
           last_login_at: new Date().toISOString(),
         })
         .select('id')
@@ -115,6 +131,7 @@ export async function POST(request: NextRequest) {
       token,
       expires_at: expiresAt.toISOString(),
       user_agent: userAgent,
+      app_platform: appPlatform,
     });
 
     if (sessionErr) {

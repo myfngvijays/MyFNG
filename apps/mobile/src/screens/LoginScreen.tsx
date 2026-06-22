@@ -15,10 +15,20 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
+import {
+  prepareFirebasePhoneAuth,
+  isIosSimulator,
+  isFirebaseIosClientError,
+  firebaseSmsUnavailableMessage,
+  shouldSkipFirebaseSmsOnSimulator,
+  sendFirebaseSmsOtp,
+  isFirebaseTestPhone,
+  firebaseTestOtpHint,
+} from '../lib/firebasePhoneAuth';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const insets = useSafeAreaInsets();
@@ -39,12 +49,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   // Includes the App Store reviewer demo number so OTP works without APNs/SMS.
   // Real users with real numbers go through the standard reCAPTCHA + SMS flow.
   // Reviewer demo: phone 7007543565 / OTP 454545 (configured in Firebase Console).
-  const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
-
   useEffect(() => {
-    if (__DEV__) {
-      auth().settings.appVerificationDisabledForTesting = true;
-    }
+    prepareFirebasePhoneAuth();
   }, []);
 
   useEffect(() => {
@@ -71,31 +77,18 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
     setLoading(true);
     try {
-      // Disable app verification for our pre-registered Firebase test numbers
-      // (App Store reviewer flow + dev). Real numbers still get full reCAPTCHA / APNs.
-      // This prevents an iOS native crash on devices with no APNs / cellular (e.g. iPad).
-      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
-      if (__DEV__ || isTestNumber) {
-        try {
-          auth().settings.appVerificationDisabledForTesting = true;
-        } catch {
-          // ignore — settings may not be available in all environments
-        }
-      }
-      const phoneWithCountry = `+91${cleanPhone}`;
-      const result = await auth().signInWithPhoneNumber(phoneWithCountry);
+      const result = await sendFirebaseSmsOtp(cleanPhone);
       setCustomerConfirmation(result);
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
-      const code = error?.code as string | undefined;
-      if (code === 'auth/network-request-failed') {
-        setErrorText('Network issue. Please check internet and retry.');
-      } else if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
-        setErrorText('Phone verification is unavailable on this device. Please try a real iPhone with a SIM, or use email login.');
-      } else {
-        setErrorText(error?.message || 'Unable to send OTP. Please try again.');
+      if (__DEV__ && isIosSimulator() && isFirebaseIosClientError(error)) {
+        setErrorText('Simulator: SMS unavailable. Sending OTP on WhatsApp...');
+        setLoading(false);
+        await handleWhatsAppOtpStart();
+        return;
       }
+      setErrorText(firebaseSmsUnavailableMessage(error));
     } finally {
       setLoading(false);
     }
@@ -138,6 +131,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         throw new Error(json?.error || `Unable to send WhatsApp OTP (HTTP ${res.status})`);
       }
 
+      setErrorText('');
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
@@ -359,6 +353,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const startPhoneOtp = () => {
     if (loading) return;
     setPhoneOtpChannel('sms');
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {
+      setErrorText('Simulator par SMS nahi aata — WhatsApp OTP bhej rahe hain...');
+      void handleWhatsAppOtpStart();
+      return;
+    }
     void handleCustomerOtpStart();
   };
 
@@ -455,6 +455,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                   </View>
                 )}
                 {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+                {__DEV__ && isIosSimulator() && loginMethod === 'phone' && customerStep === 'input' ? (
+                  <Text style={styles.simulatorHint}>
+                    iOS Simulator: real SMS phone par nahi aayega. WhatsApp OTP use karein, ya test number 7007543565 (OTP 454545).
+                  </Text>
+                ) : null}
                 {loginMethod === 'phone' ? (
                   <View style={styles.otpButtonsWrap}>
                     <TouchableOpacity
@@ -533,6 +538,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                   textAlign="center"
                 />
                 {errorText ? <Text style={[styles.errorText, { textAlign: 'center' }]}>{errorText}</Text> : null}
+                {isFirebaseTestPhone(customerPhone) && firebaseTestOtpHint(customerPhone) ? (
+                  <Text style={[styles.simulatorHint, { textAlign: 'center' }]}>
+                    {firebaseTestOtpHint(customerPhone)}
+                  </Text>
+                ) : null}
                 <TouchableOpacity
                   style={[styles.verifyButton, loading && styles.buttonDisabled]}
                   onPress={submitOtp}
@@ -821,6 +831,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#DC2626',
     fontWeight: '700',
+  },
+  simulatorHint: {
+    marginTop: 8,
+    fontSize: 10,
+    color: '#92400E',
+    fontWeight: '600',
+    lineHeight: 14,
   },
   termsText: {
     marginTop: 48,

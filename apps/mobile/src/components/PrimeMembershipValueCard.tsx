@@ -10,7 +10,14 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import {
+  shouldSkipFirebaseSmsOnSimulator,
+  sendFirebaseSmsOtp,
+  isIosSimulator,
+  isFirebaseIosClientError,
+  firebaseTestOtpHint,
+} from '../lib/firebasePhoneAuth';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import { COLORS } from '../constants/theme';
@@ -24,6 +31,14 @@ import {
 } from '../constants/primeMembershipValueCard';
 import type { ValueCardBenefit, ValueCardConfig } from '../lib/membershipPlan';
 import type { MembershipType } from '../lib/membershipPlacements';
+import {
+  formatClaimHistoryDate,
+  formatClaimRemaining,
+  isBenefitClaimButtonEnabled,
+  resolveBenefitCode,
+  type MembershipBenefitStatusRow,
+  type MembershipClaimHistoryRow,
+} from '../lib/membershipClaims';
 import MembershipBenefitIcon, { benefitIconStyles } from './MembershipBenefitIcon';
 import CarModelSearchField from './CarModelSearchField';
 
@@ -96,10 +111,17 @@ type Props = {
   pricePeriodLabel?: string;
   onPreviewPress?: () => void;
   onGuestAuthenticated?: () => void | Promise<void>;
+  benefitStatuses?: MembershipBenefitStatusRow[];
+  claimHistory?: MembershipClaimHistoryRow[];
+  claimingBenefitCode?: string | null;
+  onClaimBenefit?: (payload: {
+    benefitCode: string;
+    benefitTitle: string;
+    serviceCategory?: string;
+  }) => void;
   style?: object;
 };
 
-const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
 
 const PRIME_MEMBERSHIP_TERMS = [
   'Membership is valid for 12 months from the date of activation.',
@@ -280,18 +302,22 @@ function GuestPhoneOtpSection({
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
+    if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {
+      Alert.alert(
+        'Simulator SMS unavailable',
+        'iOS Simulator par real SMS nahi aata. WhatsApp OTP bhej rahe hain.',
+        [{ text: 'OK', onPress: () => handleSendWhatsAppOtp() }],
+      );
+      return;
+    }
     setOtpLoading(true);
     setOtpChannel('sms');
     try {
-      const isTestNumber = FIREBASE_TEST_PHONE_NUMBERS.includes(cleanPhone);
-      if (__DEV__ || isTestNumber) {
-        try {
-          auth().settings.appVerificationDisabledForTesting = true;
-        } catch {}
-      }
-      const result = await auth().signInWithPhoneNumber(`+91${cleanPhone}`);
+      const result = await sendFirebaseSmsOtp(cleanPhone);
       setOtpConfirmation(result);
       setOtpSent(true);
+      const testHint = firebaseTestOtpHint(cleanPhone);
+      if (testHint) Alert.alert('Test OTP', testHint);
     } catch (error: any) {
       const code = error?.code as string | undefined;
       if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
@@ -622,6 +648,10 @@ export default function PrimeMembershipValueCard({
   pricePeriodLabel = '/ year',
   onPreviewPress,
   onGuestAuthenticated,
+  benefitStatuses = [],
+  claimHistory = [],
+  claimingBenefitCode = null,
+  onClaimBenefit,
   style,
 }: Props) {
   const isRsa = membershipType === 'RSA';
@@ -675,12 +705,18 @@ export default function PrimeMembershipValueCard({
     valueCard?.benefits && valueCard.benefits.length > 0
       ? valueCard.benefits
       : PRIME_VALUE_BENEFITS.map((b) => ({
+          benefitCode: b.benefitCode,
+          showClaimButton: Boolean(b.showClaimButton),
           icon: b.icon,
           title: b.title,
           description: b.description,
           valueLabel: b.valueLabel,
           valuePrefix: b.valuePrefix,
         }));
+
+  const statusByCode = Object.fromEntries(
+    (benefitStatuses || []).map((row) => [String(row.benefit_code || '').toUpperCase(), row]),
+  );
 
   const totalBenefitsValue = valueCard?.totalBenefitsValue ?? PRIME_VALUE_TOTAL;
   const saveAmount = valueCard?.saveAmount ?? PRIME_VALUE_SAVE;
@@ -781,7 +817,15 @@ export default function PrimeMembershipValueCard({
           <Text style={[styles.benefitsHeadText, styles.benefitsHeadLeft]}>{benefitsHead}</Text>
           <Text style={styles.benefitsHeadText}>{valueColumnLabel}</Text>
         </View>
-        {cardBenefits.map((b, idx) => (
+        {cardBenefits.map((b, idx) => {
+          const benefitCode = resolveBenefitCode(b, idx);
+          const status = benefitCode ? statusByCode[String(benefitCode).toUpperCase()] : null;
+          const showClaimButton = isBenefitClaimButtonEnabled(b, status);
+          const remainingLabel = formatClaimRemaining(status);
+          const canClaim = Boolean(isActive && benefitCode && showClaimButton && onClaimBenefit && (status?.claimable ?? true));
+          const isClaiming = claimingBenefitCode === benefitCode;
+
+          return (
           <View key={`${b.title}-${idx}`} style={[styles.bRow, idx === cardBenefits.length - 1 ? styles.bRowLast : null]}>
             <View style={styles.bLeft}>
               <View style={[styles.bIcon, { backgroundColor: theme.benefitIconBg }]}>
@@ -790,12 +834,58 @@ export default function PrimeMembershipValueCard({
               <View style={styles.bTextWrap}>
                 <Text style={styles.bTitle}>{b.title}</Text>
                 <Text style={styles.bSub}>{b.description}</Text>
+                {remainingLabel ? (
+                  <Text style={styles.bRemaining}>{remainingLabel}</Text>
+                ) : null}
               </View>
             </View>
-            <BenefitValue prefix={b.valuePrefix} label={b.valueLabel} accentColor={theme.benefitValue} />
+            <View style={styles.bRightCol}>
+              <BenefitValue prefix={b.valuePrefix} label={b.valueLabel} accentColor={theme.benefitValue} />
+              {canClaim ? (
+                <TouchableOpacity
+                  style={[styles.claimBtn, (!(status?.claimable ?? true) || isClaiming) ? styles.claimBtnDisabled : null]}
+                  activeOpacity={0.85}
+                  disabled={!(status?.claimable ?? true) || Boolean(claimingBenefitCode)}
+                  onPress={() => onClaimBenefit?.({
+                    benefitCode: String(benefitCode),
+                    benefitTitle: b.title,
+                  })}
+                >
+                  {isClaiming ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.claimBtnText}>
+                      {(status?.claimable ?? true) ? 'Claim' : 'Used'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
-        ))}
+          );
+        })}
       </View>
+
+      {isActive && claimHistory.length > 0 ? (
+        <View style={styles.claimHistorySection}>
+          <Text style={styles.claimHistoryTitle}>Claim History</Text>
+          {claimHistory.slice(0, 8).map((item, historyIdx) => (
+            <View key={item.id} style={[styles.claimHistoryRow, historyIdx === 0 ? styles.claimHistoryRowFirst : null]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.claimHistoryBenefit}>{item.benefit_title}</Text>
+                <Text style={styles.claimHistoryMeta}>
+                  {item.vehicle_label || item.vehicle_number || 'Vehicle'}
+                  {item.vehicle_number ? ` · ${item.vehicle_number}` : ''}
+                </Text>
+                {item.lead_number ? (
+                  <Text style={styles.claimHistoryLead}>Booking #{item.lead_number}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.claimHistoryDate}>{formatClaimHistoryDate(item.created_at)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <View style={[styles.totalBand, preview ? styles.totalBandPreview : null, { backgroundColor: theme.totalBandBg }]}>
         <View style={styles.totalRow}>
@@ -1259,6 +1349,48 @@ const styles = StyleSheet.create({
   bTextWrap: { flex: 1 },
   bTitle: { fontSize: 12, fontWeight: '700', color: '#1A1A1A', lineHeight: 16 },
   bSub: { fontSize: 9.5, color: '#9A9A9A', marginTop: 1, lineHeight: 13 },
+  bRemaining: { fontSize: 9, fontWeight: '700', color: '#047857', marginTop: 3 },
+  bRightCol: { alignItems: 'flex-end', gap: 6, minWidth: 72 },
+  claimBtn: {
+    backgroundColor: '#004AAD',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  claimBtnDisabled: {
+    backgroundColor: '#CBD5E1',
+  },
+  claimBtnText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  claimHistorySection: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  claimHistoryTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#334155',
+    marginBottom: 8,
+    letterSpacing: 0.4,
+  },
+  claimHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  claimHistoryRowFirst: { borderTopWidth: 0, paddingTop: 0 },
+  claimHistoryBenefit: { fontSize: 11, fontWeight: '700', color: '#1E293B' },
+  claimHistoryMeta: { fontSize: 10, color: '#64748B', marginTop: 2 },
+  claimHistoryLead: { fontSize: 9, fontWeight: '700', color: '#004AAD', marginTop: 2 },
+  claimHistoryDate: { fontSize: 9, fontWeight: '600', color: '#94A3B8' },
   bValueStack: { alignItems: 'flex-end' },
   bValuePrefix: { fontSize: 9, fontWeight: '600', color: '#64748B', lineHeight: 11 },
   bValue: { fontSize: 12, fontWeight: '800', color: '#023D95' },
