@@ -38,6 +38,13 @@ import {
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { ENV } from '../config/environment';
 import { supabase } from '../lib/supabase';
+import { WelcomeBonusCreditedModal, WelcomeBonusGuestModal } from '../components/WelcomeBonusModal';
+import {
+  decideWelcomeCreditedPopup,
+  getWelcomeBonusAmount,
+  markGuestWelcomePopupShown,
+  shouldShowGuestWelcomePopup,
+} from '../lib/welcomeBonus';
 type Props = {
   navigation: any;
 };
@@ -158,6 +165,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [reviews, setReviews] = useState(CUSTOMER_REVIEWS);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [guestWelcomeVisible, setGuestWelcomeVisible] = useState(false);
+  const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
+  const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
+  const creditedWelcomeCheckedRef = useRef(false);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
@@ -184,12 +195,39 @@ export default function PublicHomeScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      let popupTimer: ReturnType<typeof setTimeout> | null = null;
       (async () => {
         const token = await getCustomerSessionToken();
-        if (active) setIsLoggedIn(Boolean(token));
+        const loggedIn = Boolean(token);
+        if (active) setIsLoggedIn(loggedIn);
+        if (active && !loggedIn && shouldShowGuestWelcomePopup(loggedIn)) {
+          popupTimer = setTimeout(() => {
+            if (!active) return;
+            markGuestWelcomePopupShown();
+            setGuestWelcomeVisible(true);
+          }, 700);
+        }
+
+        if (active && loggedIn && token && !creditedWelcomeCheckedRef.current) {
+          creditedWelcomeCheckedRef.current = true;
+          try {
+            const meRes = await fetch(`${ENV.API_URL}/api/customer/auth/me`, {
+              headers: { 'x-customer-session': token, 'x-mobile-client': 'true' },
+            });
+            const meJson = meRes.ok ? await meRes.json().catch(() => ({})) : {};
+            const decision = await decideWelcomeCreditedPopup(token, meJson?.customer?.id, null);
+            if (active && decision.show) {
+              setCreditedWelcomeAmount(decision.amount);
+              setCreditedWelcomeVisible(true);
+            }
+          } catch {
+            // ignore welcome popup errors
+          }
+        }
       })();
       return () => {
         active = false;
+        if (popupTimer) clearTimeout(popupTimer);
       };
     }, []),
   );
@@ -1017,6 +1055,21 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+
+        <WelcomeBonusGuestModal
+          visible={guestWelcomeVisible}
+          onClose={() => setGuestWelcomeVisible(false)}
+          onLogin={() => {
+            setGuestWelcomeVisible(false);
+            navigation.navigate('Login');
+          }}
+        />
+
+        <WelcomeBonusCreditedModal
+          visible={creditedWelcomeVisible}
+          amount={creditedWelcomeAmount}
+          onClose={() => setCreditedWelcomeVisible(false)}
+        />
 
       </View>
     </SafeAreaView>

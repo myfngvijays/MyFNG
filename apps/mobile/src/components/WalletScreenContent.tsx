@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
-import { WALLET_TERMS } from '../lib/wallet';
+import { buildWalletTerms, formatWalletUsageLimit, getWalletRules, loadWalletRules } from '../lib/wallet';
+import { ENV } from '../config/environment';
 
 export type WalletTxFilter = 'ALL' | 'CREDIT' | 'DEBIT';
 
@@ -135,6 +136,12 @@ export default function WalletScreenContent({
 }: Props) {
   const [termsExpanded, setTermsExpanded] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [walletTerms, setWalletTerms] = useState(() => buildWalletTerms());
+  const walletRules = getWalletRules();
+
+  useEffect(() => {
+    void loadWalletRules(ENV.API_URL).then((rules) => setWalletTerms(buildWalletTerms(rules)));
+  }, []);
 
   useEffect(() => {
     setShowAllHistory(false);
@@ -197,7 +204,7 @@ export default function WalletScreenContent({
         <Text style={styles.balanceLabel}>Available Balance</Text>
         <Text style={styles.balanceAmount}>₹{balance.toLocaleString('en-IN')}</Text>
         <Text style={styles.balanceHint}>
-          Includes welcome bonus, cashback & referral · Use up to 10% on services · 30% on membership
+          Includes welcome bonus, cashback & referral · Use up to {formatWalletUsageLimit('SERVICE', walletRules)} on services · {formatWalletUsageLimit('MEMBERSHIP', walletRules)} on membership
         </Text>
         {welcomeBonusExpiresAt ? (
           <View style={styles.expiryPill}>
@@ -360,10 +367,10 @@ export default function WalletScreenContent({
         <Text style={styles.termsTitle}>Terms & Conditions</Text>
         <View style={styles.termRow}>
           <Text style={styles.termBullet}>•</Text>
-          <Text style={styles.termText}>{WALLET_TERMS[0]}</Text>
+          <Text style={styles.termText}>{walletTerms[0]}</Text>
         </View>
         {termsExpanded ? (
-          WALLET_TERMS.slice(1).map((term, idx) => (
+          walletTerms.slice(1).map((term, idx) => (
             <View key={idx + 1} style={styles.termRow}>
               <Text style={styles.termBullet}>•</Text>
               <Text style={styles.termText}>{term}</Text>

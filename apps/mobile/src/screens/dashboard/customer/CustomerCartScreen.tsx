@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch
 import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
-import { calculateWalletUsage, fetchWalletVehicleBlocked } from '../../../lib/wallet';
+import { calculateWalletUsage, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules } from '../../../lib/wallet';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CustomerCartScreen({ navigation }: any) {
@@ -132,7 +132,7 @@ export default function CustomerCartScreen({ navigation }: any) {
           <TextInput style={styles.input} placeholder="Vehicle number (optional)" value={vehicleNumber} onChangeText={setVehicleNumber} />
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.switchLabel}>Use Wallet (Get up to 10%)</Text>
+              <Text style={styles.switchLabel}>Use Wallet (Get up to {formatWalletUsageLimit('SERVICE')})</Text>
               <Text style={styles.walletHint}>Available ₹{walletBalance.toLocaleString('en-IN')}</Text>
               {walletVehicleBlocked ? (
                 <Text style={styles.walletBlocked}>

@@ -37,8 +37,9 @@ import {
 import { COLORS } from '../constants/theme';
 import ReferAndFooter from '../components/ReferAndFooter';
 import WalletScreenContent from '../components/WalletScreenContent';
-import { calculateWalletUsage, fetchWalletVehicleBlocked } from '../lib/wallet';
+import { calculateWalletUsage, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules } from '../lib/wallet';
 import { apiFetch } from '../lib/api';
+import { submitServiceBooking } from '../lib/serviceBooking';
 import {
   formatMembershipExpiry,
   getMembershipDisplay,
@@ -1463,6 +1464,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
   }, [activeSubPage, isLoggedIn]);
 
   useEffect(() => {
+    if (activeSubPage !== 'Order History' || !isLoggedIn) return;
+    hydrateCustomerData();
+  }, [activeSubPage, isLoggedIn, hydrateCustomerData]);
+
+  useEffect(() => {
     if (activeSubPage !== 'Cart') return;
     if (!isLoggedIn) return;
     (async () => {
@@ -2598,11 +2604,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           discount_amount: Number(cartCouponResult?.discount_amount || 0),
         },
       };
-      const json = await apiFetch<any>('/api/customer/bookings/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const created = await submitServiceBooking(payload);
       try {
         for (const it of cartItems) {
           if (it?.id) {
@@ -2612,7 +2614,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
           }
         }
       } catch (_clearErr) { /* non-fatal */ }
-      Alert.alert('Booking created', `Lead: ${json?.lead?.lead_number || leadNumber}`);
+      Alert.alert('Booking created', `Lead: ${created.lead_number || leadNumber}`);
       await hydrateCustomerData();
       await loadCart();
       setActiveSubPage('Order History');
@@ -2844,28 +2846,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
         },
       };
 
-      const json = isLoggedIn
-        ? await apiFetch<any>('/api/customer/bookings/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          })
-        : await (async () => {
-            const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ lead: payload.lead }),
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data?.error || 'Failed to create booking');
-            return data;
-          })();
+      const created = await submitServiceBooking(payload);
 
       await removeBookingDraft(draft.id);
       setCartDrafts((prev) => prev.filter((d) => d.id !== draft.id));
       setCartSelectedDraftId(null);
 
-      Alert.alert('Booking Created!', `Your booking ${json?.lead?.lead_number || leadNumber} has been placed successfully.`);
+      Alert.alert('Booking Created!', `Your booking ${created.lead_number || leadNumber} has been placed successfully.`);
       await hydrateCustomerData();
       setActiveSubPage('Order History');
     } catch (error: any) {
@@ -3533,6 +3520,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       onBlur={() => setTimeout(() => setCarSearchFocused(false), 400)}
                       placeholder="Search (e.g. Tata Nexon)"
                       placeholderTextColor="#9CA3AF"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      autoComplete="off"
                     />
                     {carSearchLoading ? (
                       <View style={styles.carSearchLoader}><Text style={styles.rowSub}>Searching...</Text></View>
@@ -5130,7 +5120,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   <View style={cstyles.walletHeaderText}>
                     <Text style={cstyles.walletTitle}>Wallet Balance</Text>
                     <Text style={cstyles.walletHint}>
-                      {isMembershipOnlyCart ? 'Up to 30% on membership' : 'Up to 10% on this order'}
+                      {isMembershipOnlyCart
+                        ? `Up to ${formatWalletUsageLimit('MEMBERSHIP')} on membership`
+                        : `Up to ${formatWalletUsageLimit('SERVICE')} on this order`}
                     </Text>
                   </View>
                   <View style={cstyles.walletToggleWrap}>
@@ -5303,7 +5295,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               ) : (
                 <View style={cstyles.noteRow}>
                   <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
-                  <Text style={cstyles.noteText}>Use wallet balance (up to 30%), then pay the remaining amount to activate membership instantly.</Text>
+                  <Text style={cstyles.noteText}>Use wallet balance (up to {formatWalletUsageLimit('MEMBERSHIP')}), then pay the remaining amount to activate membership instantly.</Text>
                 </View>
               )}
             </View>

@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
+import {
+  buildCustomerLeadOrFilter,
+  filterLeadsForCustomer,
+  normalizeCustomerPhone,
+} from '@/lib/customer-service-leads';
 import { parseMembershipClaimMeta } from '@/lib/membership-benefits-service';
 
 export const dynamic = 'force-dynamic';
@@ -13,10 +18,15 @@ export async function GET(request: Request) {
   const vehicle = searchParams.get('vehicle');
   const q = searchParams.get('q');
 
+  const normalizedPhone = normalizeCustomerPhone(customer.phone);
+  if (!normalizedPhone) {
+    return NextResponse.json({ error: 'Invalid customer phone' }, { status: 400 });
+  }
+
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time_slot, meta')
-    .eq('customer_phone', customer.phone)
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time_slot, meta, customer_phone')
+    .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
     .order('created_at', { ascending: false })
     .limit(200);
 
@@ -27,7 +37,7 @@ export async function GET(request: Request) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: 'Failed to fetch order history' }, { status: 500 });
 
-  const rows = data || [];
+  const rows = filterLeadsForCustomer(data, { id: customer.id, phone: normalizedPhone });
   const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const parseIdList = (input: unknown): string[] => {
     if (!input) return [];

@@ -10,6 +10,10 @@ export async function POST(request: NextRequest) {
   const { customer, supabaseAdmin } = ctx;
   const body = await request.json().catch(() => ({}));
 
+  if (!Boolean(body.post_booking_bundle)) {
+    return NextResponse.json({ error: 'post_booking_bundle is required' }, { status: 400 });
+  }
+
   const result = await createMembershipPaymentOrder({
     customer,
     supabaseAdmin,

@@ -8,6 +8,8 @@ export type AdminActivateMembershipInput = {
   secondVehicleSnapshot?: Record<string, unknown> | null;
   notes?: string | null;
   adminUserId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
 };
 
 export async function adminActivateCustomerMembership(
@@ -35,10 +37,20 @@ export async function adminActivateCustomerMembership(
     return { ok: false as const, status: 400, error: 'Invalid or inactive membership plan' };
   }
 
-  const now = new Date();
-  const endsAt = new Date(
-    now.getTime() + Number(plan.duration_days || 365) * 24 * 60 * 60 * 1000,
-  );
+  const defaultStart = new Date();
+  const startsAt = input.startsAt ? new Date(input.startsAt) : defaultStart;
+  const endsAt = input.endsAt
+    ? new Date(input.endsAt)
+    : new Date(startsAt.getTime() + Number(plan.duration_days || 365) * 24 * 60 * 60 * 1000);
+
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+    return { ok: false as const, status: 400, error: 'Invalid start or end date' };
+  }
+  if (endsAt.getTime() <= startsAt.getTime()) {
+    return { ok: false as const, status: 400, error: 'End date must be after start date' };
+  }
+
+  const now = defaultStart;
 
   await supabaseAdmin
     .from('customer_memberships')
@@ -50,7 +62,7 @@ export async function adminActivateCustomerMembership(
     customer_id: input.customerId,
     plan_id: plan.id,
     status: 'ACTIVE',
-    starts_at: now.toISOString(),
+    starts_at: startsAt.toISOString(),
     ends_at: endsAt.toISOString(),
     auto_renew: false,
     source: 'ADMIN',
@@ -76,7 +88,7 @@ export async function adminActivateCustomerMembership(
         customer_id: input.customerId,
         plan_id: plan.id,
         status: 'ACTIVE',
-        starts_at: now.toISOString(),
+        starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
         auto_renew: false,
         source: 'ADMIN',
@@ -106,6 +118,8 @@ export async function adminActivateCustomerMembership(
       add_second_car: Boolean(input.addSecondCar),
       admin_user_id: input.adminUserId || null,
       notes: input.notes || null,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
       source: 'ADMIN',
     },
   });
@@ -113,6 +127,7 @@ export async function adminActivateCustomerMembership(
   return {
     ok: true as const,
     membership: inserted,
+    starts_at: startsAt.toISOString(),
     ends_at: endsAt.toISOString(),
   };
 }

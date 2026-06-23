@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
+import { parseWalletPlatform } from '@/lib/wallet-config';
 import {
   debitWallet,
+  parseWalletServiceLines,
   resolveWalletDeduction,
 } from '@/lib/wallet-service';
 
@@ -37,6 +39,8 @@ export async function POST(request: NextRequest) {
     channel,
     useWallet,
     vehicleNumber || null,
+    parseWalletPlatform(request.headers.get('x-app-platform')),
+    parseWalletServiceLines(body, subtotal),
   );
 
   if (resolved.blocked && useWallet) {

@@ -21,6 +21,12 @@ import {
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
+import {
+  AuthVerifyResponse,
+  decideWelcomeCreditedPopup,
+  getWelcomeBonusAmount,
+} from '../lib/welcomeBonus';
 
 type Step = 'phone' | 'otp';
 type OtpChannel = 'sms' | 'whatsapp';
@@ -32,6 +38,9 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(false);
   const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms');
   const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
+  const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
+  const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
+  const pendingGoBackRef = React.useRef(false);
 
   useEffect(() => {
     const initialPhone = route?.params?.initialPhone;
@@ -133,6 +142,22 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     }
   };
 
+  const finishLoginSuccess = () => {
+    navigation.goBack();
+  };
+
+  const maybeShowCreditedPopup = async (
+    sessionToken: string,
+    authResponse?: AuthVerifyResponse | null,
+    customerId?: string | null,
+  ) => {
+    const decision = await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse);
+    if (!decision.show) return false;
+    setCreditedWelcomeAmount(decision.amount);
+    setCreditedWelcomeVisible(true);
+    return true;
+  };
+
   const handleVerifySmsOtp = async () => {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
@@ -146,11 +171,14 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
     setLoading(true);
     try {
-      const sessionToken = await verifySmsOtp(cleanPhone, otp.trim(), confirmation);
-      await setCustomerSessionToken(sessionToken);
+      const authResult = await verifySmsOtp(cleanPhone, otp.trim(), confirmation);
+      await setCustomerSessionToken(authResult.session_token);
 
-      Alert.alert('Login Successful', 'You are now logged in as customer');
-      navigation.goBack();
+      if (await maybeShowCreditedPopup(authResult.session_token, authResult, null)) {
+        pendingGoBackRef.current = true;
+        return;
+      }
+      finishLoginSuccess();
     } catch (error: any) {
       Alert.alert('OTP Verification Failed', error?.message || 'Invalid OTP');
     } finally {
@@ -213,8 +241,11 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       }
 
       await setCustomerSessionToken(String(json.session_token));
-      Alert.alert('Login Successful', 'You are now logged in as customer');
-      navigation.goBack();
+      if (await maybeShowCreditedPopup(String(json.session_token), json, json?.customer?.id)) {
+        pendingGoBackRef.current = true;
+        return;
+      }
+      finishLoginSuccess();
     } catch (error: any) {
       Alert.alert('OTP Verification Failed', error?.message || 'Invalid OTP');
     } finally {
@@ -323,6 +354,18 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <WelcomeBonusCreditedModal
+        visible={creditedWelcomeVisible}
+        amount={creditedWelcomeAmount}
+        onClose={() => {
+          setCreditedWelcomeVisible(false);
+          if (pendingGoBackRef.current) {
+            pendingGoBackRef.current = false;
+            finishLoginSuccess();
+          }
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }

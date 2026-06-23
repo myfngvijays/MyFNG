@@ -1,15 +1,23 @@
-export const WALLET_CONFIG = {
-  WELCOME_BONUS_AMOUNT: 1000,
-  WELCOME_EXPIRY_DAYS: 90,
-  SERVICE_USAGE_PERCENT: 0.1,
-  MEMBERSHIP_USAGE_PERCENT: 0.3,
-  WELCOME_SOURCE: 'WELCOME_BONUS',
-  MEMBERSHIP_CASHBACK_SOURCE: 'MEMBERSHIP_CASHBACK',
-  MEMBERSHIP_CASHBACK_RATE: 0.05,
-  MEMBERSHIP_CASHBACK_MAX: 500,
-} as const;
+import {
+  DEFAULT_WALLET_CONFIG,
+  getWalletConfig,
+  getWalletLogicSettings,
+  parseWalletPlatform,
+  resolveServiceWalletConfig,
+  type WalletLogicFullSettings,
+  type WalletPlatform,
+  type WalletRuntimeConfig,
+} from './wallet-config';
+
+/** @deprecated Use getWalletConfig() — kept for backwards compatibility */
+export const WALLET_CONFIG = DEFAULT_WALLET_CONFIG;
 
 export type WalletChannel = 'SERVICE' | 'MEMBERSHIP';
+
+export type WalletServiceLine = {
+  service_type_id?: string | null;
+  amount: number;
+};
 
 type WalletAccount = {
   id: string;
@@ -22,18 +30,117 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-export function calculateMaxWalletUsage(
+function computeCapFromConfig(payableAmount: number, channel: WalletChannel, config: WalletRuntimeConfig): number {
+  const isMembership = channel === 'MEMBERSHIP';
+  const mode = isMembership ? config.MEMBERSHIP_USAGE_MODE : config.SERVICE_USAGE_MODE;
+  if (mode === 'AMOUNT') {
+    const fixed = isMembership ? config.MEMBERSHIP_USAGE_AMOUNT : config.SERVICE_USAGE_AMOUNT;
+    return roundMoney(Math.min(Math.max(0, fixed), payableAmount));
+  }
+  const percent = isMembership ? config.MEMBERSHIP_USAGE_PERCENT : config.SERVICE_USAGE_PERCENT;
+  return roundMoney(Math.min(payableAmount, payableAmount * percent));
+}
+
+export function calculateMaxWalletUsageWithConfig(
   payableAmount: number,
   spendableBalance: number,
   channel: WalletChannel,
+  config: WalletRuntimeConfig,
 ): number {
-  if (payableAmount <= 0 || spendableBalance <= 0) return 0;
-  const percent =
-    channel === 'MEMBERSHIP'
-      ? WALLET_CONFIG.MEMBERSHIP_USAGE_PERCENT
-      : WALLET_CONFIG.SERVICE_USAGE_PERCENT;
-  const maxFromOrder = roundMoney(payableAmount * percent);
-  return roundMoney(Math.min(spendableBalance, maxFromOrder));
+  if (!config.WALLET_ENABLED || payableAmount <= 0 || spendableBalance <= 0) return 0;
+  if (config.MIN_PAYABLE_FOR_WALLET > 0 && payableAmount < config.MIN_PAYABLE_FOR_WALLET) return 0;
+
+  const maxFromOrder = computeCapFromConfig(payableAmount, channel, config);
+  let deduction = roundMoney(Math.min(spendableBalance, maxFromOrder));
+
+  if (config.MAX_ABSOLUTE_DEDUCTION > 0) {
+    deduction = roundMoney(Math.min(deduction, config.MAX_ABSOLUTE_DEDUCTION));
+  }
+
+  return deduction;
+}
+
+export function calculateWalletDeductionForServiceLines(
+  serviceLines: WalletServiceLine[],
+  spendableBalance: number,
+  channel: WalletChannel,
+  baseConfig: WalletRuntimeConfig,
+  settings: WalletLogicFullSettings,
+): number {
+  if (!baseConfig.WALLET_ENABLED || spendableBalance <= 0 || channel !== 'SERVICE') return 0;
+  if (!settings.advanced_enabled || !serviceLines.length) {
+    const total = serviceLines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
+    return calculateMaxWalletUsageWithConfig(total, spendableBalance, channel, baseConfig);
+  }
+
+  let remaining = spendableBalance;
+  let totalDeduction = 0;
+
+  for (const line of serviceLines) {
+    const amount = roundMoney(Number(line.amount || 0));
+    if (amount <= 0) continue;
+
+    const lineConfig = resolveServiceWalletConfig(baseConfig, settings, line.service_type_id);
+    if (!lineConfig.WALLET_ENABLED) continue;
+
+    const lineDeduction = calculateMaxWalletUsageWithConfig(amount, remaining, channel, lineConfig);
+    totalDeduction = roundMoney(totalDeduction + lineDeduction);
+    remaining = roundMoney(remaining - lineDeduction);
+    if (remaining <= 0) break;
+  }
+
+  if (baseConfig.MAX_ABSOLUTE_DEDUCTION > 0) {
+    totalDeduction = roundMoney(Math.min(totalDeduction, baseConfig.MAX_ABSOLUTE_DEDUCTION));
+  }
+
+  return roundMoney(Math.min(totalDeduction, spendableBalance));
+}
+
+export function parseWalletServiceLines(body: any, payableAmount = 0): WalletServiceLine[] | undefined {
+  const normalize = (rows: any[]): WalletServiceLine[] =>
+    rows
+      .map((row) => ({
+        service_type_id: row?.service_type_id || row?.serviceTypeId || row?.id || null,
+        amount: roundMoney(Number(row?.amount ?? row?.price ?? row?.payable ?? 0)),
+      }))
+      .filter((row) => row.amount > 0);
+
+  if (Array.isArray(body?.service_lines) && body.service_lines.length) {
+    return normalize(body.service_lines);
+  }
+
+  if (Array.isArray(body?.service_items) && body.service_items.length) {
+    return normalize(body.service_items);
+  }
+
+  const couponItems = body?.coupon?.lead_context?.service_items;
+  if (Array.isArray(couponItems) && couponItems.length) {
+    return normalize(couponItems);
+  }
+
+  const ids: string[] = Array.isArray(body?.service_type_ids)
+    ? body.service_type_ids
+    : Array.isArray(body?.lead?.service_type_ids)
+      ? body.lead.service_type_ids
+      : [];
+
+  if (ids.length && payableAmount > 0) {
+    const each = roundMoney(payableAmount / ids.length);
+    return ids.map((service_type_id) => ({ service_type_id, amount: each }));
+  }
+
+  return undefined;
+}
+
+export async function calculateMaxWalletUsage(
+  payableAmount: number,
+  spendableBalance: number,
+  channel: WalletChannel,
+  supabaseAdmin?: any,
+  platform: WalletPlatform = 'web',
+): Promise<number> {
+  const config = await getWalletConfig(supabaseAdmin, platform);
+  return calculateMaxWalletUsageWithConfig(payableAmount, spendableBalance, channel, config);
 }
 
 export async function ensureWalletAccountFull(supabaseAdmin: any, customerId: string): Promise<WalletAccount> {
@@ -58,14 +165,16 @@ export async function processExpiredWelcomeCredits(
   supabaseAdmin: any,
   customerId: string,
   wallet: WalletAccount,
+  config?: WalletRuntimeConfig,
 ): Promise<WalletAccount> {
+  const walletConfig = config || (await getWalletConfig(supabaseAdmin));
   const nowIso = new Date().toISOString();
   const { data: expiredCredits } = await supabaseAdmin
     .from('wallet_transactions')
     .select('id, amount, expires_at')
     .eq('customer_id', customerId)
     .eq('transaction_type', 'CREDIT')
-    .eq('source', WALLET_CONFIG.WELCOME_SOURCE)
+    .eq('source', walletConfig.WELCOME_SOURCE)
     .lt('expires_at', nowIso);
 
   let balance = Number(wallet.current_balance || 0);
@@ -92,7 +201,7 @@ export async function processExpiredWelcomeCredits(
       transaction_type: 'EXPIRE',
       amount: deduct,
       balance_after: nextBalance,
-      source: WALLET_CONFIG.WELCOME_SOURCE,
+      source: walletConfig.WELCOME_SOURCE,
       idempotency_key: expireKey,
       metadata: {
         label: 'Welcome Bonus Expired',
@@ -120,16 +229,36 @@ export async function processExpiredWelcomeCredits(
   return wallet;
 }
 
-export async function getWalletSummary(supabaseAdmin: any, customerId: string) {
+export async function getWalletSummary(supabaseAdmin: any, customerId: string, platform: WalletPlatform = 'web') {
+  const config = await getWalletConfig(supabaseAdmin, platform);
   let wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
-  wallet = await processExpiredWelcomeCredits(supabaseAdmin, customerId, wallet);
+
+  const { data: existingWelcome } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('transaction_type', 'CREDIT')
+    .eq('source', config.WELCOME_SOURCE)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingWelcome) {
+    try {
+      await creditWelcomeBonus(supabaseAdmin, customerId);
+      wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
+    } catch (err) {
+      console.error('[getWalletSummary] welcome bonus backfill failed:', err);
+    }
+  }
+
+  wallet = await processExpiredWelcomeCredits(supabaseAdmin, customerId, wallet, config);
 
   const { data: welcomeCredit } = await supabaseAdmin
     .from('wallet_transactions')
     .select('expires_at, created_at, amount')
     .eq('customer_id', customerId)
     .eq('transaction_type', 'CREDIT')
-    .eq('source', WALLET_CONFIG.WELCOME_SOURCE)
+    .eq('source', config.WELCOME_SOURCE)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -139,16 +268,29 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string) {
     wallet,
     spendable_balance: spendableBalance,
     welcome_bonus_expires_at: welcomeCredit?.expires_at || null,
-    welcome_bonus_amount: Number(welcomeCredit?.amount || WALLET_CONFIG.WELCOME_BONUS_AMOUNT),
+    welcome_bonus_amount: Number(welcomeCredit?.amount || config.WELCOME_BONUS_AMOUNT),
     rules: {
-      service_usage_percent: WALLET_CONFIG.SERVICE_USAGE_PERCENT * 100,
-      membership_usage_percent: WALLET_CONFIG.MEMBERSHIP_USAGE_PERCENT * 100,
-      welcome_expiry_days: WALLET_CONFIG.WELCOME_EXPIRY_DAYS,
+      wallet_enabled: config.WALLET_ENABLED,
+      service_usage_mode: config.SERVICE_USAGE_MODE,
+      service_usage_percent: config.SERVICE_USAGE_PERCENT * 100,
+      service_usage_amount: config.SERVICE_USAGE_AMOUNT,
+      membership_usage_mode: config.MEMBERSHIP_USAGE_MODE,
+      membership_usage_percent: config.MEMBERSHIP_USAGE_PERCENT * 100,
+      membership_usage_amount: config.MEMBERSHIP_USAGE_AMOUNT,
+      welcome_expiry_days: config.WELCOME_EXPIRY_DAYS,
+      welcome_bonus_amount: config.WELCOME_BONUS_AMOUNT,
+      membership_cashback_rate_percent: config.MEMBERSHIP_CASHBACK_RATE * 100,
+      membership_cashback_max: config.MEMBERSHIP_CASHBACK_MAX,
+      referral_first_reward: config.REFERRAL_FIRST_REWARD,
+      referral_repeat_reward: config.REFERRAL_REPEAT_REWARD,
+      min_payable_for_wallet: config.MIN_PAYABLE_FOR_WALLET,
+      max_absolute_deduction: config.MAX_ABSOLUTE_DEDUCTION,
     },
   };
 }
 
 export async function creditWelcomeBonus(supabaseAdmin: any, customerId: string) {
+  const config = await getWalletConfig(supabaseAdmin);
   const idempotencyKey = `welcome:${customerId}`;
   const { data: existing } = await supabaseAdmin
     .from('wallet_transactions')
@@ -159,8 +301,15 @@ export async function creditWelcomeBonus(supabaseAdmin: any, customerId: string)
   if (existing) return { credited: false, reason: 'already_credited' as const };
 
   const wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
-  const amount = WALLET_CONFIG.WELCOME_BONUS_AMOUNT;
-  const expiresAt = new Date(Date.now() + WALLET_CONFIG.WELCOME_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  let amount = Number(config.WELCOME_BONUS_AMOUNT);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    amount = DEFAULT_WALLET_CONFIG.WELCOME_BONUS_AMOUNT;
+  }
+  let expiryDays = Number(config.WELCOME_EXPIRY_DAYS);
+  if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
+    expiryDays = DEFAULT_WALLET_CONFIG.WELCOME_EXPIRY_DAYS;
+  }
+  const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
   const nextBalance = roundMoney(Number(wallet.current_balance || 0) + amount);
 
   const { error } = await supabaseAdmin.from('wallet_transactions').insert({
@@ -169,7 +318,7 @@ export async function creditWelcomeBonus(supabaseAdmin: any, customerId: string)
     transaction_type: 'CREDIT',
     amount,
     balance_after: nextBalance,
-    source: WALLET_CONFIG.WELCOME_SOURCE,
+    source: config.WELCOME_SOURCE,
     idempotency_key: idempotencyKey,
     expires_at: expiresAt.toISOString(),
     metadata: {
@@ -237,6 +386,8 @@ export async function resolveWalletDeduction(
   channel: WalletChannel,
   useWallet: boolean,
   vehicleNumber?: string | null,
+  platform: WalletPlatform = 'web',
+  serviceLines?: WalletServiceLine[],
 ) {
   if (!useWallet || payableAmount <= 0) {
     return { deduction: 0, blocked: false, spendable_balance: 0 };
@@ -247,8 +398,32 @@ export async function resolveWalletDeduction(
     return { deduction: 0, blocked: true, reason: eligibility.reason, spendable_balance: 0 };
   }
 
-  const summary = await getWalletSummary(supabaseAdmin, customerId);
-  const deduction = calculateMaxWalletUsage(payableAmount, summary.spendable_balance, channel);
+  const summary = await getWalletSummary(supabaseAdmin, customerId, platform);
+  const config = await getWalletConfig(supabaseAdmin, platform);
+  const settings = await getWalletLogicSettings(supabaseAdmin);
+
+  if (!config.WALLET_ENABLED) {
+    return { deduction: 0, blocked: false, spendable_balance: summary.spendable_balance, rules: summary.rules };
+  }
+
+  let deduction = 0;
+  if (channel === 'SERVICE' && serviceLines?.length) {
+    deduction = calculateWalletDeductionForServiceLines(
+      serviceLines,
+      summary.spendable_balance,
+      channel,
+      config,
+      settings,
+    );
+  } else {
+    deduction = calculateMaxWalletUsageWithConfig(
+      payableAmount,
+      summary.spendable_balance,
+      channel,
+      config,
+    );
+  }
+
   return {
     deduction,
     blocked: false,
@@ -268,6 +443,7 @@ export async function debitWallet(
     metadata?: Record<string, unknown>;
     channel?: WalletChannel;
     vehicleNumber?: string | null;
+    platform?: WalletPlatform;
   },
 ) {
   const deduction = roundMoney(amount);
@@ -278,7 +454,7 @@ export async function debitWallet(
     throw new Error(eligibility.reason || 'Wallet cannot be used for this vehicle');
   }
 
-  const summary = await getWalletSummary(supabaseAdmin, customerId);
+  const summary = await getWalletSummary(supabaseAdmin, customerId, opts.platform || 'web');
   const wallet = summary.wallet;
   const spendable = summary.spendable_balance;
   if (deduction > spendable) {
@@ -494,20 +670,21 @@ export async function maybeCreditMembershipBillCashback(
 
   if (!benefit) return { credited: false, reason: 'no_cashback_benefit' as const };
 
-  const cashbackRaw = roundMoney(billAmount * WALLET_CONFIG.MEMBERSHIP_CASHBACK_RATE);
-  const cashbackAmount = roundMoney(Math.min(cashbackRaw, WALLET_CONFIG.MEMBERSHIP_CASHBACK_MAX));
+  const config = await getWalletConfig(supabaseAdmin);
+  const cashbackRaw = roundMoney(billAmount * config.MEMBERSHIP_CASHBACK_RATE);
+  const cashbackAmount = roundMoney(Math.min(cashbackRaw, config.MEMBERSHIP_CASHBACK_MAX));
   if (cashbackAmount <= 0) return { credited: false, reason: 'zero_cashback' as const };
 
   const idempotencyKey = `membership-cashback:invoice:${opts.invoiceId}`;
   const result = await creditWallet(supabaseAdmin, opts.customerId, cashbackAmount, {
-    source: WALLET_CONFIG.MEMBERSHIP_CASHBACK_SOURCE,
+    source: config.MEMBERSHIP_CASHBACK_SOURCE,
     idempotencyKey,
     sourceRefId: opts.invoiceId,
     metadata: {
       label: 'Membership Cashback',
       bill_amount: billAmount,
-      cashback_rate: '5%',
-      max_cap: WALLET_CONFIG.MEMBERSHIP_CASHBACK_MAX,
+      cashback_rate: `${config.MEMBERSHIP_CASHBACK_RATE * 100}%`,
+      max_cap: config.MEMBERSHIP_CASHBACK_MAX,
       invoice_number: opts.invoiceNumber || null,
       lead_id: opts.leadId || null,
     },

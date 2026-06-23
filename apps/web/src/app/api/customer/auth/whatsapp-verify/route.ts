@@ -136,12 +136,31 @@ export async function POST(request: NextRequest) {
     isNewCustomer = true;
   }
 
-  if (isNewCustomer) {
-    try {
-      await creditWelcomeBonus(supabaseAdmin, customerId);
-    } catch (welcomeErr) {
-      console.error('[whatsapp-verify] welcome bonus failed:', welcomeErr);
+  let welcomeBonus: {
+    credited: boolean;
+    amount: number;
+    already_credited?: boolean;
+    expires_at?: string | null;
+  } = {
+    credited: false,
+    amount: 0,
+  };
+
+  try {
+    const welcomeResult = await creditWelcomeBonus(supabaseAdmin, customerId);
+    if (welcomeResult.credited) {
+      welcomeBonus = {
+        credited: true,
+        amount: Number(welcomeResult.amount || 0),
+        expires_at: welcomeResult.expires_at || null,
+      };
+    } else if (welcomeResult.reason === 'already_credited') {
+      welcomeBonus = { credited: false, amount: 0, already_credited: true };
+    } else {
+      console.warn('[whatsapp-verify] welcome bonus not credited:', welcomeResult);
     }
+  } catch (welcomeErr) {
+    console.error('[whatsapp-verify] welcome bonus failed:', welcomeErr);
   }
 
   const token = generateSessionToken();
@@ -179,5 +198,7 @@ export async function POST(request: NextRequest) {
     success: true,
     customer: customer || { id: customerId, phone },
     session_token: token,
+    is_new_customer: isNewCustomer,
+    welcome_bonus: welcomeBonus,
   });
 }

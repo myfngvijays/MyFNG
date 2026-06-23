@@ -5,6 +5,11 @@
 
 import { NextResponse } from 'next/server';
 import { getCustomerFromSession } from '@/lib/customer-session';
+import {
+  buildCustomerLeadOrFilter,
+  filterLeadsForCustomer,
+  normalizeCustomerPhone,
+} from '@/lib/customer-service-leads';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -20,10 +25,15 @@ export async function GET() {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 
+  const normalizedPhone = normalizeCustomerPhone(customer.phone);
+  if (!normalizedPhone) {
+    return NextResponse.json({ error: 'Invalid customer phone' }, { status: 400 });
+  }
+
   const { data: leads, error } = await supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, service_type, service_type_ids, subservice_ids, description, estimated_amount, created_at, customer_phone, address, city, state, pincode')
-    .eq('customer_phone', customer.phone)
+    .select('id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, service_type, service_type_ids, subservice_ids, description, estimated_amount, created_at, customer_phone, address, city, state, pincode, meta')
+    .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -31,7 +41,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch leads' }, { status: 500 });
   }
 
-  const rows = leads || [];
+  const rows = filterLeadsForCustomer(leads, { id: customer.id, phone: normalizedPhone });
   const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const parseIdList = (input: unknown): string[] => {
     if (!input) return [];

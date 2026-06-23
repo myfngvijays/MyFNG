@@ -52,6 +52,7 @@ import { NotificationProvider } from './src/context/NotificationContext';
 import { supabase } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
 import { clearCustomerSessionToken, getCustomerSessionToken } from './src/lib/customerSession';
+import { preloadWalletRules } from './src/lib/wallet';
 
 const Stack = createNativeStackNavigator();
 
@@ -64,6 +65,7 @@ function AppContent() {
     user?.type === 'customer_session' && userProfile?.role?.role_code === 'CUSTOMER';
 
   useEffect(() => {
+    void preloadWalletRules(ENV.API_URL);
     checkUser();
 
     // Listen for auth changes

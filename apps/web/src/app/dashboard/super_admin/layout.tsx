@@ -39,6 +39,7 @@ import {
   Crown,
   Sparkles,
   Smartphone,
+  Wallet,
 } from 'lucide-react';
 
 type NavItem = {
@@ -179,9 +180,22 @@ const navigationItems: NavItem[] = [
   },
   {
     name: 'App Customers',
-    href: '/dashboard/super_admin/customer-insights',
     icon: Smartphone,
-    description: 'App users, bookings, wallet & membership'
+    description: 'App users, bookings, wallet & membership',
+    children: [
+      {
+        name: 'Customers',
+        href: '/dashboard/super_admin/customer-insights',
+        icon: Smartphone,
+        description: 'App users, bookings, wallet & membership',
+      },
+      {
+        name: 'Wallet Logic',
+        href: '/dashboard/super_admin/wallet-logic',
+        icon: Wallet,
+        description: 'Service %, membership %, welcome bonus & cashback',
+      },
+    ],
   },
   {
     name: 'Manual Invoice',
@@ -321,8 +335,18 @@ export default function SuperAdminLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Website Images': true,
+    'App Customers': false,
     WhatsApp: false,
   });
+
+  React.useEffect(() => {
+    if (
+      pathname?.startsWith('/dashboard/super_admin/customer-insights') ||
+      pathname?.startsWith('/dashboard/super_admin/wallet-logic')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'App Customers': true }));
+    }
+  }, [pathname]);
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout?')) {

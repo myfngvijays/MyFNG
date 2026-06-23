@@ -52,9 +52,20 @@ export async function apiFetch<T = JsonValue>(
     headers,
   });
 
-  const json = await res.json().catch(() => ({}));
+  const text = await res.text().catch(() => '');
+  let json: Record<string, unknown> = {};
+  if (text) {
+    try {
+      json = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+        throw new Error('Service unavailable. Please try again in a moment.');
+      }
+      json = {};
+    }
+  }
   if (!res.ok) {
-    const message = (json as any)?.error || 'Request failed';
+    const message = String(json?.error || 'Request failed');
     throw new Error(message);
   }
 

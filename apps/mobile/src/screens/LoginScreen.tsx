@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,12 @@ import {
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
+import {
+  AuthVerifyResponse,
+  decideWelcomeCreditedPopup,
+  getWelcomeBonusAmount,
+} from '../lib/welcomeBonus';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const insets = useSafeAreaInsets();
@@ -44,6 +50,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [resendInSec, setResendInSec] = useState(0);
+  const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
+  const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
+  const pendingHomeNavigationRef = useRef(false);
 
   // Phone numbers we register in Firebase Console as "Phone numbers for testing".
   // Includes the App Store reviewer demo number so OTP works without APNs/SMS.
@@ -61,7 +70,23 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     return () => clearInterval(timer);
   }, [resendInSec]);
 
-  const persistSessionAndGoHome = async (token?: string) => {
+  const maybeShowCreditedPopup = async (
+    sessionToken: string,
+    authResponse?: AuthVerifyResponse | null,
+    customerId?: string | null,
+  ) => {
+    const decision = await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse);
+    if (!decision.show) return false;
+    setCreditedWelcomeAmount(decision.amount);
+    setCreditedWelcomeVisible(true);
+    return true;
+  };
+
+  const finishLoginNavigation = () => {
+    navigation?.navigate?.('PublicHome');
+  };
+
+  const persistSessionAndGoHome = async (token?: string, authResponse?: AuthVerifyResponse | null) => {
     const fallbackToken = `mobile-session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const sessionToken = token && token.trim() ? token : fallbackToken;
     await setCustomerSessionToken(sessionToken);
@@ -92,7 +117,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         }
       );
     }
-    navigation?.navigate?.('PublicHome');
+
+    if (await maybeShowCreditedPopup(sessionToken, authResponse, customerProfile?.id)) {
+      pendingHomeNavigationRef.current = true;
+      return;
+    }
+    finishLoginNavigation();
   };
 
   const handleCustomerOtpStart = async () => {
@@ -188,8 +218,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
     setLoading(true);
     try {
-      const sessionToken = await verifySmsOtp(cleanPhone, customerOtp.trim(), customerConfirmation);
-      await persistSessionAndGoHome(sessionToken);
+      const authResult = await verifySmsOtp(cleanPhone, customerOtp.trim(), customerConfirmation);
+      await persistSessionAndGoHome(authResult.session_token, authResult);
     } catch (error: any) {
       setErrorText(error?.message || 'Invalid OTP');
     } finally {
@@ -262,7 +292,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         throw new Error('WhatsApp OTP verified, but login session endpoint is not available. Please deploy latest backend APIs.');
       }
 
-      await persistSessionAndGoHome(String(json.session_token));
+      await persistSessionAndGoHome(String(json.session_token), json);
     } catch (error: any) {
       setErrorText(error?.message || 'Invalid WhatsApp OTP');
     } finally {
@@ -585,6 +615,18 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           </Text>
         </View>
       </ScrollView>
+
+      <WelcomeBonusCreditedModal
+        visible={creditedWelcomeVisible}
+        amount={creditedWelcomeAmount}
+        onClose={() => {
+          setCreditedWelcomeVisible(false);
+          if (pendingHomeNavigationRef.current) {
+            pendingHomeNavigationRef.current = false;
+            finishLoginNavigation();
+          }
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }

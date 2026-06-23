@@ -78,6 +78,9 @@ export default function CarModelSearchField({
           onBlur={() => setTimeout(() => setFocused(false), 350)}
           placeholder={placeholder}
           placeholderTextColor="#9CA3AF"
+          autoCorrect={false}
+          spellCheck={false}
+          autoComplete="off"
         />
         {hasSelection || query ? (
           <TouchableOpacity

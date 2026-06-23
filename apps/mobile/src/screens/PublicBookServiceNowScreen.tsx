@@ -29,9 +29,27 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
-import { calculateWalletUsage, fetchWalletVehicleBlocked } from '../lib/wallet';
+import { submitServiceBooking } from '../lib/serviceBooking';
+import {
+  calculateWalletUsage,
+  calculateWalletUsageForServiceLines,
+  fetchWalletVehicleBlocked,
+  getEffectiveServiceWalletLimit,
+  getWalletRules,
+} from '../lib/wallet';
 import { isMembershipActive } from '../lib/membershipTheme';
 import type { MembershipClaimRouteParams } from '../lib/membershipClaims';
+import { fetchPrimeMembershipConfig, type AppMembershipPlan } from '../lib/membershipPlan';
+import {
+  activatePostBookingMembership,
+  quotePostBookingMembership,
+} from '../lib/postBookingMembership';
+import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
+import {
+  AuthVerifyResponse,
+  decideWelcomeCreditedPopup,
+  getWelcomeBonusAmount,
+} from '../lib/welcomeBonus';
 import {
   shouldSkipFirebaseSmsOnSimulator,
   isIosSimulator,
@@ -164,6 +182,19 @@ const TIME_SLOTS = Array.from({ length: 6 }, (_, i) => {
   };
 });
 
+function getIndiaNowMinutes(): number {
+  const d = getIndiaDate();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function isTimeSlotPastForDate(slotValue: string, pickupDate: string, todayYmd: string): boolean {
+  if (!pickupDate || pickupDate !== todayYmd) return false;
+  const hour = Number(String(slotValue).split(':')[0]);
+  if (!Number.isFinite(hour)) return false;
+  const slotEndMinutes = (hour + 1) * 60;
+  return getIndiaNowMinutes() >= slotEndMinutes;
+}
+
 export default function PublicBookServiceNowScreen({ navigation, route }: Props) {
   const paramServiceCategory = route?.params?.serviceCategory;
   const paramSelectedServiceId = route?.params?.selectedServiceId;
@@ -261,6 +292,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentMembership, setCurrentMembership] = useState<any>(null);
+  const [primeMembershipPlan, setPrimeMembershipPlan] = useState<AppMembershipPlan | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
   const [useWalletForBooking, setUseWalletForBooking] = useState(true);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
@@ -279,6 +311,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [otpConfirmation, setOtpConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
+  const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
+  const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
+  const pendingStepAdvanceRef = useRef(false);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -288,10 +323,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [detailsService, setDetailsService] = useState<ServiceTypeRow | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<{
     leadNumber: string;
+    leadId: string;
+    serviceSubtotal: number;
     title: string;
     message: string;
     isPaid: boolean;
+    membershipActivated?: boolean;
   } | null>(null);
+  const [membershipActivating, setMembershipActivating] = useState(false);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -387,6 +426,26 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     return form.selectedServices.reduce((sum, id) => sum + (pricing[id] || 0), 0);
   }, [form.selectedServices, pricing]);
 
+  const hasActiveMembership = isMembershipActive(currentMembership);
+
+  const bookingCartSubtotal = totalPrice;
+
+  const selectedBookingCartItems = useMemo(() => {
+    return form.selectedServices.map((serviceId) => {
+      const service = serviceTypes.find((s) => s.id === serviceId);
+      const price = pricing[serviceId] || 0;
+      const category = String(service?.category || service?.name || 'Service');
+      return {
+        key: serviceId,
+        type: 'service' as const,
+        name: service?.name || 'Service',
+        price,
+        effectivePrice: price,
+        iconUrl: getCategoryIconUrl(category),
+      };
+    });
+  }, [form.selectedServices, pricing, serviceTypes]);
+
   const serviceItemsForCoupon = useMemo(() => {
     return form.selectedServices.map((serviceId) => {
       const service = serviceTypes.find((s) => s.id === serviceId);
@@ -400,16 +459,51 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
   const payableBeforeWallet = couponAdjustedTotal;
-  const hasActiveMembership = isMembershipActive(currentMembership);
+
+  const walletServiceLines = useMemo(() => {
+    const lines = serviceItemsForCoupon.map((item) => ({
+      service_type_id: item.service_type_id,
+      amount: Math.max(0, Number(item.price || 0)),
+    }));
+    const totalServiceDiscounts = couponDiscount || 0;
+    if (totalServiceDiscounts <= 0 || totalPrice <= 0) return lines;
+    return lines.map((line) => ({
+      ...line,
+      amount: Math.max(
+        0,
+        Math.round((line.amount - totalServiceDiscounts * (line.amount / totalPrice)) * 100) / 100,
+      ),
+    }));
+  }, [serviceItemsForCoupon, couponDiscount, totalPrice]);
 
   const walletMaxUsable = useMemo(() => {
+    if (walletServiceLines.length > 0) {
+      return calculateWalletUsageForServiceLines(
+        walletServiceLines,
+        Number(walletBalance || 0),
+        walletVehicleBlocked,
+      );
+    }
     return calculateWalletUsage(
       payableBeforeWallet,
       Number(walletBalance || 0),
       'SERVICE',
       walletVehicleBlocked,
     );
-  }, [payableBeforeWallet, walletBalance, walletVehicleBlocked]);
+  }, [walletServiceLines, payableBeforeWallet, walletBalance, walletVehicleBlocked]);
+
+  const walletHintLabel = useMemo(() => {
+    const rules = getWalletRules();
+    if (!rules.advanced_enabled || walletServiceLines.length === 0) {
+      return getEffectiveServiceWalletLimit(undefined, rules);
+    }
+    if (walletServiceLines.length > 1) {
+      const limits = walletServiceLines.map((line) => getEffectiveServiceWalletLimit(line.service_type_id, rules));
+      const unique = Array.from(new Set(limits));
+      return unique.length === 1 ? unique[0] : `${unique.join(' / ')} (varies)`;
+    }
+    return getEffectiveServiceWalletLimit(walletServiceLines[0]?.service_type_id, rules);
+  }, [walletServiceLines]);
 
   const walletUsed = useMemo(() => {
     if (!useWalletForBooking || !isLoggedIn || walletVehicleBlocked) return 0;
@@ -417,6 +511,21 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [useWalletForBooking, isLoggedIn, walletVehicleBlocked, walletMaxUsable]);
 
   const finalPayableAmount = Math.max(0, payableBeforeWallet - walletUsed);
+
+  const postBookingMembershipQuote = useMemo(
+    () => quotePostBookingMembership(bookingSuccess?.serviceSubtotal || 0, primeMembershipPlan),
+    [bookingSuccess?.serviceSubtotal, primeMembershipPlan],
+  );
+
+  const showPostBookingMembershipOffer = Boolean(
+    bookingSuccess &&
+      !bookingSuccess.membershipActivated &&
+      !hasActiveMembership &&
+      isLoggedIn &&
+      primeMembershipPlan &&
+      postBookingMembershipQuote &&
+      postBookingMembershipQuote.payable > 0,
+  );
 
   const prevServicesKeyRef = useRef<string>('');
   useEffect(() => {
@@ -439,6 +548,26 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     { title: 'Pickup Details', subtitle: 'When and where should we pick up your vehicle?' },
     { title: 'Payment Options', subtitle: 'Choose your preferred payment method' },
   ];
+  const DETAILS_STEP = 1;
+
+  const getNextStep = (current: number, loggedIn: boolean) => {
+    if (current === 0 && loggedIn) return 2;
+    if (current < steps.length - 1) return current + 1;
+    return current;
+  };
+
+  const getPrevStep = (current: number, loggedIn: boolean) => {
+    if (current === 2 && loggedIn) return 0;
+    return Math.max(0, current - 1);
+  };
+
+  const getVisibleStepCount = (loggedIn: boolean) => (loggedIn ? steps.length - 1 : steps.length);
+
+  const getVisibleStepIndex = (current: number, loggedIn: boolean) => {
+    if (!loggedIn) return current;
+    if (current <= 0) return 0;
+    return current - 1;
+  };
 
   const goStep = (next: number) => {
     setStep(next);
@@ -904,7 +1033,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             service_items: serviceItemsForCoupon,
             customer_phone: form.customerPhone,
             channel: 'MOBILE',
-            city_id: form.city || null,
+            city_id: form.city?.id || null,
           },
         }),
       });
@@ -941,6 +1070,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         return;
       }
       setIsLoggedIn(true);
+      setStep((current) => (current === DETAILS_STEP ? 2 : current));
 
       const profileRes = await apiFetch<any>('/api/customer/profile');
       const customer = profileRes?.customer || {};
@@ -1101,7 +1231,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         lead_type: 'CAR_SERVICE',
         lead_source: 'App Booking',
         customer_name: form.customerName || null,
-        customer_phone: form.customerPhone.trim(),
+        customer_phone: form.customerPhone.replace(/\D/g, '').slice(-10),
         city: form.city.name,
         city_id: form.city.id,
         vehicle_make: form.carModel.make,
@@ -1135,51 +1265,56 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
               service_items: serviceItemsForCoupon,
               customer_phone: form.customerPhone,
               channel: 'MOBILE',
-              city_id: form.city || null,
+              city_id: form.city?.id || null,
             },
           }
         : undefined;
 
-      let json: any;
-      if (isLoggedIn) {
-        json = await apiFetch<any>('/api/customer/bookings/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subtotal: totalPrice,
-            discount_amount: couponDiscount,
-            use_wallet: useWalletForBooking && !walletVehicleBlocked,
-            lead: leadPayload,
-            coupon: couponPayload,
-            membership_claim: membershipClaim
-              ? {
-                  benefit_code: membershipClaim.benefitCode,
-                  benefit_title: membershipClaim.benefitTitle,
-                  vehicle_number: membershipClaim.vehicleNumber || form.vehicleNumber.trim().toUpperCase(),
-                  vehicle_label: membershipClaim.vehicleLabel || null,
-                }
-              : undefined,
-          }),
-        });
-      } else {
-        const response = await fetch(`${ENV.API_URL}/api/public/bookings/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lead: leadPayload,
-            coupon: couponPayload,
-          }),
-        });
-        json = await response.json();
-        if (!response.ok) throw new Error(json?.error || 'Failed to create booking');
+      const bookingPayload = {
+        subtotal: totalPrice,
+        discount_amount: couponDiscount,
+        use_wallet: isLoggedIn && useWalletForBooking && !walletVehicleBlocked,
+        service_lines: walletServiceLines,
+        service_items: serviceItemsForCoupon,
+        lead: leadPayload,
+        coupon: couponPayload,
+        membership_claim: membershipClaim
+          ? {
+              benefit_code: membershipClaim.benefitCode,
+              benefit_title: membershipClaim.benefitTitle,
+              vehicle_number: membershipClaim.vehicleNumber || form.vehicleNumber.trim().toUpperCase(),
+              vehicle_label: membershipClaim.vehicleLabel || null,
+            }
+          : undefined,
+      };
+
+      const createdLead = await submitServiceBooking(bookingPayload);
+
+      if (isLoggedIn && useWalletForBooking && walletUsed > 0) {
+        const serverWallet = Number(createdLead.wallet_deduction ?? 0);
+        if (serverWallet <= 0) {
+          Alert.alert(
+            'Wallet not applied',
+            'Your booking was saved, but wallet balance was not deducted. Please contact support with your booking ID.',
+          );
+        } else {
+          setWalletBalance((prev) => Math.max(0, prev - serverWallet));
+        }
       }
 
       // Clear draft on successful booking
       removeBookingDraft(draftId);
 
-      const createdLeadId = json?.lead?.id;
+      const createdLeadId = createdLead.id;
+      const savedLeadNumber = createdLead.lead_number || leadNumber;
+      const successBase = {
+        leadId: createdLeadId,
+        leadNumber: savedLeadNumber,
+        serviceSubtotal: totalPrice,
+        membershipActivated: false,
+      };
       const amountToPay = isLoggedIn
-        ? Number(json?.amount_payable ?? finalPayableAmount)
+        ? Number(createdLead.amount_payable ?? finalPayableAmount)
         : couponAdjustedTotal;
 
       if (form.paymentMethod === 'PAY_NOW' && amountToPay > 0 && createdLeadId) {
@@ -1220,7 +1355,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 };
                 await RazorpayCheckout.open(options);
                 setBookingSuccess({
-                  leadNumber: json?.lead?.lead_number || leadNumber,
+                  ...successBase,
                   title: 'Payment Successful!',
                   message:
                     'Your booking has been confirmed and payment received. Our team will reach out to you shortly with pickup details.',
@@ -1231,7 +1366,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   payErr?.code === 'PAYMENT_CANCELLED' ||
                   payErr?.description?.includes('cancelled');
                 setBookingSuccess({
-                  leadNumber: json?.lead?.lead_number || leadNumber,
+                  ...successBase,
                   title: 'Booking Confirmed!',
                   message: cancelled
                     ? 'Your booking has been created. Payment was cancelled \u2014 you can pay later from your bookings.'
@@ -1241,7 +1376,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
               }
             } else {
               setBookingSuccess({
-                leadNumber: json?.lead?.lead_number || leadNumber,
+                ...successBase,
                 title: 'Booking Confirmed!',
                 message:
                   'Your booking has been created. Payment module is not available \u2014 you can pay later from your bookings.',
@@ -1250,7 +1385,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             }
           } else {
             setBookingSuccess({
-              leadNumber: json?.lead?.lead_number || leadNumber,
+              ...successBase,
               title: 'Booking Confirmed!',
               message:
                 'Your booking has been created. Payment could not be initiated \u2014 you can pay later from your bookings.',
@@ -1259,7 +1394,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           }
         } catch {
           setBookingSuccess({
-            leadNumber: json?.lead?.lead_number || leadNumber,
+            ...successBase,
             title: 'Booking Confirmed!',
             message:
               'Your booking has been created. Payment gateway is currently unavailable \u2014 you can pay later from your bookings.',
@@ -1268,7 +1403,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         }
       } else {
         setBookingSuccess({
-          leadNumber: json?.lead?.lead_number || leadNumber,
+          ...successBase,
           title: 'Booking Confirmed!',
           message:
             'Thank you for choosing MyFNG! Our team will contact you shortly to confirm pickup details and finalise your service.',
@@ -1286,12 +1421,67 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         landmark: '',
         selectedWorkshop: null,
       }));
-    } catch {
-      Alert.alert('Failed', 'Could not create booking. Please try again.');
+    } catch (error: any) {
+      Alert.alert('Failed', error?.message || 'Could not create booking. Please try again.');
     } finally {
       setLoading(false);
     }
   }
+
+  const handlePostBookingMembershipPay = async () => {
+    if (!bookingSuccess?.leadId || !primeMembershipPlan || !postBookingMembershipQuote) return;
+    const vehicleNumber = form.vehicleNumber.trim().toUpperCase();
+    const make = String(form.carModel?.make || '').trim();
+    const model = String(form.carModel?.model_name || '').trim();
+    if (!vehicleNumber || !make || !model) {
+      Alert.alert('Vehicle required', 'Booking vehicle details are missing. You can activate Prime from Settings → Membership.');
+      return;
+    }
+
+    setMembershipActivating(true);
+    try {
+      const result = await activatePostBookingMembership({
+        apiFetch,
+        plan: primeMembershipPlan,
+        leadId: bookingSuccess.leadId,
+        serviceSubtotal: bookingSuccess.serviceSubtotal,
+        expectedPayable: postBookingMembershipQuote.payable,
+        vehicle: { vehicle_number: vehicleNumber, make, model },
+      });
+
+      if (result.membership) {
+        setCurrentMembership(result.membership);
+      } else {
+        const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
+        if (memRes?.membership) setCurrentMembership(memRes.membership);
+      }
+
+      const walletNote =
+        result.walletCredit && result.walletCredit > 0
+          ? ` ₹${Math.round(result.walletCredit).toLocaleString('en-IN')} booking discount added to your wallet.`
+          : '';
+
+      setBookingSuccess((prev) =>
+        prev
+          ? {
+              ...prev,
+              membershipActivated: true,
+              message: `Prime membership activated for ${vehicleNumber}.${walletNote}`,
+            }
+          : prev,
+      );
+      Alert.alert('Prime Activated', `Membership is now active for ${vehicleNumber}.${walletNote}`);
+    } catch (err: any) {
+      const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      if (cancelled) {
+        Alert.alert('Payment Cancelled', 'Membership payment was cancelled. You can try again from this screen.');
+      } else {
+        Alert.alert('Membership', err?.message || 'Could not activate membership. Please try again.');
+      }
+    } finally {
+      setMembershipActivating(false);
+    }
+  };
 
   // ── Effects ─────────────────────────────────────────────────────
 
@@ -1364,6 +1554,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, []);
 
   useEffect(() => {
+    if (isLoggedIn && step === DETAILS_STEP) {
+      goStep(2);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, step]);
+
+  useEffect(() => {
     if (form.city && !form.pickupRequired) {
       fetchWorkshops();
     } else {
@@ -1408,34 +1605,43 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, serviceTypes.length, paramSelectedServiceId]);
 
+  useEffect(() => {
+    if (step < 2 || hasActiveMembership) return;
+    let active = true;
+    (async () => {
+      try {
+        const plan = await fetchPrimeMembershipConfig(ENV.API_URL);
+        if (!active) return;
+        setPrimeMembershipPlan(plan as AppMembershipPlan | null);
+      } catch {
+        if (active) setPrimeMembershipPlan(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [step, hasActiveMembership]);
+
   // ── Handlers ────────────────────────────────────────────────────
 
-  const handleServiceToggle = useCallback(
-    (serviceId: string) => {
-      setForm((prev) => {
-        const target = serviceTypes.find((s) => s.id === serviceId);
-        if (!target?.category_uuid) {
-          const has = prev.selectedServices.includes(serviceId);
-          return {
-            ...prev,
-            selectedServices: has
-              ? prev.selectedServices.filter((x) => x !== serviceId)
-              : [...prev.selectedServices, serviceId],
-          };
-        }
-        const fromOtherCategories = prev.selectedServices.filter((id) => {
-          const s = serviceTypes.find((it) => it.id === id);
-          return s?.category_uuid !== target.category_uuid;
-        });
-        const alreadySelected = prev.selectedServices.includes(serviceId);
-        if (alreadySelected) {
-          return { ...prev, selectedServices: fromOtherCategories };
-        }
-        return { ...prev, selectedServices: [...fromOtherCategories, serviceId] };
-      });
-    },
-    [serviceTypes]
-  );
+  const handleServiceToggle = useCallback((serviceId: string) => {
+    setForm((prev) => {
+      const has = prev.selectedServices.includes(serviceId);
+      return {
+        ...prev,
+        selectedServices: has
+          ? prev.selectedServices.filter((x) => x !== serviceId)
+          : [...prev.selectedServices, serviceId],
+      };
+    });
+  }, []);
+
+  const removeSelectedService = useCallback((serviceId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      selectedServices: prev.selectedServices.filter((x) => x !== serviceId),
+    }));
+  }, []);
 
   const canNext = () => {
     if (step === 0) return Boolean(form.city && form.carModel);
@@ -1571,6 +1777,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpLoading(true);
     try {
       let sessionToken: string | null = null;
+      let authResponse: AuthVerifyResponse | null = null;
 
       if (otpChannel === 'whatsapp') {
         const cleanPhone = form.customerPhone.replace(/\D/g, '');
@@ -1615,9 +1822,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
         if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
         sessionToken = json?.session_token || null;
+        authResponse = json;
       } else {
         const cleanPhone = form.customerPhone.replace(/\D/g, '');
-        sessionToken = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
+        const authResult = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
+        sessionToken = authResult.session_token ?? null;
+        authResponse = authResult;
       }
 
       // Save session and auto-login
@@ -1629,7 +1839,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }
 
       setOtpVerified(true);
-      setTimeout(() => goStep(2), 300);
+
+      const customerId =
+        (authResponse as any)?.customer?.id ||
+        (typeof authResponse === 'object' && authResponse && 'customer' in authResponse
+          ? (authResponse as any).customer?.id
+          : null);
+      const decision = sessionToken
+        ? await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse)
+        : { show: false, amount: getWelcomeBonusAmount(), welcomeBonus: null };
+      if (decision.show) {
+        setCreditedWelcomeAmount(decision.amount);
+        setCreditedWelcomeVisible(true);
+        pendingStepAdvanceRef.current = true;
+      } else {
+        setTimeout(() => goStep(2), 300);
+      }
     } catch (error: any) {
       Alert.alert('Verification Failed', error?.message || 'Invalid OTP. Please try again.');
     } finally {
@@ -1650,16 +1875,23 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       Alert.alert('Complete this step', 'Please fill the required details.');
       return;
     }
-    if (step < steps.length - 1) goStep(step + 1);
+    if (step < steps.length - 1) goStep(getNextStep(step, isLoggedIn));
     else submitLead();
   };
 
-  const onBack = () => goStep(Math.max(0, step - 1));
+  const onBack = () => goStep(getPrevStep(step, isLoggedIn));
 
   const onDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
-      setForm((p) => ({ ...p, pickupDate: formatDateYMD(selectedDate) }));
+      const nextDate = formatDateYMD(selectedDate);
+      const todayYmd = formatDateYMD(getIndiaDate());
+      setForm((p) => ({
+        ...p,
+        pickupDate: nextDate,
+        pickupTime:
+          p.pickupTime && isTimeSlotPastForDate(p.pickupTime, nextDate, todayYmd) ? '' : p.pickupTime,
+      }));
     }
   };
 
@@ -1703,6 +1935,25 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrowStr = formatDateYMD(tomorrowDate);
 
+  useEffect(() => {
+    if (
+      form.pickupDate === todayStr &&
+      form.pickupTime &&
+      isTimeSlotPastForDate(form.pickupTime, form.pickupDate, todayStr)
+    ) {
+      setForm((p) => ({ ...p, pickupTime: '' }));
+    }
+  }, [form.pickupDate, form.pickupTime, todayStr]);
+
+  const selectPickupDate = (dateStr: string) => {
+    setForm((p) => ({
+      ...p,
+      pickupDate: dateStr,
+      pickupTime:
+        p.pickupTime && isTimeSlotPastForDate(p.pickupTime, dateStr, todayStr) ? '' : p.pickupTime,
+    }));
+  };
+
   // ── Render ──────────────────────────────────────────────────────
 
   return (
@@ -1744,8 +1995,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             ) : null}
 
             <View style={styles.stepper}>
-              {steps.map((_, i) => (
-                <View key={i} style={[styles.stepDot, i <= step ? styles.stepDotActive : null]} />
+              {Array.from({ length: getVisibleStepCount(isLoggedIn) }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.stepDot,
+                    i <= getVisibleStepIndex(step, isLoggedIn) ? styles.stepDotActive : null,
+                  ]}
+                />
               ))}
             </View>
           </View>
@@ -1817,6 +2074,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       placeholder="Type make or model (e.g. Tata Nexon)"
                       placeholderTextColor={COLORS.gray[500]}
                       style={styles.carSearchInput}
+                      autoCorrect={false}
+                      spellCheck={false}
+                      autoComplete="off"
                     />
                     {form.carModel ? (
                       <TouchableOpacity
@@ -1910,8 +2170,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
               </>
             ) : null}
 
-            {/* ── Step 1: Name + Phone ── */}
-            {step === 1 ? (
+            {/* ── Step 1: Name + Phone (guests only) ── */}
+            {step === 1 && !isLoggedIn ? (
               <>
                 <View style={styles.field}>
                   <Text style={styles.label}>Name (optional)</Text>
@@ -1999,12 +2259,6 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Phone verified via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}</Text>
                   </View>
                 ) : null}
-                {isLoggedIn ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                    <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                    <Text style={{ color: '#059669', fontSize: 12, fontWeight: '700' }}>Logged in - OTP not required</Text>
-                  </View>
-                ) : null}
               </>
             ) : null}
 
@@ -2072,6 +2326,50 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <Text style={[styles.oilTypeTabText, selectedOilType === 'full' ? styles.oilTypeTabTextActive : { color: '#EA580C' }]}>Fully Synthetic</Text>
                       </TouchableOpacity>
                     </View>
+                  </View>
+                ) : null}
+
+                {form.selectedServices.length > 0 ? (
+                  <View style={styles.selectedCartPanel}>
+                    <View style={styles.selectedCartHeader}>
+                      <View style={styles.selectedCartHeaderLeft}>
+                        <Ionicons name="cart" size={16} color={COLORS.primary} />
+                        <Text style={styles.selectedCartTitle}>
+                          {form.selectedServices.length} service{form.selectedServices.length !== 1 ? 's' : ''} selected
+                        </Text>
+                      </View>
+                      <Text style={styles.selectedCartTotal}>{inr(totalPrice)}</Text>
+                    </View>
+                    <Text style={styles.selectedCartHint}>
+                      Add more services from other categories — all selected items stay in your cart.
+                    </Text>
+                    <View style={styles.selectedCartChips}>
+                      {selectedBookingCartItems.map((item) => (
+                        <View key={item.key} style={styles.selectedCartChip}>
+                          <Text style={styles.selectedCartChipText} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.selectedCartChipPrice}>
+                            {item.effectivePrice < item.price ? inr(item.effectivePrice) : inr(item.price)}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => removeSelectedService(item.key)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                    <TouchableOpacity
+                      style={styles.selectedCartContinueBtn}
+                      onPress={onNext}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.selectedCartContinueBtnText}>Continue</Text>
+                      <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
                   </View>
                 ) : null}
 
@@ -2171,25 +2469,24 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           ) : null}
 
                           {selected ? (
-                            <TouchableOpacity
-                              style={styles.selectContinueBtn}
-                              activeOpacity={0.85}
-                              onPress={() => onNext()}
-                            >
-                              <Text style={styles.selectContinueBtnText}>Continue</Text>
-                              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-                            </TouchableOpacity>
+                            <View style={styles.addedServiceBadge}>
+                              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                              <Text style={styles.addedServiceBadgeText}>Added to cart</Text>
+                              <TouchableOpacity
+                                onPress={() => handleServiceToggle(s.id)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={styles.addedServiceRemoveText}>Remove</Text>
+                              </TouchableOpacity>
+                            </View>
                           ) : (
                             <TouchableOpacity
                               style={styles.selectContinueBtnOutline}
                               activeOpacity={0.85}
-                              onPress={() => {
-                                handleServiceToggle(s.id);
-                                setTimeout(() => onNext(), 150);
-                              }}
+                              onPress={() => handleServiceToggle(s.id)}
                             >
-                              <Text style={styles.selectContinueBtnOutlineText}>Select & Continue</Text>
-                              <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+                              <Text style={styles.selectContinueBtnOutlineText}>Add to Cart</Text>
+                              <Ionicons name="add-circle-outline" size={16} color={COLORS.primary} />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -2199,7 +2496,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 )}
 
                 <View style={styles.totalBar}>
-                  <Text style={styles.totalLabel}>Estimated total</Text>
+                  <View>
+                    <Text style={styles.totalLabel}>
+                      {form.selectedServices.length > 0
+                        ? `${form.selectedServices.length} service${form.selectedServices.length !== 1 ? 's' : ''} in cart`
+                        : 'Estimated total'}
+                    </Text>
+                    {form.selectedServices.length > 0 ? (
+                      <Text style={styles.totalSubLabel}>Tap Add to Cart on more services anytime</Text>
+                    ) : null}
+                  </View>
                   <Text style={styles.totalValue}>{totalPrice ? inr(totalPrice) : '—'}</Text>
                 </View>
               </>
@@ -2365,7 +2671,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             styles.datePill,
                             form.pickupDate === todayStr ? styles.datePillActive : null,
                           ]}
-                          onPress={() => setForm((p) => ({ ...p, pickupDate: todayStr }))}
+                          onPress={() => selectPickupDate(todayStr)}
                         >
                           <Text
                             numberOfLines={1}
@@ -2382,7 +2688,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                             styles.datePill,
                             form.pickupDate === tomorrowStr ? styles.datePillActive : null,
                           ]}
-                          onPress={() => setForm((p) => ({ ...p, pickupDate: tomorrowStr }))}
+                          onPress={() => selectPickupDate(tomorrowStr)}
                         >
                           <Text
                             numberOfLines={1}
@@ -2424,20 +2730,27 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <View style={styles.timeSlotsGrid}>
                           {TIME_SLOTS.map((slot) => {
                             const isActive = form.pickupTime === slot.value;
+                            const isPast = isTimeSlotPastForDate(slot.value, form.pickupDate, todayStr);
                             return (
                               <TouchableOpacity
                                 key={slot.value}
                                 style={[
                                   styles.timeSlotTile,
                                   isActive ? styles.timeSlotTileActive : null,
+                                  isPast ? styles.timeSlotTileDisabled : null,
                                 ]}
-                                onPress={() => setForm((p) => ({ ...p, pickupTime: slot.value }))}
-                                activeOpacity={0.9}
+                                onPress={() => {
+                                  if (isPast) return;
+                                  setForm((p) => ({ ...p, pickupTime: slot.value }));
+                                }}
+                                disabled={isPast}
+                                activeOpacity={isPast ? 1 : 0.9}
                               >
                                 <Text
                                   style={[
                                     styles.timeSlotTileText,
                                     isActive ? styles.timeSlotTileTextActive : null,
+                                    isPast ? styles.timeSlotTileTextDisabled : null,
                                   ]}
                                 >
                                   {slot.label}
@@ -2635,7 +2948,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <View style={styles.dateQuickRow}>
                         <TouchableOpacity
                           style={[styles.datePill, form.pickupDate === todayStr ? styles.datePillActive : null]}
-                          onPress={() => setForm((p) => ({ ...p, pickupDate: todayStr }))}
+                          onPress={() => selectPickupDate(todayStr)}
                         >
                           <Text numberOfLines={1} style={[styles.datePillText, form.pickupDate === todayStr ? styles.datePillTextActive : null]}>
                             Today, {formatDateDMShort(todayStr)}
@@ -2643,7 +2956,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.datePill, form.pickupDate === tomorrowStr ? styles.datePillActive : null]}
-                          onPress={() => setForm((p) => ({ ...p, pickupDate: tomorrowStr }))}
+                          onPress={() => selectPickupDate(tomorrowStr)}
                         >
                           <Text numberOfLines={1} style={[styles.datePillText, form.pickupDate === tomorrowStr ? styles.datePillTextActive : null]}>
                             Tomorrow, {formatDateDMShort(tomorrowStr)}
@@ -2676,14 +2989,29 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <View style={styles.timeSlotsGrid}>
                           {TIME_SLOTS.filter((slot) => slot.value < '13:00').map((slot) => {
                             const isActive = form.pickupTime === slot.value;
+                            const isPast = isTimeSlotPastForDate(slot.value, form.pickupDate, todayStr);
                             return (
                               <TouchableOpacity
                                 key={slot.value}
-                                style={[styles.timeSlotTile, isActive ? styles.timeSlotTileActive : null]}
-                                onPress={() => setForm((p) => ({ ...p, pickupTime: slot.value }))}
-                                activeOpacity={0.9}
+                                style={[
+                                  styles.timeSlotTile,
+                                  isActive ? styles.timeSlotTileActive : null,
+                                  isPast ? styles.timeSlotTileDisabled : null,
+                                ]}
+                                onPress={() => {
+                                  if (isPast) return;
+                                  setForm((p) => ({ ...p, pickupTime: slot.value }));
+                                }}
+                                disabled={isPast}
+                                activeOpacity={isPast ? 1 : 0.9}
                               >
-                                <Text style={[styles.timeSlotTileText, isActive ? styles.timeSlotTileTextActive : null]}>
+                                <Text
+                                  style={[
+                                    styles.timeSlotTileText,
+                                    isActive ? styles.timeSlotTileTextActive : null,
+                                    isPast ? styles.timeSlotTileTextDisabled : null,
+                                  ]}
+                                >
                                   {slot.label}
                                 </Text>
                               </TouchableOpacity>
@@ -2735,52 +3063,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </Modal>
                 ) : null}
 
-                {/* FOMO: Membership reminder — shown after date + time + address filled */}
-                {totalPrice > 0 && !hasActiveMembership && form.pickupDate && form.pickupTime && form.pickupAddress.trim() ? (
-                  <TouchableOpacity
-                    style={styles.fomoCard}
-                    activeOpacity={0.85}
-                    onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
-                  >
-                    <View style={styles.fomoIconWrap}>
-                      <Ionicons name="diamond" size={16} color="#F59E0B" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.fomoText}>
-                        You could save <Text style={styles.fomoHighlight}>{inr(totalPrice - Math.round(totalPrice * 0.9))}</Text> on this booking with MyFNG Prime!
-                      </Text>
-                    </View>
-                    <Text style={styles.fomoCta}>Activate →</Text>
-                  </TouchableOpacity>
-                ) : null}
               </>
             ) : null}
 
             {/* ── Step 4: Payment + Coupon + Summary ── */}
             {step === 4 ? (
               <>
-                {/* FOMO: Last chance membership reminder */}
-                {totalPrice > 0 && !hasActiveMembership ? (
-                  <TouchableOpacity
-                    style={styles.fomoCardUrgent}
-                    activeOpacity={0.85}
-                    onPress={() => navigation.navigate('Settings', { subPage: 'Membership' })}
-                  >
-                    <View style={styles.fomoUrgentTop}>
-                      <Ionicons name="flash" size={14} color="#FFFFFF" />
-                      <Text style={styles.fomoUrgentTitle}>Last chance! Don't miss out</Text>
-                    </View>
-                    <Text style={styles.fomoUrgentText}>
-                      Activate MyFNG Prime now & pay only{' '}
-                      <Text style={{ fontWeight: '900' }}>{inr(Math.round(totalPrice * 0.9))}</Text>
-                      {' '}instead of {inr(totalPrice)} — save {inr(totalPrice - Math.round(totalPrice * 0.9))} today!
-                    </Text>
-                    <View style={styles.fomoUrgentBtn}>
-                      <Text style={styles.fomoUrgentBtnText}>Activate Membership Now</Text>
-                    </View>
-                  </TouchableOpacity>
-                ) : null}
-
                 {/* Pay Later */}
                 <TouchableOpacity
                   style={[styles.payRow, form.paymentMethod === 'PAY_LATER' ? styles.payRowActive : null]}
@@ -2948,7 +3236,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       </View>
                       <View style={styles.walletHeaderText}>
                         <Text style={styles.walletTitle}>Wallet Balance</Text>
-                        <Text style={styles.walletHint}>Up to 10% on this order</Text>
+                        <Text style={styles.walletHint}>Up to {walletHintLabel} on this order</Text>
                       </View>
                       <View style={styles.walletToggleWrap}>
                         <Switch
@@ -2998,9 +3286,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </View>
                 ) : null}
 
-                {/* Summary */}
+                {/* Summary / My Cart */}
                 <View style={styles.reviewBox}>
-                  <Text style={styles.reviewTitle}>Summary</Text>
+                  <Text style={styles.reviewTitle}>My Cart</Text>
 
                   {membershipClaim ? (
                     <View style={styles.reviewClaimTag}>
@@ -3012,6 +3300,41 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     </View>
                   ) : null}
 
+                  {selectedBookingCartItems.length === 0 ? (
+                    <Text style={styles.cartEmptyText}>No services selected</Text>
+                  ) : null}
+
+                  {selectedBookingCartItems.map((item) => (
+                    <View key={item.key} style={styles.cartLineItem}>
+                      <View style={styles.cartLineIconWrap}>
+                        <Image source={{ uri: item.iconUrl }} style={styles.cartLineIcon} resizeMode="contain" />
+                      </View>
+                      <View style={styles.cartLineBody}>
+                        <Text style={styles.cartLineName} numberOfLines={2}>{item.name}</Text>
+                        <View style={styles.cartLinePriceRow}>
+                          {item.effectivePrice < item.price ? (
+                            <>
+                              <Text style={styles.cartLinePrice}>{inr(item.effectivePrice)}</Text>
+                              <Text style={styles.cartLineStrike}>{inr(item.price)}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.cartLinePrice}>{inr(item.price)}</Text>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.cartLineRemoveBtn}
+                        onPress={() => removeSelectedService(item.key)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close" size={14} color="#6B7280" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+
+                  <View style={styles.reviewDivider} />
+
                   <View style={styles.reviewRow}>
                     <Text style={styles.reviewRowLabel}>Location</Text>
                     <Text style={styles.reviewRowValue}>{form.city?.name || '—'}</Text>
@@ -3020,14 +3343,6 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     <Text style={styles.reviewRowLabel}>Vehicle</Text>
                     <Text style={styles.reviewRowValue}>
                       {form.carModel ? formatCar(form.carModel) : '—'}
-                    </Text>
-                  </View>
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewRowLabel}>
-                      Service{selectedServiceLabels.length !== 1 ? 's' : ''}
-                    </Text>
-                    <Text style={[styles.reviewRowValue, styles.reviewRowValueWrap]}>
-                      {selectedServiceLabels.length > 0 ? selectedServiceLabels.join(', ') : '—'}
                     </Text>
                   </View>
                   {form.vehicleNumber.trim() ? (
@@ -3102,19 +3417,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
                   <View style={styles.reviewDivider} />
 
+                  <Text style={styles.billSummaryTitle}>Bill Summary</Text>
                   <View style={styles.reviewRow}>
-                    <Text style={styles.reviewRowLabel}>Estimated</Text>
-                    {couponMeta && couponDiscount > 0 ? (
-                      <Text style={[styles.reviewRowValue, styles.reviewRowValueStrike]}>
-                        {totalPrice ? inr(totalPrice) : '—'}
-                      </Text>
-                    ) : (
-                      <Text style={styles.reviewRowValue}>{totalPrice ? inr(totalPrice) : '—'}</Text>
-                    )}
+                    <Text style={styles.reviewRowLabel}>Item Total (Incl. taxes)</Text>
+                    <Text style={styles.reviewRowValue}>{bookingCartSubtotal ? inr(bookingCartSubtotal) : '—'}</Text>
                   </View>
-                  {couponMeta ? (
+                  {couponMeta && couponDiscount > 0 ? (
                     <View style={styles.reviewRow}>
-                      <Text style={styles.reviewRowLabel}>Coupon</Text>
+                      <Text style={styles.reviewRowLabel}>Coupon Discount</Text>
                       <Text style={[styles.reviewRowValue, styles.reviewRowValueDiscount]}>
                         -{inr(couponDiscount || 0)}
                       </Text>
@@ -3128,7 +3438,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       </Text>
                     </View>
                   ) : null}
-                  {totalPrice > 0 ? (
+                  {bookingCartSubtotal > 0 ? (
                     <View style={styles.payableBar}>
                       <Text style={styles.payableLabel}>Payable</Text>
                       <Text style={styles.payableValue}>{inr(finalPayableAmount)}</Text>
@@ -3543,6 +3853,51 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 </View>
               </View>
 
+              {showPostBookingMembershipOffer && postBookingMembershipQuote ? (
+                <View style={styles.successMembershipCard}>
+                  <View style={styles.successMembershipTop}>
+                    <View style={styles.successMembershipIconWrap}>
+                      <Ionicons name="diamond" size={18} color="#7C3AED" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.successMembershipTitle}>
+                        Activate {primeMembershipPlan?.name || 'Prime'}
+                        {form.vehicleNumber.trim() ? ` for ${form.vehicleNumber.trim().toUpperCase()}` : ''}
+                      </Text>
+                      <Text style={styles.successMembershipSub}>
+                        Save {inr(postBookingMembershipQuote.bundleDiscount)} on this booking · {postBookingMembershipQuote.discountLabel}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.successMembershipPriceRow}>
+                    <Text style={styles.successMembershipStrike}>{inr(postBookingMembershipQuote.membershipPrice)}</Text>
+                    <Text style={styles.successMembershipPayable}>{inr(postBookingMembershipQuote.payable)}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.successMembershipBtn, membershipActivating ? styles.successMembershipBtnDisabled : null]}
+                    onPress={handlePostBookingMembershipPay}
+                    disabled={membershipActivating}
+                    activeOpacity={0.85}
+                  >
+                    {membershipActivating ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="card-outline" size={16} color="#FFFFFF" />
+                        <Text style={styles.successMembershipBtnText}>
+                          Pay {inr(postBookingMembershipQuote.payable)} & Activate Prime
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : bookingSuccess?.membershipActivated ? (
+                <View style={styles.successMembershipActivated}>
+                  <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                  <Text style={styles.successMembershipActivatedText}>Prime membership activated</Text>
+                </View>
+              ) : null}
+
               <TouchableOpacity
                 style={styles.successPrimaryBtn}
                 onPress={() => {
@@ -3574,6 +3929,18 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         </Modal>
       </View>
       </KeyboardAvoidingView>
+
+      <WelcomeBonusCreditedModal
+        visible={creditedWelcomeVisible}
+        amount={creditedWelcomeAmount}
+        onClose={() => {
+          setCreditedWelcomeVisible(false);
+          if (pendingStepAdvanceRef.current) {
+            pendingStepAdvanceRef.current = false;
+            setTimeout(() => goStep(2), 300);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -3999,7 +4366,124 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   totalLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.72)' },
+  totalSubLabel: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.55)', marginTop: 2 },
   totalValue: { fontSize: 14, fontWeight: '900', color: '#fff' },
+  selectedCartPanel: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    gap: 8,
+  },
+  selectedCartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  selectedCartHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  selectedCartTitle: { fontSize: 13, fontWeight: '900', color: '#1E3A8A' },
+  selectedCartTotal: { fontSize: 14, fontWeight: '900', color: COLORS.primaryDark },
+  selectedCartHint: { fontSize: 11, fontWeight: '600', color: '#475569', lineHeight: 15 },
+  selectedCartChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  selectedCartChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  selectedCartChipText: { fontSize: 11, fontWeight: '800', color: '#1E293B', maxWidth: 140 },
+  selectedCartChipPrice: { fontSize: 11, fontWeight: '900', color: COLORS.primary },
+  selectedCartContinueBtn: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  selectedCartContinueBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  addedServiceBadge: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  addedServiceBadgeText: { flex: 1, fontSize: 12, fontWeight: '800', color: '#047857' },
+  addedServiceRemoveText: { fontSize: 11, fontWeight: '800', color: '#DC2626' },
+  cartEmptyText: { fontSize: 12, fontWeight: '600', color: COLORS.gray[500], marginBottom: 8 },
+  cartLineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  cartLineItemMembership: { backgroundColor: '#FAF5FF', borderRadius: 12, paddingHorizontal: 10, marginBottom: 4 },
+  cartLineIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  cartLineIconWrapMembership: { backgroundColor: '#F3E8FF', borderColor: '#DDD6FE' },
+  cartLineIcon: { width: 34, height: 34 },
+  cartLineBody: { flex: 1, minWidth: 0 },
+  cartLineName: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  cartLineSub: { fontSize: 10, fontWeight: '600', color: '#7C3AED', marginTop: 2 },
+  cartLinePriceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  cartLinePrice: { fontSize: 14, fontWeight: '900', color: '#111827' },
+  cartLineStrike: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', textDecorationLine: 'line-through' },
+  cartLineRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addMembershipBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#F0F7FF',
+  },
+  addMembershipBackText: { flex: 1, fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  billSummaryTitle: { fontSize: 13, fontWeight: '900', color: '#111827', marginBottom: 8 },
   switchRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   choice: {
     flex: 1,
@@ -4681,6 +5165,25 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#DC2626',
   },
+  membershipSavingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  membershipSavingBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
+    lineHeight: 17,
+  },
 
   // Step 3 — flat section (matches Cart page clean UI)
   sectionCard: {
@@ -4820,6 +5323,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F3FF',
     borderColor: '#7C3AED',
   },
+  timeSlotTileDisabled: {
+    opacity: 0.4,
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+  },
   timeSlotTileText: {
     fontSize: 11,
     fontWeight: '700',
@@ -4828,6 +5336,9 @@ const styles = StyleSheet.create({
   },
   timeSlotTileTextActive: {
     color: '#7C3AED',
+  },
+  timeSlotTileTextDisabled: {
+    color: '#9CA3AF',
   },
   timeSelectedRow: {
     marginTop: 12,
@@ -5123,6 +5634,93 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: '#334155',
+  },
+  successMembershipCard: {
+    width: '100%',
+    marginTop: 16,
+    marginBottom: 4,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    backgroundColor: '#FAF5FF',
+    gap: 10,
+  },
+  successMembershipTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  successMembershipIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successMembershipTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#4C1D95',
+  },
+  successMembershipSub: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    lineHeight: 17,
+  },
+  successMembershipPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  successMembershipStrike: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    textDecorationLine: 'line-through',
+  },
+  successMembershipPayable: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#6D28D9',
+  },
+  successMembershipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#6D28D9',
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  successMembershipBtnDisabled: {
+    opacity: 0.7,
+  },
+  successMembershipBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  successMembershipActivated: {
+    width: '100%',
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  successMembershipActivatedText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#047857',
   },
   successPrimaryBtn: {
     width: '100%',

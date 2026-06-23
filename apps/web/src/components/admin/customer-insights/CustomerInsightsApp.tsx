@@ -78,6 +78,21 @@ function fmtDate(value?: string | null) {
   });
 }
 
+function toDateTimeLocalValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function buildDefaultActivateDates(plan?: { duration_days?: number | null }) {
+  const start = new Date();
+  const durationDays = Number(plan?.duration_days || 365);
+  const end = new Date(start.getTime() + durationDays * 24 * 60 * 60 * 1000);
+  return {
+    start: toDateTimeLocalValue(start),
+    end: toDateTimeLocalValue(end),
+  };
+}
+
 function StatCard({
   label,
   value,
@@ -122,6 +137,8 @@ export default function CustomerInsightsApp() {
   const [activatePlanId, setActivatePlanId] = useState('');
   const [activateSecondCar, setActivateSecondCar] = useState(false);
   const [activateNotes, setActivateNotes] = useState('');
+  const [activateStartDate, setActivateStartDate] = useState('');
+  const [activateEndDate, setActivateEndDate] = useState('');
   const [activateLoading, setActivateLoading] = useState(false);
   const [activateMessage, setActivateMessage] = useState<string | null>(null);
   const [accountReason, setAccountReason] = useState('');
@@ -222,6 +239,28 @@ export default function CustomerInsightsApp() {
     setAccountReason('');
   }, [selectedId, detailTab]);
 
+  useEffect(() => {
+    if (detailTab !== 'membership' || membershipPlans.length === 0) return;
+    const plan = membershipPlans[0];
+    if (!plan?.id) return;
+    const defaults = buildDefaultActivateDates(plan);
+    setActivatePlanId(String(plan.id));
+    setActivateStartDate(defaults.start);
+    setActivateEndDate(defaults.end);
+    setActivateSecondCar(false);
+    setActivateNotes('');
+  }, [detailTab, selectedId, membershipPlans]);
+
+  const handleActivatePlanChange = (planId: string) => {
+    setActivatePlanId(planId);
+    const plan = membershipPlans.find((p) => String(p.id) === planId);
+    const start = activateStartDate ? new Date(activateStartDate) : new Date();
+    const safeStart = Number.isNaN(start.getTime()) ? new Date() : start;
+    const end = new Date(safeStart.getTime() + Number(plan?.duration_days || 365) * 24 * 60 * 60 * 1000);
+    setActivateStartDate(toDateTimeLocalValue(safeStart));
+    setActivateEndDate(toDateTimeLocalValue(end));
+  };
+
   const activeMembership = useMemo(() => {
     const now = Date.now();
     return (detail?.memberships || []).find(
@@ -232,6 +271,18 @@ export default function CustomerInsightsApp() {
 
   const handleManualActivate = async () => {
     if (!selectedId || !activatePlanId) return;
+
+    const startsAt = new Date(activateStartDate);
+    const endsAt = new Date(activateEndDate);
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+      setError('Please enter valid start and end dates');
+      return;
+    }
+    if (endsAt.getTime() <= startsAt.getTime()) {
+      setError('End date must be after start date');
+      return;
+    }
+
     setActivateLoading(true);
     setActivateMessage(null);
     setError(null);
@@ -244,6 +295,8 @@ export default function CustomerInsightsApp() {
           plan_id: activatePlanId,
           add_second_car: activateSecondCar,
           notes: activateNotes.trim() || null,
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
           primary_vehicle_id: primaryVehicle?.id || null,
           primary_vehicle_snapshot: primaryVehicle
             ? {
@@ -262,7 +315,7 @@ export default function CustomerInsightsApp() {
       await fetchList();
       setActivateNotes('');
       setActivateMessage(
-        `Membership activated: ${json.membership?.plan?.name || 'Plan'} · valid until ${fmtDate(json.ends_at)}`,
+        `Membership activated: ${json.membership?.plan?.name || 'Plan'} · ${fmtDate(json.starts_at)} → ${fmtDate(json.ends_at)}`,
       );
     } catch (e: any) {
       setError(e?.message || 'Failed to activate membership');
@@ -894,7 +947,7 @@ export default function CustomerInsightsApp() {
                           Membership plan
                           <select
                             value={activatePlanId}
-                            onChange={(e) => setActivatePlanId(e.target.value)}
+                            onChange={(e) => handleActivatePlanChange(e.target.value)}
                             disabled={plansLoading || activateLoading}
                             className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
                           >
@@ -923,6 +976,33 @@ export default function CustomerInsightsApp() {
                         </label>
                       </div>
 
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block text-xs font-semibold text-gray-700">
+                          Start date
+                          <input
+                            type="datetime-local"
+                            value={activateStartDate}
+                            onChange={(e) => setActivateStartDate(e.target.value)}
+                            disabled={activateLoading}
+                            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                          />
+                        </label>
+
+                        <label className="block text-xs font-semibold text-gray-700">
+                          End date
+                          <input
+                            type="datetime-local"
+                            value={activateEndDate}
+                            onChange={(e) => setActivateEndDate(e.target.value)}
+                            disabled={activateLoading}
+                            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[11px] text-violet-700">
+                        End date plan duration se auto-fill hoti hai; zarurat ho to manually change kar sakte ho.
+                      </p>
+
                       <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-700">
                         <input
                           type="checkbox"
@@ -938,7 +1018,7 @@ export default function CustomerInsightsApp() {
                         <button
                           type="button"
                           onClick={handleManualActivate}
-                          disabled={activateLoading || !activatePlanId || plansLoading}
+                          disabled={activateLoading || !activatePlanId || plansLoading || !activateStartDate || !activateEndDate}
                           className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50"
                         >
                           {activateLoading ? 'Working...' : 'Activate Now'}

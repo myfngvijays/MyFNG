@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
 import { recordCouponRedemption } from '@/lib/coupon-validate';
+import { applyBookingMembershipBundleToLead } from '@/lib/booking-post-membership';
 import { debitWallet } from '@/lib/wallet-service';
 import crypto from 'crypto';
 
@@ -14,7 +15,14 @@ export async function POST(request: NextRequest) {
   const { customer, supabaseAdmin } = ctx;
   const body = await request.json().catch(() => ({}));
   const planId = String(body.plan_id || '');
+  const postBookingBundle = Boolean(body.post_booking_bundle);
+  const leadId = String(body.lead_id || '').trim();
+  const serviceSubtotal = Number(body.service_subtotal || 0);
+  const bookingBundleDiscount = Number(body.booking_bundle_discount || 0);
   if (!planId) return NextResponse.json({ error: 'plan_id is required' }, { status: 400 });
+  if (postBookingBundle && !leadId) {
+    return NextResponse.json({ error: 'lead_id is required for post-booking membership' }, { status: 400 });
+  }
 
   const razorpayPaymentId = String(body.razorpay_payment_id || '');
   const razorpayOrderId = String(body.razorpay_order_id || '');
@@ -123,7 +131,27 @@ export async function POST(request: NextRequest) {
     planId,
     paymentId: razorpayPaymentId,
     orderId: razorpayOrderId,
+    leadId: leadId || null,
+    postBookingBundle,
   });
+
+  let appliedBundleDiscount = 0;
+  let walletCredit = 0;
+  if (postBookingBundle && leadId) {
+    try {
+      const applied = await applyBookingMembershipBundleToLead(supabaseAdmin, {
+        customerId: customer.id,
+        leadId,
+        membershipId: String(inserted.id),
+        serviceSubtotal,
+        bundleDiscount: bookingBundleDiscount,
+      });
+      appliedBundleDiscount = applied.bundleDiscount;
+      walletCredit = applied.walletCredit;
+    } catch (bundleErr: any) {
+      console.error('[membership/subscribe] post-booking bundle apply failed:', bundleErr?.message || bundleErr);
+    }
+  }
 
   const couponId = String(body.coupon_id || body.coupon_meta?.coupon_id || '');
   if (couponId) {
@@ -154,5 +182,7 @@ export async function POST(request: NextRequest) {
     plan_id: plan.id,
     ends_at: endsAt.toISOString(),
     membership: inserted,
+    booking_bundle_discount: appliedBundleDiscount,
+    wallet_credit: walletCredit,
   });
 }

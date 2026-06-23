@@ -386,7 +386,8 @@ function GuestPhoneOtpSection({
         if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
         sessionToken = json?.session_token || null;
       } else {
-        sessionToken = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
+        const authResult = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
+        sessionToken = authResult.session_token;
       }
       if (!sessionToken) throw new Error('Session token not received');
       await setCustomerSessionToken(sessionToken);

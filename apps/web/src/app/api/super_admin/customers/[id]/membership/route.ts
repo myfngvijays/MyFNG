@@ -90,6 +90,8 @@ export async function POST(
           ? body.second_vehicle_snapshot
           : null,
       notes: typeof body.notes === 'string' ? body.notes.trim() || null : null,
+      startsAt: typeof body.starts_at === 'string' ? body.starts_at.trim() || null : null,
+      endsAt: typeof body.ends_at === 'string' ? body.ends_at.trim() || null : null,
       adminUserId: auth.user?.id || null,
     });
 
@@ -100,6 +102,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       membership: result.membership,
+      starts_at: result.starts_at,
       ends_at: result.ends_at,
     });
   } catch (e: any) {

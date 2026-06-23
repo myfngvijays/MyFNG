@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
+import { parseWalletPlatform } from '@/lib/wallet-config';
 import {
   getWalletVehicleEligibility,
+  parseWalletServiceLines,
   resolveWalletDeduction,
   type WalletChannel,
 } from '@/lib/wallet-service';
@@ -30,6 +32,8 @@ export async function POST(request: NextRequest) {
     channel,
     useWallet,
     vehicleNumber,
+    parseWalletPlatform(request.headers.get('x-app-platform')),
+    parseWalletServiceLines(body, payableAmount),
   );
 
   return NextResponse.json({
