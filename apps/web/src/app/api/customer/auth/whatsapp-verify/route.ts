@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const phone = normalizePhone(body.phone);
   const otp = normalizeOtp(body.otp);
+  const otpChannel = String(body?.channel || 'WHATSAPP').toUpperCase() === 'SMS' ? 'SMS' : 'WHATSAPP';
   const displayName =
     typeof body?.displayName === 'string' ? String(body.displayName).trim() || null : null;
   const appPlatform = resolveAppPlatformFromRequest(request, body?.platform);
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     .from('otp_requests')
     .select('id, metadata, status, created_at')
     .eq('phone', phone)
-    .eq('channel', 'WHATSAPP')
+    .eq('channel', otpChannel)
     .eq('status', 'SENT')
     .order('created_at', { ascending: false })
     .limit(25);

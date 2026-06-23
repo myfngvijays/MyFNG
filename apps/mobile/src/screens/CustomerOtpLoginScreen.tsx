@@ -16,11 +16,11 @@ import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import {
   shouldSkipFirebaseSmsOnSimulator,
-  sendFirebaseSmsOtp,
   isIosSimulator,
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 
 type Step = 'phone' | 'otp';
 type OtpChannel = 'sms' | 'whatsapp';
@@ -105,8 +105,8 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     setLoading(true);
     setOtpChannel('sms');
     try {
-      const result = await sendFirebaseSmsOtp(cleanPhone);
-      setConfirmation(result);
+      const result = await sendSmsOtp(cleanPhone);
+      setConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setStep('otp');
       const testHint = firebaseTestOtpHint(cleanPhone);
       Alert.alert('OTP Sent', testHint || `OTP sent to +91${cleanPhone}`);
@@ -146,43 +146,8 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
 
     setLoading(true);
     try {
-      if (!confirmation) {
-        throw new Error('OTP request expired. Please send OTP again.');
-      }
-      const userCredential = await confirmation.confirm(otp.trim());
-      if (!userCredential?.user) {
-        throw new Error('OTP verification failed');
-      }
-      const idToken = await userCredential.user.getIdToken();
-
-      const verifyOtpUrl = `${ENV.API_URL}/api/customer/auth/verify-otp`;
-      const res = await fetch(verifyOtpUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-mobile-client': 'true',
-        },
-        body: JSON.stringify({ idToken }),
-      });
-      const raw = await res.text();
-      let json: any = {};
-      try {
-        json = raw ? JSON.parse(raw) : {};
-      } catch (_e) {
-        json = {};
-      }
-      if (!res.ok) {
-        if (res.status === 404) {
-          throw new Error(`Auth API not found at ${verifyOtpUrl}`);
-        }
-        throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
-      }
-
-      if (json?.session_token) {
-        await setCustomerSessionToken(json.session_token);
-      } else {
-        throw new Error('Session token not received');
-      }
+      const sessionToken = await verifySmsOtp(cleanPhone, otp.trim(), confirmation);
+      await setCustomerSessionToken(sessionToken);
 
       Alert.alert('Login Successful', 'You are now logged in as customer');
       navigation.goBack();

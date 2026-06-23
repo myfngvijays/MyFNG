@@ -13,11 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import {
   shouldSkipFirebaseSmsOnSimulator,
-  sendFirebaseSmsOtp,
   isIosSimulator,
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import { COLORS } from '../constants/theme';
@@ -313,8 +313,8 @@ function GuestPhoneOtpSection({
     setOtpLoading(true);
     setOtpChannel('sms');
     try {
-      const result = await sendFirebaseSmsOtp(cleanPhone);
-      setOtpConfirmation(result);
+      const result = await sendSmsOtp(cleanPhone);
+      setOtpConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setOtpSent(true);
       const testHint = firebaseTestOtpHint(cleanPhone);
       if (testHint) Alert.alert('Test OTP', testHint);
@@ -386,21 +386,7 @@ function GuestPhoneOtpSection({
         if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
         sessionToken = json?.session_token || null;
       } else {
-        if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
-        const userCredential = await otpConfirmation.confirm(otpValue.trim());
-        if (!userCredential?.user) throw new Error('OTP verification failed');
-        const idToken = await userCredential.user.getIdToken();
-        const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-mobile-client': 'true' },
-          body: JSON.stringify({
-            idToken,
-            displayName: name.trim() || undefined,
-          }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || 'Verification failed');
-        sessionToken = json?.session_token || null;
+        sessionToken = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
       }
       if (!sessionToken) throw new Error('Session token not received');
       await setCustomerSessionToken(sessionToken);

@@ -192,8 +192,11 @@ function AppContent() {
   const isLoggedIn = Boolean(user && userProfile);
   const roleCode = userProfile?.role?.role_code;
   const isConsumerCustomer = isCustomerSessionUser || roleCode === 'CUSTOMER';
-  // Customers use PublicHome (Smart Tools, services, bottom nav). Staff open role dashboard.
-  const initialRoute = isLoggedIn && !isConsumerCustomer ? 'Dashboard' : 'PublicHome';
+  const initialRoute = isLoggedIn
+    ? isConsumerCustomer
+      ? 'PublicHome'
+      : 'Dashboard'
+    : 'Login';
 
   return (
     <NavigationContainer>

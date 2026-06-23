@@ -245,12 +245,25 @@ export default function MembershipCardsPage() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        Run <code className="bg-amber-100 px-1 rounded">database/156_membership_cards_table.sql</code> in Supabase.
-        Active = card ON + kam se kam 1 placement. <strong>Carousel ke liye dono cards par SAME placement check karein</strong> (e.g. home · Before Reviews).
-      </div>
+      {fetchError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{fetchError}</div>
+      ) : null}
 
-      {fetchError ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{fetchError}</div> : null}
+      {!fetchError && rows.length === 0 && !loading ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          No cards found. Run{' '}
+          <code className="bg-amber-100 px-1 rounded">database/156_membership_cards_table.sql</code> in Supabase,
+          then refresh. Active = card ON + kam se kam 1 placement.
+        </div>
+      ) : null}
+
+      {!fetchError && rows.length > 0 ? (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+          Active = card ON + kam se kam 1 placement.{' '}
+          <strong>Carousel ke liye dono cards par SAME placement check karein</strong> (e.g. home · Before Reviews).
+          App loads cards from <code className="bg-blue-100 px-1 rounded">/api/public/membership-cards</code>.
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading…</div>

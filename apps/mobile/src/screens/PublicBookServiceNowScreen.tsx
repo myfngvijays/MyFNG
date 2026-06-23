@@ -34,11 +34,11 @@ import { isMembershipActive } from '../lib/membershipTheme';
 import type { MembershipClaimRouteParams } from '../lib/membershipClaims';
 import {
   shouldSkipFirebaseSmsOnSimulator,
-  sendFirebaseSmsOtp,
   isIosSimulator,
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import VehicleImage from '../components/VehicleImage';
 
@@ -1525,8 +1525,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpLoading(true);
     setOtpChannel('sms');
     try {
-      const result = await sendFirebaseSmsOtp(cleanPhone);
-      setOtpConfirmation(result);
+      const result = await sendSmsOtp(cleanPhone);
+      setOtpConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setOtpSent(true);
       const testHint = firebaseTestOtpHint(cleanPhone);
       if (testHint) {
@@ -1616,27 +1616,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         if (!res.ok) throw new Error(json?.error || 'Invalid OTP. Please try again.');
         sessionToken = json?.session_token || null;
       } else {
-        if (!otpConfirmation) throw new Error('OTP expired. Please resend.');
-        const userCredential = await otpConfirmation.confirm(otpValue.trim());
-        if (!userCredential?.user) throw new Error('OTP verification failed');
-
-        const idToken = await userCredential.user.getIdToken();
-        const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-mobile-client': 'true',
-            'X-App-Platform': Platform.OS,
-          },
-          body: JSON.stringify({
-            idToken,
-            displayName: form.customerName?.trim() || undefined,
-            platform: Platform.OS,
-          }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || 'Verification failed');
-        sessionToken = json?.session_token || null;
+        const cleanPhone = form.customerPhone.replace(/\D/g, '');
+        sessionToken = await verifySmsOtp(cleanPhone, otpValue.trim(), otpConfirmation);
       }
 
       // Save session and auto-login

@@ -48,11 +48,13 @@ function sortCards(cards: AppMembershipCard[]) {
   return [...cards].sort((a, b) => a.displayOrder - b.displayOrder);
 }
 
-async function fetchFromApi(apiUrl: string): Promise<AppMembershipCard[]> {
+async function fetchFromApi(apiUrl: string): Promise<AppMembershipCard[] | null> {
   const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/public/membership-cards`, {
     headers: { Accept: 'application/json' },
   });
-  if (!res.ok) return [];
+  if (!res.ok) return null;
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return null;
   const json = await res.json();
   const rows: any[] = Array.isArray(json?.cards) ? json.cards : [];
   return sortCards(rows.map(mapRow));
@@ -70,17 +72,23 @@ async function fetchFromSupabase(): Promise<AppMembershipCard[]> {
 }
 
 export async function fetchAppMembershipCards(apiUrl: string): Promise<AppMembershipCard[]> {
+  let fromApi: AppMembershipCard[] | null = null;
   try {
-    const fromApi = await fetchFromApi(apiUrl);
-    if (fromApi.length) return fromApi;
+    fromApi = await fetchFromApi(apiUrl);
   } catch {
-    // fall through
+    fromApi = null;
   }
+
+  let fromDb: AppMembershipCard[] = [];
   try {
-    return await fetchFromSupabase();
+    fromDb = await fetchFromSupabase();
   } catch {
-    return [];
+    fromDb = [];
   }
+
+  if (fromApi != null && fromApi.length > 0) return fromApi;
+  if (fromDb.length > 0) return fromDb;
+  return fromApi ?? fromDb;
 }
 
 export function getCardsForSlot(cards: AppMembershipCard[], screen: string, slot: string) {

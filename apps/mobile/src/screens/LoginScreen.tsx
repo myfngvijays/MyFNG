@@ -25,10 +25,10 @@ import {
   isFirebaseIosClientError,
   firebaseSmsUnavailableMessage,
   shouldSkipFirebaseSmsOnSimulator,
-  sendFirebaseSmsOtp,
   isFirebaseTestPhone,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
+import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const insets = useSafeAreaInsets();
@@ -63,7 +63,35 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
   const persistSessionAndGoHome = async (token?: string) => {
     const fallbackToken = `mobile-session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    await setCustomerSessionToken(token && token.trim() ? token : fallbackToken);
+    const sessionToken = token && token.trim() ? token : fallbackToken;
+    await setCustomerSessionToken(sessionToken);
+
+    let customerProfile: any = null;
+    try {
+      const res = await fetch(`${ENV.API_URL}/api/customer/auth/me`, {
+        headers: { 'x-customer-session': sessionToken },
+      });
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        customerProfile = json?.customer || null;
+      }
+    } catch (_e) {
+      // Fall back to minimal profile below.
+    }
+
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (typeof onLoginSuccess === 'function') {
+      onLoginSuccess(
+        { id: customerProfile?.id || cleanPhone, type: 'customer_session' },
+        {
+          id: customerProfile?.id || cleanPhone,
+          full_name: customerProfile?.full_name || 'Customer',
+          email: customerProfile?.email || null,
+          phone: customerProfile?.phone || cleanPhone,
+          role: { role_code: 'CUSTOMER', role_name: 'Customer' },
+        }
+      );
+    }
     navigation?.navigate?.('PublicHome');
   };
 
@@ -76,9 +104,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     }
 
     setLoading(true);
+    setPhoneOtpChannel('sms');
     try {
-      const result = await sendFirebaseSmsOtp(cleanPhone);
-      setCustomerConfirmation(result);
+      const result = await sendSmsOtp(cleanPhone);
+      setCustomerConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
@@ -143,51 +172,24 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
   const handleCustomerOtpVerify = async () => {
     setErrorText('');
-    if (!customerConfirmation) {
-      setErrorText('Session expired. Please request OTP again.');
-      setCustomerStep('input');
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (customerOtp.trim().length < 4) {
+    if (!customerConfirmation && !/^\d{6}$/.test(customerOtp.trim())) {
+      setErrorText('Please enter the 6-digit OTP sent via SMS');
+      return;
+    }
+    if (customerConfirmation && customerOtp.trim().length < 4) {
       setErrorText('Please enter the OTP sent to your number');
       return;
     }
 
     setLoading(true);
     try {
-      const userCredential = await customerConfirmation.confirm(customerOtp.trim());
-      if (!userCredential?.user) throw new Error('OTP verification failed');
-      const idToken = await userCredential.user.getIdToken();
-
-      const verifyOtpUrl = `${ENV.API_URL}/api/customer/auth/verify-otp`;
-      const res = await fetch(verifyOtpUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-mobile-client': 'true',
-        },
-        body: JSON.stringify({ idToken }),
-      });
-
-      const raw = await res.text();
-      let json: any = {};
-      try {
-        json = raw ? JSON.parse(raw) : {};
-      } catch (_e) {
-        json = {};
-      }
-
-      if (!res.ok) {
-        if (res.status === 404) {
-          throw new Error(`Auth API not found at ${verifyOtpUrl}`);
-        }
-        throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
-      }
-
-      if (!json?.session_token) {
-        throw new Error('Session token not received');
-      }
-      await persistSessionAndGoHome(String(json.session_token));
+      const sessionToken = await verifySmsOtp(cleanPhone, customerOtp.trim(), customerConfirmation);
+      await persistSessionAndGoHome(sessionToken);
     } catch (error: any) {
       setErrorText(error?.message || 'Invalid OTP');
     } finally {

@@ -51,7 +51,7 @@ export function firebaseSmsUnavailableMessage(error: unknown): string {
     return 'iOS Simulator par real SMS nahi aata. WhatsApp OTP use karein, ya test number 7007543565 / OTP 454545.';
   }
   if (isFirebaseIosClientError(error)) {
-    return 'Phone verification is unavailable on this device. Please try WhatsApp OTP or use a real iPhone.';
+    return 'SMS OTP is temporarily unavailable. Please try WhatsApp OTP or retry in a moment.';
   }
   const code = String((error as { code?: string })?.code || '');
   if (code === 'auth/network-request-failed') {
