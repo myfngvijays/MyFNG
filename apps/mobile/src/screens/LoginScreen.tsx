@@ -34,6 +34,7 @@ import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
+  markWelcomeCreditedPopupShown,
 } from '../lib/welcomeBonus';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
@@ -53,6 +54,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingHomeNavigationRef = useRef(false);
+  const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
 
   // Phone numbers we register in Firebase Console as "Phone numbers for testing".
   // Includes the App Store reviewer demo number so OTP works without APNs/SMS.
@@ -76,10 +78,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     customerId?: string | null,
   ) => {
     const decision = await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse);
-    if (!decision.show) return false;
-    setCreditedWelcomeAmount(decision.amount);
-    setCreditedWelcomeVisible(true);
-    return true;
+    if (decision.show) {
+      pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
+      setCreditedWelcomeAmount(decision.amount);
+      setCreditedWelcomeVisible(true);
+      return true;
+    }
   };
 
   const finishLoginNavigation = () => {
@@ -619,8 +623,13 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       <WelcomeBonusCreditedModal
         visible={creditedWelcomeVisible}
         amount={creditedWelcomeAmount}
-        onClose={() => {
+        onClose={async () => {
           setCreditedWelcomeVisible(false);
+          const customerId = pendingWelcomeCustomerIdRef.current;
+          if (customerId) {
+            await markWelcomeCreditedPopupShown(customerId);
+            pendingWelcomeCustomerIdRef.current = null;
+          }
           if (pendingHomeNavigationRef.current) {
             pendingHomeNavigationRef.current = false;
             finishLoginNavigation();

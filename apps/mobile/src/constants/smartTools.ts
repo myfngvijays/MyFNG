@@ -20,7 +20,7 @@ export type SmartToolItem = {
 };
 
 export const SMART_TOOLS: SmartToolItem[] = [
-  { id: 'car_health', title: 'Car Health Check', icon: 'pulse', color: '#059669', bg: '#ECFDF5', screen: 'CarHealthCheck' },
+  { id: 'car_health', title: 'Smart Health Checkup', icon: 'pulse', color: '#023D95', bg: '#EFF6FF', screen: 'CarHealthCheck' },
   { id: 'fuel_calculator', title: 'Fuel Cost Calculator', icon: 'speedometer', color: '#D97706', bg: '#FFFBEB', screen: 'FuelCostCalculator' },
   { id: 'price_compare', title: 'Compare Service Cost', icon: 'git-compare', color: '#2563EB', bg: '#EFF6FF', screen: 'AuthorisedPricing' },
   { id: 'car_loan', title: 'Loan Against Car', icon: 'cash', color: '#7C3AED', bg: '#F5F3FF', screen: 'SmartToolWeb' },

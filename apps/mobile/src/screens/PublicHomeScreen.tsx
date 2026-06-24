@@ -43,6 +43,7 @@ import {
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
   markGuestWelcomePopupShown,
+  markWelcomeCreditedPopupShown,
   shouldShowGuestWelcomePopup,
 } from '../lib/welcomeBonus';
 type Props = {
@@ -169,6 +170,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const creditedWelcomeCheckedRef = useRef(false);
+  const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
@@ -217,6 +219,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
             const meJson = meRes.ok ? await meRes.json().catch(() => ({})) : {};
             const decision = await decideWelcomeCreditedPopup(token, meJson?.customer?.id, null);
             if (active && decision.show) {
+              pendingWelcomeCustomerIdRef.current = meJson?.customer?.id
+                ? String(meJson.customer.id)
+                : null;
               setCreditedWelcomeAmount(decision.amount);
               setCreditedWelcomeVisible(true);
             }
@@ -1068,7 +1073,14 @@ export default function PublicHomeScreen({ navigation }: Props) {
         <WelcomeBonusCreditedModal
           visible={creditedWelcomeVisible}
           amount={creditedWelcomeAmount}
-          onClose={() => setCreditedWelcomeVisible(false)}
+          onClose={async () => {
+            setCreditedWelcomeVisible(false);
+            const customerId = pendingWelcomeCustomerIdRef.current;
+            if (customerId) {
+              await markWelcomeCreditedPopupShown(customerId);
+              pendingWelcomeCustomerIdRef.current = null;
+            }
+          }}
         />
 
       </View>

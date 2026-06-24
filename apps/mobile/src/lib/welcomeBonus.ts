@@ -179,8 +179,5 @@ export async function decideWelcomeCreditedPopup(
     return { show: shouldShowCreditedPopup(welcomeBonus), amount, welcomeBonus };
   }
   const show = await shouldShowWelcomeCreditedPopupForCustomer(String(customerId), welcomeBonus);
-  if (show) {
-    await markWelcomeCreditedPopupShown(String(customerId));
-  }
   return { show, amount, welcomeBonus };
 }

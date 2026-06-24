@@ -26,6 +26,7 @@ import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
+  markWelcomeCreditedPopupShown,
 } from '../lib/welcomeBonus';
 
 type Step = 'phone' | 'otp';
@@ -41,6 +42,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingGoBackRef = React.useRef(false);
+  const pendingWelcomeCustomerIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     const initialPhone = route?.params?.initialPhone;
@@ -152,10 +154,13 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     customerId?: string | null,
   ) => {
     const decision = await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse);
-    if (!decision.show) return false;
-    setCreditedWelcomeAmount(decision.amount);
-    setCreditedWelcomeVisible(true);
-    return true;
+    if (decision.show) {
+      pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
+      setCreditedWelcomeAmount(decision.amount);
+      setCreditedWelcomeVisible(true);
+      return true;
+    }
+    return false;
   };
 
   const handleVerifySmsOtp = async () => {
@@ -358,8 +363,13 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       <WelcomeBonusCreditedModal
         visible={creditedWelcomeVisible}
         amount={creditedWelcomeAmount}
-        onClose={() => {
+        onClose={async () => {
           setCreditedWelcomeVisible(false);
+          const customerId = pendingWelcomeCustomerIdRef.current;
+          if (customerId) {
+            await markWelcomeCreditedPopupShown(customerId);
+            pendingWelcomeCustomerIdRef.current = null;
+          }
           if (pendingGoBackRef.current) {
             pendingGoBackRef.current = false;
             finishLoginSuccess();

@@ -112,7 +112,7 @@ const ALL_ITEMS: SearchItem[] = [
   { id: 'terms', title: 'Terms of Use', category: 'Legal', icon: 'document-text',
     screen: 'Settings', params: { subPage: 'Terms of Use' },
     keywords: ['terms', 'conditions', 'legal', 'agreement'] },
-  { id: 'tool-car-health', title: 'Car Health Check', category: 'Smart Tools', icon: 'pulse',
+  { id: 'tool-car-health', title: 'Smart Health Checkup', category: 'Smart Tools', icon: 'pulse',
     screen: 'CarHealthCheck',
     keywords: ['health', 'health check', 'car health', 'diagnostic', 'inspection', 'score'] },
   { id: 'tool-fuel', title: 'Fuel Cost Calculator', category: 'Smart Tools', icon: 'speedometer',

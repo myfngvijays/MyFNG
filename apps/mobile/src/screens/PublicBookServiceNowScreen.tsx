@@ -49,6 +49,7 @@ import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
+  markWelcomeCreditedPopupShown,
 } from '../lib/welcomeBonus';
 import {
   shouldSkipFirebaseSmsOnSimulator,
@@ -314,6 +315,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingStepAdvanceRef = useRef(false);
+  const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -1849,6 +1851,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         ? await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse)
         : { show: false, amount: getWelcomeBonusAmount(), welcomeBonus: null };
       if (decision.show) {
+        pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
         setCreditedWelcomeAmount(decision.amount);
         setCreditedWelcomeVisible(true);
         pendingStepAdvanceRef.current = true;
@@ -3933,8 +3936,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       <WelcomeBonusCreditedModal
         visible={creditedWelcomeVisible}
         amount={creditedWelcomeAmount}
-        onClose={() => {
+        onClose={async () => {
           setCreditedWelcomeVisible(false);
+          const welcomeCustomerId = pendingWelcomeCustomerIdRef.current;
+          if (welcomeCustomerId) {
+            await markWelcomeCreditedPopupShown(welcomeCustomerId);
+            pendingWelcomeCustomerIdRef.current = null;
+          }
           if (pendingStepAdvanceRef.current) {
             pendingStepAdvanceRef.current = false;
             setTimeout(() => goStep(2), 300);
