@@ -8,6 +8,10 @@ import { normalizeCustomerPhone, toServiceLeadType, findCustomerByPhone } from '
 import { pushServiceLeadToTeleCRM, saveBookedVehicleToProfile } from '@/lib/booking-telecrm-sync';
 import { calculateBookingMembershipBundleDiscount } from '@/lib/booking-membership-discount';
 import {
+  calculateBundleDiscountWithConfig,
+  getPostBookingMembershipConfig,
+} from '@/lib/post-booking-membership-config';
+import {
   debitServiceBookingWallet,
   resolveBookingServiceLabel,
   resolveServiceBookingWallet,
@@ -142,6 +146,7 @@ export async function POST(request: NextRequest) {
     const registeredCustomer = await findCustomerByPhone(supabaseAdmin, customerPhone);
     const useWallet = Boolean(body.use_wallet);
     const subtotal = Number(body.subtotal || lead?.estimated_amount || 0);
+    const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
     const customerName = String(lead?.customer_name || '').trim() || `Customer_${customerPhone.slice(-4)}`;
     const vehicleNumber = String(lead?.vehicle_number || '').trim().toUpperCase() || 'NA';
     const serviceType =
@@ -188,11 +193,11 @@ export async function POST(request: NextRequest) {
     let membershipBundleDiscount = 0;
     const includeBookingMembership = Boolean(body.include_booking_membership);
     if (includeBookingMembership && subtotal > 0) {
-      membershipBundleDiscount = calculateBookingMembershipBundleDiscount(subtotal);
+      membershipBundleDiscount = calculateBundleDiscountWithConfig(subtotal, pbConfig);
     } else if (Number(body.membership_bundle_discount || 0) > 0) {
       membershipBundleDiscount = Math.min(
         Number(body.membership_bundle_discount),
-        calculateBookingMembershipBundleDiscount(subtotal),
+        calculateBundleDiscountWithConfig(subtotal, pbConfig),
       );
     }
 
@@ -210,7 +215,9 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
       if (!activeMembershipForOffer) {
-        postBookingMembershipOffer = buildPostBookingMembershipOffer(subtotal);
+        postBookingMembershipOffer = pbConfig.enabled
+          ? buildPostBookingMembershipOffer(subtotal, pbConfig)
+          : null;
       }
     }
 

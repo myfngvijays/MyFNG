@@ -3,23 +3,48 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import SmartToolShell, { ChipRow, PrimaryButton, ToolCard } from '../../components/smartTools/SmartToolShell';
+import HealthCheckShell, {
+  ChipRow,
+  ConsentCard,
+  FeaturePills,
+  FieldInput,
+  FieldLabel,
+  HeroCard,
+  LinkButton,
+  PrimaryButton,
+  QuestionBlock,
+  RegPlate,
+  SecondaryButton,
+  SelectChipGrid,
+  StepBlock,
+  ToggleOption,
+  ToolCard,
+  FuelChipRow,
+  YearPickerField,
+  DatePickerField,
+  SectionDivider,
+  type HealthFuelType,
+} from '../../components/smartTools/HealthCheckShell';
+import CarModelSearchField from '../../components/CarModelSearchField';
 import CarHealthReportView from '../../components/smartTools/CarHealthReportView';
 import { COLORS } from '../../constants/theme';
+import { submitHealthReportPayload } from '../../lib/healthReportSubmit';
 import {
   computeHealthReport,
   emptyRc,
   lookupRc,
   cacheRcData,
+  buildHealthReportDocument,
+  mapHealthCtaToServiceCategory,
   SYMPTOM_GROUPS,
   WARNING_LIGHTS,
   type FuelType,
@@ -28,9 +53,12 @@ import {
   type HealthWizardStep,
   type RcData,
   type TransmissionType,
+  type Category,
 } from '../../lib/vehicleHealthScore';
 
 type Props = { navigation: any };
+
+const HEALTH_SESSION_KEY = 'health_check_session_v1';
 
 const STEPS: HealthWizardStep[] = [
   'intro',
@@ -49,13 +77,12 @@ const STEPS: HealthWizardStep[] = [
 
 const SKIPPABLE: HealthWizardStep[] = ['usage', 'service', 'symptoms', 'wear', 'warning_lights', 'compliance'];
 
-const FUEL_OPTIONS = [
-  { label: 'Petrol', value: 'Petrol' },
-  { label: 'Diesel', value: 'Diesel' },
-  { label: 'CNG', value: 'CNG' },
-  { label: 'Electric', value: 'Electric' },
-  { label: 'Hybrid', value: 'Hybrid' },
-];
+function normalizeHealthFuel(raw?: string): HealthFuelType {
+  const f = String(raw || '').toLowerCase();
+  if (f.includes('diesel')) return 'Diesel';
+  if (f.includes('cng')) return 'CNG';
+  return 'Petrol';
+}
 
 const TRANS_OPTIONS = [
   { label: 'Manual', value: 'Manual' },
@@ -64,7 +91,56 @@ const TRANS_OPTIONS = [
   { label: 'DCT', value: 'DCT' },
 ];
 
-const MAJOR_JOBS = ['clutch', 'timing belt', 'AC compressor', 'battery', 'tyres', 'suspension', 'brakes', 'service'];
+const MAJOR_JOBS = [
+  { id: 'clutch', label: 'Clutch' },
+  { id: 'timing belt', label: 'Timing Belt' },
+  { id: 'AC compressor', label: 'AC Compressor' },
+  { id: 'battery', label: 'Battery' },
+  { id: 'tyres', label: 'Tyres' },
+  { id: 'suspension', label: 'Suspension' },
+  { id: 'brakes', label: 'Brakes' },
+  { id: 'service', label: 'Service' },
+];
+
+const MONTHLY_RUNNING = [
+  { label: 'Under 500 km', value: '<500' },
+  { label: '500 – 1000 km', value: '500-1000' },
+  { label: '1000 – 2000 km', value: '1000-2000' },
+  { label: '2000+ km', value: '2000+' },
+];
+
+const DRIVING_TYPES = [
+  { label: 'City Stop-Go', value: 'city' },
+  { label: 'Highway', value: 'highway' },
+  { label: 'Mixed', value: 'mixed' },
+];
+
+const AREA_CONDITIONS = [
+  { label: 'Normal', value: 'normal' },
+  { label: 'Coastal', value: 'coastal' },
+  { label: 'Flood-Prone', value: 'flood' },
+];
+
+const PARKING_OPTIONS = [
+  { label: 'Covered', value: 'covered' },
+  { label: 'Open', value: 'open' },
+];
+
+const LAST_SERVICE = [
+  { label: 'Under 3 Months', value: '<3' },
+  { label: '3 – 6 Months', value: '3-6' },
+  { label: '6 – 12 Months', value: '6-12' },
+  { label: '12+ Months', value: '12+' },
+  { label: "Don't Remember", value: 'dont_remember' },
+];
+
+const SERVICE_PROVIDERS = [
+  { label: 'Authorised', value: 'authorized' },
+  { label: 'Local Garage', value: 'local' },
+  { label: 'MyFNG', value: 'myfng' },
+  { label: 'Self Service', value: 'self' },
+  { label: 'Not Regular', value: 'not_regular' },
+];
 
 function stepIndex(step: HealthWizardStep): number {
   return STEPS.indexOf(step);
@@ -98,6 +174,7 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
   const [report, setReport] = useState<HealthReport | null>(null);
   const [rcLoading, setRcLoading] = useState(false);
   const [rcError, setRcError] = useState('');
+  const [carSearchDisplay, setCarSearchDisplay] = useState('');
   const spin = useRef(new Animated.Value(0)).current;
 
   const progress = useMemo(() => {
@@ -105,6 +182,28 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
     if (step === 'report') return 100;
     return Math.round(((idx + 1) / (STEPS.length - 1)) * 100);
   }, [step]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(HEALTH_SESSION_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        const saved = JSON.parse(raw) as {
+          step?: HealthWizardStep;
+          report?: HealthReport;
+          rc?: RcData;
+          input?: Partial<HealthCheckInput>;
+          carSearchDisplay?: string;
+        };
+        if (saved.step === 'report' && saved.report && saved.rc) {
+          setReport(saved.report);
+          setRc(saved.rc);
+          setInput(saved.input || defaultInput());
+          setCarSearchDisplay(saved.carSearchDisplay || `${saved.rc.make} ${saved.rc.model}`.trim());
+          setStep('report');
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (step !== 'generating') return;
@@ -126,14 +225,37 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       };
       const result = computeHealthReport(fullInput, rc);
       setReport(result);
+      const sessionPayload = {
+        step: 'report' as const,
+        report: result,
+        rc,
+        input: fullInput,
+        carSearchDisplay,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(HEALTH_SESSION_KEY, JSON.stringify(sessionPayload)).catch(() => {});
       AsyncStorage.setItem(
         `health_report:${rc.regNumber}`,
         JSON.stringify({ report: result, rc, generatedAt: result.generatedAt }),
       ).catch(() => {});
+      const reportText = buildHealthReportDocument(result, rc);
+      submitHealthReportPayload({
+        reg_number: rc.regNumber,
+        make: rc.make,
+        model: rc.model,
+        fuel: rc.fuel,
+        registration_year: rc.registrationYear,
+        odometer: result.odometer,
+        composite_score: result.composite,
+        band_label: result.band.label,
+        accuracy: result.accuracy,
+        report_json: result,
+        report_text: reportText,
+      }).catch(() => {});
       setStep('report');
     }, 2200);
     return () => clearTimeout(timer);
-  }, [step, rc, input, spin]);
+  }, [step, rc, input, spin, carSearchDisplay]);
 
   const goNext = () => setStep((s) => nextStep(s));
   const goBack = () => setStep((s) => prevStep(s));
@@ -149,20 +271,27 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
     const result = await lookupRc(regInput);
     setRcLoading(false);
     if (result.ok) {
-      setRc(result.data);
+      setRc({ ...result.data, fuel: normalizeHealthFuel(result.data.fuel) });
+      setCarSearchDisplay(`${result.data.make} ${result.data.model}`.trim());
       setManualRc(false);
+      setRcError('');
       setStep('vehicle_confirm');
       return;
     }
-    setRc(emptyRc(regInput));
+    setRc({ ...emptyRc(regInput), fuel: 'Petrol' });
+    setCarSearchDisplay('');
     setManualRc(true);
-    setRcError(result.error);
+    setRcError('');
     setStep('vehicle_confirm');
   };
 
   const confirmVehicle = async () => {
     if (!rc?.make?.trim() || !rc?.model?.trim()) {
-      setRcError('Please enter make and model.');
+      setRcError('Please search and select your car from the list.');
+      return;
+    }
+    if (!rc?.registrationYear || rc.registrationYear < 1990) {
+      setRcError('Please select registration year.');
       return;
     }
     await cacheRcData(rc);
@@ -203,19 +332,17 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
     });
   };
 
-  const handleCta = (ctaType: string, title: string) => {
+  const handleCta = (ctaType: string, title: string, category?: Category | 'PREDICTIVE') => {
     if (ctaType === 'INSURANCE_HELP') {
       navigation.navigate('SmartToolWeb', { url: 'https://myfng.in/insurance-claim-help', title: 'Insurance Help' });
       return;
     }
-    if (ctaType === 'BOOK_SERVICE' || ctaType === 'ADD_TO_CART') {
-      navigation.navigate('AIBooking', { prefill: `Book ${title} for my ${rc?.make} ${rc?.model} (${rc?.regNumber})` });
-      return;
-    }
-    navigation.navigate('AIBooking', { prefill: `Free inspection for ${title} — ${rc?.make} ${rc?.model} (${rc?.regNumber})` });
+    const serviceCategory = mapHealthCtaToServiceCategory(ctaType, title, category);
+    navigation.navigate('PublicBookServiceNow', { serviceCategory });
   };
 
-  const restart = () => {
+  const restart = async () => {
+    await AsyncStorage.removeItem(HEALTH_SESSION_KEY).catch(() => {});
     setStep('intro');
     setConsent(false);
     setRegInput('');
@@ -224,28 +351,52 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
     setInput(defaultInput());
     setReport(null);
     setRcError('');
+    setCarSearchDisplay('');
   };
 
   const isAuto = input.transmission === 'Automatic' || input.transmission === 'AMT' || input.transmission === 'DCT';
 
   const subtitle =
-    step === 'report'
-      ? 'Your health report'
-      : step === 'generating'
-        ? 'Building your report…'
-        : `Step ${stepIndex(step) + 1} of ${STEPS.length - 1}`;
+    step === 'intro'
+      ? 'Free AI-powered vehicle health score'
+      : step === 'report'
+        ? 'Your personalised health report'
+        : step === 'generating'
+          ? 'Building your report…'
+          : `Step ${stepIndex(step) + 1} of ${STEPS.length - 1}`;
+
+  const stepLabel =
+    step === 'intro'
+      ? 'Getting Started'
+      : step === 'rc'
+        ? 'Vehicle Lookup'
+        : step === 'vehicle_confirm'
+          ? 'Confirm Car'
+          : step === 'basics'
+            ? 'Car Basics'
+            : step === 'usage'
+              ? 'Usage Pattern'
+              : step === 'service'
+                ? 'Service History'
+                : step === 'symptoms'
+                  ? 'Symptoms'
+                  : step === 'wear'
+                    ? 'Wear Items'
+                    : step === 'warning_lights'
+                      ? 'Warning Lights'
+                      : step === 'compliance'
+                        ? 'Compliance'
+                        : 'Progress';
 
   const footer =
     step !== 'report' && step !== 'generating' && step !== 'intro' ? (
       <View style={styles.footerRow}>
         {step !== 'rc' && step !== 'vehicle_confirm' ? (
-          <TouchableOpacity style={styles.secondaryBtn} onPress={goBack}>
-            <Text style={styles.secondaryText}>Back</Text>
-          </TouchableOpacity>
+          <SecondaryButton label="Back" onPress={goBack} />
         ) : null}
         {SKIPPABLE.includes(step) ? (
           <TouchableOpacity style={styles.skipBtn} onPress={skip}>
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={styles.skipText}>Skip this step</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -256,103 +407,144 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'intro':
         return (
           <>
-            <ToolCard>
-              <View style={styles.introIcon}>
-                <Ionicons name="pulse" size={28} color="#059669" />
+            <HeroCard>
+              <View style={styles.introBadges}>
+                <View style={styles.introBadgeFree}>
+                  <Text style={styles.introBadgeFreeText}>100% FREE</Text>
+                </View>
+                <View style={styles.introBadgeTime}>
+                  <Ionicons name="time-outline" size={12} color="#BFDBFE" />
+                  <Text style={styles.introBadgeTimeText}>~90 seconds</Text>
+                </View>
               </View>
+
+              <View style={styles.introIconRing}>
+                <View style={styles.introIconInner}>
+                  <Ionicons name="pulse" size={32} color="#34D399" />
+                </View>
+              </View>
+
               <Text style={styles.introTitle}>Free Car Health Report</Text>
-              <Text style={styles.introBody}>~90 seconds. No login or service history needed.</Text>
+              <Text style={styles.introBody}>Know your car's risk score in under 2 minutes. No login or service history needed.</Text>
               <Text style={styles.tagline}>Your Friendly Neighbourhood Garage.</Text>
-            </ToolCard>
-            <ToolCard>
-              <TouchableOpacity style={styles.consentRow} onPress={() => setConsent((v) => !v)} activeOpacity={0.85}>
-                <Ionicons name={consent ? 'checkbox' : 'square-outline'} size={22} color={COLORS.primary} />
-                <Text style={styles.consentText}>
-                  We'll fetch your vehicle details from the official registry to auto-fill this report (DPDP consent).
-                </Text>
-              </TouchableOpacity>
-            </ToolCard>
-            <PrimaryButton label="Start Health Check" icon="arrow-forward" onPress={() => setStep('rc')} />
+
+              <FeaturePills
+                items={[
+                  { icon: 'person-outline', label: 'No login' },
+                  { icon: 'document-text-outline', label: 'RC auto-fill' },
+                  { icon: 'analytics-outline', label: 'Instant score' },
+                ]}
+              />
+            </HeroCard>
+
+            <ConsentCard
+              checked={consent}
+              onToggle={() => setConsent((v) => !v)}
+              title="Registry lookup consent"
+              body="We'll fetch your vehicle details from the official registry to auto-fill this report (DPDP consent)."
+            />
+
+            <PrimaryButton
+              label="Start Health Check"
+              icon="arrow-forward"
+              disabled={!consent}
+              onPress={() => setStep('rc')}
+            />
           </>
         );
 
       case 'rc':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Vehicle registration number</Text>
-              <TextInput
-                style={styles.input}
+            <StepBlock
+              icon="car-outline"
+              title="Enter Registration Number"
+              hint="We'll auto-fill Make, Model & compliance details"
+            >
+              <FieldLabel>Registration Number</FieldLabel>
+              <FieldInput
                 value={regInput}
                 onChangeText={setRegInput}
                 placeholder="e.g. MH12AB1234"
                 autoCapitalize="characters"
-                placeholderTextColor="#9CA3AF"
               />
               {rcError ? <Text style={styles.error}>{rcError}</Text> : null}
-            </ToolCard>
+            </StepBlock>
             <PrimaryButton
               label={rcLoading ? 'Fetching…' : 'Fetch Vehicle Details'}
               icon="search"
               onPress={fetchRc}
+              disabled={rcLoading || !regInput.trim()}
             />
             {rcLoading ? <ActivityIndicator style={{ marginTop: 12 }} color={COLORS.primary} /> : null}
-            <TouchableOpacity
-              style={styles.linkBtn}
+            <LinkButton
+              label="Enter details manually"
               onPress={() => {
-                setRc(emptyRc(regInput || 'UNKNOWN'));
+                setRc({ ...emptyRc(regInput || 'UNKNOWN'), fuel: 'Petrol' });
+                setCarSearchDisplay('');
                 setManualRc(true);
+                setRcError('');
                 setStep('vehicle_confirm');
               }}
-            >
-              <Text style={styles.linkText}>Enter details manually</Text>
-            </TouchableOpacity>
+            />
           </>
         );
 
       case 'vehicle_confirm':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Confirm vehicle details</Text>
-              {manualRc ? <Text style={styles.hint}>RC lookup unavailable — please fill manually.</Text> : null}
-              <Text style={styles.fieldLabel}>Registration</Text>
-              <Text style={styles.readOnly}>{rc?.regNumber}</Text>
-              <Text style={styles.fieldLabel}>Make</Text>
-              <TextInput
-                style={styles.input}
-                value={rc?.make || ''}
-                onChangeText={(t) => setRc((r) => (r ? { ...r, make: t } : r))}
-                placeholder="Maruti, Hyundai…"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={styles.fieldLabel}>Model</Text>
-              <TextInput
-                style={styles.input}
-                value={rc?.model || ''}
-                onChangeText={(t) => setRc((r) => (r ? { ...r, model: t } : r))}
-                placeholder="Swift, Creta…"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={styles.fieldLabel}>Registration year</Text>
-              <TextInput
-                style={styles.input}
-                value={String(rc?.registrationYear || '')}
-                onChangeText={(t) =>
-                  setRc((r) => (r ? { ...r, registrationYear: Number(t) || r.registrationYear } : r))
-                }
-                keyboardType="numeric"
-                placeholder="2019"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={styles.fieldLabel}>Fuel type</Text>
-              <ChipRow
-                options={FUEL_OPTIONS}
-                value={rc?.fuel || 'Petrol'}
-                onChange={(v) => setRc((r) => (r ? { ...r, fuel: v as FuelType } : r))}
-              />
+            <StepBlock
+              icon="checkmark-circle-outline"
+              title="Confirm Vehicle Details"
+              hint={manualRc ? 'Search your car — same as booking flow' : 'Review auto-filled details from RC registry'}
+              badge={!manualRc ? 'Auto-Filled from RC' : undefined}
+            >
+              {rc?.regNumber && rc.regNumber !== 'UNKNOWN' ? <RegPlate number={rc.regNumber} /> : null}
+              {manualRc ? <Text style={styles.manualHint}>RC lookup unavailable. Search and select your car below.</Text> : null}
+
+              <QuestionBlock label="Select Your Car" hint="Search make or model — no manual typing">
+                <CarModelSearchField
+                  variant="premium"
+                  displayValue={carSearchDisplay}
+                  selectedMake={rc?.make}
+                  selectedModel={rc?.model}
+                  placeholder="Search e.g. Skoda Rapid, Maruti Swift"
+                  onSelect={(make, model, display) => {
+                    setRc((r) => (r ? { ...r, make, model } : r));
+                    setCarSearchDisplay(display);
+                    setRcError('');
+                  }}
+                  onClear={() => {
+                    setRc((r) => (r ? { ...r, make: '', model: '' } : r));
+                    setCarSearchDisplay('');
+                  }}
+                />
+              </QuestionBlock>
+
+              <SectionDivider />
+
+              <QuestionBlock label="Registration Year">
+                <YearPickerField
+                  value={rc?.registrationYear || undefined}
+                  onChange={(year) => {
+                    setRc((r) => (r ? { ...r, registrationYear: year } : r));
+                    setRcError('');
+                  }}
+                  placeholder="Tap to select year"
+                />
+              </QuestionBlock>
+
+              <SectionDivider />
+
+              <QuestionBlock label="Fuel Type">
+                <FuelChipRow
+                  value={normalizeHealthFuel(rc?.fuel)}
+                  onChange={(v) => setRc((r) => (r ? { ...r, fuel: v as FuelType } : r))}
+                />
+              </QuestionBlock>
+
               {rcError ? <Text style={styles.error}>{rcError}</Text> : null}
-            </ToolCard>
+            </StepBlock>
             <PrimaryButton label="Confirm & Continue" icon="checkmark" onPress={confirmVehicle} />
           </>
         );
@@ -360,23 +552,24 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'basics':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Current odometer (km) *</Text>
-              <TextInput
-                style={styles.input}
-                value={input.odometer != null ? String(input.odometer) : ''}
-                onChangeText={(t) => setInput((p) => ({ ...p, odometer: Number(t.replace(/\D/g, '')) || undefined }))}
-                keyboardType="numeric"
-                placeholder="e.g. 45000"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Transmission</Text>
-              <ChipRow
-                options={TRANS_OPTIONS}
-                value={input.transmission || 'Manual'}
-                onChange={(v) => setInput((p) => ({ ...p, transmission: v as TransmissionType }))}
-              />
-            </ToolCard>
+            <StepBlock icon="speedometer-outline" title="Car Basics" hint="Required for an accurate health score">
+              <QuestionBlock label="Current Odometer (km)" required hint="Enter your latest odometer reading">
+                <FieldInput
+                  value={input.odometer != null ? String(input.odometer) : ''}
+                  onChangeText={(t) => setInput((p) => ({ ...p, odometer: Number(t.replace(/\D/g, '')) || undefined }))}
+                  keyboardType="numeric"
+                  placeholder="45000"
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Transmission">
+                <ChipRow
+                  options={TRANS_OPTIONS}
+                  value={input.transmission || 'Manual'}
+                  onChange={(v) => setInput((p) => ({ ...p, transmission: v as TransmissionType }))}
+                />
+              </QuestionBlock>
+            </StepBlock>
             <PrimaryButton
               label="Continue"
               icon="arrow-forward"
@@ -396,48 +589,39 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'usage':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Monthly running</Text>
-              <ChipRow
-                options={[
-                  { label: '<500 km', value: '<500' },
-                  { label: '500–1000', value: '500-1000' },
-                  { label: '1000–2000', value: '1000-2000' },
-                  { label: '2000+', value: '2000+' },
-                ]}
-                value={input.monthly_running || ''}
-                onChange={(v) => setInput((p) => ({ ...p, monthly_running: v }))}
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Driving type</Text>
-              <ChipRow
-                options={[
-                  { label: 'City stop-go', value: 'city' },
-                  { label: 'Highway', value: 'highway' },
-                  { label: 'Mixed', value: 'mixed' },
-                ]}
-                value={input.driving_type || ''}
-                onChange={(v) => setInput((p) => ({ ...p, driving_type: v as HealthCheckInput['driving_type'] }))}
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Area condition</Text>
-              <ChipRow
-                options={[
-                  { label: 'Normal', value: 'normal' },
-                  { label: 'Coastal', value: 'coastal' },
-                  { label: 'Flood-prone', value: 'flood' },
-                ]}
-                value={input.area_condition || ''}
-                onChange={(v) => setInput((p) => ({ ...p, area_condition: v as HealthCheckInput['area_condition'] }))}
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Parking</Text>
-              <ChipRow
-                options={[
-                  { label: 'Covered', value: 'covered' },
-                  { label: 'Open', value: 'open' },
-                ]}
-                value={input.parking || ''}
-                onChange={(v) => setInput((p) => ({ ...p, parking: v as HealthCheckInput['parking'] }))}
-              />
-            </ToolCard>
+            <StepBlock icon="navigate-outline" title="Usage Pattern" hint="Optional — helps refine your report">
+              <QuestionBlock label="Monthly Running">
+                <ChipRow
+                  options={MONTHLY_RUNNING}
+                  value={input.monthly_running || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, monthly_running: v }))}
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Driving Type">
+                <ChipRow
+                  options={DRIVING_TYPES}
+                  value={input.driving_type || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, driving_type: v as HealthCheckInput['driving_type'] }))}
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Area Condition">
+                <ChipRow
+                  options={AREA_CONDITIONS}
+                  value={input.area_condition || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, area_condition: v as HealthCheckInput['area_condition'] }))}
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Parking">
+                <ChipRow
+                  options={PARKING_OPTIONS}
+                  value={input.parking || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, parking: v as HealthCheckInput['parking'] }))}
+                />
+              </QuestionBlock>
+            </StepBlock>
             <PrimaryButton label="Continue" icon="arrow-forward" onPress={goNext} />
           </>
         );
@@ -445,58 +629,42 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'service':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Last service</Text>
-              <ChipRow
-                options={[
-                  { label: '<3 mo', value: '<3' },
-                  { label: '3–6 mo', value: '3-6' },
-                  { label: '6–12 mo', value: '6-12' },
-                  { label: '12+ mo', value: '12+' },
-                  { label: "Don't remember", value: 'dont_remember' },
-                ]}
-                value={input.last_service_months || ''}
-                onChange={(v) => setInput((p) => ({ ...p, last_service_months: v as HealthCheckInput['last_service_months'] }))}
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Km at last service (optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={input.odometer_last_service != null ? String(input.odometer_last_service) : ''}
-                onChangeText={(t) =>
-                  setInput((p) => ({ ...p, odometer_last_service: Number(t.replace(/\D/g, '')) || undefined }))
-                }
-                keyboardType="numeric"
-                placeholder="Optional"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Service provider</Text>
-              <ChipRow
-                options={[
-                  { label: 'Authorized', value: 'authorized' },
-                  { label: 'Local', value: 'local' },
-                  { label: 'MyFNG', value: 'myfng' },
-                  { label: 'Self', value: 'self' },
-                  { label: 'Not regular', value: 'not_regular' },
-                ]}
-                value={input.service_provider || ''}
-                onChange={(v) => setInput((p) => ({ ...p, service_provider: v as HealthCheckInput['service_provider'] }))}
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Recent major jobs (tap if done)</Text>
-              <View style={styles.chipWrap}>
-                {MAJOR_JOBS.map((job) => {
-                  const on = input.recent_major_jobs?.some((j) => j.job === job);
-                  return (
-                    <TouchableOpacity
-                      key={job}
-                      style={[styles.multiChip, on ? styles.multiChipOn : null]}
-                      onPress={() => toggleMajorJob(job)}
-                    >
-                      <Text style={[styles.multiChipText, on ? styles.multiChipTextOn : null]}>{job}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ToolCard>
+            <StepBlock icon="construct-outline" title="Service History" hint="Optional — improves report accuracy">
+              <QuestionBlock label="Last Service">
+                <ChipRow
+                  options={LAST_SERVICE}
+                  value={input.last_service_months || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, last_service_months: v as HealthCheckInput['last_service_months'] }))}
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Km at Last Service" hint="Optional">
+                <FieldInput
+                  value={input.odometer_last_service != null ? String(input.odometer_last_service) : ''}
+                  onChangeText={(t) =>
+                    setInput((p) => ({ ...p, odometer_last_service: Number(t.replace(/\D/g, '')) || undefined }))
+                  }
+                  keyboardType="numeric"
+                  placeholder="38000"
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Service Provider">
+                <ChipRow
+                  options={SERVICE_PROVIDERS}
+                  value={input.service_provider || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, service_provider: v as HealthCheckInput['service_provider'] }))}
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Recent Major Jobs" hint="Tap all that apply">
+                <SelectChipGrid
+                  options={MAJOR_JOBS}
+                  selected={input.recent_major_jobs?.map((j) => j.job) || []}
+                  onToggle={toggleMajorJob}
+                />
+              </QuestionBlock>
+            </StepBlock>
             <PrimaryButton label="Continue" icon="arrow-forward" onPress={goNext} />
           </>
         );
@@ -504,6 +672,10 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'symptoms':
         return (
           <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            <ToolCard variant="soft">
+              <Text style={styles.symptomsIntroTitle}>Any Symptoms?</Text>
+              <Text style={styles.symptomsIntroBody}>Tap what you notice right now. Optional — skip if none.</Text>
+            </ToolCard>
             {SYMPTOM_GROUPS.map((group) => {
               if (group.title === 'Transmission') {
                 const items = group.items.filter((it) => {
@@ -512,7 +684,7 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
                 });
                 if (!items.length) return null;
                 return (
-                  <ToolCard key={group.title}>
+                  <ToolCard key={group.title} variant="outline">
                     <Text style={styles.groupTitle}>{group.title}</Text>
                     {items.map((it) => (
                       <SymptomRow key={it.id} id={it.id} label={it.label} on={input.symptoms?.includes(it.id)} onToggle={toggleSymptom} />
@@ -521,7 +693,7 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
                 );
               }
               return (
-                <ToolCard key={group.title}>
+                <ToolCard key={group.title} variant="outline">
                   <Text style={styles.groupTitle}>{group.title}</Text>
                   {group.items.map((it) => (
                     <SymptomRow key={it.id} id={it.id} label={it.label} on={input.symptoms?.includes(it.id)} onToggle={toggleSymptom} />
@@ -536,49 +708,37 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'wear':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Tyre condition</Text>
-              <View style={styles.chipWrap}>
-                {[
-                  { id: 'cracks_bulges', label: 'Cracks / bulges' },
-                  { id: 'low_tread', label: 'Low tread' },
-                  { id: 'looks_fine', label: 'Looks fine' },
-                ].map((t) => (
-                  <TouchableOpacity
-                    key={t.id}
-                    style={[styles.multiChip, input.tyre_condition?.includes(t.id) ? styles.multiChipOn : null]}
-                    onPress={() => toggleTyreCondition(t.id)}
-                  >
-                    <Text style={[styles.multiChipText, input.tyre_condition?.includes(t.id) ? styles.multiChipTextOn : null]}>
-                      {t.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Battery age (years)</Text>
-              <TextInput
-                style={styles.input}
-                value={input.battery_age != null ? String(input.battery_age) : ''}
-                onChangeText={(t) => setInput((p) => ({ ...p, battery_age: Number(t) || undefined }))}
-                keyboardType="decimal-pad"
-                placeholder="Optional"
-                placeholderTextColor="#9CA3AF"
-              />
-              <TouchableOpacity
-                style={styles.checkRow}
+            <StepBlock icon="ellipse-outline" title="Wear Items" hint="Optional — battery, tyres & wipers">
+              <QuestionBlock label="Tyre Condition">
+                <SelectChipGrid
+                  options={[
+                    { id: 'cracks_bulges', label: 'Cracks / Bulges' },
+                    { id: 'low_tread', label: 'Low Tread' },
+                    { id: 'looks_fine', label: 'Looks Fine' },
+                  ]}
+                  selected={input.tyre_condition || []}
+                  onToggle={toggleTyreCondition}
+                />
+              </QuestionBlock>
+              <QuestionBlock label="Battery Age (Years)" hint="Optional">
+                <FieldInput
+                  value={input.battery_age != null ? String(input.battery_age) : ''}
+                  onChangeText={(t) => setInput((p) => ({ ...p, battery_age: Number(t) || undefined }))}
+                  keyboardType="decimal-pad"
+                  placeholder="2"
+                />
+              </QuestionBlock>
+              <ToggleOption
+                label="Slow Cranking in the Morning"
+                checked={!!input.battery_slow_crank}
                 onPress={() => setInput((p) => ({ ...p, battery_slow_crank: !p.battery_slow_crank }))}
-              >
-                <Ionicons name={input.battery_slow_crank ? 'checkbox' : 'square-outline'} size={20} color={COLORS.primary} />
-                <Text style={styles.checkLabel}>Slow cranking in the morning</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.checkRow}
+              />
+              <ToggleOption
+                label="Wipers Smearing"
+                checked={!!input.wiper_smear}
                 onPress={() => setInput((p) => ({ ...p, wiper_smear: !p.wiper_smear }))}
-              >
-                <Ionicons name={input.wiper_smear ? 'checkbox' : 'square-outline'} size={20} color={COLORS.primary} />
-                <Text style={styles.checkLabel}>Wipers smearing</Text>
-              </TouchableOpacity>
-            </ToolCard>
+              />
+            </StepBlock>
             <PrimaryButton label="Continue" icon="arrow-forward" onPress={goNext} />
           </>
         );
@@ -586,20 +746,13 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'warning_lights':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Warning lights ON right now</Text>
-              <Text style={styles.hint}>Tap all that apply — optional</Text>
-              <View style={styles.chipWrap}>
-                {WARNING_LIGHTS.map((l) => {
-                  const on = input.warningLights?.includes(l.id);
-                  return (
-                    <TouchableOpacity key={l.id} style={[styles.multiChip, on ? styles.multiChipOn : null]} onPress={() => toggleLight(l.id)}>
-                      <Text style={[styles.multiChipText, on ? styles.multiChipTextOn : null]}>{l.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ToolCard>
+            <StepBlock icon="warning-outline" title="Warning Lights" hint="Tap all that are ON right now — optional">
+              <SelectChipGrid
+                options={WARNING_LIGHTS.map((l) => ({ id: l.id, label: l.label }))}
+                selected={input.warningLights || []}
+                onToggle={toggleLight}
+              />
+            </StepBlock>
             <PrimaryButton label="Continue" icon="arrow-forward" onPress={goNext} />
           </>
         );
@@ -607,34 +760,35 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'compliance':
         return (
           <>
-            <ToolCard>
-              <Text style={styles.label}>Insurance valid till</Text>
-              <TextInput
-                style={styles.input}
-                value={input.insurance_valid_till || rc?.insuranceValidTill || ''}
-                onChangeText={(t) => setInput((p) => ({ ...p, insurance_valid_till: t }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>PUC valid till</Text>
-              <TextInput
-                style={styles.input}
-                value={input.puc_valid_till || rc?.pucValidTill || ''}
-                onChangeText={(t) => setInput((p) => ({ ...p, puc_valid_till: t }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9CA3AF"
-              />
-              <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Pending challans?</Text>
-              <ChipRow
-                options={[
-                  { label: 'Yes', value: 'yes' },
-                  { label: 'No', value: 'no' },
-                  { label: 'Unknown', value: 'unknown' },
-                ]}
-                value={input.challans_pending || rc?.challansPending || ''}
-                onChange={(v) => setInput((p) => ({ ...p, challans_pending: v as HealthCheckInput['challans_pending'] }))}
-              />
-            </ToolCard>
+            <StepBlock icon="document-text-outline" title="Compliance" hint="Insurance, PUC & challan status">
+              <QuestionBlock label="Insurance Valid Till">
+                <DatePickerField
+                  value={input.insurance_valid_till || rc?.insuranceValidTill || ''}
+                  onChange={(t) => setInput((p) => ({ ...p, insurance_valid_till: t }))}
+                  placeholder="DD-MM-YYYY"
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="PUC Valid Till">
+                <DatePickerField
+                  value={input.puc_valid_till || rc?.pucValidTill || ''}
+                  onChange={(t) => setInput((p) => ({ ...p, puc_valid_till: t }))}
+                  placeholder="DD-MM-YYYY"
+                />
+              </QuestionBlock>
+              <SectionDivider />
+              <QuestionBlock label="Pending Challans?">
+                <ChipRow
+                  options={[
+                    { label: 'Yes', value: 'yes' },
+                    { label: 'No', value: 'no' },
+                    { label: 'Unknown', value: 'unknown' },
+                  ]}
+                  value={input.challans_pending || rc?.challansPending || ''}
+                  onChange={(v) => setInput((p) => ({ ...p, challans_pending: v as HealthCheckInput['challans_pending'] }))}
+                />
+              </QuestionBlock>
+            </StepBlock>
             <PrimaryButton label="Generate Report" icon="document-text" onPress={() => setStep('generating')} />
           </>
         );
@@ -642,19 +796,26 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
       case 'generating':
         return (
           <View style={styles.generating}>
-            <Animated.View
-              style={{
-                transform: [
-                  {
-                    rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
-                  },
-                ],
-              }}
-            >
-              <Ionicons name="sync" size={48} color={COLORS.primary} />
-            </Animated.View>
+            <View style={styles.generatingRing}>
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+                    },
+                  ],
+                }}
+              >
+                <Ionicons name="sync" size={40} color={COLORS.primary} />
+              </Animated.View>
+            </View>
             <Text style={styles.generatingTitle}>Generating your Car Health Report</Text>
             <Text style={styles.generatingSub}>Analysing symptoms, compliance & preventive wear…</Text>
+            <View style={styles.generatingDots}>
+              <View style={styles.generatingDot} />
+              <View style={[styles.generatingDot, styles.generatingDotMid]} />
+              <View style={styles.generatingDot} />
+            </View>
           </View>
         );
 
@@ -669,20 +830,17 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
   };
 
   return (
-    <SmartToolShell
+    <HealthCheckShell
       title="Smart Health Checkup"
       subtitle={subtitle}
       navigation={navigation}
       footer={footer}
       scroll={step !== 'generating'}
+      progress={step !== 'report' && step !== 'generating' ? progress : undefined}
+      stepLabel={stepLabel}
     >
-      {step !== 'report' && step !== 'intro' && step !== 'generating' ? (
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-      ) : null}
       {renderStep()}
-    </SmartToolShell>
+    </HealthCheckShell>
   );
 }
 
@@ -698,81 +856,122 @@ function SymptomRow({
   onToggle: (id: string) => void;
 }) {
   return (
-    <TouchableOpacity style={styles.symptomRow} onPress={() => onToggle(id)} activeOpacity={0.85}>
-      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? COLORS.primary : '#9CA3AF'} />
+    <TouchableOpacity
+      style={[styles.symptomRow, on ? styles.symptomRowOn : null]}
+      onPress={() => onToggle(id)}
+      activeOpacity={0.88}
+    >
+      <View style={[styles.symptomCheck, on ? styles.symptomCheckOn : null]}>
+        {on ? <Ionicons name="checkmark" size={14} color="#FFFFFF" /> : null}
+      </View>
       <Text style={[styles.symptomText, on ? styles.symptomTextOn : null]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  progressTrack: { height: 8, borderRadius: 999, backgroundColor: '#DBEAFE', marginBottom: 16, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: '#023D95', borderRadius: 999 },
-  introIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#ECFDF5',
+  introBadges: { flexDirection: 'row', gap: 8, marginBottom: 18 },
+  introBadgeFree: {
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.35)',
+  },
+  introBadgeFreeText: { fontSize: 10, fontWeight: '900', color: '#6EE7B7', letterSpacing: 0.6 },
+  introBadgeTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(147, 197, 253, 0.25)',
+  },
+  introBadgeTimeText: { fontSize: 10, fontWeight: '800', color: '#BFDBFE' },
+  introIconRing: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-  },
-  introTitle: { fontSize: 20, fontWeight: '900', color: '#111827', marginBottom: 8 },
-  introBody: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 21 },
-  tagline: { marginTop: 12, fontSize: 12, fontWeight: '700', color: '#0088E8', fontStyle: 'italic' },
-  consentRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  consentText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#374151', lineHeight: 20 },
-  label: { fontSize: 15, fontWeight: '900', color: '#111827', marginBottom: 10 },
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#6B7280', marginBottom: 6, marginTop: 4 },
-  input: {
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    backgroundColor: '#FAFAFA',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  readOnly: { fontSize: 16, fontWeight: '800', color: '#023D95', marginBottom: 8 },
-  hint: { fontSize: 12, fontWeight: '600', color: '#6B7280', marginBottom: 10 },
-  error: { marginTop: 8, fontSize: 12, fontWeight: '700', color: '#DC2626' },
-  errorCenter: { textAlign: 'center', marginTop: 8, fontSize: 12, fontWeight: '700', color: '#DC2626' },
-  linkBtn: { alignItems: 'center', paddingVertical: 14 },
-  linkText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
-  groupTitle: { fontSize: 14, fontWeight: '900', color: '#023D95', marginBottom: 10 },
-  symptomRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  symptomText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#374151' },
-  symptomTextOn: { color: COLORS.primary, fontWeight: '800' },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  multiChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  multiChipOn: { backgroundColor: '#EFF6FF', borderColor: COLORS.primary },
-  multiChipText: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
-  multiChipTextOn: { color: COLORS.primary },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  checkLabel: { fontSize: 13, fontWeight: '600', color: '#374151' },
-  generating: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
-  generatingTitle: { marginTop: 20, fontSize: 18, fontWeight: '900', color: '#111827' },
-  generatingSub: { marginTop: 8, fontSize: 13, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  secondaryBtn: {
-    flex: 1,
+  introIconInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
   },
-  secondaryText: { fontSize: 14, fontWeight: '800', color: '#374151' },
-  skipBtn: { paddingHorizontal: 20, paddingVertical: 12 },
+  introTitle: { fontSize: 21, fontWeight: '900', color: '#FFFFFF', marginBottom: 6, letterSpacing: 0.2 },
+  introBody: { fontSize: 13, fontWeight: '600', color: '#CBD5E1', lineHeight: 20 },
+  tagline: { marginTop: 10, fontSize: 11, fontWeight: '700', color: '#93C5FD', fontStyle: 'italic' },
+  manualHint: { fontSize: 11, fontWeight: '600', color: '#64748B', marginBottom: 10, lineHeight: 16 },
+  symptomsIntroTitle: { fontSize: 14, fontWeight: '900', color: '#0F172A', marginBottom: 4 },
+  symptomsIntroBody: { fontSize: 11, fontWeight: '600', color: '#64748B', lineHeight: 16 },
+  groupTitle: { fontSize: 13, fontWeight: '900', color: COLORS.primary, marginBottom: 8 },
+  symptomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    marginBottom: 6,
+  },
+  symptomRowOn: { borderColor: COLORS.primary, backgroundColor: '#EFF6FF' },
+  symptomCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  symptomCheckOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  symptomText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#334155' },
+  symptomTextOn: { color: COLORS.primary, fontWeight: '800' },
+  error: { marginTop: 4, fontSize: 11, fontWeight: '700', color: '#DC2626' },
+  errorCenter: { textAlign: 'center', marginTop: 8, fontSize: 11, fontWeight: '700', color: '#DC2626' },
+  generating: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  generatingRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    ...Platform.select({
+      ios: {
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+      },
+      android: { elevation: 4 },
+      default: {},
+    }),
+  },
+  generatingTitle: { marginTop: 22, fontSize: 17, fontWeight: '900', color: '#0F172A', textAlign: 'center' },
+  generatingSub: { marginTop: 6, fontSize: 12, fontWeight: '600', color: '#64748B', textAlign: 'center', lineHeight: 18, paddingHorizontal: 20 },
+  generatingDots: { flexDirection: 'row', gap: 8, marginTop: 18 },
+  generatingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#BFDBFE' },
+  generatingDotMid: { backgroundColor: COLORS.primary, width: 22 },
+  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  skipBtn: { paddingHorizontal: 12, paddingVertical: 12 },
   skipText: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
 });

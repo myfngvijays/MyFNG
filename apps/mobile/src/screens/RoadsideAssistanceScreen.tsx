@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Dimensions,
   Image,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +22,7 @@ import { supabase } from '../lib/supabase';
 type Props = { navigation: any; route: any };
 
 const RSA_PHONE = '+919610448949';
+const REVIEW_MODAL_SCROLL_MAX_HEIGHT = Dimensions.get('window').height * 0.8 - 96;
 
 const DEFAULT_RSA_HERO_IMAGE =
   'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Mobile%20Screen%20-%20Hero%20Section/RSA.PNG';
@@ -319,11 +322,18 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
         {/* ── All Reviews Modal ── */}
         <Modal visible={showAllReviews} transparent animationType="slide" onRequestClose={() => setShowAllReviews(false)}>
-          <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowAllReviews(false)}>
-            <TouchableOpacity style={s.modalSheet} activeOpacity={1} onPress={() => undefined}>
+          <View style={s.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllReviews(false)} />
+            <View style={s.modalSheet}>
               <View style={s.modalHandle} />
               <Text style={s.modalTitle}>All Reviews</Text>
-              <ScrollView showsVerticalScrollIndicator={false} style={s.modalScroll}>
+              <ScrollView
+                showsVerticalScrollIndicator
+                style={[s.modalScroll, { maxHeight: REVIEW_MODAL_SCROLL_MAX_HEIGHT }]}
+                contentContainerStyle={s.modalScrollContent}
+                nestedScrollEnabled
+                bounces
+              >
                 {RSA_REVIEWS.map((review) => (
                   <View key={review.name} style={s.modalReviewCard}>
                     <View style={s.reviewStars}>
@@ -344,8 +354,8 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                   </View>
                 ))}
               </ScrollView>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
 
         {/* ── All FAQs Modal ── */}
@@ -574,6 +584,7 @@ const s = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827', textAlign: 'center', marginBottom: 16 },
   modalScroll: { paddingHorizontal: 20 },
+  modalScrollContent: { paddingBottom: 16 },
   modalReviewCard: {
     borderRadius: 20, padding: 20,
     backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6',

@@ -1,7 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Plus, Edit, Trash2, X, Save, Star } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Plus, Edit, Trash2, X, Save, Star, Upload, Download } from 'lucide-react';
+import {
+  CUSTOMER_REVIEWS_CSV_TEMPLATE,
+  parseCustomerReviewsCsv,
+} from '@/lib/customer-reviews-admin';
 
 type ReviewRow = {
   id: string;
@@ -19,12 +23,15 @@ export default function CustomerReviewsPage() {
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [editing, setEditing] = useState<ReviewRow | null>(null);
+  const [bulkCsv, setBulkCsv] = useState(CUSTOMER_REVIEWS_CSV_TEMPLATE);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState({
     name: '',
-    car: '',
     stars: 5,
     text: '',
     date: '',
@@ -57,7 +64,6 @@ export default function CustomerReviewsPage() {
     setEditing(null);
     setForm({
       name: '',
-      car: '',
       stars: 5,
       text: '',
       date: '',
@@ -71,7 +77,6 @@ export default function CustomerReviewsPage() {
     setEditing(r);
     setForm({
       name: r.name,
-      car: r.car,
       stars: r.stars,
       text: r.text,
       date: r.date,
@@ -86,9 +91,24 @@ export default function CustomerReviewsPage() {
     setEditing(null);
   }
 
+  function openBulkModal() {
+    setBulkCsv(CUSTOMER_REVIEWS_CSV_TEMPLATE);
+    setBulkModalOpen(true);
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob([CUSTOMER_REVIEWS_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'customer-reviews-template.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name || !form.car || !form.text || !form.date) {
+    if (!form.name || !form.text || !form.date) {
       alert('Please fill all required fields');
       return;
     }
@@ -97,7 +117,6 @@ export default function CustomerReviewsPage() {
       setSaving(true);
       const payload = {
         name: form.name,
-        car: form.car,
         stars: form.stars,
         text: form.text,
         date: form.date,
@@ -130,6 +149,40 @@ export default function CustomerReviewsPage() {
     }
   }
 
+  async function onBulkUpload() {
+    const parsed = parseCustomerReviewsCsv(bulkCsv);
+    if (parsed.rows.length === 0) {
+      alert(parsed.errors[0] || 'No valid rows found in CSV');
+      return;
+    }
+
+    try {
+      setBulkUploading(true);
+      const res = await fetch('/api/super_admin/customer-reviews/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviews: parsed.rows }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = [json?.error, ...(Array.isArray(json?.errors) ? json.errors : []), json?.details]
+          .filter(Boolean)
+          .join('\n');
+        throw new Error(msg || `Bulk upload failed (${res.status})`);
+      }
+
+      const skippedMsg =
+        parsed.errors.length > 0 ? `\nSkipped invalid rows:\n${parsed.errors.join('\n')}` : '';
+      alert(`${json.message || `Imported ${json.imported || parsed.rows.length} review(s)`}${skippedMsg}`);
+      setBulkModalOpen(false);
+      await fetchRows();
+    } catch (e: any) {
+      alert(e?.message || 'Bulk upload failed');
+    } finally {
+      setBulkUploading(false);
+    }
+  }
+
   async function onDelete(id: string) {
     if (!confirm('Delete this review?')) return;
     try {
@@ -145,6 +198,15 @@ export default function CustomerReviewsPage() {
     }
   }
 
+  function onCsvFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setBulkCsv(String(reader.result || ''));
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -154,12 +216,22 @@ export default function CustomerReviewsPage() {
             Manage reviews shown on the mobile app home screen. These appear in the &quot;What Our Customers Say&quot; section.
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" /> Add Review
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openBulkModal}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <Upload className="h-4 w-4" /> Bulk Upload
+          </button>
+          <button
+            type="button"
+            onClick={openAdd}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4" /> Add Review
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -198,19 +270,21 @@ export default function CustomerReviewsPage() {
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-gray-900">{r.name}</div>
-                    <div className="text-xs text-gray-500">{r.car} • {r.date}</div>
+                    <div className="text-xs text-gray-500">{r.date}</div>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
                   <span className="text-xs text-gray-400">Order: {r.display_order}</span>
                   <div className="ml-auto flex gap-2">
                     <button
+                      type="button"
                       onClick={() => openEdit(r)}
                       className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
                     >
                       <Edit className="h-3 w-3" /> Edit
                     </button>
                     <button
+                      type="button"
                       onClick={() => onDelete(r.id)}
                       className="inline-flex items-center justify-center rounded-lg border border-red-200 p-1.5 text-red-700 hover:bg-red-50"
                     >
@@ -224,7 +298,6 @@ export default function CustomerReviewsPage() {
         </div>
       )}
 
-      {/* Modal */}
       {modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden max-h-[90vh] overflow-y-auto">
@@ -232,31 +305,20 @@ export default function CustomerReviewsPage() {
               <div className="text-lg font-bold text-gray-900">
                 {editing ? 'Edit Review' : 'Add Review'}
               </div>
-              <button onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100">
+              <button type="button" onClick={closeModal} className="p-2 rounded-lg hover:bg-gray-100">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <form onSubmit={onSubmit} className="p-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-semibold text-gray-700">Customer Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="e.g. Rahul Sharma"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-700">Car Model *</label>
-                  <input
-                    value={form.car}
-                    onChange={(e) => setForm((p) => ({ ...p, car: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                    placeholder="e.g. Hyundai Creta"
-                  />
-                </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Customer Name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="e.g. Rahul Sharma"
+                />
               </div>
 
               <div>
@@ -339,6 +401,75 @@ export default function CustomerReviewsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {bulkModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+              <div>
+                <div className="text-lg font-bold text-gray-900">Bulk Upload Reviews</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  CSV columns: name, stars, text, date, display_order, is_active
+                </div>
+              </div>
+              <button type="button" onClick={() => setBulkModalOpen(false)} className="p-2 rounded-lg hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={downloadTemplate}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  <Download className="h-4 w-4" /> Download Template
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  <Upload className="h-4 w-4" /> Choose CSV File
+                </button>
+                <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={onCsvFileChange} />
+              </div>
+
+              <textarea
+                value={bulkCsv}
+                onChange={(e) => setBulkCsv(e.target.value)}
+                rows={12}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-mono"
+                placeholder={CUSTOMER_REVIEWS_CSV_TEMPLATE}
+              />
+
+              <div className="rounded-xl bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-900">
+                Paste CSV or upload a file. Max 200 reviews per upload. Car model is not required.
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-100 -mx-5 px-5 -mb-5 pb-5 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setBulkModalOpen(false)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={onBulkUpload}
+                  disabled={bulkUploading}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:opacity-60"
+                >
+                  <Upload className="h-4 w-4" />
+                  {bulkUploading ? 'Uploading…' : 'Import Reviews'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

@@ -209,6 +209,15 @@ export function estimateResaleValue(input: {
   condition: 'excellent' | 'good' | 'fair' | 'poor';
   cityTier: 'metro' | 'tier2' | 'other';
   hadAccident: boolean;
+  transmission?: 'manual' | 'automatic';
+  insuranceValid?: boolean;
+  serviceRecords?: 'yes' | 'partial' | 'no';
+  tyreCondition?: 'good' | 'fair' | 'replace';
+  bodyPaint?: 'original' | 'minor' | 'major';
+  hypothecation?: boolean;
+  duplicateKey?: boolean;
+  monthlyRunning?: '<500' | '500-1000' | '1000-2000' | '2000+';
+  lastService?: '<3' | '3-6' | '6-12' | '12+' | 'dont_remember';
 }): { low: number; high: number; mid: number } {
   const brandMultipliers: Record<string, number> = {
     maruti: 1,
@@ -244,8 +253,51 @@ export function estimateResaleValue(input: {
   const ownerMul = input.owners <= 1 ? 1.04 : input.owners === 2 ? 0.96 : 0.88;
   const cityMul = { metro: 1.05, tier2: 1, other: 0.92 }[input.cityTier];
   const accidentMul = input.hadAccident ? 0.82 : 1;
+  const transmissionMul = input.transmission === 'automatic' ? 1.03 : 1;
+  const insuranceMul = input.insuranceValid === false ? 0.97 : input.insuranceValid === true ? 1.02 : 1;
+  const serviceMul =
+    input.serviceRecords === 'yes' ? 1.04 : input.serviceRecords === 'partial' ? 1.01 : input.serviceRecords === 'no' ? 0.95 : 1;
+  const tyreMul =
+    input.tyreCondition === 'replace' ? 0.91 : input.tyreCondition === 'fair' ? 0.97 : 1;
+  const bodyMul =
+    input.bodyPaint === 'major' ? 0.87 : input.bodyPaint === 'minor' ? 0.96 : 1;
+  const loanMul = input.hypothecation ? 0.94 : 1;
+  const keyMul = input.duplicateKey === false ? 0.985 : 1;
+  const runningMul =
+    input.monthlyRunning === '<500'
+      ? 1.02
+      : input.monthlyRunning === '2000+'
+        ? 0.95
+        : input.monthlyRunning === '1000-2000'
+          ? 0.98
+          : 1;
+  const lastServiceMul =
+    input.lastService === '<3'
+      ? 1.03
+      : input.lastService === '3-6'
+        ? 1.01
+        : input.lastService === '12+'
+          ? 0.96
+          : input.lastService === 'dont_remember'
+            ? 0.98
+            : 1;
 
-  const mid = Math.round(value * conditionMul * ownerMul * cityMul * accidentMul);
+  const mid = Math.round(
+    value *
+      conditionMul *
+      ownerMul *
+      cityMul *
+      accidentMul *
+      transmissionMul *
+      insuranceMul *
+      serviceMul *
+      tyreMul *
+      bodyMul *
+      loanMul *
+      keyMul *
+      runningMul *
+      lastServiceMul,
+  );
   return { low: Math.round(mid * 0.9), high: Math.round(mid * 1.12), mid };
 }
 

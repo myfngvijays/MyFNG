@@ -6,7 +6,13 @@ import {
   normalizeCustomerPhone,
 } from '@/lib/customer-service-leads';
 import { parseMembershipClaimMeta } from '@/lib/membership-benefits-service';
-import { resolvePostBookingMembershipOfferStatus } from '@/lib/post-booking-membership-offer';
+import {
+  expireUnpaidBookingMembershipBundleIfNeeded,
+  resolveActiveMembershipBundleDiscount,
+  resolveLeadAmountDisplay,
+  resolvePostBookingMembershipOfferStatus,
+} from '@/lib/post-booking-membership-offer';
+import { getPostBookingMembershipConfig, toPostBookingMembershipAppConfig } from '@/lib/post-booking-membership-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +45,13 @@ export async function GET(request: Request) {
   if (error) return NextResponse.json({ error: 'Failed to fetch order history' }, { status: 500 });
 
   const rows = filterLeadsForCustomer(data, { id: customer.id, phone: normalizedPhone });
+
+  const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
+  await Promise.all(
+    rows.map((row: Record<string, unknown>) =>
+      expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, row, pbConfig),
+    ),
+  );
   const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const parseIdList = (input: unknown): string[] => {
     if (!input) return [];
@@ -170,17 +183,27 @@ export async function GET(request: Request) {
               ? estimatedAmount
               : null;
 
+    const rowMeta =
+      r.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : {};
+    const membershipBundleDiscount = resolveActiveMembershipBundleDiscount(r, pbConfig);
+    const correctedAmount = resolveLeadAmountDisplay(r, pbConfig);
+
     return {
       ...r,
       service_display: resolvedServiceType,
-      amount_display: displayAmount,
+      amount_display: correctedAmount > 0 ? correctedAmount : displayAmount,
       preferred_time: r.preferred_time_slot || null,
       workshop_name: workshopNameById[String(r.workshop_id || '')] || '',
+      wallet_deduction: Number(rowMeta.wallet_deduction || 0),
+      membership_bundle_discount: membershipBundleDiscount,
       membership_claim: parseMembershipClaimMeta(r.meta),
-      post_booking_membership: resolvePostBookingMembershipOfferStatus(r),
+      post_booking_membership: resolvePostBookingMembershipOfferStatus(r, pbConfig),
     };
   });
 
-  return NextResponse.json({ orders });
+  return NextResponse.json({
+    orders,
+    post_booking_membership_settings: toPostBookingMembershipAppConfig(pbConfig),
+  });
 }
 

@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Platform, Text as RNText } from 'react-native';
+import { Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
+
+const TextInputWithDefaults = RNTextInput as typeof RNTextInput & {
+  defaultProps?: Partial<React.ComponentProps<typeof RNTextInput>>;
+};
+TextInputWithDefaults.defaultProps = {
+  ...TextInputWithDefaults.defaultProps,
+  autoCorrect: false,
+  spellCheck: false,
+};
 
 if (Platform.OS === 'ios') {
   try {

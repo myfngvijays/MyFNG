@@ -7,6 +7,7 @@ import {
   ImageBackground,
   Linking,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import PostBookingMembershipOfferCard from '../components/PostBookingMembershipOfferCard';
+import { usePendingPostBookingMembershipOffer } from '../hooks/usePendingPostBookingMembershipOffer';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import PublicHeader from '../components/PublicHeader';
 import { detectHeaderLocation } from '../lib/locationDisplay';
@@ -152,6 +155,9 @@ const HEADLINES = [
   { prefix: "India's ", highlight: '#1 AI-Powered', suffix: ' Car Service Booking Platform' },
   { prefix: 'Book Reliable Car Service ', highlight: 'Anytime, Anywhere', suffix: '' },
 ];
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const REVIEW_MODAL_SCROLL_MAX_HEIGHT = SCREEN_HEIGHT * 0.8 - 96;
 
 export default function PublicHomeScreen({ navigation }: Props) {
   const [heroIndex, setHeroIndex] = useState(0);
@@ -450,6 +456,14 @@ export default function PublicHomeScreen({ navigation }: Props) {
     return heroBanners[heroIndex % heroBanners.length] || heroBanners[0];
   }, [heroIndex, heroBanners]);
 
+  const {
+    pending: pendingMembershipOffer,
+    paying: payingMembershipOffer,
+    tick: membershipOfferTick,
+    pay: payMembershipOffer,
+    appConfig: postBookingAppConfig,
+  } = usePendingPostBookingMembershipOffer(isLoggedIn);
+
   const onNavPress = (tab: PublicPillNavTab) => {
     if (tab === 'home') return;
     if (tab === 'services') navigation.navigate('PublicServicePackages', { city: detectedCity });
@@ -465,11 +479,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
       <View style={styles.screen}>
         <PublicHeader
           city={detectedCity}
-          isLoggedIn={isLoggedIn}
-          userName={isLoggedIn ? 'MyFNG User' : null}
           onPressSearch={() => setShowSearchOverlay(true)}
-          onPressSettings={() => navigation.navigate('Settings')}
-          onPressViewNotifications={() => navigation.navigate('Settings', { initialSubPage: 'Notifications' })}
+          onPressCart={() => navigation.navigate('Settings', { subPage: 'Cart' })}
         />
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -484,6 +495,19 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <TouchableOpacity style={styles.loginBannerButton} onPress={() => navigation.navigate('Login')}>
                 <Text style={styles.loginBannerButtonText}>Login Now</Text>
               </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {isLoggedIn && pendingMembershipOffer && postBookingAppConfig.show_on_home ? (
+            <View style={styles.membershipOfferWrap}>
+              <PostBookingMembershipOfferCard
+                offerPayView={pendingMembershipOffer.offerPayView}
+                paying={payingMembershipOffer}
+                onPay={payMembershipOffer}
+                tick={membershipOfferTick}
+                cardTitle={postBookingAppConfig.card_title}
+                fomoMessage={postBookingAppConfig.fomo_message}
+              />
             </View>
           ) : null}
 
@@ -919,7 +943,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
                     </View>
                     <View>
                       <Text style={styles.reviewName}>{review.name}</Text>
-                      <Text style={styles.reviewCar}>{review.car} • {review.date}</Text>
+                      <Text style={styles.reviewCar}>
+                        {review.car ? `${review.car} • ${review.date}` : review.date}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -1004,11 +1030,18 @@ export default function PublicHomeScreen({ navigation }: Props) {
         <LiveTrackingModal visible={showTrackingModal} onClose={() => setShowTrackingModal(false)} />
 
         <Modal visible={showAllReviews} transparent animationType="slide" onRequestClose={() => setShowAllReviews(false)}>
-          <TouchableOpacity style={styles.reviewModalOverlay} activeOpacity={1} onPress={() => setShowAllReviews(false)}>
-            <TouchableOpacity style={styles.reviewModalSheet} activeOpacity={1} onPress={() => undefined}>
+          <View style={styles.reviewModalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllReviews(false)} />
+            <View style={styles.reviewModalSheet}>
               <View style={styles.reviewModalHandle} />
               <Text style={styles.reviewModalTitle}>All Reviews</Text>
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.reviewModalScroll}>
+              <ScrollView
+                showsVerticalScrollIndicator
+                style={[styles.reviewModalScroll, { maxHeight: REVIEW_MODAL_SCROLL_MAX_HEIGHT }]}
+                contentContainerStyle={styles.reviewModalScrollContent}
+                nestedScrollEnabled
+                bounces
+              >
                 {reviews.map((review) => (
                   <View key={`${review.name}-${review.date}`} style={styles.reviewModalCard}>
                     <View style={styles.reviewStars}>
@@ -1023,14 +1056,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
                       </View>
                       <View>
                         <Text style={styles.reviewName}>{review.name}</Text>
-                        <Text style={styles.reviewCar}>{review.car} • {review.date}</Text>
+                        <Text style={styles.reviewCar}>
+                        {review.car ? `${review.car} • ${review.date}` : review.date}
+                      </Text>
                       </View>
                     </View>
                   </View>
                 ))}
               </ScrollView>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
 
         <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
@@ -1112,6 +1147,11 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 132,
+  },
+  membershipOfferWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   section: {
     paddingHorizontal: 16,
@@ -1938,6 +1978,9 @@ const styles = StyleSheet.create({
   },
   reviewModalScroll: {
     paddingHorizontal: 20,
+  },
+  reviewModalScrollContent: {
+    paddingBottom: 16,
   },
   reviewModalCard: {
     borderRadius: 20,

@@ -132,7 +132,7 @@ export const SIGNAL_LABELS: Record<string, string> = {
   puc_expiring_15d: 'PUC expiring within 15 days',
   challans_pending: 'Pending traffic challans',
   service_overdue: 'Service overdue',
-  service_6_12: 'Last service 6–12 months ago',
+  service_6_12: 'Last service 6-12 months ago',
   service_often_delayed: 'Service often delayed',
   service_not_regular: 'Irregular service history',
 };

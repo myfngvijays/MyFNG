@@ -1,12 +1,31 @@
-import React from 'react';
-import { Linking, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS } from '../constants/theme';
+import {
+  DEFAULT_APP_FOOTER_CONFIG,
+  fetchAppFooterConfig,
+  type AppFooterConfig,
+} from '../lib/appFooterConfig';
 
 type Props = {
   hideRefer?: boolean;
 };
 
 export default function ReferAndFooter({ hideRefer = false }: Props) {
+  const [footer, setFooter] = useState<AppFooterConfig>(DEFAULT_APP_FOOTER_CONFIG);
+
+  useEffect(() => {
+    let active = true;
+    fetchAppFooterConfig()
+      .then((config) => {
+        if (active) setFooter(config);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <>
       {!hideRefer && (
@@ -32,26 +51,26 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
         </View>
       )}
 
-      <View style={s.section}>
+      <View style={[s.section, s.footerSection]}>
         <Text style={s.headline}>
-          India&apos;s #1 AI-Powered{'\n'}Car Service Booking Platform
+          {footer.headline_line1}
+          {'\n'}
+          {footer.headline_line2}
         </Text>
         <View style={s.numbers}>
-          <View style={s.col}>
-            <Text style={s.numBold}>17k+</Text>
-            <Text style={s.numLabel}>Car Serviced</Text>
-          </View>
-          <View style={s.divider} />
-          <View style={s.col}>
-            <Text style={s.numBold}>4.8</Text>
-            <Text style={s.numLabel}>Top-Rated</Text>
-          </View>
-          <View style={s.divider} />
-          <View style={s.col}>
-            <Text style={s.numBold}>100+</Text>
-            <Text style={s.numLabel}>A-Grade{'\n'}Workshops</Text>
-          </View>
+          {footer.stats.map((stat, index) => (
+            <React.Fragment key={`${stat.value}-${index}`}>
+              {index > 0 ? <View style={s.divider} /> : null}
+              <View style={s.col}>
+                <Text style={s.numBold}>{stat.value}</Text>
+                <Text style={s.numLabel}>{stat.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
+        {footer.bottom_line ? (
+          <Text style={s.bottomLine}>{footer.bottom_line}</Text>
+        ) : null}
       </View>
     </>
   );
@@ -93,12 +112,15 @@ const s = StyleSheet.create({
     fontWeight: '800',
   },
   headline: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
-    color: '#6B7280',
+    color: '#9CA3AF',
     textAlign: 'center',
-    lineHeight: 30,
-    marginBottom: 18,
+    lineHeight: 26,
+    marginBottom: 16,
+  },
+  footerSection: {
+    opacity: 0.82,
   },
   numbers: {
     flexDirection: 'row',
@@ -110,13 +132,13 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   numBold: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(0, 74, 173, 0.58)',
   },
   numLabel: {
     fontSize: 10,
-    color: '#6B7280',
+    color: '#A8B0BC',
     fontWeight: '600',
     textTransform: 'uppercase',
     textAlign: 'center',
@@ -124,7 +146,16 @@ const s = StyleSheet.create({
   },
   divider: {
     width: 1,
-    height: 36,
-    backgroundColor: '#E5E7EB',
+    height: 34,
+    backgroundColor: '#B6C0CC',
+  },
+  bottomLine: {
+    marginTop: 12,
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#A8B0BC',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    letterSpacing: 0.4,
   },
 });

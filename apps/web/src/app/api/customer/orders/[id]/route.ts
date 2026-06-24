@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
+import {
+  expireUnpaidBookingMembershipBundleIfNeeded,
+  resolveActiveMembershipBundleDiscount,
+  resolveLeadAmountDisplay,
+  resolvePostBookingMembershipOfferStatus,
+  resolveServiceLeadCouponDiscount,
+} from '@/lib/post-booking-membership-offer';
+import { getPostBookingMembershipConfig } from '@/lib/post-booking-membership-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +24,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     .eq('customer_phone', customer.phone)
     .maybeSingle();
   if (error || !lead) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
+  const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
+  await expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, lead as Record<string, unknown>, pbConfig);
 
   const parseIdList = (input: unknown): string[] => {
     if (!input) return [];
@@ -97,10 +108,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const serviceMode =
     pickupRequired === true ? 'Doorstep Pickup' : pickupRequired === false ? 'Workshop Visit' : 'Not specified';
   const couponCode = String((lead as any).coupon_code || '').trim() || null;
-  const couponDiscount = Number((lead as any).discount_amount || 0);
-  const membershipBundleDiscount = Number(
-    (leadMeta.booking_membership_bundle as any)?.discount_amount || 0,
+  const membershipBundleDiscount = resolveActiveMembershipBundleDiscount(
+    lead as Record<string, unknown>,
+    pbConfig,
   );
+  const couponDiscount = resolveServiceLeadCouponDiscount(lead as Record<string, unknown>, pbConfig);
 
   const { data: invoice } = await supabaseAdmin
     .from('invoices')
@@ -191,7 +203,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   };
 
   return NextResponse.json({
-    order,
+    order: {
+      ...order,
+      amount_display: resolveLeadAmountDisplay(lead as Record<string, unknown>, pbConfig),
+      post_booking_membership: resolvePostBookingMembershipOfferStatus(lead as Record<string, unknown>, pbConfig),
+    },
+    post_booking_membership: resolvePostBookingMembershipOfferStatus(lead as Record<string, unknown>, pbConfig),
     invoice: invoice || null,
     invoices: allInvoices || [],
     checklist: checklist || null,

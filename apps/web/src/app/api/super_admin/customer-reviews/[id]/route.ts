@@ -35,16 +35,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!auth.ok) return auth.res;
 
     const body = await request.json();
-    const { name, car, stars, text, date, display_order, is_active } = body || {};
+    const updates: any = { updated_at: new Date().toISOString(), car: '' };
+    if (body?.name !== undefined) updates.name = String(body.name).trim();
+    if (body?.stars !== undefined) updates.stars = Math.min(5, Math.max(1, Number(body.stars) || 5));
+    if (body?.text !== undefined) updates.text = String(body.text).trim();
+    if (body?.date !== undefined) updates.date = String(body.date).trim();
+    if (body?.display_order !== undefined) updates.display_order = Number(body.display_order) || 0;
+    if (body?.is_active !== undefined) updates.is_active = !!body.is_active;
 
-    const updates: any = { updated_at: new Date().toISOString() };
-    if (name !== undefined) updates.name = name;
-    if (car !== undefined) updates.car = car;
-    if (stars !== undefined) updates.stars = Math.min(5, Math.max(1, Number(stars) || 5));
-    if (text !== undefined) updates.text = text;
-    if (date !== undefined) updates.date = date;
-    if (display_order !== undefined) updates.display_order = Number(display_order) || 0;
-    if (is_active !== undefined) updates.is_active = !!is_active;
+    if (
+      (body?.name !== undefined && !updates.name) ||
+      (body?.text !== undefined && !updates.text) ||
+      (body?.date !== undefined && !updates.date)
+    ) {
+      return NextResponse.json({ error: 'name, text, and date cannot be empty' }, { status: 400 });
+    }
 
     const { data, error } = await supabase
       .from(TABLE)

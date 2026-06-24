@@ -79,13 +79,13 @@ export function compositeBand(score: number): { label: string; color: string; su
     return {
       label: 'Service recommended',
       color: SCORE_COLORS.ORANGE,
-      summary: 'Several systems may need service — booking an inspection is a good next step.',
+      summary: 'Several systems may need service - booking an inspection is a good next step.',
     };
   }
   return {
     label: 'Urgent attention',
     color: SCORE_COLORS.RED,
-    summary: 'Critical issues flagged — please book an inspection at the earliest.',
+    summary: 'Critical issues flagged - please book an inspection at the earliest.',
   };
 }
 
@@ -107,8 +107,28 @@ export function conditionMultiplier(input: HealthCheckInput): number {
   return m;
 }
 
-function daysUntil(isoDate: string): number {
-  return (new Date(isoDate).getTime() - Date.now()) / 86400000;
+function parseHealthDate(raw: string): Date | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const dmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dmy) {
+    const [, dd, mm, yyyy] = dmy;
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function daysUntil(dateStr: string): number {
+  const d = parseHealthDate(dateStr);
+  if (!d) return 999;
+  return (d.getTime() - Date.now()) / 86400000;
 }
 
 function signalLabel(id: string): string {
@@ -324,10 +344,13 @@ function buildRecommendations(
     (a, b) => cats[a] - cats[b],
   );
 
+  const recTitles = new Set<string>();
+
   for (const cat of sortedCats) {
     const band = bandFor(cats[cat]);
     const reasonList = reasons[cat];
     const topReason = reasonList[0] ?? 'Issues reported in this area';
+    recTitles.add(CATEGORY_LABELS[cat].toLowerCase());
     recs.push({
       title: CATEGORY_LABELS[cat],
       severity: band === 'RED' ? 'RED' : 'AMBER',
@@ -337,15 +360,16 @@ function buildRecommendations(
     });
   }
 
-  for (const p of predictive.filter((x) => x.deduction > 0)) {
+  for (const p of predictive.filter((x) => x.status === 'overdue')) {
+    const titleLower = p.item.toLowerCase();
+    if (p.item.includes('Periodic') && recs.some((r) => r.category === 'MAINTENANCE')) continue;
+    if (recTitles.has(titleLower)) continue;
+    recTitles.add(titleLower);
     recs.push({
       title: p.item,
-      severity: p.status === 'overdue' ? 'AMBER' : 'INFO',
+      severity: 'AMBER',
       category: 'PREDICTIVE',
-      reason:
-        p.status === 'overdue'
-          ? 'Likely overdue based on age & km — not a detected fault.'
-          : 'Coming up soon based on age & km — preventive check recommended.',
+      reason: 'Likely overdue based on age & km - not a detected fault.',
       ctaType: p.cta,
     });
   }
@@ -363,7 +387,7 @@ function buildRecommendations(
       title: 'Routine service',
       severity: 'INFO',
       category: 'MAINTENANCE',
-      reason: 'No urgent issues flagged — stay on schedule with periodic service.',
+      reason: 'No urgent issues flagged - stay on schedule with periodic service.',
       ctaType: 'BOOK_SERVICE',
     });
   }
@@ -384,7 +408,7 @@ export function accuracyLevel(input: HealthCheckInput): 'BASIC' | 'GOOD' | 'DETA
 }
 
 export function accuracyHint(level: 'BASIC' | 'GOOD' | 'DETAILED'): string {
-  if (level === 'DETAILED') return 'Detailed report — great job sharing your car details.';
+  if (level === 'DETAILED') return 'Detailed report - great job sharing your car details.';
   if (level === 'GOOD') return 'Answer 2–3 more sections for a more detailed report.';
   return 'Answer 3 more sections to improve accuracy.';
 }

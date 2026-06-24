@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { PrimaryButton, ToolCard } from '../smartTools/SmartToolShell';
+import { PrimaryButton, ToolCard } from '../smartTools/HealthCheckShell';
 import { COLORS } from '../../constants/theme';
 import {
   accuracyHint,
   CATEGORY_LABELS,
   CTA_LABELS,
   SCORE_COLORS,
+  type Category,
   type HealthReport,
   type RcData,
 } from '../../lib/vehicleHealthScore';
@@ -15,7 +16,7 @@ import {
 type Props = {
   report: HealthReport;
   rc: RcData;
-  onCta: (ctaType: string, title: string) => void;
+  onCta: (ctaType: string, title: string, category?: Category | 'PREDICTIVE') => void;
   onRestart: () => void;
 };
 
@@ -27,13 +28,14 @@ function bandColor(band: 'GREEN' | 'AMBER' | 'RED'): string {
 
 export default function CarHealthReportView({ report, rc, onCta, onRestart }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const preventive = report.predictive.filter((p) => p.deduction === 0 || p.status === 'due_soon');
+  const preventive = report.predictive.filter((p) => p.status === 'due_soon');
   const priorityRecs = report.recommendations.filter((r) => r.severity !== 'INFO' || r.category !== 'PREDICTIVE');
   const infoRecs = report.recommendations.filter((r) => r.severity === 'INFO');
 
   return (
     <>
       <View style={[styles.hero, { borderColor: report.band.color }]}>
+        <View style={styles.heroGlow} />
         <Text style={styles.heroLabel}>Vehicle Risk Score</Text>
         <Text style={[styles.heroScore, { color: report.band.color }]}>{report.composite}</Text>
         <Text style={[styles.heroBand, { color: report.band.color }]}>{report.band.label}</Text>
@@ -100,7 +102,7 @@ export default function CarHealthReportView({ report, rc, onCta, onRestart }: Pr
                 <Text style={styles.recTitle}>{rec.title}</Text>
               </View>
               <Text style={styles.recReason}>{rec.reason}</Text>
-              <TouchableOpacity style={styles.recBtn} onPress={() => onCta(rec.ctaType, rec.title)} activeOpacity={0.88}>
+              <TouchableOpacity style={styles.recBtn} onPress={() => onCta(rec.ctaType, rec.title, rec.category)} activeOpacity={0.88}>
                 <Text style={styles.recBtnText}>{CTA_LABELS[rec.ctaType] || 'Book Now'}</Text>
                 <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
               </TouchableOpacity>
@@ -111,7 +113,7 @@ export default function CarHealthReportView({ report, rc, onCta, onRestart }: Pr
 
       {preventive.length > 0 ? (
         <ToolCard>
-          <Text style={styles.sectionTitle}>Coming up — preventive</Text>
+          <Text style={styles.sectionTitle}>Coming up - preventive</Text>
           <Text style={styles.preventiveNote}>Likely due based on age & km, not a detected fault.</Text>
           {preventive.map((p, i) => (
             <View key={`${p.item}-${i}`} style={styles.preventiveRow}>
@@ -147,71 +149,94 @@ export default function CarHealthReportView({ report, rc, onCta, onRestart }: Pr
         </ToolCard>
       ) : null}
 
-      <PrimaryButton label="Book a Free Inspection — free pickup & drop" icon="car" onPress={() => onCta('BOOK_INSPECTION', 'Free Inspection')} />
-      <TouchableOpacity style={styles.linkBtn} onPress={onRestart}>
-        <Text style={styles.linkText}>Run Check Again</Text>
-      </TouchableOpacity>
+      <View style={styles.footerActions}>
+        <PrimaryButton label="Book Free Inspection" icon="car" onPress={() => onCta('BOOK_INSPECTION', 'Free Inspection')} />
+        <Text style={styles.footerHint}>Free pickup & drop on booking via MyFNG</Text>
+        <TouchableOpacity style={styles.linkBtn} onPress={onRestart}>
+          <Text style={styles.linkText}>Run Check Again</Text>
+        </TouchableOpacity>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
   hero: {
-    backgroundColor: '#023D95',
-    borderRadius: 20,
-    padding: 22,
+    backgroundColor: '#0B1F44',
+    borderRadius: 24,
+    padding: 24,
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
     borderWidth: 2,
+    overflow: 'hidden',
   },
-  heroLabel: { fontSize: 12, fontWeight: '700', color: '#BFDBFE', letterSpacing: 0.5 },
+  heroGlow: {
+    position: 'absolute',
+    top: -30,
+    right: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 999,
+    backgroundColor: 'rgba(37, 99, 235, 0.2)',
+  },
+  heroLabel: { fontSize: 12, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
   heroScore: { fontSize: 56, fontWeight: '900', marginVertical: 4 },
   heroBand: { fontSize: 18, fontWeight: '900' },
-  heroSummary: { marginTop: 10, fontSize: 13, fontWeight: '600', color: '#E0E7FF', textAlign: 'center', lineHeight: 20 },
+  heroSummary: { marginTop: 10, fontSize: 13, fontWeight: '600', color: '#CBD5E1', textAlign: 'center', lineHeight: 20 },
   vehicleLine: { marginTop: 12, fontSize: 11, fontWeight: '700', color: '#93C5FD' },
-  sectionTitle: { fontSize: 14, fontWeight: '900', color: '#111827', marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   dimRow: { marginBottom: 12 },
   dimHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  dimLabel: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  dimLabel: { fontSize: 13, fontWeight: '700', color: '#334155' },
   dimScore: { fontSize: 13, fontWeight: '900' },
-  barTrack: { height: 8, borderRadius: 999, backgroundColor: '#E5E7EB', overflow: 'hidden' },
+  barTrack: { height: 8, borderRadius: 999, backgroundColor: '#E2E8F0', overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 999 },
-  catRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  catRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   catDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
   catBody: { flex: 1 },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  catName: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  catName: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
   catScore: { fontSize: 13, fontWeight: '900' },
-  catReason: { marginTop: 4, fontSize: 12, fontWeight: '600', color: '#6B7280', lineHeight: 18 },
+  catReason: { marginTop: 4, fontSize: 12, fontWeight: '600', color: '#64748B', lineHeight: 18 },
   catHint: { marginTop: 6, fontSize: 11, fontWeight: '600', color: COLORS.primary },
-  recCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E5E7EB' },
+  recCard: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   recHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   sevBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   sevText: { fontSize: 10, fontWeight: '900' },
-  recTitle: { flex: 1, fontSize: 14, fontWeight: '900', color: '#111827' },
-  recReason: { fontSize: 12, fontWeight: '600', color: '#6B7280', lineHeight: 18, marginBottom: 10 },
+  recTitle: { flex: 1, fontSize: 14, fontWeight: '900', color: '#0F172A' },
+  recReason: { fontSize: 12, fontWeight: '600', color: '#64748B', lineHeight: 18, marginBottom: 10 },
   recBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#023D95',
-    borderRadius: 10,
-    paddingVertical: 10,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 11,
+    minHeight: 42,
   },
   recBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
-  preventiveNote: { fontSize: 11, fontWeight: '600', color: '#6B7280', marginBottom: 10, lineHeight: 16 },
+  preventiveNote: { fontSize: 11, fontWeight: '600', color: '#64748B', marginBottom: 10, lineHeight: 16 },
   preventiveRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 10 },
   preventiveText: { flex: 1 },
-  preventiveItem: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  preventiveItem: { fontSize: 13, fontWeight: '700', color: '#334155' },
   preventiveStatus: { fontSize: 11, fontWeight: '600', color: '#0088E8', marginTop: 2 },
   accuracyRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  accChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F3F4F6' },
+  accChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
   accChipActive: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: COLORS.primary },
   accChipText: { fontSize: 11, fontWeight: '800', color: '#9CA3AF' },
   accChipTextActive: { color: COLORS.primary },
-  accHint: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  accHint: { fontSize: 12, fontWeight: '600', color: '#64748B' },
   okLine: { fontSize: 13, fontWeight: '600', color: SCORE_COLORS.GREEN, lineHeight: 20, marginBottom: 6 },
-  linkBtn: { alignItems: 'center', paddingVertical: 14 },
+  footerActions: { marginTop: 4, gap: 10 },
+  footerHint: { fontSize: 11, fontWeight: '600', color: '#64748B', textAlign: 'center', lineHeight: 16, paddingHorizontal: 8 },
+  linkBtn: { alignItems: 'center', paddingVertical: 8 },
   linkText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
 });

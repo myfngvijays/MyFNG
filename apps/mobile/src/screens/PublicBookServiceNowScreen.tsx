@@ -52,6 +52,16 @@ import {
   activatePostBookingMembership,
   quotePostBookingMembership,
 } from '../lib/postBookingMembership';
+import {
+  formatOfferCountdown,
+  membershipOfferCardTitle,
+  membershipOfferFomoMessage,
+} from '../lib/postBookingMembershipOffer';
+import {
+  DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
+  fetchPostBookingMembershipAppConfig,
+  type PostBookingMembershipAppConfig,
+} from '../lib/postBookingMembershipAppConfig';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import {
   AuthVerifyResponse,
@@ -204,6 +214,14 @@ function isTimeSlotPastForDate(slotValue: string, pickupDate: string, todayYmd: 
   return getIndiaNowMinutes() >= slotEndMinutes;
 }
 
+function isTodayBookingClosed(
+  todayYmd: string,
+  slots: Array<{ value: string; label: string }> = TIME_SLOTS,
+): boolean {
+  if (slots.length === 0) return true;
+  return !slots.some((slot) => !isTimeSlotPastForDate(slot.value, todayYmd, todayYmd));
+}
+
 export default function PublicBookServiceNowScreen({ navigation, route }: Props) {
   const paramServiceCategory = route?.params?.serviceCategory;
   const paramSelectedServiceId = route?.params?.selectedServiceId;
@@ -303,7 +321,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentMembership, setCurrentMembership] = useState<any>(null);
   const [primeMembershipPlan, setPrimeMembershipPlan] = useState<AppMembershipPlan | null>(null);
-  const [includeBookingMembership, setIncludeBookingMembership] = useState(false);
+  const [includeBookingMembership, setIncludeBookingMembership] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
   const [useWalletForBooking, setUseWalletForBooking] = useState(true);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
@@ -341,8 +359,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     message: string;
     isPaid: boolean;
     membershipActivated?: boolean;
+    membershipOfferExpiresAt?: string;
   } | null>(null);
   const [membershipActivating, setMembershipActivating] = useState(false);
+  const [successCountdownTick, setSuccessCountdownTick] = useState(0);
+  const [postBookingAppConfig, setPostBookingAppConfig] = useState<PostBookingMembershipAppConfig>(
+    DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
+  );
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -565,15 +588,32 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     [bookingSuccess?.serviceSubtotal, primeMembershipPlan],
   );
 
+  useEffect(() => {
+    fetchPostBookingMembershipAppConfig()
+      .then(setPostBookingAppConfig)
+      .catch(() => {});
+  }, []);
+
+  void successCountdownTick;
   const showPostBookingMembershipOffer = Boolean(
     bookingSuccess &&
+      postBookingAppConfig.enabled &&
+      postBookingAppConfig.show_on_booking_success &&
       !bookingSuccess.membershipActivated &&
       !hasActiveMembership &&
       isLoggedIn &&
       primeMembershipPlan &&
       postBookingMembershipQuote &&
-      postBookingMembershipQuote.payable > 0,
+      postBookingMembershipQuote.payable > 0 &&
+      bookingSuccess.membershipOfferExpiresAt &&
+      new Date(bookingSuccess.membershipOfferExpiresAt).getTime() > Date.now(),
   );
+
+  useEffect(() => {
+    if (!bookingSuccess || bookingSuccess.membershipActivated) return;
+    const timer = setInterval(() => setSuccessCountdownTick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [bookingSuccess?.leadId, bookingSuccess?.membershipActivated]);
 
   const prevServicesKeyRef = useRef<string>('');
   useEffect(() => {
@@ -1437,6 +1477,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         leadNumber: savedLeadNumber,
         serviceSubtotal: totalPrice,
         membershipActivated: false,
+        membershipOfferExpiresAt: new Date(
+          Date.now() + postBookingAppConfig.offer_window_minutes * 60 * 1000,
+        ).toISOString(),
       };
       const amountToPay = isLoggedIn
         ? Number(createdLead.amount_payable ?? finalPayableAmount)
@@ -2106,6 +2149,59 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const tomorrowDate = new Date(getIndiaDate());
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrowStr = formatDateYMD(tomorrowDate);
+  const dayAfterTomorrowDate = new Date(getIndiaDate());
+  dayAfterTomorrowDate.setDate(dayAfterTomorrowDate.getDate() + 2);
+  const dayAfterTomorrowStr = formatDateYMD(dayAfterTomorrowDate);
+  const bookingTimeSlots = form.pickupRequired
+    ? TIME_SLOTS
+    : TIME_SLOTS.filter((slot) => slot.value < '13:00');
+  const todayBookingClosed = isTodayBookingClosed(todayStr, bookingTimeSlots);
+
+  const dateQuickOptions = useMemo(() => {
+    if (todayBookingClosed) {
+      return [
+        {
+          key: 'tomorrow',
+          dateStr: tomorrowStr,
+          label: `Tomorrow, ${formatDateDMShort(tomorrowStr)}`,
+        },
+        {
+          key: 'day-after',
+          dateStr: dayAfterTomorrowStr,
+          label: formatDateDMShort(dayAfterTomorrowStr),
+        },
+      ];
+    }
+    return [
+      {
+        key: 'today',
+        dateStr: todayStr,
+        label: `Today, ${formatDateDMShort(todayStr)}`,
+      },
+      {
+        key: 'tomorrow',
+        dateStr: tomorrowStr,
+        label: `Tomorrow, ${formatDateDMShort(tomorrowStr)}`,
+      },
+    ];
+  }, [todayBookingClosed, todayStr, tomorrowStr, dayAfterTomorrowStr, form.pickupRequired]);
+
+  const quickPickupDates = useMemo(
+    () => new Set(dateQuickOptions.map((option) => option.dateStr)),
+    [dateQuickOptions],
+  );
+
+  useEffect(() => {
+    if (!todayBookingClosed) return;
+    setForm((p) => {
+      if (p.pickupDate && p.pickupDate !== todayStr) return p;
+      return {
+        ...p,
+        pickupDate: tomorrowStr,
+        pickupTime: p.pickupDate === todayStr ? '' : p.pickupTime,
+      };
+    });
+  }, [todayBookingClosed, todayStr, tomorrowStr, form.pickupRequired]);
 
   useEffect(() => {
     if (
@@ -2125,6 +2221,40 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         p.pickupTime && isTimeSlotPastForDate(p.pickupTime, dateStr, todayStr) ? '' : p.pickupTime,
     }));
   };
+
+  const renderDateQuickRow = () => (
+    <View style={styles.dateQuickRow}>
+      {dateQuickOptions.map((option) => (
+        <TouchableOpacity
+          key={option.key}
+          style={[styles.datePill, form.pickupDate === option.dateStr ? styles.datePillActive : null]}
+          onPress={() => selectPickupDate(option.dateStr)}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.datePillText,
+              form.pickupDate === option.dateStr ? styles.datePillTextActive : null,
+            ]}
+          >
+            {option.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity
+        style={styles.dateCalendarBtn}
+        onPress={() => setShowDatePicker(true)}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="calendar" size={16} color="#FFFFFF" />
+        {form.pickupDate && !quickPickupDates.has(form.pickupDate) ? (
+          <Text style={styles.dateCalendarBtnText}>
+            {new Date(form.pickupDate + 'T00:00:00').getDate()}
+          </Text>
+        ) : null}
+      </TouchableOpacity>
+    </View>
+  );
 
   // ── Render ──────────────────────────────────────────────────────
 
@@ -2864,56 +2994,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <Text style={styles.sectionCardTitle}>Pickup Date</Text>
                         <Text style={styles.requiredStar}>*</Text>
                       </View>
-                      <View style={styles.dateQuickRow}>
-                        <TouchableOpacity
-                          style={[
-                            styles.datePill,
-                            form.pickupDate === todayStr ? styles.datePillActive : null,
-                          ]}
-                          onPress={() => selectPickupDate(todayStr)}
-                        >
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              styles.datePillText,
-                              form.pickupDate === todayStr ? styles.datePillTextActive : null,
-                            ]}
-                          >
-                            Today, {formatDateDMShort(todayStr)}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.datePill,
-                            form.pickupDate === tomorrowStr ? styles.datePillActive : null,
-                          ]}
-                          onPress={() => selectPickupDate(tomorrowStr)}
-                        >
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              styles.datePillText,
-                              form.pickupDate === tomorrowStr ? styles.datePillTextActive : null,
-                            ]}
-                          >
-                            Tomorrow, {formatDateDMShort(tomorrowStr)}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dateCalendarBtn}
-                          onPress={() => setShowDatePicker(true)}
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons name="calendar" size={16} color="#FFFFFF" />
-                          {form.pickupDate &&
-                          form.pickupDate !== todayStr &&
-                          form.pickupDate !== tomorrowStr ? (
-                            <Text style={styles.dateCalendarBtnText}>
-                              {new Date(form.pickupDate + 'T00:00:00').getDate()}
-                            </Text>
-                          ) : null}
-                        </TouchableOpacity>
-                      </View>
+                      {renderDateQuickRow()}
                     </View>
 
                     {/* Pickup Time Card */}
@@ -3144,36 +3225,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <Text style={styles.sectionCardTitle}>Visit Date</Text>
                         <Text style={styles.requiredStar}>*</Text>
                       </View>
-                      <View style={styles.dateQuickRow}>
-                        <TouchableOpacity
-                          style={[styles.datePill, form.pickupDate === todayStr ? styles.datePillActive : null]}
-                          onPress={() => selectPickupDate(todayStr)}
-                        >
-                          <Text numberOfLines={1} style={[styles.datePillText, form.pickupDate === todayStr ? styles.datePillTextActive : null]}>
-                            Today, {formatDateDMShort(todayStr)}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.datePill, form.pickupDate === tomorrowStr ? styles.datePillActive : null]}
-                          onPress={() => selectPickupDate(tomorrowStr)}
-                        >
-                          <Text numberOfLines={1} style={[styles.datePillText, form.pickupDate === tomorrowStr ? styles.datePillTextActive : null]}>
-                            Tomorrow, {formatDateDMShort(tomorrowStr)}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dateCalendarBtn}
-                          onPress={() => setShowDatePicker(true)}
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons name="calendar" size={16} color="#FFFFFF" />
-                          {form.pickupDate && form.pickupDate !== todayStr && form.pickupDate !== tomorrowStr ? (
-                            <Text style={styles.dateCalendarBtnText}>
-                              {new Date(form.pickupDate + 'T00:00:00').getDate()}
-                            </Text>
-                          ) : null}
-                        </TouchableOpacity>
-                      </View>
+                      {renderDateQuickRow()}
                     </View>
 
                     {form.pickupDate ? (
@@ -4132,21 +4184,30 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
               {showPostBookingMembershipOffer && postBookingMembershipQuote ? (
                 <View style={styles.successMembershipCard}>
+                  {bookingSuccess?.membershipOfferExpiresAt ? (
+                    <View style={styles.successMembershipTimerRow}>
+                      <View style={styles.successMembershipTimerBadge}>
+                        <Text style={styles.successMembershipTimerText}>
+                          {formatOfferCountdown(bookingSuccess.membershipOfferExpiresAt)}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
                   <View style={styles.successMembershipTop}>
                     <View style={styles.successMembershipIconWrap}>
-                      <Ionicons name="diamond" size={18} color="#7C3AED" />
+                      <Ionicons name="diamond" size={18} color="#DC2626" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.successMembershipTitle}>
-                        Activate {primeMembershipPlan?.name || 'Prime'}
-                        {form.vehicleNumber.trim() ? ` for ${form.vehicleNumber.trim().toUpperCase()}` : ''}
+                        {membershipOfferCardTitle(postBookingAppConfig.card_title)}
                       </Text>
                       <Text style={styles.successMembershipSub}>
-                        Save {inr(postBookingMembershipQuote.bundleDiscount)} on this booking · {postBookingMembershipQuote.discountLabel}
+                        {membershipOfferFomoMessage(
+                          postBookingMembershipQuote.bundleDiscount,
+                          postBookingAppConfig.fomo_message,
+                        )}
                       </Text>
-                      <Text style={styles.successMembershipWindow}>
-                        Offer valid for 3 hours · also available in Order History
-                      </Text>
+                      <Text style={styles.successMembershipWindow}>Also available in Order History</Text>
                     </View>
                   </View>
                   <View style={styles.successMembershipPriceRow}>
@@ -5937,8 +5998,8 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#DDD6FE',
-    backgroundColor: '#FAF5FF',
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
     gap: 10,
   },
   successMembershipTop: {
@@ -5950,27 +6011,46 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#EDE9FE',
+    backgroundColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  successMembershipTimerRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: -4,
+  },
+  successMembershipTimerBadge: {
+    backgroundColor: '#DC2626',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  successMembershipTimerText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.3,
   },
   successMembershipTitle: {
     fontSize: 14,
     fontWeight: '900',
-    color: '#4C1D95',
+    color: '#991B1B',
   },
   successMembershipSub: {
     marginTop: 3,
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#7F1D1D',
     lineHeight: 17,
+    opacity: 0.85,
   },
   successMembershipWindow: {
     marginTop: 4,
     fontSize: 11,
-    fontWeight: '700',
-    color: '#7C3AED',
+    fontWeight: '600',
+    color: '#B91C1C',
   },
   successMembershipPriceRow: {
     flexDirection: 'row',
@@ -5986,14 +6066,14 @@ const styles = StyleSheet.create({
   successMembershipPayable: {
     fontSize: 20,
     fontWeight: '900',
-    color: '#6D28D9',
+    color: '#DC2626',
   },
   successMembershipBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#6D28D9',
+    backgroundColor: '#DC2626',
     borderRadius: 12,
     paddingVertical: 13,
   },

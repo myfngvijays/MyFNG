@@ -1,45 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { pushCarLoanLeadToISanction } from '@/lib/isanction-car-loan';
 
 export const dynamic = 'force-dynamic';
-
-const ISANCTION_URL = 'https://backend2.isanction.in/api/web/leads/partners';
-const ISANCTION_API_KEY = '1flSSHcw$z7v77/F6qHdHbDrRByPqcbudRBqR@JZFTw=';
 
 const TELECRM_AUTOUPDATE_URL =
   'https://022os10kr2.execute-api.ap-south-1.amazonaws.com/enterprise/66f6bc6faf29b5a6f29c9bbf/autoupdatelead';
 const TELECRM_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
-
-async function pushToISanction(data: {
-  mobileNo: string;
-  panId: string;
-  vehicleRegistrationNumber: string;
-  income: number;
-  occupation: string;
-}) {
-  const res = await fetch(ISANCTION_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'api-key': ISANCTION_API_KEY,
-    },
-    body: JSON.stringify({
-      mobileNo: data.mobileNo,
-      type: 'CAR_LOAN',
-      vehicleRegistrationNumber: data.vehicleRegistrationNumber,
-      panId: data.panId,
-      income: data.income,
-      occupation: data.occupation,
-    }),
-  });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.success) {
-    throw new Error(body.message || `iSanction API failed: ${res.status}`);
-  }
-  return body;
-}
 
 async function pushToTeleCRM(phone: string, data: {
   panId: string;
@@ -92,7 +60,7 @@ export async function POST(request: NextRequest) {
     if (!pan || !mobile || !vehicle || !income || !occupation) {
       return NextResponse.json(
         { success: false, error: 'All fields are required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -100,7 +68,7 @@ export async function POST(request: NextRequest) {
     if (phone.length !== 10) {
       return NextResponse.json(
         { success: false, error: 'Invalid mobile number' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -112,7 +80,6 @@ export async function POST(request: NextRequest) {
       occupation: String(occupation),
     };
 
-    // Store in database
     const { supabaseAdmin } = getSupabaseAdmin();
     let dbLeadId: string | null = null;
     if (supabaseAdmin) {
@@ -125,6 +92,7 @@ export async function POST(request: NextRequest) {
           monthly_income: leadData.income,
           occupation: leadData.occupation,
           status: 'NEW',
+          isanction_synced: false,
         })
         .select('id')
         .single();
@@ -136,24 +104,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const [iSanctionResult] = await Promise.allSettled([
-      pushToISanction(leadData),
-      pushToTeleCRM(phone, leadData).catch((err) => {
-        console.error('[car-loan] TeleCRM sync failed (non-blocking):', err);
-      }),
+    const [iSanctionResult, telecrmResult] = await Promise.allSettled([
+      pushCarLoanLeadToISanction(leadData, { maxAttempts: 3 }),
+      pushToTeleCRM(phone, leadData),
     ]);
 
-    // Update DB status based on iSanction result
+    const iSanctionOk =
+      iSanctionResult.status === 'fulfilled' && iSanctionResult.value.ok === true;
+    const iSanctionError =
+      iSanctionResult.status === 'fulfilled'
+        ? iSanctionResult.value.ok
+          ? null
+          : iSanctionResult.value.message
+        : iSanctionResult.reason?.message || 'Failed to reach iSanction partner API';
+
+    if (telecrmResult.status === 'rejected') {
+      console.error('[car-loan] TeleCRM sync failed (non-blocking):', telecrmResult.reason);
+    }
+
     if (supabaseAdmin && dbLeadId) {
-      const isSuccess = iSanctionResult.status === 'fulfilled';
       supabaseAdmin
         .from('car_loan_leads')
         .update({
-          status: isSuccess ? 'SUBMITTED' : 'API_FAILED',
-          isanction_synced: isSuccess,
-          isanction_response: isSuccess
-            ? (iSanctionResult as PromiseFulfilledResult<any>).value
-            : { error: (iSanctionResult as PromiseRejectedResult).reason?.message },
+          status: iSanctionOk ? 'SUBMITTED' : 'API_FAILED',
+          isanction_synced: iSanctionOk,
+          isanction_response: iSanctionOk
+            ? (iSanctionResult as PromiseFulfilledResult<{ ok: true; body: Record<string, unknown> }>).value.body
+            : {
+                error: iSanctionError,
+                status:
+                  iSanctionResult.status === 'fulfilled' && !iSanctionResult.value.ok
+                    ? iSanctionResult.value.status
+                    : null,
+              },
+          updated_at: new Date().toISOString(),
         })
         .eq('id', dbLeadId)
         .then(({ error }) => {
@@ -161,20 +145,25 @@ export async function POST(request: NextRequest) {
         });
     }
 
-    if (iSanctionResult.status === 'rejected') {
-      console.error('[car-loan] iSanction failed:', iSanctionResult.reason);
-      return NextResponse.json(
-        { success: false, error: iSanctionResult.reason?.message || 'Failed to check eligibility' },
-        { status: 502 }
-      );
+    if (!iSanctionOk) {
+      console.error('[car-loan] iSanction failed:', iSanctionError);
     }
 
-    return NextResponse.json({ success: true, message: 'Lead created successfully' });
+    // Lead is already in MyFNG CRM/TeleCRM — do not block the customer when partner API is down.
+    return NextResponse.json({
+      success: true,
+      message: iSanctionOk
+        ? 'Lead created successfully'
+        : 'Application received. Partner sync is pending and will retry automatically.',
+      isanction_synced: iSanctionOk,
+      partner_sync_pending: !iSanctionOk,
+      partner_error: iSanctionOk ? null : iSanctionError,
+    });
   } catch (err: any) {
     console.error('[car-loan] Unexpected error:', err);
     return NextResponse.json(
       { success: false, error: 'Server error. Please try again.' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -74,7 +74,21 @@ import {
   activatePostBookingMembership,
   quotePostBookingMembership,
 } from '../lib/postBookingMembership';
-import { formatOfferCountdown, parsePostBookingMembershipOfferFromOrder } from '../lib/postBookingMembershipOffer';
+import {
+  buildMembershipOfferPayView,
+  resolveOrderMembershipOffer,
+  resolveOrderMembershipBundleDiscount,
+  resolveOrderDisplayAmount,
+  resolveMembershipListPrice,
+  findPendingMembershipOfferOrder,
+} from '../lib/postBookingMembershipOffer';
+import PostBookingMembershipOfferCard from '../components/PostBookingMembershipOfferCard';
+import MyCouponsContent from '../components/MyCouponsContent';
+import {
+  DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
+  mergePostBookingMembershipAppConfig,
+  type PostBookingMembershipAppConfig,
+} from '../lib/postBookingMembershipAppConfig';
 
 type Props = {
   navigation: any;
@@ -289,6 +303,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [orderDetailModal, setOrderDetailModal] = useState<any>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
   const [orderMembershipPayingId, setOrderMembershipPayingId] = useState<string | null>(null);
+  const [membershipOfferTick, setMembershipOfferTick] = useState(0);
+  const [postBookingAppConfig, setPostBookingAppConfig] = useState<PostBookingMembershipAppConfig>(
+    DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
+  );
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
   const [coupon, setCoupon] = useState('');
   const [cartServiceMode, setCartServiceMode] = useState<'pickup' | 'workshop'>('pickup');
@@ -344,6 +362,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const membershipDisplay = useMemo(() => getMembershipDisplay(currentMembership), [currentMembership]);
   const hasActiveMembership = useMemo(() => isMembershipActive(currentMembership), [currentMembership]);
+  const pendingMembershipOffer = useMemo(
+    () =>
+      postBookingAppConfig.enabled
+        ? findPendingMembershipOfferOrder(orders, hasActiveMembership, appMembershipPlans[0] || PRIME_MEMBERSHIP)
+        : null,
+    [orders, hasActiveMembership, appMembershipPlans, postBookingAppConfig.enabled],
+  );
 
   const planDisplayName = (code: string, fallbackName: string) => {
     const c = String(code || '').toUpperCase();
@@ -808,6 +833,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setAddresses([...mappedAddresses, ...uniqueLeadAddresses]);
       setVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
       setOrders(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []);
+      setPostBookingAppConfig(
+        mergePostBookingMembershipAppConfig(ordersRes?.post_booking_membership_settings),
+      );
       setCartLeads(Array.isArray(leadsRes?.leads) ? leadsRes.leads : []);
       setWalletBalance(Number(walletRes?.wallet?.spendable_balance ?? walletRes?.wallet?.current_balance ?? 0));
       setWalletWelcomeExpiresAt(walletRes?.wallet?.welcome_bonus_expires_at || null);
@@ -1472,7 +1500,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (activeSubPage !== 'Order History' || !isLoggedIn) return;
     hydrateCustomerData();
+    fetchPrimeMembershipConfig(ENV.API_URL)
+      .then((plan) => {
+        if (plan) setAppMembershipPlans((prev) => (prev.length > 0 ? prev : [plan as AppMembershipPlan]));
+      })
+      .catch(() => {});
   }, [activeSubPage, isLoggedIn, hydrateCustomerData]);
+
+  useEffect(() => {
+    if (!pendingMembershipOffer && !orderDetailModal) return;
+    const timer = setInterval(() => setMembershipOfferTick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [pendingMembershipOffer?.order?.id, orderDetailModal]);
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
@@ -1706,8 +1745,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const payPostBookingMembership = async (order: any) => {
     if (!order?.id || hasActiveMembership) return;
-    const offer = order.post_booking_membership || parsePostBookingMembershipOfferFromOrder(order);
-    if (!offer) return;
+    const offer = resolveOrderMembershipOffer(order);
+    if (!offer?.active) return;
 
     let plan: AppMembershipPlan | null = appMembershipPlans[0] || null;
     if (!plan?.planId) {
@@ -1724,7 +1763,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       Alert.alert('Membership', 'Could not calculate membership price.');
       return;
     }
-    const expectedPayable = offer.active ? quote.payable : quote.membershipPrice;
+    const expectedPayable = quote.payable;
 
     setOrderMembershipPayingId(String(order.id));
     try {
@@ -2986,7 +3025,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
             onPress={() => setShowProfileEditor((prev) => !prev)}
           >
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{profileForm.name.trim().charAt(0).toUpperCase() || 'C'}</Text>
+              {profileImageUrl ? (
+                <Image source={{ uri: profileImageUrl }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{profileForm.name.trim().charAt(0).toUpperCase() || 'C'}</Text>
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.profileName}>{profileForm.name || 'Customer'}</Text>
@@ -3151,6 +3194,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
 
+      {pendingMembershipOffer && postBookingAppConfig.show_on_account ? (
+        <View style={styles.membershipOfferMainWrap}>
+          <PostBookingMembershipOfferCard
+            offerPayView={pendingMembershipOffer.offerPayView}
+            paying={orderMembershipPayingId === String(pendingMembershipOffer.order.id)}
+            onPay={() => payPostBookingMembership(pendingMembershipOffer.order)}
+            tick={membershipOfferTick}
+            cardTitle={postBookingAppConfig.card_title}
+            fomoMessage={postBookingAppConfig.fomo_message}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.grid}>
         {MAIN_MENU.map((item) => (
           <TouchableOpacity
@@ -3161,7 +3217,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
               setActiveSubPage(item.label);
             }}
           >
-            <Ionicons name={item.icon} size={18} color={COLORS.primary} />
+            <View style={styles.gridCardIconWrap}>
+              <Ionicons name={item.icon} size={18} color={COLORS.primary} />
+              {item.id === 'orders' && pendingMembershipOffer ? (
+                <View style={styles.menuOfferDot} />
+              ) : null}
+            </View>
             <Text style={styles.gridCardText}>{item.label}</Text>
           </TouchableOpacity>
         ))}
@@ -4308,7 +4369,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   : order.vehicle_model || order.vehicle_make || '';
                 const carModel = rawModel ? toTitleCase(rawModel) : '';
                 const leadNum = order.lead_number || order.id?.slice(0, 8) || '';
-                const rawAmt = Number(order.amount_display || 0);
+                const rawAmt = resolveOrderDisplayAmount(order);
                 const displayAmt = rawAmt > 0 ? `₹${Math.round(rawAmt).toLocaleString('en-IN')}` : '-';
                 const workshop = order.workshop_name || 'MyFNG Partner';
                 const appointmentRaw =
@@ -4329,21 +4390,12 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       : null;
                 const displayAddress =
                   String(order.pickup_address || order.customer_address || order.address || '').trim();
-                const offer = !hasActiveMembership
-                  ? (order.post_booking_membership || parsePostBookingMembershipOfferFromOrder(order))
-                  : null;
-                const orderPlan = appMembershipPlans[0] || null;
-                const offerQuote =
-                  offer && orderPlan
-                    ? quotePostBookingMembership(Number(offer.service_subtotal || 0), orderPlan)
+                void membershipOfferTick;
+                const membershipListPrice = resolveMembershipListPrice(appMembershipPlans[0] || PRIME_MEMBERSHIP);
+                const offerPayView =
+                  !hasActiveMembership && postBookingAppConfig.enabled && postBookingAppConfig.show_on_order_history
+                    ? buildMembershipOfferPayView(order, membershipListPrice)
                     : null;
-                const membershipListPrice = Number(orderPlan?.price || PRIME_MEMBERSHIP.price || 699);
-                const offerPayable = offer
-                  ? offer.active
-                    ? Math.max(0, membershipListPrice - Number(offer.bundle_discount || offerQuote?.bundleDiscount || 0))
-                    : membershipListPrice
-                  : 0;
-                const offerSaveAmount = Number(offer?.bundle_discount || offerQuote?.bundleDiscount || 0);
                 const payingMembership = orderMembershipPayingId === String(order.id);
 
                 return (
@@ -4396,40 +4448,29 @@ export default function SettingsScreen({ navigation, route }: Props) {
                     </View>
 
                     {displayAddress ? (
-                      <View style={{ marginTop: 2 }}>
+                      <View style={{ marginTop: 8, marginBottom: 2 }}>
                         <Text style={ostyles.detailLabel}>ADDRESS</Text>
                         <Text style={[ostyles.detailValue, { marginTop: 2 }]} numberOfLines={2}>{displayAddress}</Text>
                       </View>
                     ) : null}
 
-                    <View style={ostyles.amountRow}>
+                    <View style={[ostyles.amountRow, displayAddress ? { marginTop: 12 } : null]}>
                       <View>
                         <Text style={ostyles.detailLabel}>TOTAL AMOUNT</Text>
                         <Text style={ostyles.amountValue}>{displayAmt}</Text>
                       </View>
                     </View>
 
-                    {offer && offerPayable > 0 ? (
-                      <View style={ostyles.membershipOfferCard}>
-                        <View style={{ flex: 1, gap: 4 }}>
-                          <Text style={ostyles.membershipOfferTitle}>
-                            {offer.active ? 'Activate Prime at special price' : 'Activate Prime (full price)'}
-                          </Text>
-                          <Text style={ostyles.membershipOfferSub}>
-                            {offer.active
-                              ? `${formatOfferCountdown(offer.expires_at)}${offerSaveAmount > 0 ? ` · Save ₹${Math.round(offerSaveAmount).toLocaleString('en-IN')}` : ''}`
-                              : '3-hour offer expired · full membership price applies'}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={[ostyles.membershipOfferBtn, payingMembership ? ostyles.membershipOfferBtnDisabled : null]}
-                          onPress={() => payPostBookingMembership(order)}
-                          disabled={payingMembership}
-                        >
-                          <Text style={ostyles.membershipOfferBtnText}>
-                            {payingMembership ? 'Processing…' : `Pay ₹${Math.round(offerPayable).toLocaleString('en-IN')}`}
-                          </Text>
-                        </TouchableOpacity>
+                    {offerPayView ? (
+                      <View style={{ marginTop: 10 }}>
+                        <PostBookingMembershipOfferCard
+                          offerPayView={offerPayView}
+                          paying={payingMembership}
+                          onPay={() => payPostBookingMembership(order)}
+                          tick={membershipOfferTick}
+                          cardTitle={postBookingAppConfig.card_title}
+                          fomoMessage={postBookingAppConfig.fomo_message}
+                        />
                       </View>
                     ) : null}
 
@@ -4468,100 +4509,17 @@ export default function SettingsScreen({ navigation, route }: Props) {
         );
       }
       case 'My Coupons':
-        if (!isLoggedIn) {
-          return (
-            <View style={styles.subWrap}>
-              <View style={cstyles.loginGate}>
-                <View style={cstyles.lockCircle}>
-                  <Ionicons name="lock-closed" size={32} color="#9CA3AF" />
-                </View>
-                <Text style={cstyles.loginGateTitle}>Login Required</Text>
-                <Text style={cstyles.loginGateSub}>Login to view your personal{'\n'}and public coupons.</Text>
-                <TouchableOpacity style={cstyles.loginNowBtn} onPress={() => navigation.navigate('Login' as never)}>
-                  <Text style={cstyles.loginNowBtnText}>Login Now</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        }
         return (
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-            <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
-              Tap a coupon to copy code or use it in your cart checkout.
-            </Text>
-            {myCouponsLoading ? (
-              <Text style={{ color: '#64748B', textAlign: 'center', marginTop: 24 }}>Loading coupons...</Text>
-            ) : myCoupons.length === 0 ? (
-              <View style={{ alignItems: 'center', marginTop: 40, gap: 8 }}>
-                <Ionicons name="pricetag-outline" size={40} color="#CBD5E1" />
-                <Text style={{ color: '#64748B', fontWeight: '600' }}>No coupons available</Text>
-                <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
-                  Check back later for offers or ask support for a personal coupon.
-                </Text>
-              </View>
-            ) : (
-              myCoupons.map((c) => {
-                const code = String(c?.code || '').toUpperCase();
-                const offer = describeCartCoupon(c);
-                const isAssigned = Boolean(c?.assigned);
-                return (
-                  <TouchableOpacity
-                    key={String(c?.id || code)}
-                    activeOpacity={0.85}
-                    style={{
-                      backgroundColor: '#FFFFFF',
-                      borderRadius: 14,
-                      padding: 14,
-                      marginBottom: 10,
-                      borderWidth: 1,
-                      borderColor: isAssigned ? '#BFDBFE' : '#E2E8F0',
-                      borderLeftWidth: 4,
-                      borderLeftColor: isAssigned ? '#2563EB' : COLORS.primary,
-                    }}
-                    onPress={async () => {
-                      if (!code) return;
-                      await Clipboard.setStringAsync(code);
-                      Alert.alert('Copied', `${code} copied to clipboard.`);
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#1E293B', letterSpacing: 1 }}>{code}</Text>
-                      {isAssigned ? (
-                        <View style={{ backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#1D4ED8' }}>FOR YOU</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={{ marginTop: 6, fontSize: 14, fontWeight: '700', color: COLORS.primary }}>{offer}</Text>
-                    {c?.description ? (
-                      <Text style={{ marginTop: 4, fontSize: 12, color: '#64748B' }}>{String(c.description)}</Text>
-                    ) : null}
-                    {c?.min_order_value ? (
-                      <Text style={{ marginTop: 4, fontSize: 11, color: '#94A3B8' }}>
-                        Min order ₹{Number(c.min_order_value).toLocaleString('en-IN')}
-                      </Text>
-                    ) : null}
-                    <TouchableOpacity
-                      style={{
-                        marginTop: 10,
-                        alignSelf: 'flex-start',
-                        backgroundColor: '#EFF6FF',
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 8,
-                      }}
-                      onPress={() => {
-                        setCoupon(code);
-                        setActiveSubPage('Cart');
-                      }}
-                    >
-                      <Text style={{ color: '#1D4ED8', fontWeight: '700', fontSize: 12 }}>Use in Cart</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </ScrollView>
+          <MyCouponsContent
+            isLoggedIn={isLoggedIn}
+            coupons={myCoupons}
+            loading={myCouponsLoading}
+            onLogin={() => navigation.navigate('Login' as never)}
+            onUseInCart={(code) => {
+              setCoupon(code);
+              setActiveSubPage('Cart');
+            }}
+          />
         );
       case 'Cart':
         if (!isLoggedIn) {
@@ -4664,7 +4622,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       const isSelected = cartSelectedDraftId === draft.id;
                       const hasService = draft.step >= 2 && draft.selectedServices && draft.selectedServices.length > 0;
                       return (
-                        <View key={draft.id} style={{ position: 'relative' }}>
+                        <View key={draft.id} style={cstyles.resumeCardShell}>
                           <TouchableOpacity
                             style={[cstyles.resumeCard, isSelected ? cstyles.resumeCardActive : null]}
                             onPress={() => navigation.navigate('PublicBookServiceNow', { resumeDraft: draft })}
@@ -4676,7 +4634,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
+                            style={cstyles.resumeRemoveBtn}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                             onPress={async () => {
                               await removeBookingDraft(draft.id);
                               const updated = await getBookingDrafts();
@@ -5804,8 +5763,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   const appointmentRaw = o.appointment_at || o.preferred_slot_start || null;
                   const appointmentDt = appointmentRaw ? new Date(appointmentRaw) : (o.created_at ? new Date(o.created_at) : null);
                   const walletUsed = Number(o.wallet_deduction || 0);
-                  const couponDiscount = Number(o.coupon_discount || o.discount_amount || 0);
-                  const membershipDiscount = Number(o.membership_bundle_discount || 0);
+                  const couponDiscount = Number(o.coupon_discount || 0);
+                  const membershipDiscount = resolveOrderMembershipBundleDiscount(o);
                   return (
                     <View style={{ gap: 14, paddingBottom: 20 }}>
                       <View style={{ backgroundColor: '#F0F7FF', borderRadius: 12, padding: 14, gap: 6 }}>
@@ -5847,7 +5806,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         </View>
                         <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
                           <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>AMOUNT</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827', marginTop: 2 }}>₹{Math.round(Number(o.amount_display || o.estimated_amount || o.actual_amount || 0)).toLocaleString('en-IN')}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827', marginTop: 2 }}>₹{Math.round(resolveOrderDisplayAmount(o)).toLocaleString('en-IN')}</Text>
                         </View>
                       </View>
 
@@ -5879,6 +5838,40 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           ) : null}
                         </View>
                       ) : null}
+
+                      {(() => {
+                        void membershipOfferTick;
+                        const membershipListPrice = resolveMembershipListPrice(
+                          appMembershipPlans[0] || PRIME_MEMBERSHIP,
+                        );
+                        const detailForOffer = {
+                          ...o,
+                          meta: o.meta,
+                          post_booking_membership: orderDetailModal.post_booking_membership,
+                          created_at: o.created_at,
+                          id: o.id,
+                        };
+                        const offerPayView =
+                          !hasActiveMembership &&
+                          postBookingAppConfig.enabled &&
+                          postBookingAppConfig.show_on_order_history
+                            ? buildMembershipOfferPayView(detailForOffer, membershipListPrice)
+                            : null;
+                        if (!offerPayView) return null;
+                        const payingDetail = orderMembershipPayingId === String(o.id);
+                        return (
+                          <View style={{ marginTop: 10 }}>
+                            <PostBookingMembershipOfferCard
+                              offerPayView={offerPayView}
+                              paying={payingDetail}
+                              onPay={() => payPostBookingMembership(detailForOffer)}
+                              tick={membershipOfferTick}
+                              cardTitle={postBookingAppConfig.card_title}
+                              fomoMessage={postBookingAppConfig.fomo_message}
+                            />
+                          </View>
+                        );
+                      })()}
 
                       {(orderDetailModal.services || []).length > 0 || (orderDetailModal.addons || []).length > 0 ? (
                         <View style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10, gap: 4 }}>
@@ -6016,7 +6009,8 @@ const styles = StyleSheet.create({
   profileInput: { minHeight: 44, borderRadius: 12, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#F3F4F6', paddingHorizontal: 12, color: '#111827', fontSize: 16, fontWeight: '600' },
   profileSaveBtn: { marginTop: 6, minHeight: 46, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   profileSaveText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImage: { width: 44, height: 44 },
   avatarText: { color: COLORS.primary, fontSize: 14, fontWeight: '900' },
   avatarGuest: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   avatarGuestText: { color: '#6B7280', fontSize: 16, fontWeight: '900' },
@@ -6094,6 +6088,19 @@ const styles = StyleSheet.create({
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
   gridCard: { width: (Dimensions.get('window').width - 32 - 8) / 2, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gridCardIconWrap: { position: 'relative' },
+  menuOfferDot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#DC2626',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  membershipOfferMainWrap: { marginBottom: 12 },
   gridCardText: { fontSize: 12, fontWeight: '700', color: '#111827', flex: 1 },
   socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
   socialBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
@@ -6380,8 +6387,28 @@ const ostyles = StyleSheet.create({
     borderColor: '#DDD6FE',
     gap: 10,
   },
-  membershipOfferTitle: { fontSize: 13, fontWeight: '800', color: '#5B21B6' },
-  membershipOfferSub: { fontSize: 11, fontWeight: '600', color: '#6D28D9' },
+  membershipOfferHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  membershipOfferTimerBadge: {
+    backgroundColor: '#DC2626',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexShrink: 0,
+  },
+  membershipOfferTimerText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.3,
+  },
+  membershipOfferTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: '#5B21B6' },
+  membershipOfferSub: { fontSize: 11, fontWeight: '600', color: '#6B7280', lineHeight: 16 },
   membershipOfferBtn: {
     backgroundColor: '#7C3AED',
     borderRadius: 10,
@@ -6442,9 +6469,33 @@ const cstyles = StyleSheet.create({
 
   resumeWrap: { marginBottom: 12 },
   resumeTitle: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
-  resumeRow: { gap: 8, paddingRight: 8 },
-  resumeCard: { width: 168, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', padding: 10 },
+  resumeRow: { gap: 8, paddingRight: 8, paddingVertical: 2 },
+  resumeCardShell: { width: 168, position: 'relative' },
+  resumeCard: {
+    width: 168,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingLeft: 10,
+    paddingRight: 30,
+  },
   resumeCardActive: { borderColor: '#1D4ED8', backgroundColor: '#EFF6FF' },
+  resumeRemoveBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    elevation: 2,
+  },
   resumeLeadNumber: { fontSize: 10, fontWeight: '800', color: '#6B7280' },
   resumePlanName: { marginTop: 4, fontSize: 12, fontWeight: '800', color: '#111827' },
   resumeLeadMeta: { marginTop: 2, fontSize: 10, fontWeight: '700', color: '#6B7280' },

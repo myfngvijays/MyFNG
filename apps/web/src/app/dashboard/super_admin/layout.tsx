@@ -40,6 +40,9 @@ import {
   Sparkles,
   Smartphone,
   Wallet,
+  Timer,
+  PanelBottom,
+  TrendingUp,
 } from 'lucide-react';
 
 type NavItem = {
@@ -166,6 +169,18 @@ const navigationItems: NavItem[] = [
         icon: Crown,
         description: 'Animated promo cards, text & screen placements',
       },
+      {
+        name: 'Post-Booking Prime Offer',
+        href: '/dashboard/super_admin/post-booking-membership',
+        icon: Timer,
+        description: 'Timer upsell after booking, pending offers & settings',
+      },
+      {
+        name: 'App Footer Content',
+        href: '/dashboard/super_admin/app-footer',
+        icon: PanelBottom,
+        description: 'Headline & stats shown at bottom of mobile app screens',
+      },
     ],
   },
   {
@@ -194,6 +209,25 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/wallet-logic',
         icon: Wallet,
         description: 'Service %, membership %, welcome bonus & cashback',
+      },
+    ],
+  },
+  {
+    name: 'Smart Tools',
+    icon: Sparkles,
+    description: 'Mobile app smart tools & analytics',
+    children: [
+      {
+        name: 'Smart Health Check Reports',
+        href: '/dashboard/super_admin/vehicle-health-reports',
+        icon: Activity,
+        description: 'Health checkup reports from the mobile app',
+      },
+      {
+        name: 'Car Resale Value',
+        href: '/dashboard/super_admin/car-resale-valuations',
+        icon: TrendingUp,
+        description: 'Resale estimates from the mobile app',
       },
     ],
   },
@@ -336,6 +370,7 @@ export default function SuperAdminLayout({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Website Images': true,
     'App Customers': false,
+    'Smart Tools': false,
     WhatsApp: false,
   });
 
@@ -345,6 +380,12 @@ export default function SuperAdminLayout({
       pathname?.startsWith('/dashboard/super_admin/wallet-logic')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Customers': true }));
+    }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/vehicle-health-reports') ||
+      pathname?.startsWith('/dashboard/super_admin/car-resale-valuations')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'Smart Tools': true }));
     }
   }, [pathname]);
 

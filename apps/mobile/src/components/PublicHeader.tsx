@@ -5,16 +5,14 @@ import { COLORS } from '../constants/theme';
 
 type PublicHeaderProps = {
   city?: string;
-  isLoggedIn?: boolean;
-  userName?: string | null;
   onPressSearch?: () => void;
-  onPressSettings?: () => void;
+  onPressCart?: () => void;
 };
 
 export default function PublicHeader({
   city = 'Mumbai',
   onPressSearch,
-  onPressSettings,
+  onPressCart,
 }: PublicHeaderProps) {
 
   return (
@@ -34,8 +32,8 @@ export default function PublicHeader({
           <TouchableOpacity style={styles.actionButton} onPress={onPressSearch} activeOpacity={0.85}>
             <Ionicons name="search" size={20} color="#525252" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={onPressSettings} activeOpacity={0.85}>
-            <Ionicons name="settings" size={20} color="#525252" />
+          <TouchableOpacity style={styles.actionButton} onPress={onPressCart} activeOpacity={0.85}>
+            <Ionicons name="cart-outline" size={20} color="#525252" />
           </TouchableOpacity>
         </View>
       </View>

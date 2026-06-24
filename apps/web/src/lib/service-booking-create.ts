@@ -11,6 +11,10 @@ import { calculateBookingMembershipBundleDiscount } from '@/lib/booking-membersh
 import {
   buildPostBookingMembershipOffer,
 } from '@/lib/post-booking-membership-offer';
+import {
+  calculateBundleDiscountWithConfig,
+  getPostBookingMembershipConfig,
+} from '@/lib/post-booking-membership-config';
 import { normalizeCustomerPhone, toServiceLeadType, findCustomerByPhone } from '@/lib/customer-service-leads';
 import { pushServiceLeadToTeleCRM, saveBookedVehicleToProfile } from '@/lib/booking-telecrm-sync';
 import {
@@ -56,6 +60,7 @@ export async function createAuthenticatedServiceBooking(
   const lead = body?.lead || {};
   const useWallet = Boolean(body.use_wallet);
   const subtotal = Number(body.subtotal || lead.estimated_amount || 0);
+  const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
 
   let couponDiscount = Number(body.discount_amount || lead.discount_amount || 0);
   let couponCode: string | null = lead.coupon_code || null;
@@ -106,7 +111,7 @@ export async function createAuthenticatedServiceBooking(
       .maybeSingle();
 
     if (!activeMembership) {
-      membershipBundleDiscount = calculateBookingMembershipBundleDiscount(subtotal);
+      membershipBundleDiscount = calculateBundleDiscountWithConfig(subtotal, pbConfig);
     }
   }
 
@@ -119,10 +124,10 @@ export async function createAuthenticatedServiceBooking(
     .gt('ends_at', nowIso)
     .limit(1)
     .maybeSingle();
-  // Always offer post-booking Prime activation for 3 hours when customer has no active membership.
-  // This is separate from include_booking_membership (cart bundle discount on services).
   const postBookingMembershipOffer =
-    !activeMembershipForOffer && subtotal > 0 ? buildPostBookingMembershipOffer(subtotal) : null;
+    pbConfig.enabled && !activeMembershipForOffer && subtotal > 0
+      ? buildPostBookingMembershipOffer(subtotal, pbConfig)
+      : null;
 
   const totalDiscount = couponDiscount + membershipBundleDiscount;
   const payableBeforeWallet = Math.max(0, subtotal - totalDiscount);

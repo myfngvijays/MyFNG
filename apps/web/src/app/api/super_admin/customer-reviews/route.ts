@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { normalizeCustomerReviewInput, toCustomerReviewDbRow } from '@/lib/customer-reviews-admin';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -65,23 +66,14 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.res;
 
     const body = await request.json();
-    const { name, car, stars, text, date, display_order, is_active } = body || {};
-
-    if (!name || !car || !text || !date) {
-      return NextResponse.json({ error: 'name, car, text, and date are required' }, { status: 400 });
+    const normalized = normalizeCustomerReviewInput(body || {});
+    if (!normalized) {
+      return NextResponse.json({ error: 'name, text, and date are required' }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from(TABLE)
-      .insert({
-        name,
-        car,
-        stars: Math.min(5, Math.max(1, Number(stars) || 5)),
-        text,
-        date,
-        display_order: Number.isFinite(Number(display_order)) ? Number(display_order) : 0,
-        is_active: is_active !== undefined ? !!is_active : true,
-      })
+      .insert(toCustomerReviewDbRow(normalized))
       .select()
       .single();
 

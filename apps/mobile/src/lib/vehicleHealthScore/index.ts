@@ -11,4 +11,6 @@ export {
   runPredictive,
   deriveFlags,
 } from './engine';
+export { mapHealthCtaToServiceCategory } from './bookingMap';
+export { buildHealthReportDocument } from './reportDocument';
 export { lookupRc, cacheRcData, emptyRc, type RcLookupResult } from './rcLookup';

@@ -113,6 +113,43 @@ export async function applyBookingMembershipBundleToLead(
       : {};
   const previousAmount = Number(lead.estimated_amount || lead.actual_amount || 0);
   const previousDiscount = Number(lead.discount_amount || 0);
+  const existingBundle = meta.booking_membership_bundle as Record<string, unknown> | undefined;
+  const alreadyDiscountedAtBooking =
+    Boolean(existingBundle?.include_membership) &&
+    Number(existingBundle?.discount_amount || 0) > 0 &&
+    !existingBundle?.applied_at &&
+    !existingBundle?.membership_id;
+  const appliedAt = new Date().toISOString();
+
+  if (alreadyDiscountedAtBooking) {
+    meta.booking_membership_bundle = {
+      ...existingBundle,
+      include_membership: true,
+      discount_amount: Number(existingBundle?.discount_amount || discountToApply),
+      post_booking: true,
+      membership_id: opts.membershipId,
+      applied_at: appliedAt,
+      service_subtotal: opts.serviceSubtotal,
+    };
+    meta.customer_id = opts.customerId;
+
+    const { error: updateError } = await supabaseAdmin
+      .from('service_leads')
+      .update({
+        meta,
+        updated_at: appliedAt,
+      })
+      .eq('id', opts.leadId);
+
+    if (updateError) throw new Error(updateError.message || 'Could not apply booking discount');
+
+    return {
+      bundleDiscount: Number(existingBundle?.discount_amount || discountToApply),
+      walletCredit: 0,
+      newAmount: previousAmount,
+    };
+  }
+
   const newDiscount = previousDiscount + discountToApply;
   const newAmount = Math.max(0, previousAmount - discountToApply);
 
@@ -121,7 +158,7 @@ export async function applyBookingMembershipBundleToLead(
     discount_amount: discountToApply,
     post_booking: true,
     membership_id: opts.membershipId,
-    applied_at: new Date().toISOString(),
+    applied_at: appliedAt,
     service_subtotal: opts.serviceSubtotal,
   };
   meta.customer_id = opts.customerId;
@@ -133,7 +170,7 @@ export async function applyBookingMembershipBundleToLead(
       actual_amount: newAmount,
       discount_amount: newDiscount,
       meta,
-      updated_at: new Date().toISOString(),
+      updated_at: appliedAt,
     })
     .eq('id', opts.leadId);
 
