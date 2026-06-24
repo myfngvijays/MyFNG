@@ -74,7 +74,41 @@ export async function markWelcomeCreditedPopupShown(customerId: string): Promise
   }
 }
 
-/** Calls wallet API (triggers server backfill) and reads welcome bonus credit if present. */
+/** Calls claim API + wallet API (triggers server backfill) and reads welcome bonus credit if present. */
+export async function claimWelcomeBonusOnServer(sessionToken: string): Promise<WelcomeBonusAuthPayload | null> {
+  try {
+    const headers = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'x-customer-session': sessionToken,
+      'x-mobile-client': 'true',
+      'X-App-Platform': Platform.OS,
+    };
+
+    const claimRes = await fetch(`${ENV.API_URL}/api/customer/wallet/claim-welcome`, {
+      method: 'POST',
+      headers,
+    });
+    if (claimRes.ok) {
+      const contentType = claimRes.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const json = await claimRes.json();
+        const wb = json?.welcome_bonus;
+        if (wb && wb.credited && Number(wb.amount || 0) > 0) {
+          return {
+            credited: true,
+            amount: Number(wb.amount),
+            expires_at: wb.expires_at || null,
+          };
+        }
+      }
+    }
+  } catch {
+    // fall through to wallet GET
+  }
+  return null;
+}
+
 export async function fetchWalletWelcomeBonus(sessionToken: string): Promise<WelcomeBonusAuthPayload | null> {
   try {
     const res = await fetch(`${ENV.API_URL}/api/customer/wallet`, {
@@ -113,6 +147,10 @@ export async function resolveWelcomeBonusAfterLogin(
 ): Promise<WelcomeBonusAuthPayload | null> {
   const fromAuth = parseWelcomeBonusFromAuth(authResponse);
   if (shouldShowCreditedPopup(fromAuth)) return fromAuth;
+
+  const fromClaim = await claimWelcomeBonusOnServer(sessionToken);
+  if (shouldShowCreditedPopup(fromClaim)) return fromClaim;
+
   return fetchWalletWelcomeBonus(sessionToken);
 }
 
