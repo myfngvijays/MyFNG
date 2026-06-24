@@ -9,8 +9,10 @@ import { pushServiceLeadToTeleCRM, saveBookedVehicleToProfile } from '@/lib/book
 import { calculateBookingMembershipBundleDiscount } from '@/lib/booking-membership-discount';
 import {
   debitServiceBookingWallet,
+  resolveBookingServiceLabel,
   resolveServiceBookingWallet,
 } from '@/lib/booking-wallet-apply';
+import { buildPostBookingMembershipOffer } from '@/lib/post-booking-membership-offer';
 
 type BookingPayload = {
   lead?: Record<string, any>;
@@ -197,6 +199,21 @@ export async function POST(request: NextRequest) {
     let walletDeduction = 0;
     let finalAmount = Math.max(0, subtotal - discountAmount - membershipBundleDiscount);
 
+    let postBookingMembershipOffer: ReturnType<typeof buildPostBookingMembershipOffer> | null = null;
+    if (registeredCustomer?.id && subtotal > 0) {
+      const { data: activeMembershipForOffer } = await supabaseAdmin
+        .from('customer_memberships')
+        .select('id')
+        .eq('customer_id', registeredCustomer.id)
+        .eq('status', 'ACTIVE')
+        .gt('ends_at', nowIso)
+        .limit(1)
+        .maybeSingle();
+      if (!activeMembershipForOffer) {
+        postBookingMembershipOffer = buildPostBookingMembershipOffer(subtotal);
+      }
+    }
+
     if (useWallet && registeredCustomer?.id) {
       const walletResult = await resolveServiceBookingWallet(
         supabaseAdmin,
@@ -254,6 +271,9 @@ export async function POST(request: NextRequest) {
           nextMeta.wallet_deduction = walletDeduction;
           nextMeta.wallet_applied = true;
         }
+        if (postBookingMembershipOffer) {
+          nextMeta.post_booking_membership_offer = postBookingMembershipOffer;
+        }
         return Object.keys(nextMeta).length ? nextMeta : null;
       })(),
       created_at: lead?.created_at || nowIso,
@@ -271,6 +291,7 @@ export async function POST(request: NextRequest) {
 
     if (walletDeduction > 0 && registeredCustomer?.id && serviceLead?.id) {
       try {
+        const serviceLabel = resolveBookingServiceLabel(body);
         await debitServiceBookingWallet(supabaseAdmin, registeredCustomer.id, request, {
           leadId: serviceLead.id,
           leadNumber: serviceLead.lead_number || leadNumber,
@@ -279,6 +300,7 @@ export async function POST(request: NextRequest) {
           membershipBundleDiscount,
           walletDeduction,
           vehicleNumber,
+          serviceLabel,
         });
       } catch (walletErr: any) {
         await supabaseAdmin.from('service_leads').delete().eq('id', serviceLead.id);

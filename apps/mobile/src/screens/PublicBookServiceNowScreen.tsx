@@ -278,6 +278,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   });
   const [carSuggestions, setCarSuggestions] = useState<CarModelRow[]>([]);
   const [showCarSuggestions, setShowCarSuggestions] = useState(false);
+  const [rebookServiceIds, setRebookServiceIds] = useState<string[]>([]);
 
   const [serviceTypes, setServiceTypes] = useState<ServiceTypeRow[]>([]);
   const [serviceLoading, setServiceLoading] = useState(false);
@@ -302,7 +303,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentMembership, setCurrentMembership] = useState<any>(null);
   const [primeMembershipPlan, setPrimeMembershipPlan] = useState<AppMembershipPlan | null>(null);
-  const [includeBookingMembership, setIncludeBookingMembership] = useState(true);
+  const [includeBookingMembership, setIncludeBookingMembership] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [useWalletForBooking, setUseWalletForBooking] = useState(true);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
@@ -823,6 +824,52 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setShowNewAddressForm(false);
     setNewAddrForm({ label: 'Home', line1: '', line2: '', city: '', pincode: '' });
   }, [newAddrForm]);
+
+  async function resolveCarModelForRebook(
+    make: string,
+    model: string,
+    fuelType?: string | null,
+  ): Promise<CarModelRow | null> {
+    try {
+      const { data, error } = await supabase
+        .from('car_models')
+        .select('id,make,model_name,variant,class')
+        .eq('is_active', true)
+        .ilike('make', make)
+        .ilike('model_name', `%${model}%`)
+        .order('model_name')
+        .limit(30);
+      if (error || !data?.length) return null;
+      const rows = data as CarModelRow[];
+      const exact = rows.find((row) => row.model_name.toLowerCase() === model.toLowerCase());
+      if (exact) return exact;
+      if (fuelType) {
+        const byFuel = rows.find((row) =>
+          String(row.variant || '').toLowerCase().includes(String(fuelType).toLowerCase()),
+        );
+        if (byFuel) return byFuel;
+      }
+      return rows[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function parseRebookServiceIds(input: unknown): string[] {
+    if (!input) return [];
+    if (Array.isArray(input)) return input.map((v) => String(v || '').trim()).filter(Boolean);
+    const raw = String(input || '').trim();
+    if (!raw) return [];
+    try {
+      if (raw.startsWith('[') && raw.endsWith(']')) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map((v) => String(v || '').trim()).filter(Boolean);
+      }
+    } catch {
+      // ignore
+    }
+    return raw.split(',').map((v) => v.trim()).filter(Boolean);
+  }
 
   async function searchCarModels(q: string) {
     const query = q.trim();
@@ -1605,9 +1652,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         }
         const make = String(rebook.vehicle_make || '').trim();
         const model = String(rebook.vehicle_model || '').trim();
+        const serviceIds = parseRebookServiceIds(rebook.service_type_ids);
+        if (serviceIds.length > 0) setRebookServiceIds(serviceIds);
         if (make && model) {
-          rebookFormUpdates.carModel = { id: `rebook-${Date.now()}`, make, model_name: model, variant: rebook.fuel_type || null };
-          setCarQuery(`${make} ${model}`);
+          const resolvedCar = await resolveCarModelForRebook(make, model, rebook.fuel_type || null);
+          if (resolvedCar) {
+            rebookFormUpdates.carModel = resolvedCar;
+            setCarQuery(`${resolvedCar.make} ${resolvedCar.model_name}`);
+          } else {
+            rebookFormUpdates.carModel = {
+              id: `rebook-${Date.now()}`,
+              make,
+              model_name: model,
+              variant: rebook.fuel_type || null,
+            };
+            setCarQuery(`${make} ${model}`);
+          }
         }
         setForm((prev) => ({ ...prev, ...rebookFormUpdates }));
         if (!matchedCity) autoDetectLocation(cityList);
@@ -1684,6 +1744,33 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [step, serviceTypes.length, paramSelectedServiceId]);
 
   useEffect(() => {
+    if (step !== 2 || rebookServiceIds.length === 0 || serviceTypes.length === 0) return;
+    const validIds = rebookServiceIds.filter((id) => serviceTypes.some((s) => s.id === id));
+    if (validIds.length === 0) return;
+    setForm((prev) => {
+      if (prev.selectedServices.length > 0) return prev;
+      return { ...prev, selectedServices: validIds };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, serviceTypes.length, rebookServiceIds.join('|')]);
+
+  useEffect(() => {
+    if (!bookingSuccess || primeMembershipPlan || hasActiveMembership) return;
+    let active = true;
+    (async () => {
+      try {
+        const plan = await fetchPrimeMembershipConfig(ENV.API_URL);
+        if (active && plan) setPrimeMembershipPlan(plan as AppMembershipPlan);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [bookingSuccess, primeMembershipPlan, hasActiveMembership]);
+
+  useEffect(() => {
     if (hasActiveMembership) {
       setIncludeBookingMembership(false);
     }
@@ -1697,7 +1784,6 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         const plan = await fetchPrimeMembershipConfig(ENV.API_URL);
         if (!active) return;
         setPrimeMembershipPlan(plan as AppMembershipPlan | null);
-        if (plan) setIncludeBookingMembership(true);
       } catch {
         if (active) setPrimeMembershipPlan(null);
       }
@@ -4058,6 +4144,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <Text style={styles.successMembershipSub}>
                         Save {inr(postBookingMembershipQuote.bundleDiscount)} on this booking · {postBookingMembershipQuote.discountLabel}
                       </Text>
+                      <Text style={styles.successMembershipWindow}>
+                        Offer valid for 3 hours · also available in Order History
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.successMembershipPriceRow}>
@@ -5876,6 +5965,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6B7280',
     lineHeight: 17,
+  },
+  successMembershipWindow: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7C3AED',
   },
   successMembershipPriceRow: {
     flexDirection: 'row',

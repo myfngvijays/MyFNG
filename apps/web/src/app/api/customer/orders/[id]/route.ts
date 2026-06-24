@@ -66,6 +66,42 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     String((lead as any).description || '').trim() ||
     'Service';
 
+  let workshopName = '';
+  const workshopId = String((lead as any).workshop_id || '').trim();
+  if (workshopId) {
+    const { data: workshop } = await supabaseAdmin
+      .from('workshops')
+      .select('name, workshop_name')
+      .eq('id', workshopId)
+      .maybeSingle();
+    workshopName = String((workshop as any)?.workshop_name || (workshop as any)?.name || '');
+  }
+
+  const leadMeta =
+    (lead as any).meta && typeof (lead as any).meta === 'object'
+      ? ((lead as any).meta as Record<string, unknown>)
+      : {};
+  const walletDeduction = Number(leadMeta.wallet_deduction || 0);
+  const preferredSlotStart = String((lead as any).preferred_slot_start || '').trim();
+  const preferredTimeSlot = String((lead as any).preferred_time_slot || '').trim();
+  const preferredDate = String((lead as any).preferred_date || '').trim();
+  const appointmentAt =
+    preferredSlotStart ||
+    (preferredDate && preferredTimeSlot ? `${preferredDate}T${preferredTimeSlot}` : preferredDate || null);
+  const displayAddress =
+    String((lead as any).pickup_address || '').trim() ||
+    String((lead as any).customer_address || '').trim() ||
+    String((lead as any).address || '').trim() ||
+    '';
+  const pickupRequired = (lead as any).pickup_required;
+  const serviceMode =
+    pickupRequired === true ? 'Doorstep Pickup' : pickupRequired === false ? 'Workshop Visit' : 'Not specified';
+  const couponCode = String((lead as any).coupon_code || '').trim() || null;
+  const couponDiscount = Number((lead as any).discount_amount || 0);
+  const membershipBundleDiscount = Number(
+    (leadMeta.booking_membership_bundle as any)?.discount_amount || 0,
+  );
+
   const { data: invoice } = await supabaseAdmin
     .from('invoices')
     .select('id, invoice_number, payment_status, final_amount, invoice_type, status, line_items, created_at')
@@ -144,6 +180,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     service_display: resolvedServiceType,
     services: resolvedServiceNames,
     addons: resolvedAddonNames,
+    workshop_name: workshopName,
+    appointment_at: appointmentAt,
+    display_address: displayAddress,
+    service_mode: serviceMode,
+    wallet_deduction: walletDeduction,
+    coupon_code: couponCode,
+    coupon_discount: couponDiscount,
+    membership_bundle_discount: membershipBundleDiscount,
   };
 
   return NextResponse.json({

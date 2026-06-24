@@ -6,6 +6,7 @@ import {
   normalizeCustomerPhone,
 } from '@/lib/customer-service-leads';
 import { parseMembershipClaimMeta } from '@/lib/membership-benefits-service';
+import { resolvePostBookingMembershipOfferStatus } from '@/lib/post-booking-membership-offer';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
 
   let query = supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, preferred_date, preferred_time_slot, meta, customer_phone')
+    .select('id, lead_number, status, service_type, description, service_type_ids, subservice_ids, vehicle_number, vehicle_make, vehicle_model, fuel_type:vehicle_fuel_type, estimated_amount, actual_amount, invoice_amount, discount_amount, coupon_code, created_at, completed_at, invoice_id, workshop_id, city, address, customer_address, pickup_address, pickup_required, preferred_date, preferred_time_slot, preferred_slot_start, meta, customer_phone')
     .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
     .order('created_at', { ascending: false })
     .limit(200);
@@ -176,6 +177,7 @@ export async function GET(request: Request) {
       preferred_time: r.preferred_time_slot || null,
       workshop_name: workshopNameById[String(r.workshop_id || '')] || '',
       membership_claim: parseMembershipClaimMeta(r.meta),
+      post_booking_membership: resolvePostBookingMembershipOfferStatus(r),
     };
   });
 

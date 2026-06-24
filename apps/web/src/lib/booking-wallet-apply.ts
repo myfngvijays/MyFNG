@@ -89,12 +89,15 @@ export async function debitServiceBookingWallet(
     membershipBundleDiscount?: number;
     walletDeduction: number;
     vehicleNumber?: string | null;
+    serviceLabel?: string | null;
   },
 ) {
   if (opts.walletDeduction <= 0) return { debited: 0 };
 
   const walletPlatform = parseWalletPlatform(request.headers.get('x-app-platform'));
   const vehicleNumber = String(opts.vehicleNumber || '').trim() || null;
+  const serviceLabel = String(opts.serviceLabel || '').trim() || null;
+  const walletLabel = serviceLabel ? `Used for ${serviceLabel}` : 'Used for Service Booking';
 
   return debitWallet(supabaseAdmin, customerId, opts.walletDeduction, {
     source: 'ORDER_REDEEM',
@@ -103,7 +106,8 @@ export async function debitServiceBookingWallet(
     vehicleNumber,
     platform: walletPlatform,
     metadata: {
-      label: 'Used for Service Booking',
+      label: walletLabel,
+      service_name: serviceLabel,
       lead_id: opts.leadId,
       lead_number: opts.leadNumber,
       subtotal: opts.subtotal,
@@ -113,4 +117,17 @@ export async function debitServiceBookingWallet(
       vehicle_number: vehicleNumber,
     },
   });
+}
+
+export function resolveBookingServiceLabel(body: Record<string, any>): string | null {
+  const items = Array.isArray(body?.service_items)
+    ? body.service_items
+    : Array.isArray(body?.coupon?.lead_context?.service_items)
+      ? body.coupon.lead_context.service_items
+      : [];
+  const labels = items
+    .map((item: any) => String(item?.label || '').trim())
+    .filter(Boolean);
+  if (labels.length > 0) return labels.join(', ');
+  return null;
 }

@@ -1,4 +1,7 @@
-import { calculateBookingMembershipBundleDiscount } from '@/lib/booking-membership-discount';
+import {
+  parsePostBookingMembershipOffer,
+  resolvePostBookingBundleDiscount,
+} from '@/lib/post-booking-membership-offer';
 import { creditWallet } from '@/lib/wallet-service';
 import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
 
@@ -18,11 +21,15 @@ export async function resolvePostBookingLeadContext(
 
   const { data: lead, error } = await supabaseAdmin
     .from('service_leads')
-    .select('id, lead_number, customer_phone, estimated_amount, actual_amount, discount_amount, meta, advance_payment')
+    .select('id, lead_number, customer_phone, estimated_amount, actual_amount, discount_amount, meta')
     .eq('id', leadId)
     .maybeSingle();
 
-  if (error || !lead) return { ok: false, error: 'Booking not found', status: 404 };
+  if (error) {
+    console.error('[resolvePostBookingLeadContext] lead lookup failed:', error);
+    return { ok: false, error: 'Could not load booking details', status: 500 };
+  }
+  if (!lead) return { ok: false, error: 'Booking not found', status: 404 };
 
   const meta =
     lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
@@ -66,7 +73,8 @@ export async function resolvePostBookingLeadContext(
     return { ok: false, error: 'Could not determine service amount for this booking', status: 400 };
   }
 
-  const bundleDiscount = calculateBookingMembershipBundleDiscount(serviceSubtotal);
+  const offer = parsePostBookingMembershipOffer(meta);
+  const bundleDiscount = resolvePostBookingBundleDiscount(serviceSubtotal, offer);
   return {
     ok: true,
     ctx: {
@@ -132,7 +140,13 @@ export async function applyBookingMembershipBundleToLead(
   if (updateError) throw new Error(updateError.message || 'Could not apply booking discount');
 
   let walletCredit = 0;
-  const advancePaid = Number(lead.advance_payment || 0);
+  const bundleMeta =
+    meta.booking_membership_bundle && typeof meta.booking_membership_bundle === 'object'
+      ? (meta.booking_membership_bundle as Record<string, unknown>)
+      : {};
+  const advancePaid = Number(
+    bundleMeta.advance_paid || meta.advance_paid || meta.advance_payment || 0,
+  );
   if (advancePaid > newAmount) {
     walletCredit = Math.max(0, Math.round((advancePaid - newAmount) * 100) / 100);
   }

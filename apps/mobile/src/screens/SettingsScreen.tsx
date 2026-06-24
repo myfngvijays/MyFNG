@@ -70,6 +70,11 @@ import {
   type MembershipClaimHistoryRow,
 } from '../lib/membershipClaims';
 import MembershipPlanCartCard from '../components/MembershipPlanCartCard';
+import {
+  activatePostBookingMembership,
+  quotePostBookingMembership,
+} from '../lib/postBookingMembership';
+import { formatOfferCountdown, parsePostBookingMembershipOfferFromOrder } from '../lib/postBookingMembershipOffer';
 
 type Props = {
   navigation: any;
@@ -283,6 +288,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [orderFilter, setOrderFilter] = useState<'All' | 'Completed' | 'Upcoming' | 'Ongoing' | 'Cancelled'>('All');
   const [orderDetailModal, setOrderDetailModal] = useState<any>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
+  const [orderMembershipPayingId, setOrderMembershipPayingId] = useState<string | null>(null);
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
   const [coupon, setCoupon] = useState('');
   const [cartServiceMode, setCartServiceMode] = useState<'pickup' | 'workshop'>('pickup');
@@ -1695,6 +1701,51 @@ export default function SettingsScreen({ navigation, route }: Props) {
       Alert.alert('Error', 'Could not load order details.');
     } finally {
       setOrderDetailLoading(false);
+    }
+  };
+
+  const payPostBookingMembership = async (order: any) => {
+    if (!order?.id || hasActiveMembership) return;
+    const offer = order.post_booking_membership || parsePostBookingMembershipOfferFromOrder(order);
+    if (!offer) return;
+
+    let plan: AppMembershipPlan | null = appMembershipPlans[0] || null;
+    if (!plan?.planId) {
+      plan = (await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null)) as AppMembershipPlan | null;
+    }
+    if (!plan?.planId) {
+      Alert.alert('Membership', 'Plan details not available. Please try again.');
+      return;
+    }
+
+    const serviceSubtotal = Number(offer.service_subtotal || 0);
+    const quote = quotePostBookingMembership(serviceSubtotal, plan);
+    if (!quote) {
+      Alert.alert('Membership', 'Could not calculate membership price.');
+      return;
+    }
+    const expectedPayable = offer.active ? quote.payable : quote.membershipPrice;
+
+    setOrderMembershipPayingId(String(order.id));
+    try {
+      await activatePostBookingMembership({
+        apiFetch,
+        plan,
+        leadId: String(order.id),
+        serviceSubtotal,
+        expectedPayable,
+        vehicle: {
+          vehicle_number: String(order.vehicle_number || '').trim().toUpperCase(),
+          make: String(order.vehicle_make || '').trim(),
+          model: String(order.vehicle_model || '').trim(),
+        },
+      });
+      Alert.alert('Success', 'Prime membership activated successfully.');
+      await hydrateCustomerData();
+    } catch (err: any) {
+      Alert.alert('Payment failed', err?.message || 'Could not activate membership.');
+    } finally {
+      setOrderMembershipPayingId(null);
     }
   };
 
@@ -4260,6 +4311,40 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 const rawAmt = Number(order.amount_display || 0);
                 const displayAmt = rawAmt > 0 ? `₹${Math.round(rawAmt).toLocaleString('en-IN')}` : '-';
                 const workshop = order.workshop_name || 'MyFNG Partner';
+                const appointmentRaw =
+                  order.preferred_slot_start ||
+                  (order.preferred_date && (order.preferred_time || order.preferred_time_slot)
+                    ? `${order.preferred_date}T${order.preferred_time || order.preferred_time_slot}`
+                    : null);
+                const appointmentDt = appointmentRaw ? new Date(appointmentRaw) : dt;
+                const timeLabel =
+                  appointmentDt && !Number.isNaN(appointmentDt.getTime())
+                    ? appointmentDt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                    : order.preferred_time || order.preferred_time_slot || '-';
+                const serviceMode =
+                  order.pickup_required === true
+                    ? 'Doorstep Pickup'
+                    : order.pickup_required === false
+                      ? 'Workshop Visit'
+                      : null;
+                const displayAddress =
+                  String(order.pickup_address || order.customer_address || order.address || '').trim();
+                const offer = !hasActiveMembership
+                  ? (order.post_booking_membership || parsePostBookingMembershipOfferFromOrder(order))
+                  : null;
+                const orderPlan = appMembershipPlans[0] || null;
+                const offerQuote =
+                  offer && orderPlan
+                    ? quotePostBookingMembership(Number(offer.service_subtotal || 0), orderPlan)
+                    : null;
+                const membershipListPrice = Number(orderPlan?.price || PRIME_MEMBERSHIP.price || 699);
+                const offerPayable = offer
+                  ? offer.active
+                    ? Math.max(0, membershipListPrice - Number(offer.bundle_discount || offerQuote?.bundleDiscount || 0))
+                    : membershipListPrice
+                  : 0;
+                const offerSaveAmount = Number(offer?.bundle_discount || offerQuote?.bundleDiscount || 0);
+                const payingMembership = orderMembershipPayingId === String(order.id);
 
                 return (
                   <View key={order.id || idx} style={ostyles.orderCard}>
@@ -4294,10 +4379,28 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         </Text>
                       </View>
                       <View style={ostyles.detailCol}>
+                        <Text style={ostyles.detailLabel}>TIME</Text>
+                        <Text style={ostyles.detailValue}>{timeLabel}</Text>
+                      </View>
+                    </View>
+
+                    <View style={ostyles.detailRow}>
+                      <View style={ostyles.detailCol}>
                         <Text style={ostyles.detailLabel}>WORKSHOP</Text>
                         <Text style={ostyles.detailValue} numberOfLines={1}>{workshop}</Text>
                       </View>
+                      <View style={ostyles.detailCol}>
+                        <Text style={ostyles.detailLabel}>MODE</Text>
+                        <Text style={ostyles.detailValue} numberOfLines={1}>{serviceMode || '-'}</Text>
+                      </View>
                     </View>
+
+                    {displayAddress ? (
+                      <View style={{ marginTop: 2 }}>
+                        <Text style={ostyles.detailLabel}>ADDRESS</Text>
+                        <Text style={[ostyles.detailValue, { marginTop: 2 }]} numberOfLines={2}>{displayAddress}</Text>
+                      </View>
+                    ) : null}
 
                     <View style={ostyles.amountRow}>
                       <View>
@@ -4305,6 +4408,30 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         <Text style={ostyles.amountValue}>{displayAmt}</Text>
                       </View>
                     </View>
+
+                    {offer && offerPayable > 0 ? (
+                      <View style={ostyles.membershipOfferCard}>
+                        <View style={{ flex: 1, gap: 4 }}>
+                          <Text style={ostyles.membershipOfferTitle}>
+                            {offer.active ? 'Activate Prime at special price' : 'Activate Prime (full price)'}
+                          </Text>
+                          <Text style={ostyles.membershipOfferSub}>
+                            {offer.active
+                              ? `${formatOfferCountdown(offer.expires_at)}${offerSaveAmount > 0 ? ` · Save ₹${Math.round(offerSaveAmount).toLocaleString('en-IN')}` : ''}`
+                              : '3-hour offer expired · full membership price applies'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[ostyles.membershipOfferBtn, payingMembership ? ostyles.membershipOfferBtnDisabled : null]}
+                          onPress={() => payPostBookingMembership(order)}
+                          disabled={payingMembership}
+                        >
+                          <Text style={ostyles.membershipOfferBtnText}>
+                            {payingMembership ? 'Processing…' : `Pay ₹${Math.round(offerPayable).toLocaleString('en-IN')}`}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
 
                     <View style={ostyles.actionRow}>
                       <TouchableOpacity style={ostyles.bookAgainBtn} onPress={() => viewOrderDetails(order.id)}>
@@ -4320,7 +4447,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                               vehicle_model: order.vehicle_model || '',
                               fuel_type: order.fuel_type || '',
                               city: order.city || '',
-                              address: order.address || '',
+                              address: order.pickup_address || order.customer_address || order.address || '',
                               service_type: order.service_type || '',
                               service_type_ids: order.service_type_ids || '',
                               service_display: order.service_display || '',
@@ -5674,7 +5801,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   const extras = orderDetailModal.extra_charges || [];
                   const toTitleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
                   const carModel = [o.vehicle_make, o.vehicle_model].filter(Boolean).map((s: string) => toTitleCase(s)).join(' ');
-                  const dt = o.created_at ? new Date(o.created_at) : null;
+                  const appointmentRaw = o.appointment_at || o.preferred_slot_start || null;
+                  const appointmentDt = appointmentRaw ? new Date(appointmentRaw) : (o.created_at ? new Date(o.created_at) : null);
+                  const walletUsed = Number(o.wallet_deduction || 0);
+                  const couponDiscount = Number(o.coupon_discount || o.discount_amount || 0);
+                  const membershipDiscount = Number(o.membership_bundle_discount || 0);
                   return (
                     <View style={{ gap: 14, paddingBottom: 20 }}>
                       <View style={{ backgroundColor: '#F0F7FF', borderRadius: 12, padding: 14, gap: 6 }}>
@@ -5686,7 +5817,22 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       <View style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
                           <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>DATE</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginTop: 2 }}>{dt ? dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginTop: 2 }}>
+                            {appointmentDt ? appointmentDt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>TIME</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginTop: 2 }}>
+                            {appointmentDt ? appointmentDt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>MODE</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#111827', marginTop: 2 }}>{o.service_mode || '-'}</Text>
                         </View>
                         <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
                           <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>STATUS</Text>
@@ -5701,14 +5847,36 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         </View>
                         <View style={{ flex: 1, backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
                           <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>AMOUNT</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827', marginTop: 2 }}>₹{Math.round(Number(o.amount_display || o.estimated_cost || 0)).toLocaleString('en-IN')}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827', marginTop: 2 }}>₹{Math.round(Number(o.amount_display || o.estimated_amount || o.actual_amount || 0)).toLocaleString('en-IN')}</Text>
                         </View>
                       </View>
 
-                      {o.customer_address ? (
+                      {o.display_address || o.customer_address || o.pickup_address ? (
                         <View style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>PICKUP ADDRESS</Text>
-                          <Text style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>{o.customer_address}</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>ADDRESS</Text>
+                          <Text style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>{o.display_address || o.customer_address || o.pickup_address}</Text>
+                        </View>
+                      ) : null}
+
+                      {(o.coupon_code || walletUsed > 0 || membershipDiscount > 0) ? (
+                        <View style={{ backgroundColor: '#FFFBEB', borderRadius: 10, padding: 10, gap: 6 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9CA3AF' }}>DISCOUNTS & WALLET</Text>
+                          {o.coupon_code ? (
+                            <Text style={{ fontSize: 13, color: '#111827' }}>
+                              Coupon {o.coupon_code}
+                              {couponDiscount > 0 ? ` · -₹${Math.round(couponDiscount).toLocaleString('en-IN')}` : ''}
+                            </Text>
+                          ) : null}
+                          {membershipDiscount > 0 ? (
+                            <Text style={{ fontSize: 13, color: '#111827' }}>
+                              Membership bundle · -₹{Math.round(membershipDiscount).toLocaleString('en-IN')}
+                            </Text>
+                          ) : null}
+                          {walletUsed > 0 ? (
+                            <Text style={{ fontSize: 13, color: '#111827' }}>
+                              Wallet used · -₹{Math.round(walletUsed).toLocaleString('en-IN')}
+                            </Text>
+                          ) : null}
                         </View>
                       ) : null}
 
@@ -6203,6 +6371,25 @@ const ostyles = StyleSheet.create({
   viewDetailsBtnText: { fontSize: 12, fontWeight: '600', color: '#374151' },
 
   actionRow: { flexDirection: 'row', gap: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  membershipOfferCard: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    gap: 10,
+  },
+  membershipOfferTitle: { fontSize: 13, fontWeight: '800', color: '#5B21B6' },
+  membershipOfferSub: { fontSize: 11, fontWeight: '600', color: '#6D28D9' },
+  membershipOfferBtn: {
+    backgroundColor: '#7C3AED',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  membershipOfferBtnDisabled: { opacity: 0.7 },
+  membershipOfferBtnText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
   bookAgainBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center', paddingVertical: 10, borderWidth: 1.5, borderColor: '#1A3C6E', borderRadius: 10 },
   bookAgainText: { fontSize: 12, fontWeight: '800', color: '#1A3C6E', letterSpacing: 0.3 },
   invoiceBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center', paddingVertical: 10, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10 },

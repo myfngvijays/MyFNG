@@ -8,10 +8,14 @@ import {
   recordMembershipClaimUsage,
 } from '@/lib/membership-benefits-service';
 import { calculateBookingMembershipBundleDiscount } from '@/lib/booking-membership-discount';
+import {
+  buildPostBookingMembershipOffer,
+} from '@/lib/post-booking-membership-offer';
 import { normalizeCustomerPhone, toServiceLeadType, findCustomerByPhone } from '@/lib/customer-service-leads';
 import { pushServiceLeadToTeleCRM, saveBookedVehicleToProfile } from '@/lib/booking-telecrm-sync';
 import {
   debitServiceBookingWallet,
+  resolveBookingServiceLabel,
   resolveServiceBookingWallet,
 } from '@/lib/booking-wallet-apply';
 
@@ -106,6 +110,20 @@ export async function createAuthenticatedServiceBooking(
     }
   }
 
+  const nowIso = new Date().toISOString();
+  const { data: activeMembershipForOffer } = await supabaseAdmin
+    .from('customer_memberships')
+    .select('id')
+    .eq('customer_id', customer.id)
+    .eq('status', 'ACTIVE')
+    .gt('ends_at', nowIso)
+    .limit(1)
+    .maybeSingle();
+  // Always offer post-booking Prime activation for 3 hours when customer has no active membership.
+  // This is separate from include_booking_membership (cart bundle discount on services).
+  const postBookingMembershipOffer =
+    !activeMembershipForOffer && subtotal > 0 ? buildPostBookingMembershipOffer(subtotal) : null;
+
   const totalDiscount = couponDiscount + membershipBundleDiscount;
   const payableBeforeWallet = Math.max(0, subtotal - totalDiscount);
   const vehicleNumber = String(lead.vehicle_number || body.vehicle_number || '').trim();
@@ -194,6 +212,9 @@ export async function createAuthenticatedServiceBooking(
         nextMeta.wallet_deduction = walletDeduction;
         nextMeta.wallet_applied = true;
       }
+      if (postBookingMembershipOffer) {
+        nextMeta.post_booking_membership_offer = postBookingMembershipOffer;
+      }
       return nextMeta;
     })(),
     lead_priority: membershipClaimMeta ? 'HIGH' : (lead.lead_priority || 'NORMAL'),
@@ -248,6 +269,7 @@ export async function createAuthenticatedServiceBooking(
   }
 
   if (walletDeduction > 0) {
+    const serviceLabel = resolveBookingServiceLabel(body);
     try {
       await debitServiceBookingWallet(supabaseAdmin, customer.id, request, {
         leadId: serviceLead.id,
@@ -257,6 +279,7 @@ export async function createAuthenticatedServiceBooking(
         membershipBundleDiscount,
         walletDeduction,
         vehicleNumber: vehicleNumber || null,
+        serviceLabel,
       });
     } catch (walletErr: any) {
       await supabaseAdmin.from('service_leads').delete().eq('id', serviceLead.id);
