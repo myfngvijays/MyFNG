@@ -1,4 +1,5 @@
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { Platform } from 'react-native';
 import { ENV } from '../config/environment';
 import { isFirebaseTestPhone, sendFirebaseSmsOtp } from './firebasePhoneAuth';
 import type { AuthVerifyResponse } from './welcomeBonus';
@@ -10,6 +11,7 @@ export type SmsOtpSendResult =
 const mobileHeaders = {
   'Content-Type': 'application/json',
   'x-mobile-client': 'true',
+  'X-App-Platform': Platform.OS,
 };
 
 function parseAuthVerifyResponse(json: any): AuthVerifyResponse {
@@ -20,6 +22,13 @@ function parseAuthVerifyResponse(json: any): AuthVerifyResponse {
     session_token: String(json.session_token),
     welcome_bonus: json?.welcome_bonus,
     is_new_customer: Boolean(json?.is_new_customer),
+    customer: json?.customer?.id
+      ? {
+          id: String(json.customer.id),
+          phone: json.customer.phone ? String(json.customer.phone) : undefined,
+          full_name: json.customer.full_name ?? null,
+        }
+      : undefined,
   };
 }
 

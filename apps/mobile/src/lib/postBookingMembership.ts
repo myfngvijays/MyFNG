@@ -32,12 +32,32 @@ export function quotePostBookingMembership(
 function resolveOrderAmountRupee(orderRes: {
   amount?: number;
   amount_paise?: number;
+  gross_amount?: number;
+  booking_bundle_discount?: number;
+  amount_before_wallet?: number;
 }): number {
+  const gross = Number(orderRes.gross_amount || 0);
+  const bundleDiscount = Number(orderRes.booking_bundle_discount || 0);
+  const beforeWallet = Number(orderRes.amount_before_wallet || 0);
+
   if (orderRes.amount != null && Number.isFinite(Number(orderRes.amount))) {
-    return Number(orderRes.amount);
+    const amount = Number(orderRes.amount);
+    // Some server builds return list price in `amount` but include discount metadata separately.
+    if (bundleDiscount > 0) {
+      if (gross > 0 && Math.abs(amount - gross) < 1) {
+        return Math.max(0, gross - bundleDiscount);
+      }
+      if (beforeWallet > 0 && Math.abs(amount - beforeWallet) < 1) {
+        return Math.max(0, beforeWallet);
+      }
+    }
+    return amount;
   }
   if (orderRes.amount_paise != null && Number.isFinite(Number(orderRes.amount_paise))) {
     return Number(orderRes.amount_paise) / 100;
+  }
+  if (gross > 0 && bundleDiscount > 0) {
+    return Math.max(0, gross - bundleDiscount);
   }
   return 0;
 }
@@ -68,8 +88,14 @@ async function createPostBookingMembershipOrder(
 
       const chargedAmount = resolveOrderAmountRupee(orderRes);
       const serverBundleDiscount = Number(orderRes.booking_bundle_discount || 0);
+      const grossAmount = Number(orderRes.gross_amount || 0);
 
       if (Math.abs(chargedAmount - expectedPayable) > 1) {
+        if (grossAmount > 0 && serverBundleDiscount <= 0 && expectedPayable < grossAmount) {
+          throw new Error(
+            'Booking membership discount is not active on the server yet. Please ask support to deploy the latest MyFNG backend, then try again.',
+          );
+        }
         throw new Error(
           `Server charged ₹${Math.round(chargedAmount).toLocaleString('en-IN')} instead of ₹${Math.round(expectedPayable).toLocaleString('en-IN')}. Please update the MyFNG server and try again.`,
         );

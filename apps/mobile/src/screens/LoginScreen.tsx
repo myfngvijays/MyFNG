@@ -35,6 +35,8 @@ import {
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
   markWelcomeCreditedPopupShown,
+  mobileCustomerHeaders,
+  resolveCustomerIdFromAuth,
 } from '../lib/welcomeBonus';
 
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
@@ -98,7 +100,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     let customerProfile: any = null;
     try {
       const res = await fetch(`${ENV.API_URL}/api/customer/auth/me`, {
-        headers: { 'x-customer-session': sessionToken },
+        headers: mobileCustomerHeaders(sessionToken),
       });
       if (res.ok) {
         const json = await res.json().catch(() => ({}));
@@ -122,7 +124,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       );
     }
 
-    if (await maybeShowCreditedPopup(sessionToken, authResponse, customerProfile?.id)) {
+    const customerId = resolveCustomerIdFromAuth(authResponse, customerProfile?.id);
+    if (await maybeShowCreditedPopup(sessionToken, authResponse, customerId)) {
       pendingHomeNavigationRef.current = true;
       return;
     }
@@ -172,6 +175,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       const headers = {
         'Content-Type': 'application/json',
         'x-mobile-client': 'true',
+        'X-App-Platform': Platform.OS,
       };
 
       let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-otp`, {
@@ -252,6 +256,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       const headers = {
         'Content-Type': 'application/json',
         'x-mobile-client': 'true',
+        'X-App-Platform': Platform.OS,
       };
 
       let res = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
+import { parseWalletPlatform } from '@/lib/wallet-config';
 import { getWalletSummary, computeWalletRewardTotals } from '@/lib/wallet-service';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +11,12 @@ export async function GET() {
   if ('response' in ctx) return ctx.response;
   const { customer, supabaseAdmin } = ctx;
 
-  const summary = await getWalletSummary(supabaseAdmin, customer.id);
+  const headerStore = await headers();
+  const platform = parseWalletPlatform(
+    headerStore.get('x-app-platform') || headerStore.get('X-App-Platform'),
+  );
+
+  const summary = await getWalletSummary(supabaseAdmin, customer.id, platform);
   const totals = await computeWalletRewardTotals(supabaseAdmin, customer.id);
   const { data: recent } = await supabaseAdmin
     .from('wallet_transactions')

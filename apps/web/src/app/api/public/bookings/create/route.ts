@@ -6,6 +6,7 @@ import { validateCouponForCheckout, redeemCouponAtomic } from '@/lib/coupon-serv
 import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
 import { normalizeCustomerPhone, toServiceLeadType, findCustomerByPhone } from '@/lib/customer-service-leads';
 import { pushServiceLeadToTeleCRM, saveBookedVehicleToProfile } from '@/lib/booking-telecrm-sync';
+import { calculateBookingMembershipBundleDiscount } from '@/lib/booking-membership-discount';
 import {
   debitServiceBookingWallet,
   resolveServiceBookingWallet,
@@ -182,8 +183,19 @@ export async function POST(request: NextRequest) {
       couponMeta = couponResult.couponMeta;
     }
 
+    let membershipBundleDiscount = 0;
+    const includeBookingMembership = Boolean(body.include_booking_membership);
+    if (includeBookingMembership && subtotal > 0) {
+      membershipBundleDiscount = calculateBookingMembershipBundleDiscount(subtotal);
+    } else if (Number(body.membership_bundle_discount || 0) > 0) {
+      membershipBundleDiscount = Math.min(
+        Number(body.membership_bundle_discount),
+        calculateBookingMembershipBundleDiscount(subtotal),
+      );
+    }
+
     let walletDeduction = 0;
-    let finalAmount = Math.max(0, subtotal - discountAmount);
+    let finalAmount = Math.max(0, subtotal - discountAmount - membershipBundleDiscount);
 
     if (useWallet && registeredCustomer?.id) {
       const walletResult = await resolveServiceBookingWallet(
@@ -194,6 +206,7 @@ export async function POST(request: NextRequest) {
         {
           subtotal,
           couponDiscount: discountAmount,
+          membershipBundleDiscount,
           vehicleNumber,
           useWallet: true,
         },
@@ -222,7 +235,7 @@ export async function POST(request: NextRequest) {
       vehicle_number: vehicleNumber,
       service_type: serviceType,
       coupon_code: couponCode,
-      discount_amount: discountAmount,
+      discount_amount: discountAmount + membershipBundleDiscount,
       coupon_meta: couponMeta,
       estimated_amount: finalAmount,
       actual_amount: finalAmount,
@@ -230,6 +243,13 @@ export async function POST(request: NextRequest) {
         const nextMeta: Record<string, unknown> =
           lead?.meta && typeof lead.meta === 'object' ? { ...(lead.meta as Record<string, unknown>) } : {};
         if (registeredCustomer?.id) nextMeta.customer_id = registeredCustomer.id;
+        if (membershipBundleDiscount > 0) {
+          nextMeta.booking_membership_bundle = {
+            include_membership: includeBookingMembership,
+            discount_amount: membershipBundleDiscount,
+            coupon_discount: discountAmount,
+          };
+        }
         if (walletDeduction > 0) {
           nextMeta.wallet_deduction = walletDeduction;
           nextMeta.wallet_applied = true;
@@ -256,6 +276,7 @@ export async function POST(request: NextRequest) {
           leadNumber: serviceLead.lead_number || leadNumber,
           subtotal,
           couponDiscount: discountAmount,
+          membershipBundleDiscount,
           walletDeduction,
           vehicleNumber,
         });
@@ -308,6 +329,7 @@ export async function POST(request: NextRequest) {
         lead: serviceLead,
         coupon: couponMeta,
         wallet_deduction: walletDeduction,
+        membership_bundle_discount: membershipBundleDiscount,
         amount_payable: finalAmount,
       },
       { status: 201 }

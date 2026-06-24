@@ -37,9 +37,17 @@ import {
   getEffectiveServiceWalletLimit,
   getWalletRules,
 } from '../lib/wallet';
+import {
+  bookingMembershipExtraDiscountLabel,
+  calculateBookingMembershipExtraDiscount,
+} from '../lib/bookingMembershipDiscount';
 import { isMembershipActive } from '../lib/membershipTheme';
 import type { MembershipClaimRouteParams } from '../lib/membershipClaims';
 import { fetchPrimeMembershipConfig, type AppMembershipPlan } from '../lib/membershipPlan';
+import {
+  membershipCartServiceLabel,
+  membershipCartUnitPrice,
+} from '../lib/membershipCart';
 import {
   activatePostBookingMembership,
   quotePostBookingMembership,
@@ -294,6 +302,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentMembership, setCurrentMembership] = useState<any>(null);
   const [primeMembershipPlan, setPrimeMembershipPlan] = useState<AppMembershipPlan | null>(null);
+  const [includeBookingMembership, setIncludeBookingMembership] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
   const [useWalletForBooking, setUseWalletForBooking] = useState(true);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
@@ -430,23 +439,56 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const hasActiveMembership = isMembershipActive(currentMembership);
 
-  const bookingCartSubtotal = totalPrice;
+  const membershipLinePrice = useMemo(() => {
+    if (!includeBookingMembership || hasActiveMembership || !primeMembershipPlan) return 0;
+    return membershipCartUnitPrice(primeMembershipPlan);
+  }, [includeBookingMembership, hasActiveMembership, primeMembershipPlan]);
+
+  const membershipBundleDiscount = useMemo(
+    () =>
+      calculateBookingMembershipExtraDiscount(totalPrice, {
+        includeMembership: includeBookingMembership && Boolean(primeMembershipPlan),
+        hasActiveMembership,
+      }),
+    [totalPrice, includeBookingMembership, hasActiveMembership, primeMembershipPlan],
+  );
+
+  const bookingCartSubtotal = totalPrice + membershipLinePrice;
 
   const selectedBookingCartItems = useMemo(() => {
     return form.selectedServices.map((serviceId) => {
       const service = serviceTypes.find((s) => s.id === serviceId);
       const price = pricing[serviceId] || 0;
       const category = String(service?.category || service?.name || 'Service');
+      const effectivePrice =
+        membershipBundleDiscount > 0 && totalPrice > 0
+          ? Math.max(
+              0,
+              Math.round((price - membershipBundleDiscount * (price / totalPrice)) * 100) / 100,
+            )
+          : price;
       return {
         key: serviceId,
         type: 'service' as const,
         name: service?.name || 'Service',
         price,
-        effectivePrice: price,
+        effectivePrice,
         iconUrl: getCategoryIconUrl(category),
       };
     });
-  }, [form.selectedServices, pricing, serviceTypes]);
+  }, [form.selectedServices, pricing, serviceTypes, membershipBundleDiscount, totalPrice]);
+
+  const membershipCartItem = useMemo(() => {
+    if (!includeBookingMembership || hasActiveMembership || !primeMembershipPlan) return null;
+    return {
+      key: 'membership',
+      type: 'membership' as const,
+      name: membershipCartServiceLabel(primeMembershipPlan, false),
+      price: membershipLinePrice,
+      originalPrice:
+        primeMembershipPlan.originalPriceNum > 0 ? primeMembershipPlan.originalPriceNum : 0,
+    };
+  }, [includeBookingMembership, hasActiveMembership, primeMembershipPlan, membershipLinePrice]);
 
   const serviceItemsForCoupon = useMemo(() => {
     return form.selectedServices.map((serviceId) => {
@@ -459,7 +501,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     });
   }, [form.selectedServices, pricing, serviceTypes]);
 
-  const couponAdjustedTotal = Math.max(totalPrice - (couponDiscount || 0), 0);
+  const couponAdjustedTotal = Math.max(
+    bookingCartSubtotal - membershipBundleDiscount - (couponDiscount || 0),
+    0,
+  );
   const payableBeforeWallet = couponAdjustedTotal;
 
   const walletServiceLines = useMemo(() => {
@@ -467,7 +512,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       service_type_id: item.service_type_id,
       amount: Math.max(0, Number(item.price || 0)),
     }));
-    const totalServiceDiscounts = couponDiscount || 0;
+    const totalServiceDiscounts = membershipBundleDiscount + (couponDiscount || 0);
     if (totalServiceDiscounts <= 0 || totalPrice <= 0) return lines;
     return lines.map((line) => ({
       ...line,
@@ -476,7 +521,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         Math.round((line.amount - totalServiceDiscounts * (line.amount / totalPrice)) * 100) / 100,
       ),
     }));
-  }, [serviceItemsForCoupon, couponDiscount, totalPrice]);
+  }, [serviceItemsForCoupon, membershipBundleDiscount, couponDiscount, totalPrice]);
 
   const walletMaxUsable = useMemo(() => {
     if (walletServiceLines.length > 0) {
@@ -1220,6 +1265,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
     setLoading(true);
     try {
+      let freshWalletBalance = Number(walletBalance || 0);
+      if (isLoggedIn) {
+        try {
+          const walletRes = await apiFetch<any>('/api/customer/wallet');
+          freshWalletBalance = Number(
+            walletRes?.wallet?.spendable_balance ?? walletRes?.wallet?.current_balance ?? 0,
+          );
+          setWalletBalance(freshWalletBalance);
+        } catch {
+          // keep cached balance
+        }
+      }
+
+      const shouldUseWallet =
+        isLoggedIn && useWalletForBooking && !walletVehicleBlocked && freshWalletBalance > 0;
+
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
       const addressParts = [form.pickupAddress.trim()];
       if (form.flatNumber.trim()) addressParts.unshift(form.flatNumber.trim());
@@ -1275,7 +1336,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       const bookingPayload = {
         subtotal: totalPrice,
         discount_amount: couponDiscount,
-        use_wallet: isLoggedIn && useWalletForBooking && !walletVehicleBlocked,
+        membership_bundle_discount: membershipBundleDiscount,
+        include_booking_membership:
+          includeBookingMembership && !hasActiveMembership && Boolean(primeMembershipPlan),
+        use_wallet: shouldUseWallet,
         service_lines: walletServiceLines,
         service_items: serviceItemsForCoupon,
         lead: leadPayload,
@@ -1295,13 +1359,25 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       if (isLoggedIn && useWalletForBooking && walletUsed > 0) {
         const serverWallet = Number(createdLead.wallet_deduction ?? 0);
         if (serverWallet <= 0) {
-          Alert.alert(
-            'Wallet not applied',
-            'Your booking was saved, but wallet balance was not deducted. Please contact support with your booking ID.',
-          );
+          if (freshWalletBalance <= 0) {
+            Alert.alert(
+              'Wallet',
+              'Your wallet balance is ₹0 on the server, so nothing was deducted. Your booking was saved successfully.',
+            );
+          } else {
+            Alert.alert(
+              'Wallet not applied',
+              'Your booking was saved, but wallet balance was not deducted. Please contact support with your booking ID.',
+            );
+          }
         } else {
           setWalletBalance((prev) => Math.max(0, prev - serverWallet));
         }
+      } else if (isLoggedIn && useWalletForBooking && freshWalletBalance <= 0 && walletUsed > 0) {
+        Alert.alert(
+          'Wallet',
+          'Your wallet balance is ₹0 on the server. Booking was saved without wallet deduction.',
+        );
       }
 
       // Clear draft on successful booking
@@ -1608,6 +1684,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [step, serviceTypes.length, paramSelectedServiceId]);
 
   useEffect(() => {
+    if (hasActiveMembership) {
+      setIncludeBookingMembership(false);
+    }
+  }, [hasActiveMembership]);
+
+  useEffect(() => {
     if (step < 2 || hasActiveMembership) return;
     let active = true;
     (async () => {
@@ -1615,6 +1697,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         const plan = await fetchPrimeMembershipConfig(ENV.API_URL);
         if (!active) return;
         setPrimeMembershipPlan(plan as AppMembershipPlan | null);
+        if (plan) setIncludeBookingMembership(true);
       } catch {
         if (active) setPrimeMembershipPlan(null);
       }
@@ -2339,9 +2422,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <Ionicons name="cart" size={16} color={COLORS.primary} />
                         <Text style={styles.selectedCartTitle}>
                           {form.selectedServices.length} service{form.selectedServices.length !== 1 ? 's' : ''} selected
+                          {membershipCartItem ? ' + membership' : ''}
                         </Text>
                       </View>
-                      <Text style={styles.selectedCartTotal}>{inr(totalPrice)}</Text>
+                      <Text style={styles.selectedCartTotal}>{inr(bookingCartSubtotal)}</Text>
                     </View>
                     <Text style={styles.selectedCartHint}>
                       Add more services from other categories — all selected items stay in your cart.
@@ -2364,7 +2448,28 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           </TouchableOpacity>
                         </View>
                       ))}
+                      {membershipCartItem ? (
+                        <View style={[styles.selectedCartChip, styles.selectedCartChipMembership]}>
+                          <Ionicons name="diamond" size={12} color="#7C3AED" />
+                          <Text style={styles.selectedCartChipText} numberOfLines={1}>
+                            {membershipCartItem.name}
+                          </Text>
+                          <Text style={styles.selectedCartChipPrice}>{inr(membershipCartItem.price)}</Text>
+                          <TouchableOpacity
+                            onPress={() => setIncludeBookingMembership(false)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
                     </View>
+                    {membershipBundleDiscount > 0 ? (
+                      <Text style={styles.selectedCartSavingHint}>
+                        Membership saves {inr(membershipBundleDiscount)} on services
+                      </Text>
+                    ) : null}
                     <TouchableOpacity
                       style={styles.selectedCartContinueBtn}
                       onPress={onNext}
@@ -2504,12 +2609,17 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       {form.selectedServices.length > 0
                         ? `${form.selectedServices.length} service${form.selectedServices.length !== 1 ? 's' : ''} in cart`
                         : 'Estimated total'}
+                      {membershipCartItem ? ' + membership' : ''}
                     </Text>
                     {form.selectedServices.length > 0 ? (
-                      <Text style={styles.totalSubLabel}>Tap Add to Cart on more services anytime</Text>
+                      <Text style={styles.totalSubLabel}>
+                        {membershipBundleDiscount > 0
+                          ? `Save ${inr(membershipBundleDiscount)} with membership on services`
+                          : 'Tap Add to Cart on more services anytime'}
+                      </Text>
                     ) : null}
                   </View>
-                  <Text style={styles.totalValue}>{totalPrice ? inr(totalPrice) : '—'}</Text>
+                  <Text style={styles.totalValue}>{bookingCartSubtotal ? inr(bookingCartSubtotal) : '—'}</Text>
                 </View>
               </>
             ) : null}
@@ -3231,6 +3341,37 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   ) : null}
                 </View>
 
+                {totalPrice > 0 && !hasActiveMembership && !includeBookingMembership ? (
+                  <TouchableOpacity
+                    style={styles.fomoCardUrgent}
+                    activeOpacity={0.85}
+                    onPress={() => setIncludeBookingMembership(true)}
+                  >
+                    <View style={styles.fomoUrgentTop}>
+                      <Ionicons name="flash" size={14} color="#FFFFFF" />
+                      <Text style={styles.fomoUrgentTitle}>Add membership & save more</Text>
+                    </View>
+                    <Text style={styles.fomoUrgentText}>
+                      Add MyFNG Prime with this booking & get{' '}
+                      <Text style={{ fontWeight: '900' }}>{bookingMembershipExtraDiscountLabel()}</Text>
+                      {' '}on services — save up to{' '}
+                      {inr(calculateBookingMembershipExtraDiscount(totalPrice, { includeMembership: true }))} today!
+                    </Text>
+                    <View style={styles.fomoUrgentBtn}>
+                      <Text style={styles.fomoUrgentBtnText}>Add Membership to Booking</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
+
+                {membershipBundleDiscount > 0 ? (
+                  <View style={styles.membershipSavingBanner}>
+                    <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                    <Text style={styles.membershipSavingBannerText}>
+                      Membership added — you save {inr(membershipBundleDiscount)} on this service booking
+                    </Text>
+                  </View>
+                ) : null}
+
                 {isLoggedIn && payableBeforeWallet > 0 ? (
                   <View style={styles.walletCard}>
                     <View style={styles.walletCardHeader}>
@@ -3303,7 +3444,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     </View>
                   ) : null}
 
-                  {selectedBookingCartItems.length === 0 ? (
+                  {selectedBookingCartItems.length === 0 && !membershipCartItem ? (
                     <Text style={styles.cartEmptyText}>No services selected</Text>
                   ) : null}
 
@@ -3335,6 +3476,45 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       </TouchableOpacity>
                     </View>
                   ))}
+
+                  {membershipCartItem ? (
+                    <View style={[styles.cartLineItem, styles.cartLineItemMembership]}>
+                      <View style={[styles.cartLineIconWrap, styles.cartLineIconWrapMembership]}>
+                        <Ionicons name="diamond" size={18} color="#7C3AED" />
+                      </View>
+                      <View style={styles.cartLineBody}>
+                        <Text style={styles.cartLineName} numberOfLines={2}>{membershipCartItem.name}</Text>
+                        <Text style={styles.cartLineSub}>Auto-added · {bookingMembershipExtraDiscountLabel()}</Text>
+                        <View style={styles.cartLinePriceRow}>
+                          <Text style={styles.cartLinePrice}>{inr(membershipCartItem.price)}</Text>
+                          {membershipCartItem.originalPrice > membershipCartItem.price ? (
+                            <Text style={styles.cartLineStrike}>{inr(membershipCartItem.originalPrice)}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.cartLineRemoveBtn}
+                        onPress={() => setIncludeBookingMembership(false)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close" size={14} color="#6B7280" />
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+
+                  {!hasActiveMembership && primeMembershipPlan && !includeBookingMembership ? (
+                    <TouchableOpacity
+                      style={styles.addMembershipBackBtn}
+                      onPress={() => setIncludeBookingMembership(true)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color={COLORS.primary} />
+                      <Text style={styles.addMembershipBackText}>
+                        Add {primeMembershipPlan.name} Membership ({inr(membershipCartUnitPrice(primeMembershipPlan))})
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   <View style={styles.reviewDivider} />
 
@@ -3425,6 +3605,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                     <Text style={styles.reviewRowLabel}>Item Total (Incl. taxes)</Text>
                     <Text style={styles.reviewRowValue}>{bookingCartSubtotal ? inr(bookingCartSubtotal) : '—'}</Text>
                   </View>
+                  {membershipBundleDiscount > 0 ? (
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewRowLabel}>Membership booking discount</Text>
+                      <Text style={[styles.reviewRowValue, styles.reviewRowValueDiscount]}>
+                        -{inr(membershipBundleDiscount)}
+                      </Text>
+                    </View>
+                  ) : null}
                   {couponMeta && couponDiscount > 0 ? (
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewRowLabel}>Coupon Discount</Text>
@@ -4410,6 +4598,16 @@ const styles = StyleSheet.create({
   },
   selectedCartChipText: { fontSize: 11, fontWeight: '800', color: '#1E293B', maxWidth: 140 },
   selectedCartChipPrice: { fontSize: 11, fontWeight: '900', color: COLORS.primary },
+  selectedCartChipMembership: {
+    backgroundColor: '#FAF5FF',
+    borderColor: '#DDD6FE',
+  },
+  selectedCartSavingHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#047857',
+    lineHeight: 15,
+  },
   selectedCartContinueBtn: {
     marginTop: 4,
     flexDirection: 'row',

@@ -74,6 +74,11 @@ export async function createMembershipPaymentOrder(input: MembershipCreateOrderI
   let bookingBundleDiscount = 0;
   if (postBookingBundle) {
     bookingBundleDiscount = calculateBookingMembershipBundleDiscount(serviceSubtotal);
+    const clientDiscount = Number(body.booking_bundle_discount || 0);
+    const maxDiscount = bookingBundleDiscount;
+    if (clientDiscount > 0 && clientDiscount <= maxDiscount) {
+      bookingBundleDiscount = clientDiscount;
+    }
     const leadCtx = await resolvePostBookingLeadContext(
       supabaseAdmin,
       customer,

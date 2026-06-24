@@ -14,9 +14,21 @@ export type AuthVerifyResponse = {
   session_token: string;
   welcome_bonus?: WelcomeBonusAuthPayload;
   is_new_customer?: boolean;
+  customer?: { id: string; phone?: string; full_name?: string | null };
 };
 
 const WELCOME_POPUP_SHOWN_KEY = 'welcome_credited_popup_customer_ids';
+
+export function mobileCustomerHeaders(sessionToken?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'x-mobile-client': 'true',
+    'X-App-Platform': Platform.OS,
+  };
+  if (sessionToken) headers['x-customer-session'] = sessionToken;
+  return headers;
+}
 
 export function getWelcomeBonusAmount(fallback = 1000): number {
   const rules = getWalletRules();
@@ -30,6 +42,16 @@ export function formatWelcomeBonusAmount(amount = getWelcomeBonusAmount()): stri
 export function parseWelcomeBonusFromAuth(json: AuthVerifyResponse | null | undefined): WelcomeBonusAuthPayload | null {
   if (!json?.welcome_bonus || typeof json.welcome_bonus !== 'object') return null;
   return json.welcome_bonus;
+}
+
+export function resolveCustomerIdFromAuth(
+  authResponse?: AuthVerifyResponse | null,
+  fallbackProfileId?: string | null,
+): string | null {
+  const fromAuth = authResponse?.customer?.id;
+  if (fromAuth) return String(fromAuth);
+  if (fallbackProfileId) return String(fallbackProfileId);
+  return null;
 }
 
 export function shouldShowCreditedPopup(welcomeBonus: WelcomeBonusAuthPayload | null | undefined): boolean {
@@ -74,37 +96,54 @@ export async function markWelcomeCreditedPopupShown(customerId: string): Promise
   }
 }
 
+function parseWelcomeFromWalletJson(json: any): WelcomeBonusAuthPayload | null {
+  const txs = Array.isArray(json?.transactions) ? json.transactions : [];
+  const welcomeTx = txs.find(
+    (t: any) => String(t?.source) === 'WELCOME_BONUS' && String(t?.transaction_type) === 'CREDIT',
+  );
+  if (welcomeTx) {
+    return {
+      credited: true,
+      amount: Number(welcomeTx.amount || json?.rules?.welcome_bonus_amount || getWelcomeBonusAmount()),
+      expires_at: welcomeTx.expires_at || json?.wallet?.welcome_bonus_expires_at || null,
+    };
+  }
+
+  const welcomeExpiry = json?.wallet?.welcome_bonus_expires_at;
+  const spendable = Number(json?.wallet?.spendable_balance ?? json?.wallet?.current_balance ?? 0);
+  if (welcomeExpiry && spendable > 0) {
+    return {
+      credited: true,
+      amount: Number(json?.rules?.welcome_bonus_amount || getWelcomeBonusAmount()),
+      expires_at: welcomeExpiry,
+    };
+  }
+
+  return null;
+}
+
 /** Calls claim API + wallet API (triggers server backfill) and reads welcome bonus credit if present. */
 export async function claimWelcomeBonusOnServer(sessionToken: string): Promise<WelcomeBonusAuthPayload | null> {
   try {
-    const headers = {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'x-customer-session': sessionToken,
-      'x-mobile-client': 'true',
-      'X-App-Platform': Platform.OS,
-    };
-
     const claimRes = await fetch(`${ENV.API_URL}/api/customer/wallet/claim-welcome`, {
       method: 'POST',
-      headers,
+      headers: mobileCustomerHeaders(sessionToken),
+      redirect: 'follow',
     });
-    if (claimRes.ok) {
-      const contentType = claimRes.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const json = await claimRes.json();
-        const wb = json?.welcome_bonus;
-        if (wb && wb.credited && Number(wb.amount || 0) > 0) {
-          return {
-            credited: true,
-            amount: Number(wb.amount),
-            expires_at: wb.expires_at || null,
-          };
-        }
+    const contentType = claimRes.headers.get('content-type') || '';
+    if (claimRes.ok && contentType.includes('application/json')) {
+      const json = await claimRes.json();
+      const wb = json?.welcome_bonus;
+      if (wb && wb.credited && Number(wb.amount || 0) > 0) {
+        return {
+          credited: true,
+          amount: Number(wb.amount),
+          expires_at: wb.expires_at || null,
+        };
       }
     }
   } catch {
-    // fall through to wallet GET
+    // fall through to wallet GET (also backfills welcome bonus on server)
   }
   return null;
 }
@@ -112,30 +151,14 @@ export async function claimWelcomeBonusOnServer(sessionToken: string): Promise<W
 export async function fetchWalletWelcomeBonus(sessionToken: string): Promise<WelcomeBonusAuthPayload | null> {
   try {
     const res = await fetch(`${ENV.API_URL}/api/customer/wallet`, {
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'x-customer-session': sessionToken,
-        'x-mobile-client': 'true',
-        'X-App-Platform': Platform.OS,
-      },
+      headers: mobileCustomerHeaders(sessionToken),
     });
     if (!res.ok) return null;
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) return null;
 
     const json = await res.json();
-    const txs = Array.isArray(json?.transactions) ? json.transactions : [];
-    const welcomeTx = txs.find(
-      (t: any) => String(t?.source) === 'WELCOME_BONUS' && String(t?.transaction_type) === 'CREDIT',
-    );
-    if (!welcomeTx) return null;
-
-    return {
-      credited: true,
-      amount: Number(welcomeTx.amount || json?.rules?.welcome_bonus_amount || getWelcomeBonusAmount()),
-      expires_at: welcomeTx.expires_at || json?.wallet?.welcome_bonus_expires_at || null,
-    };
+    return parseWelcomeFromWalletJson(json);
   } catch {
     return null;
   }
@@ -173,11 +196,14 @@ export async function decideWelcomeCreditedPopup(
   customerId: string | null | undefined,
   authResponse?: AuthVerifyResponse | null,
 ): Promise<WelcomeCreditedPopupDecision> {
+  const resolvedCustomerId = resolveCustomerIdFromAuth(authResponse, customerId);
   const welcomeBonus = await resolveWelcomeBonusAfterLogin(sessionToken, authResponse);
   const amount = Number(welcomeBonus?.amount || getWelcomeBonusAmount());
-  if (!customerId) {
+
+  if (!resolvedCustomerId) {
     return { show: shouldShowCreditedPopup(welcomeBonus), amount, welcomeBonus };
   }
-  const show = await shouldShowWelcomeCreditedPopupForCustomer(String(customerId), welcomeBonus);
+
+  const show = await shouldShowWelcomeCreditedPopupForCustomer(resolvedCustomerId, welcomeBonus);
   return { show, amount, welcomeBonus };
 }

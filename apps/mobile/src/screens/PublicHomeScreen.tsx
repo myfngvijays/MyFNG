@@ -44,6 +44,7 @@ import {
   getWelcomeBonusAmount,
   markGuestWelcomePopupShown,
   markWelcomeCreditedPopupShown,
+  mobileCustomerHeaders,
   shouldShowGuestWelcomePopup,
 } from '../lib/welcomeBonus';
 type Props = {
@@ -169,7 +170,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [guestWelcomeVisible, setGuestWelcomeVisible] = useState(false);
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
-  const creditedWelcomeCheckedRef = useRef(false);
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
@@ -210,11 +210,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
           }, 700);
         }
 
-        if (active && loggedIn && token && !creditedWelcomeCheckedRef.current) {
-          creditedWelcomeCheckedRef.current = true;
+        if (active && loggedIn && token) {
           try {
             const meRes = await fetch(`${ENV.API_URL}/api/customer/auth/me`, {
-              headers: { 'x-customer-session': token, 'x-mobile-client': 'true' },
+              headers: mobileCustomerHeaders(token),
             });
             const meJson = meRes.ok ? await meRes.json().catch(() => ({})) : {};
             const decision = await decideWelcomeCreditedPopup(token, meJson?.customer?.id, null);
