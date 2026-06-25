@@ -41,6 +41,52 @@ type WorkshopRow = {
 const { height: SCREEN_H } = Dimensions.get('window');
 const MAP_H = Math.max(240, Math.min(360, Math.round(SCREEN_H * 0.42)));
 
+const GOOGLE_MAPS_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  process.env.GOOGLE_MAPS_API_KEY ||
+  '';
+
+const SEARCH_LOCATION_PRESETS: Record<string, { lat: number; lng: number; label: string }> = {
+  mumbai: { lat: 19.076, lng: 72.8777, label: 'Mumbai' },
+  thane: { lat: 19.2183, lng: 72.9781, label: 'Thane' },
+  kalyan: { lat: 19.2437, lng: 73.1355, label: 'Kalyan' },
+  dombivli: { lat: 19.2167, lng: 73.0833, label: 'Dombivli' },
+  'navi mumbai': { lat: 19.033, lng: 73.0297, label: 'Navi Mumbai' },
+  pune: { lat: 18.5204, lng: 73.8567, label: 'Pune' },
+  bangalore: { lat: 12.9716, lng: 77.5946, label: 'Bangalore' },
+  bengaluru: { lat: 12.9716, lng: 77.5946, label: 'Bengaluru' },
+  delhi: { lat: 28.6139, lng: 77.209, label: 'Delhi' },
+};
+
+function workshopSearchText(w: WorkshopRow) {
+  return [w.name, w.workshop_name, w.city, w.address]
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function workshopMatchesQuery(w: WorkshopRow, rawQuery: string) {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = workshopSearchText(w);
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function resolveSearchRegion(query: string): Region | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const presetKey = Object.keys(SEARCH_LOCATION_PRESETS).find((key) => q.includes(key));
+  if (!presetKey) return null;
+  const preset = SEARCH_LOCATION_PRESETS[presetKey];
+  return {
+    latitude: preset.lat,
+    longitude: preset.lng,
+    latitudeDelta: 0.12,
+    longitudeDelta: 0.12,
+  };
+}
+
 function cityFallbackRegion(city?: string): Region {
   const c = String(city || '').trim().toLowerCase();
   const presets: Record<string, { lat: number; lng: number }> = {
@@ -135,10 +181,8 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
   const canRenderMap = canRenderNativeMap;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = q
-      ? rows.filter((w) => (w.name || '').toLowerCase().includes(q) || (w.city || '').toLowerCase().includes(q))
-      : rows;
+    const q = query.trim();
+    const base = q ? rows.filter((w) => workshopMatchesQuery(w, q)) : rows;
 
     if (!userLoc) return base;
     const scored = base
@@ -167,12 +211,21 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
     return cityFallbackRegion(city);
   }, [userLoc, mappable, city]);
 
+  const useGoogleMapsProvider = Platform.OS === 'android' && GOOGLE_MAPS_API_KEY.length > 10;
+
+  useEffect(() => {
+    const searchRegion = resolveSearchRegion(query);
+    if (!canRenderMap || !searchRegion || !mapRef.current) return;
+    mapRef.current.animateToRegion(searchRegion, 450);
+  }, [query, canRenderMap]);
+
   useEffect(() => {
     // Smoothly re-center when location or dataset changes
     if (!canRenderMap) return;
     if (!mapRef.current) return;
+    if (resolveSearchRegion(query)) return;
     mapRef.current.animateToRegion(mapRegion, 450);
-  }, [mapRegion, canRenderMap]);
+  }, [mapRegion, canRenderMap, query]);
 
   async function fetchWorkshops() {
     try {
@@ -325,7 +378,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search workshop or city"
+            placeholder="Search workshop, city or area (e.g. Thane, Kalyan)"
             placeholderTextColor={COLORS.gray[500]}
             style={styles.searchInput}
             autoCorrect={false}
@@ -344,7 +397,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
               }}
               style={styles.map}
               initialRegion={mapRegion}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              provider={useGoogleMapsProvider ? PROVIDER_GOOGLE : undefined}
               showsUserLocation={!!userLoc}
               showsMyLocationButton={false}
               showsCompass={false}

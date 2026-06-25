@@ -267,11 +267,16 @@ export async function POST(request: NextRequest) {
         const nextMeta: Record<string, unknown> =
           lead?.meta && typeof lead.meta === 'object' ? { ...(lead.meta as Record<string, unknown>) } : {};
         if (registeredCustomer?.id) nextMeta.customer_id = registeredCustomer.id;
+        nextMeta.service_subtotal = subtotal;
+        if (includeBookingMembership) {
+          nextMeta.unpaid_membership_line_price = Number(body.membership_line_price || 0) || null;
+        }
         if (membershipBundleDiscount > 0) {
           nextMeta.booking_membership_bundle = {
             include_membership: includeBookingMembership,
             discount_amount: membershipBundleDiscount,
             coupon_discount: discountAmount,
+            service_subtotal: subtotal,
           };
         }
         if (walletDeduction > 0) {

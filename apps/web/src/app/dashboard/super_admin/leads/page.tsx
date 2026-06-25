@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Search, Filter, Download, MapPin, Phone, Calendar, TrendingUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatDateDMY } from "@/lib/utils";
+import { resolveAdminBookingPayableAmount } from '@/lib/post-booking-membership-offer';
 
 export default function LeadsOverviewPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -289,16 +290,12 @@ export default function LeadsOverviewPage() {
                         <p className="font-semibold truncate">{lead.assigned_to_id.full_name}</p>
                       </div>
                     )}
-                    {lead.estimated_amount && (
+                    {(lead.estimated_amount || lead.actual_amount) && (
                       <div>
-                        <p className="text-gray-500 text-[10px] sm:text-xs">Estimated Amount</p>
-                        <p className="font-semibold text-green-600">₹{lead.estimated_amount.toLocaleString()}</p>
-                      </div>
-                    )}
-                    {lead.actual_amount && (
-                      <div>
-                        <p className="text-gray-500 text-[10px] sm:text-xs">Actual Amount</p>
-                        <p className="font-semibold text-green-600">₹{lead.actual_amount.toLocaleString()}</p>
+                        <p className="text-gray-500 text-[10px] sm:text-xs">Payable Amount</p>
+                        <p className="font-semibold text-green-600">
+                          ₹{resolveAdminBookingPayableAmount(lead).toLocaleString('en-IN')}
+                        </p>
                       </div>
                     )}
                     <div>

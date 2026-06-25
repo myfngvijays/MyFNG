@@ -205,12 +205,17 @@ export async function createAuthenticatedServiceBooking(
       const nextMeta: Record<string, unknown> =
         lead.meta && typeof lead.meta === 'object' ? { ...(lead.meta as Record<string, unknown>) } : {};
       nextMeta.customer_id = customer.id;
+      nextMeta.service_subtotal = subtotal;
+      if (includeBookingMembership) {
+        nextMeta.unpaid_membership_line_price = Number(body.membership_line_price || 0) || null;
+      }
       if (membershipClaimMeta) nextMeta.membership_claim = membershipClaimMeta;
       if (membershipBundleDiscount > 0) {
         nextMeta.booking_membership_bundle = {
           include_membership: includeBookingMembership,
           discount_amount: membershipBundleDiscount,
           coupon_discount: couponDiscount,
+          service_subtotal: subtotal,
         };
       }
       if (walletDeduction > 0) {

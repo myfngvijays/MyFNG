@@ -3,6 +3,7 @@ import { requireCustomer } from '@/lib/customer-api';
 import {
   expireUnpaidBookingMembershipBundleIfNeeded,
   resolveActiveMembershipBundleDiscount,
+  resolveDisplayWalletDeduction,
   resolveLeadAmountDisplay,
   resolvePostBookingMembershipOfferStatus,
   resolveServiceLeadCouponDiscount,
@@ -92,7 +93,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     (lead as any).meta && typeof (lead as any).meta === 'object'
       ? ((lead as any).meta as Record<string, unknown>)
       : {};
-  const walletDeduction = Number(leadMeta.wallet_deduction || 0);
+  const walletDeduction = resolveDisplayWalletDeduction(lead as Record<string, unknown>, pbConfig);
   const preferredSlotStart = String((lead as any).preferred_slot_start || '').trim();
   const preferredTimeSlot = String((lead as any).preferred_time_slot || '').trim();
   const preferredDate = String((lead as any).preferred_date || '').trim();

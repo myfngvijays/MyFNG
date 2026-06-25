@@ -562,6 +562,108 @@ export async function creditWallet(
   return { credited: credit, balance_after: nextBalance, duplicate: false };
 }
 
+/** When Prime expires unpaid, update the original booking wallet debit to match full-service wallet rules. */
+export async function reconcileBookingWalletOnMembershipExpiry(
+  supabaseAdmin: any,
+  opts: {
+    customerId: string;
+    leadId: string;
+    targetDeduction: number;
+    serviceSubtotal: number;
+    serviceLabel?: string | null;
+  },
+): Promise<{ adjusted: boolean; previousAmount: number; newAmount: number }> {
+  const target = roundMoney(opts.targetDeduction);
+  const leadId = String(opts.leadId || '').trim();
+  const customerId = String(opts.customerId || '').trim();
+  if (!leadId || !customerId || target <= 0) {
+    return { adjusted: false, previousAmount: 0, newAmount: target };
+  }
+
+  const idempotencyKey = `booking:${leadId}`;
+  const { data: tx } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('id, amount, balance_after, metadata, wallet_account_id, created_at')
+    .eq('customer_id', customerId)
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle();
+
+  if (!tx) {
+    return { adjusted: false, previousAmount: 0, newAmount: target };
+  }
+
+  const currentAmount = roundMoney(Number(tx.amount || 0));
+  if (Math.abs(currentAmount - target) < 0.01) {
+    return { adjusted: false, previousAmount: currentAmount, newAmount: target };
+  }
+
+  const delta = roundMoney(target - currentAmount);
+  const wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
+  const walletBalance = roundMoney(Number(wallet.current_balance || 0));
+
+  if (delta > 0 && delta > walletBalance + 0.01) {
+    console.warn(
+      '[reconcileBookingWalletOnMembershipExpiry] insufficient wallet balance for adjustment',
+      { leadId, customerId, delta, walletBalance, target, currentAmount },
+    );
+    return { adjusted: false, previousAmount: currentAmount, newAmount: target };
+  }
+
+  const txBalanceAfter = roundMoney(Number(tx.balance_after || 0) - delta);
+  const newWalletBalance = roundMoney(walletBalance - delta);
+  const previousMetadata =
+    tx.metadata && typeof tx.metadata === 'object' ? (tx.metadata as Record<string, unknown>) : {};
+
+  const { error: txError } = await supabaseAdmin
+    .from('wallet_transactions')
+    .update({
+      amount: target,
+      balance_after: txBalanceAfter,
+      metadata: {
+        ...previousMetadata,
+        subtotal: opts.serviceSubtotal,
+        membership_bundle_discount: 0,
+        membership_expiry_reconciled_at: new Date().toISOString(),
+        previous_debit_amount: currentAmount,
+        label: opts.serviceLabel || previousMetadata.label || 'Used for Service Booking',
+      },
+    })
+    .eq('id', tx.id);
+
+  if (txError) {
+    console.error('[reconcileBookingWalletOnMembershipExpiry]', txError.message);
+    return { adjusted: false, previousAmount: currentAmount, newAmount: target };
+  }
+
+  const { data: laterTxs } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('id, balance_after')
+    .eq('customer_id', customerId)
+    .gt('created_at', tx.created_at)
+    .order('created_at', { ascending: true });
+
+  for (const later of laterTxs || []) {
+    await supabaseAdmin
+      .from('wallet_transactions')
+      .update({
+        balance_after: roundMoney(Number(later.balance_after || 0) - delta),
+      })
+      .eq('id', later.id);
+  }
+
+  const lifetimeDebited = roundMoney(Number(wallet.lifetime_debited || 0) + delta);
+  await supabaseAdmin
+    .from('wallet_accounts')
+    .update({
+      current_balance: newWalletBalance,
+      lifetime_debited: lifetimeDebited >= 0 ? lifetimeDebited : 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', wallet.id);
+
+  return { adjusted: true, previousAmount: currentAmount, newAmount: target };
+}
+
 function normalizePhoneDigits(input?: string | null): string {
   return String(input || '').replace(/\D/g, '');
 }

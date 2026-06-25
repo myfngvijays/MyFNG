@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { enrichBookingLead, filterBookingLeads } from '@/lib/booking-lead-utils';
+import { getPostBookingMembershipConfig } from '@/lib/post-booking-membership-config';
+import { syncServiceLeadMembershipPricingForAdmin } from '@/lib/post-booking-membership-offer';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +91,11 @@ export async function GET(request: NextRequest) {
     let leads = (data || []).map((lead) => enrichBookingLead(lead as Record<string, any>));
 
     leads = filterBookingLeads(leads, { source, hasCoupon, search: '' });
+
+    const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
+    leads = await Promise.all(
+      leads.map((lead) => syncServiceLeadMembershipPricingForAdmin(supabaseAdmin, lead, pbConfig)),
+    );
 
     const allServiceTypeIds = new Set<string>();
     for (const lead of leads) {

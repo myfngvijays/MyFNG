@@ -17,6 +17,7 @@ import {
   Keyboard,
   findNodeHandle,
   Switch,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,7 +72,7 @@ import {
 } from '../lib/welcomeBonus';
 import {
   shouldSkipFirebaseSmsOnSimulator,
-  isIosSimulator,
+  isDevSimulator,
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
@@ -128,6 +129,29 @@ type SavedAddress = {
   landmark?: string | null;
   address_type?: string | null;
 };
+
+function normalizeSavedAddressKey(parts: {
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+  landmark?: string | null;
+}) {
+  return [parts.address_line1, parts.address_line2, parts.landmark, parts.city, parts.pincode]
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join('|');
+}
+
+function dedupeSavedAddresses(addresses: SavedAddress[]): SavedAddress[] {
+  const seen = new Set<string>();
+  return addresses.filter((addr) => {
+    const key = normalizeSavedAddressKey(addr);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 type BookingFormData = {
   city: CityRow | null;
@@ -344,6 +368,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingStepAdvanceRef = useRef(false);
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
+  const pendingWelcomePhoneRef = useRef<string | null>(null);
+  const bookingCompletedRef = useRef(false);
+  const cartBadgeScale = useRef(new Animated.Value(1)).current;
+  const servicesCartYOffset = useRef(0);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -629,6 +657,19 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.selectedServices]);
 
+  const cartServiceCount = form.selectedServices.length;
+
+  useEffect(() => {
+    if (cartServiceCount <= 0) return;
+    cartBadgeScale.setValue(0.55);
+    Animated.spring(cartBadgeScale, {
+      toValue: 1,
+      friction: 4,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [cartServiceCount, cartBadgeScale]);
+
   const steps = [
     { title: "Let's get started!", subtitle: 'Select your location and car model' },
     { title: 'Almost there!', subtitle: 'Just a few more details' },
@@ -665,6 +706,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   };
 
   const saveDraftProgress = (currentStep: number) => {
+    if (bookingCompletedRef.current) return;
     const serviceNames: Record<string, string> = {};
     const servicePrices: Record<string, number> = {};
     for (const sid of form.selectedServices) {
@@ -1226,7 +1268,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         landmark: a.landmark || null,
         address_type: a.address_type || null,
       }));
-      setSavedAddresses(addresses);
+      setSavedAddresses(dedupeSavedAddresses(addresses));
 
       // If no saved addresses from API, pull from past orders + customer record
       if (addresses.length === 0) {
@@ -1272,7 +1314,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           }
         } catch {}
 
-        if (fallbackAddresses.length > 0) setSavedAddresses(fallbackAddresses.slice(0, 5));
+        if (fallbackAddresses.length > 0) setSavedAddresses(dedupeSavedAddresses(fallbackAddresses.slice(0, 5)));
       }
 
       try {
@@ -1332,6 +1374,38 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     } catch {
       // not logged in or API failed
       setCurrentMembership(null);
+    }
+  }
+
+  async function persistNewPickupAddressIfNeeded() {
+    if (!isLoggedIn || !form.pickupRequired || !form.pickupAddress.trim()) return;
+    if (selectedSavedAddressId) return;
+
+    const line1 =
+      form.flatNumber.trim() ||
+      form.pickupAddress.split(',')[0]?.trim() ||
+      form.pickupAddress.trim();
+    if (!line1) return;
+
+    const parts = form.pickupAddress.split(',').map((s) => s.trim()).filter(Boolean);
+    const pincode = parts.find((p) => /^\d{6}$/.test(p)) || null;
+    const cityGuess = parts.length > 1 ? parts[parts.length - (pincode ? 2 : 1)] : null;
+
+    try {
+      await apiFetch('/api/customer/addresses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: 'Home',
+          line1,
+          line2: form.landmark.trim() || null,
+          city: cityGuess,
+          pincode,
+          is_default: savedAddresses.length === 0,
+        }),
+      });
+    } catch {
+      // non-fatal — duplicate addresses are ignored server-side
     }
   }
 
@@ -1426,6 +1500,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         membership_bundle_discount: membershipBundleDiscount,
         include_booking_membership:
           includeBookingMembership && !hasActiveMembership && Boolean(primeMembershipPlan),
+        membership_line_price: membershipLinePrice,
         use_wallet: shouldUseWallet,
         service_lines: walletServiceLines,
         service_items: serviceItemsForCoupon,
@@ -1468,7 +1543,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }
 
       // Clear draft on successful booking
-      removeBookingDraft(draftId);
+      bookingCompletedRef.current = true;
+      await persistNewPickupAddressIfNeeded();
+      await removeBookingDraft(draftId);
 
       const createdLeadId = createdLead.id;
       const savedLeadNumber = createdLead.lead_number || leadNumber;
@@ -1946,14 +2023,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setOtpConfirmation(result.mode === 'firebase' ? result.confirmation : null);
+      setOtpConfirmation(result.confirmation);
       setOtpSent(true);
       const testHint = firebaseTestOtpHint(cleanPhone);
       if (testHint) {
         Alert.alert('Test OTP', testHint);
       }
     } catch (error: any) {
-      if (__DEV__ && isIosSimulator() && isFirebaseIosClientError(error)) {
+      if (__DEV__ && isDevSimulator() && isFirebaseIosClientError(error)) {
         Alert.alert(
           'Simulator SMS unavailable',
           'iOS Simulator par real SMS nahi aata. WhatsApp OTP bhej rahe hain.',
@@ -2060,10 +2137,17 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           ? (authResponse as any).customer?.id
           : null);
       const decision = sessionToken
-        ? await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse)
+        ? await decideWelcomeCreditedPopup(
+            sessionToken,
+            customerId,
+            authResponse,
+            (authResponse as any)?.customer?.phone || form.customerPhone,
+          )
         : { show: false, amount: getWelcomeBonusAmount(), welcomeBonus: null };
       if (decision.show) {
         pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
+        pendingWelcomePhoneRef.current =
+          (authResponse as any)?.customer?.phone || form.customerPhone || null;
         setCreditedWelcomeAmount(decision.amount);
         setCreditedWelcomeVisible(true);
         pendingStepAdvanceRef.current = true;
@@ -2267,7 +2351,27 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           <View style={styles.top}>
             <View style={styles.topRow}>
               <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
-              {!isLoggedIn ? (
+              {step === 2 ? (
+                <TouchableOpacity
+                  style={styles.headerCartBtn}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    scrollRef.current?.scrollTo({
+                      y: Math.max(0, servicesCartYOffset.current - 12),
+                      animated: true,
+                    })
+                  }
+                >
+                  <Ionicons name="cart-outline" size={22} color={COLORS.primary} />
+                  {cartServiceCount > 0 ? (
+                    <Animated.View
+                      style={[styles.headerCartBadge, { transform: [{ scale: cartBadgeScale }] }]}
+                    >
+                      <Text style={styles.headerCartBadgeText}>{cartServiceCount}+</Text>
+                    </Animated.View>
+                  ) : null}
+                </TouchableOpacity>
+              ) : !isLoggedIn ? (
                 <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
                   <Text style={styles.loginText}>Login</Text>
                 </TouchableOpacity>
@@ -2566,6 +2670,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
             {/* ── Step 2: Services ── */}
             {step === 2 ? (
+              <View onLayout={(e) => { servicesCartYOffset.current = e.nativeEvent.layout.y; }}>
               <>
                 {orderedCategories.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} pagingEnabled={false} contentContainerStyle={styles.categoryScrollContainer}>
@@ -2838,6 +2943,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   <Text style={styles.totalValue}>{bookingCartSubtotal ? inr(bookingCartSubtotal) : '—'}</Text>
                 </View>
               </>
+              </View>
             ) : null}
 
             {/* ── Step 3: Pickup / Visit ── */}
@@ -4277,9 +4383,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         onClose={async () => {
           setCreditedWelcomeVisible(false);
           const welcomeCustomerId = pendingWelcomeCustomerIdRef.current;
-          if (welcomeCustomerId) {
-            await markWelcomeCreditedPopupShown(welcomeCustomerId);
+          const welcomePhone = pendingWelcomePhoneRef.current;
+          if (welcomeCustomerId || welcomePhone) {
+            await markWelcomeCreditedPopupShown(welcomeCustomerId || '', welcomePhone);
             pendingWelcomeCustomerIdRef.current = null;
+            pendingWelcomePhoneRef.current = null;
           }
           if (pendingStepAdvanceRef.current) {
             pendingStepAdvanceRef.current = false;
@@ -4301,6 +4409,36 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.md,
   },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerCartBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCartBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  headerCartBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 11,
+  },
   brand: { fontSize: 18, fontWeight: '900', color: COLORS.primaryDark },
   brandLogo: { width: 110, height: 36 },
   loginBtn: {

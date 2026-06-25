@@ -56,7 +56,7 @@ import PrimeMembershipValueCard, {
   type LinkedMembershipVehicle,
   type MembershipVehicleOption,
 } from '../components/PrimeMembershipValueCard';
-import { BookingDraft, getBookingDrafts, removeBookingDraft } from '../lib/bookingDraft';
+import { BookingDraft, getBookingDrafts, removeBookingDraft, clearAllBookingDrafts } from '../lib/bookingDraft';
 import { dismissVehicleKeys, getDismissedVehicleKeys, saveDismissedVehicleKeys } from '../lib/dismissedVehicles';
 import VehicleImage from '../components/VehicleImage';
 import {
@@ -75,14 +75,18 @@ import {
   quotePostBookingMembership,
 } from '../lib/postBookingMembership';
 import {
+  buildMembershipOfferExpiredView,
   buildMembershipOfferPayView,
   resolveOrderMembershipOffer,
   resolveOrderMembershipBundleDiscount,
   resolveOrderDisplayAmount,
+  resolveOrderWalletDeduction,
   resolveMembershipListPrice,
   findPendingMembershipOfferOrder,
 } from '../lib/postBookingMembershipOffer';
 import PostBookingMembershipOfferCard from '../components/PostBookingMembershipOfferCard';
+import PostBookingMembershipExpiredCard from '../components/PostBookingMembershipExpiredCard';
+import { useMembershipOfferExpiryAlerts } from '../hooks/useMembershipOfferExpiryAlerts';
 import MyCouponsContent from '../components/MyCouponsContent';
 import {
   DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
@@ -830,7 +834,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
       const existingIds = new Set(mappedAddresses.map((a: { id: string }) => a.id));
       const uniqueLeadAddresses = mappedLeadAddresses.filter((a: { id: string }) => !existingIds.has(a.id));
-      setAddresses([...mappedAddresses, ...uniqueLeadAddresses]);
+      const mergedAddresses = [...mappedAddresses, ...uniqueLeadAddresses];
+      const seenAddressValues = new Set<string>();
+      const dedupedAddresses = mergedAddresses.filter((address) => {
+        const key = String(address.value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!key || seenAddressValues.has(key)) return false;
+        seenAddressValues.add(key);
+        return true;
+      });
+      setAddresses(dedupedAddresses);
       setVehicles(Array.isArray(vehiclesRes?.vehicles) ? vehiclesRes.vehicles : []);
       setOrders(Array.isArray(ordersRes?.orders) ? ordersRes.orders : []);
       setPostBookingAppConfig(
@@ -870,6 +882,25 @@ export default function SettingsScreen({ navigation, route }: Props) {
     }
   }, []);
 
+  const membershipListPrice = useMemo(
+    () => resolveMembershipListPrice(appMembershipPlans[0] || PRIME_MEMBERSHIP),
+    [appMembershipPlans],
+  );
+
+  useMembershipOfferExpiryAlerts(orders, membershipOfferTick, {
+    enabled:
+      isLoggedIn &&
+      postBookingAppConfig.enabled &&
+      (activeSubPage === 'Order History' ||
+        activeSubPage === 'My Account' ||
+        !!orderDetailModal ||
+        !!pendingMembershipOffer),
+    membershipListPrice,
+    onExpired: () => {
+      void hydrateCustomerData();
+    },
+  });
+
   useEffect(() => {
     const sp = route?.params?.subPage;
     if (sp) setActiveSubPage(resolveSubPage(sp));
@@ -901,6 +932,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
         }
         await hydrateCustomerData();
       })();
+      getBookingDrafts()
+        .then((drafts) => {
+          if (!active) return;
+          setCartDrafts(drafts);
+          if (drafts.length > 0) {
+            setCartSelectedDraftId((current) =>
+              current && drafts.some((d) => d.id === current) ? current : drafts[0].id,
+            );
+          } else {
+            setCartSelectedDraftId(null);
+          }
+        })
+        .catch(() => {});
       return () => {
         active = false;
       };
@@ -1006,7 +1050,16 @@ export default function SettingsScreen({ navigation, route }: Props) {
     return found || allAssociatedVehicles[0];
   }, [allAssociatedVehicles, selectedVehicleKey, vehicleEntryOnly]);
 
-  const vehicleCarouselData = useMemo(() => allAssociatedVehicles, [allAssociatedVehicles]);
+  const vehicleCarouselData = useMemo(() => {
+    const seen = new Set<string>();
+    return allAssociatedVehicles.filter((vehicle) => {
+      const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
+      const key = plate || `${String(vehicle?.make || '').trim()}-${String(vehicle?.model || '').trim()}`.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allAssociatedVehicles]);
 
   const membershipVehicleOptions = useMemo<MembershipVehicleOption[]>(
     () =>
@@ -1508,10 +1561,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
   }, [activeSubPage, isLoggedIn, hydrateCustomerData]);
 
   useEffect(() => {
-    if (!pendingMembershipOffer && !orderDetailModal) return;
+    const hasActiveOffer = orders.some((order) => {
+      const activeOffer = buildMembershipOfferPayView(order, membershipListPrice);
+      return Boolean(activeOffer?.offer.active);
+    });
+    if (!pendingMembershipOffer && !orderDetailModal && !hasActiveOffer) return;
     const timer = setInterval(() => setMembershipOfferTick((value) => value + 1), 1000);
     return () => clearInterval(timer);
-  }, [pendingMembershipOffer?.order?.id, orderDetailModal]);
+  }, [pendingMembershipOffer?.order?.id, orderDetailModal, orders, membershipListPrice]);
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
@@ -2142,6 +2199,14 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
     const addingNewVehicle = vehicleEntryOnly;
 
+    if (addingNewVehicle && existingVehicle) {
+      Alert.alert(
+        'Vehicle already added',
+        `Vehicle number ${vehicleNumber} is already in your list.`,
+      );
+      return;
+    }
+
     const applySavedVehicle = (savedVehicle: any) => {
       if (!savedVehicle) return;
       setVehicles((prev) => {
@@ -2705,6 +2770,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
         }
       } catch (_clearErr) { /* non-fatal */ }
       Alert.alert('Booking created', `Lead: ${created.lead_number || leadNumber}`);
+      await clearAllBookingDrafts();
+      setCartDrafts([]);
+      setCartSelectedDraftId(null);
       await hydrateCustomerData();
       await loadCart();
       setActiveSubPage('Order History');
@@ -4396,6 +4464,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   !hasActiveMembership && postBookingAppConfig.enabled && postBookingAppConfig.show_on_order_history
                     ? buildMembershipOfferPayView(order, membershipListPrice)
                     : null;
+                const expiredOfferView =
+                  !offerPayView && !hasActiveMembership && postBookingAppConfig.enabled
+                    ? buildMembershipOfferExpiredView(order)
+                    : null;
                 const payingMembership = orderMembershipPayingId === String(order.id);
 
                 return (
@@ -4471,6 +4543,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           cardTitle={postBookingAppConfig.card_title}
                           fomoMessage={postBookingAppConfig.fomo_message}
                         />
+                      </View>
+                    ) : expiredOfferView ? (
+                      <View style={{ marginTop: 10 }}>
+                        <PostBookingMembershipExpiredCard expiredView={expiredOfferView} compact />
                       </View>
                     ) : null}
 
@@ -5762,7 +5838,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                   const carModel = [o.vehicle_make, o.vehicle_model].filter(Boolean).map((s: string) => toTitleCase(s)).join(' ');
                   const appointmentRaw = o.appointment_at || o.preferred_slot_start || null;
                   const appointmentDt = appointmentRaw ? new Date(appointmentRaw) : (o.created_at ? new Date(o.created_at) : null);
-                  const walletUsed = Number(o.wallet_deduction || 0);
+                  const walletUsed = resolveOrderWalletDeduction(o);
                   const couponDiscount = Number(o.coupon_discount || 0);
                   const membershipDiscount = resolveOrderMembershipBundleDiscount(o);
                   return (
@@ -5857,20 +5933,33 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           postBookingAppConfig.show_on_order_history
                             ? buildMembershipOfferPayView(detailForOffer, membershipListPrice)
                             : null;
-                        if (!offerPayView) return null;
-                        const payingDetail = orderMembershipPayingId === String(o.id);
-                        return (
-                          <View style={{ marginTop: 10 }}>
-                            <PostBookingMembershipOfferCard
-                              offerPayView={offerPayView}
-                              paying={payingDetail}
-                              onPay={() => payPostBookingMembership(detailForOffer)}
-                              tick={membershipOfferTick}
-                              cardTitle={postBookingAppConfig.card_title}
-                              fomoMessage={postBookingAppConfig.fomo_message}
-                            />
-                          </View>
-                        );
+                        const expiredOfferView =
+                          !offerPayView && !hasActiveMembership && postBookingAppConfig.enabled
+                            ? buildMembershipOfferExpiredView(detailForOffer)
+                            : null;
+                        if (offerPayView) {
+                          const payingDetail = orderMembershipPayingId === String(o.id);
+                          return (
+                            <View style={{ marginTop: 10 }}>
+                              <PostBookingMembershipOfferCard
+                                offerPayView={offerPayView}
+                                paying={payingDetail}
+                                onPay={() => payPostBookingMembership(detailForOffer)}
+                                tick={membershipOfferTick}
+                                cardTitle={postBookingAppConfig.card_title}
+                                fomoMessage={postBookingAppConfig.fomo_message}
+                              />
+                            </View>
+                          );
+                        }
+                        if (expiredOfferView) {
+                          return (
+                            <View style={{ marginTop: 10 }}>
+                              <PostBookingMembershipExpiredCard expiredView={expiredOfferView} />
+                            </View>
+                          );
+                        }
+                        return null;
                       })()}
 
                       {(orderDetailModal.services || []).length > 0 || (orderDetailModal.addons || []).length > 0 ? (
@@ -6024,7 +6113,7 @@ const styles = StyleSheet.create({
   cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
   vehiclePagerContent: { paddingRight: 10 },
   vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F8FBFF', paddingHorizontal: 14, paddingVertical: 12, marginRight: 10, gap: 10 },
-  vehicleCardActions: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  vehicleCardActions: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 10 },
   vehicleActionBtn: {
     width: 28,
     height: 28,

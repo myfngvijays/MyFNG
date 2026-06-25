@@ -18,6 +18,7 @@ export type AuthVerifyResponse = {
 };
 
 const WELCOME_POPUP_SHOWN_KEY = 'welcome_credited_popup_customer_ids';
+const WELCOME_POPUP_SHOWN_PHONES_KEY = 'welcome_credited_popup_phones';
 
 export function mobileCustomerHeaders(sessionToken?: string): Record<string, string> {
   const headers: Record<string, string> = {
@@ -54,8 +55,13 @@ export function resolveCustomerIdFromAuth(
   return null;
 }
 
+export function normalizeWelcomePopupPhone(phone?: string | null): string {
+  return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+/** Only true for a fresh credit in this login flow — not existing wallet balance. */
 export function shouldShowCreditedPopup(welcomeBonus: WelcomeBonusAuthPayload | null | undefined): boolean {
-  if (!welcomeBonus) return false;
+  if (!welcomeBonus || welcomeBonus.already_credited) return false;
   return Boolean(welcomeBonus.credited) && Number(welcomeBonus.amount || 0) > 0;
 }
 
@@ -73,56 +79,49 @@ export function resetGuestWelcomePopupSessionFlag() {
   guestPopupShownThisSession = false;
 }
 
-export async function wasWelcomeCreditedPopupShown(customerId: string): Promise<boolean> {
+async function readStoredIds(key: string): Promise<string[]> {
   try {
-    const raw = await AsyncStorage.getItem(WELCOME_POPUP_SHOWN_KEY);
-    const ids: string[] = raw ? JSON.parse(raw) : [];
-    return ids.includes(customerId);
+    const raw = await AsyncStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return false;
+    return [];
   }
 }
 
-export async function markWelcomeCreditedPopupShown(customerId: string): Promise<void> {
+async function appendStoredId(key: string, value: string): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(WELCOME_POPUP_SHOWN_KEY);
-    const ids: string[] = raw ? JSON.parse(raw) : [];
-    if (!ids.includes(customerId)) {
-      ids.push(customerId);
-      await AsyncStorage.setItem(WELCOME_POPUP_SHOWN_KEY, JSON.stringify(ids));
+    const ids = await readStoredIds(key);
+    if (!ids.includes(value)) {
+      ids.push(value);
+      await AsyncStorage.setItem(key, JSON.stringify(ids));
     }
   } catch {
     // ignore storage errors
   }
 }
 
-function parseWelcomeFromWalletJson(json: any): WelcomeBonusAuthPayload | null {
-  const txs = Array.isArray(json?.transactions) ? json.transactions : [];
-  const welcomeTx = txs.find(
-    (t: any) => String(t?.source) === 'WELCOME_BONUS' && String(t?.transaction_type) === 'CREDIT',
-  );
-  if (welcomeTx) {
-    return {
-      credited: true,
-      amount: Number(welcomeTx.amount || json?.rules?.welcome_bonus_amount || getWelcomeBonusAmount()),
-      expires_at: welcomeTx.expires_at || json?.wallet?.welcome_bonus_expires_at || null,
-    };
-  }
-
-  const welcomeExpiry = json?.wallet?.welcome_bonus_expires_at;
-  const spendable = Number(json?.wallet?.spendable_balance ?? json?.wallet?.current_balance ?? 0);
-  if (welcomeExpiry && spendable > 0) {
-    return {
-      credited: true,
-      amount: Number(json?.rules?.welcome_bonus_amount || getWelcomeBonusAmount()),
-      expires_at: welcomeExpiry,
-    };
-  }
-
-  return null;
+export async function wasWelcomeCreditedPopupShown(customerId: string): Promise<boolean> {
+  const ids = await readStoredIds(WELCOME_POPUP_SHOWN_KEY);
+  return ids.includes(customerId);
 }
 
-/** Calls claim API + wallet API (triggers server backfill) and reads welcome bonus credit if present. */
+export async function wasWelcomeCreditedPopupShownForPhone(phone: string): Promise<boolean> {
+  const normalized = normalizeWelcomePopupPhone(phone);
+  if (!normalized) return false;
+  const phones = await readStoredIds(WELCOME_POPUP_SHOWN_PHONES_KEY);
+  return phones.includes(normalized);
+}
+
+export async function markWelcomeCreditedPopupShown(
+  customerId: string,
+  phone?: string | null,
+): Promise<void> {
+  if (customerId) await appendStoredId(WELCOME_POPUP_SHOWN_KEY, customerId);
+  const normalizedPhone = normalizeWelcomePopupPhone(phone);
+  if (normalizedPhone) await appendStoredId(WELCOME_POPUP_SHOWN_PHONES_KEY, normalizedPhone);
+}
+
+/** Calls claim API (triggers server backfill) and returns welcome bonus only if newly credited. */
 export async function claimWelcomeBonusOnServer(sessionToken: string): Promise<WelcomeBonusAuthPayload | null> {
   try {
     const claimRes = await fetch(`${ENV.API_URL}/api/customer/wallet/claim-welcome`, {
@@ -134,6 +133,9 @@ export async function claimWelcomeBonusOnServer(sessionToken: string): Promise<W
     if (claimRes.ok && contentType.includes('application/json')) {
       const json = await claimRes.json();
       const wb = json?.welcome_bonus;
+      if (wb?.already_credited) {
+        return { credited: false, already_credited: true, amount: 0 };
+      }
       if (wb && wb.credited && Number(wb.amount || 0) > 0) {
         return {
           credited: true,
@@ -143,25 +145,9 @@ export async function claimWelcomeBonusOnServer(sessionToken: string): Promise<W
       }
     }
   } catch {
-    // fall through to wallet GET (also backfills welcome bonus on server)
+    // non-fatal
   }
   return null;
-}
-
-export async function fetchWalletWelcomeBonus(sessionToken: string): Promise<WelcomeBonusAuthPayload | null> {
-  try {
-    const res = await fetch(`${ENV.API_URL}/api/customer/wallet`, {
-      headers: mobileCustomerHeaders(sessionToken),
-    });
-    if (!res.ok) return null;
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) return null;
-
-    const json = await res.json();
-    return parseWelcomeFromWalletJson(json);
-  } catch {
-    return null;
-  }
 }
 
 export async function resolveWelcomeBonusAfterLogin(
@@ -174,15 +160,20 @@ export async function resolveWelcomeBonusAfterLogin(
   const fromClaim = await claimWelcomeBonusOnServer(sessionToken);
   if (shouldShowCreditedPopup(fromClaim)) return fromClaim;
 
-  return fetchWalletWelcomeBonus(sessionToken);
+  // Do not treat existing wallet balance as a new welcome credit (prevents re-login popup).
+  return null;
 }
 
 export async function shouldShowWelcomeCreditedPopupForCustomer(
   customerId: string,
   welcomeBonus: WelcomeBonusAuthPayload | null | undefined,
+  phone?: string | null,
 ): Promise<boolean> {
-  if (!customerId || !shouldShowCreditedPopup(welcomeBonus)) return false;
-  return !(await wasWelcomeCreditedPopupShown(customerId));
+  if (!shouldShowCreditedPopup(welcomeBonus)) return false;
+  if (customerId && (await wasWelcomeCreditedPopupShown(customerId))) return false;
+  const normalizedPhone = normalizeWelcomePopupPhone(phone);
+  if (normalizedPhone && (await wasWelcomeCreditedPopupShownForPhone(normalizedPhone))) return false;
+  return true;
 }
 
 export type WelcomeCreditedPopupDecision = {
@@ -195,15 +186,24 @@ export async function decideWelcomeCreditedPopup(
   sessionToken: string,
   customerId: string | null | undefined,
   authResponse?: AuthVerifyResponse | null,
+  phone?: string | null,
 ): Promise<WelcomeCreditedPopupDecision> {
   const resolvedCustomerId = resolveCustomerIdFromAuth(authResponse, customerId);
+  const resolvedPhone =
+    normalizeWelcomePopupPhone(phone) ||
+    normalizeWelcomePopupPhone(authResponse?.customer?.phone) ||
+    null;
   const welcomeBonus = await resolveWelcomeBonusAfterLogin(sessionToken, authResponse);
   const amount = Number(welcomeBonus?.amount || getWelcomeBonusAmount());
 
-  if (!resolvedCustomerId) {
+  if (!resolvedCustomerId && !resolvedPhone) {
     return { show: shouldShowCreditedPopup(welcomeBonus), amount, welcomeBonus };
   }
 
-  const show = await shouldShowWelcomeCreditedPopupForCustomer(resolvedCustomerId, welcomeBonus);
+  const show = await shouldShowWelcomeCreditedPopupForCustomer(
+    resolvedCustomerId || '',
+    welcomeBonus,
+    resolvedPhone,
+  );
   return { show, amount, welcomeBonus };
 }

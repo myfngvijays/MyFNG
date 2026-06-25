@@ -11,13 +11,15 @@
 
 import { createClient } from '@/lib/supabase/client';
 
-// SMS Configuration
-const SMS_PROVIDER = process.env.NEXT_PUBLIC_SMS_PROVIDER || 'TWILIO'; // TWILIO or MSG91
+// SMS Configuration — default MSG91 for India (matches sms-otp route)
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
+const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
+const MSG91_OTP_TEMPLATE_ID = process.env.MSG91_OTP_TEMPLATE_ID || '';
+const SMS_PROVIDER =
+  process.env.NEXT_PUBLIC_SMS_PROVIDER || (MSG91_AUTH_KEY ? 'MSG91' : 'TWILIO');
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER || '';
-const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
-const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
 
 /**
  * SMS Templates
@@ -90,8 +92,49 @@ async function sendViaTwilio(phone: string, message: string): Promise<boolean> {
   }
 }
 
+function normalizeIndianMobile(phone: string): string | null {
+  const digits = phone.replace(/\D/g, '');
+  const local = digits.startsWith('91') ? digits.slice(-10) : digits.slice(-10);
+  if (local.length !== 10 || !/^[6-9]/.test(local)) return null;
+  return `91${local}`;
+}
+
 /**
- * Send SMS via MSG91
+ * Send OTP via MSG91 v5 API (DLT template — preferred for login OTP in India).
+ */
+async function sendViaMSG91Otp(phone: string, otp: string): Promise<boolean> {
+  if (!MSG91_AUTH_KEY || !MSG91_OTP_TEMPLATE_ID) return false;
+
+  const mobile = normalizeIndianMobile(phone);
+  if (!mobile) return false;
+
+  try {
+    const response = await fetch('https://control.msg91.com/api/v5/otp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        authkey: MSG91_AUTH_KEY,
+      },
+      body: JSON.stringify({
+        template_id: MSG91_OTP_TEMPLATE_ID,
+        mobile,
+        otp,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error('[SMS] MSG91 OTP API failed:', body);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('[SMS] MSG91 OTP API error:', error);
+    return false;
+  }
+}
+
+/**
+ * Send SMS via MSG91 legacy HTTP API
  */
 async function sendViaMSG91(phone: string, message: string): Promise<boolean> {
   if (!MSG91_AUTH_KEY) {
@@ -109,6 +152,7 @@ async function sendViaMSG91(phone: string, message: string): Promise<boolean> {
       sender: MSG91_SENDER_ID || 'MYFNG',
       route: '4',
       country: '91',
+      DLT_TE_ID: process.env.MSG91_DLT_TE_ID || '',
     });
     const response = await fetch(`https://control.msg91.com/api/sendhttp.php?${params.toString()}`);
     const body = (await response.text()).trim();
@@ -166,6 +210,10 @@ export async function sendSMS(
  * Send OTP
  */
 export async function sendOTP(phone: string, otp: string): Promise<boolean> {
+  if (SMS_PROVIDER === 'MSG91' || MSG91_AUTH_KEY) {
+    const viaOtpApi = await sendViaMSG91Otp(phone, otp);
+    if (viaOtpApi) return true;
+  }
   const message = SMS_TEMPLATES.OTP_VERIFICATION(otp);
   return await sendSMS(phone, message, 'OTP_VERIFICATION');
 }

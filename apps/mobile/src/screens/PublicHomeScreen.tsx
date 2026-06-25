@@ -177,6 +177,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
+  const pendingWelcomePhoneRef = useRef<string | null>(null);
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
@@ -222,10 +223,18 @@ export default function PublicHomeScreen({ navigation }: Props) {
               headers: mobileCustomerHeaders(token),
             });
             const meJson = meRes.ok ? await meRes.json().catch(() => ({})) : {};
-            const decision = await decideWelcomeCreditedPopup(token, meJson?.customer?.id, null);
+            const decision = await decideWelcomeCreditedPopup(
+              token,
+              meJson?.customer?.id,
+              null,
+              meJson?.customer?.phone,
+            );
             if (active && decision.show) {
               pendingWelcomeCustomerIdRef.current = meJson?.customer?.id
                 ? String(meJson.customer.id)
+                : null;
+              pendingWelcomePhoneRef.current = meJson?.customer?.phone
+                ? String(meJson.customer.phone)
                 : null;
               setCreditedWelcomeAmount(decision.amount);
               setCreditedWelcomeVisible(true);
@@ -1110,9 +1119,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
           onClose={async () => {
             setCreditedWelcomeVisible(false);
             const customerId = pendingWelcomeCustomerIdRef.current;
-            if (customerId) {
-              await markWelcomeCreditedPopupShown(customerId);
+            const phone = pendingWelcomePhoneRef.current;
+            if (customerId || phone) {
+              await markWelcomeCreditedPopupShown(customerId || '', phone);
               pendingWelcomeCustomerIdRef.current = null;
+              pendingWelcomePhoneRef.current = null;
             }
           }}
         />

@@ -120,6 +120,80 @@ export type MembershipOfferPayView = {
   listPrice: number;
 };
 
+export type MembershipOfferExpiredView = {
+  orderId: string;
+  leadNumber: string;
+  lostBundleDiscount: number;
+  currentPayable: number;
+  serviceSubtotal: number;
+  walletDeduction: number;
+  expiredAt?: string | null;
+};
+
+export function buildMembershipOfferExpiredView(order: any): MembershipOfferExpiredView | null {
+  if (!order || order.membership_claim?.benefit_code) return null;
+  if (!isExpiredUnpaidOrderMembershipBundle(order)) return null;
+
+  const lostBundleDiscount = resolveExpiredOrderMembershipBundleDiscount(order);
+  if (lostBundleDiscount <= 0) return null;
+
+  const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
+  const bundle = (meta as any).booking_membership_bundle;
+  const offer = resolveOrderMembershipOffer(order);
+  const expiredAt =
+    String(bundle?.expired_at || offer?.expires_at || '').trim() || null;
+
+  return {
+    orderId: String(order.id || ''),
+    leadNumber: String(order.lead_number || order.id || ''),
+    lostBundleDiscount,
+    currentPayable: resolveOrderDisplayAmount(order),
+    serviceSubtotal: deriveOrderServiceSubtotal(order),
+    walletDeduction: resolveOrderWalletDeduction(order),
+    expiredAt,
+  };
+}
+
+export function membershipOfferExpiredTitle(): string {
+  return 'Prime Offer Expired';
+}
+
+export function membershipOfferExpiredSubtitle(view: MembershipOfferExpiredView): string {
+  const lost = Math.round(view.lostBundleDiscount).toLocaleString('en-IN');
+  return `The limited-time booking discount of ₹${lost} is no longer applied.`;
+}
+
+export function membershipOfferExpiredMessage(view: MembershipOfferExpiredView): string {
+  const lost = Math.round(view.lostBundleDiscount).toLocaleString('en-IN');
+  const payable = Math.round(view.currentPayable).toLocaleString('en-IN');
+  const wallet =
+    view.walletDeduction > 0
+      ? ` Your wallet credit of ₹${Math.round(view.walletDeduction).toLocaleString('en-IN')} remains applied.`
+      : '';
+  return `The limited-time Prime booking discount of ₹${lost} has been removed.${wallet} Your updated service amount is ₹${payable}. Activate Prime anytime to unlock member benefits on future bookings.`;
+}
+
+export function findRecentlyExpiredMembershipOfferOrder(
+  orders: any[],
+  hasActiveMembership: boolean,
+): { order: any; expiredView: MembershipOfferExpiredView } | null {
+  if (hasActiveMembership || !Array.isArray(orders) || orders.length === 0) return null;
+  let best: { order: any; expiredView: MembershipOfferExpiredView; expiredMs: number } | null = null;
+  for (const order of orders) {
+    const expiredView = buildMembershipOfferExpiredView(order);
+    if (!expiredView?.orderId) continue;
+    const expiredMs = expiredView.expiredAt
+      ? new Date(expiredView.expiredAt).getTime()
+      : order.created_at
+        ? new Date(order.created_at).getTime()
+        : 0;
+    if (!best || expiredMs > best.expiredMs) {
+      best = { order, expiredView, expiredMs };
+    }
+  }
+  return best ? { order: best.order, expiredView: best.expiredView } : null;
+}
+
 export function resolveOrderDisplayAmount(order: any): number {
   const base = Number(order.amount_display || order.actual_amount || order.estimated_amount || 0);
   if (base <= 0) return 0;
@@ -128,6 +202,18 @@ export function resolveOrderDisplayAmount(order: any): number {
   if (activeDiscount > 0) return base;
 
   const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
+  if (isExpiredUnpaidOrderMembershipBundle(order) && (meta as any).wallet_applied) {
+    const serviceSubtotal = deriveOrderServiceSubtotal(order);
+    const wallet = resolveOrderWalletDeduction(order);
+    const discount = Number(order.discount_amount || 0);
+    const bundle = (meta as any).booking_membership_bundle;
+    const membershipDiscount = Number(bundle?.discount_amount || 0);
+    const couponDiscount = Math.max(0, Math.round((discount - membershipDiscount) * 100) / 100);
+    if (serviceSubtotal > 0) {
+      return Math.max(0, Math.round((serviceSubtotal - couponDiscount - wallet) * 100) / 100);
+    }
+  }
+
   const bundle = (meta as any).booking_membership_bundle;
   const storedDiscount = Number(bundle?.discount_amount || 0);
   if (storedDiscount <= 0) return base;
@@ -161,6 +247,74 @@ export function resolveOrderMembershipBundleDiscount(order: any): number {
   const offer = resolveOrderMembershipOffer(order);
   if (!offer?.active || offer.expired) return 0;
   return raw;
+}
+
+function deriveOrderServiceSubtotal(order: any): number {
+  const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
+  if (Number((meta as any).service_subtotal || 0) > 0) {
+    return Number((meta as any).service_subtotal);
+  }
+
+  const offer = resolveOrderMembershipOffer(order);
+  if (offer?.service_subtotal && offer.service_subtotal > 0) return offer.service_subtotal;
+
+  const bundle = (meta as any).booking_membership_bundle;
+  if (Number(bundle?.service_subtotal || 0) > 0) return Number(bundle.service_subtotal);
+
+  const estimated = Number(order.estimated_amount || order.amount_display || 0);
+  const discount = Number(order.discount_amount || 0);
+  const wallet = Number((meta as any).wallet_deduction || order.wallet_deduction || 0);
+  const membershipDiscount = Number(bundle?.discount_amount || 0);
+  const couponDiscount = Math.max(0, Math.round((discount - membershipDiscount) * 100) / 100);
+  const unpaidLine = Number((meta as any).unpaid_membership_line_price || 0);
+
+  if (unpaidLine > 0 && bundle?.include_membership) {
+    const withoutLine = Math.round((estimated + wallet + couponDiscount - unpaidLine + membershipDiscount) * 100) / 100;
+    if (withoutLine > 0) return withoutLine;
+  }
+
+  const serviceOnly = Math.round((estimated + wallet + couponDiscount) * 100) / 100;
+  if (serviceOnly > 0) return serviceOnly;
+
+  return Math.max(0, estimated);
+}
+
+function resolveExpiredOrderWalletOnServiceSubtotal(serviceSubtotal: number): number {
+  if (serviceSubtotal <= 0) return 0;
+  return Math.round(Math.min(serviceSubtotal, serviceSubtotal * 0.1) * 100) / 100;
+}
+
+function isExpiredUnpaidOrderMembershipBundle(order: any): boolean {
+  const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
+  const bundle = (meta as any).booking_membership_bundle;
+  if (!bundle || bundle.applied_at || bundle.membership_id) return false;
+  if (resolveOrderMembershipBundleDiscount(order) > 0) return false;
+  const offer = resolveOrderMembershipOffer(order);
+  return Boolean(bundle.expired_at) || !offer || !offer.active || offer.expired;
+}
+
+function resolveExpiredOrderMembershipBundleDiscount(order: any): number {
+  const offer = resolveOrderMembershipOffer(order);
+  if (offer?.bundle_discount && offer.bundle_discount > 0) return offer.bundle_discount;
+  const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
+  const rawOffer = (meta as any).post_booking_membership_offer;
+  if (rawOffer && typeof rawOffer === 'object') {
+    const fromOffer = Number(rawOffer.bundle_discount || 0);
+    if (fromOffer > 0) return fromOffer;
+  }
+  const serviceSubtotal = deriveOrderServiceSubtotal(order);
+  if (serviceSubtotal > 0) return calcBundleDiscount(serviceSubtotal);
+  return 0;
+}
+
+export function resolveOrderWalletDeduction(order: any): number {
+  const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
+  const stored = Number((meta as any).wallet_deduction || order.wallet_deduction || 0);
+  if (stored <= 0 || !(meta as any).wallet_applied) return stored;
+  if (!isExpiredUnpaidOrderMembershipBundle(order)) return stored;
+
+  const serviceSubtotal = deriveOrderServiceSubtotal(order);
+  return resolveExpiredOrderWalletOnServiceSubtotal(serviceSubtotal);
 }
 
 export function resolveOrderMembershipOffer(order: any): PostBookingMembershipOfferStatus | null {

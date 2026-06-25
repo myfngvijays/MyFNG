@@ -19,14 +19,13 @@ import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
+import { loadWalletRules } from '../lib/wallet';
 import {
   prepareFirebasePhoneAuth,
-  isIosSimulator,
-  isFirebaseIosClientError,
-  firebaseSmsUnavailableMessage,
-  shouldSkipFirebaseSmsOnSimulator,
+  isDevSimulator,
   isFirebaseTestPhone,
   firebaseTestOtpHint,
+  firebaseSmsUnavailableMessage,
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
@@ -57,6 +56,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingHomeNavigationRef = useRef(false);
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
+  const pendingWelcomePhoneRef = useRef<string | null>(null);
 
   // Phone numbers we register in Firebase Console as "Phone numbers for testing".
   // Includes the App Store reviewer demo number so OTP works without APNs/SMS.
@@ -79,9 +79,15 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     authResponse?: AuthVerifyResponse | null,
     customerId?: string | null,
   ) => {
-    const decision = await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse);
+    const decision = await decideWelcomeCreditedPopup(
+      sessionToken,
+      customerId,
+      authResponse,
+      authResponse?.customer?.phone || customerPhone,
+    );
     if (decision.show) {
       pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
+      pendingWelcomePhoneRef.current = authResponse?.customer?.phone || customerPhone || null;
       setCreditedWelcomeAmount(decision.amount);
       setCreditedWelcomeVisible(true);
       return true;
@@ -96,6 +102,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     const fallbackToken = `mobile-session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const sessionToken = token && token.trim() ? token : fallbackToken;
     await setCustomerSessionToken(sessionToken);
+    void loadWalletRules(ENV.API_URL).catch(() => {});
 
     let customerProfile: any = null;
     try {
@@ -144,16 +151,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     setPhoneOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setCustomerConfirmation(result.mode === 'firebase' ? result.confirmation : null);
+      setCustomerConfirmation(result.confirmation);
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
-      if (__DEV__ && isIosSimulator() && isFirebaseIosClientError(error)) {
-        setErrorText('Simulator: SMS unavailable. Sending OTP on WhatsApp...');
-        setLoading(false);
-        await handleWhatsAppOtpStart();
-        return;
-      }
       setErrorText(firebaseSmsUnavailableMessage(error));
     } finally {
       setLoading(false);
@@ -215,11 +216,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (!customerConfirmation && !/^\d{6}$/.test(customerOtp.trim())) {
-      setErrorText('Please enter the 6-digit OTP sent via SMS');
+    if (!customerConfirmation) {
+      setErrorText('Session expired. Please request OTP again.');
+      setCustomerStep('input');
       return;
     }
-    if (customerConfirmation && customerOtp.trim().length < 4) {
+    if (customerOtp.trim().length < 4) {
       setErrorText('Please enter the OTP sent to your number');
       return;
     }
@@ -394,12 +396,6 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const startPhoneOtp = () => {
     if (loading) return;
     setPhoneOtpChannel('sms');
-    const cleanPhone = customerPhone.replace(/\D/g, '');
-    if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {
-      setErrorText('Simulator par SMS nahi aata — WhatsApp OTP bhej rahe hain...');
-      void handleWhatsAppOtpStart();
-      return;
-    }
     void handleCustomerOtpStart();
   };
 
@@ -496,9 +492,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
                   </View>
                 )}
                 {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
-                {__DEV__ && isIosSimulator() && loginMethod === 'phone' && customerStep === 'input' ? (
+                {__DEV__ && isDevSimulator() && loginMethod === 'phone' && customerStep === 'input' ? (
                   <Text style={styles.simulatorHint}>
-                    iOS Simulator: real SMS phone par nahi aayega. WhatsApp OTP use karein, ya test number 7007543565 (OTP 454545).
+                    Simulator: real number par SMS nahi aayega. Real phone use karein, ya test number 7007543565 (OTP 454545).
                   </Text>
                 ) : null}
                 {loginMethod === 'phone' ? (
@@ -631,9 +627,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         onClose={async () => {
           setCreditedWelcomeVisible(false);
           const customerId = pendingWelcomeCustomerIdRef.current;
-          if (customerId) {
-            await markWelcomeCreditedPopupShown(customerId);
+          const phone = pendingWelcomePhoneRef.current;
+          if (customerId || phone) {
+            await markWelcomeCreditedPopupShown(customerId || '', phone);
             pendingWelcomeCustomerIdRef.current = null;
+            pendingWelcomePhoneRef.current = null;
           }
           if (pendingHomeNavigationRef.current) {
             pendingHomeNavigationRef.current = false;

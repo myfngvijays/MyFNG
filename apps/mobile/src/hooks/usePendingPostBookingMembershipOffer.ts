@@ -9,6 +9,7 @@ import { isMembershipActive } from '../lib/membershipTheme';
 import { activatePostBookingMembership, quotePostBookingMembership } from '../lib/postBookingMembership';
 import {
   findPendingMembershipOfferOrder,
+  resolveMembershipListPrice,
   resolveOrderMembershipOffer,
   type MembershipOfferPayView,
 } from '../lib/postBookingMembershipOffer';
@@ -18,6 +19,7 @@ import {
   mergePostBookingMembershipAppConfig,
   type PostBookingMembershipAppConfig,
 } from '../lib/postBookingMembershipAppConfig';
+import { useMembershipOfferExpiryAlerts } from './useMembershipOfferExpiryAlerts';
 
 type PendingOffer = {
   order: any;
@@ -79,6 +81,14 @@ export function usePendingPostBookingMembershipOffer(enabled: boolean) {
     const timer = setInterval(() => setTick((value) => value + 1), 1000);
     return () => clearInterval(timer);
   }, [pending?.order?.id]);
+
+  const membershipListPrice = resolveMembershipListPrice(membershipPlan || PRIME_MEMBERSHIP);
+
+  useMembershipOfferExpiryAlerts(pending ? [pending.order] : [], tick, {
+    enabled: enabled && appConfig.enabled && appConfig.show_on_home,
+    membershipListPrice,
+    onExpired: refresh,
+  });
 
   const pay = useCallback(async () => {
     const order = pending?.order;

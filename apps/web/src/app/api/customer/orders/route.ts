@@ -9,6 +9,7 @@ import { parseMembershipClaimMeta } from '@/lib/membership-benefits-service';
 import {
   expireUnpaidBookingMembershipBundleIfNeeded,
   resolveActiveMembershipBundleDiscount,
+  resolveDisplayWalletDeduction,
   resolveLeadAmountDisplay,
   resolvePostBookingMembershipOfferStatus,
 } from '@/lib/post-booking-membership-offer';
@@ -194,7 +195,7 @@ export async function GET(request: Request) {
       amount_display: correctedAmount > 0 ? correctedAmount : displayAmount,
       preferred_time: r.preferred_time_slot || null,
       workshop_name: workshopNameById[String(r.workshop_id || '')] || '',
-      wallet_deduction: Number(rowMeta.wallet_deduction || 0),
+      wallet_deduction: resolveDisplayWalletDeduction(r, pbConfig),
       membership_bundle_discount: membershipBundleDiscount,
       membership_claim: parseMembershipClaimMeta(r.meta),
       post_booking_membership: resolvePostBookingMembershipOfferStatus(r, pbConfig),

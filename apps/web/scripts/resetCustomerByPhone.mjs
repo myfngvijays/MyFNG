@@ -4,6 +4,7 @@
  * Usage:
  *   node scripts/resetCustomerByPhone.mjs --phone 9867070586 --dry-run
  *   node scripts/resetCustomerByPhone.mjs --phone 9867070586 --execute
+ *   node scripts/resetCustomerByPhone.mjs --phones 9867070586,9594294017 --execute
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -63,6 +64,27 @@ const LEAD_CHILD_TABLES = [
   'invoices',
 ];
 
+const PHONE_MATCH_COLUMNS = [
+  { table: 'vehicle_health_reports', column: 'customer_phone' },
+  { table: 'car_resale_valuations', column: 'customer_phone' },
+  { table: 'car_loan_leads', column: 'mobile' },
+  { table: 'telecrm_api', column: 'mobile' },
+  { table: 'rsa_leads', column: 'contact_number' },
+  { table: 'rsa_leads', column: 'alternate_number' },
+  { table: 'Razorpay_Direct_pay_RSA', column: 'customer_phone' },
+];
+
+function phoneVariants(phone) {
+  return [phone, `91${phone}`, `+91${phone}`];
+}
+
+function phoneOrFilter(column, phone) {
+  const variants = phoneVariants(phone);
+  return variants
+    .flatMap((v) => [`${column}.eq.${v}`, `${column}.ilike.%${phone}`])
+    .join(',');
+}
+
 async function deleteByCustomerId(supabase, customerId, table, column = 'customer_id') {
   const { error, count } = await supabase.from(table).delete({ count: 'exact' }).eq(column, customerId);
   if (error && !String(error.message || '').includes('does not exist')) {
@@ -72,26 +94,33 @@ async function deleteByCustomerId(supabase, customerId, table, column = 'custome
   return count || 0;
 }
 
-async function main() {
-  loadEnvLocal();
-  const args = process.argv.slice(2);
-  const phoneArg = args[args.indexOf('--phone') + 1];
-  const execute = args.includes('--execute');
+async function deleteByPhoneColumn(supabase, table, column, phone, dryRun) {
+  const filter = phoneOrFilter(column, phone);
+  const { data, error } = await supabase.from(table).select('id').or(filter).limit(500);
+  if (error) {
+    if (String(error.message || '').includes('does not exist')) return 0;
+    console.warn(`  warn ${table}.${column}: ${error.message}`);
+    return 0;
+  }
+  const count = data?.length || 0;
+  if (!count) return 0;
+  if (dryRun) {
+    console.log(`  would delete ${count} from ${table}.${column}`);
+    return count;
+  }
+  const { count: deleted, error: delErr } = await supabase.from(table).delete({ count: 'exact' }).or(filter);
+  if (delErr) {
+    console.warn(`  warn delete ${table}.${column}: ${delErr.message}`);
+    return 0;
+  }
+  console.log(`Deleted ${deleted ?? count} from ${table}.${column}`);
+  return deleted ?? count;
+}
+
+async function resetPhone(supabase, phone, execute) {
   const dryRun = !execute;
-
-  const phone = normalizePhone(phoneArg);
-  if (!phone) throw new Error('Pass --phone with 10-digit number');
-
-  const supabaseUrl = envOr('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL');
-  const serviceKey = envOr('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY');
-  if (!supabaseUrl || !serviceKey) throw new Error('Missing Supabase env');
-
-  const supabase = createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const phoneFilter = `phone.eq.${phone},phone.eq.91${phone},phone.eq.+91${phone},phone.ilike.%${phone}`;
-  const leadPhoneFilter = `customer_phone.eq.${phone},customer_phone.eq.91${phone},customer_phone.eq.+91${phone},customer_phone.ilike.%${phone}`;
+  const phoneFilter = phoneOrFilter('phone', phone);
+  const leadPhoneFilter = phoneOrFilter('customer_phone', phone);
 
   const { data: customers, error: custErr } = await supabase
     .from('customers')
@@ -104,19 +133,20 @@ async function main() {
     .select('id, lead_number, status, created_at')
     .or(leadPhoneFilter);
 
-  const { data: otpRows } = await supabase
-    .from('otp_requests')
-    .select('id')
-    .or(`phone.eq.${phone},phone.eq.91${phone},phone.eq.+91${phone},phone.ilike.%${phone}`);
+  const { data: otpRows } = await supabase.from('otp_requests').select('id').or(phoneOrFilter('phone', phone));
 
-  console.log(`Phone: ${phone}`);
+  console.log(`\n=== Phone: ${phone} ===`);
   console.log(`Customers: ${(customers || []).length}`);
   (customers || []).forEach((c) => console.log(`  - ${c.id} | ${c.phone} | ${c.full_name || '(no name)'} | ${c.created_at}`));
   console.log(`Service leads: ${(leads || []).length}`);
   console.log(`OTP requests: ${(otpRows || []).length}`);
 
+  for (const { table, column } of PHONE_MATCH_COLUMNS) {
+    await deleteByPhoneColumn(supabase, table, column, phone, dryRun);
+  }
+
   if (dryRun) {
-    console.log('\nDry run only. Re-run with --execute to delete everything.');
+    console.log('Dry run only for this phone.');
     return;
   }
 
@@ -137,6 +167,17 @@ async function main() {
   for (const customer of customers || []) {
     const id = customer.id;
     console.log(`Resetting customer ${id}...`);
+
+    await deleteByCustomerId(supabase, id, 'car_resale_valuations');
+    await deleteByCustomerId(supabase, id, 'vehicle_health_reports', 'customer_id');
+    await deleteByCustomerId(supabase, id, 'notification_devices');
+    await deleteByCustomerId(supabase, id, 'customer_vehicles');
+    await deleteByCustomerId(supabase, id, 'customer_addresses');
+    await deleteByCustomerId(supabase, id, 'customer_profiles');
+    await deleteByCustomerId(supabase, id, 'customer_memberships');
+    await deleteByCustomerId(supabase, id, 'referral_codes');
+    await deleteByCustomerId(supabase, id, 'referral_events', 'referrer_customer_id');
+    await deleteByCustomerId(supabase, id, 'referral_events', 'referee_customer_id');
 
     const { data: carts } = await supabase.from('carts').select('id').eq('customer_id', id);
     for (const cart of carts || []) {
@@ -164,7 +205,42 @@ async function main() {
     throw new Error(`Customer still exists after delete (${remaining.length} row(s))`);
   }
 
-  console.log('Done. Next login will create a fresh customer with welcome bonus.');
+  console.log(`Done ${phone}. Next login will create a fresh customer.`);
+}
+
+async function main() {
+  loadEnvLocal();
+  const args = process.argv.slice(2);
+  const phoneArg = args[args.indexOf('--phone') + 1];
+  const phonesArg = args[args.indexOf('--phones') + 1];
+  const execute = args.includes('--execute');
+  const dryRun = !execute;
+
+  const phones = phonesArg
+    ? phonesArg.split(',').map((p) => normalizePhone(p)).filter(Boolean)
+    : [normalizePhone(phoneArg)].filter(Boolean);
+
+  if (!phones.length) throw new Error('Pass --phone or --phones with 10-digit number(s)');
+
+  const supabaseUrl = envOr('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL');
+  const serviceKey = envOr('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY');
+  if (!supabaseUrl || !serviceKey) throw new Error('Missing Supabase env');
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  console.log(`Resetting ${phones.length} phone(s). Mode: ${dryRun ? 'DRY RUN' : 'EXECUTE'}`);
+
+  for (const phone of phones) {
+    await resetPhone(supabase, phone, execute);
+  }
+
+  if (dryRun) {
+    console.log('\nDry run only. Re-run with --execute to delete everything.');
+  } else {
+    console.log('\nAll phones reset. Users will get a fresh login on next OTP.');
+  }
 }
 
 main().catch((err) => {

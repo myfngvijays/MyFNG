@@ -1,28 +1,24 @@
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { isAndroidEmulator, isDevSimulator, isIosSimulator } from '../config/environment';
+
+export { isIosSimulator, isAndroidEmulator, isDevSimulator };
 
 export const FIREBASE_TEST_PHONE_NUMBERS = ['7007543565'];
 export const FIREBASE_TEST_OTP = '454545';
-
-export function isIosSimulator(): boolean {
-  if (Platform.OS !== 'ios') return false;
-  return Boolean((Constants.platform as { ios?: { simulator?: boolean } })?.ios?.simulator);
-}
 
 export function isFirebaseTestPhone(cleanPhone?: string): boolean {
   const phone = String(cleanPhone || '').replace(/\D/g, '').slice(-10);
   return FIREBASE_TEST_PHONE_NUMBERS.includes(phone);
 }
 
-/** Real SMS never appears on iOS Simulator — use WhatsApp or Firebase test numbers. */
-export function shouldSkipFirebaseSmsOnSimulator(cleanPhone?: string): boolean {
-  if (!__DEV__ || !isIosSimulator()) return false;
-  return !isFirebaseTestPhone(cleanPhone);
+/** Simulators cannot receive real SMS — use Firebase test numbers on a real device for other numbers. */
+export function shouldSkipFirebaseSmsOnSimulator(_cleanPhone?: string): boolean {
+  return false;
 }
 
 export function prepareFirebasePhoneAuth(cleanPhone?: string) {
-  if (__DEV__ || isFirebaseTestPhone(cleanPhone) || isIosSimulator()) {
+  if (__DEV__ || isDevSimulator() || isFirebaseTestPhone(cleanPhone)) {
     try {
       auth().settings.appVerificationDisabledForTesting = true;
     } catch {
@@ -47,10 +43,13 @@ export function isFirebaseIosClientError(error: unknown): boolean {
 }
 
 export function firebaseSmsUnavailableMessage(error: unknown): string {
-  if (isIosSimulator()) {
-    return 'iOS Simulator par real SMS nahi aata. WhatsApp OTP use karein, ya test number 7007543565 / OTP 454545.';
+  if (isDevSimulator()) {
+    return 'Simulator par real number par SMS nahi aata. Real phone par try karein, ya test number 7007543565 / OTP 454545 use karein.';
   }
   if (isFirebaseIosClientError(error)) {
+    if (Platform.OS === 'android' && !__DEV__) {
+      return 'Release APK keystore Firebase par register nahi hai. Play Store wala app chalega; sideload APK ke liye release SHA add karein. Tab tak WhatsApp OTP use karein.';
+    }
     return 'SMS OTP is temporarily unavailable. Please try WhatsApp OTP or retry in a moment.';
   }
   const code = String((error as { code?: string })?.code || '');

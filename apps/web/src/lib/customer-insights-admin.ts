@@ -1,5 +1,7 @@
 import { normalizePhone } from './coupon-rules';
 import { enrichBookingLead } from './booking-lead-utils';
+import { getPostBookingMembershipConfig } from './post-booking-membership-config';
+import { syncServiceLeadMembershipPricingForAdmin } from './post-booking-membership-offer';
 import { computeWalletRewardTotals, getWalletSummary } from './wallet-service';
 import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
@@ -259,9 +261,6 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
   const [
     vehiclesRes,
     addressesRes,
-    walletSummary,
-    walletTotals,
-    txRes,
     membershipsRes,
     usageRes,
     assignmentsRes,
@@ -279,18 +278,6 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
       .select('*')
       .eq('customer_id', customerId)
       .order('updated_at', { ascending: false }),
-    getWalletSummary(supabaseAdmin, customerId).catch(() => null),
-    computeWalletRewardTotals(supabaseAdmin, customerId).catch(() => ({
-      earned_cashback: 0,
-      referral_rewards: 0,
-      reward_points: 0,
-    })),
-    supabaseAdmin
-      .from('wallet_transactions')
-      .select('id, transaction_type, amount, source, created_at, balance_after, metadata, expires_at')
-      .eq('customer_id', customerId)
-      .order('created_at', { ascending: false })
-      .limit(200),
     supabaseAdmin
       .from('customer_memberships')
       .select('*, plan:membership_plans(id, code, name, membership_type, price)')
@@ -335,6 +322,26 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
   ]);
 
   const leads = (leadsRes.data || []).map((l: any) => enrichBookingLead(l));
+
+  const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
+  const syncedLeads = await Promise.all(
+    leads.map((lead: Record<string, unknown>) =>
+      syncServiceLeadMembershipPricingForAdmin(supabaseAdmin, lead, pbConfig),
+    ),
+  );
+
+  const walletSummary = await getWalletSummary(supabaseAdmin, customerId).catch(() => null);
+  const walletTotals = await computeWalletRewardTotals(supabaseAdmin, customerId).catch(() => ({
+    earned_cashback: 0,
+    referral_rewards: 0,
+    reward_points: 0,
+  }));
+  const { data: walletTransactions } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('id, transaction_type, amount, source, created_at, balance_after, metadata, expires_at')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(200);
 
   let redemptions: any[] = [];
   if (digits) {
@@ -386,12 +393,12 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
           totals: walletTotals,
         }
       : null,
-    wallet_transactions: txRes.data || [],
+    wallet_transactions: walletTransactions || [],
     memberships: membershipsRes.data || [],
     membership_usage: usage,
     coupon_assignments: assignmentsRes.data || [],
     coupon_redemptions: redemptions,
-    service_bookings: leads,
+    service_bookings: syncedLeads,
     chatbot_bookings: chatbotRes.data || [],
     analytics_events: eventsRes.data || [],
   };

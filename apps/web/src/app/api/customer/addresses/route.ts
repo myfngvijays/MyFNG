@@ -3,6 +3,18 @@ import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeAddressKey(parts: {
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+}) {
+  return [parts.line1, parts.line2, parts.city, parts.pincode]
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join('|');
+}
+
 export async function POST(request: NextRequest) {
   const ctx = await requireCustomer();
   if ('response' in ctx) return ctx.response;
@@ -27,6 +39,20 @@ export async function POST(request: NextRequest) {
     longitude: typeof body.longitude === 'number' ? body.longitude : null,
     is_default: Boolean(body.is_default),
   };
+
+  const incomingKey = normalizeAddressKey(payload);
+  const { data: existingRows } = await supabaseAdmin
+    .from('customer_addresses')
+    .select('id, line1, line2, city, pincode')
+    .eq('customer_id', customer.id);
+
+  const duplicate = (existingRows || []).find(
+    (row: { line1?: string | null; line2?: string | null; city?: string | null; pincode?: string | null }) =>
+      normalizeAddressKey(row) === incomingKey,
+  );
+  if (duplicate) {
+    return NextResponse.json({ address: duplicate, deduplicated: true });
+  }
 
   if (payload.is_default) {
     await supabaseAdmin

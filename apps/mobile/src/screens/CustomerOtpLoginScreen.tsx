@@ -16,7 +16,7 @@ import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import {
   shouldSkipFirebaseSmsOnSimulator,
-  isIosSimulator,
+  isDevSimulator,
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
@@ -44,6 +44,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const pendingGoBackRef = React.useRef(false);
   const pendingWelcomeCustomerIdRef = React.useRef<string | null>(null);
+  const pendingWelcomePhoneRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     const initialPhone = route?.params?.initialPhone;
@@ -118,12 +119,12 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     setOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setConfirmation(result.mode === 'firebase' ? result.confirmation : null);
+      setConfirmation(result.confirmation);
       setStep('otp');
       const testHint = firebaseTestOtpHint(cleanPhone);
       Alert.alert('OTP Sent', testHint || `OTP sent to +91${cleanPhone}`);
     } catch (error: any) {
-      if (__DEV__ && isIosSimulator() && isFirebaseIosClientError(error)) {
+      if (__DEV__ && isDevSimulator() && isFirebaseIosClientError(error)) {
         await handleSendWhatsAppOtp();
         return;
       }
@@ -154,9 +155,15 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     authResponse?: AuthVerifyResponse | null,
     customerId?: string | null,
   ) => {
-    const decision = await decideWelcomeCreditedPopup(sessionToken, customerId, authResponse);
+    const decision = await decideWelcomeCreditedPopup(
+      sessionToken,
+      customerId,
+      authResponse,
+      authResponse?.customer?.phone || phone,
+    );
     if (decision.show) {
       pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
+      pendingWelcomePhoneRef.current = authResponse?.customer?.phone || phone || null;
       setCreditedWelcomeAmount(decision.amount);
       setCreditedWelcomeVisible(true);
       return true;
@@ -283,7 +290,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
           <Text style={styles.title}>Customer Login</Text>
           <Text style={styles.subtitle}>Login with mobile number and OTP</Text>
 
-          {__DEV__ && isIosSimulator() && step === 'phone' ? (
+          {__DEV__ && isDevSimulator() && step === 'phone' ? (
             <Text style={styles.simulatorHint}>
               iOS Simulator: real SMS phone par nahi aayega. WhatsApp OTP use karein, ya test number 7007543565 (OTP 454545).
             </Text>
@@ -379,9 +386,11 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
         onClose={async () => {
           setCreditedWelcomeVisible(false);
           const customerId = pendingWelcomeCustomerIdRef.current;
-          if (customerId) {
-            await markWelcomeCreditedPopupShown(customerId);
+          const welcomePhone = pendingWelcomePhoneRef.current;
+          if (customerId || welcomePhone) {
+            await markWelcomeCreditedPopupShown(customerId || '', welcomePhone);
             pendingWelcomeCustomerIdRef.current = null;
+            pendingWelcomePhoneRef.current = null;
           }
           if (pendingGoBackRef.current) {
             pendingGoBackRef.current = false;

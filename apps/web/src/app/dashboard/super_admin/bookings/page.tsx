@@ -68,6 +68,30 @@ function CouponBadge({ code, discount }: { code?: string | null; discount?: numb
   );
 }
 
+function getLeadDisplayAmount(lead: ServiceLead) {
+  const display = lead.amount_display;
+  const estimated = Number(lead.estimated_amount || lead.actual_amount || 0);
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  const subtotal = Number(meta.service_subtotal || 0);
+  const wallet = meta.wallet_applied ? Number(meta.wallet_deduction || 0) : 0;
+
+  if (display !== null && display !== undefined && display !== '') {
+    const num = Number(display);
+    if (Number.isFinite(num)) {
+      if (wallet > 0 && subtotal > 0 && num >= subtotal - 0.01 && estimated > 0 && estimated < num) {
+        return estimated;
+      }
+      return num;
+    }
+  }
+
+  if (wallet > 0 && subtotal > 0) {
+    return Math.max(0, subtotal - wallet);
+  }
+
+  return lead.estimated_amount;
+}
+
 function getServiceLabel(lead: ServiceLead) {
   if (lead.service_display) return String(lead.service_display);
   if (lead.service_type) {
@@ -693,7 +717,7 @@ export default function SuperAdminBookingsPage() {
                             {lead.status || '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(lead.estimated_amount)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(getLeadDisplayAmount(lead))}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(lead.created_at)}</td>
                         <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1">
@@ -820,7 +844,7 @@ export default function SuperAdminBookingsPage() {
                       <p className="text-gray-500">{activeTab === 'service_leads' ? 'Amount' : 'Price'}</p>
                       <p className="font-medium text-gray-800">
                         {activeTab === 'service_leads'
-                          ? formatCurrency(item.estimated_amount)
+                          ? formatCurrency(getLeadDisplayAmount(item))
                           : formatCurrency(item.quoted_price)}
                       </p>
                     </div>
@@ -963,18 +987,24 @@ export default function SuperAdminBookingsPage() {
 
             <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {Object.entries(detailItem).map(([key, value]) => (
+                {Object.entries(detailItem).map(([key, value]) => {
+                  const displayValue =
+                    (key === 'estimated_amount' || key === 'actual_amount') &&
+                    detailTitle.includes('Service Lead')
+                      ? getLeadDisplayAmount(detailItem)
+                      : value;
+                  return (
                   <div key={key} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                     <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">{prettifyKey(key)}</p>
                     <p className="text-sm text-gray-900 mt-1 break-words">
-                      {value === null || value === undefined || value === ''
+                      {displayValue === null || displayValue === undefined || displayValue === ''
                         ? '-'
-                        : typeof value === 'object'
-                          ? JSON.stringify(value, null, 2)
-                          : String(value)}
+                        : typeof displayValue === 'object'
+                          ? JSON.stringify(displayValue, null, 2)
+                          : String(displayValue)}
                     </p>
                   </div>
-                ))}
+                );})}
               </div>
             </div>
           </div>

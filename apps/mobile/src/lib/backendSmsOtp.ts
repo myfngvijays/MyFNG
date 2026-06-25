@@ -1,12 +1,13 @@
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 import { ENV } from '../config/environment';
-import { isFirebaseTestPhone, sendFirebaseSmsOtp } from './firebasePhoneAuth';
+import { sendFirebaseSmsOtp } from './firebasePhoneAuth';
 import type { AuthVerifyResponse } from './welcomeBonus';
 
-export type SmsOtpSendResult =
-  | { mode: 'firebase'; confirmation: FirebaseAuthTypes.ConfirmationResult }
-  | { mode: 'backend' };
+export type SmsOtpSendResult = {
+  mode: 'firebase';
+  confirmation: FirebaseAuthTypes.ConfirmationResult;
+};
 
 const mobileHeaders = {
   'Content-Type': 'application/json',
@@ -32,54 +33,42 @@ function parseAuthVerifyResponse(json: any): AuthVerifyResponse {
   };
 }
 
-export async function sendSmsOtp(cleanPhone: string): Promise<SmsOtpSendResult> {
-  if (isFirebaseTestPhone(cleanPhone)) {
-    const confirmation = await sendFirebaseSmsOtp(cleanPhone);
-    return { mode: 'firebase', confirmation };
+async function parseJsonResponse(res: Response): Promise<Record<string, unknown>> {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return {};
   }
+  return (await res.json().catch(() => ({}))) as Record<string, unknown>;
+}
 
-  const res = await fetch(`${ENV.API_URL}/api/customer/auth/sms-otp`, {
-    method: 'POST',
-    headers: mobileHeaders,
-    body: JSON.stringify({ phone: cleanPhone }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(json?.error || `Unable to send SMS OTP (HTTP ${res.status})`);
-  }
-  return { mode: 'backend' };
+/** Firebase Phone Auth — same flow as the live Play Store / App Store builds. */
+export async function sendSmsOtp(cleanPhone: string): Promise<SmsOtpSendResult> {
+  const confirmation = await sendFirebaseSmsOtp(cleanPhone);
+  return { mode: 'firebase', confirmation };
 }
 
 export async function verifySmsOtp(
   cleanPhone: string,
   otp: string,
-  confirmation: FirebaseAuthTypes.ConfirmationResult | null
+  confirmation: FirebaseAuthTypes.ConfirmationResult | null,
 ): Promise<AuthVerifyResponse> {
-  if (confirmation) {
-    const userCredential = await confirmation.confirm(otp.trim());
-    if (!userCredential?.user) throw new Error('OTP verification failed');
-    const idToken = await userCredential.user.getIdToken();
-
-    const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
-      method: 'POST',
-      headers: mobileHeaders,
-      body: JSON.stringify({ idToken }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
-    }
-    return parseAuthVerifyResponse(json);
+  if (!confirmation) {
+    throw new Error('Session expired. Please request OTP again.');
   }
 
-  const res = await fetch(`${ENV.API_URL}/api/customer/auth/sms-verify`, {
+  const userCredential = await confirmation.confirm(otp.trim());
+  if (!userCredential?.user) throw new Error('OTP verification failed');
+  const idToken = await userCredential.user.getIdToken();
+
+  const res = await fetch(`${ENV.API_URL}/api/customer/auth/verify-otp`, {
     method: 'POST',
     headers: mobileHeaders,
-    body: JSON.stringify({ phone: cleanPhone, otp: otp.trim() }),
+    body: JSON.stringify({ idToken }),
   });
-  const json = await res.json().catch(() => ({}));
+  const json = await parseJsonResponse(res);
   if (!res.ok) {
-    throw new Error(json?.error || `Verification failed (HTTP ${res.status})`);
+    throw new Error(String(json?.error || `Verification failed (HTTP ${res.status})`));
   }
+
   return parseAuthVerifyResponse(json);
 }
