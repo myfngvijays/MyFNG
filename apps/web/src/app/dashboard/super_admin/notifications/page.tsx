@@ -43,13 +43,16 @@ type LogEntry = {
   };
 };
 
-const TEST_PHONE_DEFAULT = '9175750091';
+const TEST_PHONE_PRESETS = [
+  { phone: '8652710389', label: 'Nikhil Y' },
+  { phone: '9175750091', label: 'Shekhar' },
+];
 
 export default function SendNotificationPage() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [targetRole, setTargetRole] = useState('CUSTOMER');
-  const [targetPhone, setTargetPhone] = useState(TEST_PHONE_DEFAULT);
+  const [targetPhone, setTargetPhone] = useState(TEST_PHONE_PRESETS[0].phone);
   const [priority, setPriority] = useState<'default' | 'high'>('default');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ success: boolean; sent?: number; error?: string; hint?: string } | null>(null);
@@ -266,11 +269,27 @@ export default function SendNotificationPage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Test customer phone
                 </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {TEST_PHONE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.phone}
+                      type="button"
+                      onClick={() => setTargetPhone(preset.phone)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                        targetPhone === preset.phone
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      {preset.label} · {preset.phone}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="tel"
                   value={targetPhone}
                   onChange={(e) => setTargetPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="9175750091"
+                  placeholder="8652710389"
                   maxLength={10}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
