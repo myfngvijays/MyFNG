@@ -271,11 +271,13 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
   };
 }
 
-const WELCOME_SIGNUP_GRACE_MS = 15 * 60 * 1000;
+const WELCOME_SIGNUP_GRACE_MS = 24 * 60 * 60 * 1000;
 
 export type CreditWelcomeBonusOptions = {
   /** Admin/manual scripts only — skips fresh-signup eligibility check. */
   allowExistingCustomer?: boolean;
+  /** Auth route sets this when the customer row was created in the current login flow. */
+  isNewSignup?: boolean;
 };
 
 export async function isWelcomeBonusEligible(
@@ -283,7 +285,7 @@ export async function isWelcomeBonusEligible(
   customerId: string,
   options?: CreditWelcomeBonusOptions,
 ): Promise<boolean> {
-  if (options?.allowExistingCustomer) return true;
+  if (options?.allowExistingCustomer || options?.isNewSignup) return true;
 
   const { data: customer } = await supabaseAdmin
     .from('customers')
@@ -295,6 +297,7 @@ export async function isWelcomeBonusEligible(
   const createdAtMs = Date.parse(String(customer.created_at));
   if (!Number.isFinite(createdAtMs)) return false;
 
+  // Backfill only for accounts created recently (same-day signup missed credit).
   return createdAtMs >= Date.now() - WELCOME_SIGNUP_GRACE_MS;
 }
 

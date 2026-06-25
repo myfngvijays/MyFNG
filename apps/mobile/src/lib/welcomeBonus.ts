@@ -166,12 +166,29 @@ export async function resolveWelcomeBonusAfterLogin(
   return null;
 }
 
+export async function clearWelcomeCreditedPopupPhoneBlock(phone?: string | null): Promise<void> {
+  const normalized = normalizeWelcomePopupPhone(phone);
+  if (!normalized) return;
+  try {
+    const phones = await readStoredIds(WELCOME_POPUP_SHOWN_PHONES_KEY);
+    const next = phones.filter((entry) => entry !== normalized);
+    await AsyncStorage.setItem(WELCOME_POPUP_SHOWN_PHONES_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export async function shouldShowWelcomeCreditedPopupForCustomer(
   customerId: string,
   welcomeBonus: WelcomeBonusAuthPayload | null | undefined,
   phone?: string | null,
+  options?: { isNewCustomer?: boolean },
 ): Promise<boolean> {
   if (!shouldShowCreditedPopup(welcomeBonus)) return false;
+  if (options?.isNewCustomer) {
+    if (customerId && (await wasWelcomeCreditedPopupShown(customerId))) return false;
+    return true;
+  }
   if (customerId && (await wasWelcomeCreditedPopupShown(customerId))) return false;
   const normalizedPhone = normalizeWelcomePopupPhone(phone);
   if (normalizedPhone && (await wasWelcomeCreditedPopupShownForPhone(normalizedPhone))) return false;
@@ -197,6 +214,11 @@ export async function decideWelcomeCreditedPopup(
     null;
   const welcomeBonus = await resolveWelcomeBonusAfterLogin(sessionToken, authResponse);
   const amount = Number(welcomeBonus?.amount || getWelcomeBonusAmount());
+  const isNewCustomer = authResponse?.is_new_customer === true;
+
+  if (isNewCustomer && shouldShowCreditedPopup(welcomeBonus)) {
+    await clearWelcomeCreditedPopupPhoneBlock(resolvedPhone);
+  }
 
   if (!resolvedCustomerId && !resolvedPhone) {
     return { show: shouldShowCreditedPopup(welcomeBonus), amount, welcomeBonus };
@@ -206,6 +228,7 @@ export async function decideWelcomeCreditedPopup(
     resolvedCustomerId || '',
     welcomeBonus,
     resolvedPhone,
+    { isNewCustomer },
   );
   return { show, amount, welcomeBonus };
 }

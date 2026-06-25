@@ -186,6 +186,9 @@ async function resetPhone(supabase, phone, execute) {
     await deleteByCustomerId(supabase, id, 'carts');
     await deleteByCustomerId(supabase, id, 'customer_coupon_assignments');
     await deleteByCustomerId(supabase, id, 'customer_analytics_events');
+    await deleteByCustomerId(supabase, id, 'customer_notification_preferences');
+    await deleteByCustomerId(supabase, id, 'wallet_transactions');
+    await deleteByCustomerId(supabase, id, 'wallet_accounts');
     await deleteByCustomerId(supabase, id, 'customer_sessions');
     await deleteByCustomerId(supabase, id, 'customer_carts');
 
