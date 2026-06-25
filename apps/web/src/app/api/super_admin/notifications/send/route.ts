@@ -61,6 +61,8 @@ export async function POST(request: NextRequest) {
     const message = String(body?.message || '').trim();
     const targetRole = String(body?.target_role || 'ALL').trim().toUpperCase();
     const priority = body?.priority === 'high' ? 'high' : 'default';
+    const targetPhoneRaw = String(body?.target_phone || '').replace(/\D/g, '');
+    const targetPhone = targetPhoneRaw.length >= 10 ? targetPhoneRaw.slice(-10) : '';
 
     if (!title || !message) {
       return NextResponse.json({ error: 'Title and message are required' }, { status: 400 });
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     let tokens: string[] = [];
+    let targetCustomer: { id: string; phone: string; full_name: string | null } | null = null;
 
     if (targetRole === 'ALL') {
       const { data } = await supabaseAdmin
@@ -84,18 +87,41 @@ export async function POST(request: NextRequest) {
         .eq('is_active', true);
       tokens = (data || []).map((r: any) => String(r.token));
     } else if (targetRole === 'CUSTOMER') {
-      const { data: staffIds } = await supabaseAdmin.from('users_login').select('id');
-      const staffSet = new Set((staffIds || []).map((r: any) => r.id));
+      if (targetPhone) {
+        const { data: customer } = await supabaseAdmin
+          .from('customers')
+          .select('id, phone, full_name')
+          .or(`phone.eq.${targetPhone},phone.eq.91${targetPhone}`)
+          .maybeSingle();
 
-      const { data: allDevices } = await supabaseAdmin
-        .from('notification_devices')
-        .select('user_id, token')
-        .eq('platform', 'EXPO')
-        .eq('is_active', true);
+        if (!customer) {
+          return NextResponse.json({
+            success: true,
+            sent: 0,
+            message: `No customer found for phone ${targetPhone}`,
+            customer_found: false,
+          });
+        }
+        targetCustomer = customer as { id: string; phone: string; full_name: string | null };
 
-      tokens = (allDevices || [])
-        .filter((d: any) => !staffSet.has(d.user_id))
-        .map((d: any) => String(d.token));
+        const { data: customerDevices } = await supabaseAdmin
+          .from('notification_devices')
+          .select('token')
+          .eq('customer_id', customer.id)
+          .eq('platform', 'EXPO')
+          .eq('is_active', true);
+
+        tokens = (customerDevices || []).map((r: any) => String(r.token));
+      } else {
+        const { data: customerDevices } = await supabaseAdmin
+          .from('notification_devices')
+          .select('token')
+          .eq('platform', 'EXPO')
+          .eq('is_active', true)
+          .not('customer_id', 'is', null);
+
+        tokens = (customerDevices || []).map((r: any) => String(r.token));
+      }
     } else {
       const { data: roleUsers } = await supabaseAdmin
         .from('users_login')
@@ -125,6 +151,8 @@ export async function POST(request: NextRequest) {
           sent_at: new Date().toISOString(),
           meta: {
             target_role: targetRole,
+            target_phone: targetPhone || null,
+            target_customer_id: targetCustomer?.id || null,
             title,
             body: message,
             sent_by: auth.userName,
@@ -134,7 +162,15 @@ export async function POST(request: NextRequest) {
           },
         })
         .then(() => undefined, () => undefined);
-      return NextResponse.json({ success: true, sent: 0, message: 'No devices found for this role' });
+      return NextResponse.json({
+        success: true,
+        sent: 0,
+        message: targetPhone
+          ? `No push token on phone ${targetPhone}. Open MyFNG app → login → allow notifications.`
+          : 'No devices found for this role',
+        customer_found: targetPhone ? Boolean(targetCustomer) : undefined,
+        target_phone: targetPhone || undefined,
+      });
     }
 
     const uniqueTokens = [...new Set(tokens)];
@@ -165,6 +201,8 @@ export async function POST(request: NextRequest) {
         sent_at: new Date().toISOString(),
         meta: {
           target_role: targetRole,
+          target_phone: targetPhone || null,
+          target_customer_id: targetCustomer?.id || null,
           title,
           body: message,
           sent_by: auth.userName,
@@ -175,7 +213,11 @@ export async function POST(request: NextRequest) {
       })
       .then(() => undefined, () => undefined);
 
-    return NextResponse.json({ success: true, sent: totalSent });
+    return NextResponse.json({
+      success: true,
+      sent: totalSent,
+      target_phone: targetPhone || undefined,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: 'Internal server error', details: error?.message }, { status: 500 });
   }

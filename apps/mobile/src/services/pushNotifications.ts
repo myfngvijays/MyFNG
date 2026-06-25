@@ -6,6 +6,19 @@ import { supabase } from '../lib/supabase';
 
 const STORAGE_KEY = 'myfng_expo_push_token_v1';
 
+type PushRegisterFailure = {
+  ok: false;
+  reason: 'permission_denied' | 'missing_project_id' | 'no_token' | 'db_error' | 'api_error';
+  details?: string;
+};
+
+type PushRegisterSuccess = {
+  ok: true;
+  token: string;
+};
+
+export type PushRegisterResult = PushRegisterSuccess | PushRegisterFailure;
+
 function getExpoProjectId(): string | null {
   const anyConstants: any = Constants;
   return (
@@ -16,8 +29,7 @@ function getExpoProjectId(): string | null {
   );
 }
 
-export async function registerAndSyncExpoPushToken(userId: string) {
-  // Configure how notifications are shown when app is foregrounded
+async function configureNotificationPresentation() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -26,7 +38,6 @@ export async function registerAndSyncExpoPushToken(userId: string) {
     }),
   });
 
-  // Android channel (required for reliable delivery/display)
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
@@ -35,6 +46,10 @@ export async function registerAndSyncExpoPushToken(userId: string) {
       lightColor: '#0088E8',
     });
   }
+}
+
+async function acquireExpoPushToken(): Promise<PushRegisterResult> {
+  await configureNotificationPresentation();
 
   const existing = await Notifications.getPermissionsAsync();
   let status = existing.status;
@@ -42,46 +57,83 @@ export async function registerAndSyncExpoPushToken(userId: string) {
     const req = await Notifications.requestPermissionsAsync();
     status = req.status;
   }
-  if (status !== 'granted') return { ok: false as const, reason: 'permission_denied' as const };
+  if (status !== 'granted') {
+    return { ok: false, reason: 'permission_denied' };
+  }
 
   const projectId = getExpoProjectId();
-  // Expo SDK 49+ requires projectId explicitly.
-  // If missing, skip token registration instead of calling with undefined (which logs a warning).
   if (!projectId) {
-    return { ok: false as const, reason: 'missing_project_id' as const };
+    return { ok: false, reason: 'missing_project_id' };
   }
+
   const tokenRes = await Notifications.getExpoPushTokenAsync({ projectId });
   const token = tokenRes.data;
-  if (!token) return { ok: false as const, reason: 'no_token' as const };
+  if (!token) return { ok: false, reason: 'no_token' };
 
-  // Avoid spamming DB if unchanged
   try {
     const prev = await AsyncStorage.getItem(STORAGE_KEY);
-    if (prev === token) {
-      // still update last_seen best-effort
-    } else {
+    if (prev !== token) {
       await AsyncStorage.setItem(STORAGE_KEY, token);
     }
   } catch {
     // ignore storage issues
   }
 
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from('notification_devices')
-    .upsert(
-      {
-        user_id: userId,
-        platform: 'EXPO',
-        token,
-        is_active: true,
-        last_seen_at: now,
-      } as any,
-      { onConflict: 'user_id,platform,token' }
-    );
-
-  if (error) return { ok: false as const, reason: 'db_error' as const, details: error.message };
-  return { ok: true as const, token };
+  return { ok: true, token };
 }
 
+/** Staff login (Supabase auth / users_login) — existing path. */
+export async function registerAndSyncExpoPushToken(userId: string): Promise<PushRegisterResult> {
+  const acquired = await acquireExpoPushToken();
+  if (!acquired.ok) return acquired;
 
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('notification_devices').upsert(
+    {
+      user_id: userId,
+      platform: 'EXPO',
+      token: acquired.token,
+      is_active: true,
+      last_seen_at: now,
+    } as any,
+    { onConflict: 'user_id,platform,token' },
+  );
+
+  if (error) return { ok: false, reason: 'db_error', details: error.message };
+  return { ok: true, token: acquired.token };
+}
+
+/** Customer app login (Firebase OTP + customer session) — registers via web API. */
+export async function registerCustomerExpoPushToken(
+  apiUrl: string,
+  sessionToken: string,
+): Promise<PushRegisterResult> {
+  const acquired = await acquireExpoPushToken();
+  if (!acquired.ok) return acquired;
+
+  const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/customer/push-token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-customer-session': sessionToken,
+      'x-mobile-client': 'true',
+      'X-App-Platform': Platform.OS,
+    },
+    body: JSON.stringify({
+      token: acquired.token,
+      platform: 'EXPO',
+      device_name: Platform.OS === 'ios' ? 'iOS' : 'Android',
+    }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      ok: false,
+      reason: 'api_error',
+      details: String(json?.error || json?.details || `HTTP ${res.status}`),
+    };
+  }
+
+  return { ok: true, token: acquired.token };
+}

@@ -62,6 +62,7 @@ import { supabase } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
 import { clearCustomerSessionToken, getCustomerSessionToken } from './src/lib/customerSession';
 import { preloadWalletRules } from './src/lib/wallet';
+import { registerCustomerExpoPushToken } from './src/services/pushNotifications';
 
 const Stack = createNativeStackNavigator();
 
@@ -72,6 +73,21 @@ function AppContent() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const isCustomerSessionUser =
     user?.type === 'customer_session' && userProfile?.role?.role_code === 'CUSTOMER';
+
+  const syncCustomerPushToken = async () => {
+    try {
+      const sessionToken = await getCustomerSessionToken();
+      if (!sessionToken) return;
+      await registerCustomerExpoPushToken(ENV.API_URL, sessionToken);
+    } catch {
+      // best-effort only
+    }
+  };
+
+  useEffect(() => {
+    if (!isCustomerSessionUser) return;
+    void syncCustomerPushToken();
+  }, [isCustomerSessionUser, user?.id]);
 
   useEffect(() => {
     void preloadWalletRules(ENV.API_URL);
@@ -167,6 +183,7 @@ function AppContent() {
           role_name: 'Customer',
         },
       });
+      void syncCustomerPushToken();
       return true;
     } catch (_e) {
       return false;
@@ -176,6 +193,9 @@ function AppContent() {
   const handleLoginSuccess = (user: any, profile: any) => {
     setUser(user);
     setUserProfile(profile);
+    if (user?.type === 'customer_session' || profile?.role?.role_code === 'CUSTOMER') {
+      void syncCustomerPushToken();
+    }
   };
 
   const handleLogout = async () => {

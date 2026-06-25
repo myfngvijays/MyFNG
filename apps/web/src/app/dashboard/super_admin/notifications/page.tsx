@@ -43,19 +43,63 @@ type LogEntry = {
   };
 };
 
+const TEST_PHONE_DEFAULT = '9175750091';
+
 export default function SendNotificationPage() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
-  const [targetRole, setTargetRole] = useState('ALL');
+  const [targetRole, setTargetRole] = useState('CUSTOMER');
+  const [targetPhone, setTargetPhone] = useState(TEST_PHONE_DEFAULT);
   const [priority, setPriority] = useState<'default' | 'high'>('default');
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; sent?: number; error?: string } | null>(null);
+  const [result, setResult] = useState<{ success: boolean; sent?: number; error?: string; hint?: string } | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [deviceStatus, setDeviceStatus] = useState<{
+    customer_found: boolean;
+    device_count: number;
+    customer?: { full_name?: string; phone?: string };
+  } | null>(null);
+  const [loadingDeviceStatus, setLoadingDeviceStatus] = useState(false);
 
   useEffect(() => {
     fetchHistory();
   }, []);
+
+  useEffect(() => {
+    if (targetRole !== 'CUSTOMER') {
+      setDeviceStatus(null);
+      return;
+    }
+    const phone = targetPhone.replace(/\D/g, '').slice(-10);
+    if (phone.length !== 10) {
+      setDeviceStatus(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void fetchDeviceStatus(phone);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [targetRole, targetPhone]);
+
+  const fetchDeviceStatus = async (phone: string) => {
+    try {
+      setLoadingDeviceStatus(true);
+      const res = await fetch(`/api/super_admin/notifications/device-status?phone=${encodeURIComponent(phone)}`);
+      const data = await res.json();
+      if (res.ok) {
+        setDeviceStatus({
+          customer_found: Boolean(data.customer_found),
+          device_count: Number(data.device_count || 0),
+          customer: data.customer,
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingDeviceStatus(false);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -77,7 +121,15 @@ export default function SendNotificationPage() {
     }
 
     const role = ROLE_OPTIONS.find((r) => r.value === targetRole);
-    if (!confirm(`Send notification to "${role?.label}"?\n\nTitle: ${title}\nMessage: ${message}\nPriority: ${priority === 'high' ? 'High' : 'Normal'}`)) {
+    const phoneHint =
+      targetRole === 'CUSTOMER' && targetPhone.trim()
+        ? `\nTest phone: ${targetPhone.trim()}`
+        : '';
+    if (
+      !confirm(
+        `Send notification to "${role?.label}"?${phoneHint}\n\nTitle: ${title}\nMessage: ${message}\nPriority: ${priority === 'high' ? 'High' : 'Normal'}`,
+      )
+    ) {
       return;
     }
 
@@ -92,6 +144,7 @@ export default function SendNotificationPage() {
           title: title.trim(),
           message: message.trim(),
           target_role: targetRole,
+          target_phone: targetRole === 'CUSTOMER' ? targetPhone.replace(/\D/g, '').slice(-10) : undefined,
           priority,
         }),
       });
@@ -102,11 +155,20 @@ export default function SendNotificationPage() {
         setResult({ success: false, error: data.error || 'Failed to send' });
         toast.error(data.error || 'Failed to send notification');
       } else {
-        setResult({ success: true, sent: data.sent });
-        toast.success(`Notification sent to ${data.sent} device(s)`);
-        setTitle('');
-        setMessage('');
+        setResult({
+          success: true,
+          sent: data.sent,
+          hint: data.message,
+        });
+        if (Number(data.sent) > 0) {
+          toast.success(`Notification sent to ${data.sent} device(s)`);
+        } else {
+          toast.error(data.message || 'No devices found — login on app and allow notifications first');
+        }
         fetchHistory();
+        if (targetRole === 'CUSTOMER') {
+          void fetchDeviceStatus(targetPhone.replace(/\D/g, '').slice(-10));
+        }
       }
     } catch (err: any) {
       setResult({ success: false, error: err?.message || 'Network error' });
@@ -199,6 +261,39 @@ export default function SendNotificationPage() {
               </select>
             </div>
 
+            {targetRole === 'CUSTOMER' && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Test customer phone
+                </label>
+                <input
+                  type="tel"
+                  value={targetPhone}
+                  onChange={(e) => setTargetPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="9175750091"
+                  maxLength={10}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+                <div className="mt-2 text-xs">
+                  {loadingDeviceStatus ? (
+                    <span className="text-gray-500">Checking device registration…</span>
+                  ) : deviceStatus?.customer_found ? (
+                    deviceStatus.device_count > 0 ? (
+                      <span className="text-green-700 font-semibold">
+                        ✓ {deviceStatus.customer?.full_name || 'Customer'} — {deviceStatus.device_count} device(s) ready
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 font-semibold">
+                        ⚠ {deviceStatus.customer?.full_name || 'Customer'} found — no push token yet. Open app on this phone → login → Allow notifications.
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-red-600">Customer not found for this phone</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
               <div className="flex gap-2">
@@ -259,7 +354,13 @@ export default function SendNotificationPage() {
                 )}
                 <div>
                   {result.success ? (
-                    <p>Sent to <strong>{result.sent}</strong> device(s) successfully.</p>
+                    <>
+                      <p>
+                        Sent to <strong>{result.sent}</strong> device(s)
+                        {result.sent === 0 ? ' — push token not registered yet' : ' successfully.'}
+                      </p>
+                      {result.hint ? <p className="mt-1">{result.hint}</p> : null}
+                    </>
                   ) : (
                     <p>{result.error}</p>
                   )}
