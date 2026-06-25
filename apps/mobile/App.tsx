@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AppState, Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
 
 const TextInputWithDefaults = RNTextInput as typeof RNTextInput & {
   defaultProps?: Partial<React.ComponentProps<typeof RNTextInput>>;
@@ -63,12 +63,16 @@ import { ENV } from './src/config/environment';
 import { clearCustomerSessionToken, getCustomerSessionToken } from './src/lib/customerSession';
 import { preloadWalletRules } from './src/lib/wallet';
 import { registerCustomerExpoPushToken } from './src/services/pushNotifications';
+import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
+import ForceUpdateModal from './src/components/ForceUpdateModal';
 
 const Stack = createNativeStackNavigator();
 
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+  const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
+  const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const isCustomerSessionUser =
@@ -98,6 +102,36 @@ function AppContent() {
     if (!isCustomerSessionUser) return;
     void syncCustomerPushToken();
   }, [isCustomerSessionUser, user?.id]);
+
+  const runForceUpdateCheck = useCallback(async () => {
+    if (__DEV__) {
+      setForceUpdate(null);
+      setUpdateCheckDone(true);
+      return;
+    }
+
+    const result = await checkForceUpdate();
+    setForceUpdate(result.required ? result : null);
+    setUpdateCheckDone(true);
+  }, []);
+
+  useEffect(() => {
+    void runForceUpdateCheck();
+  }, [runForceUpdateCheck]);
+
+  useEffect(() => {
+    if (__DEV__) return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void runForceUpdateCheck();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [runForceUpdateCheck]);
 
   useEffect(() => {
     void preloadWalletRules(ENV.API_URL);
@@ -226,8 +260,19 @@ function AppContent() {
     }
   };
 
-  if (showSplash || !authReady) {
+  if (showSplash || !authReady || !updateCheckDone) {
     return <SplashScreen durationMs={4000} onComplete={() => setShowSplash(false)} />;
+  }
+
+  if (forceUpdate?.required) {
+    return (
+      <ForceUpdateModal
+        visible
+        message={forceUpdate.message || ''}
+        storeUrl={forceUpdate.storeUrl || ''}
+        latestVersion={forceUpdate.minVersion}
+      />
+    );
   }
 
   const isLoggedIn = Boolean(user && userProfile);

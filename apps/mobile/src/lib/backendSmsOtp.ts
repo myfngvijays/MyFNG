@@ -1,7 +1,7 @@
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 import { ENV } from '../config/environment';
-import { sendFirebaseSmsOtp } from './firebasePhoneAuth';
+import { isFirebaseTestPhone, sendFirebaseSmsOtp } from './firebasePhoneAuth';
 import type { AuthVerifyResponse } from './welcomeBonus';
 
 export type SmsOtpSendResult = {
@@ -41,7 +41,7 @@ async function parseJsonResponse(res: Response): Promise<Record<string, unknown>
   return (await res.json().catch(() => ({}))) as Record<string, unknown>;
 }
 
-/** Firebase Phone Auth — same flow as the live Play Store / App Store builds. */
+/** Firebase Phone Auth — OTP via Firebase SMS (same as original app login). */
 export async function sendSmsOtp(cleanPhone: string): Promise<SmsOtpSendResult> {
   const confirmation = await sendFirebaseSmsOtp(cleanPhone);
   return { mode: 'firebase', confirmation };

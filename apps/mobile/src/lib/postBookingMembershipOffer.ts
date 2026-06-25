@@ -41,6 +41,43 @@ export function membershipOfferCardTitle(overrideTitle?: string): string {
   return text || MEMBERSHIP_OFFER_CARD_TITLE;
 }
 
+/** Prefer server-stored offer expiry; never rely on hardcoded 180m when admin timer changed. */
+export function resolveMembershipOfferExpiresAt(
+  source:
+    | {
+        meta?: unknown;
+        post_booking_membership?: { expires_at?: string | null } | null;
+        created_at?: string | null;
+      }
+    | null
+    | undefined,
+  offerWindowMinutes = POST_BOOKING_MEMBERSHIP_OFFER_MINUTES,
+): string {
+  const windowMinutes =
+    Number.isFinite(Number(offerWindowMinutes)) && Number(offerWindowMinutes) > 0
+      ? Math.round(Number(offerWindowMinutes))
+      : POST_BOOKING_MEMBERSHIP_OFFER_MINUTES;
+
+  const fromApi = String(source?.post_booking_membership?.expires_at || '').trim();
+  if (fromApi) return fromApi;
+
+  const meta = source?.meta && typeof source.meta === 'object' ? (source.meta as Record<string, unknown>) : {};
+  const rawOffer = meta.post_booking_membership_offer;
+  if (rawOffer && typeof rawOffer === 'object' && (rawOffer as { expires_at?: string }).expires_at) {
+    return String((rawOffer as { expires_at?: string }).expires_at);
+  }
+
+  const createdAt = String(source?.created_at || '').trim();
+  if (createdAt) {
+    const createdMs = new Date(createdAt).getTime();
+    if (Number.isFinite(createdMs)) {
+      return new Date(createdMs + windowMinutes * 60 * 1000).toISOString();
+    }
+  }
+
+  return new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+}
+
 function calcBundleDiscount(serviceSubtotal: number): number {
   if (serviceSubtotal <= 0) return 0;
   return Math.min(Math.round(serviceSubtotal * 0.05), POST_BOOKING_MEMBERSHIP_BUNDLE_MAX);
@@ -67,7 +104,10 @@ export function formatOfferCountdown(expiresAt: string): string {
   return `${minutes}:${pad(seconds)}`;
 }
 
-export function parsePostBookingMembershipOfferFromOrder(order: any): PostBookingMembershipOfferStatus | null {
+export function parsePostBookingMembershipOfferFromOrder(
+  order: any,
+  offerWindowMinutes = POST_BOOKING_MEMBERSHIP_OFFER_MINUTES,
+): PostBookingMembershipOfferStatus | null {
   if (!order || order.membership_claim?.benefit_code) return null;
   const meta = order.meta && typeof order.meta === 'object' ? order.meta : {};
   const bundle = (meta as any).booking_membership_bundle;
@@ -87,7 +127,11 @@ export function parsePostBookingMembershipOfferFromOrder(order: any): PostBookin
     };
   } else if (order.created_at) {
     const createdMs = new Date(order.created_at).getTime();
-    const expiresMs = createdMs + POST_BOOKING_MEMBERSHIP_OFFER_MINUTES * 60 * 1000;
+    const windowMinutes =
+      Number.isFinite(Number(offerWindowMinutes)) && Number(offerWindowMinutes) > 0
+        ? Math.round(Number(offerWindowMinutes))
+        : POST_BOOKING_MEMBERSHIP_OFFER_MINUTES;
+    const expiresMs = createdMs + windowMinutes * 60 * 1000;
     const estimated = Number(order.estimated_amount || order.amount_display || 0);
     const discount = Number(order.discount_amount || 0);
     const wallet = Number((meta as any).wallet_deduction || 0);

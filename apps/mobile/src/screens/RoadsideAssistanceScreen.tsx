@@ -16,6 +16,7 @@ import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottom
 import RSAMembershipPlansSection from '../components/RSAMembershipPlansSection';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
+import SectionHeading from '../components/SectionHeading';
 import { openPhoneCall } from '../lib/phone';
 import { supabase } from '../lib/supabase';
 
@@ -180,8 +181,13 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
           {/* ── Services Grid (2-column) ── */}
           <View style={s.rsaCard}>
-            <Text style={s.rsaTitle}>Our RSA Services</Text>
-            <Text style={s.rsaSub}>Tap any service to get instant help.</Text>
+            <SectionHeading
+              light
+              spacing="compact"
+              title="Our RSA Services"
+              subtitle="Tap any service to get instant help."
+              style={s.rsaHeading}
+            />
 
             <View style={s.serviceGrid}>
               {RSA_SERVICES.map((svc) => (
@@ -207,8 +213,11 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           {/* ── Pricing Section ── */}
           <RSAMembershipPlansSection navigation={navigation} slot="before_pricing" />
           <MembershipCardsBlock screen="rsa" slot="before_pricing" navigation={navigation} bannerOnly />
-          <Text style={s.pricingHeading}>Pricing</Text>
-          <Text style={s.pricingSub}>Clear and affordable pricing. Exact cost depends on location, vehicle type and distance.</Text>
+          <SectionHeading
+            title="Pricing"
+            subtitle="Clear and affordable pricing. Exact cost depends on location, vehicle type and distance."
+            style={s.pricingHeadingWrap}
+          />
 
           <View style={s.priceCard}>
             <Text style={s.priceLabel}>TOWING</Text>
@@ -250,13 +259,17 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           <MembershipCardsBlock screen="rsa" slot="before_reviews" navigation={navigation} bannerOnly />
 
           {/* ── Reviews Slider ── */}
-          <View style={s.reviewHeaderRow}>
-            <Text style={s.sectionTitle}>What Our Customers Say</Text>
-            <View style={s.reviewBadge}>
-              <Ionicons name="star" size={12} color="#F59E0B" />
-              <Text style={s.reviewBadgeText}>4.8/5</Text>
-            </View>
-          </View>
+          <SectionHeading
+            title="What Our Customers Say"
+            subtitle="Real reviews from verified customers"
+            rightAccessory={
+              <View style={s.reviewBadge}>
+                <Ionicons name="star" size={12} color="#F59E0B" />
+                <Text style={s.reviewBadgeText}>4.8/5</Text>
+              </View>
+            }
+            style={s.reviewHeadingWrap}
+          />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.reviewScroll}>
             {RSA_REVIEWS.slice(0, 3).map((review) => (
               <View key={review.name} style={s.reviewCard}>
@@ -288,7 +301,11 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           <MembershipCardsBlock screen="rsa" slot="before_faqs" navigation={navigation} bannerOnly />
 
           {/* ── FAQs Section ── */}
-          <Text style={s.faqHeading}>Frequently Asked Questions</Text>
+          <SectionHeading
+            title="Frequently Asked Questions"
+            subtitle="Answers to common RSA questions"
+            style={s.faqHeadingWrap}
+          />
           {RSA_FAQS.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
             <View key={faq.q} style={s.faqCard}>
               <TouchableOpacity style={s.faqHeader} onPress={() => setOpenFaqIdx((prev) => (prev === idx ? null : idx))}>
@@ -464,8 +481,9 @@ const s = StyleSheet.create({
     backgroundColor: '#171717',
     padding: 24,
   },
-  rsaTitle: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', marginBottom: 4 },
-  rsaSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 20 },
+  rsaHeading: {
+    marginBottom: 8,
+  },
   serviceGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -485,8 +503,7 @@ const s = StyleSheet.create({
   serviceDesc: { fontSize: 9, color: 'rgba(255,255,255,0.6)', textAlign: 'center', lineHeight: 13 },
 
   /* ── Pricing ── */
-  pricingHeading: { fontSize: 20, fontWeight: '900', color: '#111827', marginTop: 24, marginBottom: 4 },
-  pricingSub: { fontSize: 12, color: '#6B7280', marginBottom: 16, lineHeight: 18 },
+  pricingHeadingWrap: { marginTop: 8 },
   priceCard: {
     backgroundColor: '#171717',
     borderRadius: 24,
@@ -520,11 +537,7 @@ const s = StyleSheet.create({
   callQuoteBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 
   /* ── Reviews ── */
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  reviewHeaderRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: 24, marginBottom: 14,
-  },
+  reviewHeadingWrap: { marginTop: 12 },
   reviewBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A',
@@ -554,7 +567,7 @@ const s = StyleSheet.create({
   showMoreBtnText: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
 
   /* ── FAQs ── */
-  faqHeading: { fontSize: 18, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 10 },
+  faqHeadingWrap: { marginTop: 16 },
   faqCard: {
     borderRadius: 16, backgroundColor: '#FFFFFF',
     borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8, overflow: 'hidden',

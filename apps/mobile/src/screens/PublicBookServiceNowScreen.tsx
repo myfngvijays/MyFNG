@@ -57,6 +57,7 @@ import {
   formatOfferCountdown,
   membershipOfferCardTitle,
   membershipOfferFomoMessage,
+  resolveMembershipOfferExpiresAt,
 } from '../lib/postBookingMembershipOffer';
 import {
   DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
@@ -1549,14 +1550,23 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
       const createdLeadId = createdLead.id;
       const savedLeadNumber = createdLead.lead_number || leadNumber;
+      const latestOfferConfig = await fetchPostBookingMembershipAppConfig(true).catch(
+        () => postBookingAppConfig,
+      );
+      setPostBookingAppConfig(latestOfferConfig);
+      const createdLeadRecord = (createdLead.raw?.lead || {}) as {
+        meta?: unknown;
+        created_at?: string | null;
+      };
       const successBase = {
         leadId: createdLeadId,
         leadNumber: savedLeadNumber,
         serviceSubtotal: totalPrice,
         membershipActivated: false,
-        membershipOfferExpiresAt: new Date(
-          Date.now() + postBookingAppConfig.offer_window_minutes * 60 * 1000,
-        ).toISOString(),
+        membershipOfferExpiresAt: resolveMembershipOfferExpiresAt(
+          createdLeadRecord,
+          latestOfferConfig.offer_window_minutes,
+        ),
       };
       const amountToPay = isLoggedIn
         ? Number(createdLead.amount_payable ?? finalPayableAmount)
@@ -2023,7 +2033,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setOtpConfirmation(result.confirmation);
+      setOtpConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setOtpSent(true);
       const testHint = firebaseTestOtpHint(cleanPhone);
       if (testHint) {
@@ -2363,13 +2373,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   }
                 >
                   <Ionicons name="cart-outline" size={22} color={COLORS.primary} />
-                  {cartServiceCount > 0 ? (
-                    <Animated.View
-                      style={[styles.headerCartBadge, { transform: [{ scale: cartBadgeScale }] }]}
-                    >
-                      <Text style={styles.headerCartBadgeText}>{cartServiceCount}+</Text>
-                    </Animated.View>
-                  ) : null}
+                  <Animated.View
+                    style={[
+                      styles.headerCartBadge,
+                      cartServiceCount > 0 ? { transform: [{ scale: cartBadgeScale }] } : null,
+                    ]}
+                  >
+                    <Text style={styles.headerCartBadgeText}>{cartServiceCount}</Text>
+                  </Animated.View>
                 </TouchableOpacity>
               ) : !isLoggedIn ? (
                 <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginBtn}>
@@ -4418,6 +4429,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   headerCartBadge: {
     position: 'absolute',

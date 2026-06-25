@@ -5,15 +5,18 @@ import { COLORS } from '../constants/theme';
 
 type PublicHeaderProps = {
   city?: string;
+  cartCount?: number;
   onPressSearch?: () => void;
   onPressCart?: () => void;
 };
 
 export default function PublicHeader({
   city = 'Mumbai',
+  cartCount = 0,
   onPressSearch,
   onPressCart,
 }: PublicHeaderProps) {
+  const badgeCount = Math.max(0, cartCount);
 
   return (
       <View style={styles.header}>
@@ -34,6 +37,9 @@ export default function PublicHeader({
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={onPressCart} activeOpacity={0.85}>
             <Ionicons name="cart-outline" size={20} color="#525252" />
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{badgeCount}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -89,5 +95,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  cartBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 11,
   },
 });

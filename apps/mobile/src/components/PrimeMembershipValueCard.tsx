@@ -313,7 +313,7 @@ function GuestPhoneOtpSection({
     setOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setOtpConfirmation(result.confirmation);
+      setOtpConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setOtpSent(true);
       const testHint = firebaseTestOtpHint(cleanPhone);
       if (testHint) Alert.alert('Test OTP', testHint);

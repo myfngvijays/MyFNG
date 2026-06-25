@@ -24,12 +24,13 @@ const SERVICE_ITEMS = [
   { name: 'Detailing Service', icon: 'sparkles-outline' as const },
 ];
 
-// Appear: 1 AI Booking → 2 Live Tracking → 3 Free Pickup → 4 Genuine Parts
+// Appear: Same Day Servicing → Live Tracking → Free Pickup & Drop → Genuine Parts → AI Booking
 const USP_ITEMS = [
-  { label: 'AI Booking', icon: 'chatbubble-ellipses' as const, bg: '#EFF6FF', color: '#2563EB', side: 'left' as const, roadY: 0.44 },
+  { label: 'Same Day Servicing', icon: 'flash' as const, bg: '#FEF3C7', color: '#D97706', side: 'left' as const, roadY: 0.15 },
   { label: 'Live Tracking', icon: 'locate' as const, bg: '#ECFDF5', color: '#10B981', side: 'right' as const, roadY: 0.34 },
-  { label: 'Free Pickup', icon: 'car-outline' as const, bg: '#F5F3FF', color: '#7C3AED', side: 'left' as const, roadY: 0.3 },
+  { label: 'Free Pickup & Drop', icon: 'car-outline' as const, bg: '#F5F3FF', color: '#7C3AED', side: 'left' as const, roadY: 0.28 },
   { label: 'Genuine Parts', icon: 'shield-checkmark' as const, bg: '#FFF7ED', color: '#EA580C', side: 'right' as const, roadY: 0.2 },
+  { label: 'AI Booking', icon: 'chatbubble-ellipses' as const, bg: '#EFF6FF', color: '#2563EB', side: 'left' as const, roadY: 0.48 },
 ];
 
 const ROAD_DASH_COUNT = 12;
@@ -354,7 +355,7 @@ const s = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
-    maxWidth: 118,
+    maxWidth: 132,
   },
   uspIcon: {
     width: 22,

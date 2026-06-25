@@ -3,6 +3,7 @@ import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { SMART_TOOLS, SMART_TOOL_WEB_URLS, type SmartToolItem } from '../constants/smartTools';
+import SectionHeading from './SectionHeading';
 
 type Props = {
   navigation: any;
@@ -39,12 +40,11 @@ export default function SmartToolsSection({ navigation, city }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.titleRow}>
-        <View style={styles.line} />
-        <Text style={styles.title}>Smart Tools</Text>
-        <View style={styles.line} />
-      </View>
-      <Text style={styles.desc}>Smart car utilities for health, pricing, fuel & more</Text>
+      <SectionHeading
+        spacing="inline"
+        title="Smart Tools"
+        subtitle="Smart car utilities for health, pricing, fuel & more"
+      />
       <View style={styles.grid}>
         {SMART_TOOLS.map((tool) => (
           <TouchableOpacity
@@ -70,28 +70,7 @@ const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: H_PAD,
     marginTop: 8,
-    marginBottom: 4,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 6,
-  },
-  line: { flex: 1, height: 1, backgroundColor: '#DBEAFE' },
-  title: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: COLORS.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  desc: {
-    textAlign: 'center',
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.gray[500],
-    marginBottom: 14,
+    marginBottom: 8,
   },
   grid: {
     flexDirection: 'row',

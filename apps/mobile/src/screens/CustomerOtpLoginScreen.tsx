@@ -119,7 +119,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     setOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setConfirmation(result.confirmation);
+      setConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setStep('otp');
       const testHint = firebaseTestOtpHint(cleanPhone);
       Alert.alert('OTP Sent', testHint || `OTP sent to +91${cleanPhone}`);

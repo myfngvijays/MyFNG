@@ -86,7 +86,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       authResponse?.customer?.phone || customerPhone,
     );
     if (decision.show) {
-      pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
+      const resolvedId =
+        resolveCustomerIdFromAuth(authResponse, customerId) ||
+        (customerId ? String(customerId) : null);
+      pendingWelcomeCustomerIdRef.current = resolvedId;
       pendingWelcomePhoneRef.current = authResponse?.customer?.phone || customerPhone || null;
       setCreditedWelcomeAmount(decision.amount);
       setCreditedWelcomeVisible(true);
@@ -118,6 +121,25 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     }
 
     const cleanPhone = customerPhone.replace(/\D/g, '');
+    const customerId = resolveCustomerIdFromAuth(authResponse, customerProfile?.id);
+
+    if (await maybeShowCreditedPopup(sessionToken, authResponse, customerId)) {
+      pendingHomeNavigationRef.current = true;
+      if (typeof onLoginSuccess === 'function') {
+        onLoginSuccess(
+          { id: customerProfile?.id || cleanPhone, type: 'customer_session' },
+          {
+            id: customerProfile?.id || cleanPhone,
+            full_name: customerProfile?.full_name || 'Customer',
+            email: customerProfile?.email || null,
+            phone: customerProfile?.phone || cleanPhone,
+            role: { role_code: 'CUSTOMER', role_name: 'Customer' },
+          },
+        );
+      }
+      return;
+    }
+
     if (typeof onLoginSuccess === 'function') {
       onLoginSuccess(
         { id: customerProfile?.id || cleanPhone, type: 'customer_session' },
@@ -127,14 +149,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           email: customerProfile?.email || null,
           phone: customerProfile?.phone || cleanPhone,
           role: { role_code: 'CUSTOMER', role_name: 'Customer' },
-        }
+        },
       );
-    }
-
-    const customerId = resolveCustomerIdFromAuth(authResponse, customerProfile?.id);
-    if (await maybeShowCreditedPopup(sessionToken, authResponse, customerId)) {
-      pendingHomeNavigationRef.current = true;
-      return;
     }
     finishLoginNavigation();
   };
@@ -151,7 +167,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     setPhoneOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setCustomerConfirmation(result.confirmation);
+      setCustomerConfirmation(result.mode === 'firebase' ? result.confirmation : null);
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {
@@ -216,12 +232,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       setErrorText('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (!customerConfirmation) {
-      setErrorText('Session expired. Please request OTP again.');
-      setCustomerStep('input');
+    if (!customerConfirmation && !/^\d{6}$/.test(customerOtp.trim())) {
+      setErrorText('Please enter the 6-digit OTP sent to your number');
       return;
     }
-    if (customerOtp.trim().length < 4) {
+    if (customerConfirmation && customerOtp.trim().length < 4) {
       setErrorText('Please enter the OTP sent to your number');
       return;
     }
@@ -288,11 +303,10 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         });
         json = await res.json().catch(() => ({}));
 
-        // If login-session endpoint is still not deployed, allow user to continue.
-        // This avoids blocking verified users on OTP screen.
         if (res.status === 404) {
-          await persistSessionAndGoHome(`wa-fallback-${cleanPhone}-${Date.now()}`);
-          return;
+          throw new Error(
+            'WhatsApp OTP verified, but login session is unavailable. Please use SMS OTP or update the app.',
+          );
         }
       }
 

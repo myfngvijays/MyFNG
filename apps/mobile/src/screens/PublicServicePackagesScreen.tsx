@@ -18,6 +18,8 @@ import { FAQ_CATEGORIES } from '../constants/publicAppData';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
+import SectionHeading from '../components/SectionHeading';
+import CompleteTransparencySection from '../components/CompleteTransparencySection';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { supabase } from '../lib/supabase';
 
@@ -342,7 +344,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
           </View>
 
           {/* Service Category Grid */}
-          <Text style={s.gridHeading}>Select Service Category</Text>
+          <SectionHeading
+            title="Select Service Category"
+            subtitle="Choose the service type for your vehicle"
+            style={s.gridHeadingWrap}
+          />
           <View style={s.grid}>
             {SERVICE_CATEGORIES.map((svc) => {
               const active = svc.id === selectedService;
@@ -442,7 +448,10 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
           {/* Why MyFNG */}
           <MembershipCardsBlock screen="services" slot="before_why_myfng" navigation={navigation} />
-          <Text style={s.sectionHeading}>Why MyFNG</Text>
+          <SectionHeading
+            title="Why MyFNG"
+            subtitle="Trusted by thousands of car owners across India"
+          />
           <View style={s.whyCard}>
             {([
               ['4.8/5', 'RATING', 'star' as const],
@@ -463,26 +472,13 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
           {/* Complete Transparency */}
           <MembershipCardsBlock screen="services" slot="before_transparency" navigation={navigation} bannerOnly />
-          <Text style={s.sectionHeading}>Complete Transparency</Text>
-          <View style={s.transparencyGrid}>
-            {([
-              ['Photo/Video Updates', 'Live service tracking', 'eye' as const],
-              ['Clear Estimates', 'No hidden costs', 'document-text' as const],
-              ['MY FNG Service Guarantee', '100% quality assurance', 'shield-checkmark' as const],
-              ['Same-Day Service', 'Quick turnaround time', 'flash' as const],
-            ] as const).map(([title, subtitle, icon]) => (
-              <View key={title} style={[s.transparencyCard, { width: (Dimensions.get('window').width - 32 - 10) / 2 }]}>
-                <View style={s.transparencyIconWrap}>
-                  <Ionicons name={icon} size={24} color="#2563EB" />
-                </View>
-                <Text style={s.transparencyTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{title}</Text>
-                <Text style={s.transparencySubtitle}>{subtitle}</Text>
-              </View>
-            ))}
-          </View>
+          <CompleteTransparencySection />
 
           {/* Service FAQs */}
-          <Text style={s.faqHeading}>Service FAQs</Text>
+          <SectionHeading
+            title="Service FAQs"
+            subtitle="Answers to common questions about our services"
+          />
           {faqs.slice(0, 5).map((faq, idx) => (
             <View key={faq.q} style={s.faqCard}>
               <TouchableOpacity
@@ -684,7 +680,7 @@ const s = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
 
-  gridHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 12, paddingHorizontal: 2 },
+  gridHeadingWrap: { marginTop: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   gridItem: { width: '30.6%', alignItems: 'center' },
   gridIcon: {
@@ -763,7 +759,6 @@ const s = StyleSheet.create({
   bookNowBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   phoneBtn: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
 
-  sectionHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 10, textTransform: 'uppercase' },
   whyCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -773,6 +768,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 4,
   },
   whyItem: {
     alignItems: 'center',
@@ -802,45 +798,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 10,
   },
-  transparencyGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 10,
-  },
-  transparencyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-  },
-  transparencyIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  transparencyTitle: {
-    fontSize: 11,
-    color: '#111827',
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  transparencySubtitle: {
-    fontSize: 10,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 14,
-  },
 
-  faqHeading: { fontSize: 16, fontWeight: '900', color: '#111827', marginTop: 20, marginBottom: 8, paddingHorizontal: 2 },
   faqCard: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8, overflow: 'hidden' },
   faqHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   faqQ: { flex: 1, fontSize: 13, color: '#111827', fontWeight: '700' },

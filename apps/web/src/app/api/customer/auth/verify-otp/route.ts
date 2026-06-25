@@ -125,9 +125,12 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      const welcomeResult = isNewCustomer
-        ? await creditWelcomeBonus(supabaseAdmin, customerId, { isNewSignup: true })
-        : { credited: false as const, reason: 'not_eligible' as const };
+      // Always attempt credit: new signups immediately; returning logins use 24h backfill grace.
+      const welcomeResult = await creditWelcomeBonus(
+        supabaseAdmin,
+        customerId,
+        isNewCustomer ? { isNewSignup: true } : undefined,
+      );
       if (welcomeResult.credited) {
         welcomeBonus = {
           credited: true,

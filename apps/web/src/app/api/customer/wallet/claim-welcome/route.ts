@@ -40,7 +40,6 @@ export async function POST() {
         success: true,
         welcome_bonus: {
           credited: false,
-          already_credited: true,
           amount: 0,
         },
       });

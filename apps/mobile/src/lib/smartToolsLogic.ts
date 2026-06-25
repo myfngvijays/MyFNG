@@ -341,19 +341,57 @@ function seededIndex(seed: number, max: number): number {
   return Math.abs((seed * 9301 + 49297) % 233280) % max;
 }
 
-export function getDailyQuizQuestions(): QuizQuestion[] {
-  const day = Math.floor(Date.now() / 86400000);
-  const picked: QuizQuestion[] = [];
+export const DAILY_QUIZ_QUESTION_COUNT = 8;
+
+export function getLocalDayKey(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function hashDayKey(dayKey: string): number {
+  let hash = 0;
+  for (let i = 0; i < dayKey.length; i += 1) {
+    hash = (hash * 31 + dayKey.charCodeAt(i)) >>> 0;
+  }
+  return hash || 1;
+}
+
+export function getDailyQuizQuestionIndices(dayKey = getLocalDayKey()): number[] {
+  const picked: number[] = [];
   const used = new Set<number>();
-  let seed = day;
-  while (picked.length < 8 && used.size < CAR_QUIZ_POOL.length) {
+  let seed = hashDayKey(dayKey);
+  while (picked.length < DAILY_QUIZ_QUESTION_COUNT && used.size < CAR_QUIZ_POOL.length) {
     const idx = seededIndex(seed, CAR_QUIZ_POOL.length);
     seed += 17;
     if (used.has(idx)) continue;
     used.add(idx);
-    picked.push(CAR_QUIZ_POOL[idx]);
+    picked.push(idx);
   }
   return picked;
+}
+
+export function getDailyQuizQuestionsForDay(dayKey = getLocalDayKey()): QuizQuestion[] {
+  return getDailyQuizQuestionIndices(dayKey).map((idx) => CAR_QUIZ_POOL[idx]);
+}
+
+export function getDailyQuizQuestions(): QuizQuestion[] {
+  return getDailyQuizQuestionsForDay(getLocalDayKey());
+}
+
+export function msUntilNextLocalDay(now = new Date()): number {
+  const next = new Date(now);
+  next.setHours(24, 0, 0, 0);
+  return Math.max(0, next.getTime() - now.getTime());
+}
+
+export function formatQuizCountdown(ms: number): string {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes}m`;
+  return `${hours}h ${minutes}m`;
 }
 
 export type PartCategory = {

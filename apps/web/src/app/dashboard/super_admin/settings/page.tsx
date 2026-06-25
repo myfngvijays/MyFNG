@@ -405,6 +405,101 @@ export default function SystemSettingsPage() {
           </div>
         </div>
 
+        {/* Mobile App Force Update */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">📱 Mobile App Force Update</h2>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+              When you publish a new Android/iOS build, raise the minimum version/build here to block old apps.
+            </p>
+          </div>
+          <div className="p-4 sm:p-5 md:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-medium text-sm sm:text-base">Force Update Enabled</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+                  Show blocking update popup on old app versions
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={settings.mobile_app_force_update_enabled?.value ?? true}
+                  onChange={() => handleToggle('mobile_app_force_update_enabled')}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 sm:w-11 sm:h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  Android Min Version
+                </label>
+                <input
+                  type="text"
+                  value={settings.mobile_app_min_version_android?.value ?? '1.2.0'}
+                  onChange={(e) => handleChange('mobile_app_min_version_android', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="1.2.0"
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  Android Min Build (versionCode)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.mobile_app_min_build_android?.value ?? '23'}
+                  onChange={(e) => handleChange('mobile_app_min_build_android', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  iOS Min Version
+                </label>
+                <input
+                  type="text"
+                  value={settings.mobile_app_min_version_ios?.value ?? '1.2.0'}
+                  onChange={(e) => handleChange('mobile_app_min_version_ios', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="1.2.0"
+                />
+              </div>
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                  iOS Min Build
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.mobile_app_min_build_ios?.value ?? '23'}
+                  onChange={(e) => handleChange('mobile_app_min_build_ios', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                Update Popup Message
+              </label>
+              <textarea
+                rows={3}
+                value={
+                  settings.mobile_app_force_update_message?.value ??
+                  'A new version of MyFNG is available. Please update the app to continue.'
+                }
+                onChange={(e) => handleChange('mobile_app_force_update_message', e.target.value)}
+                className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Data & Backup */}
         <div className="bg-white rounded-lg shadow">
           <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">

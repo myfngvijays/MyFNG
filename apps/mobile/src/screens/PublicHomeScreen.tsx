@@ -28,6 +28,8 @@ import SearchOverlay from '../components/SearchOverlay';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
 import SmartToolsSection from '../components/SmartToolsSection';
+import SectionHeading from '../components/SectionHeading';
+import CompleteTransparencySection from '../components/CompleteTransparencySection';
 import { openPhoneCall } from '../lib/phone';
 import { COLORS } from '../constants/theme';
 import {
@@ -615,7 +617,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
           ) : null}
 
           <Section>
-            <SectionTitle title="Our Services" />
+            <SectionHeading
+              spacing="inline"
+              title="Our Services"
+              subtitle="Book trusted car care services near you"
+            />
             <View style={styles.serviceGrid}>
               {SERVICES.map((service) => (
                 <TouchableOpacity
@@ -664,7 +670,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <SectionTitle title="How It Works" />
+            <SectionHeading
+              spacing="inline"
+              title="How It Works"
+              subtitle="Simple steps from booking to delivery"
+            />
             <View style={styles.howCardWrap}>
               <Animated.View
                 style={[
@@ -693,7 +703,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <Text style={styles.whySectionHeading}>Why MyFNG</Text>
+            <SectionHeading
+              spacing="inline"
+              title="Why MyFNG"
+              subtitle="Trusted by thousands of car owners across India"
+            />
             <View style={styles.uspRow}>
               {([
                 ['4.8/5', 'RATING', 'star' as const],
@@ -718,25 +732,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <SectionTitle title="Complete Transparency" />
-            <View style={styles.transparencyGrid}>
-              {([
-                ['Photo/Video Updates', 'Live service tracking', 'eye' as const],
-                ['Clear Estimates', 'No hidden costs', 'document-text' as const],
-                ['MY FNG Service Guarantee', '100% quality assurance', 'shield-checkmark' as const],
-                ['Same-Day Service', 'Quick turnaround time', 'flash' as const],
-              ] as const).map(([title, subtitle, icon]) => (
-                <View key={title} style={[styles.transparencyCard, { width: (Dimensions.get('window').width - 32 - 14) / 2 }]}>
-                  <View style={styles.transparencyIconWrap}>
-                    <Ionicons name={icon} size={26} color="#2563EB" />
-                  </View>
-                  <Text style={styles.transparencyTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>
-                    {title}
-                  </Text>
-                  <Text style={styles.transparencySubtitle}>{subtitle}</Text>
-                </View>
-              ))}
-            </View>
+            <CompleteTransparencySection headingSpacing="inline" />
           </Section>
 
           <Section>
@@ -795,8 +791,14 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <MembershipCardsBlock screen="home" slot="after_loan_card" navigation={navigation} spacing="compact" />
           </Section>
 
+          <SmartToolsSection navigation={navigation} city={detectedCity} />
+
           <Section>
-            <SectionTitle title="Original Spare Parts" />
+            <SectionHeading
+              spacing="inline"
+              title="Original Spare Parts"
+              subtitle="Genuine OEM/OES parts for every repair"
+            />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {SPARE_PART_BRANDS.map((brand) => (
                 <View key={brand.name} style={styles.brandCard}>
@@ -813,7 +815,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <SectionTitle title="Popular Packages" />
+            <SectionHeading
+              spacing="inline"
+              title="Popular Packages"
+              subtitle="Best-value service bundles for your car"
+            />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {PACKAGE_ITEMS.map((pkg) => (
                 <View key={pkg.id} style={styles.packageCard}>
@@ -843,8 +849,13 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section>
             <View style={[styles.rsaCard, { backgroundColor: '#DC2626' }]}>
-              <Text style={styles.rsaTitle}>Roadside Assistance</Text>
-              <Text style={styles.rsaSubtitle}>Quick on-road solutions for every car emergency.</Text>
+              <SectionHeading
+                light
+                spacing="compact"
+                title="Roadside Assistance"
+                subtitle="Quick on-road solutions for every car emergency."
+                style={styles.rsaHeading}
+              />
               {[
                 { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', icon: 'flash' as const, bg: '#F97316' },
                 { name: 'Car Towing Services', desc: 'Safe towing to nearest workshop.', icon: 'car-sport' as const, bg: '#3B82F6' },
@@ -876,14 +887,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
           </Section>
 
-          <SmartToolsSection navigation={navigation} city={detectedCity} />
-
           <Section tight>
             <MembershipCardsBlock screen="home" slot="after_smart_tools" navigation={navigation} bannerOnly spacing="compact" />
           </Section>
 
           <Section>
-            <SectionTitle title="Brands We Service" />
+            <SectionHeading
+              spacing="inline"
+              title="Brands We Service"
+              subtitle="Multibrand expertise across all major makes"
+            />
             <View style={styles.brandCarouselClip}>
               <Animated.View style={[styles.brandCarouselRow, { transform: [{ translateX: brandScrollX }] }]}>
                 {carBrands.map((brand) => (
@@ -930,13 +943,17 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <View style={styles.reviewHeaderRow}>
-              <Text style={styles.sectionTitle}>What Our Customers Say</Text>
-              <View style={styles.reviewBadge}>
-                <Ionicons name="star" size={12} color="#F59E0B" />
-                <Text style={styles.reviewBadgeText}>4.8/5</Text>
-              </View>
-            </View>
+            <SectionHeading
+              spacing="inline"
+              title="What Our Customers Say"
+              subtitle="Real reviews from verified customers"
+              rightAccessory={
+                <View style={styles.reviewBadge}>
+                  <Ionicons name="star" size={12} color="#F59E0B" />
+                  <Text style={styles.reviewBadgeText}>4.8/5</Text>
+                </View>
+              }
+            />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {reviews.slice(0, 3).map((review) => (
                 <View key={`${review.name}-${review.date}`} style={styles.reviewCard}>
@@ -967,12 +984,16 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <View style={styles.blogHeaderRow}>
-              <Text style={styles.sectionTitle}>Latest from Blog</Text>
-              <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/blog')}>
-                <Text style={styles.blogReadMore}>Read More →</Text>
-              </TouchableOpacity>
-            </View>
+            <SectionHeading
+              spacing="inline"
+              title="Latest from Blog"
+              subtitle="Tips, guides and car care insights"
+              rightAccessory={
+                <TouchableOpacity onPress={() => Linking.openURL('https://myfng.in/blog')}>
+                  <Text style={styles.blogReadMore}>Read More →</Text>
+                </TouchableOpacity>
+              }
+            />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
               {(liveBlogs.length > 0 ? liveBlogs : BLOG_ITEMS).map((post) => (
                 <TouchableOpacity
@@ -1003,7 +1024,11 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <SectionTitle title="FAQs" />
+            <SectionHeading
+              spacing="inline"
+              title="FAQs"
+              subtitle="Answers to common questions about MyFNG"
+            />
             {FAQ_CATEGORIES[0].items.slice(0, 5).map((faq, idx) => (
               <View key={faq.q} style={styles.faqCard}>
                 <TouchableOpacity
@@ -1137,16 +1162,6 @@ function Section({ children, tight = false }: { children: React.ReactNode; tight
   return <View style={[styles.section, tight ? styles.sectionTight : null]}>{children}</View>;
 }
 
-function SectionTitle({ title }: { title: string }) {
-  return (
-    <View style={styles.sectionTitleRow}>
-      <View style={styles.sectionLine} />
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionLine} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -1166,28 +1181,13 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   sectionTight: {
     paddingVertical: 2,
   },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  sectionLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(59,130,246,0.2)',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  rsaHeading: {
+    marginBottom: 8,
   },
   loginBanner: {
     marginHorizontal: 16,
@@ -1563,13 +1563,6 @@ const styles = StyleSheet.create({
   howDotFillActive: {
     backgroundColor: '#004AAD',
   },
-  whySectionHeading: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#111827',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-  },
   uspRow: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -1608,55 +1601,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
     lineHeight: 10,
-  },
-  gridTwo: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 14,
-    justifyContent: 'space-between',
-  },
-  transparencyGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 14,
-  },
-  transparencyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    paddingVertical: 22,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  transparencyIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  transparencyTitle: {
-    fontSize: 14,
-    color: '#111827',
-    fontWeight: '800',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 5,
-  },
-  transparencySubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 16,
   },
   loanCard: {
     borderRadius: 0,
@@ -1796,16 +1740,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-  rsaTitle: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  rsaSubtitle: {
-    marginTop: 4,
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: 12,
-  },
   rsaServiceCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1883,12 +1817,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  reviewHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
   },
   reviewBadge: {
     flexDirection: 'row',
@@ -2000,12 +1928,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F3F4F6',
     marginBottom: 14,
-  },
-  blogHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
   },
   blogReadMore: {
     fontSize: 11,
