@@ -157,6 +157,8 @@ export async function resolveWelcomeBonusAfterLogin(
   const fromAuth = parseWelcomeBonusFromAuth(authResponse);
   if (shouldShowCreditedPopup(fromAuth)) return fromAuth;
 
+  if (authResponse?.is_new_customer === false) return null;
+
   const fromClaim = await claimWelcomeBonusOnServer(sessionToken);
   if (shouldShowCreditedPopup(fromClaim)) return fromClaim;
 

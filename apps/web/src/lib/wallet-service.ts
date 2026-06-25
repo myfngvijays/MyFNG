@@ -233,24 +233,6 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
   const config = await getWalletConfig(supabaseAdmin, platform);
   let wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
 
-  const { data: existingWelcome } = await supabaseAdmin
-    .from('wallet_transactions')
-    .select('id')
-    .eq('customer_id', customerId)
-    .eq('transaction_type', 'CREDIT')
-    .eq('source', config.WELCOME_SOURCE)
-    .limit(1)
-    .maybeSingle();
-
-  if (!existingWelcome) {
-    try {
-      await creditWelcomeBonus(supabaseAdmin, customerId);
-      wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
-    } catch (err) {
-      console.error('[getWalletSummary] welcome bonus backfill failed:', err);
-    }
-  }
-
   wallet = await processExpiredWelcomeCredits(supabaseAdmin, customerId, wallet, config);
 
   const { data: welcomeCredit } = await supabaseAdmin
@@ -289,7 +271,38 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
   };
 }
 
-export async function creditWelcomeBonus(supabaseAdmin: any, customerId: string) {
+const WELCOME_SIGNUP_GRACE_MS = 15 * 60 * 1000;
+
+export type CreditWelcomeBonusOptions = {
+  /** Admin/manual scripts only — skips fresh-signup eligibility check. */
+  allowExistingCustomer?: boolean;
+};
+
+export async function isWelcomeBonusEligible(
+  supabaseAdmin: any,
+  customerId: string,
+  options?: CreditWelcomeBonusOptions,
+): Promise<boolean> {
+  if (options?.allowExistingCustomer) return true;
+
+  const { data: customer } = await supabaseAdmin
+    .from('customers')
+    .select('created_at')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (!customer?.created_at) return false;
+
+  const createdAtMs = Date.parse(String(customer.created_at));
+  if (!Number.isFinite(createdAtMs)) return false;
+
+  return createdAtMs >= Date.now() - WELCOME_SIGNUP_GRACE_MS;
+}
+
+export async function creditWelcomeBonus(
+  supabaseAdmin: any,
+  customerId: string,
+  options?: CreditWelcomeBonusOptions,
+) {
   const config = await getWalletConfig(supabaseAdmin);
   const idempotencyKey = `welcome:${customerId}`;
   const { data: existing } = await supabaseAdmin
@@ -299,6 +312,9 @@ export async function creditWelcomeBonus(supabaseAdmin: any, customerId: string)
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle();
   if (existing) return { credited: false, reason: 'already_credited' as const };
+
+  const eligible = await isWelcomeBonusEligible(supabaseAdmin, customerId, options);
+  if (!eligible) return { credited: false, reason: 'not_eligible' as const };
 
   const wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
   let amount = Number(config.WELCOME_BONUS_AMOUNT);

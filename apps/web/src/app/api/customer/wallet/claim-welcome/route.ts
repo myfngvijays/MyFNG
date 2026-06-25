@@ -35,6 +35,16 @@ export async function POST() {
         },
       });
     }
+    if (result.reason === 'not_eligible') {
+      return NextResponse.json({
+        success: true,
+        welcome_bonus: {
+          credited: false,
+          already_credited: true,
+          amount: 0,
+        },
+      });
+    }
     return NextResponse.json({
       success: false,
       welcome_bonus: { credited: false, amount: 0 },

@@ -19,6 +19,10 @@ type PushRegisterSuccess = {
 
 export type PushRegisterResult = PushRegisterSuccess | PushRegisterFailure;
 
+export function isExpoPushConfigured(): boolean {
+  return Boolean(getExpoProjectId());
+}
+
 function getExpoProjectId(): string | null {
   const anyConstants: any = Constants;
   return (
@@ -136,4 +140,27 @@ export async function registerCustomerExpoPushToken(
   }
 
   return { ok: true, token: acquired.token };
+}
+
+export async function deactivateCustomerExpoPushTokens(
+  apiUrl: string,
+  sessionToken: string,
+): Promise<{ ok: boolean; details?: string }> {
+  const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/customer/push-token`, {
+    method: 'DELETE',
+    headers: {
+      'x-customer-session': sessionToken,
+      'x-mobile-client': 'true',
+    },
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      ok: false,
+      details: String(json?.error || json?.details || `HTTP ${res.status}`),
+    };
+  }
+
+  return { ok: true };
 }

@@ -23,6 +23,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unsupported platform' }, { status: 400 });
   }
 
+  const { data: prefs } = await supabaseAdmin
+    .from('customer_notification_preferences')
+    .select('push_enabled')
+    .eq('customer_id', customer.id)
+    .maybeSingle();
+
+  if (prefs?.push_enabled === false) {
+    return NextResponse.json({ error: 'Push notifications are disabled for this account' }, { status: 403 });
+  }
+
   const now = new Date().toISOString();
   const deviceName = body?.device_name ? String(body.device_name).slice(0, 120) : null;
   const deviceId = body?.device_id ? String(body.device_id).slice(0, 120) : null;
@@ -71,4 +81,22 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true, registered: true });
+}
+
+export async function DELETE() {
+  const ctx = await requireCustomer();
+  if ('response' in ctx) return ctx.response;
+
+  const { customer, supabaseAdmin } = ctx;
+  const { error } = await supabaseAdmin
+    .from('notification_devices')
+    .update({ is_active: false })
+    .eq('customer_id', customer.id)
+    .eq('platform', 'EXPO');
+
+  if (error) {
+    return NextResponse.json({ error: 'Failed to deactivate push tokens' }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true, deactivated: true });
 }

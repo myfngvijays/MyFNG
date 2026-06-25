@@ -125,7 +125,9 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      const welcomeResult = await creditWelcomeBonus(supabaseAdmin, customerId);
+      const welcomeResult = isNewCustomer
+        ? await creditWelcomeBonus(supabaseAdmin, customerId)
+        : { credited: false as const, reason: 'not_eligible' as const };
       if (welcomeResult.credited) {
         welcomeBonus = {
           credited: true,

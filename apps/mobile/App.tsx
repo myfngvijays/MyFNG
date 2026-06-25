@@ -78,6 +78,16 @@ function AppContent() {
     try {
       const sessionToken = await getCustomerSessionToken();
       if (!sessionToken) return;
+
+      const prefsRes = await fetch(`${ENV.API_URL}/api/customer/notifications/preferences`, {
+        headers: {
+          'x-customer-session': sessionToken,
+          'x-mobile-client': 'true',
+        },
+      });
+      const prefsJson = await prefsRes.json().catch(() => ({}));
+      if (prefsJson?.preferences?.push_enabled === false) return;
+
       await registerCustomerExpoPushToken(ENV.API_URL, sessionToken);
     } catch {
       // best-effort only

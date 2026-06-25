@@ -48,6 +48,12 @@ import {
 } from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
+import NotificationPreferenceSwitch from '../components/NotificationPreferenceSwitch';
+import {
+  isExpoPushConfigured,
+  showPushPermissionAlert,
+  syncPushPreferenceAfterSave,
+} from '../lib/pushPreferenceSync';
 import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type AppMembershipPlan, type PrimeMembershipDisplay } from '../lib/membershipPlan';
 import { normalizeMembershipType, isPlacementEnabled } from '../lib/membershipPlacements';
 import { PRIME_VALUE_ADDON, PRIME_VALUE_PRICE } from '../constants/primeMembershipValueCard';
@@ -350,16 +356,18 @@ export default function SettingsScreen({ navigation, route }: Props) {
   );
   const [pickupSaving, setPickupSaving] = useState(false);
   const [pickupLocationLoading, setPickupLocationLoading] = useState(false);
-  const [notifState, setNotifState] = useState({
-    push: true,
-    sms: true,
-    email: true,
-    order: true,
-    promos: false,
-    wallet: true,
-    referral: true,
-    support: true,
+  const [notifPrefs, setNotifPrefs] = useState({
+    push_enabled: true,
+    sms_enabled: true,
+    email_enabled: true,
+    order_updates: true,
+    offers: true,
+    wallet_credits: true,
+    referral_updates: true,
+    support_updates: true,
   });
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [pushTokenRegistered, setPushTokenRegistered] = useState(false);
   const [selectedFaqCategory, setSelectedFaqCategory] = useState<string | null>(null);
   // Legal sections are now rendered inline (fully expanded). No modal state needed.
   const [faqModal, setFaqModal] = useState<{ question: string; answer: string } | null>(null);
@@ -764,6 +772,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         apiFetch<any>('/api/customer/referral'),
         apiFetch<any>('/api/customer/leads'),
         apiFetch<any>('/api/customer/membership'),
+        apiFetch<any>('/api/customer/notifications/preferences'),
       ]);
       const valueOf = (i: number) => (settled[i]?.status === 'fulfilled' ? (settled[i] as PromiseFulfilledResult<any>).value : null);
       const profileRes = valueOf(0);
@@ -773,6 +782,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
       const referralRes = valueOf(4);
       const leadsRes = valueOf(5);
       const membershipRes = valueOf(6);
+      const notifPrefsRes = valueOf(7);
 
       const customer = profileRes?.customer || {};
       setCustomerId(customer?.id ? String(customer.id) : null);
@@ -863,6 +873,19 @@ export default function SettingsScreen({ navigation, route }: Props) {
       } else {
         setCurrentMembership(null);
       }
+      if (notifPrefsRes?.preferences) {
+        setNotifPrefs((prev) => ({
+          ...prev,
+          push_enabled: Boolean(notifPrefsRes.preferences.push_enabled),
+          sms_enabled: Boolean(notifPrefsRes.preferences.sms_enabled),
+          email_enabled: Boolean(notifPrefsRes.preferences.email_enabled),
+          order_updates: Boolean(notifPrefsRes.preferences.order_updates),
+          offers: Boolean(notifPrefsRes.preferences.offers),
+          wallet_credits: Boolean(notifPrefsRes.preferences.wallet_credits),
+          referral_updates: Boolean(notifPrefsRes.preferences.referral_updates),
+          support_updates: Boolean(notifPrefsRes.preferences.support_updates),
+        }));
+      }
       const phone = String(customer?.phone || '').trim();
       const storageKey = phone || String(customer?.id || '').trim();
       if (storageKey) {
@@ -881,6 +904,52 @@ export default function SettingsScreen({ navigation, route }: Props) {
       setDataLoading(false);
     }
   }, []);
+
+  const handleNotifToggle = useCallback(async (key: 'push_enabled', val: boolean) => {
+    const prev = notifPrefs;
+    const next = { ...notifPrefs, [key]: val };
+    setNotifPrefs(next);
+    setNotifSaving(true);
+    try {
+      await apiFetch('/api/customer/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+
+      if (key === 'push_enabled') {
+        const sessionToken = await getCustomerSessionToken();
+        const sync = await syncPushPreferenceAfterSave(val, sessionToken);
+        if (sync.permissionDenied) {
+          const reverted = { ...next, push_enabled: false };
+          setNotifPrefs(reverted);
+          setPushTokenRegistered(false);
+          await apiFetch('/api/customer/notifications/preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reverted),
+          });
+          showPushPermissionAlert();
+          return;
+        }
+        setPushTokenRegistered(Boolean(val && sync.tokenRegistered));
+      }
+    } catch (_err) {
+      setNotifPrefs(prev);
+      Alert.alert('Notifications', 'Could not save your preference. Please try again.');
+    } finally {
+      setNotifSaving(false);
+    }
+  }, [notifPrefs]);
+
+  const pushPreferenceHint = useMemo(() => {
+    if (!notifPrefs.push_enabled) return null;
+    if (pushTokenRegistered) return null;
+    if (!isExpoPushConfigured()) {
+      return 'Push alerts ke liye app ka latest update install karein (EAS project setup).';
+    }
+    return 'Allow notifications in phone settings to receive alerts on this device.';
+  }, [notifPrefs.push_enabled, pushTokenRegistered]);
 
   const membershipListPrice = useMemo(
     () => resolveMembershipListPrice(appMembershipPlans[0] || PRIME_MEMBERSHIP),
@@ -5493,31 +5562,13 @@ export default function SettingsScreen({ navigation, route }: Props) {
       case 'Notifications':
         return (
           <View style={styles.subWrapCompact}>
-            <View style={nstyles.headerCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={nstyles.headerTitle}>Notification Preferences</Text>
-                <Text style={nstyles.headerSub}>Control where and when we notify you.</Text>
-              </View>
-              <View style={nstyles.headerIconWrap}>
-                <Ionicons name="notifications-outline" size={20} color={COLORS.primary} />
-              </View>
-            </View>
-
-            <View style={nstyles.listCard}>
-              {[
-                ['push', 'Push Notifications'],
-              ].map(([key, label], idx, arr) => (
-                <View key={key} style={[nstyles.switchRow, idx !== arr.length - 1 ? nstyles.switchRowDivider : null]}>
-                  <Text style={nstyles.switchLabel}>{label}</Text>
-                  <Switch
-                    value={(notifState as any)[key]}
-                    onValueChange={(val) => setNotifState((prev) => ({ ...prev, [key]: val }))}
-                    thumbColor="#FFFFFF"
-                    trackColor={{ false: '#D1D5DB', true: '#0EA56B' }}
-                  />
-                </View>
-              ))}
-            </View>
+            <NotificationPreferenceSwitch
+              value={Boolean(notifPrefs.push_enabled)}
+              onValueChange={(val) => void handleNotifToggle('push_enabled', val)}
+              disabled={notifSaving}
+              loading={notifSaving}
+              hint={pushPreferenceHint}
+            />
           </View>
         );
       case 'Help & Support':
@@ -6743,49 +6794,6 @@ const cstyles = StyleSheet.create({
 
   bookNowBtn: { minHeight: 48, borderRadius: 12, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   bookNowBtnText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.5, textTransform: 'uppercase' },
-});
-
-const nstyles = StyleSheet.create({
-  headerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  headerSub: { marginTop: 2, fontSize: 13, color: '#6B7280', fontWeight: '500', lineHeight: 18 },
-  headerIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  switchRow: {
-    minHeight: 68,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  switchRowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEF2F7',
-  },
-  switchLabel: { fontSize: 15, fontWeight: '700', color: '#111827' },
 });
 
 const pstyles = StyleSheet.create({

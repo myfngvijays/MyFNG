@@ -19,6 +19,26 @@ const ROLE_OPTIONS = [
   'LEAD_MANAGER',
 ];
 
+async function getPushDisabledCustomerIds(supabaseAdmin: any): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('customer_notification_preferences')
+    .select('customer_id')
+    .eq('push_enabled', false);
+  return new Set((data || []).map((row: any) => String(row.customer_id)));
+}
+
+function filterCustomerDeviceTokens(
+  devices: Array<{ token: string; customer_id?: string | null }>,
+  pushDisabledCustomerIds: Set<string>,
+): string[] {
+  return devices
+    .filter((device) => {
+      if (!device.customer_id) return true;
+      return !pushDisabledCustomerIds.has(String(device.customer_id));
+    })
+    .map((device) => String(device.token));
+}
+
 async function assertAdmin() {
   const supabase = await createClient();
   const {
@@ -78,14 +98,15 @@ export async function POST(request: NextRequest) {
 
     let tokens: string[] = [];
     let targetCustomer: { id: string; phone: string; full_name: string | null } | null = null;
+    const pushDisabledCustomerIds = await getPushDisabledCustomerIds(supabaseAdmin);
 
     if (targetRole === 'ALL') {
       const { data } = await supabaseAdmin
         .from('notification_devices')
-        .select('token')
+        .select('token, customer_id')
         .eq('platform', 'EXPO')
         .eq('is_active', true);
-      tokens = (data || []).map((r: any) => String(r.token));
+      tokens = filterCustomerDeviceTokens((data || []) as any[], pushDisabledCustomerIds);
     } else if (targetRole === 'CUSTOMER') {
       if (targetPhone) {
         const { data: customer } = await supabaseAdmin
@@ -104,6 +125,17 @@ export async function POST(request: NextRequest) {
         }
         targetCustomer = customer as { id: string; phone: string; full_name: string | null };
 
+        if (pushDisabledCustomerIds.has(String(customer.id))) {
+          return NextResponse.json({
+            success: true,
+            sent: 0,
+            message: `Push notifications are turned off for ${targetPhone}.`,
+            customer_found: true,
+            push_disabled: true,
+            target_phone: targetPhone,
+          });
+        }
+
         const { data: customerDevices } = await supabaseAdmin
           .from('notification_devices')
           .select('token')
@@ -115,12 +147,12 @@ export async function POST(request: NextRequest) {
       } else {
         const { data: customerDevices } = await supabaseAdmin
           .from('notification_devices')
-          .select('token')
+          .select('token, customer_id')
           .eq('platform', 'EXPO')
           .eq('is_active', true)
           .not('customer_id', 'is', null);
 
-        tokens = (customerDevices || []).map((r: any) => String(r.token));
+        tokens = filterCustomerDeviceTokens((customerDevices || []) as any[], pushDisabledCustomerIds);
       }
     } else {
       const { data: roleUsers } = await supabaseAdmin

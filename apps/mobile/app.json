@@ -29,11 +29,15 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "com.myfng.app",
-            "CFBundleURLSchemes": ["com.myfng.app"]
+            "CFBundleURLSchemes": [
+              "com.myfng.app"
+            ]
           },
           {
             "CFBundleURLName": "firebase-phone-auth",
-            "CFBundleURLSchemes": ["app-1-455279370834-ios-38d95771254f40a5e7b58b"]
+            "CFBundleURLSchemes": [
+              "app-1-455279370834-ios-38d95771254f40a5e7b58b"
+            ]
           }
         ]
       }
@@ -62,7 +66,11 @@
           "color": "#004AAD"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "96856110-947b-4c20-9b02-e8ff4026e3d0"
+      }
+    }
   }
 }
-
