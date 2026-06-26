@@ -1,22 +1,18 @@
 /**
- * SMS Service - Twilio/MSG91 Integration
+ * SMS Service - Twilio Integration
  * Phase 4 - Task WA-502
- * 
+ *
  * Features:
  * - Send SMS notifications
  * - Template-based messaging
  * - Delivery tracking
  * - Error handling
+ *
+ * Login OTP uses Firebase Phone Auth on mobile — not server SMS.
  */
 
 import { createClient } from '@/lib/supabase/client';
 
-// SMS Configuration — default MSG91 for India (matches sms-otp route)
-const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
-const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
-const MSG91_OTP_TEMPLATE_ID = process.env.MSG91_OTP_TEMPLATE_ID || '';
-const SMS_PROVIDER =
-  process.env.NEXT_PUBLIC_SMS_PROVIDER || (MSG91_AUTH_KEY ? 'MSG91' : 'TWILIO');
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER || '';
@@ -27,28 +23,28 @@ const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER || '';
 export const SMS_TEMPLATES = {
   LEAD_CREATED: (leadNumber: string, workshopName: string) =>
     `Your service request ${leadNumber} has been created. ${workshopName} will review it shortly. Track: myfng.com/track/${leadNumber}`,
-  
+
   LEAD_ACCEPTED: (leadNumber: string, workshopName: string) =>
     `Great news! ${workshopName} has accepted your service request ${leadNumber}. We'll assign a mechanic soon.`,
-  
+
   MECHANIC_ASSIGNED: (leadNumber: string, mechanicName: string) =>
     `Mechanic ${mechanicName} has been assigned to your service ${leadNumber}. They will contact you soon.`,
-  
+
   WORK_STARTED: (leadNumber: string) =>
     `Work has started on your vehicle ${leadNumber}. You'll receive updates as we progress.`,
-  
+
   EXTRA_CHARGES: (leadNumber: string, amount: number) =>
     `Additional work required for ${leadNumber}. Amount: ₹${amount}. Please approve to proceed.`,
-  
+
   READY_FOR_DELIVERY: (leadNumber: string) =>
     `Your vehicle ${leadNumber} is ready for delivery! Contact workshop to arrange pickup.`,
-  
+
   INVOICE_GENERATED: (leadNumber: string, amount: number) =>
     `Invoice generated for ${leadNumber}. Total: ₹${amount}. Pay online: myfng.com/pay/${leadNumber}`,
-  
+
   PAYMENT_RECEIVED: (leadNumber: string, amount: number) =>
     `Payment of ₹${amount} received for ${leadNumber}. Thank you!`,
-  
+
   OTP_VERIFICATION: (otp: string) =>
     `Your MyFNG verification code is: ${otp}. Valid for 10 minutes. Do not share with anyone.`,
 };
@@ -92,83 +88,8 @@ async function sendViaTwilio(phone: string, message: string): Promise<boolean> {
   }
 }
 
-function normalizeIndianMobile(phone: string): string | null {
-  const digits = phone.replace(/\D/g, '');
-  const local = digits.startsWith('91') ? digits.slice(-10) : digits.slice(-10);
-  if (local.length !== 10 || !/^[6-9]/.test(local)) return null;
-  return `91${local}`;
-}
-
 /**
- * Send OTP via MSG91 v5 API (DLT template — preferred for login OTP in India).
- */
-async function sendViaMSG91Otp(phone: string, otp: string): Promise<boolean> {
-  if (!MSG91_AUTH_KEY || !MSG91_OTP_TEMPLATE_ID) return false;
-
-  const mobile = normalizeIndianMobile(phone);
-  if (!mobile) return false;
-
-  try {
-    const response = await fetch('https://control.msg91.com/api/v5/otp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        authkey: MSG91_AUTH_KEY,
-      },
-      body: JSON.stringify({
-        template_id: MSG91_OTP_TEMPLATE_ID,
-        mobile,
-        otp,
-      }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      console.error('[SMS] MSG91 OTP API failed:', body);
-      return false;
-    }
-    return true;
-  } catch (error) {
-    console.error('[SMS] MSG91 OTP API error:', error);
-    return false;
-  }
-}
-
-/**
- * Send SMS via MSG91 legacy HTTP API
- */
-async function sendViaMSG91(phone: string, message: string): Promise<boolean> {
-  if (!MSG91_AUTH_KEY) {
-    console.error('[SMS] MSG91_AUTH_KEY is not configured');
-    return false;
-  }
-
-  try {
-    const digits = phone.replace(/\D/g, '');
-    const mobile = digits.startsWith('91') ? digits.slice(2) : digits;
-    const params = new URLSearchParams({
-      authkey: MSG91_AUTH_KEY,
-      mobiles: mobile,
-      message,
-      sender: MSG91_SENDER_ID || 'MYFNG',
-      route: '4',
-      country: '91',
-      DLT_TE_ID: process.env.MSG91_DLT_TE_ID || '',
-    });
-    const response = await fetch(`https://control.msg91.com/api/sendhttp.php?${params.toString()}`);
-    const body = (await response.text()).trim();
-    if (!response.ok || !body || /invalid|error|missing/i.test(body)) {
-      console.error('[SMS] MSG91 send failed:', body);
-      return false;
-    }
-    return true;
-  } catch (error) {
-    console.error('MSG91 SMS error:', error);
-    return false;
-  }
-}
-
-/**
- * Send SMS (auto-selects provider)
+ * Send SMS via Twilio
  */
 export async function sendSMS(
   phone: string,
@@ -176,7 +97,6 @@ export async function sendSMS(
   templateId?: string
 ): Promise<boolean> {
   try {
-    // Validate phone number (Indian format)
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length !== 10 || !/^[6-9]/.test(cleanPhone)) {
       console.error('Invalid phone number:', phone);
@@ -184,19 +104,8 @@ export async function sendSMS(
     }
 
     const fullPhone = `+91${cleanPhone}`;
+    const success = await sendViaTwilio(fullPhone, message);
 
-    // Send via configured provider
-    let success = false;
-    if (SMS_PROVIDER === 'MSG91') {
-      success = await sendViaMSG91(fullPhone, message);
-    } else if (SMS_PROVIDER === 'TWILIO') {
-      success = await sendViaTwilio(fullPhone, message);
-    } else {
-      console.error('[SMS] Unsupported SMS provider:', SMS_PROVIDER);
-      success = false;
-    }
-
-    // Log notification
     await logNotification(fullPhone, 'SMS', message, success ? 'SENT' : 'FAILED');
 
     return success;
@@ -204,18 +113,6 @@ export async function sendSMS(
     console.error('Error sending SMS:', error);
     return false;
   }
-}
-
-/**
- * Send OTP
- */
-export async function sendOTP(phone: string, otp: string): Promise<boolean> {
-  if (SMS_PROVIDER === 'MSG91' || MSG91_AUTH_KEY) {
-    const viaOtpApi = await sendViaMSG91Otp(phone, otp);
-    if (viaOtpApi) return true;
-  }
-  const message = SMS_TEMPLATES.OTP_VERIFICATION(otp);
-  return await sendSMS(phone, message, 'OTP_VERIFICATION');
 }
 
 /**
@@ -303,10 +200,8 @@ export async function sendBulkSMS(
     } else {
       failed++;
     }
-    // Rate limiting delay (adjust based on provider limits)
     await new Promise(resolve => setTimeout(resolve, 100));
   }
 
   return { success, failed };
 }
-

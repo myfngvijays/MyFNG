@@ -167,7 +167,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     setPhoneOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setCustomerConfirmation(result.mode === 'firebase' ? result.confirmation : null);
+      setCustomerConfirmation(result.confirmation);
       setCustomerStep('otp');
       setResendInSec(30);
     } catch (error: any) {

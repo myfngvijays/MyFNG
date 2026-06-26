@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -79,6 +80,7 @@ import {
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
+import { fetchServicePriceForBooking } from '../lib/servicePricing';
 import VehicleImage from '../components/VehicleImage';
 
 const SERVICE_ICON_BASE = 'https://myfng.in';
@@ -328,7 +330,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [serviceSearch, setServiceSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>(resumeDraft?.selectedCategory || '');
   const [selectedOilType, setSelectedOilType] = useState<'semi' | 'full'>('semi');
-  const [pricing, setPricing] = useState<Record<string, number>>({});
+  const [pricing, setPricing] = useState<Record<string, number>>(() => {
+    const snapshot = resumeDraft?.pricingSnapshot;
+    if (snapshot && Object.keys(snapshot).length > 0) return { ...snapshot };
+    const saved = resumeDraft?.servicePrices;
+    if (saved && Object.keys(saved).length > 0) return { ...saved };
+    return {};
+  });
   const [pricingLoading, setPricingLoading] = useState(false);
   const [servicePoints, setServicePoints] = useState<Record<string, number>>({});
 
@@ -371,8 +379,19 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const pendingWelcomePhoneRef = useRef<string | null>(null);
   const bookingCompletedRef = useRef(false);
+  const formRef = useRef(form);
+  const pricingRef = useRef(pricing);
+  const stepRef = useRef(step);
+  const selectedCategoryRef = useRef(selectedCategory);
+  const serviceTypesRef = useRef(serviceTypes);
+  const sessionPricingFetchedRef = useRef(false);
+  const prevCityCarRef = useRef<{ cityId?: string; carId?: string }>({
+    cityId: resumeDraft?.city?.id,
+    carId: resumeDraft?.carModel?.id,
+  });
   const cartBadgeScale = useRef(new Animated.Value(1)).current;
   const servicesCartYOffset = useRef(0);
+  const paymentCartYOffset = useRef(0);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -645,6 +664,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [bookingSuccess?.leadId, bookingSuccess?.membershipActivated]);
 
   const prevServicesKeyRef = useRef<string>('');
+  const prevServiceCountRef = useRef(form.selectedServices.length);
   useEffect(() => {
     const key = [...form.selectedServices].sort().join('|');
     // Only clear an applied coupon when the selected services actually change
@@ -657,6 +677,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     prevServicesKeyRef.current = key;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.selectedServices]);
+
+  useEffect(() => {
+    const prevCount = prevServiceCountRef.current;
+    const nextCount = form.selectedServices.length;
+    prevServiceCountRef.current = nextCount;
+    if (hasActiveMembership || !primeMembershipPlan) return;
+    if (nextCount > prevCount && nextCount > 0) {
+      setIncludeBookingMembership(true);
+    }
+  }, [form.selectedServices.length, hasActiveMembership, primeMembershipPlan]);
 
   const cartServiceCount = form.selectedServices.length;
 
@@ -702,41 +732,117 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const goStep = (next: number) => {
     setStep(next);
     scrollRef.current?.scrollTo({ y: 0, animated: true });
-    // Save draft progress
-    saveDraftProgress(next);
+    persistBookingSession(next);
   };
 
-  const saveDraftProgress = (currentStep: number) => {
+  const persistBookingSession = useCallback((currentStep?: number) => {
     if (bookingCompletedRef.current) return;
+    const liveForm = formRef.current;
+    const livePricing = pricingRef.current;
+    const liveStep = currentStep ?? stepRef.current;
+    const liveCategory = selectedCategoryRef.current;
+    const liveServiceTypes = serviceTypesRef.current;
+
+    if (!liveForm.city && !liveForm.carModel && liveForm.selectedServices.length === 0) return;
+
     const serviceNames: Record<string, string> = {};
     const servicePrices: Record<string, number> = {};
-    for (const sid of form.selectedServices) {
-      const svc = serviceTypes.find((s) => s.id === sid);
+    for (const sid of liveForm.selectedServices) {
+      const svc = liveServiceTypes.find((s) => s.id === sid);
       if (svc) serviceNames[sid] = svc.name;
-      if (pricing[sid]) servicePrices[sid] = pricing[sid];
+      if (livePricing[sid]) servicePrices[sid] = livePricing[sid];
     }
+
     const draft: BookingDraft = {
       id: draftId,
-      step: currentStep,
+      step: liveStep,
       createdAt: resumeDraft?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      city: form.city ? { id: form.city.id, name: form.city.name } : null,
-      carModel: form.carModel ? { id: form.carModel.id, make: form.carModel.make, model_name: form.carModel.model_name, variant: form.carModel.variant } : null,
-      customerName: form.customerName || undefined,
-      customerPhone: form.customerPhone || undefined,
-      selectedCategory: selectedCategory,
-      selectedServices: form.selectedServices,
+      city: liveForm.city
+        ? { id: liveForm.city.id, name: liveForm.city.name, zone_id: liveForm.city.zone_id || undefined }
+        : null,
+      carModel: liveForm.carModel
+        ? {
+            id: liveForm.carModel.id,
+            make: liveForm.carModel.make,
+            model_name: liveForm.carModel.model_name,
+            variant: liveForm.carModel.variant,
+            class: liveForm.carModel.class,
+          }
+        : null,
+      customerName: liveForm.customerName || undefined,
+      customerPhone: liveForm.customerPhone || undefined,
+      selectedCategory: liveCategory,
+      selectedServices: liveForm.selectedServices,
       serviceNames,
       servicePrices,
-      pickupRequired: form.pickupRequired,
-      pickupDate: form.pickupDate || undefined,
-      pickupTime: form.pickupTime || undefined,
-      pickupAddress: form.pickupAddress || undefined,
-      vehicleNumber: form.vehicleNumber || undefined,
-      paymentMethod: form.paymentMethod || undefined,
+      pricingSnapshot: Object.keys(livePricing).length > 0 ? { ...livePricing } : undefined,
+      pickupRequired: liveForm.pickupRequired,
+      pickupDate: liveForm.pickupDate || undefined,
+      pickupTime: liveForm.pickupTime || undefined,
+      pickupAddress: liveForm.pickupAddress || undefined,
+      vehicleNumber: liveForm.vehicleNumber || undefined,
+      paymentMethod: liveForm.paymentMethod || undefined,
     };
     saveBookingDraft(draft);
-  };
+  }, [draftId, resumeDraft?.createdAt]);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+  useEffect(() => {
+    pricingRef.current = pricing;
+  }, [pricing]);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+  useEffect(() => {
+    selectedCategoryRef.current = selectedCategory;
+  }, [selectedCategory]);
+  useEffect(() => {
+    serviceTypesRef.current = serviceTypes;
+  }, [serviceTypes]);
+
+  useEffect(() => {
+    const prev = prevCityCarRef.current;
+    const nextCityId = form.city?.id;
+    const nextCarId = form.carModel?.id;
+    if (prev.cityId !== nextCityId || prev.carId !== nextCarId) {
+      if (prev.cityId || prev.carId) {
+        setPricing({});
+        sessionPricingFetchedRef.current = false;
+      }
+      prevCityCarRef.current = { cityId: nextCityId, carId: nextCarId };
+    }
+  }, [form.city?.id, form.carModel?.id]);
+
+  useEffect(() => {
+    if (bookingCompletedRef.current) return;
+    const timer = setTimeout(() => persistBookingSession(), 300);
+    return () => clearTimeout(timer);
+  }, [
+    step,
+    form.city?.id,
+    form.carModel?.id,
+    form.selectedServices.join('|'),
+    form.customerPhone,
+    form.pickupDate,
+    form.pickupTime,
+    form.pickupAddress,
+    form.vehicleNumber,
+    form.pickupRequired,
+    selectedCategory,
+    pricing,
+    persistBookingSession,
+  ]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        persistBookingSession();
+      };
+    }, [persistBookingSession]),
+  );
 
   // ── Data Fetching ───────────────────────────────────────────────
 
@@ -1057,72 +1163,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
   }
 
-  async function fetchPriceForService(
-    serviceTypeId: string,
-    cityId: string,
-    zoneId: string | null,
-    vehicleClass: string | null
-  ) {
-    const tryPrice = async (filters: Record<string, any>) => {
-      let q = supabase
-        .from('workshop_service_pricing')
-        .select('custom_price')
-        .eq('service_type_id', serviceTypeId)
-        .eq('is_active', true)
-        .limit(1);
-      for (const [k, v] of Object.entries(filters)) {
-        if (v === null) q = q.is(k, null);
-        else q = q.eq(k, v);
-      }
-      const { data } = await q.maybeSingle();
-      const p = Number((data as any)?.custom_price || 0);
-      return Number.isFinite(p) ? p : 0;
-    };
-
-    if (cityId && vehicleClass) {
-      const p = await tryPrice({ city_id: cityId, class: vehicleClass });
-      if (p) return p;
-    }
-    if (cityId) {
-      const p = await tryPrice({ city_id: cityId, class: null });
-      if (p) return p;
-    }
-    if (zoneId && vehicleClass) {
-      const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
-      if (p) return p;
-    }
-    if (zoneId) {
-      const p = await tryPrice({ zone_id: zoneId, class: null });
-      if (p) return p;
-    }
-    if (vehicleClass) {
-      const p = await tryPrice({ class: vehicleClass, city_id: null, zone_id: null });
-      if (p) return p;
-    }
-
-    // Final fallback: any active pricing for this service (cheapest)
-    // Matches the website's logic so Fully Synthetic and other variants
-    // still show a price even when city/zone/class-specific rows aren't configured.
-    try {
-      const { data } = await supabase
-        .from('workshop_service_pricing')
-        .select('custom_price')
-        .eq('service_type_id', serviceTypeId)
-        .eq('is_active', true)
-        .gt('custom_price', 0)
-        .order('custom_price', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      const p = Number((data as any)?.custom_price || 0);
-      if (Number.isFinite(p) && p > 0) return p;
-    } catch {
-      // ignore
-    }
-    return 0;
-  }
-
   async function fetchPricing() {
     if (!form.city || !form.carModel || serviceTypes.length === 0) return;
+    if (Object.keys(pricingRef.current).length > 0 && !sessionPricingFetchedRef.current) {
+      return;
+    }
     setPricingLoading(true);
     try {
       const cityId = form.city.id;
@@ -1133,11 +1178,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       const list = serviceTypes.slice(0, 120);
       await Promise.all(
         list.map(async (s) => {
-          const p = await fetchPriceForService(s.id, cityId, zoneId, vehicleClass);
+          const p = await fetchServicePriceForBooking(s.id, cityId, zoneId, vehicleClass);
           if (p > 0) next[s.id] = p;
         })
       );
       setPricing(next);
+      pricingRef.current = next;
+      sessionPricingFetchedRef.current = true;
+      persistBookingSession();
     } catch {
       setPricing({});
     } finally {
@@ -2033,7 +2081,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setOtpChannel('sms');
     try {
       const result = await sendSmsOtp(cleanPhone);
-      setOtpConfirmation(result.mode === 'firebase' ? result.confirmation : null);
+      setOtpConfirmation(result.confirmation);
       setOtpSent(true);
       const testHint = firebaseTestOtpHint(cleanPhone);
       if (testHint) {
@@ -2316,6 +2364,28 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }));
   };
 
+  const handleHeaderCartPress = () => {
+    if (step === 2) {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, servicesCartYOffset.current - 12),
+        animated: true,
+      });
+      return;
+    }
+    if (step === 4) {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, paymentCartYOffset.current - 12),
+        animated: true,
+      });
+      return;
+    }
+    if (step === 3) {
+      goStep(2);
+    }
+  };
+
+  const showHeaderCart = cartServiceCount > 0 && step >= 2;
+
   const renderDateQuickRow = () => (
     <View style={styles.dateQuickRow}>
       {dateQuickOptions.map((option) => (
@@ -2361,16 +2431,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           <View style={styles.top}>
             <View style={styles.topRow}>
               <Image source={require('../../assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
-              {step === 2 ? (
+              {showHeaderCart ? (
                 <TouchableOpacity
                   style={styles.headerCartBtn}
                   activeOpacity={0.85}
-                  onPress={() =>
-                    scrollRef.current?.scrollTo({
-                      y: Math.max(0, servicesCartYOffset.current - 12),
-                      animated: true,
-                    })
-                  }
+                  onPress={handleHeaderCartPress}
                 >
                   <Ionicons name="cart-outline" size={22} color={COLORS.primary} />
                   <Animated.View
@@ -3686,7 +3751,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 ) : null}
 
                 {/* Summary / My Cart */}
-                <View style={styles.reviewBox}>
+                <View
+                  style={styles.reviewBox}
+                  onLayout={(e) => {
+                    paymentCartYOffset.current = e.nativeEvent.layout.y;
+                  }}
+                >
                   <Text style={styles.reviewTitle}>My Cart</Text>
 
                   {membershipClaim ? (

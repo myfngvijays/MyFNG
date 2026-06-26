@@ -41,7 +41,7 @@ async function parseJsonResponse(res: Response): Promise<Record<string, unknown>
   return (await res.json().catch(() => ({}))) as Record<string, unknown>;
 }
 
-/** Firebase Phone Auth — OTP via Firebase SMS (same as original app login). */
+/** Firebase Phone Auth only — same as original app login (no server SMS / MSG91). */
 export async function sendSmsOtp(cleanPhone: string): Promise<SmsOtpSendResult> {
   const confirmation = await sendFirebaseSmsOtp(cleanPhone);
   return { mode: 'firebase', confirmation };

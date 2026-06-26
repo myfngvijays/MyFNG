@@ -62,7 +62,7 @@ import PrimeMembershipValueCard, {
   type LinkedMembershipVehicle,
   type MembershipVehicleOption,
 } from '../components/PrimeMembershipValueCard';
-import { BookingDraft, getBookingDrafts, removeBookingDraft, clearAllBookingDrafts } from '../lib/bookingDraft';
+import { BookingDraft, getBookingDrafts, removeBookingDraft, clearAllBookingDrafts, getDraftDisplayPrices, getDraftDisplayTotal, buildResumeDraft } from '../lib/bookingDraft';
 import { dismissVehicleKeys, getDismissedVehicleKeys, saveDismissedVehicleKeys } from '../lib/dismissedVehicles';
 import VehicleImage from '../components/VehicleImage';
 import {
@@ -3025,7 +3025,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     try {
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
       const serviceNames = draft.serviceNames ? Object.values(draft.serviceNames).join(', ') : 'CAR_SERVICE';
-      const totalDraftPrice = draft.servicePrices ? Object.values(draft.servicePrices).reduce((s, p) => s + p, 0) : 0;
+      const totalDraftPrice = getDraftDisplayTotal(draft);
 
       const draftPayable = Math.max(0, totalDraftPrice);
       const draftPlate = draft.vehicleNumber?.trim().toUpperCase() || '';
@@ -4687,6 +4687,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         const activeDraft = cartDrafts.find((d) => d.id === cartSelectedDraftId) || (cartDrafts.length > 0 ? cartDrafts[0] : null);
         const draftBlocksCheckout = Boolean(activeDraft && !isMembershipOnlyCart && cartItems.length === 0);
         const showCartCheckout = cartItems.length > 0 && !draftBlocksCheckout;
+        const draftDisplayPrices = getDraftDisplayPrices(activeDraft);
         const draftCar = activeDraft?.carModel;
         const displayVehicle = draftCar
           ? { make: draftCar.make, model: draftCar.model_name, vehicle_number: activeDraft?.vehicleNumber || '', fuel_type: draftCar.variant || '' }
@@ -4746,7 +4747,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                         style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.primary }}
                         onPress={() => {
                           const draft = cartDrafts.find((d) => d.id === cartSelectedDraftId);
-                          if (draft) navigation.navigate('PublicBookServiceNow', { resumeDraft: { ...draft, step: 2 } });
+                          if (draft) navigation.navigate('PublicBookServiceNow', { resumeDraft: buildResumeDraft(draft) });
                         }}
                       >
                         <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.primary }}>Change Service</Text>
@@ -4760,17 +4761,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
                       const serviceName = draft.serviceNames
                         ? Object.values(draft.serviceNames).join(', ') || draft.selectedCategory || 'Service'
                         : draft.selectedCategory || 'Service';
-                      const draftPrice = draft.servicePrices
-                        ? Object.values(draft.servicePrices).reduce((s, p) => s + p, 0)
-                        : 0;
                       const carLabel = draft.carModel ? `${draft.carModel.make} ${draft.carModel.model_name}` : '';
                       const isSelected = cartSelectedDraftId === draft.id;
+                      const draftPrice = isSelected ? getDraftDisplayTotal(draft) : 0;
                       const hasService = draft.step >= 2 && draft.selectedServices && draft.selectedServices.length > 0;
                       return (
                         <View key={draft.id} style={cstyles.resumeCardShell}>
                           <TouchableOpacity
                             style={[cstyles.resumeCard, isSelected ? cstyles.resumeCardActive : null]}
-                            onPress={() => navigation.navigate('PublicBookServiceNow', { resumeDraft: draft })}
+                            onPress={() => navigation.navigate('PublicBookServiceNow', { resumeDraft: buildResumeDraft(draft) })}
                           >
                             <Text style={cstyles.resumeLeadNumber}>{carLabel || 'DRAFT'}</Text>
                             <Text style={cstyles.resumePlanName} numberOfLines={1}>{serviceName}</Text>
@@ -5457,7 +5456,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
                           <Text style={{ fontSize: 13, fontWeight: '700', color: '#111827' }}>{name}</Text>
                         </View>
                         <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.primary }}>
-                          {activeDraft.servicePrices?.[sid] ? `₹${activeDraft.servicePrices[sid].toLocaleString('en-IN')}` : '—'}
+                          {draftDisplayPrices[sid] ? `₹${draftDisplayPrices[sid].toLocaleString('en-IN')}` : '—'}
                         </Text>
                       </View>
                     ))
@@ -5495,7 +5494,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
                   {/* Estimated Total */}
                   {(() => {
-                    const totalDraftPrice = activeDraft.servicePrices ? Object.values(activeDraft.servicePrices).reduce((s, p) => s + p, 0) : 0;
+                    const totalDraftPrice = getDraftDisplayTotal(activeDraft);
                     if (totalDraftPrice <= 0) return null;
                     return (
                       <View style={{ marginTop: 8, paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5537,7 +5536,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
               disabled={cartBookingLoading}
               onPress={() => {
                 if (draftBlocksCheckout && activeDraft) {
-                  navigation.navigate('PublicBookServiceNow', { resumeDraft: activeDraft });
+                  navigation.navigate('PublicBookServiceNow', { resumeDraft: buildResumeDraft(activeDraft) });
                 } else if (isMembershipOnlyCart) {
                   handleMembershipCartPay();
                 } else {

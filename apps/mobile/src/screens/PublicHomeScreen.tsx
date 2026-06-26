@@ -52,6 +52,7 @@ import {
   mobileCustomerHeaders,
   shouldShowGuestWelcomePopup,
 } from '../lib/welcomeBonus';
+import { getBookingCartItemCount } from '../lib/bookingDraft';
 type Props = {
   navigation: any;
 };
@@ -183,6 +184,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [hasActiveBooking] = useState(false);
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
+  const [cartItemCount, setCartItemCount] = useState(0);
   const [liveBlogs, setLiveBlogs] = useState<Array<{ id: string; title: string; excerpt: string; date: string; image: string; slug: string }>>([]);
   const brandScrollX = useRef(new Animated.Value(0)).current;
   const brandAnimRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -202,6 +204,22 @@ export default function PublicHomeScreen({ navigation }: Props) {
       ]),
     ).start();
   }, [blinkAnim]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getBookingCartItemCount()
+        .then((count) => {
+          if (active) setCartItemCount(count);
+        })
+        .catch(() => {
+          if (active) setCartItemCount(0);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -490,6 +508,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
       <View style={styles.screen}>
         <PublicHeader
           city={detectedCity}
+          cartCount={cartItemCount}
           onPressSearch={() => setShowSearchOverlay(true)}
           onPressCart={() => navigation.navigate('Settings', { subPage: 'Cart' })}
         />

@@ -32,21 +32,32 @@ export async function sendFirebaseSmsOtp(cleanPhone: string): Promise<FirebaseAu
   return auth().signInWithPhoneNumber(`+91${cleanPhone}`);
 }
 
-export function isFirebaseIosClientError(error: unknown): boolean {
+export function isFirebaseSmsClientError(error: unknown): boolean {
   const code = String((error as { code?: string })?.code || '');
   const message = String((error as { message?: string })?.message || '').toLowerCase();
   return (
     code === 'auth/missing-client-identifier' ||
     code === 'auth/app-not-authorized' ||
-    (code === 'auth/unknown' && message.includes('client identifier'))
+    code === 'auth/invalid-app-credential' ||
+    code === 'auth/captcha-check-failed' ||
+    code === 'auth/missing-android-pkg-name' ||
+    code === 'auth/operation-not-allowed' ||
+    code === 'auth/invalid-phone-number' ||
+    (code === 'auth/unknown' &&
+      (message.includes('client identifier') ||
+        message.includes('app identifier') ||
+        message.includes('app verification')))
   );
 }
+
+/** @deprecated Use isFirebaseSmsClientError */
+export const isFirebaseIosClientError = isFirebaseSmsClientError;
 
 export function firebaseSmsUnavailableMessage(error: unknown): string {
   if (isDevSimulator()) {
     return 'Simulator par real number par SMS nahi aata. Real phone par try karein, ya test number 7007543565 / OTP 454545 use karein.';
   }
-  if (isFirebaseIosClientError(error)) {
+  if (isFirebaseSmsClientError(error)) {
     if (Platform.OS === 'android' && !__DEV__) {
       return 'Release APK keystore Firebase par register nahi hai. Play Store wala app chalega; sideload APK ke liye release SHA add karein. Tab tak WhatsApp OTP use karein.';
     }

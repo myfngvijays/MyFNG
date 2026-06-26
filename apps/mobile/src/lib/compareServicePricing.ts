@@ -2,6 +2,7 @@ import type { Ionicons } from '@expo/vector-icons';
 import { PERIODIC_PACKAGES, formatInrRange } from './smartToolsLogic';
 import { supabase } from './supabase';
 import type { CustomerVehicle } from './smartToolsVehicle';
+import { fetchServicePriceForBooking } from './servicePricing';
 
 export type CityRow = {
   id: string;
@@ -249,67 +250,6 @@ export async function resolveSavedVehicleModel(vehicle: CustomerVehicle): Promis
   }
 }
 
-async function fetchPriceForService(
-  serviceTypeId: string,
-  cityId: string,
-  zoneId: string | null,
-  vehicleClass: string | null,
-): Promise<number> {
-  const tryPrice = async (filters: Record<string, unknown>) => {
-    let q = supabase
-      .from('workshop_service_pricing')
-      .select('custom_price')
-      .eq('service_type_id', serviceTypeId)
-      .eq('is_active', true)
-      .limit(1);
-    for (const [k, v] of Object.entries(filters)) {
-      if (v === null) q = q.is(k, null);
-      else q = q.eq(k, v as string);
-    }
-    const { data } = await q.maybeSingle();
-    const p = Number((data as { custom_price?: number })?.custom_price || 0);
-    return Number.isFinite(p) ? p : 0;
-  };
-
-  if (cityId && vehicleClass) {
-    const p = await tryPrice({ city_id: cityId, class: vehicleClass });
-    if (p) return p;
-  }
-  if (cityId) {
-    const p = await tryPrice({ city_id: cityId, class: null });
-    if (p) return p;
-  }
-  if (zoneId && vehicleClass) {
-    const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
-    if (p) return p;
-  }
-  if (zoneId) {
-    const p = await tryPrice({ zone_id: zoneId, class: null });
-    if (p) return p;
-  }
-  if (vehicleClass) {
-    const p = await tryPrice({ class: vehicleClass, city_id: null, zone_id: null });
-    if (p) return p;
-  }
-
-  try {
-    const { data } = await supabase
-      .from('workshop_service_pricing')
-      .select('custom_price')
-      .eq('service_type_id', serviceTypeId)
-      .eq('is_active', true)
-      .gt('custom_price', 0)
-      .order('custom_price', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    const p = Number((data as { custom_price?: number })?.custom_price || 0);
-    if (Number.isFinite(p) && p > 0) return p;
-  } catch {
-    // ignore
-  }
-  return 0;
-}
-
 type ServiceTypeRow = { id: string; name: string; description?: string | null; category?: string };
 
 async function fetchServiceTypesWithCategory(): Promise<ServiceTypeRow[]> {
@@ -506,7 +446,7 @@ export async function fetchPeriodicCompareQuotes(
       continue;
     }
 
-    const base = await fetchPriceForService(svc.id, city.id, city.zone_id || null, vehicleClass);
+    const base = await fetchServicePriceForBooking(svc.id, city.id, city.zone_id || null, vehicleClass);
     quotes.push(
       buildQuoteFromBase(
         { id: def.id, name, checkpoints: def.checkpoints, highlights: [...def.highlights] },
@@ -536,7 +476,7 @@ export async function fetchCategoryCompareQuotes(
 
   const quotes = await Promise.all(
     matched.map(async (svc) => {
-      const base = await fetchPriceForService(svc.id, city.id, city.zone_id || null, vehicleClass);
+      const base = await fetchServicePriceForBooking(svc.id, city.id, city.zone_id || null, vehicleClass);
       return buildQuoteFromServiceType(svc, base);
     }),
   );
