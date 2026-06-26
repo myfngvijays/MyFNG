@@ -4,10 +4,14 @@
  */
 
 import * as admin from 'firebase-admin';
+import {
+  loadPushFirebaseConfig,
+  resolveActiveFirebaseCredentials,
+} from '@/lib/push/firebaseConfigStore';
 
 let firebaseAdminApp: admin.app.App | null = null;
 
-function getServiceAccountCredentials(): {
+function getServiceAccountCredentialsFromEnv(): {
   projectId: string;
   clientEmail: string;
   privateKey: string;
@@ -36,14 +40,32 @@ function getServiceAccountCredentials(): {
   return { projectId, clientEmail, privateKey };
 }
 
-function getFirebaseAdmin(): admin.app.App {
+function getServiceAccountCredentialsSync(): {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+} {
+  return getServiceAccountCredentialsFromEnv();
+}
+
+export function resetFirebaseAdminApp() {
+  if (firebaseAdminApp) {
+    void firebaseAdminApp.delete().catch(() => undefined);
+  }
+  firebaseAdminApp = null;
+}
+
+function initFirebaseAdmin(credentials: {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+}): admin.app.App {
   if (firebaseAdminApp) return firebaseAdminApp;
 
-  const { projectId, clientEmail, privateKey } = getServiceAccountCredentials();
-
+  const { projectId, clientEmail, privateKey } = credentials;
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error(
-      'Missing Firebase Admin credentials for server OTP verify. Add FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY to apps/web/.env.local (Firebase Console → Service accounts → Generate new private key). Live myfng.in already has these on VPS.'
+      'Missing Firebase Admin credentials. Configure in Push Notification Management → Firebase Settings or add FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY to server env.',
     );
   }
 
@@ -57,11 +79,33 @@ function getFirebaseAdmin(): admin.app.App {
   return firebaseAdminApp;
 }
 
+function getFirebaseAdmin(): admin.app.App {
+  return initFirebaseAdmin(getServiceAccountCredentialsSync());
+}
+
+export function getFirebaseAdminApp(): admin.app.App {
+  return getFirebaseAdmin();
+}
+
+export async function getFirebaseAdminAppAsync(): Promise<admin.app.App> {
+  if (firebaseAdminApp) return firebaseAdminApp;
+  const config = await loadPushFirebaseConfig();
+  const active = resolveActiveFirebaseCredentials(config);
+  if (active.source === 'none') {
+    return getFirebaseAdmin();
+  }
+  return initFirebaseAdmin({
+    projectId: active.projectId,
+    clientEmail: active.clientEmail,
+    privateKey: active.privateKey,
+  });
+}
+
 export async function verifyFirebaseIdToken(idToken: string): Promise<{
   uid: string;
   phone_number?: string;
 }> {
-  const app = getFirebaseAdmin();
+  const app = await getFirebaseAdminAppAsync();
   const decoded = await app.auth().verifyIdToken(idToken);
   return {
     uid: decoded.uid,

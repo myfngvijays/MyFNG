@@ -51,7 +51,9 @@ import { ENV } from '../config/environment';
 import NotificationPreferenceSwitch from '../components/NotificationPreferenceSwitch';
 import {
   isExpoPushConfigured,
+  isPushConfigured,
   showPushPermissionAlert,
+  showPushRegistrationErrorAlert,
   syncPushPreferenceAfterSave,
 } from '../lib/pushPreferenceSync';
 import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type AppMembershipPlan, type PrimeMembershipDisplay } from '../lib/membershipPlan';
@@ -874,9 +876,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
         setCurrentMembership(null);
       }
       if (notifPrefsRes?.preferences) {
+        const pushOn = Boolean(notifPrefsRes.preferences.push_enabled);
         setNotifPrefs((prev) => ({
           ...prev,
-          push_enabled: Boolean(notifPrefsRes.preferences.push_enabled),
+          push_enabled: pushOn,
           sms_enabled: Boolean(notifPrefsRes.preferences.sms_enabled),
           email_enabled: Boolean(notifPrefsRes.preferences.email_enabled),
           order_updates: Boolean(notifPrefsRes.preferences.order_updates),
@@ -885,6 +888,15 @@ export default function SettingsScreen({ navigation, route }: Props) {
           referral_updates: Boolean(notifPrefsRes.preferences.referral_updates),
           support_updates: Boolean(notifPrefsRes.preferences.support_updates),
         }));
+        if (pushOn) {
+          const sessionToken = await getCustomerSessionToken();
+          if (sessionToken) {
+            const sync = await syncPushPreferenceAfterSave(true, sessionToken);
+            setPushTokenRegistered(Boolean(sync.tokenRegistered));
+          }
+        } else {
+          setPushTokenRegistered(false);
+        }
       }
       const phone = String(customer?.phone || '').trim();
       const storageKey = phone || String(customer?.id || '').trim();
@@ -933,6 +945,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
           return;
         }
         setPushTokenRegistered(Boolean(val && sync.tokenRegistered));
+        if (val && !sync.tokenRegistered && sync.errorDetails) {
+          showPushRegistrationErrorAlert(sync.errorDetails);
+        }
       }
     } catch (_err) {
       setNotifPrefs(prev);
@@ -945,8 +960,8 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const pushPreferenceHint = useMemo(() => {
     if (!notifPrefs.push_enabled) return null;
     if (pushTokenRegistered) return null;
-    if (!isExpoPushConfigured()) {
-      return 'Push alerts ke liye app ka latest update install karein (EAS project setup).';
+    if (!isPushConfigured()) {
+      return 'Push alerts ke liye app ka latest update install karein.';
     }
     return 'Allow notifications in phone settings to receive alerts on this device.';
   }, [notifPrefs.push_enabled, pushTokenRegistered]);

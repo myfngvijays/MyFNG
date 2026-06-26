@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
       .from('notification_devices')
       .select('id, token, platform, is_active, device_name, last_seen_at')
       .eq('customer_id', customer.id)
-      .eq('platform', 'EXPO')
+      .eq('platform', MOBILE_PUSH_PLATFORM)
       .eq('is_active', true)
       .order('last_seen_at', { ascending: false });
 

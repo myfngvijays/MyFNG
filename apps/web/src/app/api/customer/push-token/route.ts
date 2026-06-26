@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
+import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 
 export const dynamic = 'force-dynamic';
 
-function isExpoPushToken(token: string): boolean {
-  return token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken[');
+function isFcmToken(token: string): boolean {
+  const value = String(token || '').trim();
+  if (value.length < 20 || value.length > 4096) return false;
+  if (value.startsWith('ExponentPushToken[') || value.startsWith('ExpoPushToken[')) return false;
+  return !/\s/.test(value);
 }
 
 export async function POST(request: NextRequest) {
@@ -14,12 +18,12 @@ export async function POST(request: NextRequest) {
   const { customer, supabaseAdmin } = ctx;
   const body = await request.json().catch(() => ({}));
   const token = String(body?.token || '').trim();
-  const platform = String(body?.platform || 'EXPO').trim().toUpperCase();
+  const platform = String(body?.platform || MOBILE_PUSH_PLATFORM).trim().toUpperCase();
 
-  if (!token || !isExpoPushToken(token)) {
-    return NextResponse.json({ error: 'Valid Expo push token is required' }, { status: 400 });
+  if (!token || !isFcmToken(token)) {
+    return NextResponse.json({ error: 'Valid FCM device token is required' }, { status: 400 });
   }
-  if (platform !== 'EXPO') {
+  if (platform !== MOBILE_PUSH_PLATFORM) {
     return NextResponse.json({ error: 'Unsupported platform' }, { status: 400 });
   }
 
@@ -53,13 +57,14 @@ export async function POST(request: NextRequest) {
         last_seen_at: now,
         device_name: deviceName,
         device_id: deviceId,
+        updated_at: now,
       })
       .eq('id', existing.id);
 
     if (error) {
       return NextResponse.json({ error: 'Failed to refresh push token' }, { status: 500 });
     }
-    return NextResponse.json({ success: true, registered: true });
+    return NextResponse.json({ success: true, registered: true, platform });
   }
 
   const { error: insertError } = await supabaseAdmin.from('notification_devices').insert({
@@ -80,7 +85,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ success: true, registered: true });
+  return NextResponse.json({ success: true, registered: true, platform });
 }
 
 export async function DELETE() {
@@ -90,9 +95,9 @@ export async function DELETE() {
   const { customer, supabaseAdmin } = ctx;
   const { error } = await supabaseAdmin
     .from('notification_devices')
-    .update({ is_active: false })
+    .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('customer_id', customer.id)
-    .eq('platform', 'EXPO');
+    .eq('platform', MOBILE_PUSH_PLATFORM);
 
   if (error) {
     return NextResponse.json({ error: 'Failed to deactivate push tokens' }, { status: 500 });

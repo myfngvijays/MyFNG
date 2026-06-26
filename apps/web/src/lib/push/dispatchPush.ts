@@ -1,7 +1,8 @@
 import 'server-only';
 import type { Notification } from '@/shared/types/notifications';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendExpoPush } from '@/lib/push/expoPush';
+import { deactivateFcmTokens, sendFcmPush } from '@/lib/push/fcmPush';
+import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { sendWebPush, type WebPushSubscription } from '@/lib/push/webPush';
 
 type PrefRow = {
@@ -30,14 +31,14 @@ async function getPreferences(userId: string) {
   return (data as any) || null;
 }
 
-async function getExpoTokens(userId: string) {
+async function getFcmTokens(userId: string) {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return [];
   const { data } = await supabaseAdmin
     .from('notification_devices')
     .select('token')
     .eq('user_id', userId)
-    .eq('platform', 'EXPO')
+    .eq('platform', MOBILE_PUSH_PLATFORM)
     .eq('is_active', true);
   return (data || []).map((r: any) => String(r.token));
 }
@@ -72,14 +73,25 @@ export async function dispatchPushToUser(userId: string, notification: Notificat
     lead_number: notification.lead_number || null,
   };
 
-  // Mobile (Expo)
+  // Mobile (FCM)
   try {
-    const tokens = await getExpoTokens(userId);
+    const tokens = await getFcmTokens(userId);
     if (tokens.length > 0) {
-      await sendExpoPush(tokens.map((t: string) => ({ to: t, title, body, data, sound: 'default' })));
+      const delivery = await sendFcmPush(
+        tokens.map((token) => ({
+          token,
+          title,
+          body,
+          data,
+        })),
+      );
+      if (delivery.invalidTokens.length) {
+        const { supabaseAdmin } = getSupabaseAdmin();
+        if (supabaseAdmin) await deactivateFcmTokens(supabaseAdmin, delivery.invalidTokens);
+      }
     }
   } catch (e) {
-    console.warn('Expo push dispatch failed:', e);
+    console.warn('FCM push dispatch failed:', e);
   }
 
   // Web Push (service worker)

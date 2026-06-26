@@ -5,8 +5,9 @@ import NotificationPreferenceSwitch from '../../../components/NotificationPrefer
 import { apiFetch } from '../../../lib/api';
 import { getCustomerSessionToken } from '../../../lib/customerSession';
 import {
-  isExpoPushConfigured,
+  isPushConfigured,
   showPushPermissionAlert,
+  showPushRegistrationErrorAlert,
   syncPushPreferenceAfterSave,
 } from '../../../lib/pushPreferenceSync';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
@@ -76,6 +77,9 @@ export default function CustomerNotificationsScreen({ navigation }: any) {
           return;
         }
         setPushTokenRegistered(Boolean(next.push_enabled && sync.tokenRegistered));
+        if (next.push_enabled && !sync.tokenRegistered && sync.errorDetails) {
+          showPushRegistrationErrorAlert(sync.errorDetails);
+        }
       }
     } catch {
       setPrefs(prev);
@@ -88,8 +92,8 @@ export default function CustomerNotificationsScreen({ navigation }: any) {
   const pushHint = useMemo(() => {
     if (!prefs.push_enabled) return null;
     if (pushTokenRegistered) return null;
-    if (!isExpoPushConfigured()) {
-      return 'Push alerts ke liye app ka latest update install karein (EAS project setup).';
+    if (!isPushConfigured()) {
+      return 'Push alerts ke liye app ka latest update install karein.';
     }
     return 'Allow notifications in phone settings to receive alerts on this device.';
   }, [prefs.push_enabled, pushTokenRegistered]);

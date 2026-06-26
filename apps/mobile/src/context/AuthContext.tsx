@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { registerAndSyncExpoPushToken } from '../services/pushNotifications';
+import { registerAndSyncFcmPushToken } from '../services/pushNotifications';
 
 interface UserProfile {
   id: string;
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user?.id) return;
     // Best-effort; never block app render
-    void registerAndSyncExpoPushToken(user.id).catch(() => null);
+    void registerAndSyncFcmPushToken(user.id).catch(() => null);
   }, [user?.id]);
 
   useEffect(() => {

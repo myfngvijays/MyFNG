@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
   LayoutDashboard,
@@ -35,6 +35,8 @@ import {
   Ticket,
   ClipboardList,
   Bell,
+  Send,
+  Flame,
   Star,
   Crown,
   Sparkles,
@@ -260,10 +262,10 @@ const navigationItems: NavItem[] = [
     description: 'PCMS — campaigns, automation & analytics'
   },
   {
-    name: 'Send Notification',
-    href: '/dashboard/super_admin/notifications',
+    name: 'Push Notification Management',
+    href: '/dashboard/super_admin/advance-notifications?section=dashboard',
     icon: Bell,
-    description: 'Send push notifications by role'
+    description: 'FCM push admin console',
   },
   {
     name: 'AI Learning Inbox',
@@ -364,6 +366,7 @@ export default function SuperAdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserClient(), []);
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start collapsed; expand on hover
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -397,16 +400,30 @@ export default function SuperAdminLayout({
   };
 
   const isActive = (href: string) => {
-    if (href === '/dashboard/super_admin') {
-      return pathname === href;
+    const [path, queryString] = href.split('?');
+    if (path === '/dashboard/super_admin') {
+      return pathname === path;
     }
-    return pathname?.startsWith(href);
+    if (!pathname?.startsWith(path)) return false;
+    if (queryString) {
+      const expected = new URLSearchParams(queryString);
+      for (const [key, value] of expected.entries()) {
+        if (searchParams.get(key) !== value) return false;
+      }
+    }
+    return true;
   };
 
   const isGroupActive = (item: NavItem) => {
     if (!item.children?.length) return false;
     return item.children.some((c) => isActive(c.href));
   };
+
+  const isPushAdminConsole = pathname?.startsWith('/dashboard/super_admin/advance-notifications');
+
+  if (isPushAdminConsole) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">

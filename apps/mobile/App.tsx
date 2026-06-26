@@ -62,7 +62,12 @@ import { supabase } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
 import { clearCustomerSessionToken, getCustomerSessionToken } from './src/lib/customerSession';
 import { preloadWalletRules } from './src/lib/wallet';
-import { registerCustomerExpoPushToken } from './src/services/pushNotifications';
+import {
+  deactivateCustomerFcmPushTokens,
+  registerCustomerFcmPushToken,
+  setupFcmNotificationHandlers,
+  subscribeToFcmTokenRefresh,
+} from './src/services/pushNotifications';
 import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
 
@@ -92,11 +97,25 @@ function AppContent() {
       const prefsJson = await prefsRes.json().catch(() => ({}));
       if (prefsJson?.preferences?.push_enabled === false) return;
 
-      await registerCustomerExpoPushToken(ENV.API_URL, sessionToken);
+      const result = await registerCustomerFcmPushToken(ENV.API_URL, sessionToken);
+      if (!result.ok && __DEV__) {
+        console.warn('[push] customer token sync failed:', result);
+      }
     } catch {
       // best-effort only
     }
   };
+
+  useEffect(() => {
+    const unsubscribeHandlers = setupFcmNotificationHandlers();
+    const unsubscribeTokenRefresh = subscribeToFcmTokenRefresh(() => {
+      void syncCustomerPushToken();
+    });
+    return () => {
+      unsubscribeHandlers();
+      unsubscribeTokenRefresh();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isCustomerSessionUser) return;
@@ -125,13 +144,16 @@ function AppContent() {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         void runForceUpdateCheck();
+        if (isCustomerSessionUser) {
+          void syncCustomerPushToken();
+        }
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [runForceUpdateCheck]);
+  }, [runForceUpdateCheck, isCustomerSessionUser]);
 
   useEffect(() => {
     void preloadWalletRules(ENV.API_URL);
@@ -246,6 +268,7 @@ function AppContent() {
     try {
       const customerToken = await getCustomerSessionToken();
       if (customerToken) {
+        await deactivateCustomerFcmPushTokens(ENV.API_URL, customerToken).catch(() => null);
         await fetch(`${ENV.API_URL}/api/customer/auth/logout`, {
           method: 'POST',
           headers: { 'x-customer-session': customerToken },

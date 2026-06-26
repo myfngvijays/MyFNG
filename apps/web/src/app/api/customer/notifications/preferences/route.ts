@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest) {
       .from('notification_devices')
       .update({ is_active: false })
       .eq('customer_id', customer.id)
-      .eq('platform', 'EXPO');
+      .eq('platform', MOBILE_PUSH_PLATFORM);
   }
 
   await logCustomerEvent(supabaseAdmin, customer.id, 'notification_preferences_updated', 'notifications');

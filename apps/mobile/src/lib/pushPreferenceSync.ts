@@ -1,15 +1,16 @@
 import { Alert } from 'react-native';
 import { ENV } from '../config/environment';
 import {
-  deactivateCustomerExpoPushTokens,
-  isExpoPushConfigured,
-  registerCustomerExpoPushToken,
+  deactivateCustomerFcmPushTokens,
+  isPushConfigured,
+  registerCustomerFcmPushToken,
 } from '../services/pushNotifications';
 
 export type PushPreferenceSyncResult = {
   tokenRegistered: boolean;
   pushConfigured: boolean;
   permissionDenied: boolean;
+  errorDetails?: string;
 };
 
 export async function syncPushPreferenceAfterSave(
@@ -17,18 +18,18 @@ export async function syncPushPreferenceAfterSave(
   sessionToken: string | null,
   apiUrl: string = ENV.API_URL,
 ): Promise<PushPreferenceSyncResult> {
-  const pushConfigured = isExpoPushConfigured();
+  const pushConfigured = isPushConfigured();
 
   if (!sessionToken) {
     return { tokenRegistered: false, pushConfigured, permissionDenied: false };
   }
 
   if (!enabled) {
-    await deactivateCustomerExpoPushTokens(apiUrl, sessionToken);
+    await deactivateCustomerFcmPushTokens(apiUrl, sessionToken);
     return { tokenRegistered: false, pushConfigured, permissionDenied: false };
   }
 
-  const result = await registerCustomerExpoPushToken(apiUrl, sessionToken);
+  const result = await registerCustomerFcmPushToken(apiUrl, sessionToken);
   if (result.ok) {
     return { tokenRegistered: true, pushConfigured: true, permissionDenied: false };
   }
@@ -37,7 +38,12 @@ export async function syncPushPreferenceAfterSave(
     return { tokenRegistered: false, pushConfigured, permissionDenied: true };
   }
 
-  return { tokenRegistered: false, pushConfigured, permissionDenied: false };
+  return {
+    tokenRegistered: false,
+    pushConfigured,
+    permissionDenied: false,
+    errorDetails: result.details,
+  };
 }
 
 export function showPushPermissionAlert() {
@@ -47,4 +53,13 @@ export function showPushPermissionAlert() {
   );
 }
 
-export { isExpoPushConfigured };
+export function showPushRegistrationErrorAlert(details?: string) {
+  Alert.alert(
+    'Notifications',
+    details
+      ? `Could not register this device for push alerts.\n\n${details}`
+      : 'Could not register this device for push alerts. Please try again.',
+  );
+}
+
+export { isPushConfigured, isPushConfigured as isExpoPushConfigured };

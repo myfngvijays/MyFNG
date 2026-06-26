@@ -25,16 +25,6 @@ module.exports = ({ config }) => {
 
   return {
     ...base,
-    extra: {
-      ...(base.extra || {}),
-      eas: {
-        ...((base.extra && base.extra.eas) || {}),
-        projectId:
-          process.env.EXPO_PUBLIC_EAS_PROJECT_ID ||
-          (base.extra && base.extra.eas && base.extra.eas.projectId) ||
-          undefined,
-      },
-    },
     android: {
       ...(base.android || {}),
       config: {
