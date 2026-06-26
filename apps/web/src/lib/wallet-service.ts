@@ -233,6 +233,26 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
   const config = await getWalletConfig(supabaseAdmin, platform);
   let wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
 
+  const { data: existingWelcome } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('transaction_type', 'CREDIT')
+    .eq('source', config.WELCOME_SOURCE)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingWelcome) {
+    try {
+      const backfill = await creditWelcomeBonus(supabaseAdmin, customerId);
+      if (backfill.credited) {
+        wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
+      }
+    } catch (err) {
+      console.error('[getWalletSummary] welcome bonus backfill failed:', err);
+    }
+  }
+
   wallet = await processExpiredWelcomeCredits(supabaseAdmin, customerId, wallet, config);
 
   const { data: welcomeCredit } = await supabaseAdmin
