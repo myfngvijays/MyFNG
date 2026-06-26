@@ -1,10 +1,11 @@
-import { Platform, PermissionsAndroid } from 'react-native';
-import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import { NativeModules, Platform, PermissionsAndroid } from 'react-native';
+import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
+import { isAndroidEmulator, isIosSimulator } from '../config/environment';
 
 const STORAGE_KEY = 'myfng_fcm_push_token_v1';
 export const PUSH_PLATFORM = 'FCM';
+
+type MessagingModule = typeof import('@react-native-firebase/messaging').default;
 
 type PushRegisterFailure = {
   ok: false;
@@ -19,14 +20,50 @@ type PushRegisterSuccess = {
 
 export type PushRegisterResult = PushRegisterSuccess | PushRegisterFailure;
 
+let messagingModule: MessagingModule | null | undefined;
+
+function getMessagingModule(): MessagingModule | null {
+  if (messagingModule !== undefined) return messagingModule;
+
+  if (!NativeModules.RNFBMessagingModule) {
+    if (__DEV__) {
+      console.warn(
+        '[FCM] @react-native-firebase/messaging is not in this native build. Run: cd apps/mobile && npx expo run:ios (or run:android). Expo Go does not support FCM.',
+      );
+    }
+    messagingModule = null;
+    return null;
+  }
+
+  try {
+    // Lazy require so Metro can load JS before native dev client is rebuilt.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    messagingModule = require('@react-native-firebase/messaging').default as MessagingModule;
+    return messagingModule;
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[FCM] Failed to load messaging module:', error);
+    }
+    messagingModule = null;
+    return null;
+  }
+}
+
+export function isFcmNativeLinked(): boolean {
+  return getMessagingModule() != null;
+}
+
 export function isPushConfigured(): boolean {
-  return true;
+  return isFcmNativeLinked();
 }
 
 /** @deprecated Use isPushConfigured */
 export const isExpoPushConfigured = isPushConfigured;
 
 async function requestNotificationPermission(): Promise<boolean> {
+  const messaging = getMessagingModule();
+  if (!messaging) return false;
+
   if (Platform.OS === 'ios') {
     const authStatus = await messaging().requestPermission();
     return (
@@ -43,7 +80,34 @@ async function requestNotificationPermission(): Promise<boolean> {
   return true;
 }
 
+function resolveDeviceName(): string {
+  if (Platform.OS === 'ios') {
+    return isIosSimulator() ? 'iOS Simulator' : 'iOS';
+  }
+  if (Platform.OS === 'android') {
+    return isAndroidEmulator() ? 'Android Emulator' : 'Android';
+  }
+  return Platform.OS;
+}
+
 async function acquireFcmPushToken(): Promise<PushRegisterResult> {
+  const messaging = getMessagingModule();
+  if (!messaging) {
+    return {
+      ok: false,
+      reason: 'api_error',
+      details: 'FCM native module missing. Rebuild the dev client with expo run:ios or expo run:android.',
+    };
+  }
+
+  if (isIosSimulator() || isAndroidEmulator()) {
+    return {
+      ok: false,
+      reason: 'no_token',
+      details: 'Push tokens are not registered from simulators/emulators. Use TestFlight or a physical device.',
+    };
+  }
+
   const permitted = await requestNotificationPermission();
   if (!permitted) {
     return { ok: false, reason: 'permission_denied' };
@@ -60,6 +124,7 @@ async function acquireFcmPushToken(): Promise<PushRegisterResult> {
   console.warn('[MYFNG_FCM_TOKEN]', token);
 
   try {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const prev = await AsyncStorage.getItem(STORAGE_KEY);
     if (prev !== token) {
       await AsyncStorage.setItem(STORAGE_KEY, token);
@@ -76,6 +141,7 @@ export async function registerAndSyncFcmPushToken(userId: string): Promise<PushR
   const acquired = await acquireFcmPushToken();
   if (!acquired.ok) return acquired;
 
+  const { supabase } = await import('../lib/supabase');
   const now = new Date().toISOString();
   const { error } = await supabase.from('notification_devices').upsert(
     {
@@ -103,7 +169,24 @@ export async function registerCustomerFcmPushToken(
   const acquired = await acquireFcmPushToken();
   if (!acquired.ok) return acquired;
 
-  const deviceName = Platform.OS === 'ios' ? 'iOS' : 'Android';
+  const deviceName = resolveDeviceName();
+
+  const { supabase } = await import('../lib/supabase');
+  const { data: rpcData, error: rpcError } = await supabase.rpc('register_customer_fcm_token', {
+    p_session_token: sessionToken,
+    p_fcm_token: acquired.token,
+    p_device_name: deviceName,
+  });
+
+  const rpc = rpcData as { ok?: boolean; error?: string } | null;
+  if (!rpcError && rpc?.ok) {
+    return { ok: true, token: acquired.token };
+  }
+
+  const rpcFailure = rpc?.error || rpcError?.message;
+  if (rpcFailure) {
+    console.warn('[push] register_customer_fcm_token RPC failed:', rpcFailure);
+  }
 
   const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/customer/push-token`, {
     method: 'POST',
@@ -125,23 +208,11 @@ export async function registerCustomerFcmPushToken(
     return { ok: true, token: acquired.token };
   }
 
-  // Production API may still expect Expo tokens — register directly in Supabase.
-  const { data: rpcData, error: rpcError } = await supabase.rpc('register_customer_fcm_token', {
-    p_session_token: sessionToken,
-    p_fcm_token: acquired.token,
-    p_device_name: deviceName,
-  });
-
-  const rpc = rpcData as { ok?: boolean; error?: string } | null;
-  if (!rpcError && rpc?.ok) {
-    return { ok: true, token: acquired.token };
-  }
-
   return {
     ok: false,
     reason: 'api_error',
     details: String(
-      rpc?.error || rpcError?.message || json?.error || json?.details || `HTTP ${res.status}`,
+      rpcFailure || json?.error || json?.details || `HTTP ${res.status}`,
     ),
   };
 }
@@ -178,8 +249,28 @@ export const deactivateCustomerExpoPushTokens = deactivateCustomerFcmPushTokens;
 export type PushOpenHandler = (remoteMessage: FirebaseMessagingTypes.RemoteMessage) => void;
 
 export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
+  const messaging = getMessagingModule();
+  if (!messaging) {
+    return () => undefined;
+  }
+
+  if (Platform.OS === 'ios') {
+    const setPresentationOptions = (messaging() as { setForegroundNotificationPresentationOptions?: (options: {
+      alert?: boolean;
+      badge?: boolean;
+      sound?: boolean;
+    }) => Promise<void> }).setForegroundNotificationPresentationOptions;
+    if (typeof setPresentationOptions === 'function') {
+      void setPresentationOptions.call(messaging(), {
+        alert: true,
+        badge: true,
+        sound: true,
+      });
+    }
+  }
+
   const unsubscribeForeground = messaging().onMessage(async (_remoteMessage) => {
-    // Background/system tray handles most cases; foreground display is OS-dependent.
+    // Foreground banners on iOS need setForegroundNotificationPresentationOptions (when available).
   });
 
   const unsubscribeOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
@@ -199,5 +290,9 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
 }
 
 export function subscribeToFcmTokenRefresh(onToken: (token: string) => void) {
+  const messaging = getMessagingModule();
+  if (!messaging) {
+    return () => undefined;
+  }
   return messaging().onTokenRefresh(onToken);
 }

@@ -2,7 +2,7 @@ import { normalizePhone } from './coupon-rules';
 import { enrichBookingLead } from './booking-lead-utils';
 import { getPostBookingMembershipConfig } from './post-booking-membership-config';
 import { syncServiceLeadMembershipPricingForAdmin } from './post-booking-membership-offer';
-import { computeWalletRewardTotals, getWalletSummary } from './wallet-service';
+import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
 import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
 
@@ -393,7 +393,7 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
           totals: walletTotals,
         }
       : null,
-    wallet_transactions: walletTransactions || [],
+    wallet_transactions: filterVisibleWalletTransactions(walletTransactions || []),
     memberships: membershipsRes.data || [],
     membership_usage: usage,
     coupon_assignments: assignmentsRes.data || [],

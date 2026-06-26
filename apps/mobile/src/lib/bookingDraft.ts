@@ -66,11 +66,14 @@ export async function clearAllBookingDrafts(): Promise<void> {
   } catch {}
 }
 
-/** Count selected services in the most recent draft that has services. */
+/** Count selected services in the most recently updated draft that has services. */
 export function countDraftCartItems(drafts: BookingDraft[]): number {
-  const draft = drafts.find((d) => (d.selectedServices?.length || 0) > 0) || drafts[0];
-  if (!draft) return 0;
-  return draft.selectedServices?.length || 0;
+  const sorted = [...drafts].sort(
+    (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime(),
+  );
+  const active = sorted.find((d) => (d.selectedServices?.length || 0) > 0);
+  if (!active) return 0;
+  return active.selectedServices?.length || 0;
 }
 
 export async function getBookingCartItemCount(): Promise<number> {

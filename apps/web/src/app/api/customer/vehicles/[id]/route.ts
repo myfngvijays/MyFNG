@@ -21,6 +21,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (typeof body.vin === 'string') update.vin = body.vin;
   if (typeof body.odometer_km !== 'undefined') update.odometer_km = body.odometer_km ? Number(body.odometer_km) : null;
   if (typeof body.insurance_expiry !== 'undefined') update.insurance_expiry = body.insurance_expiry || null;
+  if (typeof body.vehicle_number === 'string') {
+    const vehicleNumber = body.vehicle_number.trim().toUpperCase();
+    if (!vehicleNumber) {
+      return NextResponse.json({ error: 'vehicle_number cannot be empty' }, { status: 400 });
+    }
+    const { data: duplicate } = await supabaseAdmin
+      .from('customer_vehicles')
+      .select('id')
+      .eq('customer_id', customer.id)
+      .eq('vehicle_number', vehicleNumber)
+      .neq('id', id)
+      .maybeSingle();
+    if (duplicate?.id) {
+      return NextResponse.json({ error: 'Vehicle number already exists for this account' }, { status: 400 });
+    }
+    update.vehicle_number = vehicleNumber;
+  }
   if (typeof body.is_default !== 'undefined') {
     update.is_default = Boolean(body.is_default);
     if (Boolean(body.is_default)) {

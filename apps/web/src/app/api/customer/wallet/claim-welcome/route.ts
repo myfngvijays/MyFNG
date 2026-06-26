@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { requireCustomer } from '@/lib/customer-api';
+import { parseWalletPlatform } from '@/lib/wallet-config';
 import { creditWelcomeBonus } from '@/lib/wallet-service';
 
 export const dynamic = 'force-dynamic';
@@ -12,9 +14,13 @@ export async function POST() {
   const ctx = await requireCustomer();
   if ('response' in ctx) return ctx.response;
   const { customer, supabaseAdmin } = ctx;
+  const headerStore = await headers();
+  const platform = parseWalletPlatform(
+    headerStore.get('x-app-platform') || headerStore.get('X-App-Platform'),
+  );
 
   try {
-    const result = await creditWelcomeBonus(supabaseAdmin, customer.id);
+    const result = await creditWelcomeBonus(supabaseAdmin, customer.id, { platform });
     if (result.credited) {
       return NextResponse.json({
         success: true,
@@ -35,12 +41,13 @@ export async function POST() {
         },
       });
     }
-    if (result.reason === 'not_eligible') {
+    if (result.reason === 'not_eligible' || result.reason === 'disabled' || result.reason === 'suppressed') {
       return NextResponse.json({
         success: true,
         welcome_bonus: {
           credited: false,
           amount: 0,
+          disabled: result.reason === 'disabled',
         },
       });
     }

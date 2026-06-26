@@ -1,11 +1,19 @@
+export type CustomerReviewScreen = 'home' | 'rsa';
+
 export type CustomerReviewInput = {
   name: string;
+  car: string;
   stars: number;
   text: string;
   date: string;
   display_order: number;
   is_active: boolean;
+  screen: CustomerReviewScreen;
 };
+
+function normalizeScreen(raw: unknown): CustomerReviewScreen {
+  return String(raw || 'home').trim().toLowerCase() === 'rsa' ? 'rsa' : 'home';
+}
 
 export function normalizeCustomerReviewInput(raw: Partial<CustomerReviewInput>): CustomerReviewInput | null {
   const name = String(raw.name || '').trim();
@@ -13,12 +21,14 @@ export function normalizeCustomerReviewInput(raw: Partial<CustomerReviewInput>):
   const date = String(raw.date || '').trim();
   if (!name || !text || !date) return null;
 
+  const car = String(raw.car || '').trim();
   const stars = Math.min(5, Math.max(1, Number(raw.stars) || 5));
   const display_order = Number.isFinite(Number(raw.display_order)) ? Number(raw.display_order) : 0;
   const is_active =
     raw.is_active === false || String(raw.is_active).toLowerCase() === 'false' ? false : true;
+  const screen = normalizeScreen(raw.screen);
 
-  return { name, stars, text, date, display_order, is_active };
+  return { name, car, stars, text, date, display_order, is_active, screen };
 }
 
 function parseCsvLine(line: string): string[] {
@@ -73,11 +83,13 @@ export function parseCustomerReviewsCsv(text: string): {
     const rowNumber = i + 1;
     const normalized = normalizeCustomerReviewInput({
       name: cols[0],
-      stars: Number(cols[1]),
-      text: cols[2],
-      date: cols[3],
-      display_order: cols[4] != null && cols[4] !== '' ? Number(cols[4]) : rows.length + 1,
-      is_active: cols[5] != null && cols[5] !== '' ? cols[5] : true,
+      car: cols[1],
+      stars: Number(cols[2]),
+      text: cols[3],
+      date: cols[4],
+      display_order: cols[5] != null && cols[5] !== '' ? Number(cols[5]) : rows.length + 1,
+      is_active: cols[6] != null && cols[6] !== '' ? cols[6] : true,
+      screen: cols[7] || 'home',
     });
     if (!normalized) {
       errors.push(`Row ${rowNumber}: name, text, and date are required.`);
@@ -89,18 +101,19 @@ export function parseCustomerReviewsCsv(text: string): {
   return { rows, errors };
 }
 
-export const CUSTOMER_REVIEWS_CSV_TEMPLATE = `name,stars,text,date,display_order,is_active
-Rahul Sharma,5,Excellent service! My car feels brand new.,Jan 2025,1,true
-Priya Patel,5,Transparent pricing and great updates during service.,Feb 2025,2,true`;
+export const CUSTOMER_REVIEWS_CSV_TEMPLATE = `name,car,stars,text,date,display_order,is_active,screen
+Rahul Sharma,Hyundai Creta,5,Excellent service! My car feels brand new.,Jan 2025,1,true,home
+Priya Patel,Maruti Swift,5,Transparent pricing and great updates during service.,Feb 2025,2,true,rsa`;
 
 export function toCustomerReviewDbRow(input: CustomerReviewInput) {
   return {
     name: input.name,
-    car: '',
+    car: input.car,
     stars: input.stars,
     text: input.text,
     date: input.date,
     display_order: input.display_order,
     is_active: input.is_active,
+    screen: input.screen,
   };
 }

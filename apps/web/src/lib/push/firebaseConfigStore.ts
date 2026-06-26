@@ -249,7 +249,20 @@ export async function savePushFirebaseConfig(
     .from('push_firebase_config')
     .upsert(payload, { onConflict: 'config_key' });
 
-  if (upsertError) {
+  if (upsertError?.message?.includes('android_enabled') || upsertError?.message?.includes('project_name')) {
+    const {
+      project_name: _pn,
+      android_enabled: _ae,
+      ios_enabled: _ie,
+      ...legacyPayload
+    } = payload;
+    const { error: legacyError } = await supabaseAdmin
+      .from('push_firebase_config')
+      .upsert(legacyPayload, { onConflict: 'config_key' });
+    if (legacyError) {
+      return { ok: false, error: legacyError.message };
+    }
+  } else if (upsertError) {
     return { ok: false, error: upsertError.message };
   }
 

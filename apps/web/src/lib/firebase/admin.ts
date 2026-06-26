@@ -48,10 +48,10 @@ function getServiceAccountCredentialsSync(): {
   return getServiceAccountCredentialsFromEnv();
 }
 
-export function resetFirebaseAdminApp() {
-  if (firebaseAdminApp) {
-    void firebaseAdminApp.delete().catch(() => undefined);
-  }
+/** Remove all Firebase Admin app instances (required before re-init with new credentials). */
+export async function resetFirebaseAdminApp(): Promise<void> {
+  const apps = [...admin.apps];
+  await Promise.all(apps.map((app) => app.delete().catch(() => undefined)));
   firebaseAdminApp = null;
 }
 
@@ -61,6 +61,12 @@ function initFirebaseAdmin(credentials: {
   privateKey: string;
 }): admin.app.App {
   if (firebaseAdminApp) return firebaseAdminApp;
+
+  // Next.js hot reload / prior requests may leave a DEFAULT app in the global registry.
+  if (admin.apps.length > 0) {
+    firebaseAdminApp = admin.app();
+    return firebaseAdminApp;
+  }
 
   const { projectId, clientEmail, privateKey } = credentials;
   if (!projectId || !clientEmail || !privateKey) {
@@ -89,6 +95,12 @@ export function getFirebaseAdminApp(): admin.app.App {
 
 export async function getFirebaseAdminAppAsync(): Promise<admin.app.App> {
   if (firebaseAdminApp) return firebaseAdminApp;
+
+  if (admin.apps.length > 0) {
+    firebaseAdminApp = admin.app();
+    return firebaseAdminApp;
+  }
+
   const config = await loadPushFirebaseConfig();
   const active = resolveActiveFirebaseCredentials(config);
   if (active.source === 'none') {

@@ -103,6 +103,9 @@ function ActiveMembershipCard({
       membershipType={plan.membershipType}
       accentColor={plan.accentColor}
       accentTextColor={plan.accentTextColor}
+      headerIcon={plan.headerIcon}
+      headerIconUrl={plan.headerIconUrl}
+      showSecondCarAddon={plan.showSecondCarAddonApp !== false}
     />
   );
 }

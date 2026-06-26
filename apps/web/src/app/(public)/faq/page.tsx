@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, HelpCircle, Wrench, Wind, Cpu, BatteryCharging, Disc3, CircleDot, Paintbrush, Sparkles, Settings } from 'lucide-react';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -275,6 +275,29 @@ function FaqCategory({ section, defaultOpen = false }: { section: FaqSection; de
 }
 
 export default function FaqPage() {
+  const [sections, setSections] = useState<FaqSection[]>(FAQ_DATA);
+
+  useEffect(() => {
+    fetch('/api/public/faqs?all_sections=1&platform=web', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const apiSections = Array.isArray(json?.sections) ? json.sections : [];
+        if (!apiSections.length) return;
+        setSections(
+          apiSections.map((sec: { title: string; items: FaqItem[] }) => {
+            const fallback = FAQ_DATA.find((f) => f.title === sec.title) || FAQ_DATA[0];
+            return {
+              title: sec.title,
+              icon: fallback.icon,
+              color: fallback.color,
+              items: sec.items,
+            };
+          }),
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <Navbar />
@@ -293,7 +316,7 @@ export default function FaqPage() {
 
           {/* FAQ Categories */}
           <div className="space-y-3">
-            {FAQ_DATA.map((section, idx) => (
+            {sections.map((section, idx) => (
               <FaqCategory key={section.title} section={section} defaultOpen={idx === 0} />
             ))}
           </div>

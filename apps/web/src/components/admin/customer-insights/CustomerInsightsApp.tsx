@@ -17,6 +17,8 @@ import {
   ShieldBan,
   ShieldOff,
   ShieldCheck,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import { appPlatformBadgeClass, appPlatformLabel } from '@/lib/app-platform';
 import {
@@ -144,6 +146,10 @@ export default function CustomerInsightsApp() {
   const [accountReason, setAccountReason] = useState('');
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [walletCreditAmount, setWalletCreditAmount] = useState('');
+  const [walletCreditNote, setWalletCreditNote] = useState('');
+  const [walletCreditLoading, setWalletCreditLoading] = useState(false);
+  const [walletCreditMessage, setWalletCreditMessage] = useState<string | null>(null);
 
   const reloadDetail = useCallback(async (customerId: string) => {
     const res = await fetch(`/api/super_admin/customers/${customerId}`);
@@ -236,7 +242,10 @@ export default function CustomerInsightsApp() {
   useEffect(() => {
     setActivateMessage(null);
     setAccountMessage(null);
+    setWalletCreditMessage(null);
     setAccountReason('');
+    setWalletCreditAmount('');
+    setWalletCreditNote('');
   }, [selectedId, detailTab]);
 
   useEffect(() => {
@@ -403,6 +412,69 @@ export default function CustomerInsightsApp() {
       setError(e?.message || 'Failed to expire membership');
     } finally {
       setActivateLoading(false);
+    }
+  };
+
+  const handleWalletAdjust = async (action: 'credit' | 'debit') => {
+    if (!selectedId) return;
+
+    const amount = Number(walletCreditAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter a valid wallet amount');
+      return;
+    }
+
+    const currentBalance = Number(
+      detail?.wallet?.spendable_balance ?? detail?.wallet?.current_balance ?? 0,
+    );
+    if (action === 'debit' && amount > currentBalance) {
+      setError(`Insufficient balance. Available: ${inr(currentBalance)}`);
+      return;
+    }
+
+    const confirmText =
+      action === 'credit'
+        ? `Add ${inr(amount)} to this customer's wallet?`
+        : `Remove ${inr(amount)} from this customer's wallet?`;
+
+    if (!window.confirm(confirmText)) return;
+
+    setWalletCreditLoading(true);
+    setWalletCreditMessage(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/super_admin/customers/${selectedId}/wallet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          amount,
+          note: walletCreditNote.trim() || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Wallet update failed');
+
+      await reloadDetail(selectedId);
+      await fetchList();
+      setWalletCreditAmount('');
+      setWalletCreditNote('');
+
+      if (json.duplicate) {
+        setWalletCreditMessage('This adjustment was already applied.');
+      } else if (action === 'credit') {
+        setWalletCreditMessage(
+          `Added ${inr(json.credited)} · New balance ${inr(json.balance_after)}`,
+        );
+      } else {
+        setWalletCreditMessage(
+          `Removed ${inr(json.debited)} · New balance ${inr(json.balance_after)}`,
+        );
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update wallet balance');
+    } finally {
+      setWalletCreditLoading(false);
     }
   };
 
@@ -881,6 +953,73 @@ export default function CustomerInsightsApp() {
                         <div className="text-xl font-extrabold text-emerald-800">
                           {inr(detail.wallet?.totals?.earned_cashback ?? 0)}
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/60 p-4 space-y-3">
+                      <div>
+                        <h3 className="font-bold text-blue-900 flex items-center gap-2">
+                          <Wallet className="h-4 w-4" />
+                          Adjust Wallet Balance
+                        </h3>
+                        <p className="text-xs text-blue-700 mt-1">
+                          Customer ke wallet mein amount add ya remove karo — app mein turant update hoga.
+                        </p>
+                      </div>
+
+                      {walletCreditMessage ? (
+                        <div className="rounded-xl bg-emerald-100 border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800">
+                          {walletCreditMessage}
+                        </div>
+                      ) : null}
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block text-xs font-semibold text-gray-700">
+                          Amount (₹)
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={walletCreditAmount}
+                            onChange={(e) => setWalletCreditAmount(e.target.value)}
+                            disabled={walletCreditLoading}
+                            placeholder="e.g. 500"
+                            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
+                          />
+                        </label>
+
+                        <label className="block text-xs font-semibold text-gray-700">
+                          Note (optional)
+                          <input
+                            type="text"
+                            value={walletCreditNote}
+                            onChange={(e) => setWalletCreditNote(e.target.value)}
+                            disabled={walletCreditLoading}
+                            placeholder="Reason — refund, correction, etc."
+                            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleWalletAdjust('credit')}
+                          disabled={walletCreditLoading || !walletCreditAmount}
+                          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          <Plus className="h-4 w-4" />
+                          {walletCreditLoading ? 'Saving…' : 'Add to Wallet'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleWalletAdjust('debit')}
+                          disabled={walletCreditLoading || !walletCreditAmount}
+                          className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          <Minus className="h-4 w-4" />
+                          {walletCreditLoading ? 'Saving…' : 'Remove from Wallet'}
+                        </button>
                       </div>
                     </div>
 

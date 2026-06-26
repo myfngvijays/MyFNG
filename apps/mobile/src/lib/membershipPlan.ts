@@ -29,6 +29,10 @@ export type AppMembershipPlan = ReturnType<typeof mapDbPlanToPrimeDisplay> & {
   cardAnimated: boolean;
   accentColor?: string;
   accentTextColor?: string;
+  headerIcon?: string;
+  headerIconUrl?: string;
+  headerIconClass?: string;
+  showSecondCarAddonApp?: boolean;
 };
 
 export type ValueCardBenefit = {
@@ -156,6 +160,10 @@ export function mapDbPlanToPrimeDisplay(plan: any, benefits: any[] = []): PrimeM
     cardAnimated: plan?.card_animated !== false,
     accentColor: plan?.accent_color ? String(plan.accent_color) : undefined,
     accentTextColor: plan?.accent_text_color ? String(plan.accent_text_color) : undefined,
+    headerIcon: plan?.header_icon ? String(plan.header_icon) : undefined,
+    headerIconUrl: plan?.header_icon_url ? String(plan.header_icon_url) : undefined,
+    headerIconClass: plan?.header_icon_class ? String(plan.header_icon_class) : undefined,
+    showSecondCarAddonApp: plan?.show_second_car_addon_app !== false,
   } as AppMembershipPlan;
 }
 

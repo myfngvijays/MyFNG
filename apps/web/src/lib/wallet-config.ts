@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const DEFAULT_WALLET_CONFIG = {
   WELCOME_BONUS_AMOUNT: 1000,
+  WELCOME_BONUS_ENABLED: true,
   WELCOME_EXPIRY_DAYS: 90,
   SERVICE_USAGE_MODE: 'PERCENT' as const,
   SERVICE_USAGE_PERCENT: 0.1,
@@ -26,6 +27,7 @@ export type WalletUsageMode = 'PERCENT' | 'AMOUNT';
 
 export type WalletRuntimeConfig = {
   WELCOME_BONUS_AMOUNT: number;
+  WELCOME_BONUS_ENABLED: boolean;
   WELCOME_EXPIRY_DAYS: number;
   SERVICE_USAGE_MODE: WalletUsageMode;
   SERVICE_USAGE_PERCENT: number;
@@ -51,6 +53,7 @@ export type WalletCoreRules = {
   membership_usage_mode: WalletUsageMode;
   membership_usage_percent: number;
   membership_usage_amount: number;
+  welcome_bonus_enabled: boolean;
   welcome_bonus_amount: number;
   welcome_expiry_days: number;
   membership_cashback_rate_percent: number;
@@ -107,6 +110,7 @@ const GLOBAL_KEYS = {
   membership_usage_mode: 'wallet_membership_usage_mode',
   membership_usage_percent: 'wallet_membership_usage_percent',
   membership_usage_amount: 'wallet_membership_usage_amount',
+  welcome_bonus_enabled: 'wallet_welcome_bonus_enabled',
   welcome_bonus_amount: 'wallet_welcome_bonus_amount',
   welcome_expiry_days: 'wallet_welcome_expiry_days',
   membership_cashback_rate_percent: 'wallet_membership_cashback_rate_percent',
@@ -130,6 +134,7 @@ const PLATFORM_META_KEYS = (platform: 'android' | 'ios') =>
     membership_usage_mode: `wallet_${platform}_membership_usage_mode`,
     membership_usage_percent: `wallet_${platform}_membership_usage_percent`,
     membership_usage_amount: `wallet_${platform}_membership_usage_amount`,
+    welcome_bonus_enabled: `wallet_${platform}_welcome_bonus_enabled`,
     welcome_bonus_amount: `wallet_${platform}_welcome_bonus_amount`,
     welcome_expiry_days: `wallet_${platform}_welcome_expiry_days`,
     membership_cashback_rate_percent: `wallet_${platform}_membership_cashback_rate_percent`,
@@ -143,6 +148,7 @@ const DEFAULT_CORE_RULES: WalletCoreRules = {
   membership_usage_mode: 'PERCENT',
   membership_usage_percent: 30,
   membership_usage_amount: 210,
+  welcome_bonus_enabled: true,
   welcome_bonus_amount: 1000,
   welcome_expiry_days: 90,
   membership_cashback_rate_percent: 5,
@@ -267,6 +273,7 @@ export function walletConfigToAdminPayload(config: WalletRuntimeConfig): WalletC
     membership_usage_mode: config.MEMBERSHIP_USAGE_MODE,
     membership_usage_percent: roundPercent(config.MEMBERSHIP_USAGE_PERCENT * 100),
     membership_usage_amount: config.MEMBERSHIP_USAGE_AMOUNT,
+    welcome_bonus_enabled: config.WELCOME_BONUS_ENABLED !== false,
     welcome_bonus_amount: config.WELCOME_BONUS_AMOUNT,
     welcome_expiry_days: config.WELCOME_EXPIRY_DAYS,
     membership_cashback_rate_percent: roundPercent(config.MEMBERSHIP_CASHBACK_RATE * 100),
@@ -280,6 +287,7 @@ export function coreRulesToRuntimeConfig(
 ): WalletRuntimeConfig {
   return {
     WELCOME_BONUS_AMOUNT: rules.welcome_bonus_amount,
+    WELCOME_BONUS_ENABLED: rules.welcome_bonus_enabled !== false,
     WELCOME_EXPIRY_DAYS: rules.welcome_expiry_days,
     SERVICE_USAGE_MODE: rules.service_usage_mode,
     SERVICE_USAGE_PERCENT: percentToDecimal(rules.service_usage_percent),
@@ -312,6 +320,7 @@ function readCoreRules(map: Map<string, string>, keys: Record<string, string>, f
     membership_usage_mode: parseUsageMode(map.get(keys.membership_usage_mode), fallback.membership_usage_mode),
     membership_usage_percent: toNumber(map.get(keys.membership_usage_percent), fallback.membership_usage_percent),
     membership_usage_amount: toNumber(map.get(keys.membership_usage_amount), fallback.membership_usage_amount),
+    welcome_bonus_enabled: toBool(map.get(keys.welcome_bonus_enabled), fallback.welcome_bonus_enabled),
     welcome_bonus_amount: toNumber(map.get(keys.welcome_bonus_amount), fallback.welcome_bonus_amount),
     welcome_expiry_days: toNumber(map.get(keys.welcome_expiry_days), fallback.welcome_expiry_days),
     membership_cashback_rate_percent: toNumber(
@@ -629,13 +638,14 @@ export async function saveWalletLogicSettings(
   if (error) throw new Error(error);
 
   const modeFields = new Set(['service_usage_mode', 'membership_usage_mode']);
+  const booleanFields = new Set(['welcome_bonus_enabled']);
 
   for (const [field, key] of Object.entries(GLOBAL_KEYS)) {
     await upsertSetting(
       supabaseAdmin,
       key,
       String(payload.global[field as keyof WalletCoreRules]),
-      modeFields.has(field) ? 'STRING' : 'NUMBER',
+      modeFields.has(field) ? 'STRING' : booleanFields.has(field) ? 'BOOLEAN' : 'NUMBER',
       updatedBy,
     );
   }
@@ -655,7 +665,7 @@ export async function saveWalletLogicSettings(
         supabaseAdmin,
         key,
         String(section.rules[field as keyof WalletCoreRules]),
-        modeFields.has(field) ? 'STRING' : 'NUMBER',
+        modeFields.has(field) ? 'STRING' : booleanFields.has(field) ? 'BOOLEAN' : 'NUMBER',
         updatedBy,
       );
     }
@@ -713,6 +723,7 @@ export function walletRulesToPublicPayload(
     membership_usage_mode: config.MEMBERSHIP_USAGE_MODE,
     membership_usage_percent: config.MEMBERSHIP_USAGE_PERCENT * 100,
     membership_usage_amount: config.MEMBERSHIP_USAGE_AMOUNT,
+    welcome_bonus_enabled: config.WELCOME_BONUS_ENABLED !== false,
     welcome_bonus_amount: config.WELCOME_BONUS_AMOUNT,
     welcome_expiry_days: config.WELCOME_EXPIRY_DAYS,
     membership_cashback_rate_percent: config.MEMBERSHIP_CASHBACK_RATE * 100,

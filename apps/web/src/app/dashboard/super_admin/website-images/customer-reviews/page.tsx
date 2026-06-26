@@ -16,6 +16,7 @@ type ReviewRow = {
   date: string;
   display_order: number;
   is_active: boolean;
+  screen?: string;
   created_at?: string;
 };
 
@@ -32,11 +33,13 @@ export default function CustomerReviewsPage() {
 
   const [form, setForm] = useState({
     name: '',
+    car: '',
     stars: 5,
     text: '',
     date: '',
     display_order: 0,
     is_active: true,
+    screen: 'home' as 'home' | 'rsa',
   });
 
   async function fetchRows() {
@@ -64,11 +67,13 @@ export default function CustomerReviewsPage() {
     setEditing(null);
     setForm({
       name: '',
+      car: '',
       stars: 5,
       text: '',
       date: '',
       display_order: rows.length + 1,
       is_active: true,
+      screen: 'home',
     });
     setModalOpen(true);
   }
@@ -77,11 +82,13 @@ export default function CustomerReviewsPage() {
     setEditing(r);
     setForm({
       name: r.name,
+      car: r.car || '',
       stars: r.stars,
       text: r.text,
       date: r.date,
       display_order: r.display_order,
       is_active: r.is_active,
+      screen: r.screen === 'rsa' ? 'rsa' : 'home',
     });
     setModalOpen(true);
   }
@@ -117,11 +124,13 @@ export default function CustomerReviewsPage() {
       setSaving(true);
       const payload = {
         name: form.name,
+        car: form.car,
         stars: form.stars,
         text: form.text,
         date: form.date,
         display_order: Number(form.display_order || 0),
         is_active: form.is_active,
+        screen: form.screen,
       };
 
       const url = editing
@@ -213,7 +222,7 @@ export default function CustomerReviewsPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Customer Reviews</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage reviews shown on the mobile app home screen. These appear in the &quot;What Our Customers Say&quot; section.
+            Manage reviews for the mobile app Home and RSA screens. Choose screen when adding each review.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -256,6 +265,13 @@ export default function CustomerReviewsPage() {
                     />
                   ))}
                   <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                    r.screen === 'rsa'
+                      ? 'bg-red-100 text-red-700 border border-red-200'
+                      : 'bg-blue-100 text-blue-700 border border-blue-200'
+                  }`}>
+                    {r.screen === 'rsa' ? 'RSA' : 'Home'}
+                  </span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
                     r.is_active
                       ? 'bg-green-100 text-green-700 border border-green-200'
                       : 'bg-gray-100 text-gray-600 border border-gray-200'
@@ -270,7 +286,7 @@ export default function CustomerReviewsPage() {
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-gray-900">{r.name}</div>
-                    <div className="text-xs text-gray-500">{r.date}</div>
+                    <div className="text-xs text-gray-500">{r.car ? `${r.car} • ` : ''}{r.date}</div>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
@@ -319,6 +335,28 @@ export default function CustomerReviewsPage() {
                   className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
                   placeholder="e.g. Rahul Sharma"
                 />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Car Model</label>
+                <input
+                  value={form.car}
+                  onChange={(e) => setForm((p) => ({ ...p, car: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="e.g. Hyundai Creta"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700">App Screen *</label>
+                <select
+                  value={form.screen}
+                  onChange={(e) => setForm((p) => ({ ...p, screen: e.target.value as 'home' | 'rsa' }))}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="home">Home Screen</option>
+                  <option value="rsa">RSA Screen</option>
+                </select>
               </div>
 
               <div>
@@ -412,7 +450,7 @@ export default function CustomerReviewsPage() {
               <div>
                 <div className="text-lg font-bold text-gray-900">Bulk Upload Reviews</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  CSV columns: name, stars, text, date, display_order, is_active
+                  CSV columns: name, car, stars, text, date, display_order, is_active, screen
                 </div>
               </div>
               <button type="button" onClick={() => setBulkModalOpen(false)} className="p-2 rounded-lg hover:bg-gray-100">

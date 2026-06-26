@@ -39,6 +39,8 @@ import {
   type MembershipClaimHistoryRow,
 } from '../lib/membershipClaims';
 import MembershipBenefitIcon, { benefitIconStyles } from './MembershipBenefitIcon';
+import { getMembershipTerms, loadMembershipTerms, type MembershipTermType } from '../lib/membershipTerms';
+import MembershipPlanHeaderIcon from './MembershipPlanHeaderIcon';
 import CarModelSearchField from './CarModelSearchField';
 
 export type MembershipVehicleOption = {
@@ -103,6 +105,8 @@ type Props = {
   membershipType?: MembershipType;
   accentColor?: string;
   accentTextColor?: string;
+  headerIcon?: string;
+  headerIconUrl?: string;
   preview?: boolean;
   embedded?: boolean;
   previewInteractiveAddon?: boolean;
@@ -110,6 +114,8 @@ type Props = {
   pricePeriodLabel?: string;
   onPreviewPress?: () => void;
   onGuestAuthenticated?: () => void | Promise<void>;
+  showSecondCarAddon?: boolean;
+  membershipTerms?: string[];
   benefitStatuses?: MembershipBenefitStatusRow[];
   claimHistory?: MembershipClaimHistoryRow[];
   claimingBenefitCode?: string | null;
@@ -163,7 +169,6 @@ function themeFromAccent(accentColor: string | undefined, isRsa: boolean, accent
     linkedBg: hexWithAlpha(accent, '0C'),
     linkedBorder: hexWithAlpha(accent, '40'),
     linkedHeading: accent,
-    headerEmoji: isRsa ? '🛟' : '👑',
   };
 }
 
@@ -627,6 +632,8 @@ export default function PrimeMembershipValueCard({
   membershipType = 'SERVICE',
   accentColor,
   accentTextColor,
+  headerIcon,
+  headerIconUrl,
   preview = false,
   embedded = false,
   previewInteractiveAddon = false,
@@ -634,6 +641,8 @@ export default function PrimeMembershipValueCard({
   pricePeriodLabel = '/ year',
   onPreviewPress,
   onGuestAuthenticated,
+  showSecondCarAddon = true,
+  membershipTerms: membershipTermsProp,
   benefitStatuses = [],
   claimHistory = [],
   claimingBenefitCode = null,
@@ -642,14 +651,32 @@ export default function PrimeMembershipValueCard({
 }: Props) {
   const isRsa = membershipType === 'RSA';
   const theme = themeFromAccent(accentColor, isRsa, accentTextColor);
-  const canBuySecondCarAddon = isActive && !hasSecondCarAddon && Boolean(onBuySecondCarAddon);
+  const canBuySecondCarAddon = isActive && !hasSecondCarAddon && Boolean(onBuySecondCarAddon) && showSecondCarAddon;
   const showFullPurchase = !isActive && (!preview || embedded);
   const totalPay = planPrice + (addSecondCar ? addonPrice : 0);
   const primaryOptions = vehicles;
   const [guestDetailsOpen, setGuestDetailsOpen] = useState(false);
   const [guestPhoneVerified, setGuestPhoneVerified] = useState(isLoggedIn);
   const [termsExpanded, setTermsExpanded] = useState(false);
-  const membershipTerms = isRsa ? RSA_MEMBERSHIP_TERMS : PRIME_MEMBERSHIP_TERMS;
+  const [loadedTerms, setLoadedTerms] = useState<string[]>(() =>
+    getMembershipTerms((membershipType === 'RSA' ? 'RSA' : 'SERVICE') as MembershipTermType),
+  );
+
+  useEffect(() => {
+    if (membershipTermsProp?.length) return;
+    const type = (membershipType === 'RSA' ? 'RSA' : 'SERVICE') as MembershipTermType;
+    setLoadedTerms(getMembershipTerms(type));
+    void loadMembershipTerms(type).then(setLoadedTerms);
+  }, [membershipType, membershipTermsProp]);
+
+  const membershipTerms =
+    membershipTermsProp?.length
+      ? membershipTermsProp
+      : loadedTerms.length
+        ? loadedTerms
+        : isRsa
+          ? RSA_MEMBERSHIP_TERMS
+          : PRIME_MEMBERSHIP_TERMS;
 
   useEffect(() => {
     if (isLoggedIn) setGuestPhoneVerified(true);
@@ -764,7 +791,13 @@ export default function PrimeMembershipValueCard({
           <Text style={[styles.headerSub, { color: theme.headerSub }]}>{headerTagline}</Text>
         </View>
         <View style={styles.crownWrap}>
-          <Text style={styles.crownEmoji}>{theme.headerEmoji}</Text>
+          <MembershipPlanHeaderIcon
+            icon={headerIcon}
+            iconUrl={headerIconUrl}
+            membershipType={membershipType}
+            size={20}
+            color={theme.onAccent}
+          />
         </View>
       </View>
 
@@ -954,7 +987,7 @@ export default function PrimeMembershipValueCard({
 
       {preview && !isActive ? (
         <>
-          {previewInteractiveAddon ? (
+          {previewInteractiveAddon && showSecondCarAddon ? (
             <>
               <TouchableOpacity
                 style={[
@@ -985,7 +1018,7 @@ export default function PrimeMembershipValueCard({
                 <Text style={[styles.checkoutAmount, { color: theme.accent }]}>{inr(totalPay)}</Text>
               </View>
             </>
-          ) : (
+          ) : showSecondCarAddon ? (
             <View style={[styles.addon, styles.addonPreview, { borderColor: theme.accentBorder }]}>
               <View style={benefitIconStyles.wrap}>
                 <MembershipBenefitIcon icon={addonIcon} iconUrl={addonIconUrl} size={14} />
@@ -995,7 +1028,7 @@ export default function PrimeMembershipValueCard({
               </Text>
               <Text style={[styles.addonPrice, { color: theme.accent }]}>+{inr(addonPrice)}</Text>
             </View>
-          )}
+          ) : null}
           <TouchableOpacity
             style={[styles.cta, styles.previewCta, previewInteractiveAddon ? styles.previewCtaCompact : null, { backgroundColor: theme.activateBg }]}
             onPress={onPreviewPress}
@@ -1058,6 +1091,7 @@ export default function PrimeMembershipValueCard({
             </View>
           )}
 
+          {showSecondCarAddon ? (
           <TouchableOpacity
             style={[styles.addon, addSecondCar ? styles.addonActive : null]}
             onPress={() => onAddSecondCarChange(!addSecondCar)}
@@ -1072,8 +1106,9 @@ export default function PrimeMembershipValueCard({
             </Text>
             <Text style={styles.addonPrice}>+{inr(addonPrice)}</Text>
           </TouchableOpacity>
+          ) : null}
 
-          {addSecondCar ? renderSecondCarDetails(false) : null}
+          {showSecondCarAddon && addSecondCar ? renderSecondCarDetails(false) : null}
 
           <View style={styles.checkoutRow}>
             <Text style={styles.checkoutLabel}>Total payable</Text>

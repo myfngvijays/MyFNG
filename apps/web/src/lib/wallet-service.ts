@@ -30,6 +30,98 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+export function isHiddenWalletTransaction(tx: { metadata?: unknown; amount?: unknown }): boolean {
+  const meta =
+    tx?.metadata && typeof tx.metadata === 'object' && !Array.isArray(tx.metadata)
+      ? (tx.metadata as Record<string, unknown>)
+      : null;
+  return meta?.hidden_from_history === true || meta?.suppressed === true;
+}
+
+export function filterVisibleWalletTransactions<T extends { metadata?: unknown; amount?: unknown }>(
+  rows: T[] | null | undefined,
+): T[] {
+  return (rows || []).filter((tx) => !isHiddenWalletTransaction(tx));
+}
+
+function welcomeBonusIdempotencyKey(customerId: string) {
+  return `welcome:${customerId}`;
+}
+
+export async function hasWelcomeBonusMarker(supabaseAdmin: any, customerId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('idempotency_key', welcomeBonusIdempotencyKey(customerId))
+    .maybeSingle();
+  return Boolean(data?.id);
+}
+
+export async function isWelcomeBonusSuppressed(supabaseAdmin: any, customerId: string): Promise<boolean> {
+  const { data: wallet } = await supabaseAdmin
+    .from('wallet_accounts')
+    .select('welcome_bonus_suppressed')
+    .eq('customer_id', customerId)
+    .maybeSingle();
+  if (wallet?.welcome_bonus_suppressed === true) return true;
+
+  const { data: event } = await supabaseAdmin
+    .from('customer_analytics_events')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('event_name', 'welcome_bonus_suppressed')
+    .limit(1)
+    .maybeSingle();
+  return Boolean(event?.id);
+}
+
+/** Blocks future welcome bonus backfill without adding visible wallet history. */
+export async function suppressWelcomeBonus(
+  supabaseAdmin: any,
+  customerId: string,
+  opts?: { reason?: string; adminUserId?: string | null },
+) {
+  if (await isWelcomeBonusSuppressed(supabaseAdmin, customerId)) {
+    return { suppressed: false, reason: 'already_marked' as const };
+  }
+
+  await ensureWalletAccountFull(supabaseAdmin, customerId);
+
+  const { error: walletError } = await supabaseAdmin
+    .from('wallet_accounts')
+    .update({
+      welcome_bonus_suppressed: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('customer_id', customerId);
+  if (walletError && !String(walletError.message || '').includes('welcome_bonus_suppressed')) {
+    throw walletError;
+  }
+
+  const { data: existingEvent } = await supabaseAdmin
+    .from('customer_analytics_events')
+    .select('id')
+    .eq('customer_id', customerId)
+    .eq('event_name', 'welcome_bonus_suppressed')
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingEvent?.id) {
+    await supabaseAdmin.from('customer_analytics_events').insert({
+      customer_id: customerId,
+      event_name: 'welcome_bonus_suppressed',
+      event_group: 'wallet',
+      properties: {
+        reason: opts?.reason || 'admin_wallet_history_clear',
+        admin_user_id: opts?.adminUserId || null,
+      },
+    });
+  }
+
+  return { suppressed: true };
+}
+
 function computeCapFromConfig(payableAmount: number, channel: WalletChannel, config: WalletRuntimeConfig): number {
   const isMembership = channel === 'MEMBERSHIP';
   const mode = isMembership ? config.MEMBERSHIP_USAGE_MODE : config.SERVICE_USAGE_MODE;
@@ -233,23 +325,23 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
   const config = await getWalletConfig(supabaseAdmin, platform);
   let wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
 
-  const { data: existingWelcome } = await supabaseAdmin
-    .from('wallet_transactions')
-    .select('id')
-    .eq('customer_id', customerId)
-    .eq('transaction_type', 'CREDIT')
-    .eq('source', config.WELCOME_SOURCE)
-    .limit(1)
-    .maybeSingle();
+  if (!(await isWelcomeBonusSuppressed(supabaseAdmin, customerId))) {
+    const { data: existingWelcome } = await supabaseAdmin
+      .from('wallet_transactions')
+      .select('id')
+      .eq('customer_id', customerId)
+      .eq('idempotency_key', welcomeBonusIdempotencyKey(customerId))
+      .maybeSingle();
 
-  if (!existingWelcome) {
-    try {
-      const backfill = await creditWelcomeBonus(supabaseAdmin, customerId);
-      if (backfill.credited) {
-        wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
+    if (!existingWelcome) {
+      try {
+        const backfill = await creditWelcomeBonus(supabaseAdmin, customerId, { platform });
+        if (backfill.credited) {
+          wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
+        }
+      } catch (err) {
+        console.error('[getWalletSummary] welcome bonus backfill failed:', err);
       }
-    } catch (err) {
-      console.error('[getWalletSummary] welcome bonus backfill failed:', err);
     }
   }
 
@@ -257,10 +349,11 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
 
   const { data: welcomeCredit } = await supabaseAdmin
     .from('wallet_transactions')
-    .select('expires_at, created_at, amount')
+    .select('expires_at, created_at, amount, metadata')
     .eq('customer_id', customerId)
     .eq('transaction_type', 'CREDIT')
     .eq('source', config.WELCOME_SOURCE)
+    .gt('amount', 0)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -280,6 +373,7 @@ export async function getWalletSummary(supabaseAdmin: any, customerId: string, p
       membership_usage_percent: config.MEMBERSHIP_USAGE_PERCENT * 100,
       membership_usage_amount: config.MEMBERSHIP_USAGE_AMOUNT,
       welcome_expiry_days: config.WELCOME_EXPIRY_DAYS,
+      welcome_bonus_enabled: config.WELCOME_BONUS_ENABLED !== false,
       welcome_bonus_amount: config.WELCOME_BONUS_AMOUNT,
       membership_cashback_rate_percent: config.MEMBERSHIP_CASHBACK_RATE * 100,
       membership_cashback_max: config.MEMBERSHIP_CASHBACK_MAX,
@@ -298,6 +392,7 @@ export type CreditWelcomeBonusOptions = {
   allowExistingCustomer?: boolean;
   /** Auth route sets this when the customer row was created in the current login flow. */
   isNewSignup?: boolean;
+  platform?: WalletPlatform;
 };
 
 export async function isWelcomeBonusEligible(
@@ -326,8 +421,18 @@ export async function creditWelcomeBonus(
   customerId: string,
   options?: CreditWelcomeBonusOptions,
 ) {
-  const config = await getWalletConfig(supabaseAdmin);
-  const idempotencyKey = `welcome:${customerId}`;
+  const platform = options?.platform || 'web';
+  const config = await getWalletConfig(supabaseAdmin, platform);
+  const idempotencyKey = welcomeBonusIdempotencyKey(customerId);
+
+  if (!config.WELCOME_BONUS_ENABLED) {
+    return { credited: false, reason: 'disabled' as const };
+  }
+
+  if (await isWelcomeBonusSuppressed(supabaseAdmin, customerId)) {
+    return { credited: false, reason: 'suppressed' as const };
+  }
+
   const { data: existing } = await supabaseAdmin
     .from('wallet_transactions')
     .select('id')

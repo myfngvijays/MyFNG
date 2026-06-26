@@ -59,7 +59,11 @@ export async function apiFetch<T = JsonValue>(
       json = JSON.parse(text) as Record<string, unknown>;
     } catch {
       if (text.includes('<!DOCTYPE') || text.includes('<html')) {
-        throw new Error('Service unavailable. Please try again in a moment.');
+        throw new Error(
+          res.status === 404
+            ? 'This feature is not available yet. Please update the app or try again later.'
+            : `Service unavailable (${res.status}). Please try again in a moment.`,
+        );
       }
       json = {};
     }

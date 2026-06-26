@@ -55,14 +55,25 @@ type PlanRow = {
   second_car_addon_icon?: string | null;
   second_car_addon_icon_class?: string | null;
   second_car_addon_icon_url?: string | null;
+  show_second_car_addon_web?: boolean;
+  show_second_car_addon_app?: boolean;
   active: boolean;
   membership_type?: MembershipType;
   app_visible?: boolean;
+  web_visible?: boolean;
+  web_cta_action?: string;
+  web_cta_label?: string | null;
+  web_cta_whatsapp_phone?: string | null;
+  web_cta_whatsapp_message?: string | null;
+  web_cta_url?: string | null;
   app_placements?: AppPlacements;
   benefits?: BenefitRow[];
   legacy?: boolean;
   accent_color?: string | null;
   accent_text_color?: string | null;
+  header_icon?: string | null;
+  header_icon_class?: string | null;
+  header_icon_url?: string | null;
 };
 
 const DEFAULT_SERVICE_ACCENT = '#023D95';
@@ -98,9 +109,20 @@ const EMPTY_FORM = {
   second_car_addon_icon: 'car-sport',
   second_car_addon_icon_class: '',
   second_car_addon_icon_url: '',
+  show_second_car_addon_web: false,
+  show_second_car_addon_app: true,
+  header_icon: 'ribbon',
+  header_icon_class: '',
+  header_icon_url: '',
   active: true,
   membership_type: 'SERVICE' as MembershipType,
   app_visible: true,
+  web_visible: true,
+  web_cta_action: 'whatsapp',
+  web_cta_label: 'Add to Cart — {price} →',
+  web_cta_whatsapp_phone: '919167779696',
+  web_cta_whatsapp_message: 'Hi I am interested in RSA Membership {plan_name} Plan',
+  web_cta_url: '',
   app_placements: defaultPlacementsForType('SERVICE'),
   accent_color: DEFAULT_SERVICE_ACCENT,
   accent_text_color: DEFAULT_ACCENT_TEXT,
@@ -116,6 +138,14 @@ const RSA_FORM_DEFAULTS = {
   price_hero_label: 'YOU PAY ONLY',
   price_hero_sub: '',
   second_car_addon_description: 'Same RSA benefits for your second car',
+  show_second_car_addon_web: false,
+  show_second_car_addon_app: true,
+  web_visible: true,
+  web_cta_action: 'whatsapp',
+  web_cta_label: 'Add to Cart — {price} →',
+  web_cta_whatsapp_phone: '919167779696',
+  web_cta_whatsapp_message: 'Hi I am interested in RSA Membership {plan_name} Plan',
+  header_icon: 'lifebuoy',
   accent_color: DEFAULT_RSA_ACCENT,
 };
 
@@ -260,12 +290,24 @@ export default function MembershipPlansPage() {
       second_car_addon_icon: r.second_car_addon_icon || 'car-sport',
       second_car_addon_icon_class: r.second_car_addon_icon_class || '',
       second_car_addon_icon_url: r.second_car_addon_icon_url || '',
+      show_second_car_addon_web: r.show_second_car_addon_web === true,
+      show_second_car_addon_app: r.show_second_car_addon_app !== false,
       active: r.active,
       membership_type: normalizeMembershipType(r.membership_type),
       app_visible: r.app_visible !== false,
+      web_visible: r.web_visible !== false,
+      web_cta_action: r.web_cta_action || 'whatsapp',
+      web_cta_label: r.web_cta_label || 'Add to Cart — {price} →',
+      web_cta_whatsapp_phone: r.web_cta_whatsapp_phone || '919167779696',
+      web_cta_whatsapp_message:
+        r.web_cta_whatsapp_message || 'Hi I am interested in RSA Membership {plan_name} Plan',
+      web_cta_url: r.web_cta_url || '',
       app_placements: parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)),
       accent_color: r.accent_color || defaultAccentForType(r.membership_type),
       accent_text_color: r.accent_text_color || DEFAULT_ACCENT_TEXT,
+      header_icon: r.header_icon || (normalizeMembershipType(r.membership_type) === 'RSA' ? 'lifebuoy' : 'ribbon'),
+      header_icon_class: r.header_icon_class || '',
+      header_icon_url: r.header_icon_url || '',
     });
     setBenefits(r.benefits || []);
     setBenefitDraft({ ...EMPTY_BENEFIT, display_order: (r.benefits?.length || 0) + 1 });
@@ -321,12 +363,24 @@ export default function MembershipPlansPage() {
           second_car_addon_icon: created.second_car_addon_icon || 'car-sport',
           second_car_addon_icon_class: created.second_car_addon_icon_class || '',
           second_car_addon_icon_url: created.second_car_addon_icon_url || '',
+          show_second_car_addon_web: created.show_second_car_addon_web === true,
+          show_second_car_addon_app: created.show_second_car_addon_app !== false,
           active: created.active,
           membership_type: normalizeMembershipType(created.membership_type),
           app_visible: created.app_visible !== false,
+          web_visible: created.web_visible !== false,
+          web_cta_action: created.web_cta_action || 'whatsapp',
+          web_cta_label: created.web_cta_label || 'Add to Cart — {price} →',
+          web_cta_whatsapp_phone: created.web_cta_whatsapp_phone || '919167779696',
+          web_cta_whatsapp_message:
+            created.web_cta_whatsapp_message || 'Hi I am interested in RSA Membership {plan_name} Plan',
+          web_cta_url: created.web_cta_url || '',
           app_placements: parseAppPlacements(created.app_placements, normalizeMembershipType(created.membership_type)),
           accent_color: created.accent_color || defaultAccentForType(created.membership_type),
           accent_text_color: created.accent_text_color || DEFAULT_ACCENT_TEXT,
+          header_icon: created.header_icon || (normalizeMembershipType(created.membership_type) === 'RSA' ? 'lifebuoy' : 'ribbon'),
+          header_icon_class: created.header_icon_class || '',
+          header_icon_url: created.header_icon_url || '',
         });
       } else {
         setModalOpen(false);
@@ -359,6 +413,27 @@ export default function MembershipPlansPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Upload failed');
       setBenefitDraft((d) => ({ ...d, icon_url: json.icon_url }));
+    } catch (err: any) {
+      alert(err?.message || 'Icon upload failed');
+    } finally {
+      setUploadingIcon(false);
+    }
+  }
+
+  async function uploadHeaderIcon(file: File) {
+    setUploadingIcon(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/super_admin/membership-plans/upload-benefit-icon', { method: 'POST', body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Upload failed');
+      setForm((prev) => ({
+        ...prev,
+        header_icon_url: json.icon_url,
+        header_icon: '',
+        header_icon_class: '',
+      }));
     } catch (err: any) {
       alert(err?.message || 'Icon upload failed');
     } finally {
@@ -491,6 +566,11 @@ export default function MembershipPlansPage() {
                   {r.app_visible !== false ? 'IN APP' : 'HIDDEN IN APP'}
                 </span>
               ) : null}
+              {!legacy ? (
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.web_visible !== false ? 'bg-sky-50 text-sky-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {r.web_visible !== false ? 'ON WEB' : 'HIDDEN ON WEB'}
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2 flex-wrap">
@@ -512,8 +592,9 @@ export default function MembershipPlansPage() {
           {r.tagline ? <p className="text-xs italic text-blue-600 mt-2">{r.tagline}</p> : null}
           <p className="text-xs text-gray-500 mt-2">
             {r.benefits?.length || 0} benefits · value {inr(Number(r.total_benefits_value || 0))} · pay {inr(Number(r.price))}
-            {!legacy ? ` · 2nd car +${inr(Number(r.second_car_addon_price || 0))}` : ' · not shown in app'}
             {!legacy ? ` · ${countEnabledPlacements(parseAppPlacements(r.app_placements, normalizeMembershipType(r.membership_type)))} value slots` : ''}
+            {!legacy && r.show_second_car_addon_app !== false ? ` · 2nd car +${inr(Number(r.second_car_addon_price || 0))} (app)` : ''}
+            {!legacy && r.show_second_car_addon_web ? ` · 2nd car on web` : ''}
           </p>
         </div>
         <div className="border-t border-gray-100 p-3 flex gap-2">
@@ -665,17 +746,86 @@ export default function MembershipPlansPage() {
                     <input type="number" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) })} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-bold text-gray-600">Plan Code</label>
                     <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="PRIME" required />
                   </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 text-sm font-semibold pb-2">
+                  <div className="flex flex-col gap-2 justify-end pb-1">
+                    <label className="flex items-center gap-2 text-sm font-semibold">
                       <input type="checkbox" checked={form.app_visible} onChange={(e) => setForm({ ...form, app_visible: e.target.checked })} />
                       Show in app (Android &amp; iOS)
                     </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold">
+                      <input type="checkbox" checked={form.web_visible} onChange={(e) => setForm({ ...form, web_visible: e.target.checked })} />
+                      Show on website {isRsaForm ? '(RSA landing page)' : ''}
+                    </label>
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3 space-y-3">
+                  <div className="text-xs font-bold text-sky-900 uppercase tracking-wide">Website CTA</div>
+                  <p className="text-[11px] text-gray-500 -mt-1">
+                    Control the plan card button on the website. Placeholders:{' '}
+                    <code className="bg-white px-1 rounded">{'{plan_name}'}</code>,{' '}
+                    <code className="bg-white px-1 rounded">{'{price}'}</code>
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Button action</label>
+                      <select
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                        value={form.web_cta_action}
+                        onChange={(e) => setForm({ ...form, web_cta_action: e.target.value })}
+                      >
+                        <option value="whatsapp">Open WhatsApp</option>
+                        <option value="cart">Add to website cart (login required)</option>
+                        <option value="link">Open custom link</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Button label</label>
+                      <input
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        value={form.web_cta_label}
+                        onChange={(e) => setForm({ ...form, web_cta_label: e.target.value })}
+                        placeholder="Add to Cart — {price} →"
+                      />
+                    </div>
+                  </div>
+                  {form.web_cta_action === 'whatsapp' ? (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-gray-600">WhatsApp number</label>
+                        <input
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                          value={form.web_cta_whatsapp_phone}
+                          onChange={(e) => setForm({ ...form, web_cta_whatsapp_phone: e.target.value })}
+                          placeholder="9167779696 or 919167779696"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-xs font-bold text-gray-600">WhatsApp prefilled message</label>
+                        <input
+                          className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                          value={form.web_cta_whatsapp_message}
+                          onChange={(e) => setForm({ ...form, web_cta_whatsapp_message: e.target.value })}
+                          placeholder="Hi I am interested in RSA Membership {plan_name} Plan"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  {form.web_cta_action === 'link' ? (
+                    <div>
+                      <label className="text-xs font-bold text-gray-600">Custom link URL</label>
+                      <input
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        value={form.web_cta_url}
+                        onChange={(e) => setForm({ ...form, web_cta_url: e.target.value })}
+                        placeholder="https://..."
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 <div>
                   <label className="text-xs font-bold text-gray-600">Membership Name</label>
@@ -695,6 +845,31 @@ export default function MembershipPlansPage() {
                   <label className="text-xs font-bold text-gray-600">Tagline (header subtitle)</label>
                   <input className="mt-1 w-full rounded-lg border px-3 py-2 text-sm italic" value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} placeholder="Your Car. Our Responsibility." />
                 </div>
+                <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-3 space-y-2">
+                  <div className="text-xs font-bold text-orange-900 uppercase tracking-wide">Plan Header Icon</div>
+                  <MembershipIconField
+                  value={{
+                    icon: form.header_icon || '',
+                    icon_url: form.header_icon_url || '',
+                    icon_class: form.header_icon_class || '',
+                  }}
+                  onChange={(patch) =>
+                    setForm({
+                      ...form,
+                      header_icon: patch.icon ?? form.header_icon,
+                      header_icon_url: patch.icon_url ?? form.header_icon_url,
+                      header_icon_class: patch.icon_class ?? form.header_icon_class,
+                    })
+                  }
+                  onUpload={uploadHeaderIcon}
+                  uploading={uploadingIcon}
+                  ioniconsPlaceholder={isRsaForm ? 'lifebuoy' : 'ribbon'}
+                  flaticonPlaceholder="fi fi-rr-life-ring"
+                />
+                </div>
+                <p className="-mt-2 text-[11px] text-gray-500">
+                  Circle badge on the plan header (top-right). Use Ionicons/MCI name (e.g. lifebuoy, shield) or upload PNG for mobile.
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-bold text-gray-600">Duration (days)</label>
@@ -837,6 +1012,34 @@ export default function MembershipPlansPage() {
 
                 <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 space-y-3">
                   <div className="text-xs font-bold text-blue-800 uppercase tracking-wide">2nd Car Add-On</div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <label className="flex items-start gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={form.show_second_car_addon_app}
+                        onChange={(e) => setForm({ ...form, show_second_car_addon_app: e.target.checked })}
+                      />
+                      <span>
+                        <span className="font-semibold block">Show in mobile app</span>
+                        <span className="text-xs text-gray-500">Android &amp; iOS membership cards</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={form.show_second_car_addon_web}
+                        onChange={(e) => setForm({ ...form, show_second_car_addon_web: e.target.checked })}
+                      />
+                      <span>
+                        <span className="font-semibold block">Show on website</span>
+                        <span className="text-xs text-gray-500">
+                          {isRsaForm ? 'RSA landing page plan cards' : 'Website membership cards'}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-bold text-gray-600">Add-On Price (₹)</label>

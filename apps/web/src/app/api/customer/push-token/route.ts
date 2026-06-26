@@ -41,6 +41,14 @@ export async function POST(request: NextRequest) {
   const deviceName = body?.device_name ? String(body.device_name).slice(0, 120) : null;
   const deviceId = body?.device_id ? String(body.device_id).slice(0, 120) : null;
 
+  await supabaseAdmin
+    .from('notification_devices')
+    .update({ is_active: false, updated_at: now })
+    .eq('customer_id', customer.id)
+    .eq('platform', platform)
+    .neq('token', token)
+    .eq('is_active', true);
+
   const { data: existing } = await supabaseAdmin
     .from('notification_devices')
     .select('id')

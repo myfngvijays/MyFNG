@@ -19,6 +19,7 @@ import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
+import { registerCustomerFcmPushToken } from '../services/pushNotifications';
 import { loadWalletRules } from '../lib/wallet';
 import {
   prepareFirebasePhoneAuth,
@@ -106,6 +107,13 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     const sessionToken = token && token.trim() ? token : fallbackToken;
     await setCustomerSessionToken(sessionToken);
     void loadWalletRules(ENV.API_URL).catch(() => {});
+
+    // Register FCM token immediately after session is saved (RPC — no VPS push-token API needed).
+    void registerCustomerFcmPushToken(ENV.API_URL, sessionToken).then((result) => {
+      if (!result.ok) {
+        console.warn('[push] login token register failed:', result);
+      }
+    });
 
     let customerProfile: any = null;
     try {
@@ -403,6 +411,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     setCustomerConfirmation(null);
     setPhoneOtpChannel('sms');
     setErrorText('');
+    setResendInSec(0);
   };
 
   const submitOtp = phoneOtpChannel === 'sms' ? handleCustomerOtpVerify : handleWhatsAppOtpVerify;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
 import { parseWalletPlatform } from '@/lib/wallet-config';
-import { getWalletSummary, computeWalletRewardTotals } from '@/lib/wallet-service';
+import { getWalletSummary, computeWalletRewardTotals, filterVisibleWalletTransactions } from '@/lib/wallet-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +33,7 @@ export async function GET() {
     },
     rules: summary.rules,
     totals,
-    transactions: recent || [],
+    transactions: filterVisibleWalletTransactions(recent || []),
   });
 }
 

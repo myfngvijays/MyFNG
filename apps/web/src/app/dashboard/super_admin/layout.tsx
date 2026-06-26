@@ -45,6 +45,7 @@ import {
   Timer,
   PanelBottom,
   TrendingUp,
+  HelpCircle,
 } from 'lucide-react';
 
 type NavItem = {
@@ -166,6 +167,18 @@ const navigationItems: NavItem[] = [
         description: 'Manage Prime tiers, pricing & benefits',
       },
       {
+        name: 'Membership T&C',
+        href: '/dashboard/super_admin/membership-terms',
+        icon: Crown,
+        description: 'RSA & Prime membership terms shown in app and website',
+      },
+      {
+        name: 'FAQs (App + Web)',
+        href: '/dashboard/super_admin/public-faqs',
+        icon: HelpCircle,
+        description: 'General, service-based, and RSA FAQs for app and website',
+      },
+      {
         name: 'Membership Cards',
         href: '/dashboard/super_admin/membership-cards',
         icon: Crown,
@@ -262,10 +275,35 @@ const navigationItems: NavItem[] = [
     description: 'PCMS — campaigns, automation & analytics'
   },
   {
-    name: 'Push Notification Management',
-    href: '/dashboard/super_admin/advance-notifications?section=dashboard',
+    name: 'Push Notifications',
     icon: Bell,
-    description: 'FCM push admin console',
+    description: 'FCM admin console',
+    children: [
+      {
+        name: 'Push Dashboard',
+        href: '/dashboard/super_admin/advance-notifications?section=dashboard',
+        icon: LayoutDashboard,
+        description: 'Devices & broadcast KPIs',
+      },
+      {
+        name: 'Firebase Settings',
+        href: '/dashboard/super_admin/advance-notifications?section=firebase',
+        icon: Flame,
+        description: 'FCM credentials',
+      },
+      {
+        name: 'Send Notification',
+        href: '/dashboard/super_admin/advance-notifications?section=compose',
+        icon: Send,
+        description: 'Compose & broadcast',
+      },
+      {
+        name: 'Notification History',
+        href: '/dashboard/super_admin/advance-notifications?section=history',
+        icon: History,
+        description: 'Delivery logs',
+      },
+    ],
   },
   {
     name: 'AI Learning Inbox',
@@ -375,6 +413,7 @@ export default function SuperAdminLayout({
     'App Customers': false,
     'Smart Tools': false,
     WhatsApp: false,
+    'Push Notifications': false,
   });
 
   React.useEffect(() => {
@@ -389,6 +428,9 @@ export default function SuperAdminLayout({
       pathname?.startsWith('/dashboard/super_admin/car-resale-valuations')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Smart Tools': true }));
+    }
+    if (pathname?.startsWith('/dashboard/super_admin/advance-notifications')) {
+      setOpenGroups((prev) => ({ ...prev, 'Push Notifications': true }));
     }
   }, [pathname]);
 
@@ -418,12 +460,6 @@ export default function SuperAdminLayout({
     if (!item.children?.length) return false;
     return item.children.some((c) => isActive(c.href));
   };
-
-  const isPushAdminConsole = pathname?.startsWith('/dashboard/super_admin/advance-notifications');
-
-  if (isPushAdminConsole) {
-    return <>{children}</>;
-  }
 
   return (
     <div className="flex h-screen bg-gray-50">

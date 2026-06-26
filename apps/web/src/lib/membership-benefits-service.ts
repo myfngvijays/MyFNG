@@ -1,3 +1,6 @@
+import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
+import { pushServiceLeadToTeleCRM } from '@/lib/booking-telecrm-sync';
+
 export const DEFAULT_BENEFIT_MAX_USAGE: Record<string, number | null> = {
   PERIODIC_10_OFF: null,
   FREE_INSPECTION: 2,
@@ -249,7 +252,7 @@ export async function recordMembershipClaimUsage(
     referenceId: string;
     usedValue?: number;
   },
-) {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const { error } = await supabaseAdmin.from('membership_usage').insert({
     customer_membership_id: opts.membership.id,
     customer_id: opts.customerId,
@@ -258,7 +261,10 @@ export async function recordMembershipClaimUsage(
     reference_type: opts.referenceType,
     reference_id: opts.referenceId,
   });
-  if (error) throw new Error(error.message || 'Failed to record membership claim');
+  if (error) {
+    return { ok: false, error: error.message || 'Failed to record membership claim' };
+  }
+  return { ok: true };
 }
 
 export function parseMembershipClaimMeta(meta: unknown): MembershipClaimMeta | null {
@@ -469,35 +475,45 @@ export async function createAutoMembershipClaimBooking(
     auto_claimed: true,
   };
 
+  const normalizedPhone = normalizeCustomerPhone(customer.phone);
+  if (!normalizedPhone) {
+    return { success: false, error: 'Invalid customer phone on your account.' };
+  }
+
   const serviceLabel =
     BENEFIT_SERVICE_LABEL[validated.benefitCode] || validated.benefitTitle;
   const leadNumber = generateLeadNumber();
 
+  const leadInsert = {
+    lead_number: leadNumber,
+    customer_name: customer.full_name || `Customer ${normalizedPhone}`,
+    customer_phone: normalizedPhone,
+    vehicle_make: vehicle.make,
+    vehicle_model: vehicle.model,
+    vehicle_number: vehicle.vehicle_number,
+    city,
+    address: addressLine,
+    customer_address: addressLine,
+    pickup_address: addressLine,
+    pickup_required: true,
+    service_type: serviceLabel.slice(0, 100),
+    description: `[Membership Claim] ${validated.benefitTitle} · ${vehicle.vehicle_number}`,
+    status: 'NEW',
+    lead_type: 'NORMAL',
+    lead_source: 'Membership Claim',
+    created_from: 'MOBILE_APP',
+    lead_priority: 'HIGH',
+    estimated_amount: 0,
+    actual_amount: 0,
+    meta: {
+      customer_id: customer.id,
+      membership_claim: membershipClaimMeta,
+    },
+  };
+
   const { data: serviceLead, error: leadError } = await supabaseAdmin
     .from('service_leads')
-    .insert({
-      lead_number: leadNumber,
-      customer_name: customer.full_name || `Customer ${customer.phone}`,
-      customer_phone: customer.phone,
-      vehicle_make: vehicle.make,
-      vehicle_model: vehicle.model,
-      vehicle_number: vehicle.vehicle_number,
-      city,
-      address: addressLine,
-      customer_address: addressLine,
-      pickup_address: addressLine,
-      pickup_required: true,
-      service_type: serviceLabel,
-      description: `[Membership Claim] ${validated.benefitTitle} · ${vehicle.vehicle_number}`,
-      status: 'NEW',
-      lead_type: 'NORMAL',
-      lead_source: 'Membership Claim',
-      created_from: 'MOBILE_APP',
-      lead_priority: 'HIGH',
-      estimated_amount: 0,
-      actual_amount: 0,
-      meta: { membership_claim: membershipClaimMeta },
-    })
+    .insert(leadInsert)
     .select('id, lead_number, status')
     .single();
 
@@ -505,14 +521,36 @@ export async function createAutoMembershipClaimBooking(
     return { success: false, error: leadError?.message || 'Unable to create membership claim booking.' };
   }
 
-  await recordMembershipClaimUsage(supabaseAdmin, {
+  const usageResult = await recordMembershipClaimUsage(supabaseAdmin, {
     membership: validated.membership,
     customerId: customer.id,
     benefitCode: validated.benefitCode,
     referenceType: 'LEAD',
-    referenceId: serviceLead.id,
+    referenceId: String(serviceLead.id),
     usedValue: 1,
   });
+
+  if (!usageResult.ok) {
+    await supabaseAdmin.from('service_leads').delete().eq('id', serviceLead.id);
+    return {
+      success: false,
+      error:
+        usageResult.error ||
+        'Unable to record this claim. Please try again or contact support.',
+    };
+  }
+
+  try {
+    await pushServiceLeadToTeleCRM({ ...leadInsert, ...serviceLead }, supabaseAdmin, {
+      leadTag: 'APP',
+      leadSource: 'Membership Claim',
+      createdFrom: 'MOBILE_APP',
+      systemNote: `Lead Source: Membership Claim · ${validated.benefitTitle}`,
+    });
+  } catch (syncErr: unknown) {
+    const message = syncErr instanceof Error ? syncErr.message : String(syncErr);
+    console.error('[membership-claim] TeleCRM sync failed:', message);
+  }
 
   return {
     success: true,

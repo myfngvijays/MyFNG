@@ -17,6 +17,7 @@ export default function PublicHeader({
   onPressCart,
 }: PublicHeaderProps) {
   const badgeCount = Math.max(0, cartCount);
+  const badgeLabel = badgeCount > 9 ? '9+' : String(badgeCount);
 
   return (
       <View style={styles.header}>
@@ -37,9 +38,13 @@ export default function PublicHeader({
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={onPressCart} activeOpacity={0.85}>
             <Ionicons name="cart-outline" size={20} color="#525252" />
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{badgeCount}</Text>
-            </View>
+            {badgeCount > 0 ? (
+              <View style={[styles.cartBadge, badgeCount > 9 ? styles.cartBadgeWide : null]}>
+                <Text style={styles.cartBadgeText} numberOfLines={1}>
+                  {badgeLabel}
+                </Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
       </View>
@@ -111,10 +116,16 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },
+  cartBadgeWide: {
+    minWidth: 22,
+    paddingHorizontal: 5,
+  },
   cartBadgeText: {
     color: '#FFFFFF',
     fontSize: 9,
     fontWeight: '900',
     lineHeight: 11,
+    includeFontPadding: false,
+    textAlign: 'center',
   },
 });

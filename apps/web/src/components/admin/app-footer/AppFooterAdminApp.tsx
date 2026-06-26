@@ -54,7 +54,19 @@ export default function AppFooterAdminApp() {
     setConfig((prev) => {
       const stats = [...prev.stats] as AppFooterConfig['stats'];
       stats[index] = { ...stats[index], [field]: value };
-      return { ...prev, stats };
+      const trust_grid = [...prev.trust_grid] as AppFooterConfig['trust_grid'];
+      if (index === 0 || index === 1) {
+        trust_grid[index] = { ...trust_grid[index], [field]: value };
+      }
+      return { ...prev, stats, trust_grid };
+    });
+  };
+
+  const updateTrustStat = (index: 0 | 1 | 2 | 3, field: 'value' | 'label', value: string) => {
+    setConfig((prev) => {
+      const trust_grid = [...prev.trust_grid] as AppFooterConfig['trust_grid'];
+      trust_grid[index] = { ...trust_grid[index], [field]: value };
+      return { ...prev, trust_grid };
     });
   };
 
@@ -117,7 +129,9 @@ export default function AppFooterAdminApp() {
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-black uppercase tracking-wide text-gray-500">Stats (2 columns)</h2>
-            <p className="mt-1 text-xs text-gray-500">Two center stats shown side by side in the app footer.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Two center stats shown side by side in the app footer. Box 1 &amp; 2 of the blue home card sync with these.
+            </p>
             <div className="mt-4 space-y-5">
               {config.stats.map((stat, index) => (
                 <div key={index} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -135,6 +149,38 @@ export default function AppFooterAdminApp() {
                       label="Label"
                       value={stat.label}
                       onChange={(value) => updateStat(index as 0 | 1, 'label', value)}
+                      maxLength={40}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-black uppercase tracking-wide text-gray-500">
+              Home trust stats (2×2 blue card)
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Blue stats grid on the app home screen — Android &amp; iOS both use this.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {config.trust_grid.map((stat, index) => (
+                <div key={index} className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+                  <div className="mb-3 text-xs font-bold uppercase tracking-wide text-blue-700">
+                    Box {index + 1}
+                  </div>
+                  <div className="grid gap-3">
+                    <Field
+                      label="Number / value"
+                      value={stat.value}
+                      onChange={(value) => updateTrustStat(index as 0 | 1 | 2 | 3, 'value', value)}
+                      maxLength={24}
+                    />
+                    <Field
+                      label="Label"
+                      value={stat.label}
+                      onChange={(value) => updateTrustStat(index as 0 | 1 | 2 | 3, 'label', value)}
                       maxLength={40}
                     />
                   </div>
@@ -188,6 +234,18 @@ export default function AppFooterAdminApp() {
                 </p>
               ) : null}
             </div>
+            <div className="mt-4 rounded-2xl bg-[#2563EB] p-1 shadow-sm">
+              <div className="grid grid-cols-2 divide-x divide-y divide-white/15 overflow-hidden rounded-[14px]">
+                {config.trust_grid.map((stat, index) => (
+                  <div key={index} className="px-3 py-4 text-center">
+                    <div className="text-lg font-extrabold text-white">{stat.value}</div>
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-white/75">
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               Changes apply to all app screens using the shared footer after users refresh or reopen the app.
             </p>
@@ -201,6 +259,7 @@ export default function AppFooterAdminApp() {
 function normalizeLocalConfig(raw: any): AppFooterConfig {
   const base = DEFAULT_APP_FOOTER_CONFIG;
   const stats = Array.isArray(raw?.stats) ? raw.stats : base.stats;
+  const trustGrid = Array.isArray(raw?.trust_grid) ? raw.trust_grid : base.trust_grid;
   const legacyBottom =
     stats[2]?.value || stats[2]?.label
       ? `${stats[2]?.value || ''} ${String(stats[2]?.label || '').replace(/\n/g, ' ')}`.trim()
@@ -212,6 +271,10 @@ function normalizeLocalConfig(raw: any): AppFooterConfig {
       value: String(stats[i]?.value || base.stats[i as 0 | 1].value).trim() || base.stats[i as 0 | 1].value,
       label: String(stats[i]?.label || base.stats[i as 0 | 1].label).trim() || base.stats[i as 0 | 1].label,
     })) as AppFooterConfig['stats'],
+    trust_grid: [0, 1, 2, 3].map((i) => ({
+      value: String(trustGrid[i]?.value || base.trust_grid[i].value).trim() || base.trust_grid[i].value,
+      label: String(trustGrid[i]?.label || base.trust_grid[i].label).trim() || base.trust_grid[i].label,
+    })) as AppFooterConfig['trust_grid'],
     bottom_line:
       String(raw?.bottom_line || legacyBottom || base.bottom_line).trim() || base.bottom_line,
   };

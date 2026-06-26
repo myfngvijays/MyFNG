@@ -244,17 +244,16 @@ export async function createAuthenticatedServiceBooking(
   }
 
   if (validatedMembershipClaim?.valid && membershipClaimMeta) {
-    try {
-      await recordMembershipClaimUsage(supabaseAdmin, {
-        membership: validatedMembershipClaim.membership,
-        customerId: customer.id,
-        benefitCode: validatedMembershipClaim.benefitCode,
-        referenceType: 'LEAD',
-        referenceId: serviceLead.id,
-        usedValue: 1,
-      });
-    } catch (claimErr: any) {
-      console.error('[service-booking-create] membership claim usage failed:', claimErr?.message || claimErr);
+    const usageResult = await recordMembershipClaimUsage(supabaseAdmin, {
+      membership: validatedMembershipClaim.membership,
+      customerId: customer.id,
+      benefitCode: validatedMembershipClaim.benefitCode,
+      referenceType: 'LEAD',
+      referenceId: String(serviceLead.id),
+      usedValue: 1,
+    });
+    if (!usageResult.ok) {
+      console.error('[service-booking-create] membership claim usage failed:', usageResult.error);
     }
   }
 

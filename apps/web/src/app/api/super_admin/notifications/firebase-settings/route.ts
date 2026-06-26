@@ -56,7 +56,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    resetFirebaseAdminApp();
+    await resetFirebaseAdminApp();
     const health = await checkFcmCredentials();
 
     return NextResponse.json({
@@ -77,7 +77,7 @@ export async function POST() {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    resetFirebaseAdminApp();
+    await resetFirebaseAdminApp();
     const health = await checkFcmCredentials();
     return NextResponse.json({
       ok: health.ok,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
+import { filterVisibleWalletTransactions } from '@/lib/wallet-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,5 +16,5 @@ export async function GET() {
     .order('created_at', { ascending: false })
     .limit(200);
 
-  return NextResponse.json({ transactions: transactions || [] });
+  return NextResponse.json({ transactions: filterVisibleWalletTransactions(transactions || []) });
 }

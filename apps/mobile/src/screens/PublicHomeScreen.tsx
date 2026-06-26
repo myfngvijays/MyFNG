@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -22,12 +23,15 @@ import PostBookingMembershipOfferCard from '../components/PostBookingMembershipO
 import { usePendingPostBookingMembershipOffer } from '../hooks/usePendingPostBookingMembershipOffer';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import PublicHeader from '../components/PublicHeader';
+import RsaHomeSection from '../components/RsaHomeSection';
 import { detectHeaderLocation } from '../lib/locationDisplay';
 import LiveTrackingModal from '../components/LiveTrackingModal';
 import SearchOverlay from '../components/SearchOverlay';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
+import TrustStatsGrid from '../components/TrustStatsGrid';
 import SmartToolsSection from '../components/SmartToolsSection';
+import { useAppFooter } from '../context/AppFooterContext';
 import SectionHeading from '../components/SectionHeading';
 import CompleteTransparencySection from '../components/CompleteTransparencySection';
 import { openPhoneCall } from '../lib/phone';
@@ -52,7 +56,8 @@ import {
   mobileCustomerHeaders,
   shouldShowGuestWelcomePopup,
 } from '../lib/welcomeBonus';
-import { getBookingCartItemCount } from '../lib/bookingDraft';
+import { getCartBadgeCount } from '../lib/cartBadgeCount';
+import { fetchPublicFaqs, type PublicFaqItem } from '../lib/publicFaqs';
 type Props = {
   navigation: any;
 };
@@ -163,6 +168,7 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const REVIEW_MODAL_SCROLL_MAX_HEIGHT = SCREEN_HEIGHT * 0.8 - 96;
 
 export default function PublicHomeScreen({ navigation }: Props) {
+  const { footer, refreshFooter } = useAppFooter();
   const [heroIndex, setHeroIndex] = useState(0);
   const [heroBanners, setHeroBanners] = useState<HeroBanner[]>(FALLBACK_HERO_BANNERS);
   const [promoBanners, setPromoBanners] = useState<PromoBanner[]>(FALLBACK_PROMO_BANNERS);
@@ -185,6 +191,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
   const [cartItemCount, setCartItemCount] = useState(0);
+  const [generalFaqs, setGeneralFaqs] = useState<PublicFaqItem[]>(FAQ_CATEGORIES[0].items);
+  const [refreshing, setRefreshing] = useState(false);
   const [liveBlogs, setLiveBlogs] = useState<Array<{ id: string; title: string; excerpt: string; date: string; image: string; slug: string }>>([]);
   const brandScrollX = useRef(new Animated.Value(0)).current;
   const brandAnimRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -204,22 +212,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
       ]),
     ).start();
   }, [blinkAnim]);
-
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      getBookingCartItemCount()
-        .then((count) => {
-          if (active) setCartItemCount(count);
-        })
-        .catch(() => {
-          if (active) setCartItemCount(0);
-        });
-      return () => {
-        active = false;
-      };
-    }, []),
-  );
 
   useFocusEffect(
     useCallback(() => {
@@ -271,147 +263,166 @@ export default function PublicHomeScreen({ navigation }: Props) {
     }, []),
   );
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const label = await detectHeaderLocation();
-      if (active) setDetectedCity(label);
-    })();
-    return () => { active = false; };
-  }, []);
+  const {
+    pending: pendingMembershipOffer,
+    paying: payingMembershipOffer,
+    tick: membershipOfferTick,
+    pay: payMembershipOffer,
+    appConfig: postBookingAppConfig,
+    refresh: refreshMembershipOffer,
+  } = usePendingPostBookingMembershipOffer(isLoggedIn);
 
-  useEffect(() => {
-    // Fetch admin-managed hero carousel banners. Admin uploads them at
-    // /dashboard/super_admin/website-images/home-carousel and they reflect here.
-    let active = true;
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('home_carousel_banners')
-          .select('id, title, image_url, route_name, route_params, display_order, is_active')
-          .eq('is_active', true)
-          .order('display_order', { ascending: true })
-          .order('created_at', { ascending: false });
+  const refreshHomeData = useCallback(async () => {
+    const [locationLabel, cartCount, sessionToken] = await Promise.all([
+      detectHeaderLocation().catch(() => 'Location unavailable'),
+      getCartBadgeCount().catch(() => 0),
+      getCustomerSessionToken(),
+    ]);
 
-        if (error) return; // silent fail — fallback banners already set
-        if (!active || !Array.isArray(data) || data.length === 0) return;
+    setDetectedCity(locationLabel);
+    setCartItemCount(cartCount);
+    setIsLoggedIn(Boolean(sessionToken));
 
-        const mapped: HeroBanner[] = data.map((row: any) => ({
-          id: String(row.id),
-          title: row.title || '',
-          desc: '',
-          route: row.route_name || 'PublicHome',
-          routeParams: row.route_params || undefined,
-          icon: 'sparkles',
-          colors: ['#004AAD', '#0A57BF'],
-          image: row.image_url,
-          overlay: 'rgba(0,0,0,0)',
-        }));
+    fetchPublicFaqs({ group: 'GENERAL', platform: 'app' })
+      .then(setGeneralFaqs)
+      .catch(() => setGeneralFaqs(FAQ_CATEGORIES[0].items));
 
-        if (active) setHeroBanners(mapped);
-      } catch {
-        // ignore — keep fallback banners
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
+    await Promise.all([
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('home_carousel_banners')
+            .select('id, title, image_url, route_name, route_params, display_order, is_active')
+            .eq('is_active', true)
+            .order('display_order', { ascending: true })
+            .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    // Fetch admin-managed promo banners (Loan / E-Challan / Fuel / Sell Car etc.)
-    // Admin uploads them at /dashboard/super_admin/website-images/promo-banners.
-    let active = true;
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('home_promo_banners')
-          .select('image_url, route_name, route_params, display_order, is_active')
-          .eq('is_active', true)
-          .order('display_order', { ascending: true })
-          .order('created_at', { ascending: false });
+          if (error || !Array.isArray(data) || data.length === 0) return;
 
-        if (error) return;
-        if (!active || !Array.isArray(data) || data.length === 0) return;
+          setHeroBanners(
+            data.map((row: any) => ({
+              id: String(row.id),
+              title: row.title || '',
+              desc: '',
+              route: row.route_name || 'PublicHome',
+              routeParams: row.route_params || undefined,
+              icon: 'sparkles' as const,
+              colors: ['#004AAD', '#0A57BF'] as [string, string],
+              image: row.image_url,
+              overlay: 'rgba(0,0,0,0)',
+            })),
+          );
+        } catch {
+          // keep existing banners
+        }
+      })(),
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('home_promo_banners')
+            .select('image_url, route_name, route_params, display_order, is_active')
+            .eq('is_active', true)
+            .order('display_order', { ascending: true })
+            .order('created_at', { ascending: false });
 
-        const banners: PromoBanner[] = data
-          .filter((row: any) => !!row.image_url)
-          .map((row: any) => ({
-            image_url: String(row.image_url),
-            route_name: String(row.route_name || ''),
-            route_params: row.route_params || {},
-          }));
-        if (active && banners.length > 0) setPromoBanners(banners);
-      } catch {
-        // ignore — keep fallback list
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
+          if (error || !Array.isArray(data) || data.length === 0) return;
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('customer_reviews')
-          .select('id, name, car, stars, text, date, display_order, is_active')
-          .eq('is_active', true)
-          .order('display_order', { ascending: true })
-          .order('created_at', { ascending: false });
+          const banners: PromoBanner[] = data
+            .filter((row: any) => !!row.image_url)
+            .map((row: any) => ({
+              image_url: String(row.image_url),
+              route_name: String(row.route_name || ''),
+              route_params: row.route_params || {},
+            }));
+          if (banners.length > 0) setPromoBanners(banners);
+        } catch {
+          // keep existing promos
+        }
+      })(),
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('customer_reviews')
+            .select('id, name, car, stars, text, date, display_order, is_active, screen')
+            .eq('is_active', true)
+            .or('screen.eq.home,screen.is.null')
+            .order('display_order', { ascending: true })
+            .order('created_at', { ascending: false });
 
-        if (error) return;
-        if (!active || !Array.isArray(data) || data.length === 0) return;
+          if (error || !Array.isArray(data) || data.length === 0) return;
 
-        const mapped = data.map((row: any) => ({
-          name: row.name || '',
-          car: row.car || '',
-          stars: row.stars || 5,
-          text: row.text || '',
-          date: row.date || '',
-        }));
-        if (active) setReviews(mapped);
-      } catch {
-        // ignore — keep fallback reviews
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${ENV.API_URL}/api/super_admin/car-brands?active_only=true`);
-        if (res.ok) {
+          setReviews(
+            data.map((row: any) => ({
+              name: row.name || '',
+              car: row.car || '',
+              stars: row.stars || 5,
+              text: row.text || '',
+              date: row.date || '',
+            })),
+          );
+        } catch {
+          // keep existing reviews
+        }
+      })(),
+      (async () => {
+        try {
+          const res = await fetch(`${ENV.API_URL}/api/super_admin/car-brands?active_only=true`);
+          if (!res.ok) return;
           const json = await res.json();
           const brands: PublicBrand[] = (json.data || []).map((b: any) => ({
             name: b.name,
             logo: b.logo_url || '',
           }));
           if (brands.length > 0) setCarBrands(brands);
+        } catch {
+          // keep existing brands
         }
-      } catch {}
-    })();
-    (async () => {
-      try {
-        const res = await fetch(`${ENV.API_URL}/api/blogs/public?limit=5`);
-        if (res.ok) {
+      })(),
+      (async () => {
+        try {
+          const res = await fetch(`${ENV.API_URL}/api/blogs/public?limit=5`);
+          if (!res.ok) return;
           const json = await res.json();
           const blogs = (json.blogs || []).map((b: any) => ({
             id: b.id,
             title: b.title || '',
             excerpt: b.excerpt || '',
-            date: b.published_at ? new Date(b.published_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
+            date: b.published_at
+              ? new Date(b.published_at).toLocaleDateString('en-IN', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : '',
             image: b.featured_image || '',
             slug: b.slug || '',
           }));
           if (blogs.length > 0) setLiveBlogs(blogs);
+        } catch {
+          // keep existing blogs
         }
-      } catch {}
-    })();
-  }, []);
+      })(),
+    ]);
+
+    if (sessionToken) {
+      await refreshMembershipOffer();
+    }
+  }, [refreshMembershipOffer]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshHomeData();
+    }, [refreshHomeData]),
+  );
+
+  const onPullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshHomeData(), refreshFooter()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshHomeData, refreshFooter]);
 
   const BRAND_CARD_W = 96 + 16;
   const screenW = Dimensions.get('window').width - 32;
@@ -485,14 +496,6 @@ export default function PublicHomeScreen({ navigation }: Props) {
     return heroBanners[heroIndex % heroBanners.length] || heroBanners[0];
   }, [heroIndex, heroBanners]);
 
-  const {
-    pending: pendingMembershipOffer,
-    paying: payingMembershipOffer,
-    tick: membershipOfferTick,
-    pay: payMembershipOffer,
-    appConfig: postBookingAppConfig,
-  } = usePendingPostBookingMembershipOffer(isLoggedIn);
-
   const onNavPress = (tab: PublicPillNavTab) => {
     if (tab === 'home') return;
     if (tab === 'services') navigation.navigate('PublicServicePackages', { city: detectedCity });
@@ -513,7 +516,18 @@ export default function PublicHomeScreen({ navigation }: Props) {
           onPressCart={() => navigation.navigate('Settings', { subPage: 'Cart' })}
         />
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onPullRefresh}
+              tintColor="#004AAD"
+              colors={['#004AAD']}
+            />
+          }
+        >
           {!isLoggedIn ? (
             <View style={[styles.loginBanner, { backgroundColor: '#004AAD' }]}>
               <View>
@@ -729,9 +743,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
             />
             <View style={styles.uspRow}>
               {([
-                ['4.8/5', 'RATING', 'star' as const],
-                ['17K+', 'CARS', 'trophy' as const],
-                ['100+', 'WORKSHOPS', 'construct' as const],
+                [`${footer.stats[1].value}/5`, 'RATING', 'star' as const],
+                [footer.stats[0].value, 'CARS', 'trophy' as const],
+                [footer.trust_grid[2].value, 'WORKSHOPS', 'construct' as const],
                 ['Warranty', 'PARTS', 'shield-checkmark' as const],
                 ['Live', 'UPDATES', 'eye' as const],
               ] as const).map(([value, label, icon]) => (
@@ -867,43 +881,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <View style={[styles.rsaCard, { backgroundColor: '#DC2626' }]}>
-              <SectionHeading
-                light
-                spacing="compact"
-                title="Roadside Assistance"
-                subtitle="Quick on-road solutions for every car emergency."
-                style={styles.rsaHeading}
-              />
-              {[
-                { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', icon: 'flash' as const, bg: '#F97316' },
-                { name: 'Car Towing Services', desc: 'Safe towing to nearest workshop.', icon: 'car-sport' as const, bg: '#3B82F6' },
-              ].map((svc) => (
-                <TouchableOpacity
-                  key={svc.name}
-                  style={styles.rsaServiceCard}
-                  activeOpacity={0.8}
-                  onPress={() => navigation.navigate('RoadsideAssistance', { city: detectedCity })}
-                >
-                  <View style={[styles.rsaServiceIcon, { backgroundColor: svc.bg }]}>
-                    <Ionicons name={svc.icon} size={20} color="#FFFFFF" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.rsaServiceName}>{svc.name}</Text>
-                    <Text style={styles.rsaServiceDesc}>{svc.desc}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={styles.rsaEmergencyBtn}
-                activeOpacity={0.85}
-                onPress={() => openPhoneCall('+919152307030')}
-              >
-                <Ionicons name="call" size={18} color="#DC2626" />
-                <Text style={styles.rsaEmergencyBtnText}>Call Emergency Helpline</Text>
-              </TouchableOpacity>
-            </View>
+            <RsaHomeSection city={detectedCity} navigation={navigation} compact />
           </Section>
 
           <Section tight>
@@ -935,26 +913,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section>
-            <View style={[styles.trustCard, { backgroundColor: '#2563EB' }]}>
-              <View style={styles.trustGrid}>
-                <View style={[styles.trustItem, styles.trustItemBorderRight]}>
-                  <Text style={styles.trustValue}>17K+</Text>
-                  <Text style={styles.trustLabel}>Cars Serviced</Text>
-                </View>
-                <View style={styles.trustItem}>
-                  <Text style={styles.trustValue}>4.8</Text>
-                  <Text style={styles.trustLabel}>Reviews</Text>
-                </View>
-                <View style={[styles.trustItem, styles.trustItemBorderRight]}>
-                  <Text style={styles.trustValue}>100+</Text>
-                  <Text style={styles.trustLabel}>Workshops</Text>
-                </View>
-                <View style={styles.trustItem}>
-                  <Text style={styles.trustValue}>24/7</Text>
-                  <Text style={styles.trustLabel}>Support</Text>
-                </View>
-              </View>
-            </View>
+            <TrustStatsGrid />
           </Section>
 
           <Section tight>
@@ -1048,7 +1007,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               title="FAQs"
               subtitle="Answers to common questions about MyFNG"
             />
-            {FAQ_CATEGORIES[0].items.slice(0, 5).map((faq, idx) => (
+            {generalFaqs.slice(0, 5).map((faq, idx) => (
               <View key={faq.q} style={styles.faqCard}>
                 <TouchableOpacity
                   style={styles.faqHeader}
@@ -1060,7 +1019,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 {openFaqIndex === String(idx) && <Text style={styles.faqA}>{faq.a}</Text>}
               </View>
             ))}
-            {FAQ_CATEGORIES[0].items.length > 5 && (
+            {generalFaqs.length > 5 && (
               <TouchableOpacity style={styles.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
                 <Text style={styles.showMoreBtnText}>View All FAQs</Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
@@ -1131,7 +1090,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
               <ScrollView showsVerticalScrollIndicator={false} style={styles.faqModalScroll}>
-                {FAQ_CATEGORIES[0].items.map((faq, idx) => (
+                {generalFaqs.map((faq, idx) => (
                   <View key={faq.q} style={styles.faqCard}>
                     <TouchableOpacity
                       style={styles.faqHeader}
@@ -1801,41 +1760,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  trustCard: {
-    borderRadius: 32,
-    padding: 32,
-    shadowColor: '#2563EB',
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  trustGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 32,
-  },
-  trustItem: {
-    width: '50%',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  trustItemBorderRight: {
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.15)',
-  },
-  trustValue: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    fontWeight: '700',
-  },
-  trustLabel: {
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   reviewBadge: {
     flexDirection: 'row',

@@ -1,88 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Footer from '@/components/landing/Footer';
+import RSAMembershipPlansCarousel from '@/components/membership/RSAMembershipPlansCarousel';
+import MembershipTermsSection from '@/components/membership/MembershipTermsSection';
 import { getCurrentOrStoredUtmParams } from '@/lib/utm';
 
 const RSA_WHATSAPP = '919594996161';
-const RSA_SUBSCRIPTION_PLANS = [
-  {
-    key: 'basic',
-    title: 'Basic Plan',
-    price: 999,
-    durationLabel: '1 Year / 2 Service',
-    features: [
-      'Flat tyre Assistance',
-      'Battery Jumpstart',
-      'Towing',
-      'On spot minor repairs',
-      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
-    ],
-  },
-  {
-    key: 'standard',
-    title: 'Standard',
-    price: 2999,
-    durationLabel: '5 Years / 10 Service',
-    features: [
-      'Flat tyre Assistance',
-      'Battery Jumpstart',
-      'Towing',
-      'On spot minor repairs',
-      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
-    ],
-  },
-  {
-    key: 'ultimate',
-    title: 'Ultimate',
-    price: 4999,
-    durationLabel: '15 Years / 30 Services',
-    features: [
-      'Flat tyre Assistance',
-      'Battery Jumpstart',
-      'Towing',
-      'On spot minor repairs',
-      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
-    ],
-  },
-  {
-    key: 'family',
-    title: 'Family',
-    price: 9990,
-    durationLabel: '15 Years / 50 Services',
-    features: [
-      'Upto 3 Vehicles',
-      'Flat tyre Assistance',
-      'Battery Jumpstart',
-      'Towing',
-      'Key Unlock Assistance in unlocking your vehicle if keys are misplaced',
-    ],
-  },
-  {
-    key: 'premium',
-    title: 'Premium',
-    price: 9990,
-    durationLabel: '1 Year / Unlimited Service - 20% OFF',
-    features: [
-      'No capping on free services',
-      '1 Night Hotel Accommodation',
-      'Cab Arrangement (Free up to 50 km)',
-      'No capping on free services',
-    ],
-  },
-] as const;
 
-const RSA_PLAN_TERMS = [
-  'Members are entitled to 2 free RSA services per year under all plans, excluding the Premium Plan.',
-  "Towing distance is calculated on a round-trip basis (from the service provider’s location to the vehicle’s location and then to the destination).",
-  'Key Unlock Assistance is subject to the type of lock system used in the vehicle.',
-  'On-Spot Minor Repairs are limited to small fixes that can be completed without requiring extensive tools or garage equipment.',
-  'Hotel accommodation is subject to availability and limited to one night.',
-  'Cab arrangement is limited to 50 km and additional charges may apply for distances exceeding this limit.',
-  'Ambulance service is provided in case of accidents only and is subject to availability.',
-] as const;
-
-const RSA_FAQS = [
+const RSA_FAQS_FALLBACK = [
   {
     question: 'Is MYFNG RSA available 24×7?',
     answer: 'Yes. MYFNG roadside assistance is available 24×7 for emergency support.',
@@ -137,6 +63,23 @@ export default function RsaLandingPage() {
   const [locating, setLocating] = useState(false);
   const [selectedRsaService, setSelectedRsaService] = useState('');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const [rsaFaqs, setRsaFaqs] = useState<Array<{ question: string; answer: string }>>([...RSA_FAQS_FALLBACK]);
+
+  useEffect(() => {
+    fetch('/api/public/faqs?group=RSA&section=rsa&platform=web', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const items = Array.isArray(json?.items) ? json.items : [];
+        if (!items.length) return;
+        setRsaFaqs(
+          items.map((item: { q?: string; a?: string; question?: string; answer?: string }) => ({
+            question: String(item.q || item.question || ''),
+            answer: String(item.a || item.answer || ''),
+          })).filter((item: { question: string; answer: string }) => item.question && item.answer),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   const scrollToSection = (
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -256,6 +199,14 @@ export default function RsaLandingPage() {
     .rsa-landing .feature p{margin:0;color:rgba(255,255,255,.68);font-size:13px;line-height:1.6}
     .rsa-landing .pricing{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     .rsa-landing .plan-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+    .rsa-plans-wrap{margin-top:0}
+    .rsa-plans-copy{margin-bottom:18px}
+    .rsa-plans-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:stretch}
+    .rsa-plans-card{min-width:0}
+    .rsa-plans-loading{padding:24px 0;color:rgba(255,255,255,.68);font-size:13px;text-align:center}
+    .membership-terms-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+    .membership-terms-list li{display:flex;gap:10px;align-items:flex-start;color:rgba(255,255,255,.78);font-size:14px;line-height:1.55}
+    .membership-terms-list-dark .membership-terms-check{color:#34D399;font-weight:900;flex-shrink:0;margin-top:1px}
     .rsa-landing .plan-card{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);border-radius:20px;overflow:hidden;display:flex;flex-direction:column}
     .rsa-landing .plan-card .topline{height:4px;background:linear-gradient(90deg,#ff8a00,#ff4d2e)}
     .rsa-landing .plan-card .body{padding:16px;display:flex;flex-direction:column;gap:10px;height:100%}
@@ -301,8 +252,8 @@ export default function RsaLandingPage() {
     @keyframes rsa-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
     @media (min-width: 640px){.rsa-landing .container{padding:0 16px}.rsa-landing .nav{padding:12px 0;gap:12px}.rsa-landing .brand-logo{height:32px}}
     @media (min-width: 768px){.rsa-landing .container{padding:0 24px}.rsa-landing .nav{padding:16px 0}.rsa-landing .brand-logo{height:40px}}
-    @media (max-width: 980px){.rsa-landing .hero{padding:24px 0 24px}.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:16px}.rsa-landing .hero-copy{justify-content:flex-start}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
-    @media (max-width: 560px){.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:15px;line-height:1.5;max-width:100%}.rsa-landing .lead-location{display:inline}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:repeat(2,1fr)}.rsa-landing .stat strong{font-size:24px}.rsa-landing #services .section-title,.rsa-landing #process .section-title{justify-content:center;text-align:center}.rsa-landing #services .section-title h2{font-size:20px;line-height:1.15;letter-spacing:-.6px;white-space:nowrap}.rsa-landing #services .section-title p,.rsa-landing #process .section-title p{margin-left:auto;margin-right:auto}.rsa-landing #services .feature,.rsa-landing #process .step{text-align:center}.rsa-landing #services .feature .icon,.rsa-landing #process .step b{margin-left:auto;margin-right:auto}.rsa-landing .faq-question{font-size:14px}.rsa-landing .faq-answer{font-size:13px}}
+    @media (max-width: 980px){.rsa-landing .hero{padding:24px 0 24px}.rsa-landing .hero-grid{grid-template-columns:1fr;gap:14px}.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:16px}.rsa-landing .hero-copy{justify-content:flex-start}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .grid-3{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:repeat(2,1fr)}.rsa-landing .pricing{grid-template-columns:1fr}.rsa-landing .plan-grid{grid-template-columns:repeat(2,1fr)}.rsa-plans-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rsa-landing .testimonials{grid-template-columns:repeat(2,1fr)}.rsa-landing .nav-links{display:none}}
+    @media (max-width: 560px){.rsa-landing h1{font-size:32px}.rsa-landing .lead{font-size:15px;line-height:1.5;max-width:100%}.rsa-landing .lead-location{display:inline}.rsa-landing .form-row{grid-template-columns:1fr}.rsa-landing .grid-3,.rsa-landing .plan-grid{grid-template-columns:1fr}.rsa-plans-grid{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.rsa-plans-grid::-webkit-scrollbar{display:none}.rsa-plans-card{flex:0 0 78%;max-width:280px}.rsa-landing .grid-4{grid-template-columns:repeat(2,1fr)}.rsa-landing .steps{grid-template-columns:1fr}.rsa-landing .testimonials{grid-template-columns:1fr}.rsa-landing .stats{grid-template-columns:repeat(2,1fr)}.rsa-landing .stat strong{font-size:24px}.rsa-landing #services .section-title,.rsa-landing #process .section-title{justify-content:center;text-align:center}.rsa-landing #services .section-title h2{font-size:20px;line-height:1.15;letter-spacing:-.6px;white-space:nowrap}.rsa-landing #services .section-title p,.rsa-landing #process .section-title p{margin-left:auto;margin-right:auto}.rsa-landing #services .feature,.rsa-landing #process .step{text-align:center}.rsa-landing #services .feature .icon,.rsa-landing #process .step b{margin-left:auto;margin-right:auto}.rsa-landing .faq-question{font-size:14px}.rsa-landing .faq-answer{font-size:13px}}
   `}} />
       <div className="rsa-landing">
         <header>
@@ -562,38 +513,7 @@ export default function RsaLandingPage() {
 
         <section id="plans">
           <div className="container">
-            <div className="section-title">
-              <div>
-                <h2>Best Plans for You</h2>
-                <p>Subscription packages which suit your car and your pocket.</p>
-              </div>
-            </div>
-
-            <div className="plan-grid">
-              {RSA_SUBSCRIPTION_PLANS.map((plan) => (
-                <div className="plan-card" key={plan.key}>
-                  <div className="topline" />
-                  <div className="body">
-                    <h3>{plan.title}</h3>
-                    <div className="price">₹{plan.price.toLocaleString('en-IN')}</div>
-                    <div className="duration">{plan.durationLabel}</div>
-                    <ul className="list">
-                      {plan.features.map((feature, idx) => (
-                        <li key={`${plan.key}-${idx}-${feature}`}>
-                          <span className="tick">✓</span>
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div style={{ marginTop: 'auto' }}>
-                      <a className="btn primary" href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>
-                        Buy Now
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <RSAMembershipPlansCarousel />
           </div>
         </section>
 
@@ -605,14 +525,7 @@ export default function RsaLandingPage() {
               </div>
             </div>
             <div className="terms-card" style={{ marginTop: 0 }}>
-              <ul className="list">
-                {RSA_PLAN_TERMS.map((term) => (
-                  <li key={term}>
-                    <span className="tick">✓</span>
-                    <span>{term}</span>
-                  </li>
-                ))}
-              </ul>
+              <MembershipTermsSection membershipType="RSA" dark />
             </div>
           </div>
         </section>
@@ -620,7 +533,7 @@ export default function RsaLandingPage() {
         <section id="faq">
           <div className="container">
             <div className="section-title"><div><h2>FAQs</h2><p>Frequently asked questions about MYFNG Roadside Assistance.</p></div></div>
-            {RSA_FAQS.map((faq, idx) => {
+            {rsaFaqs.map((faq, idx) => {
               const isOpen = openFaqIndex === idx;
               return (
                 <div key={faq.question} className="faq-item">

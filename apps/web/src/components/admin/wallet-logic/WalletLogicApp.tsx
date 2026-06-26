@@ -82,15 +82,17 @@ function Toggle({
   hint,
   checked,
   onChange,
+  disabled,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   const id = React.useId();
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3">
+    <div className={`grid grid-cols-[1fr_auto] items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 ${disabled ? 'opacity-50' : ''}`}>
       <div className="min-w-0">
         <label htmlFor={id} className="block text-sm font-semibold text-gray-900 cursor-pointer">
           {label}
@@ -103,6 +105,7 @@ function Toggle({
           type="checkbox"
           className="peer sr-only"
           checked={checked}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
         />
         <span className="absolute inset-0 rounded-full bg-gray-300 transition-colors peer-checked:bg-violet-600 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-300" />
@@ -297,9 +300,11 @@ function RulesForm({
   disabled,
 }: {
   rules: WalletCoreRules;
-  onPatch: (key: keyof WalletCoreRules, value: string) => void;
+  onPatch: (key: keyof WalletCoreRules, value: string | boolean) => void;
   disabled?: boolean;
 }) {
+  const welcomeEnabled = rules.welcome_bonus_enabled !== false;
+
   return (
     <div className="space-y-5">
       <div className="grid gap-5 md:grid-cols-2">
@@ -326,19 +331,26 @@ function RulesForm({
           disabled={disabled}
         />
       </div>
-      <div className="grid gap-5 md:grid-cols-2">
+      <Toggle
+        label="Welcome bonus"
+        hint="Off karne par naye app users ko login par welcome wallet credit nahi milega"
+        checked={welcomeEnabled}
+        onChange={(v) => onPatch('welcome_bonus_enabled', v)}
+        disabled={disabled}
+      />
+      <div className={`grid gap-5 md:grid-cols-2 ${!welcomeEnabled ? 'opacity-50' : ''}`}>
         <MoneyField
-          label="Welcome bonus"
+          label="Welcome bonus amount"
           value={rules.welcome_bonus_amount}
           onChange={(v) => onPatch('welcome_bonus_amount', v)}
-          disabled={disabled}
+          disabled={disabled || !welcomeEnabled}
         />
         <DaysField
           label="Welcome bonus expiry"
           hint="Unused bonus kitne din baad expire"
           value={rules.welcome_expiry_days}
           onChange={(v) => onPatch('welcome_expiry_days', v)}
-          disabled={disabled}
+          disabled={disabled || !welcomeEnabled}
         />
       </div>
       <div className="grid gap-5 md:grid-cols-2">
@@ -423,17 +435,19 @@ export default function WalletLogicApp() {
   const rulesDisabled = tab !== 'global' && Boolean(platformMeta?.use_global);
   const walletDisabledOnPlatform = tab !== 'global' && !platformMeta?.enabled;
 
-  const patchGlobal = (key: keyof WalletCoreRules, value: string) => {
+  const patchGlobal = (key: keyof WalletCoreRules, value: string | boolean) => {
     setSettings((prev) => ({
       ...prev,
       global: {
         ...prev.global,
         [key]:
-          key === 'service_usage_mode' || key === 'membership_usage_mode'
-            ? (value as WalletUsageMode)
-            : value === ''
-              ? ''
-              : Number(value),
+          key === 'welcome_bonus_enabled'
+            ? Boolean(value)
+            : key === 'service_usage_mode' || key === 'membership_usage_mode'
+              ? (value as WalletUsageMode)
+              : value === ''
+                ? ''
+                : Number(value),
       },
     }));
     setDirty(true);
@@ -453,7 +467,7 @@ export default function WalletLogicApp() {
     setDirty(true);
   };
 
-  const patchPlatformRules = (key: keyof WalletCoreRules, value: string) => {
+  const patchPlatformRules = (key: keyof WalletCoreRules, value: string | boolean) => {
     if (tab === 'global') return;
     setSettings((prev) => ({
       ...prev,
@@ -462,11 +476,13 @@ export default function WalletLogicApp() {
         rules: {
           ...prev[tab].rules,
           [key]:
-            key === 'service_usage_mode' || key === 'membership_usage_mode'
-              ? (value as WalletUsageMode)
-              : value === ''
-                ? ''
-                : Number(value),
+            key === 'welcome_bonus_enabled'
+              ? Boolean(value)
+              : key === 'service_usage_mode' || key === 'membership_usage_mode'
+                ? (value as WalletUsageMode)
+                : value === ''
+                  ? ''
+                  : Number(value),
         },
       },
     }));
@@ -585,9 +601,21 @@ export default function WalletLogicApp() {
               />
               <StatCard
                 label="Welcome bonus"
-                value={inr(settings.global.welcome_bonus_amount)}
-                sub={`${settings.global.welcome_expiry_days} days validity`}
-                accent="bg-emerald-100 text-emerald-700"
+                value={
+                  settings.global.welcome_bonus_enabled !== false
+                    ? inr(settings.global.welcome_bonus_amount)
+                    : 'Off'
+                }
+                sub={
+                  settings.global.welcome_bonus_enabled !== false
+                    ? `${settings.global.welcome_expiry_days} days validity`
+                    : 'Welcome bonus disabled'
+                }
+                accent={
+                  settings.global.welcome_bonus_enabled !== false
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-600'
+                }
                 icon={<Gift className="h-5 w-5" />}
               />
               <StatCard

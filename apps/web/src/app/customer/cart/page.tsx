@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { restorePendingMembershipCart } from '@/lib/membership-cart-web';
 
 export default function CustomerCartPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function CustomerCartPage() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [useWallet, setUseWallet] = useState(true);
   const [checkoutMsg, setCheckoutMsg] = useState('');
+  const pendingRestored = useRef(false);
 
   async function load() {
     const res = await fetch('/api/customer/cart', { credentials: 'include' });
@@ -22,7 +24,14 @@ export default function CustomerCartPage() {
   }
 
   useEffect(() => {
-    load();
+    (async () => {
+      if (!pendingRestored.current) {
+        pendingRestored.current = true;
+        const result = await restorePendingMembershipCart();
+        if (!result.ok && result.error) setCheckoutMsg(result.error);
+      }
+      await load();
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

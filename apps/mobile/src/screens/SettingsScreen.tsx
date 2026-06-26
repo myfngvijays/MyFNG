@@ -20,7 +20,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
@@ -78,6 +78,7 @@ import {
   type MembershipClaimHistoryRow,
 } from '../lib/membershipClaims';
 import MembershipPlanCartCard from '../components/MembershipPlanCartCard';
+import MembershipTermsCard from '../components/MembershipTermsCard';
 import {
   activatePostBookingMembership,
   quotePostBookingMembership,
@@ -105,6 +106,7 @@ import {
 type Props = {
   navigation: any;
   route: { params?: { initialSubPage?: string | null; subPage?: string | null; membershipType?: 'SERVICE' | 'RSA'; planCode?: string } };
+  onCustomerLogout?: () => void | Promise<void>;
 };
 
 type MenuItem = { id: string; label: string; icon: keyof typeof Ionicons.glyphMap };
@@ -209,7 +211,7 @@ function mapSavedVehicleRecord(v: any) {
   };
 }
 
-export default function SettingsScreen({ navigation, route }: Props) {
+export default function SettingsScreen({ navigation, route, onCustomerLogout }: Props) {
   const resolveSubPage = (value: string | null | undefined): string | null => {
     if (!value) return null;
     const all = [...MAIN_MENU, ...LEGAL_MENU];
@@ -243,6 +245,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const [referralCode, setReferralCode] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [carSearch, setCarSearch] = useState('');
   const [carSuggestions, setCarSuggestions] = useState<any[]>([]);
   const [carSearchLoading, setCarSearchLoading] = useState(false);
@@ -1380,6 +1383,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
   }, [vehicleCarouselData, selectedVehicleKey]);
 
   const clearVehicleForm = useCallback(() => {
+    setEditingVehicleId(null);
     setCarSearch('');
     setSelectedCar(null);
     setCarSuggestions([]);
@@ -1445,9 +1449,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
       clearVehicleForm();
       setVehicleEntryOnly(true);
       setSelectedVehicleKey(null);
+      setEditingVehicleId(null);
     } else {
       setVehicleEntryOnly(false);
       setSelectedVehicleKey(key);
+      setEditingVehicleId(vehicle?.id ? String(vehicle.id) : null);
       fillVehicleFormFromRecord(vehicle);
     }
     setProfileStep(2);
@@ -2275,15 +2281,27 @@ export default function SettingsScreen({ navigation, route }: Props) {
       is_default: true,
     };
 
-    const existingSaved = (vehicles || []).find(
-      (v: any) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber,
-    );
-    const existingVehicle = existingSaved
-      || allAssociatedVehicles.find((v: any) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber);
-
     const addingNewVehicle = vehicleEntryOnly;
 
-    if (addingNewVehicle && existingVehicle) {
+    const editingVehicle =
+      !addingNewVehicle && editingVehicleId
+        ? (vehicles || []).find((v: any) => String(v?.id || '') === editingVehicleId)
+          || allAssociatedVehicles.find((v: any) => String(v?.id || '') === editingVehicleId)
+        : null;
+
+    const duplicateVehicle = (vehicles || []).find((v: any) => {
+      const plate = String(v?.vehicle_number || '').trim().toUpperCase();
+      if (plate !== vehicleNumber) return false;
+      if (editingVehicle?.id) return String(v?.id || '') !== String(editingVehicle.id);
+      return true;
+    }) || allAssociatedVehicles.find((v: any) => {
+      const plate = String(v?.vehicle_number || '').trim().toUpperCase();
+      if (plate !== vehicleNumber) return false;
+      if (editingVehicle?.id) return String(v?.id || '') !== String(editingVehicle.id);
+      return true;
+    });
+
+    if (addingNewVehicle && duplicateVehicle) {
       Alert.alert(
         'Vehicle already added',
         `Vehicle number ${vehicleNumber} is already in your list.`,
@@ -2291,9 +2309,25 @@ export default function SettingsScreen({ navigation, route }: Props) {
       return;
     }
 
+    if (!addingNewVehicle && duplicateVehicle) {
+      Alert.alert(
+        'Vehicle number in use',
+        `Another vehicle already uses ${vehicleNumber}. Choose a different number.`,
+      );
+      return;
+    }
+
     const applySavedVehicle = (savedVehicle: any) => {
       if (!savedVehicle) return;
       setVehicles((prev) => {
+        if (savedVehicle.id) {
+          const byId = prev.findIndex((v) => String(v?.id || '') === String(savedVehicle.id));
+          if (byId >= 0) {
+            const next = [...prev];
+            next[byId] = savedVehicle;
+            return next;
+          }
+        }
         const idx = prev.findIndex(
           (v) => String(v?.vehicle_number || '').trim().toUpperCase() === vehicleNumber,
         );
@@ -2310,13 +2344,20 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
     try {
       let savedVehicle: any = null;
-      if (existingVehicle?.id) {
-        const res = await apiFetch<any>(`/api/customer/vehicles/${existingVehicle.id}`, {
+      if (editingVehicle?.id) {
+        const res = await apiFetch<any>(`/api/customer/vehicles/${editingVehicle.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(vehiclePayload),
         });
-        savedVehicle = res?.vehicle || { ...existingVehicle, ...vehiclePayload };
+        savedVehicle = res?.vehicle || { ...editingVehicle, ...vehiclePayload };
+      } else if (duplicateVehicle?.id && addingNewVehicle) {
+        const res = await apiFetch<any>(`/api/customer/vehicles/${duplicateVehicle.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vehiclePayload),
+        });
+        savedVehicle = res?.vehicle || { ...duplicateVehicle, ...vehiclePayload };
       } else {
         const res = await apiFetch<any>('/api/customer/vehicles', {
           method: 'POST',
@@ -2338,6 +2379,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         setDismissedVehicleKeys(nextDismissed);
       }
       setVehicleEntryOnly(false);
+      setEditingVehicleId(null);
       setSelectedVehicleKey(vehicleNumber);
       setActiveSubPage(null);
       Alert.alert('Saved', addingNewVehicle ? 'Your vehicle has been saved.' : 'Profile and car details have been updated.');
@@ -2357,6 +2399,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
             applySavedVehicle(res?.vehicle || { ...match, ...vehiclePayload });
             await hydrateCustomerData();
             setVehicleEntryOnly(false);
+            setEditingVehicleId(null);
             setSelectedVehicleKey(vehicleNumber);
             setActiveSubPage(null);
             Alert.alert('Saved', addingNewVehicle ? 'Your vehicle has been saved.' : 'Profile and car details have been updated.');
@@ -2694,18 +2737,20 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   const handleLogout = async () => {
     try {
-      const token = await getCustomerSessionToken();
-      if (token) {
-        await fetch(`${ENV.API_URL}/api/customer/auth/logout`, {
-          method: 'POST',
-          headers: { 'x-customer-session': token },
-        }).catch(() => null);
-      }
-      await clearCustomerSessionToken();
+      await onCustomerLogout?.();
       setIsLoggedIn(false);
-      navigation.navigate('Login');
+      setCustomerId(null);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
     } catch (_err) {
-      navigation.navigate('Login');
+      await onCustomerLogout?.().catch(() => null);
+      setIsLoggedIn(false);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
     }
   };
 
@@ -2714,7 +2759,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     { icon: 'logo-instagram' as const, url: 'https://instagram.com/myfngcarservices', color: '#E4405F' },
     { icon: 'logo-youtube' as const, url: 'https://www.youtube.com/@myfng_car_servicing', color: '#FF0000' },
     { icon: 'logo-linkedin' as const, url: 'https://www.linkedin.com/company/myfngcarservices', color: '#0A66C2' },
-    { icon: 'logo-twitter' as const, url: 'https://x.com/myfngcarservice', color: '#1DA1F2' },
+    { icon: 'x-twitter' as const, iconFamily: 'FontAwesome6' as const, url: 'https://x.com/myfngcarservice', color: '#000000' },
   ];
 
   const FUEL_COLOR_MAP: Record<'Petrol' | 'Diesel' | 'CNG', { bg: string; border: string; text: string }> = {
@@ -3108,12 +3153,31 @@ export default function SettingsScreen({ navigation, route }: Props) {
   ]);
 
   const onPressAddVehicle = () => {
+    if (!isLoggedIn) {
+      navigation.navigate('Login');
+      return;
+    }
     clearVehicleForm();
     setVehicleEntryOnly(true);
     setSelectedVehicleKey(null);
     setProfileStep(2);
     setActiveSubPage('My Profile');
   };
+
+  const renderLoginGate = (subtitle: string) => (
+    <View style={styles.subWrap}>
+      <View style={ostyles.loginGate}>
+        <View style={ostyles.lockCircle}>
+          <Ionicons name="lock-closed" size={32} color="#9CA3AF" />
+        </View>
+        <Text style={ostyles.loginGateTitle}>Login Required</Text>
+        <Text style={ostyles.loginGateSub}>{subtitle}</Text>
+        <TouchableOpacity style={ostyles.loginNowBtn} onPress={() => navigation.navigate('Login' as never)}>
+          <Text style={ostyles.loginNowBtnText}>Login Now</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   const handleDeleteVehicle = useCallback((vehicle: any, index = 0) => {
     const plate = String(vehicle?.vehicle_number || '').trim().toUpperCase();
@@ -3319,17 +3383,33 @@ export default function SettingsScreen({ navigation, route }: Props) {
               setSelectedVehicleKey(getVehicleKey(vehicle, index));
             }}
           />
-        ) : (
-          <View style={styles.vehicleSwipeCard}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={styles.numberPlateBadge}>
-                <Text style={styles.numberPlateText} numberOfLines={1}>NO VEHICLE</Text>
-              </View>
-              <Text style={styles.vehicleName} numberOfLines={1}>Add your first vehicle</Text>
+        ) : !isLoggedIn ? (
+          <TouchableOpacity
+            style={styles.vehicleEmptyState}
+            onPress={() => navigation.navigate('Login')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.vehicleEmptyIconWrap}>
+              <Ionicons name="car-sport-outline" size={26} color={COLORS.primary} />
             </View>
-            <VehicleImage vehicle={selectedVehicle} style={styles.vehicleImage} />
+            <Text style={styles.vehicleEmptyTitle}>Login to add your vehicle</Text>
+            <Text style={styles.vehicleEmptySub}>Save your car details for faster bookings</Text>
+          </TouchableOpacity>
+        ) : isLoggedIn && vehicleCarouselData.length === 0 ? (
+          <TouchableOpacity style={styles.vehicleEmptyState} onPress={onPressAddVehicle} activeOpacity={0.85}>
+            <View style={styles.vehicleEmptyIconWrap}>
+              <Ionicons name="car-sport-outline" size={26} color={COLORS.primary} />
+            </View>
+            <Text style={styles.vehicleEmptyTitle}>Add your first vehicle</Text>
+            <Text style={styles.vehicleEmptySub}>Tap here to add your car number and details</Text>
+          </TouchableOpacity>
+        ) : null}
+        {isLoggedIn && vehicleCarouselData.length === 0 ? (
+          <View style={styles.addVehicleHintBanner}>
+            <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.addVehicleHintText}>Add a vehicle to book services and track your car history.</Text>
           </View>
-        )}
+        ) : null}
         {vehicleCarouselData.length > 1 ? (
           <View style={styles.vehicleDotsRow}>
             {vehicleCarouselData.map((_, index) => (
@@ -3340,7 +3420,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
             ))}
           </View>
         ) : null}
-        <TouchableOpacity style={styles.addVehicleBtn} onPress={onPressAddVehicle} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[styles.addVehicleBtn, vehicleCarouselData.length === 0 ? styles.addVehicleBtnProminent : null]}
+          onPress={onPressAddVehicle}
+          activeOpacity={0.85}
+        >
           <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
           <Text style={styles.addVehicleBtnText}>Add New Vehicle</Text>
         </TouchableOpacity>
@@ -3401,7 +3485,11 @@ export default function SettingsScreen({ navigation, route }: Props) {
       <View style={styles.socialRow}>
         {SOCIAL_LINKS.map((s) => (
           <TouchableOpacity key={s.url} style={[styles.socialBtn, { borderColor: s.color }]} onPress={() => Linking.openURL(s.url)}>
-            <Ionicons name={s.icon} size={18} color={s.color} />
+            {'iconFamily' in s && s.iconFamily === 'FontAwesome6' ? (
+              <FontAwesome6 name={s.icon} size={17} color={s.color} />
+            ) : (
+              <Ionicons name={s.icon as keyof typeof Ionicons.glyphMap} size={18} color={s.color} />
+            )}
           </TouchableOpacity>
         ))}
       </View>
@@ -3425,6 +3513,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
   const renderSubPage = () => {
     switch (activeSubPage) {
       case 'My Profile': {
+        if (!isLoggedIn) {
+          return renderLoginGate('Please login to view and update your profile.');
+        }
         const step1Done = !!(profileForm.name && profileForm.phone);
         const step2Done = !!(carSearch && fuelType && carNumberParts[0]?.length > 0);
         const STEP_COLORS = {
@@ -3999,46 +4090,29 @@ export default function SettingsScreen({ navigation, route }: Props) {
         );
       }
       case 'Your Addresses':
+        if (!isLoggedIn) {
+          return renderLoginGate('Please login to manage your saved addresses.');
+        }
         return (
           <View style={styles.subWrap}>
             <View style={styles.addressHeaderRow}>
               <Text style={styles.subTitle}>Saved Addresses</Text>
-              {isLoggedIn ? (
-                <TouchableOpacity
-                  style={styles.addressAddNewBtn}
-                  onPress={() => {
-                    setShowAddAddress((prev) => {
-                      const next = !prev;
-                      if (!next) { resetAddressForm(); setEditingAddressId(null); }
-                      return next;
-                    });
-                  }}
-                >
-                  <Ionicons name={showAddAddress ? 'close-circle-outline' : 'add-circle-outline'} size={14} color={COLORS.primary} />
-                  <Text style={styles.addressAddNewText}>{showAddAddress ? 'Close' : 'Add New'}</Text>
-                </TouchableOpacity>
-              ) : null}
+              <TouchableOpacity
+                style={styles.addressAddNewBtn}
+                onPress={() => {
+                  setShowAddAddress((prev) => {
+                    const next = !prev;
+                    if (!next) { resetAddressForm(); setEditingAddressId(null); }
+                    return next;
+                  });
+                }}
+              >
+                <Ionicons name={showAddAddress ? 'close-circle-outline' : 'add-circle-outline'} size={14} color={COLORS.primary} />
+                <Text style={styles.addressAddNewText}>{showAddAddress ? 'Close' : 'Add New'}</Text>
+              </TouchableOpacity>
             </View>
 
-            {!isLoggedIn ? (
-              <>
-                {addresses.length > 0 ? addresses.map((a) => (
-                  <View key={a.id} style={styles.addressCard}>
-                    <View style={styles.addressIconWrap}>
-                      <Ionicons name="location" size={16} color="#FFFFFF" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.addressLabel}>{a.label}</Text>
-                      <Text style={styles.addressText}>{a.value}</Text>
-                    </View>
-                  </View>
-                )) : null}
-                <TouchableOpacity style={styles.addressLoginGate} onPress={() => navigation.navigate('Login')}>
-                  <Text style={styles.addressLoginText}>Login to Manage Addresses</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
+            <>
                 {showAddAddress ? (
                   <View style={styles.addressFormCard}>
                     <TouchableOpacity style={styles.addressDetectBtn} onPress={handleFetchCurrentLocation} disabled={locationLoading}>
@@ -4163,7 +4237,6 @@ export default function SettingsScreen({ navigation, route }: Props) {
                 })}
 
               </>
-            )}
           </View>
         );
       case 'Membership': {
@@ -4242,6 +4315,9 @@ export default function SettingsScreen({ navigation, route }: Props) {
             membershipType={primeUI.membershipType}
             accentColor={primeUI.accentColor}
             accentTextColor={primeUI.accentTextColor}
+            headerIcon={primeUI.headerIcon}
+            headerIconUrl={primeUI.headerIconUrl}
+            showSecondCarAddon={(primeUI as AppMembershipPlan).showSecondCarAddonApp !== false}
             benefitStatuses={membershipBenefitStatuses}
             claimHistory={membershipClaimHistory}
             claimingBenefitCode={claimingBenefitCode}
@@ -4250,6 +4326,10 @@ export default function SettingsScreen({ navigation, route }: Props) {
             ) : (
               <MembershipPlanCartCard plan={primeUI} navigation={navigation} />
             )}
+            <MembershipTermsCard
+              membershipType={primeUI.membershipType === 'RSA' ? 'RSA' : 'SERVICE'}
+              style={{ marginTop: 12 }}
+            />
           </View>
         );
       }
@@ -4450,20 +4530,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
         );
       case 'Order History': {
         if (!isLoggedIn) {
-          return (
-            <View style={styles.subWrap}>
-              <View style={ostyles.loginGate}>
-                <View style={ostyles.lockCircle}>
-                  <Ionicons name="lock-closed" size={32} color="#9CA3AF" />
-                </View>
-                <Text style={ostyles.loginGateTitle}>Login Required</Text>
-                <Text style={ostyles.loginGateSub}>Please login to view your order history and{'\n'}track active services.</Text>
-                <TouchableOpacity style={ostyles.loginNowBtn} onPress={() => navigation.navigate('Login' as never)}>
-                  <Text style={ostyles.loginNowBtnText}>Login Now</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
+          return renderLoginGate('Please login to view your order history and\ntrack active services.');
         }
         const STATUS_MAP: Record<string, string> = {
           completed: 'Completed', done: 'Completed', closed: 'Completed',
@@ -6177,7 +6244,7 @@ const styles = StyleSheet.create({
   vehicleCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
   vehiclePagerContent: { paddingRight: 10 },
-  vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F8FBFF', paddingHorizontal: 14, paddingVertical: 12, marginRight: 10, gap: 10 },
+  vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E7E5E4', backgroundColor: '#FAFAF9', paddingHorizontal: 14, paddingVertical: 12, marginRight: 10, gap: 10 },
   vehicleCardActions: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 10 },
   vehicleActionBtn: {
     width: 28,
@@ -6197,8 +6264,8 @@ const styles = StyleSheet.create({
   numberPlateText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   vehicleName: { fontSize: 15, fontWeight: '800', color: '#111827' },
   vehicleTags: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  vehicleTag: { backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  vehicleTagText: { fontSize: 9, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  vehicleTag: { backgroundColor: '#E7E5E4', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  vehicleTagText: { fontSize: 9, fontWeight: '800', color: '#44403C', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleYear: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
   vehicleImage: { width: 158, height: 100, flexShrink: 0 },
   completeDetailsBadge: {
@@ -6236,7 +6303,31 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   addVehicleHintText: { flex: 1, fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  vehicleEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#D6D3D1',
+    borderStyle: 'dashed',
+    backgroundColor: '#FAFAF9',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    gap: 6,
+  },
+  vehicleEmptyIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  vehicleEmptyTitle: { fontSize: 15, fontWeight: '800', color: '#111827' },
+  vehicleEmptySub: { fontSize: 12, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
   addVehicleBtn: { marginTop: 12, borderRadius: 12, backgroundColor: COLORS.primary, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  addVehicleBtnProminent: { marginTop: 10 },
   addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },

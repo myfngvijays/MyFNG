@@ -57,13 +57,16 @@ import CustomerOtpLoginScreen from './src/screens/CustomerOtpLoginScreen';
 import SplashScreen from './src/screens/SplashScreen';
 import DashboardNavigator from './src/navigation/DashboardNavigator';
 import { AuthProvider } from './src/context/AuthContext';
+import { AppFooterProvider } from './src/context/AppFooterContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { supabase } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
-import { clearCustomerSessionToken, getCustomerSessionToken } from './src/lib/customerSession';
+import { getCustomerSessionToken } from './src/lib/customerSession';
+import { performCustomerLogout } from './src/lib/customerLogout';
 import { preloadWalletRules } from './src/lib/wallet';
+import { preloadMembershipTerms } from './src/lib/membershipTerms';
+import { preloadPublicFaqs } from './src/lib/publicFaqs';
 import {
-  deactivateCustomerFcmPushTokens,
   registerCustomerFcmPushToken,
   setupFcmNotificationHandlers,
   subscribeToFcmTokenRefresh,
@@ -80,29 +83,26 @@ function AppContent() {
   const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [loginScreenKey, setLoginScreenKey] = useState(0);
   const isCustomerSessionUser =
     user?.type === 'customer_session' && userProfile?.role?.role_code === 'CUSTOMER';
 
-  const syncCustomerPushToken = async () => {
+  const syncCustomerPushToken = async (source = 'app') => {
     try {
       const sessionToken = await getCustomerSessionToken();
-      if (!sessionToken) return;
-
-      const prefsRes = await fetch(`${ENV.API_URL}/api/customer/notifications/preferences`, {
-        headers: {
-          'x-customer-session': sessionToken,
-          'x-mobile-client': 'true',
-        },
-      });
-      const prefsJson = await prefsRes.json().catch(() => ({}));
-      if (prefsJson?.preferences?.push_enabled === false) return;
+      if (!sessionToken) {
+        if (__DEV__) console.warn('[push] skip sync — no session', source);
+        return;
+      }
 
       const result = await registerCustomerFcmPushToken(ENV.API_URL, sessionToken);
-      if (!result.ok && __DEV__) {
-        console.warn('[push] customer token sync failed:', result);
+      if (!result.ok) {
+        console.warn('[push] customer token sync failed:', source, result);
+      } else {
+        console.warn('[push] customer token registered:', source, result.token.slice(0, 12));
       }
-    } catch {
-      // best-effort only
+    } catch (error) {
+      console.warn('[push] customer token sync error:', source, error);
     }
   };
 
@@ -157,6 +157,8 @@ function AppContent() {
 
   useEffect(() => {
     void preloadWalletRules(ENV.API_URL);
+    void preloadMembershipTerms(ENV.API_URL);
+    void preloadPublicFaqs();
     checkUser();
 
     // Listen for auth changes
@@ -266,25 +268,17 @@ function AppContent() {
 
   const handleLogout = async () => {
     try {
-      const customerToken = await getCustomerSessionToken();
-      if (customerToken) {
-        await deactivateCustomerFcmPushTokens(ENV.API_URL, customerToken).catch(() => null);
-        await fetch(`${ENV.API_URL}/api/customer/auth/logout`, {
-          method: 'POST',
-          headers: { 'x-customer-session': customerToken },
-        }).catch(() => null);
-      }
-      await clearCustomerSessionToken();
-      await supabase.auth.signOut();
+      await performCustomerLogout(ENV.API_URL);
       setUser(null);
       setUserProfile(null);
+      setLoginScreenKey((key) => key + 1);
     } catch (error) {
       if (__DEV__) console.error('Error logging out:', error);
     }
   };
 
   if (showSplash || !authReady || !updateCheckDone) {
-    return <SplashScreen durationMs={4000} onComplete={() => setShowSplash(false)} />;
+    return <SplashScreen durationMs={5000} onComplete={() => setShowSplash(false)} />;
   }
 
   if (forceUpdate?.required) {
@@ -331,9 +325,17 @@ function AppContent() {
             <Stack.Screen name="ResaleValue" component={ResaleValueScreen} />
             <Stack.Screen name="CarQuizGame" component={CarQuizGameScreen} />
             <Stack.Screen name="CarPartsPrice" component={CarPartsPriceScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Settings">
+              {(props) => <SettingsScreen {...props} onCustomerLogout={handleLogout} />}
+            </Stack.Screen>
           <Stack.Screen name="Login">
-              {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
+              {(props) => (
+                <LoginScreen
+                  key={`login-${loginScreenKey}`}
+                  {...props}
+                  onLoginSuccess={handleLoginSuccess}
+                />
+              )}
             </Stack.Screen>
             <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
             <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
@@ -370,7 +372,9 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <NotificationProvider>
-          <AppContent />
+          <AppFooterProvider>
+            <AppContent />
+          </AppFooterProvider>
         </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>

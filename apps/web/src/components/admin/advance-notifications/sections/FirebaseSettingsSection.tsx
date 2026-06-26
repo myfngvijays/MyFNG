@@ -93,7 +93,7 @@ function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition ${
-        checked ? 'bg-[#1f7a55]' : 'bg-gray-300'
+        checked ? 'bg-blue-600' : 'bg-gray-300'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <span
@@ -113,6 +113,7 @@ export default function PushFirebaseSettingsSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyDraft, setKeyDraft] = useState('');
 
@@ -176,6 +177,38 @@ export default function PushFirebaseSettingsSection() {
     }
   };
 
+  const runBootstrap = async () => {
+    if (!canEdit) {
+      toast.error('Only Super Admin can auto-configure Firebase');
+      return;
+    }
+    if (
+      !confirm(
+        'Auto-fill Firebase settings from server environment?\n\nThis saves project IDs, service account email, private key, and enables push delivery.',
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setBootstrapping(true);
+      const res = await fetch('/api/super_admin/notifications/firebase-settings/bootstrap', {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error || 'Auto-setup failed');
+        return;
+      }
+      toast.success(json.message || 'Firebase configured');
+      await load();
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setBootstrapping(false);
+    }
+  };
+
   const runTest = async () => {
     try {
       setTesting(true);
@@ -218,7 +251,27 @@ export default function PushFirebaseSettingsSection() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 flex items-start gap-3 mb-5">
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 mb-5">
+        <p className="font-semibold">Quick setup</p>
+        <p className="mt-1 text-emerald-800">
+          Click <strong>Auto-fill from server</strong> to save all Firebase credentials in one step (uses server
+          <code className="mx-1 text-xs bg-white/70 px-1 rounded">.env</code> values). APNs
+          <code className="mx-1 text-xs bg-white/70 px-1 rounded">.p8</code> still goes in Firebase Console only.
+        </p>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => void runBootstrap()}
+            disabled={bootstrapping}
+            className="mt-3 push-btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-50"
+          >
+            {bootstrapping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Flame className="w-4 h-4" />}
+            Auto-fill from server
+          </button>
+        ) : null}
+      </div>
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex items-start gap-3 mb-5">
         <Lock className="w-5 h-5 shrink-0 mt-0.5" />
         <div>
           <p className="font-semibold">Encrypted at rest</p>
@@ -260,18 +313,32 @@ export default function PushFirebaseSettingsSection() {
             <div className="flex items-center gap-2">
               <span
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                  healthy ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  healthy ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
                 }`}
               >
                 {healthy ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 {healthy ? 'Connected' : 'Pending'}
               </span>
               <span className="text-xs text-gray-500">
-                {healthy ? health?.message || 'Credentials verified' : 'Not tested yet'}
+                Source: {form.credentials_source || 'none'}
+                {healthy ? ` · ${health?.message || 'Credentials verified'}` : ' · Not tested yet'}
               </span>
             </div>
 
-            <div className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 min-w-[280px]">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 min-w-[220px]">
+                <div className="flex-1">
+                  <p className="font-semibold text-sm text-gray-900">Push globally enabled</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Master switch for all sends</p>
+                </div>
+                <Toggle
+                  checked={form.push_enabled}
+                  disabled={!canEdit}
+                  onChange={(v) => update('push_enabled', v)}
+                />
+              </div>
+
+              <div className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 min-w-[280px]">
               <div className="flex-1">
                 <p className="font-semibold text-sm text-gray-900">
                   Enable {tab === 'android' ? 'Android' : 'iOS'} Notifications
@@ -283,6 +350,7 @@ export default function PushFirebaseSettingsSection() {
                 disabled={!canEdit}
                 onChange={(v) => update(tab === 'android' ? 'android_enabled' : 'ios_enabled', v)}
               />
+              </div>
             </div>
           </div>
 
@@ -392,6 +460,10 @@ export default function PushFirebaseSettingsSection() {
                         disabled={!canEdit}
                       />
                     </div>
+                    <div className="sm:col-span-2 rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600">
+                      <strong>Android App ID:</strong> 1:455279370834:android:ae9e7dcf4df27191e7b58b ·{' '}
+                      <strong>Package:</strong> com.myfng.app
+                    </div>
                   </>
                 ) : (
                   <>
@@ -416,8 +488,15 @@ export default function PushFirebaseSettingsSection() {
                         <option value="development">development</option>
                       </select>
                     </div>
-                    <div className="sm:col-span-2 rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600">
-                      Upload APNs Auth Key (.p8) in Firebase Console → Cloud Messaging for iOS delivery.
+                    <div className="sm:col-span-2 rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
+                      <p>
+                        <strong>APNs Key ID:</strong> 9J9AKAN78Q · upload <strong>AuthKey_9J9AKAN78Q.p8</strong> in
+                        Firebase Console → Cloud Messaging → Apple app configuration.
+                      </p>
+                      <p>
+                        <strong>iOS App ID:</strong> 1:455279370834:ios:38d95771254f40a5e7b58b ·{' '}
+                        <strong>Bundle:</strong> com.myfng.app
+                      </p>
                     </div>
                   </>
                 )}

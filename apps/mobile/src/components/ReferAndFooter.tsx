@@ -1,30 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../constants/theme';
-import {
-  DEFAULT_APP_FOOTER_CONFIG,
-  fetchAppFooterConfig,
-  type AppFooterConfig,
-} from '../lib/appFooterConfig';
+import { useAppFooter } from '../context/AppFooterContext';
 
 type Props = {
   hideRefer?: boolean;
 };
 
 export default function ReferAndFooter({ hideRefer = false }: Props) {
-  const [footer, setFooter] = useState<AppFooterConfig>(DEFAULT_APP_FOOTER_CONFIG);
+  const { footer, refreshFooter } = useAppFooter();
 
-  useEffect(() => {
-    let active = true;
-    fetchAppFooterConfig()
-      .then((config) => {
-        if (active) setFooter(config);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshFooter();
+    }, [refreshFooter]),
+  );
 
   return (
     <>
@@ -59,7 +50,7 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
         </Text>
         <View style={s.numbers}>
           {footer.stats.map((stat, index) => (
-            <React.Fragment key={`${stat.value}-${index}`}>
+            <React.Fragment key={`${stat.value}-${stat.label}-${index}`}>
               {index > 0 ? <View style={s.divider} /> : null}
               <View style={s.col}>
                 <Text style={s.numBold}>{stat.value}</Text>
@@ -68,9 +59,7 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
             </React.Fragment>
           ))}
         </View>
-        {footer.bottom_line ? (
-          <Text style={s.bottomLine}>{footer.bottom_line}</Text>
-        ) : null}
+        {footer.bottom_line ? <Text style={s.bottomLine}>{footer.bottom_line}</Text> : null}
       </View>
     </>
   );

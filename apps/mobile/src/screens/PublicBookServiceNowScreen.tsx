@@ -79,6 +79,7 @@ import {
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { countLiveBookingCart } from '../lib/cartBadgeCount';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
 import VehicleImage from '../components/VehicleImage';
@@ -688,7 +689,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
   }, [form.selectedServices.length, hasActiveMembership, primeMembershipPlan]);
 
-  const cartServiceCount = form.selectedServices.length;
+  const cartServiceCount = countLiveBookingCart(
+    form.selectedServices,
+    includeBookingMembership,
+    Boolean(primeMembershipPlan),
+  );
 
   useEffect(() => {
     if (cartServiceCount <= 0) return;
@@ -1983,14 +1988,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           : [...prev.selectedServices, serviceId],
       };
     });
-  }, []);
+    setTimeout(() => persistBookingSession(), 0);
+  }, [persistBookingSession]);
 
   const removeSelectedService = useCallback((serviceId: string) => {
     setForm((prev) => ({
       ...prev,
       selectedServices: prev.selectedServices.filter((x) => x !== serviceId),
     }));
-  }, []);
+    setTimeout(() => persistBookingSession(), 0);
+  }, [persistBookingSession]);
 
   const canNext = () => {
     if (step === 0) return Boolean(form.city && form.carModel);
@@ -2444,7 +2451,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       cartServiceCount > 0 ? { transform: [{ scale: cartBadgeScale }] } : null,
                     ]}
                   >
-                    <Text style={styles.headerCartBadgeText}>{cartServiceCount}</Text>
+                    <Text style={styles.headerCartBadgeText}>
+                      {cartServiceCount > 9 ? '9+' : cartServiceCount}
+                    </Text>
                   </Animated.View>
                 </TouchableOpacity>
               ) : !isLoggedIn ? (

@@ -30,7 +30,10 @@ function planToPreviewProps(plan: AppMembershipPlan) {
     membershipType: plan.membershipType,
     accentColor: plan.accentColor,
     accentTextColor: plan.accentTextColor,
+    headerIcon: plan.headerIcon,
+    headerIconUrl: plan.headerIconUrl,
     pricePeriodLabel: planPeriodLabel(plan),
+    showSecondCarAddon: plan.showSecondCarAddonApp !== false,
   };
 }
 

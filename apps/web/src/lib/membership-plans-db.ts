@@ -23,6 +23,15 @@ export const MIGRATION_155_HINT =
 export const MIGRATION_161_HINT =
   'Run `database/161_membership_accent_text_color.sql` for text color on membership accent backgrounds.';
 
+export const MIGRATION_224_HINT =
+  'Run `database/224_membership_plan_header_icon.sql` for admin-managed plan header circle icons.';
+
+export const MIGRATION_225_HINT =
+  'Run `database/225_membership_second_car_visibility.sql` for website/app 2nd car add-on visibility toggles.';
+
+export const MIGRATION_226_HINT =
+  'Run `database/226_membership_plan_web_cta.sql` for website visibility and admin-configurable web CTA.';
+
 export function isAppMembershipPlan(code: unknown): boolean {
   return !LEGACY_MEMBERSHIP_CODES.has(String(code || '').toUpperCase());
 }
@@ -38,6 +47,10 @@ function isMissingColumnError(message: string) {
     /schema cache/i.test(msg) ||
     /could not find the '[^']+' column/i.test(msg)
   );
+}
+
+function isWebColumnError(message: string) {
+  return /web_visible|web_cta_/i.test(String(message || ''));
 }
 
 function isVisibilityColumnError(message: string) {
@@ -82,6 +95,21 @@ export function buildPlanCardPayload(body: Record<string, unknown>) {
   };
 }
 
+export function buildPlanWebPayload(body: Record<string, unknown>) {
+  const actionRaw = String(body.web_cta_action || 'whatsapp').toLowerCase();
+  const webCtaAction = actionRaw === 'cart' || actionRaw === 'link' ? actionRaw : 'whatsapp';
+  return {
+    web_visible: body.web_visible !== undefined ? !!body.web_visible : true,
+    web_cta_action: webCtaAction,
+    web_cta_label: String(body.web_cta_label || 'Add to Cart — {price} →').trim() || 'Add to Cart — {price} →',
+    web_cta_whatsapp_phone: String(body.web_cta_whatsapp_phone || '919167779696').replace(/\D/g, '') || '919167779696',
+    web_cta_whatsapp_message:
+      String(body.web_cta_whatsapp_message || 'Hi I am interested in RSA Membership {plan_name} Plan').trim() ||
+      'Hi I am interested in RSA Membership {plan_name} Plan',
+    web_cta_url: body.web_cta_url != null && String(body.web_cta_url).trim() ? String(body.web_cta_url).trim() : null,
+  };
+}
+
 export function buildPlanExtendedPayload(body: Record<string, unknown>) {
   return {
     original_price: body.original_price != null ? Number(body.original_price) : null,
@@ -96,6 +124,11 @@ export function buildPlanExtendedPayload(body: Record<string, unknown>) {
     second_car_addon_icon: body.second_car_addon_icon || 'car-sport',
     second_car_addon_icon_class: body.second_car_addon_icon_class || null,
     second_car_addon_icon_url: body.second_car_addon_icon_url || null,
+    show_second_car_addon_web: body.show_second_car_addon_web !== undefined ? !!body.show_second_car_addon_web : false,
+    show_second_car_addon_app: body.show_second_car_addon_app !== undefined ? !!body.show_second_car_addon_app : true,
+    header_icon: body.header_icon || null,
+    header_icon_class: body.header_icon_class || null,
+    header_icon_url: body.header_icon_url || null,
     total_benefits_value: body.total_benefits_value != null ? Number(body.total_benefits_value) : 6650,
     value_column_label: body.value_column_label || 'VALUE',
     total_benefits_label: body.total_benefits_label || 'Total Benefits Value',
@@ -106,6 +139,7 @@ export function buildPlanExtendedPayload(body: Record<string, unknown>) {
       (normalizeMembershipType(body.membership_type) === 'RSA' ? null : 'All benefits · One full year · One car'),
     accent_color: body.accent_color ? String(body.accent_color) : null,
     accent_text_color: body.accent_text_color ? String(body.accent_text_color) : null,
+    ...buildPlanWebPayload(body),
     ...buildPlanVisibilityPayload(body),
     ...buildPlanCardPayload(body),
   };
@@ -114,6 +148,9 @@ export function buildPlanExtendedPayload(body: Record<string, unknown>) {
 export function migrationHintForPlanError(message: string): string | undefined {
   if (isCardColumnError(message)) return MIGRATION_155_HINT;
   if (/accent_text_color/i.test(message)) return MIGRATION_161_HINT;
+  if (/header_icon/i.test(message)) return MIGRATION_224_HINT;
+  if (/show_second_car_addon/i.test(message)) return MIGRATION_225_HINT;
+  if (isWebColumnError(message)) return MIGRATION_226_HINT;
   if (/accent_color/i.test(message)) return MIGRATION_154_HINT;
   if (isVisibilityColumnError(message)) return MIGRATION_153_HINT;
   if (isMissingColumnError(message)) return MIGRATION_149_HINT;
@@ -149,6 +186,11 @@ const PLAN_EXTENDED_UPDATE_KEYS = [
   'second_car_addon_icon',
   'second_car_addon_icon_class',
   'second_car_addon_icon_url',
+  'show_second_car_addon_web',
+  'show_second_car_addon_app',
+  'header_icon',
+  'header_icon_class',
+  'header_icon_url',
   'original_price',
   'display_order',
   'second_car_addon_price',
@@ -160,6 +202,12 @@ const PLAN_EXTENDED_UPDATE_KEYS = [
   'price_hero_sub',
   'membership_type',
   'app_visible',
+  'web_visible',
+  'web_cta_action',
+  'web_cta_label',
+  'web_cta_whatsapp_phone',
+  'web_cta_whatsapp_message',
+  'web_cta_url',
   'app_placements',
   'accent_color',
   'accent_text_color',

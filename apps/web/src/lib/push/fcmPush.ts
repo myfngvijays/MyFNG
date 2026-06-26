@@ -70,9 +70,16 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
           },
         },
         apns: {
-          headers: msg.priority === 'high' ? { 'apns-priority': '10' } : { 'apns-priority': '5' },
+          headers: {
+            ...(msg.priority === 'high' ? { 'apns-priority': '10' } : { 'apns-priority': '5' }),
+            'apns-push-type': 'alert',
+          },
           payload: {
             aps: {
+              alert: {
+                title: msg.title,
+                body: msg.body,
+              },
               sound: 'default',
               ...(msg.imageUrl ? { 'mutable-content': 1 } : {}),
             },

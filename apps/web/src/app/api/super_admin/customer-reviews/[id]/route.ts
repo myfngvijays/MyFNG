@@ -35,13 +35,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!auth.ok) return auth.res;
 
     const body = await request.json();
-    const updates: any = { updated_at: new Date().toISOString(), car: '' };
+    const updates: any = { updated_at: new Date().toISOString() };
     if (body?.name !== undefined) updates.name = String(body.name).trim();
     if (body?.stars !== undefined) updates.stars = Math.min(5, Math.max(1, Number(body.stars) || 5));
     if (body?.text !== undefined) updates.text = String(body.text).trim();
     if (body?.date !== undefined) updates.date = String(body.date).trim();
     if (body?.display_order !== undefined) updates.display_order = Number(body.display_order) || 0;
     if (body?.is_active !== undefined) updates.is_active = !!body.is_active;
+    if (body?.car !== undefined) updates.car = String(body.car || '').trim();
+    if (body?.screen !== undefined) {
+      updates.screen = String(body.screen).trim().toLowerCase() === 'rsa' ? 'rsa' : 'home';
+    }
 
     if (
       (body?.name !== undefined && !updates.name) ||

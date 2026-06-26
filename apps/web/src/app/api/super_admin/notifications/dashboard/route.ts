@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { assertPushAdmin } from '@/lib/push/admin-auth';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
+import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
+import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +18,24 @@ function daysAgoIso(days: number) {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return d.toISOString();
+}
+
+function isIosDeviceName(name: string | null | undefined): boolean {
+  const value = String(name || '').toLowerCase();
+  return value.includes('ios') || value.includes('iphone') || value.includes('ipad');
+}
+
+function normalizeNotificationType(raw: unknown): string {
+  const value = String(raw || 'general').trim().toLowerCase();
+  if (!value) return 'general';
+  return value;
+}
+
+function deliveryStatsFromMeta(meta: Record<string, unknown> | null | undefined) {
+  const delivered = Number(meta?.devices || 0);
+  const attempted = Number(meta?.devices_attempted || meta?.devices || 0);
+  const failed = Math.max(0, attempted - delivered);
+  return { delivered, attempted, failed };
 }
 
 export async function GET() {
@@ -35,6 +55,7 @@ export async function GET() {
 
     const [
       devicesRes,
+      deviceNamesRes,
       customerDevicesRes,
       staffDevicesRes,
       legacyExpoRes,
@@ -42,13 +63,21 @@ export async function GET() {
       pushDisabledRes,
       logsTodayRes,
       logsWeekRes,
+      allBroadcastsRes,
       recentLogsRes,
       pushSettingRes,
       templatesRes,
+      firebaseConfig,
+      fcmHealth,
     ] = await Promise.all([
       supabaseAdmin
         .from('notification_devices')
         .select('id', { count: 'exact', head: true })
+        .eq('platform', MOBILE_PUSH_PLATFORM)
+        .eq('is_active', true),
+      supabaseAdmin
+        .from('notification_devices')
+        .select('device_name')
         .eq('platform', MOBILE_PUSH_PLATFORM)
         .eq('is_active', true),
       supabaseAdmin
@@ -83,10 +112,11 @@ export async function GET() {
         .gte('sent_at', todayIso),
       supabaseAdmin
         .from('notification_logs')
-        .select('id, status, meta, sent_at')
+        .select('id, status, meta, sent_at, recipient')
         .eq('type', 'PUSH_BROADCAST')
         .gte('sent_at', weekIso)
         .order('sent_at', { ascending: true }),
+      supabaseAdmin.from('notification_logs').select('status, meta').eq('type', 'PUSH_BROADCAST'),
       supabaseAdmin
         .from('notification_logs')
         .select('id, recipient, message, status, sent_at, meta')
@@ -102,16 +132,61 @@ export async function GET() {
         .from('push_notification_templates')
         .select('id', { count: 'exact', head: true })
         .eq('is_active', true),
+      loadPushFirebaseConfig(),
+      checkFcmCredentials(),
     ]);
 
+    const deviceRows = deviceNamesRes.data || [];
+    const iosDevices = deviceRows.filter((row) => isIosDeviceName(row.device_name)).length;
+    const androidDevices = Math.max(0, deviceRows.length - iosDevices);
+
     const weekLogs = logsWeekRes.data || [];
+    const allBroadcasts = allBroadcastsRes.data || [];
+
+    let totalDelivered = 0;
+    let totalFailedDeliveries = 0;
+    for (const log of allBroadcasts) {
+      const meta = (log.meta || {}) as Record<string, unknown>;
+      const { delivered, failed } = deliveryStatsFromMeta(meta);
+      if (log.status === 'SENT') {
+        totalDelivered += delivered;
+      }
+      totalFailedDeliveries += failed;
+      if (log.status === 'FCM_FAILED' || log.status === 'NO_DEVICES') {
+        totalFailedDeliveries += 1;
+      }
+    }
+
+    const totalCampaigns = allBroadcasts.length;
+    const deliveryRate =
+      totalDelivered + totalFailedDeliveries > 0
+        ? Math.round((totalDelivered / (totalDelivered + totalFailedDeliveries)) * 1000) / 10
+        : 0;
+
     const trendMap = new Map<string, { day: string; sent: number; failed: number }>();
+    for (let i = 6; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+      trendMap.set(key, { day: label, sent: 0, failed: 0 });
+    }
+
     for (const log of weekLogs) {
-      const day = new Date(log.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-      const row = trendMap.get(day) || { day, sent: 0, failed: 0 };
-      if (log.status === 'SENT') row.sent += 1;
-      else row.failed += 1;
-      trendMap.set(day, row);
+      const key = new Date(log.sent_at).toISOString().slice(0, 10);
+      const row = trendMap.get(key);
+      if (!row) continue;
+      const meta = (log.meta || {}) as Record<string, unknown>;
+      const { delivered, failed } = deliveryStatsFromMeta(meta);
+      row.sent += delivered;
+      row.failed += failed;
+    }
+
+    const typeBreakdown: Record<string, number> = {};
+    for (const log of weekLogs) {
+      const meta = (log.meta || {}) as Record<string, unknown>;
+      const type = normalizeNotificationType(meta.notification_type);
+      typeBreakdown[type] = (typeBreakdown[type] || 0) + 1;
     }
 
     const todayLogs = logsTodayRes.data || [];
@@ -133,6 +208,10 @@ export async function GET() {
     const greeting =
       greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening';
 
+    const credentialsOk = fcmHealth.ok && fcmHealth.credentialsConfigured;
+    const androidConnected = credentialsOk && firebaseConfig.android_enabled !== false;
+    const iosConnected = credentialsOk && firebaseConfig.ios_enabled !== false;
+
     return NextResponse.json({
       admin: {
         name: auth.userName,
@@ -141,11 +220,17 @@ export async function GET() {
       },
       kpis: {
         active_devices: devicesRes.count || 0,
+        android_devices: androidDevices,
+        ios_devices: iosDevices,
         customer_devices: customerDevicesRes.count || 0,
         staff_devices: staffDevicesRes.count || 0,
         legacy_expo_devices: legacyExpoRes.count || 0,
         customers_push_on: pushEnabledRes.count || 0,
         customers_push_off: pushDisabledRes.count || 0,
+        total_notifications: totalCampaigns,
+        successfully_delivered: totalDelivered,
+        failed_deliveries: totalFailedDeliveries,
+        delivery_rate: deliveryRate,
         broadcasts_today: logsTodayRes.count || 0,
         broadcasts_today_sent: todaySent,
         broadcasts_today_failed: todayFailed,
@@ -159,8 +244,37 @@ export async function GET() {
         push_globally_enabled: pushSettingRes.data?.setting_value !== 'false',
       },
       trend_7d: Array.from(trendMap.values()),
+      type_breakdown: typeBreakdown,
       role_breakdown: roleBreakdown,
-      recent_broadcasts: recentLogsRes.data || [],
+      platform_status: {
+        android: {
+          label: 'Android (FCM)',
+          status: androidConnected ? 'connected' : 'pending',
+          message: androidConnected
+            ? fcmHealth.message || 'FCM credentials configured'
+            : 'Not tested yet',
+        },
+        ios: {
+          label: 'iOS (APNs)',
+          status: iosConnected ? 'connected' : 'pending',
+          message: iosConnected
+            ? 'APNs via Firebase Cloud Messaging'
+            : 'Configure APNs key in Firebase Console',
+        },
+      },
+      recent_broadcasts: (recentLogsRes.data || []).map((log) => {
+        const meta = (log.meta || {}) as Record<string, unknown>;
+        const { delivered, failed } = deliveryStatsFromMeta(meta);
+        return {
+          ...log,
+          meta: {
+            ...meta,
+            delivered,
+            failed,
+            notification_type: normalizeNotificationType(meta.notification_type),
+          },
+        };
+      }),
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);

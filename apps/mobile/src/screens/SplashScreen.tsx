@@ -24,19 +24,23 @@ const SERVICE_ITEMS = [
   { name: 'Detailing Service', icon: 'sparkles-outline' as const },
 ];
 
-// Appear: Same Day Servicing → Live Tracking → Free Pickup & Drop → Genuine Parts → AI Booking
+// Appear: Same Day → Live Tracking → Free Pickup → Transparent Pricing → Genuine Parts → AI Booking
 const USP_ITEMS = [
   { label: 'Same Day Servicing', icon: 'flash' as const, bg: '#FEF3C7', color: '#D97706', side: 'left' as const, roadY: 0.15 },
-  { label: 'Live Tracking', icon: 'locate' as const, bg: '#ECFDF5', color: '#10B981', side: 'right' as const, roadY: 0.34 },
+  { label: 'Live Tracking', icon: 'locate' as const, bg: '#ECFDF5', color: '#10B981', side: 'right' as const, roadY: 0.32 },
   { label: 'Free Pickup & Drop', icon: 'car-outline' as const, bg: '#F5F3FF', color: '#7C3AED', side: 'left' as const, roadY: 0.28 },
+  { label: 'Transparent Pricing', icon: 'pricetag-outline' as const, bg: '#F0FDFA', color: '#0D9488', side: 'right' as const, roadY: 0.08 },
   { label: 'Genuine Parts', icon: 'shield-checkmark' as const, bg: '#FFF7ED', color: '#EA580C', side: 'right' as const, roadY: 0.2 },
-  { label: 'AI Booking', icon: 'chatbubble-ellipses' as const, bg: '#EFF6FF', color: '#2563EB', side: 'left' as const, roadY: 0.48 },
+  { label: 'AI Booking', icon: 'chatbubble-ellipses' as const, bg: '#EFF6FF', color: '#2563EB', side: 'left' as const, roadY: 0.4 },
 ];
 
 const ROAD_DASH_COUNT = 12;
 const SERVICE_SLOT = 62;
 const ACTIVE_SERVICE_INDEX = 2; // Periodic Service — fixed center
-const USP_STAGGER_MS = 700;
+const SPLASH_DURATION_MS = 5000;
+const USP_INITIAL_DELAY_MS = 500;
+const USP_STAGGER_MS = 520;
+const USP_ENTER_DURATION_MS = 400;
 
 /** Distance from screen edge — wider road (lower Y) keeps pills near the edges. */
 function roadSideOffset(roadY: number) {
@@ -45,7 +49,7 @@ function roadSideOffset(roadY: number) {
 
 export default function SplashScreen({
   onComplete,
-  durationMs = 4000,
+  durationMs = SPLASH_DURATION_MS,
 }: SplashScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
@@ -73,27 +77,34 @@ export default function SplashScreen({
 
     Animated.timing(sceneFade, { toValue: 1, duration: 420, delay: 220, useNativeDriver: true }).start();
 
-    USP_ITEMS.forEach((usp, i) => {
+    USP_ITEMS.forEach((_usp, i) => {
       Animated.sequence([
-        Animated.delay(700 + i * USP_STAGGER_MS),
+        Animated.delay(USP_INITIAL_DELAY_MS + i * USP_STAGGER_MS),
         Animated.parallel([
           Animated.timing(uspSlides[i], {
             toValue: 1,
-            duration: 480,
+            duration: USP_ENTER_DURATION_MS,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
           Animated.timing(uspFades[i], {
             toValue: 1,
-            duration: 420,
+            duration: USP_ENTER_DURATION_MS,
             useNativeDriver: true,
           }),
         ]),
       ]).start();
     });
 
-    Animated.timing(serviceFade, { toValue: 1, duration: 320, delay: 1100, useNativeDriver: true }).start();
-    Animated.timing(badgeFade, { toValue: 1, duration: 300, delay: 1300, useNativeDriver: true }).start();
+    const lastUspVisibleAt =
+      USP_INITIAL_DELAY_MS + (USP_ITEMS.length - 1) * USP_STAGGER_MS + USP_ENTER_DURATION_MS;
+    Animated.timing(serviceFade, { toValue: 1, duration: 320, delay: 900, useNativeDriver: true }).start();
+    Animated.timing(badgeFade, {
+      toValue: 1,
+      duration: 300,
+      delay: lastUspVisibleAt + 350,
+      useNativeDriver: true,
+    }).start();
 
     const driveLoop = Animated.loop(
       Animated.sequence([

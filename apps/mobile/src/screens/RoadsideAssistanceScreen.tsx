@@ -11,18 +11,22 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import RSAMembershipPlansSection from '../components/RSAMembershipPlansSection';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
+import MembershipTermsCard from '../components/MembershipTermsCard';
 import ReferAndFooter from '../components/ReferAndFooter';
 import SectionHeading from '../components/SectionHeading';
+import { COLORS } from '../constants/theme';
 import { openPhoneCall } from '../lib/phone';
 import { supabase } from '../lib/supabase';
+import { RSA_PHONE, RSA_SERVICES, RSA_FAQS_FALLBACK, type RsaServiceDef } from '../constants/rsaServices';
+import { RsaServiceIcon } from '../components/RsaHomeSection';
+import { fetchPublicFaqs, type PublicFaqItem } from '../lib/publicFaqs';
 
 type Props = { navigation: any; route: any };
 
-const RSA_PHONE = '+919610448949';
 const REVIEW_MODAL_SCROLL_MAX_HEIGHT = Dimensions.get('window').height * 0.8 - 96;
 
 const DEFAULT_RSA_HERO_IMAGE =
@@ -35,31 +39,15 @@ type RsaHeroBanner = {
   title?: string | null;
 };
 
-const RSA_SERVICES = [
-  { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', icon: 'flash' as const, bg: '#F97316' },
-  { name: 'Fuel Delivery', desc: 'Emergency petrol/diesel delivery.', icon: 'add-circle' as const, bg: '#EF4444' },
-  { name: 'Car Towing Services', desc: 'Safe towing to nearest workshop.', icon: 'car' as const, bg: '#3B82F6' },
-  { name: 'Accidental Car Towing', desc: 'Accident vehicle recovery & transport.', icon: 'shield' as const, bg: '#DC2626' },
-  { name: 'Roadside Assistance', desc: 'Minor on-road repairs support.', icon: 'construct' as const, bg: '#EA580C' },
-  { name: 'Car Tracking Services', desc: 'Live location and tracking support.', icon: 'location' as const, bg: '#EC4899' },
-  { name: 'Periodic Car Service', desc: 'Doorstep periodic maintenance booking.', icon: 'time' as const, bg: '#2563EB' },
-  { name: 'Flat Tyre Assistance', desc: 'Tyre change or puncture fix instantly.', icon: 'ellipse-outline' as const, bg: '#525252' },
-];
+type CustomerReview = {
+  name: string;
+  car: string;
+  stars: number;
+  text: string;
+  date: string;
+};
 
-const RSA_FAQS = [
-  { q: 'How fast is RSA?', a: 'Our average response time is 30-45 minutes depending on your location.' },
-  { q: 'Is RSA available 24/7?', a: 'Yes, our emergency team is available round the clock.' },
-  { q: "What if my car can't be fixed on spot?", a: 'We provide towing services to the nearest MyFNG certified workshop.' },
-  { q: 'Does RSA cover fuel delivery?', a: 'Yes, we provide emergency fuel delivery (fuel cost extra).' },
-  { q: 'Is jumpstart safe for my car?', a: 'Yes, our technicians use professional equipment safe for modern car electronics.' },
-  { q: 'What areas do you cover?', a: 'We currently cover all major cities and highways across India.' },
-  { q: 'How much does RSA cost?', a: 'Pricing varies by service type and location. Towing starts at ₹25/km.' },
-  { q: 'Can I track the RSA vehicle?', a: 'Yes, once dispatched you receive real-time tracking of the assistance vehicle.' },
-  { q: 'Do I need a membership for RSA?', a: 'No membership required. However, MyFNG Pro and Max members get priority dispatch and discounted rates.' },
-  { q: 'What happens after towing?', a: 'Your car is towed to the nearest MyFNG partner workshop where a full inspection is done and you receive a detailed estimate.' },
-];
-
-const RSA_REVIEWS = [
+const RSA_REVIEWS_FALLBACK: CustomerReview[] = [
   { name: 'Ravi Deshmukh', car: 'Maruti Baleno', stars: 5, text: 'Battery died at midnight on highway. MyFNG sent jumpstart help within 35 mins. Lifesaver!', date: 'Jan 2025' },
   { name: 'Sneha Kapoor', car: 'Hyundai i20', stars: 5, text: 'Flat tyre in heavy rain. The technician was professional and quick. Highly recommend their RSA service.', date: 'Dec 2024' },
   { name: 'Vikram Singh', car: 'Honda City', stars: 4, text: 'Car broke down on expressway. Towing was smooth and the workshop did a great job fixing the issue.', date: 'Feb 2025' },
@@ -74,6 +62,8 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(null);
   const [showAllFaqs, setShowAllFaqs] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [reviews, setReviews] = useState<CustomerReview[]>(RSA_REVIEWS_FALLBACK);
+  const [rsaFaqs, setRsaFaqs] = useState<PublicFaqItem[]>(RSA_FAQS_FALLBACK);
   const [heroBanner, setHeroBanner] = useState<RsaHeroBanner>({
     image_url: DEFAULT_RSA_HERO_IMAGE,
     route_name: 'RoadsideAssistance',
@@ -110,6 +100,62 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    fetchPublicFaqs({ group: 'RSA', section: 'rsa', platform: 'app' })
+      .then((items) => {
+        if (active && items.length) setRsaFaqs(items);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('customer_reviews')
+          .select('id, name, car, stars, text, date, display_order, is_active, screen')
+          .eq('is_active', true)
+          .eq('screen', 'rsa')
+          .order('display_order', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (!active || error || !Array.isArray(data) || data.length === 0) return;
+
+        setReviews(
+          data.map((row: any) => ({
+            name: row.name || '',
+            car: row.car || '',
+            stars: row.stars || 5,
+            text: row.text || '',
+            date: row.date || '',
+          })),
+        );
+      } catch {
+        // keep fallback reviews
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const onServicePress = (svc: RsaServiceDef) => {
+    if (svc.action === 'book_periodic') {
+      navigation.navigate('PublicBookServiceNow', {
+        city,
+        serviceCategory: 'PERIODIC',
+        serviceCategoryName: 'Periodic Car Service',
+      });
+      return;
+    }
+    openPhoneCall(RSA_PHONE);
+  };
+
   const handleHeroPress = () => {
     const routeName = heroBanner.route_name || 'RoadsideAssistance';
     const params = { ...(heroBanner.route_params || {}) } as Record<string, unknown>;
@@ -143,122 +189,128 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
 
-          {/* ── RSA Hero Banner (same style as Home hero — admin-managed) ── */}
+          {/* Hero cover image — unchanged */}
           <View style={s.heroCard}>
             <TouchableOpacity activeOpacity={0.92} onPress={handleHeroPress} style={s.heroTouchable}>
               <Image source={{ uri: heroBanner.image_url }} style={s.heroFullImage} resizeMode="cover" />
             </TouchableOpacity>
           </View>
 
-          {/* ── RSA Emergency Card (red) ── */}
-          <View style={s.rsaHeroCard}>
-            <Text style={s.rsaHeroTitle}>Roadside Assistance</Text>
-            <Text style={s.rsaHeroSub}>Quick on-road solutions for every car emergency.</Text>
-            {[
-              { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', icon: 'flash' as const, bg: '#F97316' },
-              { name: 'Car Towing Services', desc: 'Safe towing to nearest workshop.', icon: 'car-sport' as const, bg: '#3B82F6' },
-            ].map((svc) => (
-              <View key={svc.name} style={s.rsaHeroService}>
-                <View style={[s.rsaHeroIcon, { backgroundColor: svc.bg }]}>
-                  <Ionicons name={svc.icon} size={20} color="#FFFFFF" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rsaHeroServiceName}>{svc.name}</Text>
-                  <Text style={s.rsaHeroServiceDesc}>{svc.desc}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
+          {/* Slim emergency strip — not a heavy block */}
+          <View style={s.emergencyStrip}>
+            <View style={s.emergencyLeft}>
+              <View style={s.emergencyPulse}>
+                <View style={s.emergencyDot} />
               </View>
-            ))}
+              <View style={{ flex: 1 }}>
+                <Text style={s.emergencyTitle}>24/7 Emergency Help</Text>
+                <Text style={s.emergencySub}>Avg. response in 30–45 mins • Pan-India coverage</Text>
+              </View>
+            </View>
             <TouchableOpacity
-              style={s.rsaEmergencyBtn}
+              style={s.emergencyCallBtn}
               activeOpacity={0.85}
               onPress={() => openPhoneCall(RSA_PHONE)}
             >
-              <Ionicons name="call" size={18} color="#DC2626" />
-              <Text style={s.rsaEmergencyBtnText}>Call Emergency Helpline</Text>
+              <Ionicons name="call" size={16} color="#FFFFFF" />
+              <Text style={s.emergencyCallText}>Call Now</Text>
             </TouchableOpacity>
           </View>
 
-          {/* ── Services Grid (2-column) ── */}
-          <View style={s.rsaCard}>
-            <SectionHeading
-              light
-              spacing="compact"
-              title="Our RSA Services"
-              subtitle="Tap any service to get instant help."
-              style={s.rsaHeading}
-            />
-
-            <View style={s.serviceGrid}>
-              {RSA_SERVICES.map((svc) => (
-                <TouchableOpacity
-                  key={svc.name}
-                  style={s.serviceItem}
-                  activeOpacity={0.8}
-                  onPress={() => openPhoneCall(RSA_PHONE)}
-                >
-                  <View style={[s.serviceIcon, { backgroundColor: svc.bg }]}>
-                    <Ionicons name={svc.icon} size={20} color="#FFFFFF" />
-                  </View>
-                  <Text style={s.serviceName} numberOfLines={2}>{svc.name}</Text>
-                  <Text style={s.serviceDesc} numberOfLines={2}>{svc.desc}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          {/* Services — original 2-column grid */}
+          <SectionHeading
+            title="Our RSA Services"
+            subtitle="Tap any service to get instant help."
+            style={s.servicesHeading}
+          />
+          <View style={s.serviceGrid}>
+            {RSA_SERVICES.map((svc) => (
+              <TouchableOpacity
+                key={svc.name}
+                style={s.serviceItem}
+                activeOpacity={0.8}
+                onPress={() => onServicePress(svc)}
+              >
+                <RsaServiceIcon svc={svc} />
+                <Text style={s.serviceName} numberOfLines={2}>{svc.name}</Text>
+                <Text style={s.serviceDesc} numberOfLines={2}>{svc.desc}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           <RSAMembershipPlansSection navigation={navigation} slot="after_services" />
           <MembershipCardsBlock screen="rsa" slot="after_services" navigation={navigation} bannerOnly />
 
-          {/* ── Pricing Section ── */}
           <RSAMembershipPlansSection navigation={navigation} slot="before_pricing" />
           <MembershipCardsBlock screen="rsa" slot="before_pricing" navigation={navigation} bannerOnly />
+
+          <MembershipTermsCard membershipType="RSA" style={s.termsCardWrap} />
+
+          {/* Pricing — single light card, not dark blocks */}
           <SectionHeading
             title="Pricing"
             subtitle="Clear and affordable pricing. Exact cost depends on location, vehicle type and distance."
             style={s.pricingHeadingWrap}
           />
 
-          <View style={s.priceCard}>
-            <Text style={s.priceLabel}>TOWING</Text>
-            <View style={s.priceRow}>
-              <Text style={s.priceValue}>₹25/km</Text>
-              <Text style={s.priceSuffix}>onwards</Text>
-            </View>
-            {['Safe towing with proper equipment', 'Pickup from breakdown spot', 'Drop to nearest service location'].map((t) => (
-              <View key={t} style={s.priceBullet}>
-                <View style={s.bulletDot}><Ionicons name="star" size={10} color="#22C55E" /></View>
-                <Text style={s.priceBulletText}>{t}</Text>
+          <View style={s.pricingCard}>
+            <View style={s.pricingRow}>
+              <View style={s.pricingCol}>
+                <View style={[s.pricingIconWrap, { backgroundColor: '#3B82F6' }]}>
+                  <MaterialCommunityIcons name="tow-truck" size={18} color="#FFFFFF" />
+                </View>
+                <Text style={s.priceLabel}>Towing</Text>
+                <View style={s.priceRow}>
+                  <Text style={s.priceValue}>₹25/km</Text>
+                  <Text style={s.priceSuffix}>onwards</Text>
+                </View>
+                {['Safe towing with proper equipment', 'Pickup from breakdown spot', 'Drop to nearest workshop'].map((t) => (
+                  <View key={t} style={s.priceBullet}>
+                    <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                    <Text style={s.priceBulletText}>{t}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-            <TouchableOpacity style={s.towingBtn} onPress={() => openPhoneCall(RSA_PHONE)}>
-              <Text style={s.towingBtnText}>Request Towing</Text>
-            </TouchableOpacity>
-          </View>
 
-          <View style={s.priceCard}>
-            <Text style={s.priceLabel}>RSA SUPPORT</Text>
-            <View style={s.priceRow}>
-              <Text style={s.priceValue}>On Demand</Text>
-              <Text style={s.priceSuffix}>as per service</Text>
-            </View>
-            {['Jumpstart, puncture, fuel & minor fixes', 'AI-powered emergency dispatch', '24×7 customer support'].map((t) => (
-              <View key={t} style={s.priceBullet}>
-                <View style={s.bulletDot}><Ionicons name="star" size={10} color="#22C55E" /></View>
-                <Text style={s.priceBulletText}>{t}</Text>
+              <View style={s.pricingDivider} />
+
+              <View style={s.pricingCol}>
+                <View style={[s.pricingIconWrap, { backgroundColor: '#DC2626' }]}>
+                  <MaterialCommunityIcons name="shield-car" size={18} color="#FFFFFF" />
+                </View>
+                <Text style={s.priceLabel}>RSA Support</Text>
+                <View style={s.priceRow}>
+                  <Text style={s.priceValue}>On Demand</Text>
+                </View>
+                <Text style={s.priceSuffixInline}>As per service type</Text>
+                {['Jumpstart, puncture, fuel & minor fixes', 'AI-powered emergency dispatch', '24×7 customer support'].map((t) => (
+                  <View key={t} style={s.priceBullet}>
+                    <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                    <Text style={s.priceBulletText}>{t}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-            <TouchableOpacity style={s.callQuoteBtn} onPress={() => openPhoneCall(RSA_PHONE)}>
-              <Ionicons name="call" size={16} color="#FFFFFF" />
-              <Text style={s.callQuoteBtnText}>Call Now for Quote</Text>
-            </TouchableOpacity>
-          </View>
+            </View>
 
+            <Text style={s.pricingDisclaimer}>
+              Base charge covers dispatch and loading. Distance charges apply beyond minimum km.
+            </Text>
+
+            <View style={s.pricingActions}>
+              <TouchableOpacity style={s.pricingBtnPrimary} onPress={() => openPhoneCall(RSA_PHONE)}>
+                <Text style={s.pricingBtnPrimaryText}>Request Towing</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.pricingBtnOutline} onPress={() => openPhoneCall(RSA_PHONE)}>
+                <Ionicons name="call-outline" size={16} color={COLORS.primary} />
+                <Text style={s.pricingBtnOutlineText}>Get Quote</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           <RSAMembershipPlansSection navigation={navigation} slot="before_reviews" />
           <MembershipCardsBlock screen="rsa" slot="before_reviews" navigation={navigation} bannerOnly />
 
-          {/* ── Reviews Slider ── */}
+          {/* Reviews */}
           <SectionHeading
             title="What Our Customers Say"
             subtitle="Real reviews from verified customers"
@@ -271,8 +323,8 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             style={s.reviewHeadingWrap}
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.reviewScroll}>
-            {RSA_REVIEWS.slice(0, 3).map((review) => (
-              <View key={review.name} style={s.reviewCard}>
+            {reviews.slice(0, 3).map((review) => (
+              <View key={`${review.name}-${review.date}`} style={s.reviewCard}>
                 <View style={s.reviewStars}>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <Ionicons key={i} name={i < review.stars ? 'star' : 'star-outline'} size={12} color="#F59E0B" />
@@ -293,32 +345,33 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           </ScrollView>
           <TouchableOpacity style={s.showMoreBtn} onPress={() => setShowAllReviews(true)}>
             <Text style={s.showMoreBtnText}>Show More Reviews</Text>
-            <Ionicons name="chevron-down" size={16} color="#2563EB" />
+            <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
           </TouchableOpacity>
-
 
           <RSAMembershipPlansSection navigation={navigation} slot="before_faqs" />
           <MembershipCardsBlock screen="rsa" slot="before_faqs" navigation={navigation} bannerOnly />
 
-          {/* ── FAQs Section ── */}
+          {/* FAQs — minimal accordion */}
           <SectionHeading
             title="Frequently Asked Questions"
             subtitle="Answers to common RSA questions"
             style={s.faqHeadingWrap}
           />
-          {RSA_FAQS.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
-            <View key={faq.q} style={s.faqCard}>
+          {rsaFaqs.slice(0, DEFAULT_FAQ_COUNT).map((faq, idx) => (
+            <View key={faq.q} style={[s.faqCard, openFaqIdx === idx && s.faqCardOpen]}>
               <TouchableOpacity style={s.faqHeader} onPress={() => setOpenFaqIdx((prev) => (prev === idx ? null : idx))}>
                 <Text style={s.faqQ}>{faq.q}</Text>
-                <Ionicons name={openFaqIdx === idx ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
+                <View style={[s.faqChevron, openFaqIdx === idx && s.faqChevronOpen]}>
+                  <Ionicons name="chevron-down" size={14} color={COLORS.primary} />
+                </View>
               </TouchableOpacity>
               {openFaqIdx === idx && <Text style={s.faqA}>{faq.a}</Text>}
             </View>
           ))}
-          {RSA_FAQS.length > DEFAULT_FAQ_COUNT && (
+          {rsaFaqs.length > DEFAULT_FAQ_COUNT && (
             <TouchableOpacity style={s.showMoreBtn} onPress={() => setShowAllFaqs(true)}>
               <Text style={s.showMoreBtnText}>Show More FAQs</Text>
-              <Ionicons name="chevron-down" size={16} color="#2563EB" />
+              <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
             </TouchableOpacity>
           )}
 
@@ -337,7 +390,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           }}
         />
 
-        {/* ── All Reviews Modal ── */}
+        {/* All Reviews Modal */}
         <Modal visible={showAllReviews} transparent animationType="slide" onRequestClose={() => setShowAllReviews(false)}>
           <View style={s.modalOverlay}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllReviews(false)} />
@@ -351,8 +404,8 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
                 nestedScrollEnabled
                 bounces
               >
-                {RSA_REVIEWS.map((review) => (
-                  <View key={review.name} style={s.modalReviewCard}>
+                {reviews.map((review) => (
+                  <View key={`${review.name}-${review.date}`} style={s.modalReviewCard}>
                     <View style={s.reviewStars}>
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Ionicons key={i} name={i < review.stars ? 'star' : 'star-outline'} size={14} color="#F59E0B" />
@@ -375,28 +428,31 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
           </View>
         </Modal>
 
-        {/* ── All FAQs Modal ── */}
+        {/* All FAQs Modal */}
         <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
-          <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowAllFaqs(false)}>
-            <TouchableOpacity style={s.modalSheet} activeOpacity={1} onPress={() => undefined}>
+          <View style={s.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllFaqs(false)} />
+            <View style={s.modalSheet}>
               <View style={s.modalHandle} />
               <Text style={s.modalTitle}>All FAQs</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={s.modalScroll}>
-                {RSA_FAQS.map((faq, idx) => (
-                  <View key={faq.q} style={s.faqCard}>
+                {rsaFaqs.map((faq, idx) => (
+                  <View key={faq.q} style={[s.faqCard, openFaqIdx === idx + 100 && s.faqCardOpen]}>
                     <TouchableOpacity
                       style={s.faqHeader}
                       onPress={() => setOpenFaqIdx((prev) => (prev === idx + 100 ? null : idx + 100))}
                     >
                       <Text style={s.faqQ}>{faq.q}</Text>
-                      <Ionicons name={openFaqIdx === idx + 100 ? 'chevron-up' : 'chevron-forward'} size={18} color="#6B7280" />
+                      <View style={[s.faqChevron, openFaqIdx === idx + 100 && s.faqChevronOpen]}>
+                        <Ionicons name="chevron-down" size={14} color={COLORS.primary} />
+                      </View>
                     </TouchableOpacity>
                     {openFaqIdx === idx + 100 && <Text style={s.faqA}>{faq.a}</Text>}
                   </View>
                 ))}
               </ScrollView>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
       </View>
     </SafeAreaView>
@@ -404,8 +460,8 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F0F7FF' },
-  screen: { flex: 1, backgroundColor: '#F0F7FF' },
+  safe: { flex: 1, backgroundColor: COLORS.background },
+  screen: { flex: 1, backgroundColor: COLORS.background },
   header: {
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -418,7 +474,7 @@ const s = StyleSheet.create({
 
   heroCard: {
     marginTop: 8,
-    marginBottom: 16,
+    marginBottom: 14,
     borderRadius: 32,
     overflow: 'hidden',
     shadowColor: '#000000',
@@ -437,53 +493,56 @@ const s = StyleSheet.create({
     borderRadius: 32,
   },
 
-  /* ── RSA Hero (Red Card) ── */
-  rsaHeroCard: {
-    marginTop: 0,
-    borderRadius: 32,
-    backgroundColor: '#DC2626',
-    padding: 24,
-    shadowColor: '#DC2626',
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  rsaHeroTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '700' },
-  rsaHeroSub: { marginTop: 4, color: 'rgba(255,255,255,0.84)', fontSize: 12 },
-  rsaHeroService: {
+  emergencyStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 12,
-  },
-  rsaHeroIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  rsaHeroServiceName: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  rsaHeroServiceDesc: { color: 'rgba(255,255,255,0.7)', fontSize: 10, marginTop: 2 },
-  rsaEmergencyBtn: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 14,
-  },
-  rsaEmergencyBtnText: { color: '#DC2626', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  /* ── Dark Services Card (2-col grid) ── */
-  rsaCard: {
-    marginTop: 16,
-    borderRadius: 32,
-    backgroundColor: '#171717',
-    padding: 24,
-  },
-  rsaHeading: {
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    shadowColor: '#DC2626',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
     marginBottom: 8,
   },
+  emergencyLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  emergencyPulse: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emergencyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#DC2626',
+  },
+  emergencyTitle: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  emergencySub: { marginTop: 2, fontSize: 10, color: '#6B7280', lineHeight: 14 },
+  emergencyCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#DC2626',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  emergencyCallText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+
+  servicesHeading: { marginTop: 8 },
   serviceGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -491,53 +550,124 @@ const s = StyleSheet.create({
   },
   serviceItem: {
     width: '48%' as any,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: '#E5E7EB',
     borderRadius: 16,
     padding: 14,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  serviceIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  serviceName: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', textAlign: 'center', marginBottom: 4 },
-  serviceDesc: { fontSize: 9, color: 'rgba(255,255,255,0.6)', textAlign: 'center', lineHeight: 13 },
+  serviceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  serviceName: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  serviceDesc: {
+    fontSize: 9,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 13,
+  },
 
-  /* ── Pricing ── */
-  pricingHeadingWrap: { marginTop: 8 },
-  priceCard: {
-    backgroundColor: '#171717',
+  pricingHeadingWrap: { marginTop: 4 },
+  pricingCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    padding: 24,
+    padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    marginBottom: 12,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  priceLabel: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
-  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 4, marginBottom: 16 },
-  priceValue: { fontSize: 28, fontWeight: '900', color: '#FFFFFF' },
-  priceSuffix: { fontSize: 12, color: '#6B7280' },
-  priceBullet: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  bulletDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: 'rgba(34,197,94,0.2)', alignItems: 'center', justifyContent: 'center' },
-  priceBulletText: { fontSize: 12, color: '#D1D5DB' },
-  towingBtn: {
-    marginTop: 16, height: 50, borderRadius: 16,
-    backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center',
+  pricingRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  towingBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  callQuoteBtn: {
+  pricingCol: {
+    flex: 1,
+  },
+  pricingDivider: {
+    width: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  pricingIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  priceLabel: { fontSize: 10, fontWeight: '800', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8 },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 4, marginBottom: 10 },
+  priceValue: { fontSize: 22, fontWeight: '900', color: '#111827' },
+  priceSuffix: { fontSize: 10, color: '#9CA3AF' },
+  priceSuffixInline: { fontSize: 10, color: '#9CA3AF', marginTop: -6, marginBottom: 10 },
+  priceBullet: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 6 },
+  priceBulletText: { flex: 1, fontSize: 10, color: '#6B7280', lineHeight: 14 },
+  pricingActions: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 16,
-    height: 50,
-    borderRadius: 16,
-    backgroundColor: '#2563EB',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  pricingBtnPrimary: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pricingBtnPrimaryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  pricingBtnOutline: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
-  callQuoteBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  pricingBtnOutlineText: { color: COLORS.primary, fontSize: 13, fontWeight: '800' },
+  pricingDisclaimer: {
+    marginTop: 4,
+    marginBottom: 4,
+    paddingTop: 14,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#DC2626',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
 
-  /* ── Reviews ── */
-  reviewHeadingWrap: { marginTop: 12 },
+  reviewHeadingWrap: { marginTop: 28 },
   reviewBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A',
@@ -546,44 +676,70 @@ const s = StyleSheet.create({
   reviewBadgeText: { fontSize: 11, fontWeight: '800', color: '#92400E' },
   reviewScroll: { gap: 12 },
   reviewCard: {
-    width: 280, borderRadius: 24, padding: 20,
-    backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6',
-    marginRight: 12, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
+    width: 280, borderRadius: 20, padding: 18,
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB',
+    marginRight: 12,
+    shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
   },
-  reviewStars: { flexDirection: 'row', gap: 2, marginBottom: 12 },
-  reviewText: { fontSize: 13, color: '#374151', lineHeight: 20, fontStyle: 'italic', marginBottom: 16 },
+  reviewStars: { flexDirection: 'row', gap: 2, marginBottom: 10 },
+  reviewText: { fontSize: 13, color: '#374151', lineHeight: 20, fontStyle: 'italic', marginBottom: 14 },
   reviewAuthor: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   reviewAvatar: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center',
   },
-  reviewAvatarText: { fontSize: 14, fontWeight: '700', color: '#2563EB' },
+  reviewAvatarText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
   reviewName: { fontSize: 12, fontWeight: '700', color: '#111827' },
   reviewCar: { fontSize: 10, color: '#9CA3AF', marginTop: 1 },
   showMoreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 4, marginTop: 12, marginBottom: 8,
   },
-  showMoreBtnText: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
+  showMoreBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
 
-  /* ── FAQs ── */
-  faqHeadingWrap: { marginTop: 16 },
+  faqHeadingWrap: { marginTop: 8 },
+  termsCardWrap: { marginTop: 4, marginBottom: 8 },
   faqCard: {
-    borderRadius: 16, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8, overflow: 'hidden',
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  faqCardOpen: {
+    borderColor: '#DBEAFE',
+    backgroundColor: '#FAFCFF',
   },
   faqHeader: {
-    paddingHorizontal: 14, paddingVertical: 12,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   faqQ: { flex: 1, fontSize: 13, color: '#111827', fontWeight: '700' },
+  faqChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  faqChevronOpen: {
+    backgroundColor: '#EFF6FF',
+    transform: [{ rotate: '180deg' }],
+  },
   faqA: {
-    borderTopWidth: 1, borderTopColor: '#F3F4F6',
-    paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 12, color: '#6B7280', lineHeight: 18,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
   },
 
-  /* ── Modals (Reviews + FAQs) ── */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: '#FFFFFF',

@@ -36,6 +36,11 @@ export type PreviewPlanForm = {
   second_car_addon_icon?: string | null;
   second_car_addon_icon_class?: string | null;
   second_car_addon_icon_url?: string | null;
+  show_second_car_addon_app?: boolean;
+  show_second_car_addon_web?: boolean;
+  header_icon?: string | null;
+  header_icon_class?: string | null;
+  header_icon_url?: string | null;
   membership_type?: string;
   accent_color?: string | null;
   accent_text_color?: string | null;
@@ -113,8 +118,19 @@ export default function MembershipValueCardPreview({
               </div>
             ) : null}
           </div>
-          <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center text-xl">
-            {isRsa ? '🛟' : '👑'}
+          <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center overflow-hidden">
+            {plan.header_icon_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={plan.header_icon_url} alt="" className="h-6 w-6 object-contain" />
+            ) : plan.header_icon_class ? (
+              <i className={plan.header_icon_class} style={{ fontSize: 20, color: onAccent, lineHeight: 1 }} aria-hidden />
+            ) : plan.header_icon ? (
+              <span className="text-[10px] font-bold uppercase" style={{ color: onAccent }}>
+                {plan.header_icon.slice(0, 4)}
+              </span>
+            ) : (
+              <span className="text-xl">{isRsa ? '🛟' : '👑'}</span>
+            )}
           </div>
         </div>
 
@@ -212,6 +228,7 @@ export default function MembershipValueCardPreview({
           </div>
         </div>
 
+        {plan.show_second_car_addon_app !== false ? (
         <div
           className="mx-5 mb-4 rounded-xl border border-dashed p-3 flex items-center gap-3"
           style={{ borderColor: totalBandBorder, backgroundColor: '#F8FAFC' }}
@@ -234,6 +251,9 @@ export default function MembershipValueCardPreview({
             +{inr(Number(plan.second_car_addon_price || 0))}
           </div>
         </div>
+        ) : (
+          <p className="mx-5 mb-4 text-center text-[10px] text-gray-400">2nd car add-on hidden in mobile app</p>
+        )}
 
         {plan.footer_note ? (
           <p className="text-center text-[10px] text-gray-400 px-5 pb-4 leading-relaxed">{plan.footer_note}</p>

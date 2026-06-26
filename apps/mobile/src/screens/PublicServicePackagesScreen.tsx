@@ -14,10 +14,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
-import { FAQ_CATEGORIES } from '../constants/publicAppData';
+import { fetchPublicFaqs, serviceSectionKeyFromTitle, type PublicFaqItem } from '../lib/publicFaqs';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
+import { useAppFooter } from '../context/AppFooterContext';
 import SectionHeading from '../components/SectionHeading';
 import CompleteTransparencySection from '../components/CompleteTransparencySection';
 import { openPhoneCall, openEmail } from '../lib/phone';
@@ -216,10 +217,13 @@ const SERVICE_ID_TO_CATEGORY_KEYWORD: Record<string, string> = {
   '8': 'DETAIL',
   '9': 'DENT',
 };
-const GENERAL_FAQS = FAQ_CATEGORIES[0].items;
+const GENERAL_FAQS_FALLBACK: PublicFaqItem[] = [
+  { q: 'What is My FNG?', a: 'My FNG is a network of A Grade multi-brand car servicing stations across Mumbai, Navi Mumbai, Thane, Palghar, Nashik and Pune.' },
+];
 const DEFAULT_FAQ_COUNT = 5;
 
 export default function PublicServicePackagesScreen({ navigation, route }: Props) {
+  const { footer } = useAppFooter();
   const city: string | undefined = route?.params?.city;
   const initialServiceId: string | null = route?.params?.selectedServiceId ?? '1';
   const [selectedService, setSelectedService] = useState<string>(initialServiceId || '1');
@@ -228,6 +232,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   const [promoIdx, setPromoIdx] = useState(0);
   const [promoBanners, setPromoBanners] = useState<PromoBanner[]>(FALLBACK_SERVICE_PAGE_PROMO_BANNERS);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [faqs, setFaqs] = useState<PublicFaqItem[]>(GENERAL_FAQS_FALLBACK);
   const [showComparison, setShowComparison] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const detailY = useRef(0);
@@ -278,12 +283,28 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
     };
   }, []);
 
-  const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
-  const faqs = useMemo(() => {
+  useEffect(() => {
+    let active = true;
     const catTitle = SERVICE_ID_TO_FAQ[selectedService];
-    const found = catTitle ? FAQ_CATEGORIES.find((c) => c.title === catTitle) : null;
-    return found?.items || GENERAL_FAQS;
+    const sectionKey = catTitle ? serviceSectionKeyFromTitle(catTitle) : 'general';
+    fetchPublicFaqs({
+      group: catTitle ? 'SERVICE' : 'GENERAL',
+      section: catTitle ? sectionKey : undefined,
+      sectionTitle: catTitle,
+      platform: 'app',
+    })
+      .then((items) => {
+        if (active && items.length) setFaqs(items);
+      })
+      .catch(() => {
+        if (active) setFaqs(GENERAL_FAQS_FALLBACK);
+      });
+    return () => {
+      active = false;
+    };
   }, [selectedService]);
+
+  const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.screen}>
@@ -454,9 +475,9 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
           />
           <View style={s.whyCard}>
             {([
-              ['4.8/5', 'RATING', 'star' as const],
-              ['17K+', 'CARS', 'trophy' as const],
-              ['100+', 'WORKSHOPS', 'construct' as const],
+              [`${footer.stats[1].value}/5`, 'RATING', 'star' as const],
+              [footer.stats[0].value, 'CARS', 'trophy' as const],
+              [footer.trust_grid[2].value, 'WORKSHOPS', 'construct' as const],
               ['Warranty', 'PARTS', 'shield-checkmark' as const],
               ['Live', 'UPDATES', 'eye' as const],
             ] as const).map(([value, label, icon]) => (
