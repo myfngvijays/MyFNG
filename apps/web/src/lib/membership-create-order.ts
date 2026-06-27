@@ -88,7 +88,9 @@ export async function createMembershipPaymentOrder(input: MembershipCreateOrderI
     if (!leadCtx.ok) {
       return { ok: false as const, status: leadCtx.status, error: leadCtx.error };
     }
-    bookingBundleDiscount = leadCtx.ctx.bundleDiscount;
+    if (leadCtx.ctx.bundleDiscount > 0) {
+      bookingBundleDiscount = leadCtx.ctx.bundleDiscount;
+    }
   }
 
   let discountAmount = 0;

@@ -64,7 +64,7 @@ export function usePendingPostBookingMembershipOffer(enabled: boolean) {
         ((await fetchPrimeMembershipConfig(ENV.API_URL).catch(() => null)) as AppMembershipPlan | null);
       setMembershipPlan(plan);
       const orders = Array.isArray(ordersRes?.orders) ? ordersRes.orders : [];
-      setPending(findPendingMembershipOfferOrder(orders, hasActiveMembership, plan || PRIME_MEMBERSHIP));
+      setPending(findPendingMembershipOfferOrder(orders, hasActiveMembership, plan || PRIME_MEMBERSHIP, mergedConfig.offer_window_minutes));
     } catch {
       setPending(null);
     }

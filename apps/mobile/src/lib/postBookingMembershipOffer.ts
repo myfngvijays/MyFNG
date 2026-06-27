@@ -361,7 +361,10 @@ export function resolveOrderWalletDeduction(order: any): number {
   return resolveExpiredOrderWalletOnServiceSubtotal(serviceSubtotal);
 }
 
-export function resolveOrderMembershipOffer(order: any): PostBookingMembershipOfferStatus | null {
+export function resolveOrderMembershipOffer(
+  order: any,
+  offerWindowMinutes?: number,
+): PostBookingMembershipOfferStatus | null {
   if (!order || order.membership_claim?.benefit_code) return null;
   const fromApi = order.post_booking_membership;
   if (fromApi?.expires_at) {
@@ -374,14 +377,15 @@ export function resolveOrderMembershipOffer(order: any): PostBookingMembershipOf
       expired: Boolean(fromApi.expired) || !fromApi.active,
     };
   }
-  return parsePostBookingMembershipOfferFromOrder(order);
+  return parsePostBookingMembershipOfferFromOrder(order, offerWindowMinutes);
 }
 
 export function buildMembershipOfferPayView(
   order: any,
   membershipListPrice: number | { priceNum?: number; price?: unknown },
+  offerWindowMinutes?: number,
 ): MembershipOfferPayView | null {
-  const offer = resolveOrderMembershipOffer(order);
+  const offer = resolveOrderMembershipOffer(order, offerWindowMinutes);
   if (!offer || !offer.active) return null;
   const listPrice =
     typeof membershipListPrice === 'number'
@@ -397,12 +401,13 @@ export function findPendingMembershipOfferOrder(
   orders: any[],
   hasActiveMembership: boolean,
   membershipPlan?: { priceNum?: number; price?: unknown } | null,
+  offerWindowMinutes?: number,
 ): { order: any; offerPayView: MembershipOfferPayView } | null {
   if (hasActiveMembership || !Array.isArray(orders) || orders.length === 0) return null;
   const priceSource = membershipPlan ?? { priceNum: 699 };
   let best: { order: any; offerPayView: MembershipOfferPayView } | null = null;
   for (const order of orders) {
-    const offerPayView = buildMembershipOfferPayView(order, priceSource);
+    const offerPayView = buildMembershipOfferPayView(order, priceSource, offerWindowMinutes);
     if (!offerPayView) continue;
     if (
       !best ||
