@@ -82,7 +82,17 @@ export async function getMembershipBenefitsStatus(
 }> {
   const membership = await getActiveCustomerMembership(supabaseAdmin, customerId);
   if (!membership) return { benefits: [], history: [] };
+  return getMembershipBenefitsStatusForMembership(supabaseAdmin, membership);
+}
 
+export async function getMembershipBenefitsStatusForMembership(
+  supabaseAdmin: any,
+  membership: { id: string; customer_id: string; plan_id: string },
+): Promise<{
+  benefits: MembershipBenefitStatus[];
+  history: MembershipClaimHistoryItem[];
+}> {
+  const customerId = String(membership.customer_id);
   const { data: planBenefits } = await supabaseAdmin
     .from('membership_benefits')
     .select('benefit_code, title, max_usage, display_order, active, show_claim_button')

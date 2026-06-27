@@ -7,6 +7,7 @@ export type ReportDatePreset =
   | 'this_month'
   | 'last_month'
   | 'this_year'
+  | 'all_time'
   | 'custom';
 
 export const REPORT_DATE_PRESETS: Array<{ value: ReportDatePreset; label: string }> = [
@@ -18,6 +19,7 @@ export const REPORT_DATE_PRESETS: Array<{ value: ReportDatePreset; label: string
   { value: 'this_month', label: 'This month' },
   { value: 'last_month', label: 'Last month' },
   { value: 'this_year', label: 'This year' },
+  { value: 'all_time', label: 'All time' },
   { value: 'custom', label: 'Custom range' },
 ];
 
@@ -113,6 +115,11 @@ export function resolveReportDateRange(
       startYmd = istYmdFromParts(y, 0, 1);
       endYmd = today;
       label = 'This year';
+      break;
+    case 'all_time':
+      startYmd = '1970-01-01';
+      endYmd = today;
+      label = 'All time';
       break;
     case 'custom':
       startYmd = String(customStart || today).slice(0, 10);

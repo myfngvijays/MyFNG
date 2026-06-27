@@ -27,6 +27,7 @@ import DateTimePicker, { type DateTimePickerEvent } from '@react-native-communit
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
 import { ENV } from '../config/environment';
+import { reverseGeocodeCoords } from '../lib/reverseGeocode';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
@@ -79,7 +80,7 @@ import {
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
-import { countLiveBookingCart } from '../lib/cartBadgeCount';
+import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
 import VehicleImage from '../components/VehicleImage';
@@ -790,6 +791,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       paymentMethod: liveForm.paymentMethod || undefined,
     };
     saveBookingDraft(draft);
+    notifyCartBadgeCountChanged();
   }, [draftId, resumeDraft?.createdAt]);
 
   useEffect(() => {
@@ -939,23 +941,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }
       const last = await Location.getLastKnownPositionAsync();
       const loc = last || await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&zoom=18&addressdetails=1`,
-        { headers: { 'User-Agent': 'MyFNG-App/1.0' } }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const addr = data?.address || {};
-        const parts = [
-          addr.neighbourhood || addr.suburb || addr.locality || '',
-          addr.city || addr.town || addr.village || '',
-          addr.state || '',
-          addr.postcode || '',
-        ].filter(Boolean);
-        if (parts.length > 0) {
-          setForm((p) => ({ ...p, pickupAddress: parts.join(', ') }));
-          setSelectedSavedAddressId(null);
-        }
+      const parsed = await reverseGeocodeCoords(loc.coords.latitude, loc.coords.longitude);
+      const parts = [parsed.building, parsed.nearbyArea, parsed.city, parsed.pincode].filter(Boolean);
+      if (parts.length > 0) {
+        setForm((p) => ({
+          ...p,
+          pickupAddress: parts.join(', '),
+          flatNumber: parsed.building || p.flatNumber,
+          landmark: parsed.nearbyArea || p.landmark,
+        }));
+        setSelectedSavedAddressId(null);
       }
     } catch {
       Alert.alert('Error', 'Could not detect address. Please enter manually.');
@@ -984,13 +979,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         return;
       }
       const { latitude, longitude } = (position as any).coords;
-      const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
-      const p = (places && places[0]) || {};
+      const parsed = await reverseGeocodeCoords(latitude, longitude);
       setNewAddrForm((prev) => ({
         ...prev,
-        line2: String((p as any).street || (p as any).name || (p as any).district || '').trim(),
-        city: String((p as any).city || (p as any).subregion || '').trim(),
-        pincode: String((p as any).postalCode || '').trim(),
+        line1: parsed.building,
+        line2: parsed.nearbyArea,
+        city: parsed.city,
+        pincode: parsed.pincode,
       }));
     } catch {
       Alert.alert('Location', 'Unable to fetch. Enter manually.');
@@ -1600,6 +1595,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       bookingCompletedRef.current = true;
       await persistNewPickupAddressIfNeeded();
       await removeBookingDraft(draftId);
+      notifyCartBadgeCountChanged();
 
       const createdLeadId = createdLead.id;
       const savedLeadNumber = createdLead.lead_number || leadNumber;
@@ -2431,9 +2427,21 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}>
-      <View style={styles.screen}>
-        <ScrollView ref={scrollRef} contentContainerStyle={[styles.container, keyboardVisible && { paddingBottom: 350 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.container,
+            keyboardVisible ? { paddingBottom: 180 } : null,
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           {/* Top header */}
           <View style={styles.top}>
             <View style={styles.topRow}>
@@ -4014,23 +4022,24 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
           <View style={styles.footerPad} />
         </ScrollView>
+      </KeyboardAvoidingView>
 
-        <PublicPillNav
-          activeTab="services"
-          onPressTab={(tab: PublicPillNavTab) => {
-            if (tab === 'home') navigation.navigate('PublicHome');
-            if (tab === 'services')
-              navigation.navigate('PublicServicePackages', { city: form.city?.name || undefined });
-            if (tab === 'ai')
-              navigation.navigate('AIBooking', { city: form.city?.name || undefined, fullScreen: true });
-            if (tab === 'roadside')
-              navigation.navigate('RoadsideAssistance', { city: form.city?.name || undefined });
-            if (tab === 'account') navigation.navigate('Settings');
-            if (tab === 'profile') navigation.navigate('Settings');
-            if (tab === 'settings')
-              Alert.alert('Support', 'Use AI booking or call support from the home screen.');
-          }}
-        />
+      <PublicPillNav
+        activeTab="services"
+        onPressTab={(tab: PublicPillNavTab) => {
+          if (tab === 'home') navigation.navigate('PublicHome');
+          if (tab === 'services')
+            navigation.navigate('PublicServicePackages', { city: form.city?.name || undefined });
+          if (tab === 'ai')
+            navigation.navigate('AIBooking', { city: form.city?.name || undefined, fullScreen: true });
+          if (tab === 'roadside')
+            navigation.navigate('RoadsideAssistance', { city: form.city?.name || undefined });
+          if (tab === 'account') navigation.navigate('Settings');
+          if (tab === 'profile') navigation.navigate('Settings');
+          if (tab === 'settings')
+            Alert.alert('Support', 'Use AI booking or call support from the home screen.');
+        }}
+      />
 
         {/* City modal */}
         <Modal
@@ -4116,6 +4125,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           visible={!!detailsService}
           transparent
           animationType="fade"
+          statusBarTranslucent
           onRequestClose={() => setDetailsService(null)}
         >
           <View style={styles.detailsOverlay}>
@@ -4464,8 +4474,6 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             </View>
           </View>
         </Modal>
-      </View>
-      </KeyboardAvoidingView>
 
       <WelcomeBonusCreditedModal
         visible={creditedWelcomeVisible}
@@ -5953,13 +5961,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 40,
+    paddingVertical: 24,
   },
   detailsCard: {
     width: '100%',
+    maxHeight: Dimensions.get('window').height * 0.88,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     overflow: 'hidden',
+    flexDirection: 'column',
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 16,
@@ -6065,10 +6075,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   detailsBodyWrap: {
-    height: Math.min(520, Dimensions.get('window').height * 0.55),
+    flexShrink: 1,
+    minHeight: 120,
+    maxHeight: Dimensions.get('window').height * 0.5,
   },
   detailsBody: {
-    flex: 1,
+    flexGrow: 1,
   },
   detailsBodyContent: {
     paddingHorizontal: 18,

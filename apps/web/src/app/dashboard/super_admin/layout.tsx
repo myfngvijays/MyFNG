@@ -220,6 +220,12 @@ const navigationItems: NavItem[] = [
         description: 'App users, bookings, wallet & membership',
       },
       {
+        name: 'Membership Customers',
+        href: '/dashboard/super_admin/membership-customers',
+        icon: Crown,
+        description: 'Prime members — plan, benefits claimed & wallet',
+      },
+      {
         name: 'Wallet Logic',
         href: '/dashboard/super_admin/wallet-logic',
         icon: Wallet,
@@ -243,6 +249,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/car-resale-valuations',
         icon: TrendingUp,
         description: 'Resale estimates from the mobile app',
+      },
+      {
+        name: 'Smart Tools Handler',
+        href: '/dashboard/super_admin/smart-tools',
+        icon: Wrench,
+        description: 'Enable, order & membership-gate mobile smart tools',
       },
     ],
   },
@@ -419,13 +431,15 @@ export default function SuperAdminLayout({
   React.useEffect(() => {
     if (
       pathname?.startsWith('/dashboard/super_admin/customer-insights') ||
+      pathname?.startsWith('/dashboard/super_admin/membership-customers') ||
       pathname?.startsWith('/dashboard/super_admin/wallet-logic')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Customers': true }));
     }
     if (
       pathname?.startsWith('/dashboard/super_admin/vehicle-health-reports') ||
-      pathname?.startsWith('/dashboard/super_admin/car-resale-valuations')
+      pathname?.startsWith('/dashboard/super_admin/car-resale-valuations') ||
+      pathname?.startsWith('/dashboard/super_admin/smart-tools')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Smart Tools': true }));
     }

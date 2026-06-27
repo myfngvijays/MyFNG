@@ -17,6 +17,7 @@ import { COLORS } from '../constants/theme';
 import { fetchPublicFaqs, serviceSectionKeyFromTitle, type PublicFaqItem } from '../lib/publicFaqs';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
+import SmartToolsBlock from '../components/SmartToolsSection';
 import ReferAndFooter from '../components/ReferAndFooter';
 import { useAppFooter } from '../context/AppFooterContext';
 import SectionHeading from '../components/SectionHeading';
@@ -469,6 +470,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
           {/* Why MyFNG */}
           <MembershipCardsBlock screen="services" slot="before_why_myfng" navigation={navigation} />
+          <SmartToolsBlock screen="services" slot="before_why_myfng" navigation={navigation} compact />
           <SectionHeading
             title="Why MyFNG"
             subtitle="Trusted by thousands of car owners across India"
@@ -493,6 +495,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
 
           {/* Complete Transparency */}
           <MembershipCardsBlock screen="services" slot="before_transparency" navigation={navigation} bannerOnly />
+          <SmartToolsBlock screen="services" slot="before_transparency" navigation={navigation} compact />
           <CompleteTransparencySection />
 
           {/* Service FAQs */}

@@ -38,13 +38,11 @@ export default function PublicHeader({
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={onPressCart} activeOpacity={0.85}>
             <Ionicons name="cart-outline" size={20} color="#525252" />
-            {badgeCount > 0 ? (
-              <View style={[styles.cartBadge, badgeCount > 9 ? styles.cartBadgeWide : null]}>
-                <Text style={styles.cartBadgeText} numberOfLines={1}>
-                  {badgeLabel}
-                </Text>
-              </View>
-            ) : null}
+            <View style={[styles.cartBadge, badgeCount > 9 ? styles.cartBadgeWide : null]}>
+              <Text style={styles.cartBadgeText} numberOfLines={1}>
+                {badgeLabel}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>

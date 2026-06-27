@@ -48,6 +48,14 @@ import {
 } from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { ENV } from '../config/environment';
+import { reverseGeocodeCoords } from '../lib/reverseGeocode';
+import { notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
+
+const ADDRESS_TYPE_OPTIONS = [
+  { label: 'Home' as const, icon: 'home-outline' as const },
+  { label: 'Work' as const, icon: 'briefcase-outline' as const },
+  { label: 'Others' as const, icon: 'location-outline' as const },
+];
 import NotificationPreferenceSwitch from '../components/NotificationPreferenceSwitch';
 import {
   isExpoPushConfigured,
@@ -97,6 +105,7 @@ import PostBookingMembershipOfferCard from '../components/PostBookingMembershipO
 import PostBookingMembershipExpiredCard from '../components/PostBookingMembershipExpiredCard';
 import { useMembershipOfferExpiryAlerts } from '../hooks/useMembershipOfferExpiryAlerts';
 import MyCouponsContent from '../components/MyCouponsContent';
+import SettingsSmartToolsExpandable from '../components/SettingsSmartToolsExpandable';
 import {
   DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG,
   mergePostBookingMembershipAppConfig,
@@ -585,6 +594,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       setCartServerCart(res?.cart || null);
       const items = Array.isArray(res?.items) ? res.items : [];
       setCartItems(items);
+      notifyCartBadgeCountChanged();
     } catch (_err) {
       setCartServerCart(null);
       setCartItems([]);
@@ -718,15 +728,14 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         return;
       }
       const { latitude, longitude } = (position as any).coords;
-      await fillAddressFieldsFromCoords(latitude, longitude, (fields) => {
-        setPickupForm((prev) => ({
-          ...prev,
-          line1: prev.line1 || fields.line1 || prev.line1,
-          line2: prev.line2 || fields.line2 || fields.area || prev.line2,
-          city: prev.city || fields.city || prev.city,
-          pincode: prev.pincode || fields.pincode || prev.pincode,
-        }));
-      });
+      const parsed = await reverseGeocodeCoords(latitude, longitude);
+      setPickupForm((prev) => ({
+        ...prev,
+        line2: parsed.nearbyArea || prev.line2,
+        city: parsed.city || prev.city,
+        pincode: parsed.pincode || prev.pincode,
+        line1: parsed.building || prev.line1,
+      }));
     } catch (_err) {
       Alert.alert('Location', 'Unable to autofill address. Please enter manually.');
     } finally {
@@ -2422,108 +2431,6 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     setGeoPoint(null);
   };
 
-  const parseReverseAddress = (fullAddress: string, shortLabel: string) => {
-    const cleanDisplay = String(fullAddress || '').trim();
-    const cleanShort = String(shortLabel || '').trim();
-    const parts = cleanDisplay.split(',').map((x) => x.trim()).filter(Boolean);
-    const pincodeMatch = cleanDisplay.match(/\b\d{6}\b/);
-    const pincode = pincodeMatch ? pincodeMatch[0] : '';
-    const country = parts.length > 0 ? parts[parts.length - 1] : '';
-    const state = parts.length > 1 ? parts[parts.length - 2] : '';
-    const city = parts.length > 2 ? parts[parts.length - 3] : '';
-    const areaCandidate = parts.slice(0, Math.max(parts.length - 3, 1)).join(', ');
-    const area = areaCandidate || cleanShort || cleanDisplay;
-    return { area, city, state: state === country ? '' : state, pincode };
-  };
-
-  const fetchReverseAddress = async (latitude: number, longitude: number) => {
-    const googleRes = await fetch(
-      `${ENV.API_URL}/api/location/google-reverse?lat=${encodeURIComponent(String(latitude))}&lng=${encodeURIComponent(String(longitude))}`,
-    );
-    const googleData = await googleRes.json().catch(() => ({}));
-    if (googleRes.ok && (googleData?.address || googleData?.shortLabel)) {
-      return {
-        address: String(googleData?.address || ''),
-        shortLabel: String(googleData?.shortLabel || ''),
-        pincode: String(googleData?.pincode || ''),
-        city: String(googleData?.city || googleData?.district || ''),
-        state: String(googleData?.state || ''),
-        area: String(googleData?.area || ''),
-        building: String(googleData?.building || ''),
-      };
-    }
-
-    const fallbackRes = await fetch(
-      `${ENV.API_URL}/api/location/reverse?lat=${encodeURIComponent(String(latitude))}&lng=${encodeURIComponent(String(longitude))}`,
-    );
-    const fallbackData = await fallbackRes.json().catch(() => ({}));
-    if (!fallbackRes.ok) {
-      throw new Error(String(fallbackData?.error || googleData?.error || 'Unable to fetch nearby address.'));
-    }
-    const displayName = String(fallbackData?.displayName || '');
-    const shortLabel = String(fallbackData?.shortLabel || '');
-    const parsed = parseReverseAddress(displayName, shortLabel);
-    return {
-      address: displayName,
-      shortLabel,
-      pincode: String(fallbackData?.pincode || parsed.pincode || ''),
-      city: String(fallbackData?.city || parsed.city || ''),
-      state: String(fallbackData?.state || parsed.state || ''),
-      area: String(fallbackData?.area || parsed.area || shortLabel || ''),
-      building: '',
-    };
-  };
-
-  const fillAddressFieldsFromCoords = async (
-    latitude: number,
-    longitude: number,
-    apply: (fields: {
-      area?: string;
-      city?: string;
-      state?: string;
-      pincode?: string;
-      building?: string;
-      line1?: string;
-      line2?: string;
-    }) => void,
-  ) => {
-    const reverseAddress = await fetchReverseAddress(latitude, longitude);
-    apply({
-      area: reverseAddress.area || undefined,
-      city: reverseAddress.city || undefined,
-      state: reverseAddress.state || undefined,
-      pincode: reverseAddress.pincode || undefined,
-      building: reverseAddress.building || undefined,
-      line2: reverseAddress.area || undefined,
-      line1: reverseAddress.building || undefined,
-    });
-
-    const needsCityOrPin = !reverseAddress.city || !reverseAddress.pincode;
-    if (needsCityOrPin) {
-      const parsed = parseReverseAddress(reverseAddress.address, reverseAddress.shortLabel);
-      apply({
-        area: reverseAddress.area || parsed.area || undefined,
-        city: reverseAddress.city || parsed.city || undefined,
-        pincode: reverseAddress.pincode || parsed.pincode || undefined,
-        state: reverseAddress.state || parsed.state || undefined,
-      });
-    }
-
-    try {
-      const places = await Location.reverseGeocodeAsync({ latitude, longitude });
-      const p = (places && places[0]) || {};
-      apply({
-        line1: String((p as any).name || (p as any).street || '').trim() || undefined,
-        line2: String((p as any).district || (p as any).subregion || (p as any).street || '').trim() || undefined,
-        city: String((p as any).city || (p as any).subregion || '').trim() || undefined,
-        pincode: String((p as any).postalCode || '').replace(/\D/g, '').slice(0, 6) || undefined,
-        state: String((p as any).region || '').trim() || undefined,
-      });
-    } catch {
-      // expo geocode is best-effort
-    }
-  };
-
   const handleFetchCurrentLocation = async () => {
     try {
       setLocationLoading(true);
@@ -2596,13 +2503,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       setGeoPoint({ latitude, longitude });
 
       try {
-        await fillAddressFieldsFromCoords(latitude, longitude, (fields) => {
-          if (fields.area) setNewAddrArea((prev) => prev || fields.area || '');
-          if (fields.city) setNewAddrCity((prev) => prev || fields.city || '');
-          if (fields.state) setNewAddrState((prev) => prev || fields.state || '');
-          if (fields.pincode) setNewAddrPincode((prev) => prev || fields.pincode || '');
-          if (fields.building) setNewAddrLine2((prev) => prev || fields.building || '');
-        });
+        const parsed = await reverseGeocodeCoords(latitude, longitude);
+        setNewAddrArea(parsed.nearbyArea);
+        setNewAddrCity(parsed.city);
+        setNewAddrState(parsed.state);
+        setNewAddrPincode(parsed.pincode);
+        setNewAddrLine2(parsed.building);
       } catch (revErr: any) {
         Alert.alert(
           'Location captured',
@@ -3138,6 +3044,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       await removeBookingDraft(draft.id);
       setCartDrafts((prev) => prev.filter((d) => d.id !== draft.id));
       setCartSelectedDraftId(null);
+      notifyCartBadgeCountChanged();
 
       Alert.alert('Booking Created!', `Your booking ${created.lead_number || leadNumber} has been placed successfully.`);
       await hydrateCustomerData();
@@ -3442,6 +3349,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           />
         </View>
       ) : null}
+
+      <SettingsSmartToolsExpandable navigation={navigation} />
 
       <View style={styles.grid}>
         {MAIN_MENU.map((item) => (
@@ -4124,7 +4033,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
                     <Text style={styles.subTitle}>Address Type</Text>
                     <View style={styles.fuelPillRow}>
-                      {(['Home', 'Work', 'Others'] as const).map((label) => {
+                      {ADDRESS_TYPE_OPTIONS.map(({ label, icon }) => {
                         const active = newAddrLabel === label;
                         return (
                           <TouchableOpacity
@@ -4132,6 +4041,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                             style={[styles.fuelPill, active ? styles.fuelPillActive : null]}
                             onPress={() => setNewAddrLabel(label)}
                           >
+                            <Ionicons
+                              name={icon}
+                              size={14}
+                              color={active ? '#FFFFFF' : COLORS.primary}
+                              style={{ marginRight: 4 }}
+                            />
                             <Text style={[styles.fuelPillText, active ? styles.fuelPillTextActive : null]}>{label}</Text>
                           </TouchableOpacity>
                         );
@@ -4866,6 +4781,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                               await removeBookingDraft(draft.id);
                               const updated = await getBookingDrafts();
                               setCartDrafts(updated);
+                              notifyCartBadgeCountChanged();
                               if (cartSelectedDraftId === draft.id) {
                                 setCartSelectedDraftId(updated.length > 0 ? updated[0].id : null);
                               }
@@ -5318,7 +5234,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                   {showInlinePickupAdd ? (
                     <View style={cstyles.pickupFormWrap}>
                       <View style={cstyles.pickupLabelRow}>
-                        {(['Home', 'Work', 'Others'] as const).map((label) => {
+                        {ADDRESS_TYPE_OPTIONS.map(({ label, icon }) => {
                           const active = pickupForm.label === label;
                           return (
                             <TouchableOpacity
@@ -5326,6 +5242,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                               style={[cstyles.pickupLabelPill, active ? cstyles.pickupLabelPillActive : null]}
                               onPress={() => setPickupForm((prev) => ({ ...prev, label }))}
                             >
+                              <Ionicons
+                                name={icon}
+                                size={13}
+                                color={active ? '#FFFFFF' : '#1D4ED8'}
+                                style={{ marginRight: 4 }}
+                              />
                               <Text style={[cstyles.pickupLabelPillText, active ? cstyles.pickupLabelPillTextActive : null]}>{label}</Text>
                             </TouchableOpacity>
                           );
@@ -6392,7 +6314,7 @@ const styles = StyleSheet.create({
   carSuggestionTitle: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.3 },
   carSuggestionMeta: { marginTop: 2, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
   fuelPillRow: { flexDirection: 'row', gap: 8 },
-  fuelPill: { borderRadius: 999, borderWidth: 1, borderColor: '#BFDBFE', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#FFFFFF' },
+  fuelPill: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#BFDBFE', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#FFFFFF' },
   fuelPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   fuelPillText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   fuelPillTextActive: { color: '#FFFFFF' },
@@ -6796,6 +6718,8 @@ const cstyles = StyleSheet.create({
   pickupFormWrap: { marginTop: 10, gap: 8 },
   pickupLabelRow: { flexDirection: 'row', gap: 8 },
   pickupLabelPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,

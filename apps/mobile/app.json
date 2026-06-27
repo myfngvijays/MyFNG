@@ -50,6 +50,7 @@
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
       "versionCode": 25,
+      "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",

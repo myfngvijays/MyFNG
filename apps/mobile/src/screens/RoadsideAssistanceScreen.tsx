@@ -14,7 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import RSAMembershipPlansSection from '../components/RSAMembershipPlansSection';
+import { invalidateAppMembershipPlansCache } from '../hooks/useAppMembershipPlans';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
+import SmartToolsBlock from '../components/SmartToolsSection';
 import MembershipTermsCard from '../components/MembershipTermsCard';
 import ReferAndFooter from '../components/ReferAndFooter';
 import SectionHeading from '../components/SectionHeading';
@@ -70,6 +72,10 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
     route_params: {},
     title: 'RSA 24/7',
   });
+
+  useEffect(() => {
+    invalidateAppMembershipPlansCache();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -240,9 +246,11 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
           <RSAMembershipPlansSection navigation={navigation} slot="after_services" />
           <MembershipCardsBlock screen="rsa" slot="after_services" navigation={navigation} bannerOnly />
+          <SmartToolsBlock screen="rsa" slot="after_services" navigation={navigation} compact />
 
           <RSAMembershipPlansSection navigation={navigation} slot="before_pricing" />
           <MembershipCardsBlock screen="rsa" slot="before_pricing" navigation={navigation} bannerOnly />
+          <SmartToolsBlock screen="rsa" slot="before_pricing" navigation={navigation} compact />
 
           <MembershipTermsCard membershipType="RSA" style={s.termsCardWrap} />
 
@@ -309,6 +317,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
           <RSAMembershipPlansSection navigation={navigation} slot="before_reviews" />
           <MembershipCardsBlock screen="rsa" slot="before_reviews" navigation={navigation} bannerOnly />
+          <SmartToolsBlock screen="rsa" slot="before_reviews" navigation={navigation} compact />
 
           {/* Reviews */}
           <SectionHeading
@@ -350,6 +359,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
 
           <RSAMembershipPlansSection navigation={navigation} slot="before_faqs" />
           <MembershipCardsBlock screen="rsa" slot="before_faqs" navigation={navigation} bannerOnly />
+          <SmartToolsBlock screen="rsa" slot="before_faqs" navigation={navigation} compact />
 
           {/* FAQs — minimal accordion */}
           <SectionHeading

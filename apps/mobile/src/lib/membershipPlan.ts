@@ -174,6 +174,46 @@ function mapPublicPlansPayload(plans: any[]): AppMembershipPlan[] {
 }
 
 async function fetchMembershipPlansFromSupabase(): Promise<AppMembershipPlan[]> {
+  const loadBenefits = async (planIds: string[]) => {
+    if (!planIds.length) return {} as Record<string, any[]>;
+    const { data: benefits } = await supabase
+      .from('membership_benefits')
+      .select('*')
+      .in('plan_id', planIds)
+      .order('display_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    const benefitsByPlan: Record<string, any[]> = {};
+    for (const benefit of benefits || []) {
+      if (benefit?.active === false) continue;
+      benefitsByPlan[benefit.plan_id] = benefitsByPlan[benefit.plan_id] || [];
+      benefitsByPlan[benefit.plan_id].push(benefit);
+    }
+    return benefitsByPlan;
+  };
+
+  const mapRows = (rows: any[]) => {
+    const visiblePlans = rows.filter((p) => isAppMembershipPlan(p.code) && p.app_visible !== false);
+    return visiblePlans;
+  };
+
+  // Preferred: SECURITY DEFINER RPC (works even if table RLS was misconfigured).
+  try {
+    const { data: rpcPlans, error: rpcError } = await supabase.rpc('get_public_membership_plans');
+    if (!rpcError && Array.isArray(rpcPlans) && rpcPlans.length) {
+      const visiblePlans = mapRows(rpcPlans);
+      const benefitsByPlan = await loadBenefits(visiblePlans.map((p) => p.id));
+      return mapPublicPlansPayload(
+        visiblePlans.map((plan) => ({
+          ...plan,
+          benefits: benefitsByPlan[plan.id] || [],
+        })),
+      );
+    }
+  } catch {
+    // fall through
+  }
+
   const { data: plans, error } = await supabase
     .from('membership_plans')
     .select('*')
@@ -183,24 +223,8 @@ async function fetchMembershipPlansFromSupabase(): Promise<AppMembershipPlan[]> 
 
   if (error || !plans?.length) return [];
 
-  const visiblePlans = plans.filter((p) => isAppMembershipPlan(p.code) && p.app_visible !== false);
-  const planIds = visiblePlans.map((p) => p.id);
-
-  const { data: benefits } = planIds.length
-    ? await supabase
-        .from('membership_benefits')
-        .select('*')
-        .in('plan_id', planIds)
-        .order('display_order', { ascending: true })
-        .order('created_at', { ascending: true })
-    : { data: [] as any[] };
-
-  const benefitsByPlan: Record<string, any[]> = {};
-  for (const benefit of benefits || []) {
-    if (benefit?.active === false) continue;
-    benefitsByPlan[benefit.plan_id] = benefitsByPlan[benefit.plan_id] || [];
-    benefitsByPlan[benefit.plan_id].push(benefit);
-  }
+  const visiblePlans = mapRows(plans);
+  const benefitsByPlan = await loadBenefits(visiblePlans.map((p) => p.id));
 
   return mapPublicPlansPayload(
     visiblePlans.map((plan) => ({
@@ -213,11 +237,13 @@ async function fetchMembershipPlansFromSupabase(): Promise<AppMembershipPlan[]> 
 async function fetchMembershipPlansFromApi(apiUrl: string): Promise<AppMembershipPlan[]> {
   const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/public/membership-plans`, {
     headers: { Accept: 'application/json' },
+    redirect: 'follow',
   });
   if (!res.ok) return [];
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) return [];
-  const json = await res.json();
+  const json = await res.json().catch(() => null);
+  if (!json || typeof json !== 'object') return [];
   const plans: any[] = Array.isArray(json?.plans) ? json.plans : [];
   if (!plans.length) return [];
   return mapPublicPlansPayload(plans);
@@ -227,17 +253,20 @@ export async function fetchAppMembershipPlans(
   apiUrl: string,
 ): Promise<AppMembershipPlan[]> {
   try {
-    const fromApi = await fetchMembershipPlansFromApi(apiUrl);
-    if (fromApi.length) return fromApi;
+    const fromSupabase = await fetchMembershipPlansFromSupabase();
+    if (fromSupabase.length) return fromSupabase;
   } catch {
-    // fall through to Supabase
+    // try API next
   }
 
   try {
-    return await fetchMembershipPlansFromSupabase();
+    const fromApi = await fetchMembershipPlansFromApi(apiUrl);
+    if (fromApi.length) return fromApi;
   } catch {
-    return [];
+    // no plans
   }
+
+  return [];
 }
 
 export async function fetchPrimeMembershipConfig(

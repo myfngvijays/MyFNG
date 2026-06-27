@@ -30,7 +30,7 @@ import SearchOverlay from '../components/SearchOverlay';
 import MembershipCardsBlock from '../components/MembershipCardsBlock';
 import ReferAndFooter from '../components/ReferAndFooter';
 import TrustStatsGrid from '../components/TrustStatsGrid';
-import SmartToolsSection from '../components/SmartToolsSection';
+import SmartToolsBlock from '../components/SmartToolsSection';
 import { useAppFooter } from '../context/AppFooterContext';
 import SectionHeading from '../components/SectionHeading';
 import CompleteTransparencySection from '../components/CompleteTransparencySection';
@@ -56,7 +56,7 @@ import {
   mobileCustomerHeaders,
   shouldShowGuestWelcomePopup,
 } from '../lib/welcomeBonus';
-import { getCartBadgeCount } from '../lib/cartBadgeCount';
+import { getCartBadgeCount, subscribeCartBadgeCount } from '../lib/cartBadgeCount';
 import { fetchPublicFaqs, type PublicFaqItem } from '../lib/publicFaqs';
 type Props = {
   navigation: any;
@@ -272,16 +272,23 @@ export default function PublicHomeScreen({ navigation }: Props) {
     refresh: refreshMembershipOffer,
   } = usePendingPostBookingMembershipOffer(isLoggedIn);
 
-  const refreshHomeData = useCallback(async () => {
-    const [locationLabel, cartCount, sessionToken] = await Promise.all([
-      detectHeaderLocation().catch(() => 'Location unavailable'),
-      getCartBadgeCount().catch(() => 0),
-      getCustomerSessionToken(),
-    ]);
+  useEffect(() => {
+    return subscribeCartBadgeCount((count) => {
+      setCartItemCount(count);
+    });
+  }, []);
 
-    setDetectedCity(locationLabel);
-    setCartItemCount(cartCount);
+  const refreshHomeData = useCallback(async () => {
+    const sessionToken = await getCustomerSessionToken();
     setIsLoggedIn(Boolean(sessionToken));
+
+    void getCartBadgeCount()
+      .then((count) => setCartItemCount(count))
+      .catch(() => setCartItemCount(0));
+
+    void detectHeaderLocation()
+      .then((locationLabel) => setDetectedCity(locationLabel))
+      .catch(() => setDetectedCity('Location unavailable'));
 
     fetchPublicFaqs({ group: 'GENERAL', platform: 'app' })
       .then(setGeneralFaqs)
@@ -682,6 +689,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section tight>
             <MembershipCardsBlock screen="home" slot="after_services" navigation={navigation} spacing="compact" />
+            <SmartToolsBlock screen="home" slot="after_services" navigation={navigation} city={detectedCity} compact />
           </Section>
 
           <Section>
@@ -822,9 +830,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
 
           <Section tight>
             <MembershipCardsBlock screen="home" slot="after_loan_card" navigation={navigation} spacing="compact" />
+            <SmartToolsBlock screen="home" slot="after_loan_card" navigation={navigation} city={detectedCity} compact />
           </Section>
 
-          <SmartToolsSection navigation={navigation} city={detectedCity} />
+          <SmartToolsBlock screen="home" slot="main_grid" navigation={navigation} city={detectedCity} />
 
           <Section>
             <SectionHeading
@@ -917,6 +926,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           </Section>
 
           <Section tight>
+            <SmartToolsBlock screen="home" slot="before_reviews" navigation={navigation} city={detectedCity} compact />
             <MembershipCardsBlock screen="home" slot="before_reviews" navigation={navigation} spacing="compact" />
           </Section>
 

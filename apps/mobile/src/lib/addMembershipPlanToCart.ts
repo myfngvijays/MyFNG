@@ -7,6 +7,7 @@ import {
   savePendingMembershipCart,
   type MembershipSecondVehicle,
 } from './membershipCart';
+import { notifyCartBadgeCountChanged } from './cartBadgeCount';
 
 type ApiFetch = (path: string, init?: RequestInit) => Promise<any>;
 type GetToken = () => Promise<string | null>;
@@ -58,6 +59,7 @@ export async function addMembershipPlanToCart(opts: {
     }),
   });
 
+  notifyCartBadgeCountChanged();
   navigation.navigate('Settings', { subPage: 'Cart' });
   return { ok: true };
 }

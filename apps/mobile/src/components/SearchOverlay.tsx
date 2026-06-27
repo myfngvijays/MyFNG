@@ -17,9 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { PrimeMembershipIcon, RSAMembershipIcon } from './MembershipPromoVisuals';
 import MembershipCardsBlock from './MembershipCardsBlock';
+import SmartToolsBlock from './SmartToolsSection';
 import type { MembershipType } from '../lib/membershipPlacements';
 import { getServiceIconSource, RSA_ICON_RED_SOURCE } from '../lib/serviceIcons';
-import { SMART_TOOLS, SMART_TOOL_WEB_URLS, type SmartToolItem } from '../constants/smartTools';
+import { SMART_TOOL_WEB_URLS } from '../constants/smartTools';
 
 type SearchItem = {
   id: string;
@@ -198,19 +199,6 @@ function ServiceGridItem({ item, onPress }: { item: SearchItem; onPress: () => v
   );
 }
 
-function SmartToolGridItem({ tool, onPress }: { tool: SmartToolItem; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={styles.serviceGridItem} activeOpacity={0.85} onPress={onPress}>
-      <View style={[styles.smartToolIconWrap, { backgroundColor: tool.bg }]}>
-        <Ionicons name={tool.icon} size={20} color={tool.color} />
-      </View>
-      <Text style={styles.serviceGridText} numberOfLines={2}>
-        {tool.title}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 export default function SearchOverlay({ visible, onClose, navigation, city }: Props) {
   const [query, setQuery] = useState('');
   const insets = useSafeAreaInsets();
@@ -229,28 +217,6 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
   const handleClose = () => {
     setQuery('');
     onClose();
-  };
-
-  const openSmartTool = (tool: SmartToolItem) => {
-    setQuery('');
-    onClose();
-    if (tool.id === 'car_loan') {
-      navigation.navigate('SmartToolWeb', {
-        title: 'Loan Against Car',
-        url: SMART_TOOL_WEB_URLS.car_loan,
-      });
-      return;
-    }
-    if (tool.id === 'parking_finder') {
-      navigation.navigate('SmartToolWeb', {
-        title: 'Nearby Parking',
-        url: SMART_TOOL_WEB_URLS.parking_finder,
-        useLocation: true,
-        city,
-      });
-      return;
-    }
-    navigation.navigate(tool.screen);
   };
 
   const handleSelect = (item: SearchItem) => {
@@ -311,6 +277,9 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
                 </View>
 
                 <MembershipCardsBlock screen="search" slot="after_popular_searches" navigation={navigation} bannerOnly spacing="compact" />
+                <View style={styles.section}>
+                  <SmartToolsBlock screen="search" slot="after_popular_searches" navigation={navigation} city={city} compact />
+                </View>
 
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Other Services</Text>
@@ -322,15 +291,11 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
                 </View>
 
                 <MembershipCardsBlock screen="search" slot="after_other_services" navigation={navigation} bannerOnly spacing="compact" />
-
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Smart Tools</Text>
-                  <View style={styles.serviceGrid}>
-                    {SMART_TOOLS.map((tool) => (
-                      <SmartToolGridItem key={tool.id} tool={tool} onPress={() => openSmartTool(tool)} />
-                    ))}
-                  </View>
+                  <SmartToolsBlock screen="search" slot="after_other_services" navigation={navigation} city={city} compact />
                 </View>
+
+                <SmartToolsBlock screen="search" slot="main_grid" navigation={navigation} city={city} />
 
                 <MembershipCardsBlock screen="search" slot="after_smart_tools" navigation={navigation} bannerOnly spacing="compact" />
 
