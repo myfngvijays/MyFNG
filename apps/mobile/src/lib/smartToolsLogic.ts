@@ -315,23 +315,23 @@ export const CAR_QUIZ_POOL: QuizQuestion[] = [
   { q: 'Which fluid is used in the engine cooling system?', options: ['Brake fluid', 'Coolant', 'Power steering fluid', 'AC gas'], correct: 1, category: 'Engine' },
   { q: 'What is the primary job of engine oil?', options: ['Cooling only', 'Lubrication & protection', 'Fuel combustion', 'Battery charging'], correct: 1, category: 'Engine' },
   { q: 'TPMS warning light indicates an issue with:', options: ['Engine timing', 'Tyre pressure', 'Transmission', 'Fuel pump'], correct: 1, category: 'Safety' },
-  { q: 'Which brand is shown in the logo?', options: ['Hyundai', 'Honda', 'Toyota', 'Tata'], correct: 0, brandLogo: 'https://logo.clearbit.com/hyundai.com', brandName: 'Hyundai', category: 'Brands' },
-  { q: 'Which brand is shown in the logo?', options: ['Maruti Suzuki', 'Mahindra', 'Kia', 'Skoda'], correct: 0, brandLogo: 'https://logo.clearbit.com/suzuki.com', brandName: 'Maruti', category: 'Brands' },
+  { q: 'Which brand is shown in the logo?', options: ['Hyundai', 'Honda', 'Toyota', 'Tata'], correct: 0, brandLogo: 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images/hyundai.png', brandName: 'Hyundai', category: 'Brands' },
+  { q: 'Which brand is shown in the logo?', options: ['Maruti Suzuki', 'Mahindra', 'Kia', 'Skoda'], correct: 0, brandLogo: 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images/maruti-suzuki.png', brandName: 'Maruti', category: 'Brands' },
   { q: 'CNG stands for:', options: ['Compressed Natural Gas', 'Carbon Neutral Gas', 'Combined Nitrogen Gas', 'Controlled Natural Gear'], correct: 0, category: 'Fuel' },
   { q: 'When should tyre pressure ideally be checked?', options: ['When tyres are hot', 'On cold tyres regularly', 'Only after puncture', 'Once a year'], correct: 1, category: 'Maintenance' },
   { q: 'OBD port is mainly used for:', options: ['Music system', 'Vehicle diagnostics', 'GPS tracking', 'Tyre inflation'], correct: 1, category: 'Tech' },
   { q: 'Which part wears out and needs periodic replacement in brakes?', options: ['Brake disc only', 'Brake pads', 'Shock absorber', 'Alternator'], correct: 1, category: 'Brakes' },
   { q: 'ESP in cars helps with:', options: ['Fuel economy', 'Electronic stability', 'Seat comfort', 'Parking sensors'], correct: 1, category: 'Safety' },
-  { q: 'Which brand is shown in the logo?', options: ['Toyota', 'Honda', 'Volkswagen', 'Ford'], correct: 1, brandLogo: 'https://logo.clearbit.com/honda.com', brandName: 'Honda', category: 'Brands' },
+  { q: 'Which brand is shown in the logo?', options: ['Toyota', 'Honda', 'Volkswagen', 'Ford'], correct: 1, brandLogo: 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images/honda.png', brandName: 'Honda', category: 'Brands' },
   { q: 'Alternator in a car is responsible for:', options: ['Starting engine only', 'Charging battery while driving', 'Cooling AC', 'Powering brakes'], correct: 1, category: 'Electrical' },
   { q: 'Wheel alignment issue commonly causes:', options: ['Better mileage', 'Uneven tyre wear', 'Louder horn', 'Faster acceleration'], correct: 1, category: 'Maintenance' },
   { q: 'Which is a sign of a weak battery?', options: ['Slow engine crank', 'Better AC cooling', 'Higher top speed', 'Smoother gear shift'], correct: 0, category: 'Electrical' },
   { q: 'Radiator cap should be opened when engine is:', options: ['Hot', 'Cold', 'Running at high RPM', 'Anytime'], correct: 1, category: 'Engine' },
-  { q: 'Which brand is shown in the logo?', options: ['Tata Motors', 'Mahindra', 'Hyundai', 'Renault'], correct: 0, brandLogo: 'https://logo.clearbit.com/tatamotors.com', brandName: 'Tata', category: 'Brands' },
+  { q: 'Which brand is shown in the logo?', options: ['Tata Motors', 'Mahindra', 'Hyundai', 'Renault'], correct: 0, brandLogo: 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images/tata.png', brandName: 'Tata', category: 'Brands' },
   { q: 'Cruise control is used to:', options: ['Maintain set speed', 'Increase brake force', 'Cool engine faster', 'Lock wheels'], correct: 0, category: 'Features' },
   { q: 'Power steering fluid is part of which system?', options: ['Brake', 'Steering', 'Exhaust', 'Ignition'], correct: 1, category: 'Maintenance' },
   { q: 'Which filter improves engine air intake quality?', options: ['Cabin filter', 'Air filter', 'Fuel cap', 'Oil cap'], correct: 1, category: 'Engine' },
-  { q: 'Which brand is shown in the logo?', options: ['Kia', 'Toyota', 'Skoda', 'MG'], correct: 1, brandLogo: 'https://logo.clearbit.com/toyota.com', brandName: 'Toyota', category: 'Brands' },
+  { q: 'Which brand is shown in the logo?', options: ['Kia', 'Toyota', 'Skoda', 'MG'], correct: 1, brandLogo: 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/car-brands-images/toyota.png', brandName: 'Toyota', category: 'Brands' },
   { q: 'Over-inflated tyres can cause:', options: ['Better grip always', 'Centre wear & harsh ride', 'More fuel always', 'No effect'], correct: 1, category: 'Tyres' },
   { q: 'HHC in automatic cars refers to:', options: ['Hill Hold Control', 'High Heat Cooling', 'Hybrid Hub Control', 'Handbrake Hold Circuit'], correct: 0, category: 'Features' },
   { q: 'Which liquid should NEVER be used as coolant substitute long-term?', options: ['Distilled water mix', 'Plain water only', 'OEM coolant mix', 'Approved antifreeze'], correct: 1, category: 'Engine' },
@@ -341,7 +341,7 @@ function seededIndex(seed: number, max: number): number {
   return Math.abs((seed * 9301 + 49297) % 233280) % max;
 }
 
-export const DAILY_QUIZ_QUESTION_COUNT = 8;
+export const DAILY_QUIZ_QUESTION_COUNT = 10;
 
 export function getLocalDayKey(date = new Date()): string {
   const year = date.getFullYear();

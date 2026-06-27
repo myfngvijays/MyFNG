@@ -418,14 +418,18 @@ function PackageCompareCard({ pkg, onBook }: { pkg: CompareQuote; onBook: () => 
         <Text style={styles.saveLine}>Estimated savings: {formatInrRange(savingsLow, savingsHigh)}</Text>
       ) : null}
 
-      <View style={styles.pointsWrap}>
+      <View style={styles.pointsGrid}>
         {pkg.highlights.map((h) => (
-          <View key={h} style={styles.pointRow}>
-            <Ionicons name="checkmark-circle" size={14} color="#059669" />
-            <Text style={styles.pointText}>{h}</Text>
+          <View key={h} style={styles.pointGridItem}>
+            <Ionicons name="checkmark-circle" size={13} color="#059669" />
+            <Text style={styles.pointGridText}>{h}</Text>
           </View>
         ))}
       </View>
+
+      <Text style={styles.disclaimerText}>
+        *Prices may vary based on location, make, model & service requirements
+      </Text>
 
       <PrimaryButton label="Book This Service" icon="calendar-outline" onPress={onBook} />
     </View>
@@ -551,9 +555,10 @@ const styles = StyleSheet.create({
   priceOld: { fontSize: 13, fontWeight: '800', color: '#94A3B8', textDecorationLine: 'line-through', textAlign: 'center' },
   priceNew: { fontSize: 15, fontWeight: '900', color: COLORS.primary, textAlign: 'center' },
   saveLine: { fontSize: 11, fontWeight: '700', color: '#059669', marginBottom: 10, textAlign: 'center' },
-  pointsWrap: { gap: 6, marginBottom: 12 },
-  pointRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  pointText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#475569' },
+  pointsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
+  pointGridItem: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingRight: 4 },
+  pointGridText: { flex: 1, fontSize: 11, fontWeight: '600', color: '#475569' },
+  disclaimerText: { fontSize: 10, fontWeight: '600', color: '#94A3B8', textAlign: 'center', marginBottom: 12, fontStyle: 'italic' },
   uspsCard: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 12 },
   uspItem: {
     flexDirection: 'row',

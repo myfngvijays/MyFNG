@@ -177,7 +177,12 @@ export async function fetchCarResaleValuations(
   if (error) throw error;
 
   const enriched = await enrichResaleValuationRows(db, data || []);
-  const items = await enrichListRowsWithCrossToolLinks(db, enriched, 'resale');
+  let items: any[];
+  try {
+    items = await enrichListRowsWithCrossToolLinks(db, enriched, 'resale');
+  } catch {
+    items = enriched;
+  }
 
   const { data: allInRange, error: statsError } = await db
     .from('car_resale_valuations')

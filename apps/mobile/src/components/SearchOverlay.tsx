@@ -278,7 +278,7 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
 
                 <MembershipCardsBlock screen="search" slot="after_popular_searches" navigation={navigation} bannerOnly spacing="compact" />
                 <View style={styles.section}>
-                  <SmartToolsBlock screen="search" slot="after_popular_searches" navigation={navigation} city={city} compact />
+                  <SmartToolsBlock screen="search" slot="after_popular_searches" navigation={navigation} city={city} compact onBeforeNavigate={handleClose} />
                 </View>
 
                 <View style={styles.section}>
@@ -292,10 +292,10 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
 
                 <MembershipCardsBlock screen="search" slot="after_other_services" navigation={navigation} bannerOnly spacing="compact" />
                 <View style={styles.section}>
-                  <SmartToolsBlock screen="search" slot="after_other_services" navigation={navigation} city={city} compact />
+                  <SmartToolsBlock screen="search" slot="after_other_services" navigation={navigation} city={city} compact onBeforeNavigate={handleClose} />
                 </View>
 
-                <SmartToolsBlock screen="search" slot="main_grid" navigation={navigation} city={city} />
+                <SmartToolsBlock screen="search" slot="main_grid" navigation={navigation} city={city} onBeforeNavigate={handleClose} />
 
                 <MembershipCardsBlock screen="search" slot="after_smart_tools" navigation={navigation} bannerOnly spacing="compact" />
 

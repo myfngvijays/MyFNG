@@ -219,7 +219,12 @@ export async function fetchVehicleHealthReports(
   if (error) throw error;
 
   const enriched = await enrichHealthReportRows(db, data || []);
-  const items = await enrichListRowsWithCrossToolLinks(db, enriched, 'health');
+  let items: any[];
+  try {
+    items = await enrichListRowsWithCrossToolLinks(db, enriched, 'health');
+  } catch {
+    items = enriched;
+  }
 
   const { data: allInRange, error: statsError } = await db
     .from('vehicle_health_reports')

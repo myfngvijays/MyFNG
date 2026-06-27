@@ -103,18 +103,27 @@ export async function POST(request: NextRequest) {
       platform: platform === 'UNKNOWN' ? null : platform,
     };
 
-    const { data, error } = await supabaseAdmin
+    let insertResult = await supabaseAdmin
       .from('vehicle_health_reports')
       .insert(row)
       .select('id, created_at')
       .single();
 
-    if (error) {
-      console.error('[public/vehicle-health-report][POST]', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (insertResult.error && row.customer_id) {
+      row.customer_id = null;
+      insertResult = await supabaseAdmin
+        .from('vehicle_health_reports')
+        .insert(row)
+        .select('id, created_at')
+        .single();
     }
 
-    return NextResponse.json({ ok: true, id: data.id, created_at: data.created_at });
+    if (insertResult.error) {
+      console.error('[public/vehicle-health-report][POST]', insertResult.error);
+      return NextResponse.json({ error: insertResult.error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, id: insertResult.data.id, created_at: insertResult.data.created_at });
   } catch (error: any) {
     console.error('[public/vehicle-health-report][POST]', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

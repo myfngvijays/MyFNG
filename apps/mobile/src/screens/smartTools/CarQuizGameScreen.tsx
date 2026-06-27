@@ -40,8 +40,13 @@ export default function CarQuizGameScreen({ navigation }: Props) {
   const [progress, setProgress] = useState<CarQuizDailyProgress | null>(null);
   const [countdownMs, setCountdownMs] = useState(msUntilNextLocalDay());
   const [selected, setSelected] = useState<number | null>(null);
+  const [justAnswered, setJustAnswered] = useState(false);
   const fade = useRef(new Animated.Value(1)).current;
   const scale = useRef(new Animated.Value(1)).current;
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   const questions = useMemo(
     () => (progress ? resolveQuizQuestions(progress) : []),
@@ -55,7 +60,11 @@ export default function CarQuizGameScreen({ navigation }: Props) {
     setLoading(true);
     const next = await loadCarQuizDailyProgress();
     setProgress(next);
-    setSelected(next.selections[next.currentIndex] ?? null);
+    const existingSelection = next.selections[next.currentIndex] ?? null;
+    setSelected(existingSelection);
+    if (existingSelection !== null && !next.completed) {
+      setJustAnswered(true);
+    }
     setLoading(false);
   }, []);
 
@@ -93,6 +102,7 @@ export default function CarQuizGameScreen({ navigation }: Props) {
     if (!progress || !question || selected !== null || progress.completed) return;
 
     setSelected(optionIndex);
+    setJustAnswered(true);
     if (optionIndex === question.correct) {
       Animated.sequence([
         Animated.timing(scale, { toValue: 1.06, duration: 120, useNativeDriver: true }),
@@ -104,15 +114,25 @@ export default function CarQuizGameScreen({ navigation }: Props) {
     setProgress(updated);
   };
 
-  const goNext = async () => {
-    if (!progress || selected === null) return;
-    const updated = await advanceCarQuizProgress(progress);
+  const goNext = useCallback(async () => {
+    const currentProgress = progressRef.current;
+    if (!currentProgress || selectedRef.current === null) return;
+    const updated = await advanceCarQuizProgress(currentProgress);
     setProgress(updated);
     if (updated.completed) return;
     animateQuestionChange(() => {
       setSelected(updated.selections[updated.currentIndex] ?? null);
+      setJustAnswered(false);
     });
-  };
+  }, [animateQuestionChange]);
+
+  useEffect(() => {
+    if (!justAnswered || selected === null || !progress || progress.completed) return;
+    const timer = setTimeout(() => {
+      void goNext();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [justAnswered, selected, progress, goNext]);
 
   if (loading || !progress) {
     return (
@@ -177,6 +197,46 @@ export default function CarQuizGameScreen({ navigation }: Props) {
             </View>
           </View>
         </Animated.View>
+
+        <View style={styles.reportSection}>
+          <Text style={styles.reportTitle}>Q&A Report</Text>
+          {questions.map((q, idx) => {
+            const userAnswer = progress.selections[idx];
+            const isCorrect = userAnswer === q.correct;
+            return (
+              <View
+                key={`report-${idx}`}
+                style={[
+                  styles.reportItem,
+                  { borderLeftColor: isCorrect ? '#059669' : '#DC2626' },
+                ]}
+              >
+                <View style={styles.reportHeader}>
+                  <View style={[styles.reportBadge, { backgroundColor: isCorrect ? '#ECFDF5' : '#FEF2F2' }]}>
+                    <Ionicons
+                      name={isCorrect ? 'checkmark-circle' : 'close-circle'}
+                      size={14}
+                      color={isCorrect ? '#059669' : '#DC2626'}
+                    />
+                    <Text style={[styles.reportBadgeText, { color: isCorrect ? '#065F46' : '#991B1B' }]}>
+                      {isCorrect ? 'Correct' : 'Wrong'}
+                    </Text>
+                  </View>
+                  <Text style={styles.reportQNum}>Q{idx + 1}</Text>
+                </View>
+                <Text style={styles.reportQuestion}>{q.q}</Text>
+                {!isCorrect && userAnswer !== null ? (
+                  <Text style={styles.reportYourAnswer}>
+                    Your answer: <Text style={{ fontWeight: '800' }}>{q.options[userAnswer]}</Text>
+                  </Text>
+                ) : null}
+                <Text style={styles.reportCorrectAnswer}>
+                  {isCorrect ? 'Answer' : 'Correct answer'}: <Text style={{ fontWeight: '800' }}>{q.options[q.correct]}</Text>
+                </Text>
+              </View>
+            );
+          })}
+        </View>
 
         <ToolCard variant="soft">
           <View style={styles.waitRow}>
@@ -252,7 +312,7 @@ export default function CarQuizGameScreen({ navigation }: Props) {
           >
             {question.brandLogo ? (
               <ToolCard variant="soft" style={styles.logoCard}>
-                <Image source={{ uri: question.brandLogo }} style={styles.brandLogo} resizeMode="contain" />
+                <BrandLogoImage uri={question.brandLogo} />
                 <Text style={styles.logoHint}>Identify the brand</Text>
               </ToolCard>
             ) : null}
@@ -305,18 +365,32 @@ export default function CarQuizGameScreen({ navigation }: Props) {
         </Animated.View>
       ) : null}
 
-      {selected !== null ? (
-        <View style={styles.footerActions}>
-          <PrimaryButton
-            label={progress.currentIndex >= total - 1 ? 'View Score Card' : 'Next Question'}
-            icon={progress.currentIndex >= total - 1 ? 'trophy-outline' : 'arrow-forward-outline'}
-            onPress={() => {
-              void goNext();
-            }}
-          />
+      {justAnswered && selected !== null ? (
+        <View style={styles.autoAdvanceHint}>
+          <Ionicons name="time-outline" size={14} color="#64748B" />
+          <Text style={styles.autoAdvanceText}>Next question in 2s...</Text>
         </View>
       ) : null}
     </HealthCheckShell>
+  );
+}
+
+function BrandLogoImage({ uri }: { uri: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <View style={[styles.brandLogo, styles.brandLogoFallback]}>
+        <Ionicons name="help-circle-outline" size={36} color="#94A3B8" />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={styles.brandLogo}
+      resizeMode="contain"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -462,6 +536,7 @@ const styles = StyleSheet.create({
   timerPillText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   logoCard: { alignItems: 'center', paddingVertical: 16, marginBottom: 10 },
   brandLogo: { width: 72, height: 72, marginBottom: 8 },
+  brandLogoFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9', borderRadius: 12 },
   logoHint: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   options: { gap: 10 },
   optionBtn: {
@@ -483,7 +558,50 @@ const styles = StyleSheet.create({
   },
   optionLetterText: { fontSize: 12, fontWeight: '900' },
   optionText: { flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 18 },
-  footerActions: { marginTop: 4, marginBottom: 8 },
+  autoAdvanceHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  autoAdvanceText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  reportSection: { marginBottom: 16 },
+  reportTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 12,
+  },
+  reportItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  reportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  reportBadgeText: { fontSize: 11, fontWeight: '800' },
+  reportQNum: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
+  reportQuestion: { fontSize: 13, fontWeight: '700', color: '#334155', lineHeight: 18, marginBottom: 4 },
+  reportYourAnswer: { fontSize: 12, fontWeight: '600', color: '#DC2626', marginBottom: 2 },
+  reportCorrectAnswer: { fontSize: 12, fontWeight: '600', color: '#059669' },
   resultHero: {
     backgroundColor: '#0B1F44',
     borderRadius: 24,

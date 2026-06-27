@@ -57,19 +57,19 @@ export type CompareQuote = {
 const PERIODIC_DEFS = [
   {
     id: 'basic',
-    patterns: ['basic service'],
+    patterns: ['semi synthetic', 'basic service'],
     checkpoints: 15,
     highlights: ['Engine oil change', 'Oil filter', 'Brake inspection', 'Fluid top-up'],
   },
   {
     id: 'general',
-    patterns: ['general service'],
+    patterns: ['semi synthetic general', 'general service'],
     checkpoints: 30,
     highlights: ['Everything in Basic', 'Air filter clean', 'Battery check', 'AC inspection'],
   },
   {
     id: 'premium',
-    patterns: ['premium service'],
+    patterns: ['semi synthetic premium', 'premium service'],
     checkpoints: 50,
     highlights: ['Everything in General', 'Diagnostics scan', 'Fuel system check', 'Interior vacuum'],
   },
@@ -138,16 +138,14 @@ export function formatModelLabel(name: string): string {
 
 export function myfngPriceRange(basePrice: number): { low: number; high: number } {
   if (!basePrice || basePrice <= 0) return { low: 0, high: 0 };
-  const low = Math.max(499, Math.round((basePrice - 500) / 100) * 100);
-  const high = Math.round((basePrice + 200) / 100) * 100;
-  return { low, high };
+  return { low: basePrice - 200, high: basePrice + 200 };
 }
 
 export function authorisedPriceRange(myfngMid: number): { low: number; high: number } {
   if (!myfngMid || myfngMid <= 0) return { low: 0, high: 0 };
   return {
-    low: Math.round((myfngMid * 1.35) / 100) * 100,
-    high: Math.round((myfngMid * 1.85) / 100) * 100,
+    low: Math.round((myfngMid * 1.4) / 100) * 100,
+    high: Math.round((myfngMid * 1.9) / 100) * 100,
   };
 }
 

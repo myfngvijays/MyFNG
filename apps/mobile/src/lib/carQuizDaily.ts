@@ -7,7 +7,7 @@ import {
   type QuizQuestion,
 } from './smartToolsLogic';
 
-const STORAGE_KEY = 'myfng_car_quiz_daily_v1';
+const STORAGE_KEY = 'myfng_car_quiz_daily_v2';
 
 export type CarQuizDailyProgress = {
   dayKey: string;

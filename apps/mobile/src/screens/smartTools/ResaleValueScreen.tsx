@@ -19,7 +19,6 @@ import HealthCheckShell, {
   LinkButton,
   PrimaryButton,
   QuestionBlock,
-  SectionDivider,
   StepBlock,
   ToolCard,
   TwoColRow,
@@ -62,7 +61,7 @@ import {
 } from '../../lib/smartToolsVehicle';
 
 type Props = { navigation: any };
-type Step = 'home' | 'brand' | 'model' | 'details' | 'result';
+type Step = 'home' | 'brand' | 'model' | 'details_car' | 'details_usage' | 'details_fuel' | 'details_condition' | 'details_ownership' | 'result';
 
 type SelectedCar = {
   label: string;
@@ -342,7 +341,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
       fuel: vehicle.fuel_type ? vehicleFuel(vehicle) : 'petrol',
       km: vehicle.odometer_km ? String(vehicle.odometer_km) : '',
     });
-    if (goDetails) setStep('details');
+    if (goDetails) setStep('details_car');
   };
 
   const restartCheck = async () => {
@@ -379,7 +378,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
       modelId: model.id,
       vehicleClass: model.class || null,
     });
-    setStep('details');
+    setStep('details_car');
   };
 
   const submitValuation = async (input: ResaleFormInput, result: ResaleEstimate) => {
@@ -467,9 +466,27 @@ export default function ResaleValueScreen({ navigation }: Props) {
     });
   };
 
+  const progress =
+    step === 'home' ? 10
+    : step === 'brand' || step === 'model' ? 25
+    : step === 'details_car' ? 40
+    : step === 'details_usage' ? 55
+    : step === 'details_fuel' ? 65
+    : step === 'details_condition' ? 80
+    : step === 'details_ownership' ? 90
+    : 100;
+
   const detailsValid = Boolean(formInput && estimate);
   const resultInput = savedFormInput || formInput;
   const resultEstimate = savedEstimate || estimate;
+
+  const stepLabel =
+    step === 'details_car' ? 'Step 1 of 5 • Car Info'
+    : step === 'details_usage' ? 'Step 2 of 5 • Usage'
+    : step === 'details_fuel' ? 'Step 3 of 5 • Fuel & Transmission'
+    : step === 'details_condition' ? 'Step 4 of 5 • Condition'
+    : step === 'details_ownership' ? 'Step 5 of 5 • Ownership'
+    : undefined;
 
   const locationBanner = (
     <ToolCard variant="soft">
@@ -545,16 +562,17 @@ export default function ResaleValueScreen({ navigation }: Props) {
     );
   }
 
-  if (step === 'details') {
+  if (step === 'details_car') {
     return (
       <HealthCheckShell
-        title="Car Details"
-        subtitle={selectedCar?.label || 'Enter car details'}
+        title="Car Resale Value"
+        subtitle={selectedCar?.label || 'Car Info'}
         navigation={navigation}
         headerIcon="cash-outline"
+        progress={progress}
+        stepLabel={stepLabel}
       >
         {locationBanner}
-
         <StepBlock icon="car-sport-outline" title="Selected Car" hint="Confirm vehicle before valuation">
           <View style={styles.selectedCarBox}>
             <Ionicons name="car-sport" size={18} color={COLORS.primary} />
@@ -570,16 +588,28 @@ export default function ResaleValueScreen({ navigation }: Props) {
             <FieldInput value={form.variant} onChangeText={(variant) => patchForm({ variant })} placeholder="e.g. VXi, ZX CVT" />
           </QuestionBlock>
         </StepBlock>
+        <PrimaryButton label="Next → Registration & Usage" icon="arrow-forward-outline" onPress={() => setStep('details_usage')} />
+      </HealthCheckShell>
+    );
+  }
 
-        <SectionDivider />
-
+  if (step === 'details_usage') {
+    return (
+      <HealthCheckShell
+        title="Car Resale Value"
+        subtitle="Registration & Usage"
+        navigation={navigation}
+        headerIcon="cash-outline"
+        progress={progress}
+        stepLabel={stepLabel}
+      >
         <StepBlock icon="calendar-outline" title="Registration & Usage" hint="Year and odometer are required">
-          <QuestionBlock label="Registration Year" dense>
+          <QuestionBlock label="Registration Year" required dense>
             <YearPickerField value={form.regYear} onChange={(regYear) => patchForm({ regYear })} placeholder="Select year" />
           </QuestionBlock>
           <TwoColRow
             left={
-              <QuestionBlock label="KM Driven" dense>
+              <QuestionBlock label="KM Driven" required dense>
                 <FieldInput value={form.km} onChangeText={(km) => patchForm({ km })} keyboardType="numeric" placeholder="e.g. 45000" />
               </QuestionBlock>
             }
@@ -597,7 +627,30 @@ export default function ResaleValueScreen({ navigation }: Props) {
             />
           </QuestionBlock>
         </StepBlock>
+        <View style={styles.footerRow}>
+          <LinkButton label="← Back" onPress={() => setStep('details_car')} />
+          <PrimaryButton
+            label="Next → Fuel & Transmission"
+            icon="arrow-forward-outline"
+            onPress={() => setStep('details_fuel')}
+            disabled={!form.regYear}
+          />
+        </View>
+        {!form.regYear ? <Text style={styles.validationHint}>Select registration year to continue.</Text> : null}
+      </HealthCheckShell>
+    );
+  }
 
+  if (step === 'details_fuel') {
+    return (
+      <HealthCheckShell
+        title="Car Resale Value"
+        subtitle="Fuel & Transmission"
+        navigation={navigation}
+        headerIcon="cash-outline"
+        progress={progress}
+        stepLabel={stepLabel}
+      >
         <StepBlock icon="water-outline" title="Fuel & Transmission" hint="Select fuel type and gearbox">
           <QuestionBlock label="Fuel Type">
             <ChipRow options={FUEL_OPTIONS} value={form.fuel} onChange={(fuel) => patchForm({ fuel })} />
@@ -610,7 +663,24 @@ export default function ResaleValueScreen({ navigation }: Props) {
             />
           </QuestionBlock>
         </StepBlock>
+        <View style={styles.footerRow}>
+          <LinkButton label="← Back" onPress={() => setStep('details_usage')} />
+          <PrimaryButton label="Next → Condition" icon="arrow-forward-outline" onPress={() => setStep('details_condition')} />
+        </View>
+      </HealthCheckShell>
+    );
+  }
 
+  if (step === 'details_condition') {
+    return (
+      <HealthCheckShell
+        title="Car Resale Value"
+        subtitle="Condition & History"
+        navigation={navigation}
+        headerIcon="cash-outline"
+        progress={progress}
+        stepLabel={stepLabel}
+      >
         <StepBlock icon="shield-checkmark-outline" title="Condition & History" hint="Honest answers give a better range">
           <QuestionBlock label="Overall Condition">
             <ChipRow
@@ -654,7 +724,24 @@ export default function ResaleValueScreen({ navigation }: Props) {
             />
           </QuestionBlock>
         </StepBlock>
+        <View style={styles.footerRow}>
+          <LinkButton label="← Back" onPress={() => setStep('details_fuel')} />
+          <PrimaryButton label="Next → Ownership" icon="arrow-forward-outline" onPress={() => setStep('details_ownership')} />
+        </View>
+      </HealthCheckShell>
+    );
+  }
 
+  if (step === 'details_ownership') {
+    return (
+      <HealthCheckShell
+        title="Car Resale Value"
+        subtitle="Ownership & Keys"
+        navigation={navigation}
+        headerIcon="cash-outline"
+        progress={progress}
+        stepLabel={stepLabel}
+      >
         <StepBlock icon="document-text-outline" title="Ownership & Keys" hint="Loan status affects buyer interest">
           <QuestionBlock label="Loan / hypothecation active?">
             <ChipRow options={YES_NO_OPTIONS} value={form.hypothecation} onChange={(hypothecation) => patchForm({ hypothecation })} />
@@ -663,11 +750,11 @@ export default function ResaleValueScreen({ navigation }: Props) {
             <ChipRow options={YES_NO_OPTIONS} value={form.duplicateKey} onChange={(duplicateKey) => patchForm({ duplicateKey })} />
           </QuestionBlock>
         </StepBlock>
-
         <PrimaryButton label="Get Resale Estimate" icon="trending-up-outline" onPress={onGetEstimate} disabled={!detailsValid} />
         {!detailsValid ? (
-          <Text style={styles.validationHint}>Fill registration year and KM driven to continue.</Text>
+          <Text style={styles.validationHint}>Fill registration year and KM driven to get estimate.</Text>
         ) : null}
+        <LinkButton label="← Back" onPress={() => setStep('details_condition')} />
       </HealthCheckShell>
     );
   }
@@ -717,7 +804,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
           <View style={{ marginTop: 12 }}>
-            <PrimaryButton label="Continue to Details" icon="arrow-forward-outline" onPress={() => setStep('details')} />
+            <PrimaryButton label="Continue to Details" icon="arrow-forward-outline" onPress={() => setStep('details_car')} />
           </View>
         </StepBlock>
       ) : (
@@ -816,4 +903,5 @@ const styles = StyleSheet.create({
   cardBody: { fontSize: 12, fontWeight: '600', color: '#64748B', lineHeight: 18 },
   validationHint: { marginTop: 8, fontSize: 11, fontWeight: '600', color: '#64748B', textAlign: 'center' },
   syncHint: { fontSize: 11, fontWeight: '600', color: '#64748B', textAlign: 'center', marginBottom: 10 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
 });

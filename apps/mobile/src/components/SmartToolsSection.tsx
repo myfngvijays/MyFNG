@@ -11,13 +11,14 @@ type Props = {
   navigation: any;
   city?: string;
   compact?: boolean;
+  onBeforeNavigate?: () => void;
 };
 
 const GAP = 10;
 const COLS = 4;
 const H_PAD = 16;
 
-export default function SmartToolsBlock({ screen, slot, navigation, city, compact = false }: Props) {
+export default function SmartToolsBlock({ screen, slot, navigation, city, compact = false, onBeforeNavigate }: Props) {
   const [gridWidth, setGridWidth] = useState(Dimensions.get('window').width - H_PAD * 4);
   const { section, tools, loading, visible, showSectionHeading, openTool } = useSmartToolsSlot({
     screen,
@@ -29,6 +30,15 @@ export default function SmartToolsBlock({ screen, slot, navigation, city, compac
   const tileW = Math.floor((gridWidth - GAP * (COLS - 1)) / COLS);
 
   if (loading || !visible) return null;
+
+  const handlePress = (tool: any) => {
+    if (onBeforeNavigate) {
+      onBeforeNavigate();
+      setTimeout(() => openTool(tool), 300);
+    } else {
+      openTool(tool);
+    }
+  };
 
   return (
     <View style={[styles.wrap, compact ? styles.wrapCompact : null]}>
@@ -46,7 +56,7 @@ export default function SmartToolsBlock({ screen, slot, navigation, city, compac
           <TouchableOpacity
             key={tool.id}
             style={[styles.tile, { width: tileW }]}
-            onPress={() => openTool(tool)}
+            onPress={() => handlePress(tool)}
             activeOpacity={0.85}
           >
             <View style={[styles.iconWrap, compact ? styles.iconWrapCompact : null, { backgroundColor: tool.bg }]}>

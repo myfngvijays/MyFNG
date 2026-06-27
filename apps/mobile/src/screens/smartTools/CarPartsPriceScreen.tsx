@@ -406,9 +406,9 @@ export default function CarPartsPriceScreen({ navigation }: Props) {
 
       <ToolCard variant="soft">
         <Text style={styles.cardTitle}>Why MyFNG?</Text>
-        <View style={styles.uspList}>
+        <View style={styles.uspGrid}>
           {COMPARE_USPS.map((u) => (
-            <View key={u.text} style={styles.uspRow}>
+            <View key={u.text} style={styles.uspGridItem}>
               <Ionicons name={u.icon} size={14} color={COLORS.primary} />
               <Text style={styles.uspText}>{u.text}</Text>
             </View>
@@ -445,8 +445,8 @@ const styles = StyleSheet.create({
   locationHint: { marginTop: 6, fontSize: 11, fontWeight: '600', color: '#64748B', lineHeight: 16 },
   cardTitle: { fontSize: 14, fontWeight: '900', color: '#0F172A', marginBottom: 6 },
   cardBody: { fontSize: 12, fontWeight: '600', color: '#64748B', lineHeight: 18 },
-  uspList: { gap: 8, marginTop: 4 },
-  uspRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  uspGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  uspGridItem: { flexDirection: 'row', alignItems: 'center', gap: 6, width: '47%' },
   uspText: { fontSize: 12, fontWeight: '700', color: '#334155' },
   loadingText: {
     marginTop: 10,

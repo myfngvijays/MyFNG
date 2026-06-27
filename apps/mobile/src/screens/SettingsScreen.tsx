@@ -3092,6 +3092,32 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     const dismissKeys = getStableVehicleDismissKeys(vehicle);
     const storageKey = profileForm.phone.trim() || customerId || '';
 
+    if (vehicle?.id && currentMembership && hasActiveMembership) {
+      const isMembershipPrimary = String(currentMembership.primary_vehicle_id) === String(vehicle.id);
+      const isMembershipSecond = currentMembership.has_second_car && String(currentMembership.second_vehicle_id) === String(vehicle.id);
+      if (isMembershipPrimary || isMembershipSecond) {
+        Alert.alert(
+          'Cannot Delete Vehicle',
+          `This vehicle cannot be deleted because your active membership is linked to it. Please contact support if you need to change your membership vehicle.`,
+        );
+        return;
+      }
+    }
+
+    if (vehicle?.id && plate) {
+      const hasBooking = (orders || []).some((o: any) => {
+        const oPlate = String(o?.vehicle_number || '').trim().toUpperCase();
+        return oPlate === plate && o?.status && !['Cancelled', 'cancelled'].includes(o.status);
+      });
+      if (hasBooking) {
+        Alert.alert(
+          'Cannot Delete Vehicle',
+          `This vehicle cannot be deleted because you have active or past bookings linked to it. The vehicle is required for your service history.`,
+        );
+        return;
+      }
+    }
+
     const removeFromList = async () => {
       try {
         if (vehicle?.id) {
@@ -3130,7 +3156,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         { text: vehicle?.id ? 'Delete' : 'Remove', style: 'destructive', onPress: () => { void removeFromList(); } },
       ],
     );
-  }, [selectedVehicleKey, vehicleEntryOnly, clearVehicleForm, hydrateCustomerData, profileForm.phone, customerId]);
+  }, [selectedVehicleKey, vehicleEntryOnly, clearVehicleForm, hydrateCustomerData, profileForm.phone, customerId, currentMembership, hasActiveMembership, orders]);
 
   useEffect(() => {
     if (activeSubPage !== 'My Profile' && vehicleEntryOnly) {
@@ -3305,17 +3331,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         ) : isLoggedIn && vehicleCarouselData.length === 0 ? (
           <TouchableOpacity style={styles.vehicleEmptyState} onPress={onPressAddVehicle} activeOpacity={0.85}>
             <View style={styles.vehicleEmptyIconWrap}>
-              <Ionicons name="car-sport-outline" size={26} color={COLORS.primary} />
+              <Ionicons name="car-sport-outline" size={20} color={COLORS.primary} />
             </View>
             <Text style={styles.vehicleEmptyTitle}>Add your first vehicle</Text>
             <Text style={styles.vehicleEmptySub}>Tap here to add your car number and details</Text>
           </TouchableOpacity>
-        ) : null}
-        {isLoggedIn && vehicleCarouselData.length === 0 ? (
-          <View style={styles.addVehicleHintBanner}>
-            <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.addVehicleHintText}>Add a vehicle to book services and track your car history.</Text>
-          </View>
         ) : null}
         {vehicleCarouselData.length > 1 ? (
           <View style={styles.vehicleDotsRow}>
@@ -3327,14 +3347,16 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             ))}
           </View>
         ) : null}
-        <TouchableOpacity
-          style={[styles.addVehicleBtn, vehicleCarouselData.length === 0 ? styles.addVehicleBtnProminent : null]}
-          onPress={onPressAddVehicle}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
-          <Text style={styles.addVehicleBtnText}>Add New Vehicle</Text>
-        </TouchableOpacity>
+        {vehicleCarouselData.length > 0 ? (
+          <TouchableOpacity
+            style={styles.addVehicleBtn}
+            onPress={onPressAddVehicle}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.addVehicleBtnText}>Add New Vehicle</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {pendingMembershipOffer && postBookingAppConfig.show_on_account ? (
@@ -6162,8 +6184,8 @@ const styles = StyleSheet.create({
   guestLoginLink: { marginTop: 2, fontSize: 11, fontWeight: '800', color: COLORS.primary },
   iconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   iconCircleGhost: { width: 36, height: 36 },
-  vehicleCard: { backgroundColor: '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB', padding: 16 },
-  vehicleCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  vehicleCard: { backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', padding: 14 },
+  vehicleCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   cardHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
   vehiclePagerContent: { paddingRight: 10 },
   vehicleSwipeCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#E7E5E4', backgroundColor: '#FAFAF9', paddingHorizontal: 14, paddingVertical: 12, marginRight: 10, gap: 10 },
@@ -6217,40 +6239,41 @@ const styles = StyleSheet.create({
   addVehicleHintBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: '#EFF6FF',
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#BFDBFE',
-    padding: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  addVehicleHintText: { flex: 1, fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  addVehicleHintText: { flex: 1, fontSize: 11, fontWeight: '700', color: COLORS.primary },
   vehicleEmptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#D6D3D1',
     borderStyle: 'dashed',
     backgroundColor: '#FAFAF9',
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 4,
   },
   vehicleEmptyIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  vehicleEmptyTitle: { fontSize: 15, fontWeight: '800', color: '#111827' },
-  vehicleEmptySub: { fontSize: 12, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
-  addVehicleBtn: { marginTop: 12, borderRadius: 12, backgroundColor: COLORS.primary, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  addVehicleBtnProminent: { marginTop: 10 },
-  addVehicleBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  vehicleEmptyTitle: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  vehicleEmptySub: { fontSize: 11, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
+  addVehicleBtn: { marginTop: 8, borderRadius: 10, backgroundColor: COLORS.primary, paddingVertical: 9, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  addVehicleBtnProminent: { marginTop: 6 },
+  addVehicleBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   vehicleImgPlaceholder: { width: 200, height: 140, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
