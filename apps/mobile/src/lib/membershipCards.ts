@@ -49,15 +49,23 @@ function sortCards(cards: AppMembershipCard[]) {
 }
 
 async function fetchFromApi(apiUrl: string): Promise<AppMembershipCard[] | null> {
-  const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/public/membership-cards`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) return null;
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) return null;
-  const json = await res.json();
-  const rows: any[] = Array.isArray(json?.cards) ? json.cards : [];
-  return sortCards(rows.map(mapRow));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1000));
+      const res = await fetch(`${apiUrl.replace(/\/$/, '')}/api/public/membership-cards`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) continue;
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) continue;
+      const json = await res.json();
+      const rows: any[] = Array.isArray(json?.cards) ? json.cards : [];
+      if (rows.length > 0) return sortCards(rows.map(mapRow));
+    } catch {
+      // retry
+    }
+  }
+  return null;
 }
 
 async function fetchFromSupabase(): Promise<AppMembershipCard[]> {

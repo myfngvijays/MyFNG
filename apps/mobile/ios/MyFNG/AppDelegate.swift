@@ -2,12 +2,14 @@ import Expo
 import React
 import ReactAppDependencyProvider
 import FirebaseCore
+import FirebaseMessaging
 #if canImport(GoogleMaps)
 import GoogleMaps
 #endif
+import UserNotifications
 
 @UIApplicationMain
-public class AppDelegate: ExpoAppDelegate {
+public class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
   var window: UIWindow?
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
@@ -20,6 +22,10 @@ public class AppDelegate: ExpoAppDelegate {
     if FirebaseApp.app() == nil {
       FirebaseApp.configure()
     }
+
+    UNUserNotificationCenter.current().delegate = self
+    Messaging.messaging().delegate = self
+    application.registerForRemoteNotifications()
 
     #if canImport(GoogleMaps)
     if let gmsApiKey = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String,
@@ -47,6 +53,33 @@ public class AppDelegate: ExpoAppDelegate {
 #endif
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // Forward APNs device token to Firebase Messaging
+  public override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    Messaging.messaging().apnsToken = deviceToken
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  // Display notification when app is in foreground
+  public func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    completionHandler([.banner, .sound, .badge])
+  }
+
+  // Handle notification tap
+  public func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    completionHandler()
   }
 
   // Linking API

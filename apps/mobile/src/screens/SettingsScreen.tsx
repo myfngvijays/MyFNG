@@ -857,7 +857,9 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         .filter(Boolean) as Array<{ id: string; label: string; value: string; source: 'saved' | 'lead'; city?: string | null; state?: string | null; pincode?: string | null }>;
 
       const existingIds = new Set(mappedAddresses.map((a: { id: string }) => a.id));
-      const uniqueLeadAddresses = mappedLeadAddresses.filter((a: { id: string }) => !existingIds.has(a.id));
+      const uniqueLeadAddresses = mappedAddresses.length > 0
+        ? []
+        : mappedLeadAddresses.filter((a: { id: string }) => !existingIds.has(a.id));
       const mergedAddresses = [...mappedAddresses, ...uniqueLeadAddresses];
       const seenAddressValues = new Set<string>();
       const dedupedAddresses = mergedAddresses.filter((address) => {

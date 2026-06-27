@@ -381,6 +381,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const pendingWelcomePhoneRef = useRef<string | null>(null);
   const bookingCompletedRef = useRef(false);
+  const selectedSavedAddressIdRef = useRef(selectedSavedAddressId);
+  selectedSavedAddressIdRef.current = selectedSavedAddressId;
   const formRef = useRef(form);
   const pricingRef = useRef(pricing);
   const stepRef = useRef(step);
@@ -1428,7 +1430,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   async function persistNewPickupAddressIfNeeded() {
     if (!isLoggedIn || !form.pickupRequired || !form.pickupAddress.trim()) return;
-    if (selectedSavedAddressId) return;
+    if (selectedSavedAddressId || selectedSavedAddressIdRef.current) return;
 
     const line1 =
       form.flatNumber.trim() ||

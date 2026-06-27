@@ -85,6 +85,24 @@ const navigationItems: NavItem[] = [
     description: 'Service Leads & AI Bookings'
   },
   {
+    name: 'RSA',
+    href: '/dashboard/super_admin/rsa',
+    icon: AlertTriangle,
+    description: 'RSA tools & mappings'
+  },
+  {
+    name: 'Telecaller Distribution',
+    href: '/dashboard/super_admin/telecaller-distribution',
+    icon: Users,
+    description: 'Auto-assignment allocation settings'
+  },
+  {
+    name: 'Manual Invoice',
+    href: '/dashboard/super_admin/manual-invoices',
+    icon: FileText,
+    description: 'CSV upload & manual invoices'
+  },
+  {
     name: 'Catalog & Pricing',
     isSection: true,
   },
@@ -125,28 +143,38 @@ const navigationItems: NavItem[] = [
     description: 'Manage Zones'
   },
   {
-    name: 'Website Images',
-    icon: Globe,
-    description: 'Manage website & app images'
-    ,
+    name: 'Mobile App',
+    isSection: true,
+  },
+  {
+    name: 'App Customers',
+    icon: Smartphone,
+    description: 'App users & membership holders',
     children: [
       {
-        name: 'Car Brand Images',
-        href: '/dashboard/super_admin/brands',
-        icon: Car,
-        description: 'Manage Car Brand Logos',
+        name: 'Customers',
+        href: '/dashboard/super_admin/customer-insights',
+        icon: Smartphone,
+        description: 'App users, bookings & wallet',
       },
       {
-        name: 'Vehicle Images',
-        href: '/dashboard/super_admin/website-images/vehicle-images',
-        icon: Car,
-        description: 'Manage vehicle model images for app profile',
+        name: 'Membership Customers',
+        href: '/dashboard/super_admin/membership-customers',
+        icon: Crown,
+        description: 'Prime members — plans & benefits',
       },
+    ],
+  },
+  {
+    name: 'App Content & Display',
+    icon: Smartphone,
+    description: 'Banners, carousel, reviews & footer',
+    children: [
       {
         name: 'Home Carousel Images',
         href: '/dashboard/super_admin/website-images/home-carousel',
         icon: ImageIcon,
-        description: 'Manage top 3 app hero carousel banners',
+        description: 'Top hero carousel banners',
       },
       {
         name: 'Promo Banners',
@@ -158,133 +186,46 @@ const navigationItems: NavItem[] = [
         name: 'Customer Reviews',
         href: '/dashboard/super_admin/website-images/customer-reviews',
         icon: Star,
-        description: 'Manage app home screen reviews',
-      },
-      {
-        name: 'Membership Plans',
-        href: '/dashboard/super_admin/membership-plans',
-        icon: Crown,
-        description: 'Manage Prime tiers, pricing & benefits',
-      },
-      {
-        name: 'Membership T&C',
-        href: '/dashboard/super_admin/membership-terms',
-        icon: Crown,
-        description: 'RSA & Prime membership terms shown in app and website',
-      },
-      {
-        name: 'FAQs (App + Web)',
-        href: '/dashboard/super_admin/public-faqs',
-        icon: HelpCircle,
-        description: 'General, service-based, and RSA FAQs for app and website',
-      },
-      {
-        name: 'Membership Cards',
-        href: '/dashboard/super_admin/membership-cards',
-        icon: Crown,
-        description: 'Animated promo cards, text & screen placements',
-      },
-      {
-        name: 'Post-Booking Prime Offer',
-        href: '/dashboard/super_admin/post-booking-membership',
-        icon: Timer,
-        description: 'Timer upsell after booking, pending offers & settings',
+        description: 'Home screen reviews',
       },
       {
         name: 'App Footer Content',
         href: '/dashboard/super_admin/app-footer',
         icon: PanelBottom,
-        description: 'Headline & stats shown at bottom of mobile app screens',
+        description: 'Headline & stats at bottom of screens',
       },
     ],
   },
   {
-    name: 'People & Billing',
-    isSection: true,
-  },
-  {
-    name: 'Users',
-    href: '/dashboard/super_admin/users',
-    icon: Users,
-    description: 'User & Role Management'
-  },
-  {
-    name: 'App Customers',
-    icon: Smartphone,
-    description: 'App users, bookings, wallet & membership',
+    name: 'App Membership & Offers',
+    icon: Crown,
+    description: 'Cards, post-booking offer & wallet',
     children: [
       {
-        name: 'Customers',
-        href: '/dashboard/super_admin/customer-insights',
-        icon: Smartphone,
-        description: 'App users, bookings, wallet & membership',
+        name: 'Membership Cards',
+        href: '/dashboard/super_admin/membership-cards',
+        icon: Crown,
+        description: 'Animated promo cards & placements',
       },
       {
-        name: 'Membership Customers',
-        href: '/dashboard/super_admin/membership-customers',
-        icon: Crown,
-        description: 'Prime members — plan, benefits claimed & wallet',
+        name: 'Post-Booking Prime Offer',
+        href: '/dashboard/super_admin/post-booking-membership',
+        icon: Timer,
+        description: 'Timer upsell after booking & settings',
       },
       {
         name: 'Wallet Logic',
         href: '/dashboard/super_admin/wallet-logic',
         icon: Wallet,
-        description: 'Service %, membership %, welcome bonus & cashback',
+        description: 'Service %, membership %, welcome bonus',
+      },
+      {
+        name: 'Advance Coupon Management',
+        href: '/dashboard/super_admin/advance-coupons',
+        icon: Ticket,
+        description: 'PCMS — campaigns & automation',
       },
     ],
-  },
-  {
-    name: 'Smart Tools',
-    icon: Sparkles,
-    description: 'Mobile app smart tools & analytics',
-    children: [
-      {
-        name: 'Smart Health Check Reports',
-        href: '/dashboard/super_admin/vehicle-health-reports',
-        icon: Activity,
-        description: 'Health checkup reports from the mobile app',
-      },
-      {
-        name: 'Car Resale Value',
-        href: '/dashboard/super_admin/car-resale-valuations',
-        icon: TrendingUp,
-        description: 'Resale estimates from the mobile app',
-      },
-      {
-        name: 'Smart Tools Handler',
-        href: '/dashboard/super_admin/smart-tools',
-        icon: Wrench,
-        description: 'Enable, order & membership-gate mobile smart tools',
-      },
-    ],
-  },
-  {
-    name: 'Manual Invoice',
-    href: '/dashboard/super_admin/manual-invoices',
-    icon: FileText,
-    description: 'CSV upload & manual invoices'
-  },
-  {
-    name: 'Telecaller Distribution',
-    href: '/dashboard/super_admin/telecaller-distribution',
-    icon: Users,
-    description: 'Auto-assignment allocation settings'
-  },
-  {
-    name: 'Intelligence & Support',
-    isSection: true,
-  },
-  {
-    name: 'RSA',
-    href: '/dashboard/super_admin/rsa',
-    icon: AlertTriangle,
-    description: 'RSA tools & mappings'
-  },
-  {
-    name: 'Advance Coupon Management',
-    href: '/dashboard/super_admin/advance-coupons',
-    icon: Sparkles,
-    description: 'PCMS — campaigns, automation & analytics'
   },
   {
     name: 'Push Notifications',
@@ -318,6 +259,86 @@ const navigationItems: NavItem[] = [
     ],
   },
   {
+    name: 'Smart Tools',
+    icon: Sparkles,
+    description: 'Smart tools config & data',
+    children: [
+      {
+        name: 'Smart Tools Handler',
+        href: '/dashboard/super_admin/smart-tools',
+        icon: Wrench,
+        description: 'Enable, order & membership-gate tools',
+      },
+      {
+        name: 'Smart Health Check Reports',
+        href: '/dashboard/super_admin/vehicle-health-reports',
+        icon: Activity,
+        description: 'Health checkup reports from app',
+      },
+      {
+        name: 'Car Resale Value',
+        href: '/dashboard/super_admin/car-resale-valuations',
+        icon: TrendingUp,
+        description: 'Resale estimates from app',
+      },
+    ],
+  },
+  {
+    name: 'App + Website',
+    isSection: true,
+  },
+  {
+    name: 'Shared Content',
+    icon: Globe,
+    description: 'Brands, plans, T&C & FAQs',
+    children: [
+      {
+        name: 'Car Brand Images',
+        href: '/dashboard/super_admin/brands',
+        icon: Car,
+        description: 'Brand logos (app carousel + website)',
+      },
+      {
+        name: 'Vehicle Images',
+        href: '/dashboard/super_admin/website-images/vehicle-images',
+        icon: Car,
+        description: 'Vehicle model images (app profile)',
+      },
+      {
+        name: 'Membership Plans',
+        href: '/dashboard/super_admin/membership-plans',
+        icon: Crown,
+        description: 'Prime tiers, pricing & benefits (app + web)',
+      },
+      {
+        name: 'Membership T&C',
+        href: '/dashboard/super_admin/membership-terms',
+        icon: Crown,
+        description: 'RSA & Prime terms (app + website)',
+      },
+      {
+        name: 'FAQs (App + Web)',
+        href: '/dashboard/super_admin/public-faqs',
+        icon: HelpCircle,
+        description: 'General, service & RSA FAQs',
+      },
+    ],
+  },
+  {
+    name: 'Admin Users',
+    isSection: true,
+  },
+  {
+    name: 'Users & Roles',
+    href: '/dashboard/super_admin/users',
+    icon: Users,
+    description: 'User & Role Management'
+  },
+  {
+    name: 'Intelligence & Automation',
+    isSection: true,
+  },
+  {
     name: 'AI Learning Inbox',
     href: '/dashboard/super_admin/kb-questions',
     icon: MessageSquare,
@@ -332,8 +353,7 @@ const navigationItems: NavItem[] = [
   {
     name: 'WhatsApp',
     icon: MessageSquare,
-    description: 'Dashboard, message, template & bot flow'
-    ,
+    description: 'Dashboard, message, template & bot flow',
     children: [
       {
         name: 'WhatsApp Dashboard',
@@ -421,18 +441,19 @@ export default function SuperAdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start collapsed; expand on hover
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    'Website Images': true,
-    'App Customers': false,
     'Smart Tools': false,
-    WhatsApp: false,
+    'App Content & Display': false,
+    'App Membership & Offers': false,
     'Push Notifications': false,
+    'Shared Content': false,
+    'App Customers': false,
+    WhatsApp: false,
   });
 
   React.useEffect(() => {
     if (
       pathname?.startsWith('/dashboard/super_admin/customer-insights') ||
-      pathname?.startsWith('/dashboard/super_admin/membership-customers') ||
-      pathname?.startsWith('/dashboard/super_admin/wallet-logic')
+      pathname?.startsWith('/dashboard/super_admin/membership-customers')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Customers': true }));
     }
@@ -443,8 +464,33 @@ export default function SuperAdminLayout({
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Smart Tools': true }));
     }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/website-images/home-carousel') ||
+      pathname?.startsWith('/dashboard/super_admin/website-images/promo-banners') ||
+      pathname?.startsWith('/dashboard/super_admin/website-images/customer-reviews') ||
+      pathname?.startsWith('/dashboard/super_admin/app-footer')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'App Content & Display': true }));
+    }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/membership-cards') ||
+      pathname?.startsWith('/dashboard/super_admin/post-booking-membership') ||
+      pathname?.startsWith('/dashboard/super_admin/wallet-logic') ||
+      pathname?.startsWith('/dashboard/super_admin/advance-coupons')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'App Membership & Offers': true }));
+    }
     if (pathname?.startsWith('/dashboard/super_admin/advance-notifications')) {
       setOpenGroups((prev) => ({ ...prev, 'Push Notifications': true }));
+    }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/brands') ||
+      pathname?.startsWith('/dashboard/super_admin/website-images/vehicle-images') ||
+      pathname?.startsWith('/dashboard/super_admin/membership-plans') ||
+      pathname?.startsWith('/dashboard/super_admin/membership-terms') ||
+      pathname?.startsWith('/dashboard/super_admin/public-faqs')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));
     }
   }, [pathname]);
 

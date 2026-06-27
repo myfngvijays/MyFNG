@@ -1,4 +1,5 @@
 import { ENV } from '../config/environment';
+import { Alert } from 'react-native';
 import {
   SMART_TOOLS,
   SMART_TOOL_WEB_URLS,
@@ -57,6 +58,7 @@ export type ResolvedSmartTool = SmartToolItem & {
   allowed_membership_plan_ids: string[];
   placements: SmartToolPlacements;
   webUrl?: string;
+  locked?: boolean;
 };
 
 export type SmartToolsDisplayContext = {
@@ -197,11 +199,14 @@ export function resolveSmartToolsForSlot(
   return config.tools
     .filter((tool) => tool.enabled)
     .filter((tool) => isSmartToolPlacementEnabled(tool.placements, `${screen}.${slot}`))
-    .filter((tool) => canUserSeeSmartTool(tool, context))
     .map((tool) => {
       const base = SMART_TOOLS.find((item) => item.id === tool.tool_id);
       if (!base) return null;
-      return mergeSmartToolItem(base, tool);
+      const resolved = mergeSmartToolItem(base, tool);
+      if (!canUserSeeSmartTool(tool, context)) {
+        resolved.locked = true;
+      }
+      return resolved;
     })
     .filter(Boolean)
     .sort((a, b) => a!.display_order - b!.display_order) as ResolvedSmartTool[];
@@ -212,6 +217,15 @@ export function navigateToSmartTool(
   tool: ResolvedSmartTool,
   opts: { city?: string; isLoggedIn: boolean },
 ) {
+  if (tool.locked) {
+    const planIds = normalizeAllowedPlanIds(tool.allowed_membership_plan_ids);
+    const msg = planIds.length > 0
+      ? `This tool is exclusively available for selected membership plan holders. Please upgrade your membership to access "${tool.title}".`
+      : `This tool is exclusively available for MyFNG membership holders. Get a membership to unlock "${tool.title}".`;
+    Alert.alert('Membership Required', msg, [{ text: 'OK' }]);
+    return;
+  }
+
   if (tool.requires_login && !opts.isLoggedIn) {
     navigation.navigate('Login');
     return;

@@ -67,6 +67,11 @@ function inr(value: number) {
   return `₹${Math.round(value).toLocaleString('en-IN')}`;
 }
 
+function numOrDefault(val: unknown, fallback: number): number {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function parseUsageMode(value: unknown, fallback: WalletUsageMode = 'PERCENT'): WalletUsageMode {
   return String(value || '').toUpperCase() === 'AMOUNT' ? 'AMOUNT' : fallback;
 }
@@ -162,22 +167,19 @@ export async function loadWalletRules(apiUrl: string = ENV.API_URL): Promise<Wal
     rulesCache = {
       wallet_enabled: json.wallet_enabled !== false,
       service_usage_mode: parseUsageMode(json.service_usage_mode),
-      service_usage_percent: Number(json.service_usage_percent) || DEFAULT_WALLET_RULES.service_usage_percent,
-      service_usage_amount: Number(json.service_usage_amount) || DEFAULT_WALLET_RULES.service_usage_amount,
+      service_usage_percent: numOrDefault(json.service_usage_percent, DEFAULT_WALLET_RULES.service_usage_percent),
+      service_usage_amount: numOrDefault(json.service_usage_amount, DEFAULT_WALLET_RULES.service_usage_amount),
       membership_usage_mode: parseUsageMode(json.membership_usage_mode),
-      membership_usage_percent:
-        Number(json.membership_usage_percent) || DEFAULT_WALLET_RULES.membership_usage_percent,
-      membership_usage_amount:
-        Number(json.membership_usage_amount) || DEFAULT_WALLET_RULES.membership_usage_amount,
-      welcome_bonus_amount: Number(json.welcome_bonus_amount) || DEFAULT_WALLET_RULES.welcome_bonus_amount,
-      welcome_expiry_days: Number(json.welcome_expiry_days) || DEFAULT_WALLET_RULES.welcome_expiry_days,
-      membership_cashback_rate_percent:
-        Number(json.membership_cashback_rate_percent) || DEFAULT_WALLET_RULES.membership_cashback_rate_percent,
-      membership_cashback_max: Number(json.membership_cashback_max) || DEFAULT_WALLET_RULES.membership_cashback_max,
-      referral_first_reward: Number(json.referral_first_reward) || DEFAULT_WALLET_RULES.referral_first_reward,
-      referral_repeat_reward: Number(json.referral_repeat_reward) || DEFAULT_WALLET_RULES.referral_repeat_reward,
-      min_payable_for_wallet: Number(json.min_payable_for_wallet) || DEFAULT_WALLET_RULES.min_payable_for_wallet,
-      max_absolute_deduction: Number(json.max_absolute_deduction) || DEFAULT_WALLET_RULES.max_absolute_deduction,
+      membership_usage_percent: numOrDefault(json.membership_usage_percent, DEFAULT_WALLET_RULES.membership_usage_percent),
+      membership_usage_amount: numOrDefault(json.membership_usage_amount, DEFAULT_WALLET_RULES.membership_usage_amount),
+      welcome_bonus_amount: numOrDefault(json.welcome_bonus_amount, DEFAULT_WALLET_RULES.welcome_bonus_amount),
+      welcome_expiry_days: numOrDefault(json.welcome_expiry_days, DEFAULT_WALLET_RULES.welcome_expiry_days),
+      membership_cashback_rate_percent: numOrDefault(json.membership_cashback_rate_percent, DEFAULT_WALLET_RULES.membership_cashback_rate_percent),
+      membership_cashback_max: numOrDefault(json.membership_cashback_max, DEFAULT_WALLET_RULES.membership_cashback_max),
+      referral_first_reward: numOrDefault(json.referral_first_reward, DEFAULT_WALLET_RULES.referral_first_reward),
+      referral_repeat_reward: numOrDefault(json.referral_repeat_reward, DEFAULT_WALLET_RULES.referral_repeat_reward),
+      min_payable_for_wallet: numOrDefault(json.min_payable_for_wallet, DEFAULT_WALLET_RULES.min_payable_for_wallet),
+      max_absolute_deduction: numOrDefault(json.max_absolute_deduction, DEFAULT_WALLET_RULES.max_absolute_deduction),
       advanced_enabled: Boolean(json.advanced_enabled),
       service_overrides: Array.isArray(json.service_overrides)
         ? json.service_overrides.map((row: any) => ({
@@ -186,11 +188,10 @@ export async function loadWalletRules(apiUrl: string = ENV.API_URL): Promise<Wal
             use_global: row.use_global !== false,
             wallet_allowed: row.wallet_allowed !== false,
             service_usage_mode: parseUsageMode(row.service_usage_mode),
-            service_usage_percent: Number(row.service_usage_percent) || DEFAULT_WALLET_RULES.service_usage_percent,
-            service_usage_amount: Number(row.service_usage_amount) || DEFAULT_WALLET_RULES.service_usage_amount,
-            membership_cashback_rate_percent:
-              Number(row.membership_cashback_rate_percent) || DEFAULT_WALLET_RULES.membership_cashback_rate_percent,
-            membership_cashback_max: Number(row.membership_cashback_max) || DEFAULT_WALLET_RULES.membership_cashback_max,
+            service_usage_percent: numOrDefault(row.service_usage_percent, DEFAULT_WALLET_RULES.service_usage_percent),
+            service_usage_amount: numOrDefault(row.service_usage_amount, DEFAULT_WALLET_RULES.service_usage_amount),
+            membership_cashback_rate_percent: numOrDefault(row.membership_cashback_rate_percent, DEFAULT_WALLET_RULES.membership_cashback_rate_percent),
+            membership_cashback_max: numOrDefault(row.membership_cashback_max, DEFAULT_WALLET_RULES.membership_cashback_max),
           }))
         : [],
     };

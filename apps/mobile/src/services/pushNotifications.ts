@@ -110,17 +110,29 @@ async function acquireFcmPushToken(): Promise<PushRegisterResult> {
 
   const permitted = await requestNotificationPermission();
   if (!permitted) {
+    console.warn('[FCM] Notification permission denied by user');
     return { ok: false, reason: 'permission_denied' };
   }
 
   if (Platform.OS === 'ios') {
-    await messaging().registerDeviceForRemoteMessages();
+    try {
+      await messaging().registerDeviceForRemoteMessages();
+      const apnsToken = await messaging().getAPNSToken();
+      console.warn('[FCM] APNs token registered:', apnsToken ? `${String(apnsToken).slice(0, 16)}...` : 'NULL');
+      if (!apnsToken) {
+        console.warn('[FCM] WARNING: APNs token is null. Push delivery may fail.');
+      }
+    } catch (e) {
+      console.warn('[FCM] registerDeviceForRemoteMessages error:', e);
+    }
   }
 
   const token = await messaging().getToken();
-  if (!token) return { ok: false, reason: 'no_token' };
+  if (!token) {
+    console.warn('[FCM] getToken() returned null');
+    return { ok: false, reason: 'no_token' };
+  }
 
-  // Visible in `adb logcat` for local USB registration scripts (release + debug).
   console.warn('[MYFNG_FCM_TOKEN]', token);
 
   try {
@@ -128,6 +140,7 @@ async function acquireFcmPushToken(): Promise<PushRegisterResult> {
     const prev = await AsyncStorage.getItem(STORAGE_KEY);
     if (prev !== token) {
       await AsyncStorage.setItem(STORAGE_KEY, token);
+      console.warn('[FCM] Token changed, saved new token');
     }
   } catch {
     // ignore storage issues
@@ -255,32 +268,46 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
   }
 
   if (Platform.OS === 'ios') {
-    const setPresentationOptions = (messaging() as { setForegroundNotificationPresentationOptions?: (options: {
-      alert?: boolean;
-      badge?: boolean;
-      sound?: boolean;
-    }) => Promise<void> }).setForegroundNotificationPresentationOptions;
-    if (typeof setPresentationOptions === 'function') {
-      void setPresentationOptions.call(messaging(), {
+    try {
+      messaging().setForegroundNotificationPresentationOptions({
         alert: true,
         badge: true,
         sound: true,
       });
+    } catch (e) {
+      console.warn('[FCM] setForegroundNotificationPresentationOptions failed:', e);
     }
   }
 
-  const unsubscribeForeground = messaging().onMessage(async (_remoteMessage) => {
-    // Foreground banners on iOS need setForegroundNotificationPresentationOptions (when available).
+  const unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
+    console.warn('[FCM] Foreground message received:', {
+      title: remoteMessage.notification?.title,
+      body: remoteMessage.notification?.body,
+      data: remoteMessage.data,
+      messageId: remoteMessage.messageId,
+    });
+    if (Platform.OS === 'android') {
+      // Android requires explicit local notification display for foreground messages.
+      // iOS uses setForegroundNotificationPresentationOptions above.
+      const { Alert } = require('react-native');
+      const title = remoteMessage.notification?.title || 'MyFNG';
+      const body = remoteMessage.notification?.body || '';
+      Alert.alert(title, body);
+    }
   });
 
   const unsubscribeOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
+    console.warn('[FCM] Notification opened app:', remoteMessage.messageId);
     onOpen?.(remoteMessage);
   });
 
   void messaging()
     .getInitialNotification()
     .then((remoteMessage) => {
-      if (remoteMessage) onOpen?.(remoteMessage);
+      if (remoteMessage) {
+        console.warn('[FCM] App opened from notification:', remoteMessage.messageId);
+        onOpen?.(remoteMessage);
+      }
     });
 
   return () => {

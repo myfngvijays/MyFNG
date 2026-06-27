@@ -196,6 +196,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const [liveBlogs, setLiveBlogs] = useState<Array<{ id: string; title: string; excerpt: string; date: string; image: string; slug: string }>>([]);
   const brandScrollX = useRef(new Animated.Value(0)).current;
   const brandAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  const spareScrollX = useRef(new Animated.Value(0)).current;
 
   const blinkAnim = useRef(new Animated.Value(1)).current;
   const heroFade = useRef(new Animated.Value(1)).current;
@@ -373,7 +374,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
       })(),
       (async () => {
         try {
-          const res = await fetch(`${ENV.API_URL}/api/super_admin/car-brands?active_only=true`);
+          const res = await fetch(`${ENV.API_URL}/api/public/car-brands`);
           if (!res.ok) return;
           const json = await res.json();
           const brands: PublicBrand[] = (json.data || []).map((b: any) => ({
@@ -449,6 +450,22 @@ export default function PublicHomeScreen({ navigation }: Props) {
     anim.start();
     return () => anim.stop();
   }, [carBrands, brandScrollX, screenW]);
+
+  useEffect(() => {
+    const SPARE_CARD_W = 104 + 16;
+    const totalW = SPARE_PART_BRANDS.length * SPARE_CARD_W;
+    const scrollDistance = totalW - screenW + 16;
+    if (scrollDistance <= 0) return;
+    spareScrollX.setValue(0);
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(spareScrollX, { toValue: -scrollDistance, duration: SPARE_PART_BRANDS.length * 1800, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(spareScrollX, { toValue: 0, duration: SPARE_PART_BRANDS.length * 1800, easing: Easing.linear, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [spareScrollX, screenW]);
 
   useEffect(() => {
     const count = heroBanners.length;
@@ -841,19 +858,21 @@ export default function PublicHomeScreen({ navigation }: Props) {
               title="Original Spare Parts"
               subtitle="Genuine OEM/OES parts for every repair"
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRow}>
-              {SPARE_PART_BRANDS.map((brand) => (
-                <View key={brand.name} style={styles.brandCard}>
-                  {brand.logo ? (
-                    <Image source={{ uri: brand.logo }} style={styles.brandLogo} resizeMode="contain" />
-                  ) : (
-                    <View style={styles.brandLogoPlaceholder}>
-                      <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
+            <View style={styles.brandCarouselClip}>
+              <Animated.View style={[styles.brandCarouselRow, { transform: [{ translateX: spareScrollX }] }]}>
+                {SPARE_PART_BRANDS.map((brand) => (
+                  <View key={brand.name} style={styles.brandCard}>
+                    {brand.logo ? (
+                      <Image source={{ uri: brand.logo }} style={styles.brandLogo} resizeMode="contain" />
+                    ) : (
+                      <View style={styles.brandLogoPlaceholder}>
+                        <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </Animated.View>
+            </View>
           </Section>
 
           <Section>

@@ -146,17 +146,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: '#0F172A',
-    lineHeight: 17,
+    lineHeight: 16,
     marginBottom: 3,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#64748B',
-    lineHeight: 15,
+    lineHeight: 14,
   },
   tickWrap: {
     width: 28,

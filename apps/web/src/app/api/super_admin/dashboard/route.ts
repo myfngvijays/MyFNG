@@ -313,6 +313,129 @@ export async function GET() {
       .filter((n: number) => n > 0);
     const avgAuditScore10 = Math.round(avg(auditScores10) * 10) / 10;
 
+    // --------------------
+    // App & Membership metrics
+    // --------------------
+    const [
+      activeMemberships,
+      newMemberships7d,
+      membershipRevMonth,
+      healthReports30d,
+      resaleReports30d,
+      walletCredits30d,
+      pushDevices,
+    ] = await Promise.all([
+      db.from('customer_memberships').select('id', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
+      db.from('customer_memberships').select('id', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo),
+      db.from('customer_memberships').select('amount_paid').gte('created_at', monthStart).eq('status', 'ACTIVE'),
+      db.from('vehicle_health_reports').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
+      db.from('car_resale_valuations').select('id', { count: 'exact', head: true }).gte('created_at', thirtyDaysAgo),
+      db.from('wallet_transactions').select('amount').eq('type', 'CREDIT').gte('created_at', thirtyDaysAgo),
+      db.from('notification_devices').select('id', { count: 'exact', head: true }),
+    ]);
+
+    const membershipRevenueMonth = (membershipRevMonth.data || []).reduce(
+      (sum: number, r: any) => sum + safeNum(r?.amount_paid),
+      0
+    );
+    const totalWalletCredits30d = (walletCredits30d.data || []).reduce(
+      (sum: number, r: any) => sum + safeNum(r?.amount),
+      0
+    );
+
+    // --------------------
+    // Chart data
+    // --------------------
+
+    // Daily leads trend (last 7 days)
+    const { data: leadsLast7d } = await db
+      .from('service_leads')
+      .select('created_at, status')
+      .gte('created_at', sevenDaysAgo)
+      .limit(10000);
+
+    const dailyLeadsTrend: { date: string; total: number; accepted: number; rejected: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000 + IST_OFFSET_MS);
+      const dateStr = `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+      const dayStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0) - IST_OFFSET_MS);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      const dayLeads = (leadsLast7d || []).filter((l: any) => {
+        const t = new Date(l.created_at).getTime();
+        return t >= dayStart.getTime() && t < dayEnd.getTime();
+      });
+      dailyLeadsTrend.push({
+        date: dateStr,
+        total: dayLeads.length,
+        accepted: dayLeads.filter((l: any) => l.status === 'ACCEPTED').length,
+        rejected: dayLeads.filter((l: any) => l.status === 'REJECTED').length,
+      });
+    }
+
+    // Service type breakdown (pie chart)
+    const { data: serviceTypeRows } = await db
+      .from('service_leads')
+      .select('lead_type')
+      .gte('created_at', thirtyDaysAgo)
+      .limit(10000);
+
+    const serviceTypeMap = new Map<string, number>();
+    for (const r of serviceTypeRows || []) {
+      const type = String(r?.lead_type || 'OTHER').toUpperCase();
+      serviceTypeMap.set(type, (serviceTypeMap.get(type) || 0) + 1);
+    }
+    const serviceTypeBreakdown = [...serviceTypeMap.entries()]
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+
+    // Membership plan distribution (pie chart)
+    const { data: membershipPlanRows } = await db
+      .from('customer_memberships')
+      .select('plan_name')
+      .eq('status', 'ACTIVE');
+
+    const planMap = new Map<string, number>();
+    for (const r of membershipPlanRows || []) {
+      const plan = String(r?.plan_name || 'Unknown');
+      planMap.set(plan, (planMap.get(plan) || 0) + 1);
+    }
+    const membershipPlanDistribution = [...planMap.entries()]
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    // Revenue trend (last 7 days)
+    const { data: revenueLast7d } = await db
+      .from('invoices')
+      .select('paid_amount, final_amount, paid_at')
+      .eq('payment_status', 'PAID')
+      .gte('paid_at', sevenDaysAgo);
+
+    const dailyRevenueTrend: { date: string; revenue: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000 + IST_OFFSET_MS);
+      const dateStr = `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+      const dayStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0) - IST_OFFSET_MS);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      const dayRevenue = (revenueLast7d || [])
+        .filter((inv: any) => {
+          const t = new Date(inv.paid_at).getTime();
+          return t >= dayStart.getTime() && t < dayEnd.getTime();
+        })
+        .reduce((sum: number, inv: any) => sum + safeNum(inv?.paid_amount ?? inv?.final_amount ?? 0), 0);
+      dailyRevenueTrend.push({ date: dateStr, revenue: Math.round(dayRevenue) });
+    }
+
+    // Lead status distribution (pie chart)
+    const statusMap = new Map<string, number>();
+    for (const r of leadsLast7d || []) {
+      const status = String(r?.status || 'UNKNOWN');
+      statusMap.set(status, (statusMap.get(status) || 0) + 1);
+    }
+    const leadStatusDistribution = [...statusMap.entries()]
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
     return NextResponse.json({
       globalMetrics: {
         totalLeadsToday: leadsToday.count || 0,
@@ -353,6 +476,22 @@ export async function GET() {
           fraudOpen: fraudOpen.count || 0,
           avgScore10: avgAuditScore10,
         },
+      },
+      appMetrics: {
+        activeMemberships: activeMemberships.count || 0,
+        newMemberships7d: newMemberships7d.count || 0,
+        membershipRevenueMonth,
+        healthReports30d: healthReports30d.count || 0,
+        resaleReports30d: resaleReports30d.count || 0,
+        totalWalletCredits30d,
+        pushDevices: pushDevices.count || 0,
+      },
+      charts: {
+        dailyLeadsTrend,
+        dailyRevenueTrend,
+        serviceTypeBreakdown,
+        membershipPlanDistribution,
+        leadStatusDistribution,
       },
       generated_at: new Date().toISOString(),
     });

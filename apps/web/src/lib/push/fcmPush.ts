@@ -71,7 +71,7 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
         },
         apns: {
           headers: {
-            ...(msg.priority === 'high' ? { 'apns-priority': '10' } : { 'apns-priority': '5' }),
+            'apns-priority': '10',
             'apns-push-type': 'alert',
           },
           payload: {

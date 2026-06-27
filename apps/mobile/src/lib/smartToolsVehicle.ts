@@ -20,7 +20,7 @@ export type CustomerVehicle = {
 
 export async function fetchCarBrands(): Promise<PublicBrand[]> {
   try {
-    const res = await fetch(`${ENV.API_URL}/api/super_admin/car-brands?active_only=true`);
+    const res = await fetch(`${ENV.API_URL}/api/public/car-brands`);
     if (res.ok) {
       const json = await res.json();
       const brands: PublicBrand[] = (json.data || [])

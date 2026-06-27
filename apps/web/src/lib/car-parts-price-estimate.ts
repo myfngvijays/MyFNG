@@ -290,12 +290,5 @@ export async function estimateCarPartsPrices(input: CarPartsEstimateInput): Prom
     throw new Error('Make and model are required');
   }
 
-  try {
-    const web = await buildWebSourcedEstimate(normalized);
-    if (web) return web;
-  } catch (err) {
-    console.error('[car-parts-price-estimate] web lookup error:', err);
-  }
-
   return buildCatalogFallbackEstimate(normalized);
 }

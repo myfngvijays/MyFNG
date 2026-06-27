@@ -55,14 +55,19 @@ export default function SmartToolsBlock({ screen, slot, navigation, city, compac
         {tools.map((tool) => (
           <TouchableOpacity
             key={tool.id}
-            style={[styles.tile, { width: tileW }]}
+            style={[styles.tile, { width: tileW }, tool.locked ? styles.tileLocked : null]}
             onPress={() => handlePress(tool)}
             activeOpacity={0.85}
           >
-            <View style={[styles.iconWrap, compact ? styles.iconWrapCompact : null, { backgroundColor: tool.bg }]}>
-              <Ionicons name={tool.icon} size={compact ? 18 : 20} color={tool.color} />
+            <View style={[styles.iconWrap, compact ? styles.iconWrapCompact : null, { backgroundColor: tool.locked ? '#F3F4F6' : tool.bg }]}>
+              <Ionicons name={tool.icon} size={compact ? 18 : 20} color={tool.locked ? '#9CA3AF' : tool.color} />
+              {tool.locked ? (
+                <View style={styles.lockBadge}>
+                  <Ionicons name="lock-closed" size={10} color="#FFFFFF" />
+                </View>
+              ) : null}
             </View>
-            <Text style={[styles.tileTitle, compact ? styles.tileTitleCompact : null]} numberOfLines={3}>
+            <Text style={[styles.tileTitle, compact ? styles.tileTitleCompact : null, tool.locked ? styles.tileTitleLocked : null]} numberOfLines={3}>
               {tool.title}
             </Text>
           </TouchableOpacity>
@@ -124,5 +129,24 @@ const styles = StyleSheet.create({
   tileTitleCompact: {
     fontSize: 10,
     lineHeight: 13,
+  },
+  tileLocked: {
+    opacity: 0.7,
+  },
+  tileTitleLocked: {
+    color: '#9CA3AF',
+  },
+  lockBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#6B7280',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
 });

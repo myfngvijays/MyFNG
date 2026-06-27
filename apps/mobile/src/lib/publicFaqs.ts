@@ -54,7 +54,24 @@ export async function fetchPublicFaqs(options: {
       return items;
     }
   } catch {
-    // fall through
+    // retry once after 1s
+    try {
+      await new Promise((r) => setTimeout(r, 1000));
+      const res = await fetch(`${ENV.API_URL}/api/public/faqs?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        const items = Array.isArray(json?.items)
+          ? json.items.map((item: any) => ({ q: String(item.q || item.question || ''), a: String(item.a || item.answer || '') }))
+              .filter((item: PublicFaqItem) => item.q && item.a)
+          : [];
+        if (items.length) {
+          cache.set(key, { items, fetchedAt: Date.now() });
+          return items;
+        }
+      }
+    } catch {
+      // fall through to fallback
+    }
   }
 
   if (options.group === 'RSA') return fallbackRsa();
