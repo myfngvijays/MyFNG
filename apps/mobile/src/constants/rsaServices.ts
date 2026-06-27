@@ -10,7 +10,7 @@ export type RsaServiceDef = {
 };
 
 export const RSA_SERVICES: RsaServiceDef[] = [
-  { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', iconKind: 'ion', iconName: 'battery-full', bg: '#F97316' },
+  { name: 'Battery Jumpstart', desc: 'Instant battery start at your location.', iconKind: 'mci', iconName: 'car-battery', bg: '#F97316' },
   { name: 'Fuel Delivery', desc: 'Emergency petrol/diesel delivery.', iconKind: 'material', iconName: 'local-gas-station', bg: '#EF4444' },
   { name: 'Car Towing Services', desc: 'Safe towing to nearest workshop.', iconKind: 'mci', iconName: 'tow-truck', bg: '#3B82F6' },
   { name: 'Accidental Car Towing', desc: 'Accident vehicle recovery & transport.', iconKind: 'mci', iconName: 'car-emergency', bg: '#DC2626' },
