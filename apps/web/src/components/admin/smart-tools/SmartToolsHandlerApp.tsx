@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Crown, RefreshCw, Save, Smartphone, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Crown, RefreshCw, Save, Smartphone } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import {
   DEFAULT_SMART_TOOLS_HANDLER,
@@ -44,6 +44,7 @@ function Toggle({
 export default function SmartToolsHandlerApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
   const [config, setConfig] = useState<SmartToolsHandlerConfig>(DEFAULT_SMART_TOOLS_HANDLER);
   const [plans, setPlans] = useState<MembershipPlanOption[]>([]);
 
@@ -205,7 +206,7 @@ export default function SmartToolsHandlerApp() {
             <div className="border-b border-gray-100 px-5 py-4">
               <h2 className="text-sm font-black uppercase tracking-wide text-gray-500">Tools</h2>
               <p className="mt-1 text-xs text-gray-500">
-                Pick exact membership plans (RSA Basic, Family, Prime, etc.) and screen placements per tool.
+                Click a tool to expand settings — membership plans and screen placements.
               </p>
             </div>
 
@@ -217,14 +218,47 @@ export default function SmartToolsHandlerApp() {
                   const planCount = (tool.allowed_membership_plan_ids || []).length;
                   const placementCount = countEnabledSmartToolPlacements(tool.placements);
                   const placementLabels = listEnabledSmartToolPlacementLabels(tool.placements);
+                  const expanded = expandedToolId === tool.tool_id;
 
                   return (
-                    <div key={tool.tool_id} className="px-5 py-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Sparkles className="h-4 w-4 text-blue-600" />
-                            <h3 className="text-base font-black text-gray-900">{tool.title}</h3>
+                    <div key={tool.tool_id}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedToolId(expanded ? null : tool.tool_id)}
+                        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left text-gray-900 transition hover:bg-gray-50"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-bold text-gray-900">{tool.title}</span>
+                            {!tool.enabled ? (
+                              <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700">
+                                Off
+                              </span>
+                            ) : null}
+                          </div>
+                          {!expanded ? (
+                            <p className="mt-0.5 truncate text-xs text-gray-500">
+                              {tool.subtitle || tool.tool_id}
+                              {placementCount > 0 ? ` · ${placementCount} placement${placementCount === 1 ? '' : 's'}` : ''}
+                              {tool.membership_only || planCount > 0
+                                ? ` · ${planCount > 0 ? `${planCount} plan${planCount === 1 ? '' : 's'}` : 'Members only'}`
+                                : ''}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-[11px] font-semibold text-gray-400">#{tool.display_order}</span>
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4 text-gray-400" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                      </button>
+
+                      {expanded ? (
+                        <div className="border-t border-gray-100 bg-gray-50/60 px-5 pb-5 pt-4">
+                          <div className="mb-4 flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-600">
                               {tool.tool_type}
                             </span>
@@ -240,70 +274,71 @@ export default function SmartToolsHandlerApp() {
                               </span>
                             ) : null}
                           </div>
-                          <p className="mt-1 text-xs text-gray-500">{tool.subtitle || tool.tool_id}</p>
                           {placementLabels.length ? (
-                            <p className="mt-1 text-[11px] text-gray-400">{placementLabels.slice(0, 3).join(' · ')}</p>
+                            <p className="mb-4 text-[11px] leading-5 text-gray-500">{placementLabels.join(' · ')}</p>
                           ) : null}
+
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap gap-4">
+                              <Toggle
+                                checked={tool.enabled}
+                                onChange={(enabled) => updateTool(tool.tool_id, { enabled })}
+                                label="Enabled"
+                              />
+                              <Toggle
+                                checked={tool.requires_login}
+                                onChange={(requires_login) => updateTool(tool.tool_id, { requires_login })}
+                                label="Requires login"
+                              />
+                            </div>
+                            <label className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5">
+                              <span className="text-xs font-bold text-gray-600">Order</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={99}
+                                value={tool.display_order}
+                                onChange={(e) =>
+                                  updateTool(tool.tool_id, {
+                                    display_order: Math.max(0, Number(e.target.value || 0)),
+                                  })
+                                }
+                                className="w-14 rounded-lg border border-gray-200 px-2 py-1 text-sm"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="text-xs font-bold text-gray-700">Title override (optional)</span>
+                              <input
+                                value={tool.title_override || ''}
+                                onChange={(e) => updateTool(tool.tool_id, { title_override: e.target.value })}
+                                placeholder={tool.title}
+                                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                                maxLength={120}
+                              />
+                            </label>
+                            {tool.tool_type === 'webview' ? (
+                              <label className="block">
+                                <span className="text-xs font-bold text-gray-700">Web URL override</span>
+                                <input
+                                  value={tool.web_url_override || ''}
+                                  onChange={(e) => updateTool(tool.tool_id, { web_url_override: e.target.value })}
+                                  placeholder={tool.default_web_url || 'https://'}
+                                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+
+                          <SmartToolAdvancedFields
+                            tool={tool}
+                            plans={plans}
+                            onChange={(patch) => updateTool(tool.tool_id, patch)}
+                          />
                         </div>
-                        <label className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1.5">
-                          <span className="text-xs font-bold text-gray-600">Order</span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={99}
-                            value={tool.display_order}
-                            onChange={(e) =>
-                              updateTool(tool.tool_id, {
-                                display_order: Math.max(0, Number(e.target.value || 0)),
-                              })
-                            }
-                            className="w-14 rounded-lg border border-gray-200 px-2 py-1 text-sm"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-4">
-                        <Toggle
-                          checked={tool.enabled}
-                          onChange={(enabled) => updateTool(tool.tool_id, { enabled })}
-                          label="Enabled"
-                        />
-                        <Toggle
-                          checked={tool.requires_login}
-                          onChange={(requires_login) => updateTool(tool.tool_id, { requires_login })}
-                          label="Requires login"
-                        />
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <label className="block">
-                          <span className="text-xs font-bold text-gray-700">Title override (optional)</span>
-                          <input
-                            value={tool.title_override || ''}
-                            onChange={(e) => updateTool(tool.tool_id, { title_override: e.target.value })}
-                            placeholder={tool.title}
-                            className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                            maxLength={120}
-                          />
-                        </label>
-                        {tool.tool_type === 'webview' ? (
-                          <label className="block">
-                            <span className="text-xs font-bold text-gray-700">Web URL override</span>
-                            <input
-                              value={tool.web_url_override || ''}
-                              onChange={(e) => updateTool(tool.tool_id, { web_url_override: e.target.value })}
-                              placeholder={tool.default_web_url || 'https://'}
-                              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                            />
-                          </label>
-                        ) : null}
-                      </div>
-
-                      <SmartToolAdvancedFields
-                        tool={tool}
-                        plans={plans}
-                        onChange={(patch) => updateTool(tool.tool_id, patch)}
-                      />
+                      ) : null}
                     </div>
                   );
                 })}

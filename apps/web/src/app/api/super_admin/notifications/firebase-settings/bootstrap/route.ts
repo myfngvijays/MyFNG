@@ -62,7 +62,7 @@ export async function POST() {
         push_enabled: true,
       },
       manual_steps: [
-        'Upload APNs Auth Key (.p8) in Firebase Console → Cloud Messaging (Key ID 9J9AKAN78Q).',
+        'Upload APNs Auth Key (.p8) in Firebase Console → Cloud Messaging (Key ID W9XQWZPN59, Production).',
         'Open MyFNG app on phone → OTP login → Allow notifications.',
         'Admin → Send Notification → Advanced → enter test phone → Send.',
       ],

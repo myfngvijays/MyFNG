@@ -78,9 +78,18 @@ export default function PushComposeSection() {
   const [sending, setSending] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [targetPhone, setTargetPhone] = useState('');
-  const [result, setResult] = useState<{ success: boolean; sent?: number; error?: string; hint?: string } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    success: boolean;
+    sent?: number;
+    attempted?: number;
+    error?: string;
+    hint?: string;
+    partialFailure?: boolean;
+    platformStats?: {
+      ios?: { attempted: number; delivered: number; failed: number };
+      android?: { attempted: number; delivered: number; failed: number };
+    };
+  } | null>(null);
 
   const handleSend = async () => {
     if (!title.trim() || !message.trim()) {
@@ -128,9 +137,21 @@ export default function PushComposeSection() {
         setResult({ success: false, error: data.error || 'Failed to send' });
         toast.error(data.error || 'Failed to send notification');
       } else {
-        setResult({ success: true, sent: data.sent, hint: data.message });
-        if (Number(data.sent) > 0) {
-          toast.success(`Delivered to ${data.sent} device(s)`);
+        const partialFailure = Boolean(data.partial_failure);
+        const platformStats = data.platform_stats;
+        setResult({
+          success: true,
+          sent: data.sent,
+          attempted: data.attempted,
+          hint: data.message,
+          partialFailure,
+          platformStats,
+        });
+
+        if (Number(data.sent) > 0 && partialFailure) {
+          toast.error(data.message || 'Some devices failed — check iPhone/Android breakdown below');
+        } else if (Number(data.sent) > 0) {
+          toast.success(data.message || `Delivered to ${data.sent} device(s)`);
         } else {
           toast.error(data.message || 'No devices found');
         }
@@ -405,11 +426,19 @@ export default function PushComposeSection() {
         {result ? (
           <div
             className={`flex items-start gap-2 p-3 rounded-xl text-sm ${
-              result.success ? 'bg-blue-50 text-blue-800 border border-blue-100' : 'bg-red-50 text-red-800 border border-red-100'
+              result.success
+                ? result.partialFailure
+                  ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                  : 'bg-blue-50 text-blue-800 border border-blue-100'
+                : 'bg-red-50 text-red-800 border border-red-100'
             }`}
           >
             {result.success ? (
-              <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+              result.partialFailure ? (
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+              )
             ) : (
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             )}
@@ -417,8 +446,24 @@ export default function PushComposeSection() {
               {result.success ? (
                 <>
                   <p>
-                    Sent to <strong>{result.sent}</strong> device(s)
+                    Sent to <strong>{result.sent}</strong> of <strong>{result.attempted ?? result.sent}</strong>{' '}
+                    device(s)
                   </p>
+                  {result.platformStats ? (
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {result.platformStats.android?.attempted ? (
+                        <li>
+                          Android: {result.platformStats.android.delivered}/{result.platformStats.android.attempted}{' '}
+                          delivered
+                        </li>
+                      ) : null}
+                      {result.platformStats.ios?.attempted ? (
+                        <li>
+                          iPhone: {result.platformStats.ios.delivered}/{result.platformStats.ios.attempted} delivered
+                        </li>
+                      ) : null}
+                    </ul>
+                  ) : null}
                   {result.hint ? <p className="mt-1">{result.hint}</p> : null}
                 </>
               ) : (

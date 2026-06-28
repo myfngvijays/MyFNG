@@ -21,7 +21,7 @@ const DEFAULTS = {
   ios_app_id: '1:455279370834:ios:38d95771254f40a5e7b58b',
   android_default_channel: 'default',
   apns_environment: 'production',
-  apns_key_id: '9J9AKAN78Q',
+  apns_key_id: 'W9XQWZPN59',
 };
 
 function loadEnvLocal() {
@@ -142,7 +142,7 @@ async function main() {
   console.log(`   use_db_credentials: true`);
   console.log(`   push_enabled: true`);
   console.log('');
-  console.log('Next: Firebase Console → upload APNs .p8 (Key ID 9J9AKAN78Q)');
+  console.log('Next: Firebase Console → upload APNs .p8 (Key ID W9XQWZPN59, Production environment)');
   console.log('Then: Admin → Firebase Settings → Test Connection');
 }
 

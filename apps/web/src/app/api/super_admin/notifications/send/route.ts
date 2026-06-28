@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { deactivateFcmTokens, sendFcmPush } from '@/lib/push/fcmPush';
+import { formatFcmAdminErrorMessage } from '@/lib/push/fcmErrorMessages';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { assertPushAdmin } from '@/lib/push/admin-auth';
 import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
@@ -35,21 +36,6 @@ async function getPushDisabledCustomerIds(supabaseAdmin: any): Promise<Set<strin
   return new Set((data || []).map((row: any) => String(row.customer_id)));
 }
 
-function filterCustomerDeviceTokens(
-  devices: Array<{ token: string; customer_id?: string | null; device_name?: string | null }>,
-  pushDisabledCustomerIds: Set<string>,
-  osFilter: 'all' | 'android' | 'ios' = 'all',
-): string[] {
-  return devices
-    .filter((device) => {
-      if (device.customer_id && pushDisabledCustomerIds.has(String(device.customer_id))) {
-        return false;
-      }
-      return matchesOsFilter(device.device_name, osFilter);
-    })
-    .map((device) => String(device.token));
-}
-
 function matchesOsFilter(deviceName: string | null | undefined, filter: 'all' | 'android' | 'ios'): boolean {
   if (filter === 'all') return true;
   const name = String(deviceName || '').toLowerCase();
@@ -59,6 +45,33 @@ function matchesOsFilter(deviceName: string | null | undefined, filter: 'all' | 
   return true;
 }
 
+function inferDeviceOs(deviceName: string | null | undefined): 'ios' | 'android' | 'unknown' {
+  const name = String(deviceName || '').toLowerCase();
+  if (name.includes('ios') || name.includes('iphone') || name.includes('ipad')) return 'ios';
+  if (name.includes('android')) return 'android';
+  return 'unknown';
+}
+
+type DeviceTokenTarget = { token: string; os: 'ios' | 'android' | 'unknown' };
+
+function collectDeviceTokens(
+  devices: Array<{ token: string; customer_id?: string | null; device_name?: string | null }>,
+  pushDisabledCustomerIds: Set<string>,
+  osFilter: 'all' | 'android' | 'ios' = 'all',
+): DeviceTokenTarget[] {
+  return devices
+    .filter((device) => {
+      if (device.customer_id && pushDisabledCustomerIds.has(String(device.customer_id))) {
+        return false;
+      }
+      return matchesOsFilter(device.device_name, osFilter);
+    })
+    .map((device) => ({
+      token: String(device.token),
+      os: inferDeviceOs(device.device_name),
+    }));
+}
+
 function resolveOsFilter(platform: string, audience: string): 'all' | 'android' | 'ios' {
   const p = String(platform || 'both').toLowerCase();
   const a = String(audience || 'all').toLowerCase();
@@ -66,6 +79,47 @@ function resolveOsFilter(platform: string, audience: string): 'all' | 'android' 
   if (p === 'ios') return 'ios';
   if (a === 'android' || a === 'ios') return a as 'android' | 'ios';
   return 'all';
+}
+
+function dedupeDeviceTargets(targets: DeviceTokenTarget[]): DeviceTokenTarget[] {
+  const byToken = new Map<string, DeviceTokenTarget>();
+  for (const target of targets) {
+    if (!target.token) continue;
+    byToken.set(target.token, target);
+  }
+  return [...byToken.values()];
+}
+
+function buildDeliverySummary(
+  platformStats: {
+    ios: { attempted: number; delivered: number; failed: number };
+    android: { attempted: number; delivered: number; failed: number };
+  },
+  uniqueErrors: string[],
+): string | undefined {
+  const parts: string[] = [];
+  if (platformStats.android.attempted > 0) {
+    parts.push(`Android: ${platformStats.android.delivered}/${platformStats.android.attempted} delivered`);
+  }
+  if (platformStats.ios.attempted > 0) {
+    parts.push(`iPhone: ${platformStats.ios.delivered}/${platformStats.ios.attempted} delivered`);
+  }
+
+  if (platformStats.ios.failed > 0 && platformStats.android.delivered > 0) {
+    return [
+      parts.join(' · '),
+      'Android succeeded but iPhone failed — your iPhone did NOT get this notification.',
+      uniqueErrors.length > 0 ? formatFcmAdminErrorMessage(uniqueErrors) : undefined,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  if (parts.length > 0) {
+    return parts.join(' · ');
+  }
+
+  return uniqueErrors.length > 0 ? formatFcmAdminErrorMessage(uniqueErrors) : undefined;
 }
 
 async function assertAdmin() {
@@ -130,7 +184,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let tokens: string[] = [];
+    let deviceTargets: DeviceTokenTarget[] = [];
     let targetCustomer: { id: string; phone: string; full_name: string | null } | null = null;
     const pushDisabledCustomerIds = await getPushDisabledCustomerIds(supabaseAdmin);
 
@@ -140,7 +194,7 @@ export async function POST(request: NextRequest) {
         .select('token, customer_id, device_name')
         .eq('platform', MOBILE_PUSH_PLATFORM)
         .eq('is_active', true);
-      tokens = filterCustomerDeviceTokens((data || []) as any[], pushDisabledCustomerIds, osFilter);
+      deviceTargets = collectDeviceTokens((data || []) as any[], pushDisabledCustomerIds, osFilter);
     } else if (targetRole === 'CUSTOMER') {
       if (targetPhone) {
         const { data: customer } = await supabaseAdmin
@@ -177,9 +231,12 @@ export async function POST(request: NextRequest) {
           .eq('platform', MOBILE_PUSH_PLATFORM)
           .eq('is_active', true);
 
-        tokens = (customerDevices || [])
+        deviceTargets = (customerDevices || [])
           .filter((r: any) => matchesOsFilter(r.device_name, osFilter))
-          .map((r: any) => String(r.token));
+          .map((r: any) => ({
+            token: String(r.token),
+            os: inferDeviceOs(r.device_name),
+          }));
       } else {
         const { data: customerDevices } = await supabaseAdmin
           .from('notification_devices')
@@ -188,7 +245,7 @@ export async function POST(request: NextRequest) {
           .eq('is_active', true)
           .not('customer_id', 'is', null);
 
-        tokens = filterCustomerDeviceTokens((customerDevices || []) as any[], pushDisabledCustomerIds, osFilter);
+        deviceTargets = collectDeviceTokens((customerDevices || []) as any[], pushDisabledCustomerIds, osFilter);
       }
     } else {
       const { data: roleUsers } = await supabaseAdmin
@@ -200,15 +257,20 @@ export async function POST(request: NextRequest) {
       if (userIds.length > 0) {
         const { data: devices } = await supabaseAdmin
           .from('notification_devices')
-          .select('token')
+          .select('token, device_name')
           .eq('platform', MOBILE_PUSH_PLATFORM)
           .eq('is_active', true)
           .in('user_id', userIds);
-        tokens = (devices || []).map((r: any) => String(r.token));
+        deviceTargets = (devices || [])
+          .filter((r: any) => matchesOsFilter(r.device_name, osFilter))
+          .map((r: any) => ({
+            token: String(r.token),
+            os: inferDeviceOs(r.device_name),
+          }));
       }
     }
 
-    if (tokens.length === 0) {
+    if (deviceTargets.length === 0) {
       await supabaseAdmin
         .from('notification_logs')
         .insert({
@@ -248,17 +310,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const uniqueTokens = [...new Set(tokens)];
+    const uniqueTargets = dedupeDeviceTargets(deviceTargets);
     const BATCH_SIZE = 100;
     let totalAttempted = 0;
     let totalDelivered = 0;
     const deliveryErrors: string[] = [];
+    const platformStats = {
+      ios: { attempted: 0, delivered: 0, failed: 0 },
+      android: { attempted: 0, delivered: 0, failed: 0 },
+      unknown: { attempted: 0, delivered: 0, failed: 0 },
+    };
 
-    for (let i = 0; i < uniqueTokens.length; i += BATCH_SIZE) {
-      const batch = uniqueTokens.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < uniqueTargets.length; i += BATCH_SIZE) {
+      const batch = uniqueTargets.slice(i, i + BATCH_SIZE);
       const delivery = await sendFcmPush(
-        batch.map((token) => ({
-          token,
+        batch.map((target) => ({
+          token: target.token,
+          os: target.os,
           title,
           body: message,
           priority,
@@ -275,12 +343,18 @@ export async function POST(request: NextRequest) {
       totalAttempted += delivery.attempted;
       totalDelivered += delivery.delivered;
       deliveryErrors.push(...delivery.errors);
+      for (const os of ['ios', 'android', 'unknown'] as const) {
+        platformStats[os].attempted += delivery.platformStats[os].attempted;
+        platformStats[os].delivered += delivery.platformStats[os].delivered;
+        platformStats[os].failed += delivery.platformStats[os].failed;
+      }
       if (delivery.invalidTokens.length) {
         await deactivateFcmTokens(supabaseAdmin, delivery.invalidTokens);
       }
     }
 
     const uniqueErrors = [...new Set(deliveryErrors.filter(Boolean))];
+    const deliverySummary = buildDeliverySummary(platformStats, uniqueErrors);
     const logStatus =
       totalDelivered > 0 ? 'SENT' : totalAttempted > 0 ? 'FCM_FAILED' : 'NO_DEVICES';
 
@@ -311,6 +385,7 @@ export async function POST(request: NextRequest) {
           platform: body?.platform || 'both',
           audience: body?.audience || 'all',
           os_filter: osFilter,
+          platform_stats: platformStats,
         },
       })
       .then(() => undefined, () => undefined);
@@ -320,9 +395,10 @@ export async function POST(request: NextRequest) {
         success: true,
         sent: 0,
         attempted: totalAttempted,
+        platform_stats: platformStats,
         message:
           uniqueErrors.length > 0
-            ? `FCM rejected push: ${uniqueErrors.join(', ')}. Re-open app on this phone → Settings → toggle Push OFF then ON.`
+            ? formatFcmAdminErrorMessage(uniqueErrors)
             : 'FCM rejected the push token. Re-register on the current device (Settings → Push OFF → ON).',
         fcm_errors: uniqueErrors,
         target_phone: targetPhone || undefined,
@@ -333,6 +409,9 @@ export async function POST(request: NextRequest) {
       success: true,
       sent: totalDelivered,
       attempted: totalAttempted,
+      platform_stats: platformStats,
+      message: deliverySummary,
+      partial_failure: platformStats.ios.failed > 0 || platformStats.android.failed > 0,
       fcm_errors: uniqueErrors,
       target_phone: targetPhone || undefined,
     });

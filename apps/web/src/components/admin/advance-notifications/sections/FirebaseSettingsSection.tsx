@@ -15,6 +15,7 @@ import {
   Shield,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { MYFNG_FIREBASE_DEFAULTS } from '@/lib/push/firebaseProjectDefaults';
 
 type ConfigForm = {
   project_name: string;
@@ -490,8 +491,9 @@ export default function PushFirebaseSettingsSection() {
                     </div>
                     <div className="sm:col-span-2 rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
                       <p>
-                        <strong>APNs Key ID:</strong> 9J9AKAN78Q · upload <strong>AuthKey_9J9AKAN78Q.p8</strong> in
-                        Firebase Console → Cloud Messaging → Apple app configuration.
+                        <strong>APNs Key ID:</strong> {MYFNG_FIREBASE_DEFAULTS.apns_key_id} · upload{' '}
+                        <strong>AuthKey_{MYFNG_FIREBASE_DEFAULTS.apns_key_id}.p8</strong> in Firebase Console → Cloud
+                        Messaging → Apple app configuration (Production).
                       </p>
                       <p>
                         <strong>iOS App ID:</strong> 1:455279370834:ios:38d95771254f40a5e7b58b ·{' '}

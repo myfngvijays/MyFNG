@@ -96,7 +96,20 @@ export async function checkFcmCredentials(): Promise<FcmHealthResult> {
           messagingSenderId,
           credentialsConfigured: true,
           credentialsSource,
-          message: `FCM credentials valid (${credentialsSource})`,
+          message: `FCM Admin credentials valid (${credentialsSource}). APNs delivery is tested only on real iOS sends.`,
+        };
+      }
+
+      if (code === 'messaging/third-party-auth-error') {
+        return {
+          ok: false,
+          projectId: app.options.projectId || projectId,
+          clientEmailMasked,
+          messagingSenderId,
+          credentialsConfigured: true,
+          credentialsSource,
+          error:
+            'APNs auth failed. If APNs key is already in Firebase Console, re-save the Firebase service account key in Admin → Firebase Settings and ensure project is myfng-d863c.',
         };
       }
 

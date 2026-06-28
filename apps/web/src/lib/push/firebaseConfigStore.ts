@@ -163,15 +163,6 @@ export function resolveActiveFirebaseCredentials(config: PushFirebaseConfigRecor
 } {
   const env = getEnvFirebaseDefaults();
 
-  if (config.use_db_credentials && config.client_email?.trim() && config.private_key?.trim()) {
-    return {
-      projectId: config.project_id || env.project_id,
-      clientEmail: config.client_email.trim(),
-      privateKey: unquotePrivateKey(config.private_key),
-      source: 'database',
-    };
-  }
-
   const jsonRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
   if (jsonRaw) {
     try {
@@ -191,6 +182,25 @@ export function resolveActiveFirebaseCredentials(config: PushFirebaseConfigRecor
     } catch {
       // fall through
     }
+  }
+
+  // Local dev: prefer .env.local over DB to avoid stale/corrupt Supabase copies.
+  if (process.env.NODE_ENV === 'development' && env.project_id && env.client_email && env.private_key) {
+    return {
+      projectId: env.project_id,
+      clientEmail: env.client_email,
+      privateKey: env.private_key,
+      source: 'environment',
+    };
+  }
+
+  if (config.use_db_credentials && config.client_email?.trim() && config.private_key?.trim()) {
+    return {
+      projectId: config.project_id || env.project_id,
+      clientEmail: config.client_email.trim(),
+      privateKey: unquotePrivateKey(config.private_key),
+      source: 'database',
+    };
   }
 
   if (env.project_id && env.client_email && env.private_key) {

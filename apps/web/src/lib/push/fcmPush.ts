@@ -2,6 +2,8 @@ import 'server-only';
 import { getFirebaseAdminAppAsync } from '@/lib/firebase/admin';
 import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
 
+export type FcmDeviceOs = 'ios' | 'android' | 'unknown';
+
 export type FcmPushMessage = {
   token: string;
   title: string;
@@ -9,6 +11,13 @@ export type FcmPushMessage = {
   data?: Record<string, unknown>;
   priority?: 'default' | 'high';
   imageUrl?: string;
+  os?: FcmDeviceOs;
+};
+
+export type FcmPlatformDeliveryStats = {
+  attempted: number;
+  delivered: number;
+  failed: number;
 };
 
 export type FcmDeliveryResult = {
@@ -18,6 +27,7 @@ export type FcmDeliveryResult = {
   failed: number;
   errors: string[];
   invalidTokens: string[];
+  platformStats: Record<FcmDeviceOs, FcmPlatformDeliveryStats>;
 };
 
 function stringifyData(data?: Record<string, unknown>): Record<string, string> | undefined {
@@ -36,16 +46,34 @@ const INVALID_TOKEN_CODES = new Set([
   'messaging/invalid-argument',
 ]);
 
+function emptyPlatformStats(): Record<FcmDeviceOs, FcmPlatformDeliveryStats> {
+  return {
+    ios: { attempted: 0, delivered: 0, failed: 0 },
+    android: { attempted: 0, delivered: 0, failed: 0 },
+    unknown: { attempted: 0, delivered: 0, failed: 0 },
+  };
+}
+
 export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDeliveryResult> {
   if (!messages.length) {
-    return { ok: true, attempted: 0, delivered: 0, failed: 0, errors: [], invalidTokens: [] };
+    return {
+      ok: true,
+      attempted: 0,
+      delivered: 0,
+      failed: 0,
+      errors: [],
+      invalidTokens: [],
+      platformStats: emptyPlatformStats(),
+    };
   }
 
   const config = await loadPushFirebaseConfig();
   const androidChannel = config.android_default_channel || 'default';
+  const iosBundleId = config.ios_bundle_id || 'com.myfng.app';
   const messaging = (await getFirebaseAdminAppAsync()).messaging();
   const invalidTokens: string[] = [];
   const errors: string[] = [];
+  const platformStats = emptyPlatformStats();
   let delivered = 0;
   let failed = 0;
 
@@ -73,6 +101,7 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
           headers: {
             'apns-priority': '10',
             'apns-push-type': 'alert',
+            'apns-topic': iosBundleId,
           },
           payload: {
             aps: {
@@ -91,11 +120,16 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
     );
 
     response.responses.forEach((result, index) => {
+      const os: FcmDeviceOs = batch[index].os || 'unknown';
+      platformStats[os].attempted += 1;
+
       if (result.success) {
         delivered += 1;
+        platformStats[os].delivered += 1;
         return;
       }
       failed += 1;
+      platformStats[os].failed += 1;
       const code = result.error?.code || 'unknown';
       const message = result.error?.message || 'send_failed';
       errors.push(`${code}: ${message}`);
@@ -112,6 +146,7 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
     failed,
     errors: [...new Set(errors)],
     invalidTokens: [...new Set(invalidTokens)],
+    platformStats,
   };
 }
 

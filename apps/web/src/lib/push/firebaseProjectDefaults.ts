@@ -11,7 +11,8 @@ export const MYFNG_FIREBASE_DEFAULTS = {
   ios_app_id: '1:455279370834:ios:38d95771254f40a5e7b58b',
   android_default_channel: 'default',
   apns_environment: 'production',
-  apns_key_id: '9J9AKAN78Q',
+  apns_key_id: 'W9XQWZPN59',
+  apns_team_id: 'JUN6TX4JD3',
 } as const;
 
 export function buildFirebaseBootstrapPayload(env: NodeJS.ProcessEnv = process.env) {
