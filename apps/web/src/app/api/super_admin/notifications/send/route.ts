@@ -4,6 +4,7 @@ import { formatFcmAdminErrorMessage } from '@/lib/push/fcmErrorMessages';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { assertPushAdmin } from '@/lib/push/admin-auth';
 import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
+import { insertPushNotificationLog, PUSH_LOG_TYPE_BROADCAST } from '@/lib/push/notificationLog';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -271,34 +272,30 @@ export async function POST(request: NextRequest) {
     }
 
     if (deviceTargets.length === 0) {
-      await supabaseAdmin
-        .from('notification_logs')
-        .insert({
-          recipient: targetRole,
-          type: 'PUSH_BROADCAST',
-          message: `[${title}] ${message}`,
-          status: 'NO_DEVICES',
-          sent_at: new Date().toISOString(),
-          meta: {
-            target_role: targetRole,
-            target_phone: targetPhone || null,
-            target_customer_id: targetCustomer?.id || null,
-            title,
-            body: message,
-            sent_by: auth.userName,
-            sent_by_id: auth.userId,
-            devices: 0,
-            priority,
-            notification_type: notificationType,
-            image_url: imageUrl || null,
-            deep_link: deepLink || null,
-            cta_url: ctaUrl || null,
-            platform: body?.platform || 'both',
-            audience: body?.audience || 'all',
-            os_filter: osFilter,
-          },
-        })
-        .then(() => undefined, () => undefined);
+      await insertPushNotificationLog({
+        recipient: targetRole,
+        type: PUSH_LOG_TYPE_BROADCAST,
+        message: `[${title}] ${message}`,
+        status: 'NO_DEVICES',
+        meta: {
+          target_role: targetRole,
+          target_phone: targetPhone || null,
+          target_customer_id: targetCustomer?.id || null,
+          title,
+          body: message,
+          sent_by: auth.userName,
+          sent_by_id: auth.userId,
+          devices: 0,
+          priority,
+          notification_type: notificationType,
+          image_url: imageUrl || null,
+          deep_link: deepLink || null,
+          cta_url: ctaUrl || null,
+          platform: body?.platform || 'both',
+          audience: body?.audience || 'all',
+          os_filter: osFilter,
+        },
+      });
       return NextResponse.json({
         success: true,
         sent: 0,
@@ -358,37 +355,33 @@ export async function POST(request: NextRequest) {
     const logStatus =
       totalDelivered > 0 ? 'SENT' : totalAttempted > 0 ? 'FCM_FAILED' : 'NO_DEVICES';
 
-    await supabaseAdmin
-      .from('notification_logs')
-      .insert({
-        recipient: targetRole,
-        type: 'PUSH_BROADCAST',
-        message: `[${title}] ${message}`,
-        status: logStatus,
-        sent_at: new Date().toISOString(),
-        meta: {
-          target_role: targetRole,
-          target_phone: targetPhone || null,
-          target_customer_id: targetCustomer?.id || null,
-          title,
-          body: message,
-          sent_by: auth.userName,
-          sent_by_id: auth.userId,
-          devices: totalDelivered,
-          devices_attempted: totalAttempted,
-          fcm_errors: uniqueErrors,
-          priority,
-          notification_type: notificationType,
-          image_url: imageUrl || null,
-          deep_link: deepLink || null,
-          cta_url: ctaUrl || null,
-          platform: body?.platform || 'both',
-          audience: body?.audience || 'all',
-          os_filter: osFilter,
-          platform_stats: platformStats,
-        },
-      })
-      .then(() => undefined, () => undefined);
+    await insertPushNotificationLog({
+      recipient: targetRole,
+      type: PUSH_LOG_TYPE_BROADCAST,
+      message: `[${title}] ${message}`,
+      status: logStatus,
+      meta: {
+        target_role: targetRole,
+        target_phone: targetPhone || null,
+        target_customer_id: targetCustomer?.id || null,
+        title,
+        body: message,
+        sent_by: auth.userName,
+        sent_by_id: auth.userId,
+        devices: totalDelivered,
+        devices_attempted: totalAttempted,
+        fcm_errors: uniqueErrors,
+        priority,
+        notification_type: notificationType,
+        image_url: imageUrl || null,
+        deep_link: deepLink || null,
+        cta_url: ctaUrl || null,
+        platform: body?.platform || 'both',
+        audience: body?.audience || 'all',
+        os_filter: osFilter,
+        platform_stats: platformStats,
+      },
+    });
 
     if (totalDelivered === 0 && totalAttempted > 0) {
       return NextResponse.json({

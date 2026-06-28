@@ -1,5 +1,6 @@
 import { assertPushAdmin } from '@/lib/push/admin-auth';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { PUSH_HISTORY_LOG_TYPES } from '@/lib/push/notificationLog';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from('notification_logs')
       .select('*', { count: 'exact' })
-      .eq('type', 'PUSH_BROADCAST')
+      .in('type', [...PUSH_HISTORY_LOG_TYPES])
       .order('sent_at', { ascending: false })
       .range(offset, offset + limit - 1);
 

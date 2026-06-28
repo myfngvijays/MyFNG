@@ -3,6 +3,7 @@ import { assertPushAdmin } from '@/lib/push/admin-auth';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
 import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
+import { PUSH_HISTORY_LOG_TYPES } from '@/lib/push/notificationLog';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -108,19 +109,19 @@ export async function GET() {
       supabaseAdmin
         .from('notification_logs')
         .select('id, status, meta', { count: 'exact' })
-        .eq('type', 'PUSH_BROADCAST')
+        .in('type', [...PUSH_HISTORY_LOG_TYPES])
         .gte('sent_at', todayIso),
       supabaseAdmin
         .from('notification_logs')
         .select('id, status, meta, sent_at, recipient')
-        .eq('type', 'PUSH_BROADCAST')
+        .in('type', [...PUSH_HISTORY_LOG_TYPES])
         .gte('sent_at', weekIso)
         .order('sent_at', { ascending: true }),
-      supabaseAdmin.from('notification_logs').select('status, meta').eq('type', 'PUSH_BROADCAST'),
+      supabaseAdmin.from('notification_logs').select('status, meta').in('type', [...PUSH_HISTORY_LOG_TYPES]),
       supabaseAdmin
         .from('notification_logs')
         .select('id, recipient, message, status, sent_at, meta')
-        .eq('type', 'PUSH_BROADCAST')
+        .in('type', [...PUSH_HISTORY_LOG_TYPES])
         .order('sent_at', { ascending: false })
         .limit(5),
       supabaseAdmin

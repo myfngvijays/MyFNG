@@ -42,6 +42,7 @@ import {
   Sparkles,
   Smartphone,
   Wallet,
+  Coins,
   Timer,
   PanelBottom,
   TrendingUp,
@@ -218,6 +219,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/wallet-logic',
         icon: Wallet,
         description: 'Service %, membership %, welcome bonus',
+      },
+      {
+        name: 'Wallet Credits',
+        href: '/dashboard/super_admin/wallet-credits?section=bulk',
+        icon: Coins,
+        description: 'Bulk add wallet balance to selected users',
       },
       {
         name: 'Advance Coupon Management',
@@ -476,6 +483,7 @@ export default function SuperAdminLayout({
       pathname?.startsWith('/dashboard/super_admin/membership-cards') ||
       pathname?.startsWith('/dashboard/super_admin/post-booking-membership') ||
       pathname?.startsWith('/dashboard/super_admin/wallet-logic') ||
+      pathname?.startsWith('/dashboard/super_admin/wallet-credits') ||
       pathname?.startsWith('/dashboard/super_admin/advance-coupons')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Membership & Offers': true }));

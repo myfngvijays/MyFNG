@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Clock, Loader2, RefreshCw, Search } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { PUSH_ROLE_OPTIONS, type PushLogEntry } from '@/lib/push/push-admin-constants';
 
 function formatDate(iso: string) {
@@ -20,9 +21,18 @@ function formatDate(iso: string) {
 
 function statusLabel(log: PushLogEntry) {
   if (log.status === 'SENT') return `${log.meta?.devices || 0} delivered`;
+  if (log.status === 'PARTIAL') return `${log.meta?.devices || 0} delivered (partial)`;
   if (log.status === 'FCM_FAILED') return 'FCM failed';
   if (log.status === 'NO_DEVICES') return 'No devices';
   return log.status;
+}
+
+function audienceLabel(log: PushLogEntry) {
+  if (log.meta?.batch_id || log.meta?.notification_type === 'WALLET_CREDIT') {
+    return 'Wallet bulk credit';
+  }
+  const role = PUSH_ROLE_OPTIONS.find((r) => r.value === log.recipient);
+  return role?.label || log.recipient;
 }
 
 export default function PushHistorySection() {
@@ -52,6 +62,10 @@ export default function PushHistorySection() {
       if (res.ok) {
         setLogs(data.logs || []);
         setTotal(Number(data.total || 0));
+      } else {
+        setLogs([]);
+        setTotal(0);
+        toast.error(data.error || data.details || 'Failed to load notification history');
       }
     } finally {
       setLoading(false);
@@ -104,6 +118,7 @@ export default function PushHistorySection() {
           >
             <option value="ALL">All statuses</option>
             <option value="SENT">Sent</option>
+            <option value="PARTIAL">Partial</option>
             <option value="FCM_FAILED">FCM failed</option>
             <option value="NO_DEVICES">No devices</option>
           </select>
@@ -147,7 +162,6 @@ export default function PushHistorySection() {
             </thead>
             <tbody>
               {logs.map((log) => {
-                const role = PUSH_ROLE_OPTIONS.find((r) => r.value === log.recipient);
                 const expanded = expandedId === log.id;
                 return (
                   <Fragment key={log.id}>
@@ -162,7 +176,7 @@ export default function PushHistorySection() {
                         <p className="text-xs text-[#72665e] line-clamp-1 mt-0.5">{log.meta?.body || log.message}</p>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell text-[#72665e]">
-                        {role?.label || log.recipient}
+                        {audienceLabel(log)}
                         {log.meta?.target_phone ? (
                           <span className="block text-xs">📱 {log.meta.target_phone}</span>
                         ) : null}
@@ -181,6 +195,8 @@ export default function PushHistorySection() {
                           className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${
                             log.status === 'SENT'
                               ? 'bg-emerald-100 text-emerald-700'
+                              : log.status === 'PARTIAL'
+                                ? 'bg-amber-100 text-amber-800'
                               : log.status === 'FCM_FAILED'
                                 ? 'bg-rose-100 text-rose-700'
                                 : 'bg-amber-100 text-amber-800'
