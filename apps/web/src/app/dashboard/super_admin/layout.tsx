@@ -47,6 +47,7 @@ import {
   PanelBottom,
   TrendingUp,
   HelpCircle,
+  LineChart,
 } from 'lucide-react';
 
 type NavItem = {
@@ -293,6 +294,12 @@ const navigationItems: NavItem[] = [
   {
     name: 'App + Website',
     isSection: true,
+  },
+  {
+    name: 'Analytics',
+    href: '/dashboard/super_admin/analytics-hub?section=overview',
+    icon: LineChart,
+    description: 'Firebase GA4, Clarity — Android, iOS & Web',
   },
   {
     name: 'Shared Content',

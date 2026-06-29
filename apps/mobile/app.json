@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyFNG",
     "slug": "myfng-app",
-    "version": "1.2.1",
+    "version": "1.2.3",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
     "icon": "./assets/app-icon.png",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "27",
+      "buildNumber": "28",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -49,7 +49,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 27,
+      "versionCode": 28,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",

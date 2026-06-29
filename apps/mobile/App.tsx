@@ -72,6 +72,8 @@ import {
   subscribeToFcmTokenRefresh,
 } from './src/services/pushNotifications';
 import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
+import { initializeClarity } from './src/lib/clarity';
+import { initializeFirebaseAnalytics } from './src/lib/firebaseAnalytics';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
 
 const Stack = createNativeStackNavigator();
@@ -105,6 +107,11 @@ function AppContent() {
       console.warn('[push] customer token sync error:', source, error);
     }
   };
+
+  useEffect(() => {
+    initializeClarity();
+    void initializeFirebaseAnalytics();
+  }, []);
 
   useEffect(() => {
     const unsubscribeHandlers = setupFcmNotificationHandlers();
