@@ -69,7 +69,6 @@ export default function CodeReferenceSection() {
           metaPixel: json.config.web_tracking?.meta_pixel_id || '',
           gtm: json.config.web_tracking?.gtm_container_id || '',
         });
-        });
       } catch {
         toast.error('Network error');
       } finally {
