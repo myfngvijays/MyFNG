@@ -25,6 +25,10 @@ export type ProductAnalyticsConfig = {
     project_id: string;
     dashboard_url: string;
   };
+  web_tracking: {
+    meta_pixel_id: string;
+    gtm_container_id: string;
+  };
   platforms: Record<AnalyticsPlatform, PlatformAnalyticsSettings>;
   mobile_build: {
     analytics_min_version_code_android: number;
@@ -52,6 +56,10 @@ export type ProductAnalyticsPublicConfig = {
   };
   clarity: {
     project_id: string;
+  };
+  web_tracking: {
+    meta_pixel_id: string;
+    gtm_container_id: string;
   };
   platforms: Record<AnalyticsPlatform, PlatformAnalyticsSettings>;
 };
@@ -92,6 +100,10 @@ export const DEFAULT_PRODUCT_ANALYTICS_CONFIG: ProductAnalyticsConfig = {
   clarity: {
     project_id: DEFAULT_CLARITY_PROJECT_ID,
     dashboard_url: `https://clarity.microsoft.com/projects/view/${DEFAULT_CLARITY_PROJECT_ID}`,
+  },
+  web_tracking: {
+    meta_pixel_id: DEFAULT_META_PIXEL_ID,
+    gtm_container_id: DEFAULT_WEB_GTM_CONTAINER_ID,
   },
   platforms: {
     android: defaultPlatformSettings({ gtag_enabled: false, meta_pixel_enabled: false }),
@@ -165,6 +177,9 @@ export function normalizeProductAnalyticsConfig(raw: unknown): ProductAnalyticsC
   const clarity = (src.clarity && typeof src.clarity === 'object' ? src.clarity : {}) as Partial<
     ProductAnalyticsConfig['clarity']
   >;
+  const webTracking = (src.web_tracking && typeof src.web_tracking === 'object' ? src.web_tracking : {}) as Partial<
+    ProductAnalyticsConfig['web_tracking']
+  >;
   const platforms = (src.platforms && typeof src.platforms === 'object' ? src.platforms : {}) as Partial<
     Record<AnalyticsPlatform, unknown>
   >;
@@ -199,6 +214,10 @@ export function normalizeProductAnalyticsConfig(raw: unknown): ProductAnalyticsC
         `https://clarity.microsoft.com/projects/view/${toText(clarity.project_id, base.clarity.project_id, 64)}`,
         240,
       ),
+    },
+    web_tracking: {
+      meta_pixel_id: toText(webTracking.meta_pixel_id, base.web_tracking.meta_pixel_id, 64),
+      gtm_container_id: toText(webTracking.gtm_container_id, base.web_tracking.gtm_container_id, 32),
     },
     platforms: {
       android: mergePlatformSettings(platforms.android, base.platforms.android),
@@ -287,6 +306,10 @@ export function productAnalyticsToPublicPayload(config: ProductAnalyticsConfig):
     },
     clarity: {
       project_id: config.clarity.project_id,
+    },
+    web_tracking: {
+      meta_pixel_id: config.web_tracking.meta_pixel_id,
+      gtm_container_id: config.web_tracking.gtm_container_id,
     },
     platforms: config.platforms,
   };
@@ -445,7 +468,7 @@ export function buildPlatformStatuses(config: ProductAnalyticsConfig): PlatformA
         enabled: config.platforms.web.clarity_enabled,
         label: 'Microsoft Clarity',
         detail: config.platforms.web.clarity_enabled
-          ? `Project ${config.clarity.project_id} · live via GTM (${DEFAULT_WEB_GTM_CONTAINER_ID})`
+          ? `Project ${config.clarity.project_id} · live via GTM (${config.web_tracking.gtm_container_id})`
           : 'Disabled in admin settings',
       },
       gtag: {
@@ -456,12 +479,13 @@ export function buildPlatformStatuses(config: ProductAnalyticsConfig): PlatformA
       meta_pixel: {
         enabled: config.platforms.web.meta_pixel_enabled,
         label: 'Meta Pixel',
-        detail: `Pixel ID ${DEFAULT_META_PIXEL_ID}`,
+        detail: `Pixel ID ${config.web_tracking.meta_pixel_id}`,
       },
       identifiers: [
         { label: 'GA4 Measurement ID', value: config.firebase.web_measurement_id },
         { label: 'Clarity Project ID', value: config.clarity.project_id },
-        { label: 'GTM Container', value: DEFAULT_WEB_GTM_CONTAINER_ID },
+        { label: 'GTM Container', value: config.web_tracking.gtm_container_id },
+        { label: 'Meta Pixel ID', value: config.web_tracking.meta_pixel_id },
         { label: 'Firebase Project', value: config.firebase.project_id },
       ],
       external_links: [

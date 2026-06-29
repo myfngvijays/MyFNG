@@ -82,6 +82,9 @@ export default function PcmDashboardSection({
     value,
   }));
 
+  const activeCoupons = k?.active_coupons || 0;
+  const activeCouponsText = `${activeCoupons} active ${activeCoupons === 1 ? 'coupon' : 'coupons'}`;
+
   return (
     <div>
       <div className="pcm-hero rounded-xl p-6 text-white mb-6 relative overflow-hidden">
@@ -89,11 +92,11 @@ export default function PcmDashboardSection({
         <div className="absolute bottom-0 left-1/3 w-24 h-24 bg-white/5 rounded-full translate-y-1/2" />
         <div className="relative">
           <p className="text-white/90 text-sm">Welcome back, Super Admin 👋</p>
-          <h1 className="text-2xl font-bold mt-1">Promotion & Coupon Management System</h1>
+          <h1 className="text-2xl font-bold text-white mt-1">Promotion &amp; Coupon Management System</h1>
           <p className="text-white/90 text-sm mt-2 max-w-2xl">
-            You have <strong>{k?.active_coupons || 0} active coupons</strong>,{' '}
+            You have <strong>{activeCouponsText}</strong>,{' '}
             <strong>{k?.total_redemptions || 0} total redemptions</strong>, and{' '}
-            <strong>{k?.redemption_rate || 0}% coupons used at least once</strong>.
+            <strong>{k?.redemption_rate || 0}% of coupons used at least once</strong>.
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
             <button

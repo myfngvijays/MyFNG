@@ -9,6 +9,7 @@ type Implementation = {
   mobile_clarity_file: string;
   mobile_app_entry: string;
   web_ga4_file: string;
+  web_gtm_container: string;
   env_clarity_key: string;
 };
 
@@ -17,6 +18,7 @@ type ConfigResponse = {
     implementation: Implementation;
     firebase: { project_id: string; web_measurement_id: string };
     clarity: { project_id: string };
+    web_tracking: { meta_pixel_id: string; gtm_container_id: string };
   };
   error?: string;
 };
@@ -46,7 +48,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 
 export default function CodeReferenceSection() {
   const [impl, setImpl] = useState<Implementation | null>(null);
-  const [ids, setIds] = useState<{ firebase: string; clarity: string; ga4: string } | null>(null);
+  const [ids, setIds] = useState<{ firebase: string; clarity: string; ga4: string; metaPixel: string; gtm: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,6 +66,9 @@ export default function CodeReferenceSection() {
           firebase: json.config.firebase.project_id,
           clarity: json.config.clarity.project_id,
           ga4: json.config.firebase.web_measurement_id,
+          metaPixel: json.config.web_tracking?.meta_pixel_id || '',
+          gtm: json.config.web_tracking?.gtm_container_id || '',
+        });
         });
       } catch {
         toast.error('Network error');
@@ -136,6 +141,8 @@ export default function CodeReferenceSection() {
         <CopyRow label="Firebase Project ID" value={ids.firebase} />
         <CopyRow label="Clarity Project ID" value={ids.clarity} />
         <CopyRow label="GA4 Measurement ID" value={ids.ga4} />
+        <CopyRow label="Meta Pixel ID" value={ids.metaPixel} />
+        <CopyRow label="GTM Container ID" value={ids.gtm} />
       </div>
     </div>
   );

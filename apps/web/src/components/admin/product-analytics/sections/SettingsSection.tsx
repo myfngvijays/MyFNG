@@ -21,6 +21,10 @@ type ConfigForm = {
     project_id: string;
     dashboard_url: string;
   };
+  web_tracking: {
+    meta_pixel_id: string;
+    gtm_container_id: string;
+  };
   platforms: Record<
     PlatformKey,
     {
@@ -52,6 +56,7 @@ const EMPTY: ConfigForm = {
     console_url: '',
   },
   clarity: { project_id: '', dashboard_url: '' },
+  web_tracking: { meta_pixel_id: '', gtm_container_id: '' },
   platforms: {
     android: {
       firebase_analytics_enabled: true,
@@ -143,6 +148,10 @@ export default function SettingsSection() {
 
   const updateClarity = <K extends keyof ConfigForm['clarity']>(key: K, value: ConfigForm['clarity'][K]) => {
     setForm((prev) => ({ ...prev, clarity: { ...prev.clarity, [key]: value } }));
+  };
+
+  const updateWebTracking = <K extends keyof ConfigForm['web_tracking']>(key: K, value: ConfigForm['web_tracking'][K]) => {
+    setForm((prev) => ({ ...prev, web_tracking: { ...prev.web_tracking, [key]: value } }));
   };
 
   const updatePlatform = (platform: PlatformKey, key: keyof ConfigForm['platforms'][PlatformKey], value: boolean) => {
@@ -291,6 +300,35 @@ export default function SettingsSection() {
               />
             </div>
           </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-4">Website Tracking (Meta Pixel &amp; GTM)</p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="analytics-label">Meta Pixel ID</label>
+              <input
+                className="analytics-input font-mono text-xs"
+                value={form.web_tracking.meta_pixel_id}
+                onChange={(e) => updateWebTracking('meta_pixel_id', e.target.value)}
+                placeholder="845395791020784"
+                disabled={!canEdit}
+              />
+            </div>
+            <div>
+              <label className="analytics-label">GTM Container ID</label>
+              <input
+                className="analytics-input font-mono text-xs"
+                value={form.web_tracking.gtm_container_id}
+                onChange={(e) => updateWebTracking('gtm_container_id', e.target.value)}
+                placeholder="GTM-N2N59TBR"
+                disabled={!canEdit}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">
+            Website par Clarity GTM ke through load hoti hai. Meta Pixel aur GA4 layout file mein hardcoded hain — future mein yahan se dynamically read karwa sakte hain.
+          </p>
         </div>
 
         <div>

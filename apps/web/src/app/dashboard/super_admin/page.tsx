@@ -142,8 +142,9 @@ export default function SuperAdminDashboard() {
       <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white p-5 md:p-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold">Super Admin Dashboard</h1>
-            <p className="text-blue-100 text-sm mt-1">Real-time business intelligence & analytics</p>
+            <p className="text-white/90 text-sm">Welcome back, Super Admin 👋</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-white mt-1">Super Admin Dashboard</h1>
+            <p className="text-blue-100 text-sm mt-1">Real-time business intelligence &amp; analytics</p>
           </div>
           <button
             onClick={() => fetchDashboardData(true)}
