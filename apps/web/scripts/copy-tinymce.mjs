@@ -23,7 +23,7 @@ if (!src) {
 mkdirSync(path.join(webRoot, 'public'), { recursive: true });
 if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
 
-cpSync(src, dest, { recursive: true, dereference: true });
+cpSync(src, dest, { recursive: true, dereference: true, force: true });
 
 console.log(`[copy-tinymce] Copied TinyMCE assets to ${dest}`);
 
