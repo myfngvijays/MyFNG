@@ -1,0 +1,142 @@
+MyFNG App - Complete Track Events List
+=======================================
+Total: 78 events across 13 files
+Generated: 30 June 2026
+
+
+=== BOOKING FLOW (PublicBookServiceNowScreen.tsx) ===
+
+1.  booking_started
+2.  booking_step_viewed                    { step }
+3.  booking_city_detected
+4.  booking_service_selected
+5.  booking_date_selected
+6.  booking_car_model_selected
+7.  booking_pickup_mode_selected           { mode: 'pickup' | 'workshop' }
+8.  booking_time_selected
+9.  booking_payment_method_selected        { method: 'PAY_LATER' | 'PAY_NOW' }
+10. booking_wallet_toggle                  { enabled }
+11. booking_coupon_applied
+12. booking_coupon_failed
+13. booking_submitted
+14. booking_submit_failed
+15. payment_initiated
+16. payment_success
+17. payment_cancelled
+18. payment_failed
+
+
+=== AUTH (CustomerOtpLoginScreen.tsx) ===
+
+19. otp_sent                               { method: 'whatsapp' | 'sms' }
+20. otp_send_failed
+21. otp_verified
+22. otp_verify_failed
+23. otp_resend_tapped
+
+
+=== SIGN UP (CustomerRegistrationScreen.tsx) ===
+
+24. sign_up_started
+25. sign_up_step_completed                 { step: 1 | 2 }
+26. sign_up_completed
+27. sign_up_failed
+
+
+=== HOME (PublicHomeScreen.tsx) ===
+
+28. home_search_opened
+29. home_banner_tapped                     { banner_index }
+30. home_service_category_tapped           { category }
+31. workshop_locator_opened
+
+
+=== SERVICES (PublicServicePackagesScreen.tsx) ===
+
+32. service_packages_viewed
+33. service_detail_viewed                  { service }
+34. service_category_selected              { category }
+35. service_book_now_tapped                { service }
+
+
+=== PROFILE / SETTINGS (SettingsScreen.tsx) ===
+
+36. profile_viewed
+37. membership_screen_viewed
+38. wallet_viewed
+39. referral_screen_viewed
+40. referral_share_tapped
+41. referral_code_copied
+42. referral_terms_toggled
+43. order_history_viewed
+44. cart_viewed
+45. support_call_tapped
+46. social_link_tapped                     { platform }
+47. logout_tapped
+48. delete_account_confirmed
+
+
+=== SEARCH (SearchOverlay.tsx) ===
+
+49. search_query_entered                   { query }
+50. search_result_tapped                   { result_type }
+
+
+=== WORKSHOP LOCATOR (PublicWorkshopLocatorScreen.tsx) ===
+
+51. workshop_locator_opened
+52. workshop_directions_tapped
+53. workshop_call_tapped
+
+
+=== MISA AI CHAT (AIBookingScreen.tsx) ===
+
+54. misa_opened
+55. misa_message_sent
+56. misa_message_received
+57. misa_chat_error
+
+
+=== ROADSIDE ASSISTANCE (RoadsideAssistanceScreen.tsx) ===
+
+58. rsa_screen_viewed
+59. rsa_service_tapped                     { service_id }
+60. rsa_call_now_tapped
+
+
+=== CAR HEALTH CHECK (CarHealthCheckScreen.tsx) ===
+
+61. health_check_started
+62. health_check_step_completed            { step }
+63. health_check_report_generated
+64. health_check_submitted
+
+
+=== RESALE VALUE (ResaleValueScreen.tsx) ===
+
+65. resale_value_started
+66. resale_value_step_completed            { step }
+67. resale_value_submitted
+68. resale_value_estimated
+
+
+=== FUEL CALCULATOR (FuelCostCalculatorScreen.tsx) ===
+
+69. fuel_calculator_opened
+70. fuel_calculator_used
+
+
+=== CAR QUIZ (CarQuizGameScreen.tsx) ===
+
+71. car_quiz_started
+72. car_quiz_answer_selected
+73. car_quiz_completed                     { score }
+
+
+=== PUSH NOTIFICATIONS (pushNotifications.ts) ===
+
+74. push_permission_granted
+75. push_permission_denied
+76. push_token_registered                  { method: 'rpc' }
+77. push_notification_received             { source: 'foreground' }
+78. push_notification_opened               { source: 'background' | 'quit' }

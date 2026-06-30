@@ -24,6 +24,7 @@ import SectionHeading from '../components/SectionHeading';
 import CompleteTransparencySection from '../components/CompleteTransparencySection';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { supabase } from '../lib/supabase';
+import { trackEvent } from '../lib/trackEvent';
 
 type Props = {
   navigation: any;
@@ -241,6 +242,10 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   const supportEmail = 'support@myfng.in';
 
   useEffect(() => {
+    trackEvent('service_packages_viewed');
+  }, []);
+
+  useEffect(() => {
     if (initialServiceId) setSelectedService(initialServiceId);
   }, [initialServiceId]);
 
@@ -306,6 +311,11 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
   }, [selectedService]);
 
   const current = useMemo(() => SERVICE_CATEGORIES.find((s) => s.id === selectedService) || SERVICE_CATEGORIES[0], [selectedService]);
+
+  useEffect(() => {
+    const svc = SERVICE_CATEGORIES.find((s) => s.id === selectedService);
+    if (svc) trackEvent('service_detail_viewed', { service: svc.name });
+  }, [selectedService]);
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.screen}>
@@ -380,6 +390,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
                   style={s.gridItem}
                   activeOpacity={0.8}
                   onPress={() => {
+                    trackEvent('service_category_selected', { category: svc.name });
                     setSelectedService(svc.id);
                     setOpenFaqIdx(null);
                     setTimeout(() => scrollRef.current?.scrollTo({ y: detailY.current, animated: true }), 100);
@@ -448,13 +459,14 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
               <TouchableOpacity
                 style={s.bookNowBtn}
                 activeOpacity={0.85}
-                onPress={() =>
+                onPress={() => {
+                  trackEvent('service_book_now_tapped', { service: current?.name || '' });
                   navigation.navigate('PublicBookServiceNow', {
                     city,
                     serviceCategory: SERVICE_ID_TO_CATEGORY_KEYWORD[selectedService] || null,
                     serviceCategoryName: current?.name || null,
-                  })
-                }
+                  });
+                }}
               >
                 <Text style={s.bookNowBtnText}>Book Now</Text>
               </TouchableOpacity>
@@ -522,7 +534,7 @@ export default function PublicServicePackagesScreen({ navigation, route }: Props
             </TouchableOpacity>
           )}
 
-          <ReferAndFooter hideRefer />
+          <ReferAndFooter />
           <View style={{ height: 24 }} />
         </ScrollView>
 

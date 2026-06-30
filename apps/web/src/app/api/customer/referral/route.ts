@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureWalletAccount, logCustomerEvent, requireCustomer } from '@/lib/customer-api';
+import { getWalletConfig } from '@/lib/wallet-config';
 
 function makeCode(phone: string) {
   const suffix = phone.slice(-4);
@@ -103,20 +104,52 @@ export async function POST(request: NextRequest) {
 
   if (error || !event) return NextResponse.json({ error: 'Failed to apply referral' }, { status: 500 });
 
+  if (event.status !== 'REJECTED') {
+    const walletConfig = await getWalletConfig(supabaseAdmin);
+    const friendBonus = walletConfig.REFERRAL_FRIEND_BONUS;
+    const expiryDays = walletConfig.REFERRAL_EXPIRY_DAYS;
+
+    if (friendBonus > 0) {
+      const wallet = await ensureWalletAccount(supabaseAdmin, customer.id);
+      const nextBalance = Number(wallet.current_balance || 0) + friendBonus;
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + expiryDays);
+
+      await supabaseAdmin.from('wallet_transactions').insert({
+        wallet_account_id: wallet.id,
+        customer_id: customer.id,
+        transaction_type: 'CREDIT',
+        amount: friendBonus,
+        balance_after: nextBalance,
+        source: 'REFERRAL_BONUS',
+        source_ref_id: event.id,
+        idempotency_key: `referral_friend:${event.id}`,
+        metadata: { reason: 'referral_friend_bonus', expires_at: expiresAt.toISOString() },
+        expires_at: expiresAt.toISOString(),
+      });
+
+      await supabaseAdmin.from('wallet_accounts').update({
+        current_balance: nextBalance,
+        lifetime_credited: Number(wallet.lifetime_credited || 0) + friendBonus,
+        updated_at: new Date().toISOString(),
+      }).eq('id', wallet.id);
+    }
+  }
+
   await logCustomerEvent(supabaseAdmin, customer.id, 'referral_applied', 'referral', { referral_code: referredCode });
   return NextResponse.json({ success: true, event });
 }
 
-// Reward after first completed order (manual trigger from admin/system)
+// Reward referrer after friend's first completed booking
 export async function PATCH(request: NextRequest) {
   const ctx = await requireCustomer();
   if ('response' in ctx) return ctx.response;
   const { customer, supabaseAdmin } = ctx;
   const body = await request.json().catch(() => ({}));
   const eventId = String(body.referral_event_id || '');
-  const rewardAmount = Number(body.reward_amount || 0);
-  if (!eventId || rewardAmount <= 0) {
-    return NextResponse.json({ error: 'referral_event_id and reward_amount required' }, { status: 400 });
+
+  if (!eventId) {
+    return NextResponse.json({ error: 'referral_event_id required' }, { status: 400 });
   }
 
   const { data: event } = await supabaseAdmin
@@ -129,9 +162,26 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid referral event' }, { status: 400 });
   }
 
+  const walletConfig = await getWalletConfig(supabaseAdmin);
+
+  const { count: priorRewards } = await supabaseAdmin
+    .from('referral_rewards')
+    .select('id', { count: 'exact', head: true })
+    .eq('customer_id', customer.id)
+    .eq('status', 'CREDITED');
+  const isFirst = (priorRewards || 0) === 0;
+  const rewardAmount = isFirst ? walletConfig.REFERRAL_FIRST_REWARD : walletConfig.REFERRAL_REPEAT_REWARD;
+
+  if (rewardAmount <= 0) {
+    return NextResponse.json({ error: 'Referral rewards are currently disabled' }, { status: 400 });
+  }
+
   const wallet = await ensureWalletAccount(supabaseAdmin, customer.id);
   const nextBalance = Number(wallet.current_balance || 0) + rewardAmount;
   const idempotencyKey = `referral:${eventId}`;
+  const expiryDays = walletConfig.REFERRAL_EXPIRY_DAYS;
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + expiryDays);
 
   await supabaseAdmin.from('wallet_transactions').insert({
     wallet_account_id: wallet.id,
@@ -142,7 +192,8 @@ export async function PATCH(request: NextRequest) {
     source: 'REFERRAL',
     source_ref_id: eventId,
     idempotency_key: idempotencyKey,
-    metadata: { reason: 'refer_and_earn' },
+    metadata: { reason: 'refer_and_earn', is_first: isFirst, expires_at: expiresAt.toISOString() },
+    expires_at: expiresAt.toISOString(),
   });
   await supabaseAdmin.from('wallet_accounts').update({
     current_balance: nextBalance,
@@ -158,8 +209,8 @@ export async function PATCH(request: NextRequest) {
     reward_amount: rewardAmount,
     status: 'CREDITED',
   });
-  await logCustomerEvent(supabaseAdmin, customer.id, 'referral_reward_credited', 'referral', { rewardAmount });
+  await logCustomerEvent(supabaseAdmin, customer.id, 'referral_reward_credited', 'referral', { rewardAmount, isFirst });
 
-  return NextResponse.json({ success: true, balance: nextBalance });
+  return NextResponse.json({ success: true, balance: nextBalance, reward_amount: rewardAmount });
 }
 

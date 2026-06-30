@@ -1,6 +1,7 @@
 import { NativeModules, Platform, PermissionsAndroid } from 'react-native';
 import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import { isAndroidEmulator, isIosSimulator } from '../config/environment';
+import { trackEvent } from '../lib/trackEvent';
 
 const STORAGE_KEY = 'myfng_fcm_push_token_v1';
 export const PUSH_PLATFORM = 'FCM';
@@ -111,8 +112,10 @@ async function acquireFcmPushToken(): Promise<PushRegisterResult> {
   const permitted = await requestNotificationPermission();
   if (!permitted) {
     console.warn('[FCM] Notification permission denied by user');
+    trackEvent('push_permission_denied');
     return { ok: false, reason: 'permission_denied' };
   }
+  trackEvent('push_permission_granted');
 
   if (Platform.OS === 'ios') {
     try {
@@ -193,6 +196,7 @@ export async function registerCustomerFcmPushToken(
 
   const rpc = rpcData as { ok?: boolean; error?: string } | null;
   if (!rpcError && rpc?.ok) {
+    trackEvent('push_token_registered', { method: 'rpc' });
     return { ok: true, token: acquired.token };
   }
 
@@ -280,6 +284,7 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
   }
 
   const unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
+    trackEvent('push_notification_received', { source: 'foreground' });
     console.warn('[FCM] Foreground message received:', {
       title: remoteMessage.notification?.title,
       body: remoteMessage.notification?.body,
@@ -297,6 +302,7 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
   });
 
   const unsubscribeOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
+    trackEvent('push_notification_opened', { source: 'background' });
     console.warn('[FCM] Notification opened app:', remoteMessage.messageId);
     onOpen?.(remoteMessage);
   });
@@ -305,6 +311,7 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
     .getInitialNotification()
     .then((remoteMessage) => {
       if (remoteMessage) {
+        trackEvent('push_notification_opened', { source: 'quit' });
         console.warn('[FCM] App opened from notification:', remoteMessage.messageId);
         onOpen?.(remoteMessage);
       }

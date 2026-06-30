@@ -59,6 +59,7 @@ import {
   vehicleLabel,
   type CustomerVehicle,
 } from '../../lib/smartToolsVehicle';
+import { trackEvent } from '../../lib/trackEvent';
 
 type Props = { navigation: any };
 type Step = 'home' | 'brand' | 'model' | 'details_car' | 'details_usage' | 'details_fuel' | 'details_condition' | 'details_ownership' | 'result';
@@ -171,6 +172,18 @@ export default function ResaleValueScreen({ navigation }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const submittedRef = useRef(false);
   const [sessionReady, setSessionReady] = useState(false);
+
+  const prevStepRef = useRef<Step>(step);
+  useEffect(() => {
+    if (step !== prevStepRef.current) {
+      const allSteps: Step[] = ['home', 'brand', 'model', 'details_car', 'details_usage', 'details_fuel', 'details_condition', 'details_ownership', 'result'];
+      const idx = allSteps.indexOf(step);
+      if (idx > allSteps.indexOf(prevStepRef.current)) {
+        trackEvent('resale_value_step_completed', { step: allSteps.indexOf(prevStepRef.current) });
+      }
+      prevStepRef.current = step;
+    }
+  }, [step]);
 
   const patchForm = (patch: Partial<typeof form>) => setForm((prev) => ({ ...prev, ...patch }));
 
@@ -302,6 +315,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
+    trackEvent('resale_value_started');
     fetchCarBrands().then(setBrands);
     fetchActiveCities().then(async (list) => {
       setLocationDetecting(true);
@@ -384,6 +398,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
   const submitValuation = async (input: ResaleFormInput, result: ResaleEstimate) => {
     if (submittedRef.current) return;
     submittedRef.current = true;
+    trackEvent('resale_value_submitted');
     setSubmitting(true);
     setSavedFormInput(input);
     setSavedEstimate(result);
@@ -426,6 +441,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
 
   const onGetEstimate = () => {
     if (!formInput || !estimate) return;
+    trackEvent('resale_value_estimated');
     setStep('result');
     submitValuation(formInput, estimate);
   };

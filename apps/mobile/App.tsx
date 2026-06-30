@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
 
 const TextInputWithDefaults = RNTextInput as typeof RNTextInput & {
@@ -35,7 +35,7 @@ if (Platform.OS === 'ios') {
   }
 }
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './src/screens/LoginScreen';
 import PublicBookServiceNowScreen from './src/screens/PublicBookServiceNowScreen';
@@ -74,11 +74,13 @@ import {
 import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
 import { initializeClarity } from './src/lib/clarity';
 import { initializeFirebaseAnalytics } from './src/lib/firebaseAnalytics';
+import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
 
 const Stack = createNativeStackNavigator();
 
 function AppContent() {
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
   const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
@@ -150,6 +152,7 @@ function AppContent() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        trackEvent('app_foregrounded');
         void runForceUpdateCheck();
         if (isCustomerSessionUser) {
           void syncCustomerPushToken();
@@ -266,6 +269,8 @@ function AppContent() {
   };
 
   const handleLoginSuccess = (user: any, profile: any) => {
+    trackEvent('login_success', { role: profile?.role?.role_code || 'unknown' });
+    setUserId(user?.id || null);
     setUser(user);
     setUserProfile(profile);
     if (user?.type === 'customer_session' || profile?.role?.role_code === 'CUSTOMER') {
@@ -274,6 +279,8 @@ function AppContent() {
   };
 
   const handleLogout = async () => {
+    trackEvent('logout_tapped');
+    setUserId(null);
     try {
       await performCustomerLogout(ENV.API_URL);
       setUser(null);
@@ -289,6 +296,7 @@ function AppContent() {
   }
 
   if (forceUpdate?.required) {
+    trackEvent('force_update_shown', { min_version: forceUpdate.minVersion || '' });
     return (
       <ForceUpdateModal
         visible
@@ -308,8 +316,15 @@ function AppContent() {
       : 'Dashboard'
     : 'Login';
 
+  const onNavigationStateChange = () => {
+    const route = navigationRef.current?.getCurrentRoute();
+    if (route?.name) {
+      trackScreen(route.name);
+    }
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onStateChange={onNavigationStateChange}>
       <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
         {!user || !userProfile || isCustomerSessionUser ? (
           <>

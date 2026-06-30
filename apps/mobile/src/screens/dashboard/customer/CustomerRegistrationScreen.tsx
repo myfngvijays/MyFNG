@@ -3,10 +3,11 @@
  * New customer signup with vehicle details
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
+import { trackEvent } from '../../lib/trackEvent';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CustomerRegistrationScreen({ navigation }: any) {
@@ -17,6 +18,10 @@ export default function CustomerRegistrationScreen({ navigation }: any) {
     password: '', confirm_password: ''
   });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    trackEvent('sign_up_started');
+  }, []);
 
   const handleRegister = async () => {
     try {
@@ -77,10 +82,11 @@ export default function CustomerRegistrationScreen({ navigation }: any) {
       if (vehicleError) throw vehicleError;
 
       Alert.alert('Success', 'Registration successful! Please login.');
-      // ✅ FIX: Use signOut to trigger auth state change (handles navigation automatically)
+      trackEvent('sign_up_completed');
       await supabase.auth.signOut();
       navigation?.goBack?.();
     } catch (error: any) {
+      trackEvent('sign_up_failed');
       Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
@@ -105,7 +111,7 @@ export default function CustomerRegistrationScreen({ navigation }: any) {
           <TextInput style={styles.input} placeholder="Email *" value={formData.email} onChangeText={text => setFormData({ ...formData, email: text })} keyboardType="email-address" autoCapitalize="none" />
           <TextInput style={styles.input} placeholder="Phone *" value={formData.phone} onChangeText={text => setFormData({ ...formData, phone: text })} keyboardType="phone-pad" />
           <TextInput style={styles.input} placeholder="Address" value={formData.address} onChangeText={text => setFormData({ ...formData, address: text })} multiline />
-          <TouchableOpacity style={styles.btn} onPress={() => setStep(2)}><Text style={styles.btnText}>Next</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.btn} onPress={() => { trackEvent('sign_up_step_completed', { step: 1 }); setStep(2); }}><Text style={styles.btnText}>Next</Text></TouchableOpacity>
         </View>
       )}
 
@@ -118,7 +124,7 @@ export default function CustomerRegistrationScreen({ navigation }: any) {
           <TextInput style={styles.input} placeholder="Year (2020)" value={formData.vehicle_year} onChangeText={text => setFormData({ ...formData, vehicle_year: text })} keyboardType="numeric" />
           <View style={styles.btnRow}>
             <TouchableOpacity style={styles.btnSecondary} onPress={() => setStep(1)}><Text style={styles.btnText}>Back</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.btn} onPress={() => setStep(3)}><Text style={styles.btnText}>Next</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.btn} onPress={() => { trackEvent('sign_up_step_completed', { step: 2 }); setStep(3); }}><Text style={styles.btnText}>Next</Text></TouchableOpacity>
           </View>
         </View>
       )}

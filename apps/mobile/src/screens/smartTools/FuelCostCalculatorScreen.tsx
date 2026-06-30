@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import HealthCheckShell, {
@@ -15,6 +15,7 @@ import HealthCheckShell, {
 } from '../../components/smartTools/HealthCheckShell';
 import { COLORS } from '../../constants/theme';
 import { formatInr } from '../../lib/smartToolsLogic';
+import { trackEvent } from '../../lib/trackEvent';
 
 type Props = { navigation: any };
 
@@ -57,6 +58,11 @@ export default function FuelCostCalculatorScreen({ navigation }: Props) {
   const [tolls, setTolls] = useState('');
   const [fuelType, setFuelType] = useState<HealthFuelType>('Petrol');
   const [roundTrip, setRoundTrip] = useState('one');
+  const fuelCalcTracked = useRef(false);
+
+  useEffect(() => {
+    trackEvent('fuel_calculator_opened');
+  }, []);
 
   const unit = fuelUnit(fuelType);
 
@@ -83,6 +89,14 @@ export default function FuelCostCalculatorScreen({ navigation }: Props) {
     const costPerKm = totalDist > 0 ? fuelCost / totalDist : 0;
     return { ready: true, totalDist, fuelNeeded, fuelCost, tollAmount, totalCost, costPerKm };
   }, [distance, mileage, fuelPrice, tolls, roundTrip]);
+
+  useEffect(() => {
+    if (result.ready && !fuelCalcTracked.current) {
+      fuelCalcTracked.current = true;
+      trackEvent('fuel_calculator_used');
+    }
+    if (!result.ready) fuelCalcTracked.current = false;
+  }, [result.ready]);
 
   const tripCtaHintText = result.ready ? tripCtaHint(result.totalDist, roundTrip === 'round') : null;
 

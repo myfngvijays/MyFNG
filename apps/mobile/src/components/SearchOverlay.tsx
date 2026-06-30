@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -21,6 +21,7 @@ import SmartToolsBlock from './SmartToolsSection';
 import type { MembershipType } from '../lib/membershipPlacements';
 import { getServiceIconSource, RSA_ICON_RED_SOURCE } from '../lib/serviceIcons';
 import { SMART_TOOL_WEB_URLS } from '../constants/smartTools';
+import { trackEvent } from '../lib/trackEvent';
 
 type SearchItem = {
   id: string;
@@ -214,12 +215,24 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
     );
   }, [query]);
 
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) return;
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => {
+      trackEvent('search_query_entered', { query: q });
+    }, 600);
+    return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
+  }, [query]);
+
   const handleClose = () => {
     setQuery('');
     onClose();
   };
 
   const handleSelect = (item: SearchItem) => {
+    trackEvent('search_result_tapped', { result_type: item.category });
     setQuery('');
     onClose();
     if (item.id === 'refer' && !item.params) {

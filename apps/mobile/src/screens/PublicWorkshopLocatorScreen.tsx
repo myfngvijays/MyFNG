@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import { trackEvent } from '../lib/trackEvent';
 
 type Props = {
   navigation: any;
@@ -288,6 +289,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
   }
 
   useEffect(() => {
+    trackEvent('workshop_locator_opened');
     fetchWorkshops();
     if (!userLoc) detectMyLocation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,11 +341,11 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
 
         {isExpanded ? (
           <View style={styles.sheetActions}>
-            <TouchableOpacity style={styles.sheetBtn} onPress={() => openMapsForWorkshop(item)} activeOpacity={0.9}>
+            <TouchableOpacity style={styles.sheetBtn} onPress={() => { trackEvent('workshop_directions_tapped'); openMapsForWorkshop(item); }} activeOpacity={0.9}>
             <Ionicons name="navigate" size={16} color={COLORS.primary} />
               <Text style={styles.sheetBtnText}>Directions</Text>
           </TouchableOpacity>
-              <TouchableOpacity style={styles.sheetBtn} onPress={() => openTel('+919152307030')} activeOpacity={0.9}>
+              <TouchableOpacity style={styles.sheetBtn} onPress={() => { trackEvent('workshop_call_tapped'); openTel('+919152307030'); }} activeOpacity={0.9}>
               <Ionicons name="call" size={16} color={COLORS.primary} />
                 <Text style={styles.sheetBtnText}>Call</Text>
             </TouchableOpacity>

@@ -24,7 +24,7 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
           <View style={s.referCard}>
             <View>
               <Text style={s.referTitle}>Refer & Earn ₹500</Text>
-              <Text style={s.referSub}>Invite friends and get discounts</Text>
+              <Text style={s.referSub}>Invite friends — they get ₹1,500 wallet bonus!</Text>
             </View>
             <TouchableOpacity
               style={s.referBtn}
@@ -32,7 +32,7 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
               onPress={() =>
                 Share.share({
                   message:
-                    'Join MyFNG and get rewards on your first car service booking. Use code MYFNG500.',
+                    'Join MyFNG and get ₹1,500 wallet bonus on your first signup! Download now: https://myfng.in',
                 })
               }
             >

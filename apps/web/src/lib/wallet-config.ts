@@ -19,6 +19,8 @@ export const DEFAULT_WALLET_CONFIG = {
   MAX_ABSOLUTE_DEDUCTION: 0,
   REFERRAL_FIRST_REWARD: 500,
   REFERRAL_REPEAT_REWARD: 250,
+  REFERRAL_FRIEND_BONUS: 500,
+  REFERRAL_EXPIRY_DAYS: 90,
 } as const;
 
 export type WalletPlatform = 'web' | 'android' | 'ios';
@@ -44,6 +46,8 @@ export type WalletRuntimeConfig = {
   MAX_ABSOLUTE_DEDUCTION: number;
   REFERRAL_FIRST_REWARD: number;
   REFERRAL_REPEAT_REWARD: number;
+  REFERRAL_FRIEND_BONUS: number;
+  REFERRAL_EXPIRY_DAYS: number;
 };
 
 export type WalletCoreRules = {
@@ -96,6 +100,8 @@ export type WalletLogicFullSettings = {
   ios: WalletPlatformSettings;
   referral_first_reward: number;
   referral_repeat_reward: number;
+  referral_friend_bonus: number;
+  referral_expiry_days: number;
   min_payable_for_wallet: number;
   max_absolute_deduction: number;
   roadmap_ideas: WalletRoadmapIdea[];
@@ -120,6 +126,8 @@ const GLOBAL_KEYS = {
 const EXTRA_KEYS = {
   referral_first_reward: 'wallet_referral_first_reward',
   referral_repeat_reward: 'wallet_referral_repeat_reward',
+  referral_friend_bonus: 'wallet_referral_friend_bonus',
+  referral_expiry_days: 'wallet_referral_expiry_days',
   min_payable_for_wallet: 'wallet_min_payable_for_wallet',
   max_absolute_deduction: 'wallet_max_absolute_deduction',
 } as const;
@@ -173,6 +181,8 @@ const DEFAULT_FULL_SETTINGS: WalletLogicFullSettings = {
   ios: { use_global: true, enabled: true, rules: { ...DEFAULT_CORE_RULES } },
   referral_first_reward: 500,
   referral_repeat_reward: 250,
+  referral_friend_bonus: 500,
+  referral_expiry_days: 90,
   min_payable_for_wallet: 0,
   max_absolute_deduction: 0,
   roadmap_ideas: DEFAULT_WALLET_ROADMAP.map((item) => ({ ...item })),
@@ -283,7 +293,7 @@ export function walletConfigToAdminPayload(config: WalletRuntimeConfig): WalletC
 
 export function coreRulesToRuntimeConfig(
   rules: WalletCoreRules,
-  extras?: Partial<Pick<WalletRuntimeConfig, 'WALLET_ENABLED' | 'MIN_PAYABLE_FOR_WALLET' | 'MAX_ABSOLUTE_DEDUCTION' | 'REFERRAL_FIRST_REWARD' | 'REFERRAL_REPEAT_REWARD'>>,
+  extras?: Partial<Pick<WalletRuntimeConfig, 'WALLET_ENABLED' | 'MIN_PAYABLE_FOR_WALLET' | 'MAX_ABSOLUTE_DEDUCTION' | 'REFERRAL_FIRST_REWARD' | 'REFERRAL_REPEAT_REWARD' | 'REFERRAL_FRIEND_BONUS' | 'REFERRAL_EXPIRY_DAYS'>>,
 ): WalletRuntimeConfig {
   return {
     WELCOME_BONUS_AMOUNT: rules.welcome_bonus_amount,
@@ -304,6 +314,8 @@ export function coreRulesToRuntimeConfig(
     MAX_ABSOLUTE_DEDUCTION: extras?.MAX_ABSOLUTE_DEDUCTION ?? 0,
     REFERRAL_FIRST_REWARD: extras?.REFERRAL_FIRST_REWARD ?? DEFAULT_WALLET_CONFIG.REFERRAL_FIRST_REWARD,
     REFERRAL_REPEAT_REWARD: extras?.REFERRAL_REPEAT_REWARD ?? DEFAULT_WALLET_CONFIG.REFERRAL_REPEAT_REWARD,
+    REFERRAL_FRIEND_BONUS: extras?.REFERRAL_FRIEND_BONUS ?? DEFAULT_WALLET_CONFIG.REFERRAL_FRIEND_BONUS,
+    REFERRAL_EXPIRY_DAYS: extras?.REFERRAL_EXPIRY_DAYS ?? DEFAULT_WALLET_CONFIG.REFERRAL_EXPIRY_DAYS,
   };
 }
 
@@ -475,6 +487,8 @@ export async function getWalletLogicSettings(supabaseAdmin?: any): Promise<Walle
     ios: readPlatformSettings(map, 'ios', global),
     referral_first_reward: toNumber(map.get(EXTRA_KEYS.referral_first_reward), 500),
     referral_repeat_reward: toNumber(map.get(EXTRA_KEYS.referral_repeat_reward), 250),
+    referral_friend_bonus: toNumber(map.get(EXTRA_KEYS.referral_friend_bonus), 500),
+    referral_expiry_days: toNumber(map.get(EXTRA_KEYS.referral_expiry_days), 90),
     min_payable_for_wallet: toNumber(map.get(EXTRA_KEYS.min_payable_for_wallet), 0),
     max_absolute_deduction: toNumber(map.get(EXTRA_KEYS.max_absolute_deduction), 0),
     roadmap_ideas: parseRoadmapIdeas(map.get(ROADMAP_KEY)),
@@ -501,6 +515,8 @@ export async function getWalletConfig(
     MAX_ABSOLUTE_DEDUCTION: settings.max_absolute_deduction,
     REFERRAL_FIRST_REWARD: settings.referral_first_reward,
     REFERRAL_REPEAT_REWARD: settings.referral_repeat_reward,
+    REFERRAL_FRIEND_BONUS: settings.referral_friend_bonus,
+    REFERRAL_EXPIRY_DAYS: settings.referral_expiry_days,
   });
 
   cached = { config, at: Date.now(), platform };
@@ -559,9 +575,11 @@ export function validateWalletLogicFullSettings(input: Partial<WalletLogicFullSe
     if (err) return err;
   }
 
-  const extraChecks: Array<[keyof Pick<WalletLogicFullSettings, 'referral_first_reward' | 'referral_repeat_reward' | 'min_payable_for_wallet' | 'max_absolute_deduction'>, number, number]> = [
+  const extraChecks: Array<[keyof Pick<WalletLogicFullSettings, 'referral_first_reward' | 'referral_repeat_reward' | 'referral_friend_bonus' | 'referral_expiry_days' | 'min_payable_for_wallet' | 'max_absolute_deduction'>, number, number]> = [
     ['referral_first_reward', 0, 100000],
     ['referral_repeat_reward', 0, 100000],
+    ['referral_friend_bonus', 0, 100000],
+    ['referral_expiry_days', 1, 3650],
     ['min_payable_for_wallet', 0, 1000000],
     ['max_absolute_deduction', 0, 1000000],
   ];
@@ -730,6 +748,8 @@ export function walletRulesToPublicPayload(
     membership_cashback_max: config.MEMBERSHIP_CASHBACK_MAX,
     referral_first_reward: config.REFERRAL_FIRST_REWARD,
     referral_repeat_reward: config.REFERRAL_REPEAT_REWARD,
+    referral_friend_bonus: config.REFERRAL_FRIEND_BONUS,
+    referral_expiry_days: config.REFERRAL_EXPIRY_DAYS,
     min_payable_for_wallet: config.MIN_PAYABLE_FOR_WALLET,
     max_absolute_deduction: config.MAX_ABSOLUTE_DEDUCTION,
     advanced_enabled: Boolean(settings?.advanced_enabled),

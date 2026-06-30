@@ -47,6 +47,7 @@ import {
   isMembershipActive,
 } from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
+import { trackEvent } from '../lib/trackEvent';
 import { ENV } from '../config/environment';
 import { reverseGeocodeCoords } from '../lib/reverseGeocode';
 import { notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
@@ -128,6 +129,7 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'orders', label: 'Order History', icon: 'receipt' },
   { id: 'cart', label: 'Cart', icon: 'cart' },
   { id: 'coupons', label: 'My Coupons', icon: 'pricetag' },
+  { id: 'referral', label: 'Refer & Earn', icon: 'gift' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
 
@@ -2644,6 +2646,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   };
 
   const handleLogout = async () => {
+    trackEvent('logout_tapped');
     try {
       await onCustomerLogout?.();
       setIsLoggedIn(false);
@@ -3417,7 +3420,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       <Text style={styles.sectionHeading}>Connect With Us</Text>
       <View style={styles.socialRow}>
         {SOCIAL_LINKS.map((s) => (
-          <TouchableOpacity key={s.url} style={[styles.socialBtn, { borderColor: s.color }]} onPress={() => Linking.openURL(s.url)}>
+          <TouchableOpacity key={s.url} style={[styles.socialBtn, { borderColor: s.color }]} onPress={() => { trackEvent('social_link_tapped', { platform: s.url }); Linking.openURL(s.url); }}>
             {'iconFamily' in s && s.iconFamily === 'FontAwesome6' ? (
               <FontAwesome6 name={s.icon} size={17} color={s.color} />
             ) : (
@@ -3439,13 +3442,14 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         </TouchableOpacity>
       )}
 
-      <ReferAndFooter hideRefer />
+      <ReferAndFooter />
     </ScrollView>
   );
 
   const renderSubPage = () => {
     switch (activeSubPage) {
       case 'My Profile': {
+        trackEvent('profile_viewed');
         if (!isLoggedIn) {
           return renderLoginGate('Please login to view and update your profile.');
         }
@@ -4179,6 +4183,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           </View>
         );
       case 'Membership': {
+        trackEvent('membership_screen_viewed');
         const isPrimeCurrent = hasActiveMembership;
         const activeExpiry = formatMembershipExpiry(currentMembership);
         const primeUI = appMembershipPlans[selectedAppPlanIdx] || primeMembershipConfig || PRIME_MEMBERSHIP;
@@ -4273,6 +4278,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         );
       }
       case 'Your Wallet':
+        trackEvent('wallet_viewed');
         return (
           <WalletScreenContent
             balance={isLoggedIn ? Number(walletBalance || 0) : 0}
@@ -4288,6 +4294,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           />
         );
       case 'Refer & Earn':
+        trackEvent('referral_screen_viewed');
         return (
           <View style={styles.subWrap}>
             {/* Hero Banner */}
@@ -4302,12 +4309,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               </View>
               <Text style={styles.refHeroTitle}>{'Refer Friends & Earn\nService Rewards 🎉'}</Text>
               <Text style={styles.refHeroSub}>
-                Invite your friends to MyFNG. When they install the app and book a service, you earn referral rewards.
+                Invite your friends to MyFNG. They get ₹1,500 wallet balance instantly, and you earn rewards when they book their first service.
               </Text>
               <TouchableOpacity
                 style={styles.refInviteBtn}
                 activeOpacity={1}
-                onPress={() => Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹500 off your first service. Download now: https://myfng.in` })}
+                onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹1,500 wallet bonus instantly. Download now: https://myfng.in` }); }}
               >
                 <Text style={styles.refInviteBtnText}>Invite Friends</Text>
               </TouchableOpacity>
@@ -4324,6 +4331,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                   onPress={async () => {
                     if (referralCode) {
                       await Clipboard.setStringAsync(referralCode);
+                      trackEvent('referral_code_copied');
                       Alert.alert('Copied!', 'Referral code copied to clipboard.');
                     }
                   }}
@@ -4334,7 +4342,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                 <TouchableOpacity
                   style={styles.refShareBtn}
                   activeOpacity={1}
-                  onPress={() => Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹500 off your first service. Download now: https://myfng.in` })}
+                  onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹1,500 wallet bonus instantly. Download now: https://myfng.in` }); }}
                 >
                   <Ionicons name="share-social-outline" size={14} color="#FFFFFF" />
                   <Text style={styles.refShareBtnText}>Share Link</Text>
@@ -4378,8 +4386,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                 When your friend installs the MyFNG app using your referral code, they receive:
               </Text>
               <View style={styles.refFriendBenefitRow}>
+                <Text style={styles.refRewardEmoji}>💰</Text>
+                <Text style={styles.refFriendBenefitText}>₹1,000 welcome bonus (instant)</Text>
+              </View>
+              <View style={styles.refFriendBenefitRow}>
                 <Text style={styles.refRewardEmoji}>🎁</Text>
-                <Text style={styles.refFriendBenefitText}>₹500 referral bonus</Text>
+                <Text style={styles.refFriendBenefitText}>₹500 referral bonus (instant)</Text>
               </View>
               <View style={styles.refFriendBenefitRow}>
                 <Text style={styles.refRewardEmoji}>🚗</Text>
@@ -4396,9 +4408,9 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               <Text style={styles.refSectionTitle}>How It Works</Text>
               {([
                 { icon: 'share-social-outline' as const, label: 'STEP 1', text: 'Share your referral code with friends.' },
-                { icon: 'phone-portrait-outline' as const, label: 'STEP 2', text: 'Friend installs the MyFNG app.' },
-                { icon: 'car-sport-outline' as const, label: 'STEP 3', text: 'Friend books a service through the app.' },
-                { icon: 'gift-outline' as const, label: 'STEP 4', text: 'Your referral reward gets unlocked.' },
+                { icon: 'phone-portrait-outline' as const, label: 'STEP 2', text: 'Friend installs the app & gets ₹1,500 wallet balance instantly.' },
+                { icon: 'car-sport-outline' as const, label: 'STEP 3', text: 'Friend books their first service through the app.' },
+                { icon: 'gift-outline' as const, label: 'STEP 4', text: 'You earn ₹500 (first) or ₹250 (repeat) referral reward!' },
               ]).map((item, idx) => (
                 <View key={String(idx)} style={styles.refStepCard}>
                   <View style={styles.refStepIconWrap}>
@@ -4442,7 +4454,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             {/* Terms & Conditions Dropdown */}
             <TouchableOpacity
               style={styles.refTncHeader}
-              onPress={() => setShowReferTnC((prev) => !prev)}
+              onPress={() => { trackEvent('referral_terms_toggled'); setShowReferTnC((prev) => !prev); }}
               activeOpacity={0.8}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -4454,12 +4466,14 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             {showReferTnC ? (
               <View style={styles.refTncBody}>
                 {[
-                  'First successful referral gives ₹500 reward.',
-                  'Every next referral gives ₹250 reward.',
-                  'Referral reward unlocks only after the referred user books a service through MyFNG.',
-                  'Maximum ₹500 discount on periodic service packages.',
-                  'Maximum ₹200 discount on other services.',
+                  'First successful referral gives you ₹500 reward.',
+                  'Every next referral gives you ₹250 reward.',
+                  'Your referral reward unlocks when your friend books their first service.',
+                  'Your friend gets ₹1,500 wallet balance (₹1,000 welcome + ₹500 referral bonus) instantly on signup.',
+                  'Wallet balance expires in 90 days.',
+                  'Maximum wallet usage: 10% of service booking amount.',
                   'Rewards cannot be converted to cash.',
+                  'Self-referral and fraudulent referrals will be rejected.',
                 ].map((term, idx) => (
                   <Text key={String(idx)} style={styles.refTncItem}>• {term}</Text>
                 ))}
@@ -4468,6 +4482,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           </View>
         );
       case 'Order History': {
+        trackEvent('order_history_viewed');
         if (!isLoggedIn) {
           return renderLoginGate('Please login to view your order history and\ntrack active services.');
         }
@@ -4688,6 +4703,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           />
         );
       case 'Cart':
+        trackEvent('cart_viewed');
         if (!isLoggedIn) {
           return (
             <View style={styles.subWrap}>
@@ -5604,7 +5620,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             <View style={hstyles.topCard}>
               <Text style={hstyles.topTitle}>How can we help you?</Text>
               <View style={hstyles.contactRow}>
-                <TouchableOpacity style={hstyles.contactItem} onPress={() => openPhoneCall('+919152307030')}>
+                <TouchableOpacity style={hstyles.contactItem} onPress={() => { trackEvent('support_call_tapped'); openPhoneCall('+919152307030'); }}>
                   <View style={hstyles.contactIconWrap}>
                     <Ionicons name="call-outline" size={16} color={COLORS.primary} />
                   </View>
@@ -5758,6 +5774,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                           text: 'Delete',
                           style: 'destructive',
                           onPress: async () => {
+                            trackEvent('delete_account_confirmed');
                             try {
                               await apiFetch('/api/customer/auth/delete-account', { method: 'POST' });
                               await clearCustomerSessionToken();
@@ -5888,7 +5905,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {subPageContent}
-              <ReferAndFooter hideRefer />
+              <ReferAndFooter />
             </ScrollView>
           )}
         </Animated.View>
@@ -6492,7 +6509,7 @@ const styles = StyleSheet.create({
   refStepCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: '#EFF6FF', backgroundColor: '#FAFCFF', padding: 12 },
   refStepIconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
   refStepLabel: { fontSize: 10, fontWeight: '900', color: COLORS.primary, letterSpacing: 0.5 },
-  refStepText: { fontSize: 13, fontWeight: '600', color: '#374151', marginTop: 2 },
+  refStepText: { fontSize: 12, fontWeight: '500', color: '#374151', marginTop: 2 },
   refStatsRow: { flexDirection: 'row', gap: 10 },
   refStatBox: { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', padding: 14, alignItems: 'center' },
   refStatNum: { fontSize: 28, fontWeight: '900', color: '#111827' },
@@ -6504,7 +6521,7 @@ const styles = StyleSheet.create({
   refTncHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', paddingHorizontal: 14, paddingVertical: 12 },
   refTncHeaderText: { fontSize: 11, fontWeight: '900', color: '#6B7280', letterSpacing: 0.8 },
   refTncBody: { borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', padding: 14, gap: 6, marginTop: -4 },
-  refTncItem: { fontSize: 11, fontWeight: '500', color: '#6B7280', lineHeight: 16 },
+  refTncItem: { fontSize: 11, fontWeight: '500', color: '#6B7280', lineHeight: 16, fontStyle: 'italic' },
 });
 
 const ostyles = StyleSheet.create({

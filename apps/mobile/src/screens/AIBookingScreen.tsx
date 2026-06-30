@@ -19,6 +19,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { ENV } from '../config/environment';
 import { getCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
+import { trackEvent } from '../lib/trackEvent';
 import BotFace from '../components/BotFace';
 
 const stripEmojis = (text: string) =>
@@ -105,6 +106,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
+    trackEvent('misa_opened');
     const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
       setKeyboardVisible(true);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -293,6 +295,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       })();
 
       push({ id: uid(), role: 'assistant', text: assistantText, ui });
+      trackEvent('misa_message_received');
 
       const ctxPatch = data?.data?.contextPatch || data?.contextPatch || null;
       if (ctxPatch && typeof ctxPatch === 'object') {
@@ -300,6 +303,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       }
     } catch (e: any) {
       if (__DEV__) console.log('Chatbot API network error', { err: String(e?.message || e), apiBase: apiBase() });
+      trackEvent('misa_chat_error');
       push({ id: uid(), role: 'assistant', text: 'Network issue. Please try again.' });
     } finally {
       setChatLoading(false);
@@ -309,6 +313,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   const onSend = () => {
     const text = draft.trim();
     if (!text) return;
+    trackEvent('misa_message_sent');
     setDraft('');
     push({ id: uid(), role: 'user', text });
     void sendChatMessage(text);

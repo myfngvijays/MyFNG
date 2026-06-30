@@ -21,6 +21,7 @@ import {
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { trackEvent } from '../lib/trackEvent';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import {
   AuthVerifyResponse,
@@ -91,8 +92,10 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       }
 
       setStep('otp');
+      trackEvent('otp_sent', { method: 'whatsapp' });
       Alert.alert('OTP Sent', `WhatsApp OTP sent to +91${cleanPhone}`);
     } catch (error: any) {
+      trackEvent('otp_send_failed');
       Alert.alert('Send OTP Failed', error?.message || 'Unable to send WhatsApp OTP.');
     } finally {
       setLoading(false);
@@ -121,6 +124,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       const result = await sendSmsOtp(cleanPhone);
       setConfirmation(result.confirmation);
       setStep('otp');
+      trackEvent('otp_sent', { method: 'sms' });
       const testHint = firebaseTestOtpHint(cleanPhone);
       Alert.alert('OTP Sent', testHint || `OTP sent to +91${cleanPhone}`);
     } catch (error: any) {
@@ -128,6 +132,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
         await handleSendWhatsAppOtp();
         return;
       }
+      trackEvent('otp_send_failed');
       const code = error?.code as string | undefined;
       if (code === 'auth/missing-client-identifier' || code === 'auth/app-not-authorized') {
         Alert.alert(
@@ -186,6 +191,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     try {
       const authResult = await verifySmsOtp(cleanPhone, otp.trim(), confirmation);
       await setCustomerSessionToken(authResult.session_token);
+      trackEvent('otp_verified');
 
       if (
         await maybeShowCreditedPopup(
@@ -199,6 +205,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       }
       finishLoginSuccess();
     } catch (error: any) {
+      trackEvent('otp_verify_failed');
       Alert.alert('OTP Verification Failed', error?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
@@ -260,6 +267,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       }
 
       await setCustomerSessionToken(String(json.session_token));
+      trackEvent('otp_verified');
       if (
         await maybeShowCreditedPopup(
           String(json.session_token),
@@ -272,6 +280,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       }
       finishLoginSuccess();
     } catch (error: any) {
+      trackEvent('otp_verify_failed');
       Alert.alert('OTP Verification Failed', error?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
@@ -363,6 +372,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
                 style={styles.linkButton}
                 disabled={loading}
                 onPress={() => {
+                  trackEvent('otp_resend_tapped');
                   setOtp('');
                   setConfirmation(null);
                   setOtpChannel('sms');

@@ -23,6 +23,7 @@ import {
   msUntilNextLocalDay,
   type QuizQuestion,
 } from '../../lib/smartToolsLogic';
+import { trackEvent } from '../../lib/trackEvent';
 
 type Props = { navigation: any };
 
@@ -69,6 +70,7 @@ export default function CarQuizGameScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
+    trackEvent('car_quiz_started');
     void refreshProgress();
   }, [refreshProgress]);
 
@@ -101,6 +103,7 @@ export default function CarQuizGameScreen({ navigation }: Props) {
   const pick = async (optionIndex: number) => {
     if (!progress || !question || selected !== null || progress.completed) return;
 
+    trackEvent('car_quiz_answer_selected');
     setSelected(optionIndex);
     setJustAnswered(true);
     if (optionIndex === question.correct) {
@@ -119,7 +122,10 @@ export default function CarQuizGameScreen({ navigation }: Props) {
     if (!currentProgress || selectedRef.current === null) return;
     const updated = await advanceCarQuizProgress(currentProgress);
     setProgress(updated);
-    if (updated.completed) return;
+    if (updated.completed) {
+      trackEvent('car_quiz_completed', { score: updated.score });
+      return;
+    }
     animateQuestionChange(() => {
       setSelected(updated.selections[updated.currentIndex] ?? null);
       setJustAnswered(false);

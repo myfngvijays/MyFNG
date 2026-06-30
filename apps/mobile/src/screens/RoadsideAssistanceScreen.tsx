@@ -26,6 +26,7 @@ import { supabase } from '../lib/supabase';
 import { RSA_PHONE, RSA_SERVICES, RSA_FAQS_FALLBACK, type RsaServiceDef } from '../constants/rsaServices';
 import { RsaServiceIcon } from '../components/RsaHomeSection';
 import { fetchPublicFaqs, type PublicFaqItem } from '../lib/publicFaqs';
+import { trackEvent } from '../lib/trackEvent';
 
 type Props = { navigation: any; route: any };
 
@@ -74,6 +75,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
   });
 
   useEffect(() => {
+    trackEvent('rsa_screen_viewed');
     invalidateAppMembershipPlansCache();
   }, []);
 
@@ -151,6 +153,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
   }, []);
 
   const onServicePress = (svc: RsaServiceDef) => {
+    trackEvent('rsa_service_tapped', { service_id: svc.name });
     if (svc.action === 'book_periodic') {
       navigation.navigate('PublicBookServiceNow', {
         city,
@@ -216,7 +219,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             <TouchableOpacity
               style={s.emergencyCallBtn}
               activeOpacity={0.85}
-              onPress={() => openPhoneCall(RSA_PHONE)}
+              onPress={() => { trackEvent('rsa_call_now_tapped'); openPhoneCall(RSA_PHONE); }}
             >
               <Ionicons name="call" size={16} color="#FFFFFF" />
               <Text style={s.emergencyCallText}>Call Now</Text>
@@ -385,7 +388,7 @@ export default function RoadsideAssistanceScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           )}
 
-          <ReferAndFooter hideRefer />
+          <ReferAndFooter />
           <View style={{ height: 24 }} />
         </ScrollView>
 

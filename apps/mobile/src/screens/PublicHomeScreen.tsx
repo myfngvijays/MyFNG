@@ -58,6 +58,7 @@ import {
 } from '../lib/welcomeBonus';
 import { getCartBadgeCount, subscribeCartBadgeCount } from '../lib/cartBadgeCount';
 import { fetchPublicFaqs, type PublicFaqItem } from '../lib/publicFaqs';
+import { trackEvent } from '../lib/trackEvent';
 type Props = {
   navigation: any;
 };
@@ -536,7 +537,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
         <PublicHeader
           city={detectedCity}
           cartCount={cartItemCount}
-          onPressSearch={() => setShowSearchOverlay(true)}
+          onPressSearch={() => { trackEvent('home_search_opened'); setShowSearchOverlay(true); }}
           onPressCart={() => navigation.navigate('Settings', { subPage: 'Cart' })}
         />
 
@@ -594,6 +595,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
+                  trackEvent('home_banner_tapped', { banner_index: heroIndex % Math.max(heroBanners.length, 1) });
                   const params = activeHero.routeParams ? { ...activeHero.routeParams } : {};
                   Object.keys(params).forEach((k) => {
                     if (params[k] === '__CITY__') params[k] = detectedCity;
@@ -684,12 +686,13 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 <TouchableOpacity
                   key={service.id}
                   style={styles.serviceTile}
-                  onPress={() =>
+                  onPress={() => {
+                    trackEvent('home_service_category_tapped', { category: service.label });
                     navigation.navigate('PublicServicePackages', {
                       city: detectedCity,
                       selectedServiceId: service.id === 'all' ? null : service.id,
-                    })
-                  }
+                    });
+                  }}
                 >
                   <View style={styles.serviceIconWrap}>
                     {service.image ? (
@@ -712,7 +715,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
           <Section>
             <TouchableOpacity
               style={styles.locatorCard}
-              onPress={() => navigation.navigate('PublicWorkshopLocator', { city: detectedCity })}
+              onPress={() => { trackEvent('workshop_locator_opened'); navigation.navigate('PublicWorkshopLocator', { city: detectedCity }); }}
             >
               <View style={styles.locatorLeft}>
                 <View style={styles.locatorIcon}>
@@ -1056,7 +1059,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             )}
           </Section>
 
-          <ReferAndFooter hideRefer />
+          <ReferAndFooter />
 
           <View style={styles.bottomSpacer} />
         </ScrollView>

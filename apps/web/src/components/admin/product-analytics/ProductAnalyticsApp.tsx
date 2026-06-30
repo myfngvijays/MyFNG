@@ -2,24 +2,28 @@
 
 import { Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { BarChart3, Layers, Settings2, Code2 } from 'lucide-react';
+import { BarChart3, Layers, Settings2, Code2, List, Activity } from 'lucide-react';
 import './analytics-admin-theme.css';
 import OverviewSection from './sections/OverviewSection';
 import PlatformsSection from './sections/PlatformsSection';
 import SettingsSection from './sections/SettingsSection';
 import CodeReferenceSection from './sections/CodeReferenceSection';
+import EventsCatalogSection from './sections/EventsCatalogSection';
+import LiveDataSection from './sections/LiveDataSection';
 
-type SectionId = 'overview' | 'platforms' | 'settings' | 'code';
+type SectionId = 'overview' | 'platforms' | 'events' | 'live' | 'settings' | 'code';
 
 const NAV = [
   { id: 'overview' as const, label: 'Overview', icon: BarChart3, description: 'Android, iOS & Web status' },
   { id: 'platforms' as const, label: 'Platforms', icon: Layers, description: 'Per-platform tracking details' },
+  { id: 'events' as const, label: 'Events', icon: List, description: 'All 78 tracked events catalog' },
+  { id: 'live' as const, label: 'Live Data', icon: Activity, description: 'Real-time GA4 event metrics' },
   { id: 'settings' as const, label: 'Settings', icon: Settings2, description: 'Firebase GA4 & Clarity IDs' },
   { id: 'code' as const, label: 'Code Reference', icon: Code2, description: 'Files to change in future' },
 ];
 
 function sectionFromParam(value: string | null): SectionId {
-  if (value === 'platforms' || value === 'settings' || value === 'code') return value;
+  if (value === 'platforms' || value === 'settings' || value === 'code' || value === 'events' || value === 'live') return value;
   return 'overview';
 }
 
@@ -73,6 +77,8 @@ function ProductAnalyticsAppInner() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         {section === 'overview' ? <OverviewSection /> : null}
         {section === 'platforms' ? <PlatformsSection /> : null}
+        {section === 'events' ? <EventsCatalogSection /> : null}
+        {section === 'live' ? <LiveDataSection /> : null}
         {section === 'settings' ? <SettingsSection /> : null}
         {section === 'code' ? <CodeReferenceSection /> : null}
       </div>

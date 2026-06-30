@@ -84,6 +84,7 @@ import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBa
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
 import VehicleImage from '../components/VehicleImage';
+import { trackEvent } from '../lib/trackEvent';
 
 const SERVICE_ICON_BASE = 'https://myfng.in';
 function getCategoryIconUrl(category: string): string {
@@ -739,6 +740,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const goStep = (next: number) => {
     setStep(next);
+    trackEvent('booking_step_viewed', { step: next });
     scrollRef.current?.scrollTo({ y: 0, animated: true });
     persistBookingSession(next);
   };
@@ -918,6 +920,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           if (match) {
             setForm((p) => ({ ...p, city: match }));
             setDetectedCityNotServiceable(null);
+            trackEvent('booking_city_detected');
           } else {
             setDetectedCityNotServiceable(displayLocation || detectedCity);
           }
@@ -1271,11 +1274,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       setCouponMeta(json.coupon_meta || null);
       setCouponDiscount(Number(json.discount_amount || 0));
       setCouponError(null);
+      trackEvent('booking_coupon_applied');
       Alert.alert('Coupon applied', `Code: ${json?.coupon?.code || code}`);
     } catch (error: any) {
       setCouponMeta(null);
       setCouponDiscount(0);
       setCouponError(error?.message || 'Invalid coupon.');
+      trackEvent('booking_coupon_failed');
     } finally {
       setCouponApplying(false);
     }
@@ -1595,6 +1600,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
       // Clear draft on successful booking
       bookingCompletedRef.current = true;
+      trackEvent('booking_submitted');
       await persistNewPickupAddressIfNeeded();
       await removeBookingDraft(draftId);
       notifyCartBadgeCountChanged();
@@ -1659,7 +1665,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   },
                   theme: { color: '#004AAD' },
                 };
+                trackEvent('payment_initiated');
                 await RazorpayCheckout.open(options);
+                trackEvent('payment_success');
                 setBookingSuccess({
                   ...successBase,
                   title: 'Payment Successful!',
@@ -1671,6 +1679,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 const cancelled =
                   payErr?.code === 'PAYMENT_CANCELLED' ||
                   payErr?.description?.includes('cancelled');
+                if (cancelled) {
+                  trackEvent('payment_cancelled');
+                } else {
+                  trackEvent('payment_failed');
+                }
                 setBookingSuccess({
                   ...successBase,
                   title: 'Booking Confirmed!',
@@ -1728,6 +1741,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         selectedWorkshop: null,
       }));
     } catch (error: any) {
+      trackEvent('booking_submit_failed');
       Alert.alert('Failed', error?.message || 'Could not create booking. Please try again.');
     } finally {
       setLoading(false);
@@ -1817,6 +1831,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [isLoggedIn, step, form.vehicleNumber]);
 
   useEffect(() => {
+    trackEvent('booking_started');
     (async () => {
       const cityList = await fetchCities();
       const rebook = route?.params?.rebookOrder;
@@ -1979,6 +1994,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const handleServiceToggle = useCallback((serviceId: string) => {
     setForm((prev) => {
       const has = prev.selectedServices.includes(serviceId);
+      if (!has) trackEvent('booking_service_selected');
       return {
         ...prev,
         selectedServices: has
@@ -2246,6 +2262,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const onDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
+      trackEvent('booking_date_selected');
       const nextDate = formatDateYMD(selectedDate);
       const todayYmd = formatDateYMD(getIndiaDate());
       setForm((p) => ({
@@ -2361,6 +2378,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [form.pickupDate, form.pickupTime, todayStr]);
 
   const selectPickupDate = (dateStr: string) => {
+    trackEvent('booking_date_selected');
     setForm((p) => ({
       ...p,
       pickupDate: dateStr,
@@ -2605,6 +2623,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           style={styles.carSuggestionRow}
                           onPress={() => {
                             setForm((p) => ({ ...p, carModel: m }));
+                            trackEvent('booking_car_model_selected');
                             setCarQuery('');
                             setShowCarSuggestions(false);
                           }}
@@ -3056,7 +3075,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   <View style={styles.servicePrefRow}>
                     <TouchableOpacity
                       style={styles.servicePrefSide}
-                      onPress={() => setForm((p) => ({ ...p, pickupRequired: true, selectedWorkshop: null }))}
+                      onPress={() => {
+                        trackEvent('booking_pickup_mode_selected', { mode: 'pickup' });
+                        setForm((p) => ({ ...p, pickupRequired: true, selectedWorkshop: null }));
+                      }}
                       activeOpacity={0.85}
                     >
                       <View
@@ -3087,6 +3109,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       activeOpacity={0.85}
                       onPress={() => {
                         if (form.pickupRequired) {
+                          trackEvent('booking_pickup_mode_selected', { mode: 'workshop' });
                           setForm((p) => ({
                             ...p,
                             pickupRequired: false,
@@ -3098,6 +3121,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                           }));
                           fetchWorkshops();
                         } else {
+                          trackEvent('booking_pickup_mode_selected', { mode: 'pickup' });
                           setForm((p) => ({ ...p, pickupRequired: true, selectedWorkshop: null }));
                         }
                       }}
@@ -3222,6 +3246,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                                 ]}
                                 onPress={() => {
                                   if (isPast) return;
+                                  trackEvent('booking_time_selected');
                                   setForm((p) => ({ ...p, pickupTime: slot.value }));
                                 }}
                                 disabled={isPast}
@@ -3452,6 +3477,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                                 ]}
                                 onPress={() => {
                                   if (isPast) return;
+                                  trackEvent('booking_time_selected');
                                   setForm((p) => ({ ...p, pickupTime: slot.value }));
                                 }}
                                 disabled={isPast}
@@ -3524,7 +3550,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 {/* Pay Later */}
                 <TouchableOpacity
                   style={[styles.payRow, form.paymentMethod === 'PAY_LATER' ? styles.payRowActive : null]}
-                  onPress={() => setForm((p) => ({ ...p, paymentMethod: 'PAY_LATER' }))}
+                  onPress={() => {
+                    trackEvent('booking_payment_method_selected', { method: 'PAY_LATER' });
+                    setForm((p) => ({ ...p, paymentMethod: 'PAY_LATER' }));
+                  }}
                   activeOpacity={0.9}
                 >
                   <Ionicons
@@ -3555,7 +3584,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 {/* Pay Now */}
                 <TouchableOpacity
                   style={[styles.payRow, form.paymentMethod === 'PAY_NOW' ? styles.payRowActive : null]}
-                  onPress={() => setForm((p) => ({ ...p, paymentMethod: 'PAY_NOW' }))}
+                  onPress={() => {
+                    trackEvent('booking_payment_method_selected', { method: 'PAY_NOW' });
+                    setForm((p) => ({ ...p, paymentMethod: 'PAY_NOW' }));
+                  }}
                   activeOpacity={0.9}
                 >
                   <Ionicons
@@ -3725,7 +3757,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         <Switch
                           style={Platform.OS === 'ios' ? styles.walletSwitch : undefined}
                           value={useWalletForBooking && !walletVehicleBlocked}
-                          onValueChange={setUseWalletForBooking}
+                          onValueChange={(val) => {
+                            setUseWalletForBooking(val);
+                            trackEvent('booking_wallet_toggle', { enabled: val });
+                          }}
                           disabled={walletVehicleBlocked}
                           trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
                           thumbColor="#FFFFFF"

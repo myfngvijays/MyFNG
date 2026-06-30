@@ -48,6 +48,7 @@ import {
   TrendingUp,
   HelpCircle,
   LineChart,
+  Gift,
 } from 'lucide-react';
 
 type NavItem = {
@@ -226,6 +227,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/wallet-credits?section=bulk',
         icon: Coins,
         description: 'Bulk add wallet balance to selected users',
+      },
+      {
+        name: 'Refer & Earn',
+        href: '/dashboard/super_admin/referral',
+        icon: Gift,
+        description: 'Referral rewards, friend bonus & activity',
       },
       {
         name: 'Advance Coupon Management',

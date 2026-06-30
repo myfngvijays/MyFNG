@@ -55,6 +55,7 @@ import {
   type TransmissionType,
   type Category,
 } from '../../lib/vehicleHealthScore';
+import { trackEvent } from '../../lib/trackEvent';
 
 type Props = { navigation: any };
 
@@ -184,6 +185,7 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
   }, [step]);
 
   useEffect(() => {
+    trackEvent('health_check_started');
     AsyncStorage.getItem(HEALTH_SESSION_KEY)
       .then((raw) => {
         if (!raw) return;
@@ -238,7 +240,9 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
         `health_report:${rc.regNumber}`,
         JSON.stringify({ report: result, rc, generatedAt: result.generatedAt }),
       ).catch(() => {});
+      trackEvent('health_check_report_generated');
       const reportText = buildHealthReportDocument(result, rc);
+      trackEvent('health_check_submitted');
       submitHealthReportPayload({
         reg_number: rc.regNumber,
         make: rc.make,
@@ -257,7 +261,7 @@ export default function CarHealthCheckScreen({ navigation }: Props) {
     return () => clearTimeout(timer);
   }, [step, rc, input, spin, carSearchDisplay]);
 
-  const goNext = () => setStep((s) => nextStep(s));
+  const goNext = () => setStep((s) => { const next = nextStep(s); trackEvent('health_check_step_completed', { step: stepIndex(s) }); return next; });
   const goBack = () => setStep((s) => prevStep(s));
   const skip = () => goNext();
 
