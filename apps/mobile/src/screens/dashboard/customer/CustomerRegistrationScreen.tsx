@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../../lib/supabase';
-import { trackEvent } from '../../lib/trackEvent';
+import { trackEvent } from '../../../lib/trackEvent';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CustomerRegistrationScreen({ navigation }: any) {
