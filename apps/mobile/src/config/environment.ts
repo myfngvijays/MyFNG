@@ -43,6 +43,8 @@ export const ENV = {
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmZm9tbWlqbHZpY2ZqaGJxeXprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyMDkxNjYsImV4cCI6MjA3ODc4NTE2Nn0.2RqHX4BynIrH_R3HVZ9JYph03sdzkL6bYN644Yl4l1U',
   APP_URL: API_URL,
   API_URL,
+  PLAYSTORE_URL: 'https://play.google.com/store/apps/details?id=com.myfng.app',
+  APPSTORE_URL: 'https://apps.apple.com/in/app/myfng/id6744942498',
 };
 
 export function isIosSimulator(): boolean {

@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "28",
+      "buildNumber": "29",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -49,7 +49,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 28,
+      "versionCode": 29,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
@@ -65,6 +65,12 @@
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
       "@react-native-firebase/messaging"
-    ]
+    ],
+    "owner": "myfngvijays",
+    "extra": {
+      "eas": {
+        "projectId": "96856110-947b-4c20-9b02-e8ff4026e3d0"
+      }
+    }
   }
 }

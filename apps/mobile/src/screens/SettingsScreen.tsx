@@ -4314,7 +4314,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               <TouchableOpacity
                 style={styles.refInviteBtn}
                 activeOpacity={1}
-                onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹1,500 wallet bonus instantly. Download now: https://myfng.in` }); }}
+                onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n📱 Download Now:\n▶️ Android: https://play.google.com/store/apps/details?id=com.myfng.app\n🍎 iOS: https://apps.apple.com/in/app/myfng/id6744942498\n\nApply my code after signup & get instant wallet bonus!` }); }}
               >
                 <Text style={styles.refInviteBtnText}>Invite Friends</Text>
               </TouchableOpacity>
@@ -4342,7 +4342,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                 <TouchableOpacity
                   style={styles.refShareBtn}
                   activeOpacity={1}
-                  onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code ${referralCode || 'MYFNG'} to get ₹1,500 wallet bonus instantly. Download now: https://myfng.in` }); }}
+                  onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n📱 Download Now:\n▶️ Android: https://play.google.com/store/apps/details?id=com.myfng.app\n🍎 iOS: https://apps.apple.com/in/app/myfng/id6744942498\n\nApply my code after signup & get instant wallet bonus!` }); }}
                 >
                   <Ionicons name="share-social-outline" size={14} color="#FFFFFF" />
                   <Text style={styles.refShareBtnText}>Share Link</Text>

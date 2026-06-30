@@ -30,6 +30,7 @@ import {
 } from '../lib/firebasePhoneAuth';
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
+import { ReferralCodeModal } from '../components/ReferralCodeModal';
 import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
@@ -55,7 +56,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [resendInSec, setResendInSec] = useState(0);
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
+  const [referralModalVisible, setReferralModalVisible] = useState(false);
   const pendingHomeNavigationRef = useRef(false);
+  const isNewCustomerRef = useRef(false);
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const pendingWelcomePhoneRef = useRef<string | null>(null);
 
@@ -99,6 +102,11 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   };
 
   const finishLoginNavigation = () => {
+    if (isNewCustomerRef.current) {
+      isNewCustomerRef.current = false;
+      setReferralModalVisible(true);
+      return;
+    }
     navigation?.navigate?.('PublicHome');
   };
 
@@ -114,6 +122,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         console.warn('[push] login token register failed:', result);
       }
     });
+
+    isNewCustomerRef.current = authResponse?.is_new_customer === true;
 
     let customerProfile: any = null;
     try {
@@ -660,6 +670,13 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
             pendingHomeNavigationRef.current = false;
             finishLoginNavigation();
           }
+        }}
+      />
+      <ReferralCodeModal
+        visible={referralModalVisible}
+        onClose={() => {
+          setReferralModalVisible(false);
+          navigation?.navigate?.('PublicHome');
         }}
       />
     </KeyboardAvoidingView>

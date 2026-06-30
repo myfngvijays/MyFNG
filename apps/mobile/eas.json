@@ -20,6 +20,10 @@
     "production": {
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "buildConfiguration": "Release",
+        "distribution": "store"
       }
     }
   },

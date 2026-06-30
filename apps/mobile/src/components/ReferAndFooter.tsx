@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../constants/theme';
 import { useAppFooter } from '../context/AppFooterContext';
+import { apiFetch } from '../lib/api';
+import { ENV } from '../config/environment';
 
 type Props = {
   hideRefer?: boolean;
@@ -10,12 +12,23 @@ type Props = {
 
 export default function ReferAndFooter({ hideRefer = false }: Props) {
   const { footer, refreshFooter } = useAppFooter();
+  const [referralCode, setReferralCode] = useState('');
 
   useFocusEffect(
     React.useCallback(() => {
       void refreshFooter();
+      apiFetch<{ code: any }>('/api/customer/referral')
+        .then((res) => setReferralCode(res?.code?.code || ''))
+        .catch(() => {});
     }, [refreshFooter]),
   );
+
+  const shareReferral = () => {
+    const code = referralCode || 'MYFNG';
+    Share.share({
+      message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code *${code}* to get ₹1,500 wallet bonus instantly.\n\n📱 Download Now:\n▶️ Android: ${ENV.PLAYSTORE_URL}\n🍎 iOS: ${ENV.APPSTORE_URL}\n\nApply my code after signup & get instant wallet bonus!`,
+    });
+  };
 
   return (
     <>
@@ -29,12 +42,7 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
             <TouchableOpacity
               style={s.referBtn}
               activeOpacity={1}
-              onPress={() =>
-                Share.share({
-                  message:
-                    'Join MyFNG and get ₹1,500 wallet bonus on your first signup! Download now: https://myfng.in',
-                })
-              }
+              onPress={shareReferral}
             >
               <Text style={s.referBtnText}>Invite Now</Text>
             </TouchableOpacity>
