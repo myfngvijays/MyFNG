@@ -73,16 +73,19 @@ export const BLOGS: PublicBlog[] = [
   },
 ];
 
+const CAR_BRAND_LOGOS_BUCKET = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/car-brand/brands';
+
 export const CAR_BRANDS: PublicBrand[] = [
-  { name: 'Maruti Suzuki', logo: 'https://logo.clearbit.com/suzuki.com' },
-  { name: 'Hyundai', logo: 'https://logo.clearbit.com/hyundai.com' },
-  { name: 'Tata Motors', logo: 'https://logo.clearbit.com/tatamotors.com' },
-  { name: 'Mahindra', logo: 'https://logo.clearbit.com/mahindra.com' },
-  { name: 'Toyota', logo: 'https://logo.clearbit.com/toyota.com' },
-  { name: 'Honda', logo: 'https://logo.clearbit.com/honda.com' },
-  { name: 'Kia', logo: 'https://logo.clearbit.com/kia.com' },
-  { name: 'Volkswagen', logo: 'https://logo.clearbit.com/volkswagen.com' },
-  { name: 'Skoda', logo: 'https://logo.clearbit.com/skoda-auto.com' },
+  { name: 'Maruti Suzuki', logo: `${CAR_BRAND_LOGOS_BUCKET}/maruti-suzuki-1767167782400.png` },
+  { name: 'Hyundai', logo: `${CAR_BRAND_LOGOS_BUCKET}/hyundai-1767167798279.png` },
+  { name: 'Tata', logo: `${CAR_BRAND_LOGOS_BUCKET}/tata-1767167812163.png` },
+  { name: 'Honda', logo: `${CAR_BRAND_LOGOS_BUCKET}/honda-1767167825373.png` },
+  { name: 'Toyota', logo: `${CAR_BRAND_LOGOS_BUCKET}/toyota-1767167842662.png` },
+  { name: 'Mahindra', logo: `${CAR_BRAND_LOGOS_BUCKET}/mahindra-1767167857458.png` },
+  { name: 'Kia', logo: `${CAR_BRAND_LOGOS_BUCKET}/kia-1767167878179.png` },
+  { name: 'MG', logo: `${CAR_BRAND_LOGOS_BUCKET}/mg-1767167901236.png` },
+  { name: 'Volkswagen', logo: `${CAR_BRAND_LOGOS_BUCKET}/volkswagen-1767167978229.png` },
+  { name: 'Skoda', logo: `${CAR_BRAND_LOGOS_BUCKET}/skoda-1767167952193.png` },
 ];
 
 const SPARE_PARTS_LOGOS_BUCKET = 'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/App/Spare%20Parts%20Logos%20PNG';

@@ -40,6 +40,7 @@ import {
   BLOGS as BLOG_ITEMS,
   POPULAR_PACKAGES as PACKAGE_ITEMS,
   SPARE_PART_BRANDS,
+  CAR_BRANDS,
   FAQ_CATEGORIES,
   CUSTOMER_REVIEWS,
   type PublicBrand,
@@ -168,6 +169,27 @@ const HEADLINES = [
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const REVIEW_MODAL_SCROLL_MAX_HEIGHT = SCREEN_HEIGHT * 0.8 - 96;
 
+function BrandLogoCard({ brand }: { brand: PublicBrand }) {
+  const [failed, setFailed] = React.useState(false);
+  return (
+    <View style={styles.brandCardSmall}>
+      {brand.logo && !failed ? (
+        <Image
+          source={{ uri: brand.logo }}
+          style={styles.brandLogoLarge}
+          resizeMode="contain"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <View style={styles.brandLogoPlaceholder}>
+          <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
+        </View>
+      )}
+      <Text style={styles.brandCardTitle}>{brand.name}</Text>
+    </View>
+  );
+}
+
 export default function PublicHomeScreen({ navigation }: Props) {
   const { footer, refreshFooter } = useAppFooter();
   const [heroIndex, setHeroIndex] = useState(0);
@@ -189,7 +211,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
   const pendingWelcomePhoneRef = useRef<string | null>(null);
   const [hasActiveBooking] = useState(false);
-  const [carBrands, setCarBrands] = useState<PublicBrand[]>([]);
+  const [carBrands, setCarBrands] = useState<PublicBrand[]>(CAR_BRANDS);
   const [detectedCity, setDetectedCity] = useState('Detecting...');
   const [cartItemCount, setCartItemCount] = useState(0);
   const [generalFaqs, setGeneralFaqs] = useState<PublicFaqItem[]>(FAQ_CATEGORIES[0].items);
@@ -375,16 +397,20 @@ export default function PublicHomeScreen({ navigation }: Props) {
       })(),
       (async () => {
         try {
-          const res = await fetch(`${ENV.API_URL}/api/public/car-brands`);
-          if (!res.ok) return;
-          const json = await res.json();
-          const brands: PublicBrand[] = (json.data || []).map((b: any) => ({
+          const { data, error } = await supabase
+            .from('web_car_brand')
+            .select('name, logo_url, display_order')
+            .eq('is_active', true)
+            .order('display_order', { ascending: true });
+
+          if (error || !Array.isArray(data) || data.length === 0) return;
+          const brands: PublicBrand[] = data.map((b: any) => ({
             name: b.name,
             logo: b.logo_url || '',
           }));
-          if (brands.length > 0) setCarBrands(brands);
+          setCarBrands(brands);
         } catch {
-          // keep existing brands
+          // keep fallback CAR_BRANDS
         }
       })(),
       (async () => {
@@ -928,16 +954,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             <View style={styles.brandCarouselClip}>
               <Animated.View style={[styles.brandCarouselRow, { transform: [{ translateX: brandScrollX }] }]}>
                 {carBrands.map((brand) => (
-                  <View key={brand.name} style={styles.brandCardSmall}>
-                    {brand.logo ? (
-                      <Image source={{ uri: brand.logo }} style={styles.brandLogoLarge} resizeMode="contain" />
-                    ) : (
-                      <View style={styles.brandLogoPlaceholder}>
-                        <Text style={styles.brandLogoPlaceholderText}>{brand.name[0]}</Text>
-                      </View>
-                    )}
-                    <Text style={styles.brandCardTitle}>{brand.name}</Text>
-                  </View>
+                  <BrandLogoCard key={brand.name} brand={brand} />
                 ))}
               </Animated.View>
             </View>

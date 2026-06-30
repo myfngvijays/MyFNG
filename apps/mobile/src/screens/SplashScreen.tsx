@@ -96,13 +96,11 @@ export default function SplashScreen({
       ]).start();
     });
 
-    const lastUspVisibleAt =
-      USP_INITIAL_DELAY_MS + (USP_ITEMS.length - 1) * USP_STAGGER_MS + USP_ENTER_DURATION_MS;
     Animated.timing(serviceFade, { toValue: 1, duration: 320, delay: 900, useNativeDriver: true }).start();
     Animated.timing(badgeFade, {
       toValue: 1,
       duration: 300,
-      delay: lastUspVisibleAt + 350,
+      delay: 100,
       useNativeDriver: true,
     }).start();
 
