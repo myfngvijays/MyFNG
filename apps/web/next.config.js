@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Temporarily disabled static export for build with API routes
-  // output: 'export',
+  output: 'standalone',
 
   // xlsx is CJS; keep it external so Turbopack resolves from node_modules reliably
   serverExternalPackages: ['xlsx'],
