@@ -37,7 +37,7 @@ export default function WorkshopBrandsRow({ brands }: WorkshopBrandsRowProps) {
                 <img
                   src={brand.logo_url}
                   alt={brand.name}
-                  className="max-w-[120px] max-h-[50px] object-contain grayscale transition-all duration-300 group-hover:grayscale-0"
+                  className="max-w-[120px] max-h-[50px] object-contain transition-all duration-300 group-hover:scale-110"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
