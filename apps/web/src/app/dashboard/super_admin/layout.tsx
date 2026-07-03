@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
@@ -49,6 +49,7 @@ import {
   HelpCircle,
   LineChart,
   Gift,
+  Search,
 } from 'lucide-react';
 
 type NavItem = {
@@ -459,8 +460,11 @@ export default function SuperAdminLayout({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserClient(), []);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Start collapsed; expand on hover
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Smart Tools': false,
     'App Content & Display': false,
@@ -516,6 +520,51 @@ export default function SuperAdminLayout({
     }
   }, [pathname]);
 
+  const flatNavItems = useMemo(() => {
+    const items: Array<{ name: string; href: string; icon: any; description: string; parent?: string }> = [];
+    for (const item of navigationItems) {
+      if (item.isSection) continue;
+      if (item.href) {
+        items.push({ name: item.name, href: item.href, icon: item.icon, description: item.description || '' });
+      }
+      if (item.children) {
+        for (const child of item.children) {
+          items.push({ name: child.name, href: child.href, icon: child.icon, description: child.description, parent: item.name });
+        }
+      }
+    }
+    return items;
+  }, []);
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return flatNavItems.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q) ||
+        (item.parent && item.parent.toLowerCase().includes(q)),
+    );
+  }, [searchQuery, flatNavItems]);
+
+  const handleSearchNav = useCallback((href: string) => {
+    router.push(href);
+    setSearchQuery('');
+    setMobileMenuOpen(false);
+  }, [router]);
+
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSidebarOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 150);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout?')) {
       await supabase.auth.signOut();
@@ -556,7 +605,7 @@ export default function SuperAdminLayout({
       {/* Sidebar - Desktop */}
       <aside
         onMouseEnter={() => setSidebarOpen(true)}
-        onMouseLeave={() => setSidebarOpen(false)}
+        onMouseLeave={() => { setSidebarOpen(false); setSearchQuery(''); }}
         className={`
           hidden lg:flex flex-col
           ${sidebarOpen ? 'w-72' : 'w-20'}
@@ -582,7 +631,68 @@ export default function SuperAdminLayout({
           </div>
         </div>
 
-        {/* Navigation */}
+        {/* Search */}
+        <div className="px-3 pt-4 pb-1">
+          {sidebarOpen ? (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search menu… (⌘K)"
+                className="w-full pl-9 pr-8 py-2.5 rounded-lg bg-blue-500/30 text-white text-sm placeholder:text-blue-200/70 border border-blue-400/30 focus:outline-none focus:ring-2 focus:ring-yellow-300/50 focus:bg-blue-500/40"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                  <X className="w-4 h-4 text-blue-200 hover:text-white" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => { setSidebarOpen(true); setTimeout(() => searchInputRef.current?.focus(), 150); }}
+              className="w-full flex items-center justify-center py-2.5 rounded-lg bg-blue-500/30 hover:bg-blue-500/40 border border-blue-400/30"
+            >
+              <Search className="w-5 h-5 text-blue-200" />
+            </button>
+          )}
+        </div>
+
+        {/* Search Results */}
+        {sidebarOpen && searchQuery.trim() ? (
+          <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-3">
+            <div className="space-y-1">
+              {searchResults.length === 0 ? (
+                <div className="px-4 py-6 text-center text-blue-200/70 text-sm">No results for &quot;{searchQuery}&quot;</div>
+              ) : (
+                searchResults.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.href);
+                  return (
+                    <button
+                      key={item.href}
+                      onClick={() => handleSearchNav(item.href)}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${
+                        active ? 'bg-white text-blue-700 shadow-lg font-semibold' : 'text-white hover:bg-blue-500/30'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                      <div className="flex-1 text-left">
+                        <div className={`text-sm font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>{item.name}</div>
+                        <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                          {item.parent ? `${item.parent} › ` : ''}{item.description}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </nav>
+        ) : (
+        /* Navigation */
         <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
           <div className="space-y-2">
             {navigationItems.map((item) => {
@@ -719,6 +829,7 @@ export default function SuperAdminLayout({
             })}
           </div>
         </nav>
+        )}
 
         {/* Logout Button */}
         <div className="p-4 border-t border-blue-400/30">
@@ -758,6 +869,58 @@ export default function SuperAdminLayout({
               </div>
             </div>
 
+            {/* Mobile Search */}
+            <div className="px-3 pt-4 pb-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200" />
+                <input
+                  ref={mobileSearchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search menu…"
+                  className="w-full pl-9 pr-8 py-2.5 rounded-lg bg-blue-500/30 text-white text-sm placeholder:text-blue-200/70 border border-blue-400/30 focus:outline-none focus:ring-2 focus:ring-yellow-300/50 focus:bg-blue-500/40"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                    <X className="w-4 h-4 text-blue-200 hover:text-white" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Search Results */}
+            {searchQuery.trim() ? (
+              <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-3">
+                <div className="space-y-1">
+                  {searchResults.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-blue-200/70 text-sm">No results for &quot;{searchQuery}&quot;</div>
+                  ) : (
+                    searchResults.map((item) => {
+                      const Icon = item.icon;
+                      const active = isActive(item.href);
+                      return (
+                        <button
+                          key={item.href}
+                          onClick={() => handleSearchNav(item.href)}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${
+                            active ? 'bg-white text-blue-700 shadow-lg font-semibold' : 'text-white hover:bg-blue-500/30'
+                          }`}
+                        >
+                          <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-blue-700' : 'text-white'}`} />
+                          <div className="flex-1 text-left">
+                            <div className={`text-sm font-semibold ${active ? 'text-blue-700' : 'text-white'}`}>{item.name}</div>
+                            <div className={`text-xs mt-0.5 ${active ? 'text-blue-600' : 'text-blue-100'}`}>
+                              {item.parent ? `${item.parent} › ` : ''}{item.description}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </nav>
+            ) : (
             {/* Navigation */}
             <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
               <div className="space-y-2">
@@ -879,6 +1042,7 @@ export default function SuperAdminLayout({
                 })}
               </div>
             </nav>
+            )}
 
             {/* Logout Button */}
             <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-400/30">
