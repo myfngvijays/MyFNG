@@ -357,6 +357,12 @@ const navigationItems: NavItem[] = [
     description: 'User & Role Management'
   },
   {
+    name: 'Role Permissions',
+    href: '/dashboard/super_admin/roles',
+    icon: Shield,
+    description: 'View role access & permissions'
+  },
+  {
     name: 'Intelligence & Automation',
     isSection: true,
   },
