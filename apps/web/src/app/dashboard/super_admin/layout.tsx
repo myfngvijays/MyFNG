@@ -50,6 +50,8 @@ import {
   LineChart,
   Gift,
   Search,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 type NavItem = {
@@ -235,13 +237,13 @@ const navigationItems: NavItem[] = [
         icon: Gift,
         description: 'Referral rewards, friend bonus & activity',
       },
-      {
-        name: 'Advance Coupon Management',
-        href: '/dashboard/super_admin/advance-coupons',
-        icon: Ticket,
-        description: 'PCMS — campaigns & automation',
-      },
     ],
+  },
+  {
+    name: 'Advance Coupon Management',
+    href: '/dashboard/super_admin/advance-coupons',
+    icon: Ticket,
+    description: 'PCMS — campaigns & automation',
   },
   {
     name: 'Push Notifications',
@@ -466,7 +468,8 @@ export default function SuperAdminLayout({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserClient(), []);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarPinned, setSidebarPinned] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -610,8 +613,8 @@ export default function SuperAdminLayout({
 
       {/* Sidebar - Desktop */}
       <aside
-        onMouseEnter={() => setSidebarOpen(true)}
-        onMouseLeave={() => { setSidebarOpen(false); setSearchQuery(''); }}
+        onMouseEnter={() => { if (!sidebarPinned) setSidebarOpen(true); }}
+        onMouseLeave={() => { if (!sidebarPinned) { setSidebarOpen(false); setSearchQuery(''); } }}
         className={`
           hidden lg:flex flex-col
           ${sidebarOpen ? 'w-72' : 'w-20'}
@@ -622,15 +625,32 @@ export default function SuperAdminLayout({
       >
         {/* Header */}
         <div className="p-6 border-b border-blue-400/30">
-          <div className="flex items-center">
+          <div className="flex items-center justify-between">
             {sidebarOpen ? (
-              <div>
-                <div className="flex items-center gap-2">
-                  <Shield className="w-8 h-8 text-yellow-300" />
-                  <h1 className="text-xl font-bold text-white">MyFNG</h1>
+              <>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-8 h-8 text-yellow-300" />
+                    <h1 className="text-xl font-bold text-white">MyFNG</h1>
+                  </div>
+                  <p className="text-yellow-200 text-sm mt-1 font-semibold">Super Admin Control Panel</p>
                 </div>
-                <p className="text-yellow-200 text-sm mt-1 font-semibold">Super Admin Control Panel</p>
-              </div>
+                <button
+                  onClick={() => {
+                    if (sidebarPinned) {
+                      setSidebarPinned(false);
+                      setSidebarOpen(false);
+                    } else {
+                      setSidebarPinned(true);
+                      setSidebarOpen(true);
+                    }
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-blue-500/40 transition-colors"
+                  title={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+                >
+                  {sidebarPinned ? <PanelLeftClose className="w-5 h-5 text-blue-200" /> : <PanelLeftOpen className="w-5 h-5 text-blue-200" />}
+                </button>
+              </>
             ) : (
               <Shield className="w-8 h-8 mx-auto text-yellow-300" />
             )}
