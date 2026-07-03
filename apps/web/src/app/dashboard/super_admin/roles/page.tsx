@@ -106,6 +106,12 @@ export default function RolesPermissionsPage() {
   const [newPermKey, setNewPermKey] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ role_code: '', role_name: '', description: '' });
+  const [createPermissions, setCreatePermissions] = useState<Record<string, boolean>>({});
+  const [createNewPermKey, setCreateNewPermKey] = useState('');
+  const [creating, setCreating] = useState(false);
+
   useEffect(() => { fetchRoles(); }, []);
 
   const fetchRoles = async () => {
@@ -186,6 +192,58 @@ export default function RolesPermissionsPage() {
     }
   };
 
+  const openCreateModal = () => {
+    setShowCreateModal(true);
+    setCreateForm({ role_code: '', role_name: '', description: '' });
+    setCreatePermissions({});
+    setCreateNewPermKey('');
+    setError(null);
+    setSuccess(null);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setCreateForm({ role_code: '', role_name: '', description: '' });
+    setCreatePermissions({});
+    setCreateNewPermKey('');
+  };
+
+  const handleCreate = async () => {
+    if (!createForm.role_code.trim() || !createForm.role_name.trim()) {
+      setError('Role code and role name are required');
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role_code: createForm.role_code,
+          role_name: createForm.role_name,
+          description: createForm.description,
+          permissions: createPermissions,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to create role');
+      setSuccess(`Role "${json.role.role_name}" created successfully`);
+      closeCreateModal();
+      fetchRoles();
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to create role');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const createSuggestedPerms = useMemo(() => {
+    const existing = new Set(Object.keys(createPermissions));
+    return ALL_KNOWN_PERMISSIONS.filter((p) => !existing.has(p));
+  }, [createPermissions]);
+
   const filteredRoles = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return roles.filter((r) => {
@@ -252,6 +310,12 @@ export default function RolesPermissionsPage() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">View and edit all roles, their permissions, and menu access</p>
         </div>
+        <button
+          className="px-4 py-2.5 bg-brand-primary text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2"
+          onClick={openCreateModal}
+        >
+          <Plus className="w-4 h-4" /> Create Role
+        </button>
       </div>
 
       {error && !editRole && (
@@ -513,60 +577,120 @@ export default function RolesPermissionsPage() {
         </div>
       )}
 
-      {editRole && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeEditModal}>
+      {(editRole || showCreateModal) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => editRole ? closeEditModal() : closeCreateModal()}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold flex items-center gap-2">
-                  <Pencil className="w-5 h-5 text-brand-primary" />
-                  Edit Permissions
-                </h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${ROLE_COLORS[editRole.role_code] || 'bg-gray-100'}`}>
-                    {editRole.role_name}
-                  </span>
-                  <span className="ml-2">{editRole.role_code}</span>
-                </p>
+                {editRole ? (
+                  <>
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                      <Pencil className="w-5 h-5 text-brand-primary" />
+                      Edit Permissions
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${ROLE_COLORS[editRole.role_code] || 'bg-gray-100'}`}>
+                        {editRole.role_name}
+                      </span>
+                      <span className="ml-2">{editRole.role_code}</span>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                      <Plus className="w-5 h-5 text-brand-primary" />
+                      Create New Role
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-0.5">Define a new user role with permissions</p>
+                  </>
+                )}
               </div>
-              <button className="p-2 hover:bg-gray-100 rounded-lg" onClick={closeEditModal}>
+              <button className="p-2 hover:bg-gray-100 rounded-lg" onClick={() => editRole ? closeEditModal() : closeCreateModal()}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {error && editRole && (
+              {error && (editRole || showCreateModal) && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">{error}</div>
               )}
 
-              <div>
-                <label className="text-sm font-semibold text-gray-700 block mb-1">Description</label>
-                <textarea
-                  className="w-full border rounded-lg px-3 py-2 text-sm resize-none"
-                  rows={2}
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Role description..."
-                />
-              </div>
+              {showCreateModal && !editRole && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700 block mb-1">Role Name *</label>
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="e.g. Finance Manager"
+                        value={createForm.role_name}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            role_name: name,
+                            role_code: prev.role_code || name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, ''),
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700 block mb-1">Role Code *</label>
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+                        placeholder="e.g. FINANCE_MANAGER"
+                        value={createForm.role_code}
+                        onChange={(e) => setCreateForm((prev) => ({ ...prev, role_code: e.target.value.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '') }))}
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1">Uppercase with underscores, no spaces</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 block mb-1">Description</label>
+                    <textarea
+                      className="w-full border rounded-lg px-3 py-2 text-sm resize-none"
+                      rows={2}
+                      value={createForm.description}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
+                      placeholder="What does this role do?"
+                    />
+                  </div>
+                </>
+              )}
+
+              {editRole && (
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 block mb-1">Description</label>
+                  <textarea
+                    className="w-full border rounded-lg px-3 py-2 text-sm resize-none"
+                    rows={2}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="Role description..."
+                  />
+                </div>
+              )}
 
               <div>
                 <h3 className="text-sm font-bold text-gray-700 mb-3">
-                  Current Permissions ({Object.keys(editPermissions).length})
+                  Permissions ({Object.keys(editRole ? editPermissions : createPermissions).length})
                 </h3>
-                {Object.keys(editPermissions).length === 0 ? (
+                {Object.keys(editRole ? editPermissions : createPermissions).length === 0 ? (
                   <p className="text-sm text-gray-400 italic">No permissions set. Add from below.</p>
                 ) : (
                   <div className="space-y-1.5">
-                    {Object.entries(editPermissions).map(([key, val]) => (
+                    {Object.entries(editRole ? editPermissions : createPermissions).map(([key, val]) => (
                       <div key={key} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border">
                         <div className="flex items-center gap-3">
                           <button
                             type="button"
                             className={`relative w-10 h-5 rounded-full transition-colors ${val ? 'bg-green-500' : 'bg-gray-300'}`}
-                            onClick={() => togglePermission(key)}
+                            onClick={() => {
+                              if (editRole) togglePermission(key);
+                              else setCreatePermissions((prev) => ({ ...prev, [key]: !prev[key] }));
+                            }}
                           >
-                            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${val ? 'left-5.5 translate-x-0' : 'left-0.5'}`}
+                            <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
                               style={{ left: val ? '22px' : '2px' }}
                             />
                           </button>
@@ -574,7 +698,10 @@ export default function RolesPermissionsPage() {
                         </div>
                         <button
                           className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 transition-colors"
-                          onClick={() => removePermission(key)}
+                          onClick={() => {
+                            if (editRole) removePermission(key);
+                            else setCreatePermissions((prev) => { const n = { ...prev }; delete n[key]; return n; });
+                          }}
                           title="Remove permission"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -591,28 +718,50 @@ export default function RolesPermissionsPage() {
                   <input
                     className="flex-1 border rounded-lg px-3 py-2 text-sm"
                     placeholder="Permission key (e.g. manage_invoices)"
-                    value={newPermKey}
-                    onChange={(e) => setNewPermKey(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addPermission()}
+                    value={editRole ? newPermKey : createNewPermKey}
+                    onChange={(e) => editRole ? setNewPermKey(e.target.value) : setCreateNewPermKey(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      if (editRole) { addPermission(); }
+                      else {
+                        const key = createNewPermKey.trim().toLowerCase().replace(/\s+/g, '_');
+                        if (key && createPermissions[key] === undefined) {
+                          setCreatePermissions((prev) => ({ ...prev, [key]: true }));
+                          setCreateNewPermKey('');
+                        }
+                      }
+                    }}
                   />
                   <button
                     className="px-4 py-2 bg-brand-primary text-white rounded-lg text-sm font-semibold hover:opacity-90 flex items-center gap-1 disabled:opacity-50"
-                    onClick={addPermission}
-                    disabled={!newPermKey.trim()}
+                    onClick={() => {
+                      if (editRole) { addPermission(); }
+                      else {
+                        const key = createNewPermKey.trim().toLowerCase().replace(/\s+/g, '_');
+                        if (key && createPermissions[key] === undefined) {
+                          setCreatePermissions((prev) => ({ ...prev, [key]: true }));
+                          setCreateNewPermKey('');
+                        }
+                      }
+                    }}
+                    disabled={!(editRole ? newPermKey : createNewPermKey).trim()}
                   >
                     <Plus className="w-4 h-4" /> Add
                   </button>
                 </div>
 
-                {suggestedPerms.length > 0 && (
+                {(editRole ? suggestedPerms : createSuggestedPerms).length > 0 && (
                   <div>
                     <p className="text-xs text-gray-500 mb-2">Quick add (click to add):</p>
                     <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
-                      {suggestedPerms.map((p) => (
+                      {(editRole ? suggestedPerms : createSuggestedPerms).map((p) => (
                         <button
                           key={p}
                           className="px-2 py-1 bg-white border border-dashed border-gray-300 rounded-md text-xs text-gray-600 hover:border-brand-primary hover:text-brand-primary transition-colors"
-                          onClick={() => setEditPermissions((prev) => ({ ...prev, [p]: true }))}
+                          onClick={() => {
+                            if (editRole) setEditPermissions((prev) => ({ ...prev, [p]: true }));
+                            else setCreatePermissions((prev) => ({ ...prev, [p]: true }));
+                          }}
                         >
                           + {p}
                         </button>
@@ -626,18 +775,29 @@ export default function RolesPermissionsPage() {
             <div className="p-4 border-t flex items-center justify-between bg-gray-50">
               <button
                 className="px-4 py-2.5 border rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
-                onClick={closeEditModal}
+                onClick={() => editRole ? closeEditModal() : closeCreateModal()}
               >
                 Cancel
               </button>
-              <button
-                className="px-6 py-2.5 bg-brand-primary text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
+              {editRole ? (
+                <button
+                  className="px-6 py-2.5 bg-brand-primary text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              ) : (
+                <button
+                  className="px-6 py-2.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
+                  onClick={handleCreate}
+                  disabled={creating || !createForm.role_code.trim() || !createForm.role_name.trim()}
+                >
+                  {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  {creating ? 'Creating...' : 'Create Role'}
+                </button>
+              )}
             </div>
           </div>
         </div>

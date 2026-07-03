@@ -21,6 +21,53 @@ async function requireSuperAdmin(request: NextRequest) {
   return { ok: true as const };
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const gate = await requireSuperAdmin(request);
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+    if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
+
+    const body = await request.json();
+    const { role_code, role_name, description, permissions } = body;
+
+    if (!role_code || !role_name) {
+      return NextResponse.json({ error: 'role_code and role_name are required' }, { status: 400 });
+    }
+
+    const code = String(role_code).trim().toUpperCase().replace(/\s+/g, '_');
+
+    const { data: existing } = await supabaseAdmin
+      .from('roles')
+      .select('id')
+      .eq('role_code', code)
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.json({ error: `Role code "${code}" already exists` }, { status: 409 });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('roles')
+      .insert({
+        role_code: code,
+        role_name: String(role_name).trim(),
+        description: description || null,
+        permissions: permissions || {},
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ role: data }, { status: 201 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const gate = await requireSuperAdmin(request);
