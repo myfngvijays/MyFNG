@@ -591,6 +591,18 @@ export default function CouponAdminPanel({
     }
   };
 
+  const deleteCoupon = async (coupon: any) => {
+    if (!window.confirm(`Delete coupon "${coupon.code}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/admin/coupons/${coupon.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to delete coupon');
+      fetchCoupons();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to delete coupon');
+    }
+  };
+
   const toggleChannel = (channels: ChannelId[], channel: ChannelId, setter: (next: ChannelId[]) => void) => {
     setter(
       channels.includes(channel)
@@ -941,6 +953,7 @@ export default function CouponAdminPanel({
                       <div className="flex items-center gap-2">
                         <button className="btn btn-secondary text-xs" onClick={() => openEdit(coupon)}>Edit</button>
                         <button className="btn btn-secondary text-xs" onClick={() => toggleActive(coupon)}>{coupon.is_active ? 'Deactivate' : 'Activate'}</button>
+                        <button className="btn text-xs bg-red-600 text-white hover:bg-red-700" onClick={() => deleteCoupon(coupon)}>Delete</button>
                       </div>
                     </td>
                   </tr>

@@ -83,3 +83,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const gate = await requireSuperAdmin(request);
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+    if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
+
+    const { id: rawId } = await params;
+    const id = String(rawId || '').trim();
+    if (!id) return NextResponse.json({ error: 'Missing coupon id' }, { status: 400 });
+
+    await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .delete()
+      .eq('coupon_id', id);
+
+    const { error } = await supabaseAdmin
+      .from('coupons')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    await logCouponAudit(supabaseAdmin, {
+      coupon_id: id,
+      action: 'DELETE',
+      actor_user_id: gate.userId,
+    });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}

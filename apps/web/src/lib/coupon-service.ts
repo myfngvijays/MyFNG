@@ -106,6 +106,7 @@ async function customerHasAssignment(
   supabaseAdmin: SupabaseClient,
   couponId: string,
   customerId?: string | null,
+  customerPhone?: string | null,
 ) {
   const { count: anyAssignment } = await supabaseAdmin
     .from('customer_coupon_assignments')
@@ -114,13 +115,26 @@ async function customerHasAssignment(
 
   if (!anyAssignment || anyAssignment === 0) return true;
 
-  if (!customerId) return false;
+  let resolvedId = customerId || null;
+  if (!resolvedId && customerPhone) {
+    const phone = normalizePhone(customerPhone);
+    if (phone) {
+      const { data: customer } = await supabaseAdmin
+        .from('customers')
+        .select('id')
+        .ilike('phone', `%${phone}`)
+        .maybeSingle();
+      resolvedId = customer?.id ? String(customer.id) : null;
+    }
+  }
+
+  if (!resolvedId) return false;
 
   const { count } = await supabaseAdmin
     .from('customer_coupon_assignments')
     .select('id', { count: 'exact', head: true })
     .eq('coupon_id', couponId)
-    .eq('customer_id', customerId)
+    .eq('customer_id', resolvedId)
     .is('redeemed_at', null);
 
   return (count || 0) > 0;
@@ -164,7 +178,7 @@ export async function validateCouponForCheckout(
   });
   if (!scope.ok) return { valid: false, error: scope.error };
 
-  const assignedOk = await customerHasAssignment(supabaseAdmin, coupon.id, leadContext.customer_id);
+  const assignedOk = await customerHasAssignment(supabaseAdmin, coupon.id, leadContext.customer_id, leadContext.customer_phone);
   if (!assignedOk) {
     return { valid: false, error: 'This coupon is not assigned to your account.' };
   }
@@ -249,18 +263,30 @@ export async function validateCouponForCheckout(
     if (options?.membershipOnly) {
       return { valid: false, error: 'This coupon is not applicable to membership checkout.' };
     }
-    const freeService = findFreeServicePrice(coupon, leadContext);
-    if (!freeService.matched) {
-      return { valid: false, error: 'Coupon is not applicable to selected services.' };
+    const hasTarget = coupon.target_service_type_id || coupon.target_subservice_id || coupon.target_custom_label;
+    if (hasTarget) {
+      const freeService = findFreeServicePrice(coupon, leadContext);
+      if (!freeService.matched) {
+        return { valid: false, error: 'Coupon is not applicable to selected services.' };
+      }
+      discountAmount = Math.max(0, Number(freeService.price || 0));
+      freeServiceMeta = {
+        target_service_type_id: coupon.target_service_type_id || null,
+        target_subservice_id: coupon.target_subservice_id || null,
+        target_custom_label: coupon.target_custom_label || coupon.description || null,
+        matched_label: freeService.matchLabel || null,
+        original_price: freeService.price || 0,
+      };
+    } else {
+      discountAmount = 0;
+      freeServiceMeta = {
+        target_service_type_id: null,
+        target_subservice_id: null,
+        target_custom_label: coupon.description || null,
+        matched_label: null,
+        original_price: 0,
+      };
     }
-    discountAmount = Math.max(0, Number(freeService.price || 0));
-    freeServiceMeta = {
-      target_service_type_id: coupon.target_service_type_id || null,
-      target_subservice_id: coupon.target_subservice_id || null,
-      target_custom_label: coupon.target_custom_label || coupon.description || null,
-      matched_label: freeService.matchLabel || null,
-      original_price: freeService.price || 0,
-    };
   } else {
     return { valid: false, error: 'Unsupported coupon type.' };
   }

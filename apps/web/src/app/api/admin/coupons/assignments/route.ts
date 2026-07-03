@@ -52,3 +52,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const gate = await requireSuperAdmin(request);
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+    if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
+
+    const id = request.nextUrl.searchParams.get('id');
+    const ids = request.nextUrl.searchParams.get('ids');
+    const deleteIds = ids ? ids.split(',').map((s) => s.trim()).filter(Boolean) : id ? [id] : [];
+
+    if (deleteIds.length === 0) return NextResponse.json({ error: 'Missing assignment id(s)' }, { status: 400 });
+
+    const { error } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .delete()
+      .in('id', deleteIds);
+
+    if (error) throw error;
+    return NextResponse.json({ success: true, deleted: deleteIds.length });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}

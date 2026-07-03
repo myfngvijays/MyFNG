@@ -13,23 +13,32 @@ export async function GET() {
   const nowIso = new Date().toISOString();
   const channel = 'MOBILE';
 
-  const [{ data: publicCoupons }, { data: assignments }] = await Promise.all([
+  const [{ data: publicCoupons }, { data: assignments }, { data: allAssignments }] = await Promise.all([
     supabaseAdmin
       .from('coupons')
-      .select('id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels')
+      .select('id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_public')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
       .from('customer_coupon_assignments')
-      .select('id, expires_at, redeemed_at, notes, coupon:coupons(id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_active)')
+      .select('id, expires_at, redeemed_at, notes, coupon:coupons(id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_active, is_public)')
       .eq('customer_id', customer.id)
       .is('redeemed_at', null),
+    supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('coupon_id')
+      .limit(500),
   ]);
+
+  const couponsWithAssignments = new Set(
+    (allAssignments || []).map((row: any) => String(row.coupon_id)),
+  );
 
   const assignedCoupons = (assignments || [])
     .map((row: any) => row.coupon)
     .filter(Boolean)
+    .filter((coupon: any) => coupon.is_active !== false)
     .map((coupon: any) => ({ ...coupon, assigned: true }));
 
   const openPublic = (publicCoupons || []).filter((coupon: any) => {
@@ -37,6 +46,7 @@ export async function GET() {
     if (!couponAppliesToChannel(coupon, channel)) return false;
     if (coupon.start_at && String(coupon.start_at) > nowIso) return false;
     if (coupon.end_at && String(coupon.end_at) < nowIso) return false;
+    if (couponsWithAssignments.has(String(coupon.id))) return false;
     return true;
   });
 
