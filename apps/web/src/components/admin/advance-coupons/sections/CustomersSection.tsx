@@ -157,8 +157,10 @@ export default function PcmCustomersSection() {
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3 font-medium">{row.customer?.full_name || '—'}</td>
-                  <td className="px-4 py-3">{row.customer?.phone || '—'}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {row.customer?.full_name || (row.pending_phone ? <span className="text-blue-600 text-xs font-semibold">Pending signup</span> : '—')}
+                  </td>
+                  <td className="px-4 py-3">{row.customer?.phone || row.pending_phone || '—'}</td>
                   <td className="px-4 py-3 font-semibold">{row.coupon?.code || '—'}</td>
                   <td className="px-4 py-3">{new Date(row.created_at).toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3">

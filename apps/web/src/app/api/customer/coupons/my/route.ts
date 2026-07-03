@@ -12,8 +12,9 @@ export async function GET() {
 
   const nowIso = new Date().toISOString();
   const channel = 'MOBILE';
+  const customerPhone = String(customer.phone || '').replace(/\D/g, '').slice(-10);
 
-  const [{ data: publicCoupons }, { data: assignments }, { data: allAssignments }] = await Promise.all([
+  const queries: Promise<any>[] = [
     supabaseAdmin
       .from('coupons')
       .select('id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_public')
@@ -29,13 +30,31 @@ export async function GET() {
       .from('customer_coupon_assignments')
       .select('coupon_id')
       .limit(500),
-  ]);
+  ];
+
+  // Also fetch pending phone-based assignments
+  if (customerPhone.length === 10) {
+    queries.push(
+      supabaseAdmin
+        .from('customer_coupon_assignments')
+        .select('id, expires_at, redeemed_at, notes, coupon:coupons(id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_active, is_public)')
+        .eq('pending_phone', customerPhone)
+        .is('customer_id', null)
+        .is('redeemed_at', null),
+    );
+  }
+
+  const results = await Promise.all(queries);
+  const publicCoupons = results[0].data;
+  const assignments = results[1].data;
+  const allAssignments = results[2].data;
+  const pendingAssignments = results[3]?.data || [];
 
   const couponsWithAssignments = new Set(
     (allAssignments || []).map((row: any) => String(row.coupon_id)),
   );
 
-  const assignedCoupons = (assignments || [])
+  const assignedCoupons = [...(assignments || []), ...pendingAssignments]
     .map((row: any) => row.coupon)
     .filter(Boolean)
     .filter((coupon: any) => coupon.is_active !== false)

@@ -115,29 +115,41 @@ async function customerHasAssignment(
 
   if (!anyAssignment || anyAssignment === 0) return true;
 
+  const phone = normalizePhone(customerPhone || null);
+
   let resolvedId = customerId || null;
-  if (!resolvedId && customerPhone) {
-    const phone = normalizePhone(customerPhone);
-    if (phone) {
-      const { data: customer } = await supabaseAdmin
-        .from('customers')
-        .select('id')
-        .ilike('phone', `%${phone}`)
-        .maybeSingle();
-      resolvedId = customer?.id ? String(customer.id) : null;
-    }
+  if (!resolvedId && phone) {
+    const { data: customer } = await supabaseAdmin
+      .from('customers')
+      .select('id')
+      .ilike('phone', `%${phone}`)
+      .maybeSingle();
+    resolvedId = customer?.id ? String(customer.id) : null;
   }
 
-  if (!resolvedId) return false;
+  if (resolvedId) {
+    const { count } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('id', { count: 'exact', head: true })
+      .eq('coupon_id', couponId)
+      .eq('customer_id', resolvedId)
+      .is('redeemed_at', null);
+    if ((count || 0) > 0) return true;
+  }
 
-  const { count } = await supabaseAdmin
-    .from('customer_coupon_assignments')
-    .select('id', { count: 'exact', head: true })
-    .eq('coupon_id', couponId)
-    .eq('customer_id', resolvedId)
-    .is('redeemed_at', null);
+  // Also check pending (pre-registration) phone-based assignments
+  if (phone) {
+    const { count: pendingCount } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('id', { count: 'exact', head: true })
+      .eq('coupon_id', couponId)
+      .eq('pending_phone', phone)
+      .is('customer_id', null)
+      .is('redeemed_at', null);
+    if ((pendingCount || 0) > 0) return true;
+  }
 
-  return (count || 0) > 0;
+  return false;
 }
 
 export async function validateCouponForCheckout(

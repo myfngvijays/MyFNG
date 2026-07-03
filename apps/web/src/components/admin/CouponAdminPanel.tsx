@@ -457,7 +457,10 @@ export default function CouponAdminPanel({
 
       setAssignResult({
         assigned_count: Number(json?.assigned_count || 0),
-        not_found_phones: Array.isArray(json?.not_found_phones) ? json.not_found_phones : [],
+        registered_count: Number(json?.registered_count || 0),
+        pending_count: Number(json?.pending_count || 0),
+        pending_phones: Array.isArray(json?.pending_phones) ? json.pending_phones : [],
+        not_found_phones: [],
       });
 
       if (assignMode === 'single') {
@@ -1235,10 +1238,15 @@ export default function CouponAdminPanel({
 
           {assignResult ? (
             <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 space-y-1">
-              <p className="font-semibold">Assigned to {assignResult.assigned_count} customer(s).</p>
-              {assignResult.not_found_phones.length > 0 ? (
-                <p className="text-amber-800">
-                  Not found ({assignResult.not_found_phones.length}): {assignResult.not_found_phones.join(', ')}
+              <p className="font-semibold">Assigned to {assignResult.assigned_count} number(s).</p>
+              {assignResult.registered_count > 0 ? (
+                <p className="text-green-700">
+                  {assignResult.registered_count} registered customer(s) — coupon visible immediately.
+                </p>
+              ) : null}
+              {assignResult.pending_count > 0 ? (
+                <p className="text-blue-700">
+                  {assignResult.pending_count} unregistered number(s) — coupon will appear when they sign up: {assignResult.pending_phones.join(', ')}
                 </p>
               ) : null}
             </div>

@@ -136,6 +136,16 @@ export async function POST(request: NextRequest) {
     isNewCustomer = true;
   }
 
+  // Resolve any pending coupon assignments for this phone number
+  try {
+    await supabaseAdmin.rpc('resolve_pending_coupon_assignments', {
+      p_customer_id: customerId,
+      p_phone: phone,
+    });
+  } catch (resolveErr) {
+    console.error('[whatsapp-verify] pending coupon resolution failed:', resolveErr);
+  }
+
   let welcomeBonus: {
     credited: boolean;
     amount: number;

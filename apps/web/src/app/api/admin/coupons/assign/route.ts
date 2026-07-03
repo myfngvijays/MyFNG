@@ -98,20 +98,16 @@ export async function POST(request: NextRequest) {
       : await resolveCustomerIdsByPhones(supabaseAdmin, phones);
 
     const foundPhones = phones.filter((phone) => phoneToCustomerId.has(phone));
-    const notFoundPhones = phones.filter((phone) => !phoneToCustomerId.has(phone));
+    const pendingPhones = phones.filter((phone) => !phoneToCustomerId.has(phone));
 
-    if (foundPhones.length === 0) {
+    if (foundPhones.length === 0 && pendingPhones.length === 0) {
       return NextResponse.json(
-        {
-          error: 'No matching customers found for the given number(s).',
-          not_found_phones: notFoundPhones,
-          assigned_count: 0,
-        },
+        { error: 'No valid phone numbers provided.', assigned_count: 0 },
         { status: 400 },
       );
     }
 
-    const rows = foundPhones.map((phone) => ({
+    const registeredRows = foundPhones.map((phone) => ({
       customer_id: phoneToCustomerId.get(phone)!,
       coupon_id: couponId,
       assigned_by: gate.userId,
@@ -120,12 +116,37 @@ export async function POST(request: NextRequest) {
       redeemed_at: null,
     }));
 
-    const { data, error } = await supabaseAdmin
-      .from('customer_coupon_assignments')
-      .upsert(rows, { onConflict: 'customer_id,coupon_id' })
-      .select('id, customer_id, coupon_id, notes, created_at, coupon:coupons(code)');
+    const pendingRows = pendingPhones.map((phone) => ({
+      pending_phone: phone,
+      coupon_id: couponId,
+      assigned_by: gate.userId,
+      notes: body?.notes || null,
+      expires_at: body?.expires_at || null,
+      redeemed_at: null,
+    }));
 
-    if (error) throw error;
+    let assignedData: any[] = [];
+
+    if (registeredRows.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('customer_coupon_assignments')
+        .upsert(registeredRows, { onConflict: 'customer_id,coupon_id' })
+        .select('id, customer_id, coupon_id, notes, created_at, coupon:coupons(code)');
+      if (error) throw error;
+      assignedData = data || [];
+    }
+
+    let pendingCount = 0;
+    if (pendingRows.length > 0) {
+      for (const row of pendingRows) {
+        const { error: pendErr } = await supabaseAdmin
+          .from('customer_coupon_assignments')
+          .upsert(row, { onConflict: 'pending_phone,coupon_id', ignoreDuplicates: true });
+        if (!pendErr) pendingCount++;
+      }
+    }
+
+    const totalAssigned = foundPhones.length + pendingCount;
 
     const isBulk = phones.length > 1;
     await logCouponAudit(supabaseAdmin, {
@@ -133,8 +154,10 @@ export async function POST(request: NextRequest) {
       action: isBulk ? 'ASSIGN_BULK' : 'ASSIGN',
       actor_user_id: gate.userId,
       details: {
-        assigned_count: foundPhones.length,
-        not_found_phones: notFoundPhones,
+        assigned_count: totalAssigned,
+        registered_count: foundPhones.length,
+        pending_count: pendingCount,
+        pending_phones: pendingPhones,
         phones: foundPhones,
         source: body?.google_sheet_url ? 'google_sheet' : body?.phones_text ? 'bulk_text' : 'single',
         notes: body?.notes || null,
@@ -143,9 +166,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      assigned_count: foundPhones.length,
-      not_found_phones: notFoundPhones,
-      assignments: data || [],
+      assigned_count: totalAssigned,
+      registered_count: foundPhones.length,
+      pending_count: pendingCount,
+      pending_phones: pendingPhones,
+      assignments: assignedData,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

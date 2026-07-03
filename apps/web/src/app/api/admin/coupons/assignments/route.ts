@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
         expires_at,
         redeemed_at,
         created_at,
+        pending_phone,
         customer:customers(id, full_name, phone, email),
         coupon:coupons(id, code, description, coupon_kind, discount_value, discount_mode, is_active)
       `)
