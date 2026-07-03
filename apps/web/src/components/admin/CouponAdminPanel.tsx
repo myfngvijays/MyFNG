@@ -195,6 +195,12 @@ export default function CouponAdminPanel({
   const [importLoading, setImportLoading] = useState(false);
   const [importSource, setImportSource] = useState<string | null>(null);
 
+  const [rdnPage, setRdnPage] = useState(1);
+  const [rdnPageSize, setRdnPageSize] = useState(25);
+  const [rdnSearch, setRdnSearch] = useState('');
+  const [rdnCodeFilter, setRdnCodeFilter] = useState('all');
+  const [rdnChannelFilter, setRdnChannelFilter] = useState('all');
+
   useEffect(() => {
     setTab(initialTab);
   }, [initialTab]);
@@ -227,7 +233,7 @@ export default function CouponAdminPanel({
 
   const fetchRedemptions = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/coupons/redemptions?limit=200');
+      const res = await fetch('/api/admin/coupons/redemptions?limit=500');
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed to load redemptions');
       setRedemptions(json?.redemptions || []);
@@ -289,6 +295,52 @@ export default function CouponAdminPanel({
       );
     });
   }, [coupons, searchTerm, statusFilter, typeFilter]);
+
+  const rdnUniqueCodes = useMemo(() => {
+    const codes = new Set<string>();
+    for (const r of redemptions) {
+      const code = r.coupon?.code;
+      if (code) codes.add(code);
+    }
+    return [...codes].sort();
+  }, [redemptions]);
+
+  const rdnUniqueChannels = useMemo(() => {
+    const chs = new Set<string>();
+    for (const r of redemptions) {
+      const ch = r.customer_display?.channel || r.meta?.channel || r.meta?.type;
+      if (ch) chs.add(ch);
+    }
+    return [...chs].sort();
+  }, [redemptions]);
+
+  const rdnFiltered = useMemo(() => {
+    const q = rdnSearch.trim().toLowerCase();
+    return redemptions.filter((row) => {
+      if (rdnCodeFilter !== 'all' && row.coupon?.code !== rdnCodeFilter) return false;
+      const ch = row.customer_display?.channel || row.meta?.channel || row.meta?.type || '';
+      if (rdnChannelFilter !== 'all' && ch !== rdnChannelFilter) return false;
+      if (!q) return true;
+      const customer = row.customer_display || {};
+      return [
+        row.coupon?.code,
+        customer.name,
+        customer.phone,
+        customer.lead_number,
+        customer.channel,
+        row.applied_by_role,
+      ]
+        .filter(Boolean)
+        .some((v: string) => String(v).toLowerCase().includes(q));
+    });
+  }, [redemptions, rdnSearch, rdnCodeFilter, rdnChannelFilter]);
+
+  const rdnTotalPages = Math.max(1, Math.ceil(rdnFiltered.length / rdnPageSize));
+  const rdnSafePage = Math.min(rdnPage, rdnTotalPages);
+  const rdnPaged = rdnFiltered.slice((rdnSafePage - 1) * rdnPageSize, rdnSafePage * rdnPageSize);
+  const rdnFilteredDiscount = rdnFiltered.reduce((s, r) => s + Number(r.discount_amount_applied || 0), 0);
+
+  useEffect(() => { setRdnPage(1); }, [rdnSearch, rdnCodeFilter, rdnChannelFilter, rdnPageSize]);
 
   const openCreate = () => {
     setEditingCoupon(null);
@@ -931,6 +983,7 @@ export default function CouponAdminPanel({
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Value</th>
                   <th className="px-4 py-3">Channels</th>
+                  <th className="px-4 py-3">Scope</th>
                   <th className="px-4 py-3">Usage</th>
                   <th className="px-4 py-3">Valid Period</th>
                   <th className="px-4 py-3">Status</th>
@@ -939,10 +992,10 @@ export default function CouponAdminPanel({
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500"><Loader2 className="w-4 h-4 inline animate-spin mr-2" />Loading...</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-500"><Loader2 className="w-4 h-4 inline animate-spin mr-2" />Loading...</td></tr>
                 ) : null}
                 {!loading && filteredCoupons.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No coupons found.</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-500">No coupons found.</td></tr>
                 ) : null}
                 {filteredCoupons.map((coupon) => (
                   <tr key={coupon.id} className="border-t">
@@ -958,6 +1011,34 @@ export default function CouponAdminPanel({
                       {parseChannels(coupon.applicable_channels).length
                         ? parseChannels(coupon.applicable_channels).join(', ')
                         : 'All Platforms'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {(() => {
+                        const scopeParts: string[] = [];
+                        const cityIds = Array.isArray(coupon.applicable_city_ids) ? coupon.applicable_city_ids : [];
+                        const workshopIds = Array.isArray(coupon.applicable_workshop_ids) ? coupon.applicable_workshop_ids : [];
+                        const serviceIds = Array.isArray(coupon.applicable_service_type_ids) ? coupon.applicable_service_type_ids : [];
+                        const catIds = Array.isArray(coupon.applicable_category_ids) ? coupon.applicable_category_ids : [];
+                        if (cityIds.length) {
+                          const names = cityIds.map((id: string) => (options.cities || []).find((c: any) => String(c.id) === String(id))?.name || id).join(', ');
+                          scopeParts.push(`📍 ${names}`);
+                        }
+                        if (workshopIds.length) {
+                          const names = workshopIds.map((id: string) => (options.workshops || []).find((w: any) => String(w.id) === String(id))?.name || id).join(', ');
+                          scopeParts.push(`🏪 ${names}`);
+                        }
+                        if (serviceIds.length || catIds.length) {
+                          const sNames = serviceIds.map((id: string) => (options.service_types || []).find((s: any) => String(s.id) === String(id))?.name || id);
+                          const cNames = catIds.map((id: string) => (options.categories || []).find((c: any) => String(c.uuid) === String(id))?.category || id);
+                          const all = [...cNames, ...sNames].join(', ');
+                          if (all) scopeParts.push(`🔧 ${all}`);
+                        }
+                        return scopeParts.length ? (
+                          <div className="space-y-0.5 max-w-[180px]">
+                            {scopeParts.map((s, i) => <div key={i} className="truncate" title={s}>{s}</div>)}
+                          </div>
+                        ) : <span className="text-gray-400">All</span>;
+                      })()}
                     </td>
                     <td className="px-4 py-3">{coupon.usage_count ?? 0}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">
@@ -1058,55 +1139,159 @@ export default function CouponAdminPanel({
       ) : null}
 
       {tab === 'redemptions' ? (
-        <div className="bg-white border rounded-xl overflow-x-auto">
-          <div className="p-4 border-b flex justify-between items-center">
-            <div>
-              <h2 className="font-bold">Redemption History</h2>
-              <p className="text-sm text-gray-500">{redemptionSummary?.count || 0} records · ₹{Number(redemptionSummary?.total_discount || 0).toLocaleString('en-IN')} total discount</p>
+        <div className="bg-white border rounded-xl overflow-hidden">
+          <div className="p-4 border-b space-y-3">
+            <div className="flex flex-wrap justify-between items-start gap-3">
+              <div>
+                <h2 className="font-bold text-lg">Redemption History</h2>
+                <p className="text-sm text-gray-500">
+                  {rdnFiltered.length === redemptions.length
+                    ? `${redemptions.length} records`
+                    : `${rdnFiltered.length} of ${redemptions.length} records`}
+                  {' · '}₹{Number(rdnFilteredDiscount || 0).toLocaleString('en-IN')} total discount
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  className="border rounded-lg px-3 py-2 text-sm bg-white"
+                  value={rdnCodeFilter}
+                  onChange={(e) => setRdnCodeFilter(e.target.value)}
+                >
+                  <option value="all">All Coupons</option>
+                  {rdnUniqueCodes.map((code) => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-lg px-3 py-2 text-sm bg-white"
+                  value={rdnChannelFilter}
+                  onChange={(e) => setRdnChannelFilter(e.target.value)}
+                >
+                  <option value="all">All Channels</option>
+                  {rdnUniqueChannels.map((ch) => (
+                    <option key={ch} value={ch}>{ch}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm"
+                placeholder="Search by name, phone, code, lead #..."
+                value={rdnSearch}
+                onChange={(e) => setRdnSearch(e.target.value)}
+              />
             </div>
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left">Date</th>
-                <th className="px-4 py-3 text-left">Code</th>
-                <th className="px-4 py-3 text-left">Customer</th>
-                <th className="px-4 py-3 text-left">Phone</th>
-                <th className="px-4 py-3 text-left">Lead #</th>
-                <th className="px-4 py-3 text-left">Channel</th>
-                <th className="px-4 py-3 text-left">Role</th>
-                <th className="px-4 py-3 text-left">Discount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {redemptions.length === 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                    No redemption records found.
-                  </td>
+                  <th className="px-3 py-3 text-left w-10">#</th>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Code</th>
+                  <th className="px-4 py-3 text-left">Customer</th>
+                  <th className="px-4 py-3 text-left">Phone</th>
+                  <th className="px-4 py-3 text-left">Lead #</th>
+                  <th className="px-4 py-3 text-left">Channel</th>
+                  <th className="px-4 py-3 text-left">Role</th>
+                  <th className="px-4 py-3 text-right">Discount</th>
                 </tr>
-              ) : null}
-              {redemptions.map((row) => {
-                const customer = row.customer_display || {
-                  name: row.service_lead?.customer_name || row.meta?.customer_name || null,
-                  phone: row.service_lead?.customer_phone || row.meta?.customer_phone || null,
-                  lead_number: row.service_lead?.lead_number || row.meta?.lead_number || null,
-                  channel: row.meta?.channel || row.meta?.type || null,
-                };
-                return (
-                <tr key={row.id} className="border-t">
-                  <td className="px-4 py-3">{new Date(row.created_at).toLocaleString('en-IN')}</td>
-                  <td className="px-4 py-3 font-semibold">{row.coupon?.code || '—'}</td>
-                  <td className="px-4 py-3">{customer.name || '—'}</td>
-                  <td className="px-4 py-3">{customer.phone || '—'}</td>
-                  <td className="px-4 py-3">{customer.lead_number || '—'}</td>
-                  <td className="px-4 py-3">{customer.channel || '—'}</td>
-                  <td className="px-4 py-3">{row.applied_by_role}</td>
-                  <td className="px-4 py-3">₹{Number(row.discount_amount_applied || 0).toLocaleString('en-IN')}</td>
-                </tr>
-              );})}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rdnPaged.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                      {redemptions.length === 0 ? 'No redemption records found.' : 'No results match your filters.'}
+                    </td>
+                  </tr>
+                ) : null}
+                {rdnPaged.map((row, idx) => {
+                  const customer = row.customer_display || {
+                    name: row.service_lead?.customer_name || row.meta?.customer_name || null,
+                    phone: row.service_lead?.customer_phone || row.meta?.customer_phone || null,
+                    lead_number: row.service_lead?.lead_number || row.meta?.lead_number || null,
+                    channel: row.meta?.channel || row.meta?.type || null,
+                  };
+                  const rowNum = (rdnSafePage - 1) * rdnPageSize + idx + 1;
+                  return (
+                    <tr key={row.id} className="border-t hover:bg-gray-50">
+                      <td className="px-3 py-3 text-gray-400 text-xs">{rowNum}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">{new Date(row.created_at).toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-3 font-semibold">{row.coupon?.code || '—'}</td>
+                      <td className="px-4 py-3">{customer.name || '—'}</td>
+                      <td className="px-4 py-3">{customer.phone || '—'}</td>
+                      <td className="px-4 py-3">{customer.lead_number || '—'}</td>
+                      <td className="px-4 py-3">{customer.channel || '—'}</td>
+                      <td className="px-4 py-3">{row.applied_by_role}</td>
+                      <td className="px-4 py-3 text-right font-medium">₹{Number(row.discount_amount_applied || 0).toLocaleString('en-IN')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {rdnFiltered.length > 0 && (
+            <div className="p-4 border-t flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Rows per page:</span>
+                {[25, 50, 100].map((size) => (
+                  <button
+                    key={size}
+                    className={`px-2.5 py-1 rounded-md border text-sm font-medium ${rdnPageSize === size ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                    onClick={() => setRdnPageSize(size)}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">
+                  {(rdnSafePage - 1) * rdnPageSize + 1}–{Math.min(rdnSafePage * rdnPageSize, rdnFiltered.length)} of {rdnFiltered.length}
+                </span>
+                <button
+                  className="px-3 py-1.5 rounded-md border bg-white text-gray-600 disabled:opacity-40"
+                  disabled={rdnSafePage <= 1}
+                  onClick={() => setRdnPage(rdnSafePage - 1)}
+                >
+                  ← Prev
+                </button>
+                {rdnTotalPages <= 7 ? (
+                  Array.from({ length: rdnTotalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      className={`px-3 py-1.5 rounded-md border text-sm font-medium ${p === rdnSafePage ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                      onClick={() => setRdnPage(p)}
+                    >
+                      {p}
+                    </button>
+                  ))
+                ) : (
+                  <>
+                    {[1, 2].map((p) => (
+                      <button key={p} className={`px-3 py-1.5 rounded-md border text-sm font-medium ${p === rdnSafePage ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`} onClick={() => setRdnPage(p)}>{p}</button>
+                    ))}
+                    {rdnSafePage > 3 && <span className="px-1 text-gray-400">…</span>}
+                    {rdnSafePage > 2 && rdnSafePage < rdnTotalPages - 1 && (
+                      <button className="px-3 py-1.5 rounded-md border text-sm font-medium bg-brand-primary text-white border-brand-primary">{rdnSafePage}</button>
+                    )}
+                    {rdnSafePage < rdnTotalPages - 2 && <span className="px-1 text-gray-400">…</span>}
+                    {[rdnTotalPages - 1, rdnTotalPages].filter((p) => p > 2).map((p) => (
+                      <button key={p} className={`px-3 py-1.5 rounded-md border text-sm font-medium ${p === rdnSafePage ? 'bg-brand-primary text-white border-brand-primary' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`} onClick={() => setRdnPage(p)}>{p}</button>
+                    ))}
+                  </>
+                )}
+                <button
+                  className="px-3 py-1.5 rounded-md border bg-white text-gray-600 disabled:opacity-40"
+                  disabled={rdnSafePage >= rdnTotalPages}
+                  onClick={() => setRdnPage(rdnSafePage + 1)}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 
