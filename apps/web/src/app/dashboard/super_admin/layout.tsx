@@ -661,18 +661,18 @@ export default function SuperAdminLayout({
         <div className="px-3 pt-4 pb-1">
           {sidebarOpen ? (
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search menu… (⌘K)"
-                className="w-full pl-9 pr-8 py-2.5 rounded-lg bg-blue-500/30 text-white text-sm placeholder:text-blue-200/70 border border-blue-400/30 focus:outline-none focus:ring-2 focus:ring-yellow-300/50 focus:bg-blue-500/40"
+                className="w-full pl-9 pr-8 py-2.5 rounded-lg bg-white text-gray-800 text-sm placeholder:text-gray-400 border border-blue-300/50 focus:outline-none focus:ring-2 focus:ring-yellow-300/60 shadow-sm"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                  <X className="w-4 h-4 text-blue-200 hover:text-white" />
+                  <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
                 </button>
               )}
             </div>
