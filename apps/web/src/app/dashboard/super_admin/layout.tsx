@@ -265,6 +265,12 @@ const navigationItems: NavItem[] = [
     description: 'PCMS — campaigns & automation',
   },
   {
+    name: 'App Settings Menu',
+    href: '/dashboard/super_admin/app-settings-menu',
+    icon: Smartphone,
+    description: 'Toggle app menu items on/off',
+  },
+  {
     name: 'Push Notifications',
     icon: Bell,
     description: 'FCM admin console',

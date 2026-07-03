@@ -112,6 +112,7 @@ import {
   mergePostBookingMembershipAppConfig,
   type PostBookingMembershipAppConfig,
 } from '../lib/postBookingMembershipAppConfig';
+import { fetchSettingsMenuConfig, getEnabledMenuIds } from '../lib/settingsMenuConfig';
 
 type Props = {
   navigation: any;
@@ -235,6 +236,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const [activeSubPage, setActiveSubPage] = useState<string | null>(resolveSubPage(route?.params?.initialSubPage ?? route?.params?.subPage ?? null));
   const activeSubPageRef = useRef(activeSubPage);
   activeSubPageRef.current = activeSubPage;
+  const [enabledMenuIds, setEnabledMenuIds] = useState<Set<string> | null>(null);
   const [vehicleEntryOnly, setVehicleEntryOnly] = useState(false);
   const [dismissedVehicleKeys, setDismissedVehicleKeys] = useState<string[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -1049,6 +1051,21 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         active = false;
       };
     }, [hydrateCustomerData]),
+  );
+
+  useEffect(() => {
+    fetchSettingsMenuConfig().then((cfg) => {
+      if (cfg) setEnabledMenuIds(getEnabledMenuIds(cfg));
+    }).catch(() => {});
+  }, []);
+
+  const visibleMainMenu = useMemo(
+    () => enabledMenuIds ? MAIN_MENU.filter((m) => enabledMenuIds.has(m.id)) : MAIN_MENU,
+    [enabledMenuIds],
+  );
+  const visibleLegalMenu = useMemo(
+    () => enabledMenuIds ? LEGAL_MENU.filter((m) => enabledMenuIds.has(m.id)) : LEGAL_MENU,
+    [enabledMenuIds],
   );
 
   useEffect(() => {
@@ -3380,7 +3397,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       <SettingsSmartToolsExpandable navigation={navigation} />
 
       <View style={styles.grid}>
-        {MAIN_MENU.map((item) => (
+        {visibleMainMenu.map((item) => (
           <TouchableOpacity
             key={item.id}
             style={styles.gridCard}
@@ -3402,7 +3419,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
       <Text style={styles.sectionHeading}>Legal & Support</Text>
       <View style={styles.grid}>
-        {LEGAL_MENU.map((item) => (
+        {visibleLegalMenu.map((item) => (
           <TouchableOpacity
             key={item.id}
             style={styles.gridCard}
