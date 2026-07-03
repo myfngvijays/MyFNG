@@ -203,9 +203,9 @@ const navigationItems: NavItem[] = [
     ],
   },
   {
-    name: 'App Membership & Offers',
+    name: 'Membership',
     icon: Crown,
-    description: 'Cards, post-booking offer & wallet',
+    description: 'Cards, plans & terms',
     children: [
       {
         name: 'Membership Cards',
@@ -213,6 +213,25 @@ const navigationItems: NavItem[] = [
         icon: Crown,
         description: 'Animated promo cards & placements',
       },
+      {
+        name: 'Membership Plans',
+        href: '/dashboard/super_admin/membership-plans',
+        icon: Crown,
+        description: 'Prime tiers, pricing & benefits (app + web)',
+      },
+      {
+        name: 'Membership T&C',
+        href: '/dashboard/super_admin/membership-terms',
+        icon: Crown,
+        description: 'RSA & Prime terms (app + website)',
+      },
+    ],
+  },
+  {
+    name: 'Wallet & Offers',
+    icon: Wallet,
+    description: 'Wallet, referrals & post-booking',
+    children: [
       {
         name: 'Post-Booking Prime Offer',
         href: '/dashboard/super_admin/post-booking-membership',
@@ -314,7 +333,7 @@ const navigationItems: NavItem[] = [
   {
     name: 'Shared Content',
     icon: Globe,
-    description: 'Brands, plans, T&C & FAQs',
+    description: 'Brands, vehicles & FAQs',
     children: [
       {
         name: 'Car Brand Images',
@@ -327,18 +346,6 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/website-images/vehicle-images',
         icon: Car,
         description: 'Vehicle model images (app profile)',
-      },
-      {
-        name: 'Membership Plans',
-        href: '/dashboard/super_admin/membership-plans',
-        icon: Crown,
-        description: 'Prime tiers, pricing & benefits (app + web)',
-      },
-      {
-        name: 'Membership T&C',
-        href: '/dashboard/super_admin/membership-terms',
-        icon: Crown,
-        description: 'RSA & Prime terms (app + website)',
       },
       {
         name: 'FAQs (App + Web)',
@@ -477,7 +484,8 @@ export default function SuperAdminLayout({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'Smart Tools': false,
     'App Content & Display': false,
-    'App Membership & Offers': false,
+    'Membership': false,
+    'Wallet & Offers': false,
     'Push Notifications': false,
     'Shared Content': false,
     'App Customers': false,
@@ -508,12 +516,18 @@ export default function SuperAdminLayout({
     }
     if (
       pathname?.startsWith('/dashboard/super_admin/membership-cards') ||
+      pathname?.startsWith('/dashboard/super_admin/membership-plans') ||
+      pathname?.startsWith('/dashboard/super_admin/membership-terms')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'Membership': true }));
+    }
+    if (
       pathname?.startsWith('/dashboard/super_admin/post-booking-membership') ||
       pathname?.startsWith('/dashboard/super_admin/wallet-logic') ||
       pathname?.startsWith('/dashboard/super_admin/wallet-credits') ||
-      pathname?.startsWith('/dashboard/super_admin/advance-coupons')
+      pathname?.startsWith('/dashboard/super_admin/referral')
     ) {
-      setOpenGroups((prev) => ({ ...prev, 'App Membership & Offers': true }));
+      setOpenGroups((prev) => ({ ...prev, 'Wallet & Offers': true }));
     }
     if (pathname?.startsWith('/dashboard/super_admin/advance-notifications')) {
       setOpenGroups((prev) => ({ ...prev, 'Push Notifications': true }));
@@ -521,8 +535,6 @@ export default function SuperAdminLayout({
     if (
       pathname?.startsWith('/dashboard/super_admin/brands') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/vehicle-images') ||
-      pathname?.startsWith('/dashboard/super_admin/membership-plans') ||
-      pathname?.startsWith('/dashboard/super_admin/membership-terms') ||
       pathname?.startsWith('/dashboard/super_admin/public-faqs')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));
