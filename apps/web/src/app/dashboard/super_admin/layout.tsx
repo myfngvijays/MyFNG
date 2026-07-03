@@ -692,7 +692,6 @@ export default function SuperAdminLayout({
             </div>
           </nav>
         ) : (
-        /* Navigation */
         <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
           <div className="space-y-2">
             {navigationItems.map((item) => {
@@ -921,7 +920,6 @@ export default function SuperAdminLayout({
                 </div>
               </nav>
             ) : (
-            {/* Navigation */}
             <nav className="flex-1 min-h-0 overflow-y-auto py-6 px-3">
               <div className="space-y-2">
                 {navigationItems.map((item) => {
