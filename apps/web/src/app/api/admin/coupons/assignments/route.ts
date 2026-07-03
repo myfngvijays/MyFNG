@@ -29,9 +29,13 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 
-    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') || 100), 300);
+    const page = Math.max(1, Number(request.nextUrl.searchParams.get('page') || 1));
+    const limit = Math.min(Math.max(1, Number(request.nextUrl.searchParams.get('limit') || 25)), 100);
+    const search = (request.nextUrl.searchParams.get('search') || '').trim();
+    const filter = (request.nextUrl.searchParams.get('filter') || '').toLowerCase(); // 'registered' | 'pending' | ''
+    const offset = (page - 1) * limit;
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('customer_coupon_assignments')
       .select(`
         id,
@@ -42,13 +46,54 @@ export async function GET(request: NextRequest) {
         pending_phone,
         customer:customers(id, full_name, phone, email),
         coupon:coupons(id, code, description, coupon_kind, discount_value, discount_mode, is_active)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (filter === 'pending') {
+      query = query.is('customer_id', null).not('pending_phone', 'is', null);
+    } else if (filter === 'registered') {
+      query = query.not('customer_id', 'is', null);
+    }
+
+    if (search) {
+      query = query.or(`pending_phone.ilike.%${search}%,customer.phone.ilike.%${search}%,customer.full_name.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query.range(offset, offset + limit - 1);
 
     if (error) throw error;
 
-    return NextResponse.json({ assignments: data || [] });
+    const { count: totalCount } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('id', { count: 'exact', head: true });
+
+    const { count: pendingCount } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('id', { count: 'exact', head: true })
+      .is('customer_id', null)
+      .not('pending_phone', 'is', null);
+
+    const { count: redeemedCount } = await supabaseAdmin
+      .from('customer_coupon_assignments')
+      .select('id', { count: 'exact', head: true })
+      .not('redeemed_at', 'is', null);
+
+    return NextResponse.json({
+      assignments: data || [],
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        total_pages: Math.ceil((count || 0) / limit),
+      },
+      counts: {
+        total: totalCount || 0,
+        registered: (totalCount || 0) - (pendingCount || 0),
+        pending: pendingCount || 0,
+        redeemed: redeemedCount || 0,
+        open: (totalCount || 0) - (redeemedCount || 0),
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
