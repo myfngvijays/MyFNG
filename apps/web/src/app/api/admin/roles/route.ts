@@ -21,6 +21,38 @@ async function requireSuperAdmin(request: NextRequest) {
   return { ok: true as const };
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const gate = await requireSuperAdmin(request);
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+    if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
+
+    const body = await request.json();
+    const { role_id, permissions, description } = body;
+
+    if (!role_id) return NextResponse.json({ error: 'role_id is required' }, { status: 400 });
+
+    const update: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (permissions !== undefined) update.permissions = permissions;
+    if (description !== undefined) update.description = description;
+
+    const { data, error } = await supabaseAdmin
+      .from('roles')
+      .update(update)
+      .eq('id', role_id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ role: data });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const gate = await requireSuperAdmin(request);

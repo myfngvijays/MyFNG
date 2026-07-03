@@ -3,9 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Shield, Search, Users, ChevronDown, ChevronUp, Eye, Loader2,
-  Building2, FileText, Phone, Wrench, Truck, Home, MessageSquare,
-  Star, Settings, User, Tag, Globe, Clock, BarChart3,
-  AlertTriangle, CheckCircle, ClipboardList, DollarSign, Megaphone, Car,
+  Pencil, Plus, X, Save, Trash2,
 } from 'lucide-react';
 
 type RoleGroup = 'admin_roles' | 'manager_roles' | 'internal_staff' | 'workshop_staff' | 'company_field_staff' | 'customers';
@@ -26,28 +24,6 @@ const GROUP_LABELS: Record<RoleGroup, { label: string; color: string; bg: string
   workshop_staff: { label: 'Workshop Staff', color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
   company_field_staff: { label: 'Company Field Staff', color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
   customers: { label: 'Customers', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
-};
-
-const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
-  SUPER_ADMIN: ['Full system access (all permissions)'],
-  SUB_ADMIN: ['Manage users', 'View reports', 'Manage leads', 'Manage workshops'],
-  LEAD_MANAGER: ['View leads', 'Assign leads', 'Manage normal leads'],
-  RSA_MANAGER: ['View leads', 'Assign leads', 'Manage RSA leads'],
-  HOME_SERVICE_MANAGER: ['View leads', 'Assign leads', 'Manage home service leads'],
-  TELECALLER: ['View leads', 'Call customers', 'Update lead status'],
-  CUSTOMER_SERVICE_EXECUTIVE: ['View customers', 'Handle support', 'Manage escalations'],
-  AUDITOR: ['View workshops', 'Audit workshops', 'Update audit scores'],
-  ACCOUNTS_TEAM: ['View invoices', 'Manage payments', 'Generate reports'],
-  WORKSHOP_ADMIN: ['View workshop leads', 'Accept/reject leads', 'Manage workshop staff'],
-  WORKSHOP_SUPERVISOR: ['Assign jobs', 'View workshop tasks', 'Manage mechanics'],
-  WORKSHOP_MECHANIC: ['View assigned jobs', 'Update job status', 'Upload photos'],
-  WORKSHOP_PICKUP_BOY: ['View pickup tasks', 'Update pickup status', 'Upload photos'],
-  COMPANY_MECHANIC_RSA: ['View RSA tasks', 'Update job status', 'Upload photos'],
-  COMPANY_VAN_TECHNICIAN: ['View home service tasks', 'Update job status', 'Upload photos'],
-  COMPANY_VAN_DRIVER: ['View home service tasks', 'Update delivery status'],
-  DIGITAL_MARKETING: ['Manage campaigns', 'View analytics', 'Manage promotions', 'Edit/approve/publish blogs', 'Manage categories & tags'],
-  DIGITAL_AUTHOR: ['Create blogs', 'Save drafts', 'Edit own blogs'],
-  CUSTOMER: ['Create booking', 'View my bookings', 'Track service'],
 };
 
 const ROLE_MENU_ITEMS: Record<string, string[]> = {
@@ -94,18 +70,43 @@ const ROLE_COLORS: Record<string, string> = {
   CUSTOMER: 'bg-gray-100 text-gray-800 border-gray-200',
 };
 
+const ALL_KNOWN_PERMISSIONS = [
+  'all',
+  'manage_users', 'view_reports', 'manage_leads', 'manage_workshops',
+  'view_leads', 'assign_leads', 'manage_normal_leads', 'manage_rsa_leads', 'manage_home_service_leads',
+  'call_customers', 'update_lead_status',
+  'view_customers', 'handle_support', 'manage_escalations',
+  'view_workshops', 'audit_workshops', 'update_audit_scores',
+  'view_invoices', 'manage_payments', 'generate_reports',
+  'view_workshop_leads', 'accept_reject_leads', 'manage_workshop_staff',
+  'assign_jobs', 'view_workshop_tasks', 'manage_mechanics',
+  'view_assigned_jobs', 'update_job_status', 'upload_photos',
+  'view_pickup_tasks', 'update_pickup_status',
+  'view_rsa_tasks', 'view_home_service_tasks', 'update_delivery_status',
+  'manage_campaigns', 'view_analytics', 'manage_promotions', 'track_leads',
+  'manage_content', 'edit_blogs', 'approve_blogs', 'publish_blogs', 'delete_blogs',
+  'manage_categories', 'manage_tags', 'restore_versions',
+  'create_blogs', 'save_drafts', 'edit_own_blogs',
+  'create_booking', 'view_my_bookings', 'track_service',
+];
+
 export default function RolesPermissionsPage() {
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [groupFilter, setGroupFilter] = useState<RoleGroup | 'all'>('all');
 
-  useEffect(() => {
-    fetchRoles();
-  }, []);
+  const [editRole, setEditRole] = useState<any | null>(null);
+  const [editPermissions, setEditPermissions] = useState<Record<string, boolean>>({});
+  const [editDescription, setEditDescription] = useState('');
+  const [newPermKey, setNewPermKey] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { fetchRoles(); }, []);
 
   const fetchRoles = async () => {
     setLoading(true);
@@ -121,12 +122,75 @@ export default function RolesPermissionsPage() {
     }
   };
 
+  const openEditModal = (role: any) => {
+    setEditRole(role);
+    const perms = role.permissions && typeof role.permissions === 'object' ? { ...role.permissions } : {};
+    setEditPermissions(perms);
+    setEditDescription(role.description || '');
+    setNewPermKey('');
+    setError(null);
+    setSuccess(null);
+  };
+
+  const closeEditModal = () => {
+    setEditRole(null);
+    setEditPermissions({});
+    setEditDescription('');
+    setNewPermKey('');
+  };
+
+  const togglePermission = (key: string) => {
+    setEditPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const removePermission = (key: string) => {
+    setEditPermissions((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const addPermission = () => {
+    const key = newPermKey.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!key) return;
+    if (editPermissions[key] !== undefined) return;
+    setEditPermissions((prev) => ({ ...prev, [key]: true }));
+    setNewPermKey('');
+  };
+
+  const handleSave = async () => {
+    if (!editRole) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/roles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role_id: editRole.id,
+          permissions: editPermissions,
+          description: editDescription,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to update role');
+      setSuccess(`${editRole.role_name} permissions updated successfully`);
+      closeEditModal();
+      fetchRoles();
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const filteredRoles = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return roles.filter((r) => {
       if (groupFilter !== 'all') {
-        const groupCodes = ROLE_HIERARCHY[groupFilter] || [];
-        if (!groupCodes.includes(r.role_code)) return false;
+        if (!ROLE_HIERARCHY[groupFilter]?.includes(r.role_code)) return false;
       }
       if (!q) return true;
       return [r.role_code, r.role_name, r.description]
@@ -155,6 +219,21 @@ export default function RolesPermissionsPage() {
     return groups;
   }, [filteredRoles]);
 
+  const suggestedPerms = useMemo(() => {
+    const existing = new Set(Object.keys(editPermissions));
+    return ALL_KNOWN_PERMISSIONS.filter((p) => !existing.has(p));
+  }, [editPermissions]);
+
+  const getPermissionCount = (role: any) => {
+    if (!role.permissions || typeof role.permissions !== 'object') return 0;
+    return Object.keys(role.permissions).length;
+  };
+
+  const getActivePermCount = (role: any) => {
+    if (!role.permissions || typeof role.permissions !== 'object') return 0;
+    return Object.values(role.permissions).filter(Boolean).length;
+  };
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -171,12 +250,15 @@ export default function RolesPermissionsPage() {
             <Shield className="w-7 h-7 text-brand-primary" />
             Roles & Permissions
           </h1>
-          <p className="text-sm text-gray-500 mt-1">View all roles, their permissions, and menu access</p>
+          <p className="text-sm text-gray-500 mt-1">View and edit all roles, their permissions, and menu access</p>
         </div>
       </div>
 
-      {error && (
+      {error && !editRole && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>
+      )}
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">{success}</div>
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -247,9 +329,10 @@ export default function RolesPermissionsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {groupRoles.map((role: any) => {
                     const isExpanded = expandedRole === role.role_code;
-                    const permissions = ROLE_PERMISSIONS_MAP[role.role_code] || [];
                     const menuItems = ROLE_MENU_ITEMS[role.role_code] || [];
                     const colorClass = ROLE_COLORS[role.role_code] || 'bg-gray-100 text-gray-800';
+                    const dbPerms = role.permissions && typeof role.permissions === 'object' ? role.permissions : {};
+                    const activePerms = Object.entries(dbPerms).filter(([, v]) => v);
                     return (
                       <div key={role.id} className={`bg-white rounded-xl border overflow-hidden transition-shadow ${isExpanded ? 'shadow-lg ring-2 ring-brand-primary/20' : 'hover:shadow-md'}`}>
                         <div
@@ -269,6 +352,13 @@ export default function RolesPermissionsPage() {
                               <p className="text-xs text-gray-500 mt-2">{role.description || '—'}</p>
                             </div>
                             <div className="flex items-center gap-3 shrink-0">
+                              <button
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-brand-primary transition-colors"
+                                title="Edit permissions"
+                                onClick={(e) => { e.stopPropagation(); openEditModal(role); }}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
                               <div className="text-right">
                                 <div className="text-lg font-bold">{role.user_count}</div>
                                 <div className="text-[10px] text-gray-400 uppercase">Users</div>
@@ -277,7 +367,7 @@ export default function RolesPermissionsPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-                            <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> {permissions.length} permissions</span>
+                            <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> {getActivePermCount(role)}/{getPermissionCount(role)} permissions</span>
                             <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {menuItems.length} menu items</span>
                           </div>
                         </div>
@@ -285,12 +375,28 @@ export default function RolesPermissionsPage() {
                         {isExpanded && (
                           <div className="border-t bg-gray-50/50 p-4 space-y-4">
                             <div>
-                              <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 flex items-center gap-1">
-                                <Shield className="w-3.5 h-3.5" /> Permissions
-                              </h4>
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1">
+                                  <Shield className="w-3.5 h-3.5" /> Permissions ({activePerms.length} active)
+                                </h4>
+                                <button
+                                  className="text-xs text-brand-primary font-semibold hover:underline flex items-center gap-1"
+                                  onClick={(e) => { e.stopPropagation(); openEditModal(role); }}
+                                >
+                                  <Pencil className="w-3 h-3" /> Edit
+                                </button>
+                              </div>
                               <div className="flex flex-wrap gap-1.5">
-                                {permissions.map((p, i) => (
-                                  <span key={i} className="px-2 py-1 bg-white border rounded-md text-xs text-gray-700">{p}</span>
+                                {Object.entries(dbPerms).length === 0 && (
+                                  <span className="text-xs text-gray-400 italic">No permissions set in database</span>
+                                )}
+                                {Object.entries(dbPerms).map(([key, val]) => (
+                                  <span
+                                    key={key}
+                                    className={`px-2 py-1 rounded-md text-xs border ${val ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600 line-through'}`}
+                                  >
+                                    {key}
+                                  </span>
                                 ))}
                               </div>
                             </div>
@@ -305,22 +411,6 @@ export default function RolesPermissionsPage() {
                                 ))}
                               </div>
                             </div>
-
-                            {role.permissions && typeof role.permissions === 'object' && Object.keys(role.permissions).length > 0 && (
-                              <div>
-                                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">DB Permission Flags</h4>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {Object.entries(role.permissions).map(([key, val]) => (
-                                    <span
-                                      key={key}
-                                      className={`px-2 py-1 rounded-md text-xs border ${val ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600 line-through'}`}
-                                    >
-                                      {key}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -344,16 +434,18 @@ export default function RolesPermissionsPage() {
                 <th className="px-4 py-3 text-left">Permissions</th>
                 <th className="px-4 py-3 text-left">Menu Access</th>
                 <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredRoles.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No roles found.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No roles found.</td></tr>
               ) : null}
               {filteredRoles.map((role, idx) => {
                 const group = getGroupForRole(role.role_code);
                 const meta = group ? GROUP_LABELS[group] : null;
-                const permissions = ROLE_PERMISSIONS_MAP[role.role_code] || [];
+                const dbPerms = role.permissions && typeof role.permissions === 'object' ? role.permissions : {};
+                const activePerms = Object.entries(dbPerms).filter(([, v]) => v);
                 const menuItems = ROLE_MENU_ITEMS[role.role_code] || [];
                 const colorClass = ROLE_COLORS[role.role_code] || 'bg-gray-100 text-gray-800';
                 return (
@@ -377,11 +469,14 @@ export default function RolesPermissionsPage() {
                     <td className="px-4 py-3 text-center font-bold">{role.user_count}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 max-w-[250px]">
-                        {permissions.slice(0, 3).map((p, i) => (
-                          <span key={i} className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] text-gray-600">{p}</span>
+                        {activePerms.slice(0, 3).map(([key]) => (
+                          <span key={key} className="px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-[10px] text-green-700">{key}</span>
                         ))}
-                        {permissions.length > 3 && (
-                          <span className="px-1.5 py-0.5 bg-gray-200 rounded text-[10px] text-gray-600 font-medium">+{permissions.length - 3} more</span>
+                        {activePerms.length > 3 && (
+                          <span className="px-1.5 py-0.5 bg-green-100 rounded text-[10px] text-green-700 font-medium">+{activePerms.length - 3} more</span>
+                        )}
+                        {activePerms.length === 0 && (
+                          <span className="text-[10px] text-gray-400 italic">Not set</span>
                         )}
                       </div>
                     </td>
@@ -402,11 +497,149 @@ export default function RolesPermissionsPage() {
                         <span className="px-2 py-1 bg-red-50 text-red-600 border border-red-200 rounded-full text-xs font-medium">Inactive</span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        className="px-3 py-1.5 bg-brand-primary text-white rounded-lg text-xs font-semibold hover:opacity-90 inline-flex items-center gap-1"
+                        onClick={() => openEditModal(role)}
+                      >
+                        <Pencil className="w-3 h-3" /> Edit
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editRole && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeEditModal}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-brand-primary" />
+                  Edit Permissions
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${ROLE_COLORS[editRole.role_code] || 'bg-gray-100'}`}>
+                    {editRole.role_name}
+                  </span>
+                  <span className="ml-2">{editRole.role_code}</span>
+                </p>
+              </div>
+              <button className="p-2 hover:bg-gray-100 rounded-lg" onClick={closeEditModal}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {error && editRole && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">{error}</div>
+              )}
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700 block mb-1">Description</label>
+                <textarea
+                  className="w-full border rounded-lg px-3 py-2 text-sm resize-none"
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Role description..."
+                />
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-3">
+                  Current Permissions ({Object.keys(editPermissions).length})
+                </h3>
+                {Object.keys(editPermissions).length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">No permissions set. Add from below.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {Object.entries(editPermissions).map(([key, val]) => (
+                      <div key={key} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border">
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            className={`relative w-10 h-5 rounded-full transition-colors ${val ? 'bg-green-500' : 'bg-gray-300'}`}
+                            onClick={() => togglePermission(key)}
+                          >
+                            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${val ? 'left-5.5 translate-x-0' : 'left-0.5'}`}
+                              style={{ left: val ? '22px' : '2px' }}
+                            />
+                          </button>
+                          <span className={`text-sm font-medium ${val ? 'text-gray-800' : 'text-gray-400 line-through'}`}>{key}</span>
+                        </div>
+                        <button
+                          className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 transition-colors"
+                          onClick={() => removePermission(key)}
+                          title="Remove permission"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">Add Permission</h3>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                    placeholder="Permission key (e.g. manage_invoices)"
+                    value={newPermKey}
+                    onChange={(e) => setNewPermKey(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addPermission()}
+                  />
+                  <button
+                    className="px-4 py-2 bg-brand-primary text-white rounded-lg text-sm font-semibold hover:opacity-90 flex items-center gap-1 disabled:opacity-50"
+                    onClick={addPermission}
+                    disabled={!newPermKey.trim()}
+                  >
+                    <Plus className="w-4 h-4" /> Add
+                  </button>
+                </div>
+
+                {suggestedPerms.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">Quick add (click to add):</p>
+                    <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
+                      {suggestedPerms.map((p) => (
+                        <button
+                          key={p}
+                          className="px-2 py-1 bg-white border border-dashed border-gray-300 rounded-md text-xs text-gray-600 hover:border-brand-primary hover:text-brand-primary transition-colors"
+                          onClick={() => setEditPermissions((prev) => ({ ...prev, [p]: true }))}
+                        >
+                          + {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex items-center justify-between bg-gray-50">
+              <button
+                className="px-4 py-2.5 border rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                onClick={closeEditModal}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-6 py-2.5 bg-brand-primary text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
