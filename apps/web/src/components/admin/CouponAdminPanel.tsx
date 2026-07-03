@@ -305,6 +305,14 @@ export default function CouponAdminPanel({
     setShowModal(true);
   }, [autoOpenCreate]);
 
+  const isoToLocalDatetime = (iso: string | null | undefined): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const openEdit = (coupon: any) => {
     setEditingCoupon(coupon);
     const typeSlug = coupon.coupon_type_slug || inferCouponTypeSlug(coupon);
@@ -320,8 +328,8 @@ export default function CouponAdminPanel({
       min_order_value: coupon.min_order_value != null ? String(coupon.min_order_value) : '',
       max_discount_amount: coupon.max_discount_amount != null ? String(coupon.max_discount_amount) : '',
       target_custom_label: coupon.target_custom_label || '',
-      start_at: coupon.start_at ? String(coupon.start_at).slice(0, 16) : '',
-      end_at: coupon.end_at ? String(coupon.end_at).slice(0, 16) : '',
+      start_at: isoToLocalDatetime(coupon.start_at),
+      end_at: isoToLocalDatetime(coupon.end_at),
       usage_limit_total: coupon.usage_limit_total != null ? String(coupon.usage_limit_total) : '',
       usage_limit_per_customer: coupon.usage_limit_per_customer != null ? String(coupon.usage_limit_per_customer) : '1',
       is_active: Boolean(coupon.is_active),
@@ -924,16 +932,17 @@ export default function CouponAdminPanel({
                   <th className="px-4 py-3">Value</th>
                   <th className="px-4 py-3">Channels</th>
                   <th className="px-4 py-3">Usage</th>
+                  <th className="px-4 py-3">Valid Period</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500"><Loader2 className="w-4 h-4 inline animate-spin mr-2" />Loading...</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500"><Loader2 className="w-4 h-4 inline animate-spin mr-2" />Loading...</td></tr>
                 ) : null}
                 {!loading && filteredCoupons.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No coupons found.</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No coupons found.</td></tr>
                 ) : null}
                 {filteredCoupons.map((coupon) => (
                   <tr key={coupon.id} className="border-t">
@@ -951,6 +960,19 @@ export default function CouponAdminPanel({
                         : 'All Platforms'}
                     </td>
                     <td className="px-4 py-3">{coupon.usage_count ?? 0}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {coupon.start_at || coupon.end_at ? (
+                        <div className="space-y-0.5">
+                          {coupon.start_at && <div>{new Date(coupon.start_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</div>}
+                          {coupon.end_at && (
+                            <div className={new Date(coupon.end_at) < new Date() ? 'text-red-600 font-semibold' : new Date(coupon.end_at) < new Date(Date.now() + 7 * 86400000) ? 'text-amber-600 font-semibold' : ''}>
+                              → {new Date(coupon.end_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              {new Date(coupon.end_at) < new Date() ? ' (Expired)' : ''}
+                            </div>
+                          )}
+                        </div>
+                      ) : '—'}
+                    </td>
                     <td className="px-4 py-3"><span className={coupon.is_active ? 'text-green-700' : 'text-gray-500'}>{coupon.is_active ? 'Active' : 'Inactive'}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

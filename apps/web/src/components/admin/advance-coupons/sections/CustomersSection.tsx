@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { UserPlus, Users, Trash2, Search, ChevronLeft, ChevronRight, Clock, CheckCircle2, X } from 'lucide-react';
 import { PcmPageHeader, PcmStatCard, PcmStatusBadge } from '../shared';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZES = [25, 50, 100] as const;
 
 export default function PcmCustomersSection() {
   const [assignments, setAssignments] = useState<any[]>([]);
@@ -12,6 +12,7 @@ export default function PcmCustomersSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [counts, setCounts] = useState({ total: 0, registered: 0, pending: 0, redeemed: 0, open: 0 });
@@ -19,12 +20,12 @@ export default function PcmCustomersSection() {
   const [searchInput, setSearchInput] = useState('');
   const [filter, setFilter] = useState<'' | 'registered' | 'pending'>('');
 
-  const fetchData = useCallback(async (p = page, s = search, f = filter) => {
+  const fetchData = useCallback(async (p = page, s = search, f = filter, ps = pageSize) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         page: String(p),
-        limit: String(PAGE_SIZE),
+        limit: String(ps),
       });
       if (s) params.set('search', s);
       if (f) params.set('filter', f);
@@ -40,9 +41,9 @@ export default function PcmCustomersSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, filter]);
+  }, [page, search, filter, pageSize]);
 
-  useEffect(() => { fetchData(page, search, filter); }, [page, search, filter]);
+  useEffect(() => { fetchData(page, search, filter, pageSize); }, [page, search, filter, pageSize]);
 
   const handleSearch = () => {
     setSearch(searchInput.trim());
@@ -119,10 +120,15 @@ export default function PcmCustomersSection() {
     }
   };
 
+  const handlePageSize = (size: number) => {
+    setPageSize(size);
+    setPage(1);
+  };
+
   const removableOnPage = assignments.filter((a) => !a.redeemed_at);
   const allOnPageSelected = removableOnPage.length > 0 && removableOnPage.every((a) => selected.has(a.id));
-  const startItem = (page - 1) * PAGE_SIZE + 1;
-  const endItem = Math.min(page * PAGE_SIZE, total);
+  const startItem = (page - 1) * pageSize + 1;
+  const endItem = Math.min(page * pageSize, total);
 
   return (
     <div>
@@ -277,11 +283,29 @@ export default function PcmCustomersSection() {
         )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {total > 0 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#e6e0da] bg-[#f7f3ec]/50">
-            <span className="text-xs text-gray-500">
-              Page {page} of {totalPages} ({total} total)
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">
+                Page {page} of {totalPages} ({total} total)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-400">Show:</span>
+                {PAGE_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => handlePageSize(size)}
+                    className={`px-2 py-0.5 text-xs rounded border ${
+                      pageSize === size
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(1)}
