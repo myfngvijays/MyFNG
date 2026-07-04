@@ -161,6 +161,15 @@ export async function POST(request: NextRequest) {
     const deepLink = String(body?.deep_link || '').trim();
     const ctaUrl = String(body?.cta_url || '').trim();
     const osFilter = resolveOsFilter(String(body?.platform || 'both'), String(body?.audience || 'all'));
+    const targetCities: string[] = Array.isArray(body?.target_cities) ? body.target_cities.map((c: any) => String(c).trim()).filter(Boolean) : [];
+    const targetMembership = String(body?.target_membership || '').trim();
+    const targetMembershipPlans: string[] = Array.isArray(body?.target_membership_plans) ? body.target_membership_plans.map((p: any) => String(p).trim()).filter(Boolean) : [];
+    const targetServiceCenters: string[] = Array.isArray(body?.target_service_centers) ? body.target_service_centers.map((s: any) => String(s).trim()).filter(Boolean) : [];
+    const targetCarBrands: string[] = Array.isArray(body?.target_car_brands) ? body.target_car_brands.map((b: any) => String(b).trim()).filter(Boolean) : [];
+    const targetCustomerType = String(body?.target_customer_type || '').trim();
+    const targetCouponUsers = String(body?.target_coupon_users || '').trim();
+    const targetCouponCodes: string[] = Array.isArray(body?.target_coupon_codes) ? body.target_coupon_codes.map((c: any) => String(c).trim()).filter(Boolean) : [];
+    const targetPhoneList: string[] = Array.isArray(body?.target_phone_list) ? body.target_phone_list : [];
 
     if (!title || !message) {
       return NextResponse.json({ error: 'Title and message are required' }, { status: 400 });
@@ -189,7 +198,178 @@ export async function POST(request: NextRequest) {
     let targetCustomer: { id: string; phone: string; full_name: string | null } | null = null;
     const pushDisabledCustomerIds = await getPushDisabledCustomerIds(supabaseAdmin);
 
-    if (targetRole === 'ALL') {
+    const hasAdvancedTargeting = targetPhoneList.length > 0 || targetCities.length > 0 || targetMembership || targetServiceCenters.length > 0 || targetCarBrands.length > 0 || targetCustomerType || targetCouponUsers;
+
+    if (hasAdvancedTargeting && targetRole === 'CUSTOMER') {
+      let filteredCustomerIds: Set<string> | null = null;
+
+      if (targetPhoneList.length > 0) {
+        const { data: customers } = await supabaseAdmin
+          .from('customers')
+          .select('id, phone');
+
+        const normalizedList = new Set(targetPhoneList.map((p) => p.replace(/\D/g, '').slice(-10)));
+        filteredCustomerIds = new Set(
+          (customers || [])
+            .filter((c: any) => normalizedList.has(String(c.phone).replace(/\D/g, '').slice(-10)))
+            .map((c: any) => c.id)
+        );
+      } else {
+        if (targetCities.length > 0) {
+          const { data: cityRows } = await supabaseAdmin
+            .from('cities')
+            .select('id')
+            .in('name', targetCities);
+
+          const cityIds = (cityRows || []).map((c: any) => c.id);
+          if (cityIds.length > 0) {
+            const { data: leads } = await supabaseAdmin
+              .from('service_leads')
+              .select('customer_phone')
+              .in('city_id', cityIds)
+              .not('customer_phone', 'is', null);
+
+            const cityPhones = [...new Set(
+              (leads || []).map((l: any) => String(l.customer_phone).replace(/\D/g, '').slice(-10)).filter((p: string) => p.length === 10)
+            )];
+
+            if (cityPhones.length > 0) {
+              const { data: customers } = await supabaseAdmin
+                .from('customers')
+                .select('id, phone');
+              filteredCustomerIds = new Set(
+                (customers || [])
+                  .filter((c: any) => cityPhones.includes(String(c.phone).replace(/\D/g, '').slice(-10)))
+                  .map((c: any) => c.id)
+              );
+            } else {
+              filteredCustomerIds = new Set();
+            }
+          } else {
+            filteredCustomerIds = new Set();
+          }
+        }
+
+        if (targetMembership === 'members' || targetMembership === 'non_members') {
+          let membershipQuery = supabaseAdmin.from('customer_memberships').select('customer_id, plan_id').eq('status', 'ACTIVE');
+
+          if (targetMembership === 'members' && targetMembershipPlans.length > 0) {
+            const { data: planRows } = await supabaseAdmin.from('membership_plans').select('id').in('code', targetMembershipPlans);
+            const planIds = (planRows || []).map((p: any) => p.id);
+            if (planIds.length > 0) {
+              membershipQuery = membershipQuery.in('plan_id', planIds);
+            }
+          }
+
+          const { data: memberships } = await membershipQuery;
+          const memberIds = new Set((memberships || []).map((m: any) => m.customer_id));
+
+          if (targetMembership === 'members') {
+            if (filteredCustomerIds !== null) {
+              filteredCustomerIds = new Set([...filteredCustomerIds].filter((id) => memberIds.has(id)));
+            } else {
+              filteredCustomerIds = memberIds;
+            }
+          } else {
+            if (filteredCustomerIds !== null) {
+              filteredCustomerIds = new Set([...filteredCustomerIds].filter((id) => !memberIds.has(id)));
+            } else {
+              const { data: allCustomers } = await supabaseAdmin.from('customers').select('id');
+              filteredCustomerIds = new Set(
+                (allCustomers || []).map((c: any) => c.id).filter((id: string) => !memberIds.has(id))
+              );
+            }
+          }
+        }
+
+        if (targetServiceCenters.length > 0) {
+          const { data: workshopRows } = await supabaseAdmin.from('workshops').select('id').in('name', targetServiceCenters);
+          const workshopIds = (workshopRows || []).map((w: any) => w.id);
+          if (workshopIds.length > 0) {
+            const { data: leads } = await supabaseAdmin.from('service_leads').select('customer_phone').in('workshop_id', workshopIds).not('customer_phone', 'is', null);
+            const scPhones = [...new Set((leads || []).map((l: any) => String(l.customer_phone).replace(/\D/g, '').slice(-10)).filter((p: string) => p.length === 10))];
+            if (scPhones.length > 0) {
+              const { data: customers } = await supabaseAdmin.from('customers').select('id, phone');
+              const scIds = new Set((customers || []).filter((c: any) => scPhones.includes(String(c.phone).replace(/\D/g, '').slice(-10))).map((c: any) => c.id));
+              filteredCustomerIds = filteredCustomerIds !== null ? new Set([...filteredCustomerIds].filter((id) => scIds.has(id))) : scIds;
+            } else {
+              filteredCustomerIds = new Set();
+            }
+          }
+        }
+
+        if (targetCarBrands.length > 0) {
+          const { data: leads } = await supabaseAdmin.from('service_leads').select('customer_phone').in('vehicle_make', targetCarBrands).not('customer_phone', 'is', null);
+          const brandPhones = [...new Set((leads || []).map((l: any) => String(l.customer_phone).replace(/\D/g, '').slice(-10)).filter((p: string) => p.length === 10))];
+          if (brandPhones.length > 0) {
+            const { data: customers } = await supabaseAdmin.from('customers').select('id, phone');
+            const brandIds = new Set((customers || []).filter((c: any) => brandPhones.includes(String(c.phone).replace(/\D/g, '').slice(-10))).map((c: any) => c.id));
+            filteredCustomerIds = filteredCustomerIds !== null ? new Set([...filteredCustomerIds].filter((id) => brandIds.has(id))) : brandIds;
+          } else {
+            filteredCustomerIds = new Set();
+          }
+        }
+
+        if (targetCustomerType === 'new' || targetCustomerType === 'returning') {
+          const { data: leadCounts } = await supabaseAdmin.from('service_leads').select('customer_phone').not('customer_phone', 'is', null);
+          const phoneBookingCount = new Map<string, number>();
+          for (const l of leadCounts || []) {
+            const p = String(l.customer_phone).replace(/\D/g, '').slice(-10);
+            if (p.length === 10) phoneBookingCount.set(p, (phoneBookingCount.get(p) || 0) + 1);
+          }
+          const { data: customers } = await supabaseAdmin.from('customers').select('id, phone');
+          const matchedIds = new Set(
+            (customers || []).filter((c: any) => {
+              const p = String(c.phone).replace(/\D/g, '').slice(-10);
+              const count = phoneBookingCount.get(p) || 0;
+              return targetCustomerType === 'new' ? count <= 1 : count > 1;
+            }).map((c: any) => c.id)
+          );
+          filteredCustomerIds = filteredCustomerIds !== null ? new Set([...filteredCustomerIds].filter((id) => matchedIds.has(id))) : matchedIds;
+        }
+
+        if (targetCouponUsers === 'used' || targetCouponUsers === 'never') {
+          let redemptionQuery = supabaseAdmin.from('coupon_redemptions').select('customer_id, coupon_id').not('customer_id', 'is', null);
+          if (targetCouponUsers === 'used' && targetCouponCodes.length > 0) {
+            const { data: couponRows } = await supabaseAdmin.from('coupons').select('id').in('code', targetCouponCodes);
+            const couponIds = (couponRows || []).map((c: any) => c.id);
+            if (couponIds.length > 0) redemptionQuery = redemptionQuery.in('coupon_id', couponIds);
+          }
+          const { data: redemptions } = await redemptionQuery;
+          const couponCustomerIds = new Set((redemptions || []).map((r: any) => r.customer_id));
+          if (targetCouponUsers === 'used') {
+            filteredCustomerIds = filteredCustomerIds !== null ? new Set([...filteredCustomerIds].filter((id) => couponCustomerIds.has(id))) : couponCustomerIds;
+          } else {
+            if (filteredCustomerIds !== null) {
+              filteredCustomerIds = new Set([...filteredCustomerIds].filter((id) => !couponCustomerIds.has(id)));
+            } else {
+              const { data: allC } = await supabaseAdmin.from('customers').select('id');
+              filteredCustomerIds = new Set((allC || []).map((c: any) => c.id).filter((id: string) => !couponCustomerIds.has(id)));
+            }
+          }
+        }
+      }
+
+      const targetIds = filteredCustomerIds ? [...filteredCustomerIds] : [];
+      if (targetIds.length === 0) {
+        return NextResponse.json({ success: true, sent: 0, message: 'No customers matched the targeting filters' });
+      }
+
+      const CHUNK = 200;
+      const allDevices: any[] = [];
+      for (let i = 0; i < targetIds.length; i += CHUNK) {
+        const chunk = targetIds.slice(i, i + CHUNK);
+        const { data } = await supabaseAdmin
+          .from('notification_devices')
+          .select('token, customer_id, device_name')
+          .eq('platform', MOBILE_PUSH_PLATFORM)
+          .eq('is_active', true)
+          .in('customer_id', chunk);
+        if (data) allDevices.push(...data);
+      }
+      deviceTargets = collectDeviceTokens(allDevices, pushDisabledCustomerIds, osFilter);
+
+    } else if (targetRole === 'ALL') {
       const { data } = await supabaseAdmin
         .from('notification_devices')
         .select('token, customer_id, device_name')
@@ -294,6 +474,9 @@ export async function POST(request: NextRequest) {
           platform: body?.platform || 'both',
           audience: body?.audience || 'all',
           os_filter: osFilter,
+          target_cities: targetCities.length > 0 ? targetCities : null,
+          target_membership: targetMembership || null,
+          target_phone_list_count: targetPhoneList.length || null,
         },
       });
       return NextResponse.json({
@@ -380,6 +563,9 @@ export async function POST(request: NextRequest) {
         audience: body?.audience || 'all',
         os_filter: osFilter,
         platform_stats: platformStats,
+        target_cities: targetCities.length > 0 ? targetCities : null,
+        target_membership: targetMembership || null,
+        target_phone_list_count: targetPhoneList.length || null,
       },
     });
 

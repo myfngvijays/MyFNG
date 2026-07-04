@@ -14,7 +14,6 @@ import {
   Apple,
   Users,
   Globe,
-  Sparkles,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -173,6 +172,7 @@ export default function PushComposeSection() {
     setDeepLink('');
     setCtaUrl('');
     setResult(null);
+    setTargetPhone('');
   };
 
   return (
@@ -184,204 +184,82 @@ export default function PushComposeSection() {
             <span className="push-badge-accent">FCM HTTP v1 · Real-time delivery</span>
           </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <label className="push-label mb-0">
-              Notification Title <span className="text-red-500">*</span>
-            </label>
-            <FieldCounter current={title.length} max={TITLE_MAX} />
+        {/* Title + Message side by side */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="push-label mb-0">Title <span className="text-red-500">*</span></label>
+              <FieldCounter current={title.length} max={TITLE_MAX} />
+            </div>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))} placeholder="e.g. Flat 30% off this weekend!" className="push-input" />
           </div>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
-            placeholder="e.g. Flat 30% off on car servicing this weekend!"
-            className="push-input"
-          />
-          <p className="push-hint mb-0">
-            Shown prominently on the user&apos;s lock screen and notification shade.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <label className="push-label mb-0">
-              Notification Message <span className="text-red-500">*</span>
-            </label>
-            <FieldCounter current={message.length} max={MESSAGE_MAX} />
-          </div>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value.slice(0, MESSAGE_MAX))}
-            placeholder="Add a short, friendly description of the offer or update…"
-            rows={3}
-            className="push-input resize-none min-h-[88px]"
-          />
-          <p className="push-hint mb-0">Keep it concise — most users only read the first line.</p>
-        </div>
-
-        <PushMediaUploadField
-          label="App Icon (Optional)"
-          hint="Small icon shown next to the notification title in the preview."
-          sizeHint="Recommended: 256×256 px (1:1 square) · PNG or WEBP · max 512 KB"
-          value={iconUrl}
-          onChange={setIconUrl}
-          kind="icon"
-          placeholder="https://cdn.myfng.in/icons/app-icon.png"
-        />
-
-        <PushMediaUploadField
-          label="Notification Image (Optional)"
-          hint="Large image shown below the notification text on Android and iOS rich notifications."
-          sizeHint="Recommended: 1024×512 px (2:1 landscape) · JPG, PNG or WEBP · max 1 MB"
-          value={imageUrl}
-          onChange={setImageUrl}
-          kind="banner"
-          placeholder="https://cdn.myfng.in/banners/offer-123.png"
-        />
-
-        <div className="grid md:grid-cols-2 gap-5">
-          <div className="space-y-2">
-            <label className="push-label mb-0 flex items-center gap-1.5">
-              <Link2 className="w-4 h-4 text-gray-400" />
-              Deep Link (Optional)
-            </label>
-            <input
-              type="text"
-              value={deepLink}
-              onChange={(e) => setDeepLink(e.target.value)}
-              placeholder="myfng://offer/123"
-              className="push-input"
-            />
-            <p className="push-hint mb-0">Opens a specific screen in the app</p>
-          </div>
-          <div className="space-y-2">
-            <label className="push-label mb-0 flex items-center gap-1.5">
-              <ExternalLink className="w-4 h-4 text-gray-400" />
-              CTA Button URL (Optional)
-            </label>
-            <input
-              type="url"
-              value={ctaUrl}
-              onChange={(e) => setCtaUrl(e.target.value)}
-              placeholder="https://myfng.in/offer/123"
-              className="push-input"
-            />
-            <p className="push-hint mb-0">Adds an &quot;Open&quot; button to the notification</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label className="push-label mb-0">Message <span className="text-red-500">*</span></label>
+              <FieldCounter current={message.length} max={MESSAGE_MAX} />
+            </div>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value.slice(0, MESSAGE_MAX))} placeholder="Short description of the offer…" rows={1} className="push-input resize-none" />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="push-label mb-0">Notification Type</label>
-          <div className="flex items-center gap-3">
-            <span
-              className={`h-2.5 w-2.5 rounded-full shrink-0 ${TYPE_DOT[notificationType] || 'bg-gray-400'}`}
-              aria-hidden
-            />
-            <select
-              value={notificationType}
-              onChange={(e) => setNotificationType(e.target.value as NotificationType)}
-              className="push-input flex-1 appearance-none cursor-pointer"
-            >
-              <option value="promotional">Promotional</option>
-              <option value="transactional">Transactional</option>
-              <option value="reminder">Reminder</option>
-              <option value="system">System</option>
-            </select>
-          </div>
-          <p className="push-hint mb-0">Used for analytics and rate limits</p>
+        {/* Icon + Image side by side */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <PushMediaUploadField label="App Icon (Optional)" hint="256×256 px · PNG/WEBP" sizeHint="max 512 KB" value={iconUrl} onChange={setIconUrl} kind="icon" placeholder="https://cdn.myfng.in/icons/app-icon.png" />
+          <PushMediaUploadField label="Notification Image (Optional)" hint="1024×512 px · JPG/PNG/WEBP" sizeHint="max 1 MB" value={imageUrl} onChange={setImageUrl} kind="banner" placeholder="https://cdn.myfng.in/banners/offer.png" />
         </div>
 
-        <div className="space-y-3">
-          <label className="push-label mb-0">Priority</label>
-          <div className="grid grid-cols-2 gap-2.5">
-            <SelectCard
-              active={priority === 'high'}
-              onClick={() => setPriority('high')}
-              icon={<Zap className="w-4 h-4" />}
-              title="High"
-              subtitle="Heads-up notification"
-            />
-            <SelectCard
-              active={priority === 'default'}
-              onClick={() => setPriority('default')}
-              icon={<Activity className="w-4 h-4" />}
-              title="Normal"
-              subtitle="Quiet inbox"
-            />
+        {/* Deep Link + CTA side by side */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="push-label mb-0 flex items-center gap-1.5"><Link2 className="w-4 h-4 text-gray-400" /> Deep Link</label>
+            <input type="text" value={deepLink} onChange={(e) => setDeepLink(e.target.value)} placeholder="myfng://offer/123" className="push-input" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="push-label mb-0 flex items-center gap-1.5"><ExternalLink className="w-4 h-4 text-gray-400" /> CTA Button URL</label>
+            <input type="url" value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="https://myfng.in/offer/123" className="push-input" />
           </div>
         </div>
 
-        <div className="space-y-3">
-          <label className="push-label mb-0">Platform</label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <SelectCard
-              active={platform === 'android'}
-              onClick={() => setPlatform('android')}
-              icon={<Smartphone className="w-4 h-4" />}
-              title="Android"
-              subtitle="FCM channel"
-            />
-            <SelectCard
-              active={platform === 'ios'}
-              onClick={() => setPlatform('ios')}
-              icon={<Apple className="w-4 h-4" />}
-              title="iOS"
-              subtitle="APNs channel"
-            />
-            <SelectCard
-              active={platform === 'both'}
-              onClick={() => setPlatform('both')}
-              icon={<Globe className="w-4 h-4" />}
-              title="Both"
-              subtitle="All platforms"
-            />
+        {/* Type + Priority in one row */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="push-label mb-0">Notification Type</label>
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TYPE_DOT[notificationType] || 'bg-gray-400'}`} />
+              <select value={notificationType} onChange={(e) => setNotificationType(e.target.value as NotificationType)} className="push-input flex-1 appearance-none cursor-pointer">
+                <option value="promotional">Promotional</option>
+                <option value="transactional">Transactional</option>
+                <option value="reminder">Reminder</option>
+                <option value="system">System</option>
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="push-label mb-0">Priority</label>
+            <div className="grid grid-cols-2 gap-2">
+              <SelectCard active={priority === 'high'} onClick={() => setPriority('high')} icon={<Zap className="w-4 h-4" />} title="High" subtitle="Heads-up" />
+              <SelectCard active={priority === 'default'} onClick={() => setPriority('default')} icon={<Activity className="w-4 h-4" />} title="Normal" subtitle="Quiet" />
+            </div>
           </div>
         </div>
 
-        <div className="space-y-3">
-          <label className="push-label mb-0">Audience</label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <SelectCard
-              active={audience === 'all'}
-              onClick={() => setAudience('all')}
-              icon={<Users className="w-4 h-4" />}
-              title="All Users"
-              subtitle="Every active device"
-            />
-            <SelectCard
-              active={audience === 'android'}
-              onClick={() => setAudience('android')}
-              icon={<Smartphone className="w-4 h-4" />}
-              title="Android Users"
-              subtitle="Android devices only"
-            />
-            <SelectCard
-              active={audience === 'ios'}
-              onClick={() => setAudience('ios')}
-              icon={<Apple className="w-4 h-4" />}
-              title="iPhone Users"
-              subtitle="iOS devices only"
-            />
+        {/* Platform + Audience in one row */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="push-label mb-0">Platform</label>
+            <div className="grid grid-cols-3 gap-2">
+              <SelectCard active={platform === 'android'} onClick={() => setPlatform('android')} icon={<Smartphone className="w-4 h-4" />} title="Android" subtitle="FCM" />
+              <SelectCard active={platform === 'ios'} onClick={() => setPlatform('ios')} icon={<Apple className="w-4 h-4" />} title="iOS" subtitle="APNs" />
+              <SelectCard active={platform === 'both'} onClick={() => setPlatform('both')} icon={<Globe className="w-4 h-4" />} title="Both" subtitle="All" />
+            </div>
           </div>
-        </div>
-
-        <div className="push-phase2-box">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="w-4 h-4 text-gray-400" />
-            <p className="text-sm font-semibold text-gray-500">Future targeting (Phase 2)</p>
-          </div>
-          <p className="text-xs text-gray-400 mb-3">
-            Granular audience segmentation will be available in a future release.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {['City', 'Service Center', 'Car Brand', 'Customer Type', 'Membership', 'Coupon Users'].map(
-              (chip) => (
-                <span key={chip} className="push-chip-disabled">
-                  {chip}
-                </span>
-              ),
-            )}
+          <div className="space-y-1.5">
+            <label className="push-label mb-0">Audience</label>
+            <div className="grid grid-cols-3 gap-2">
+              <SelectCard active={audience === 'all'} onClick={() => setAudience('all')} icon={<Users className="w-4 h-4" />} title="All" subtitle="Everyone" />
+              <SelectCard active={audience === 'android'} onClick={() => setAudience('android')} icon={<Smartphone className="w-4 h-4" />} title="Android" subtitle="Only" />
+              <SelectCard active={audience === 'ios'} onClick={() => setAudience('ios')} icon={<Apple className="w-4 h-4" />} title="iPhone" subtitle="Only" />
+            </div>
           </div>
         </div>
 

@@ -265,6 +265,12 @@ const navigationItems: NavItem[] = [
     description: 'PCMS — campaigns & automation',
   },
   {
+    name: 'App Popups',
+    href: '/dashboard/super_admin/app-popups',
+    icon: Megaphone,
+    description: 'Create & manage app popups',
+  },
+  {
     name: 'App Settings Menu',
     href: '/dashboard/super_admin/app-settings-menu',
     icon: Smartphone,

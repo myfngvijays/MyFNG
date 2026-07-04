@@ -49,6 +49,7 @@ import { getCustomerSessionToken } from '../lib/customerSession';
 import { ENV } from '../config/environment';
 import { supabase } from '../lib/supabase';
 import { WelcomeBonusCreditedModal, WelcomeBonusGuestModal } from '../components/WelcomeBonusModal';
+import DynamicPopupManager from '../components/DynamicPopupManager';
 import {
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
@@ -1179,6 +1180,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
             }
           }}
         />
+
+        <DynamicPopupManager screen="HOME" />
 
       </View>
     </SafeAreaView>

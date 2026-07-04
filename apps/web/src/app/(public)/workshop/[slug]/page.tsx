@@ -8,6 +8,7 @@ import Footer from '@/components/landing/Footer';
 import WorkshopBrandsRow from '@/components/workshop/WorkshopBrandsRow';
 import WorkshopFaqs from '@/components/workshop/WorkshopFaqs';
 import WorkshopPackages from '@/components/workshop/WorkshopPackages';
+import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import type {
   Workshop,
   WorkshopPublicPage as WorkshopPublicPageType,
@@ -214,35 +215,7 @@ export default function WorkshopPublicPage() {
     ? services
     : ['Auto Repair', 'Vehicle Repair', 'Periodic Service', 'Car Engine Repairs', 'Car Battery Repairs', 'Roadside Assistance', 'Car Garage', 'Multibrand Workshop', 'Car Service Center'];
 
-  const defaultServicesList = [
-    'AC Service & Repair',
-    'Battery Service',
-    'Brake Service',
-    'Clutch Service',
-    'Tyre & Wheel Care',
-    'Denting & Painting',
-    'Car Detailing',
-    'Engine Repair',
-    'Suspension Service',
-    'Electrical Repair',
-  ];
-  const displayServices = services.length
-    ? services.filter((s) => !s.toLowerCase().includes('basic service') && !s.toLowerCase().includes('15 points') && !s.toLowerCase().includes('30 points') && !s.toLowerCase().includes('50 points') && !s.toLowerCase().includes('60 points'))
-    : defaultServicesList;
-
-  const serviceIcons: Record<string, string> = {
-    'AC Service & Repair': 'https://img.icons8.com/ios-filled/100/0a3d91/air-conditioner.png',
-    'AC Service': 'https://img.icons8.com/ios-filled/100/0a3d91/air-conditioner.png',
-    'Battery Service': 'https://img.icons8.com/ios-filled/100/0a3d91/car-battery.png',
-    'Brake Service': 'https://img.icons8.com/ios-filled/100/0a3d91/brake-discs.png',
-    'Clutch Service': 'https://img.icons8.com/ios-filled/100/0a3d91/gears.png',
-    'Tyre & Wheel Care': 'https://img.icons8.com/ios-filled/100/0a3d91/wheel.png',
-    'Denting & Painting': 'https://img.icons8.com/ios-filled/100/0a3d91/paint-roller.png',
-    'Car Detailing': 'https://img.icons8.com/ios-filled/100/0a3d91/car-wash.png',
-    'Engine Repair': 'https://img.icons8.com/ios-filled/100/0a3d91/engine.png',
-    'Suspension Service': 'https://img.icons8.com/ios-filled/100/0a3d91/spring.png',
-    'Electrical Repair': 'https://img.icons8.com/ios-filled/100/0a3d91/lightning-bolt.png',
-  };
+  const otherServices = DEFAULT_SERVICES.filter((s) => s.slug !== 'periodic-service');
 
   const mapsEmbedUrl = page.google_maps_url
     ? page.google_maps_url.includes('/embed')
@@ -402,45 +375,41 @@ export default function WorkshopPublicPage() {
             </div>
 
             {/* Hero Right — Prime Membership Card */}
-            <div className="w-full max-w-[400px] lg:max-w-[420px] flex-shrink-0 lg:mt-10">
+            <div className="w-full max-w-[460px] lg:max-w-[480px] flex-shrink-0 lg:mt-4">
               <div className="relative rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.3)]">
-                {/* Animated color-changing border */}
                 <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-[#0a3d91] via-[#ffc107] via-[#f97316] via-[#1aa260] to-[#0a3d91] animate-[gradient-shift_4s_linear_infinite] bg-[length:300%_100%]" />
                 <div className="relative bg-white rounded-2xl overflow-hidden">
-                {/* Prime Header with color animation */}
-                <div className="px-6 py-5 animate-[header-shift_6s_ease_infinite] bg-[length:200%_100%]" style={{ backgroundImage: 'linear-gradient(90deg, #0a3d91, #1a5fc9, #2563eb, #0a3d91)' }}>
+                <div className="px-7 py-6 animate-[header-shift_6s_ease_infinite] bg-[length:200%_100%]" style={{ backgroundImage: 'linear-gradient(90deg, #0a3d91, #1a5fc9, #2563eb, #0a3d91)' }}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-white font-bold text-[18px] m-0">MyFNG Prime</h3>
-                      <p className="text-white/70 text-[12px] mt-1 mb-0">Exclusive Membership Benefits</p>
+                      <h3 className="text-white font-bold text-[22px] m-0">MyFNG Prime</h3>
+                      <p className="text-white/70 text-[14px] mt-1 mb-0">Exclusive Membership Benefits</p>
                     </div>
-                    <div className="w-10 h-10 bg-[#ffc107] rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
-                      <svg className="w-5 h-5 text-[#0a3d91]" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                    <div className="w-12 h-12 bg-[#ffc107] rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                      <svg className="w-6 h-6 text-[#0a3d91]" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                     </div>
                   </div>
                 </div>
 
-                {/* Benefits Grid */}
-                <div className="px-6 py-5">
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ 10% Off Periodic Packages</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ 5% Cashback to Wallet</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ Free Top-Up & Inspection</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ Free Car Scanning</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ Free Insurance Claim Help</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ Prime WhatsApp Group</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ Priority Slot Booking</p>
-                    <p className="text-[12px] text-[#222] leading-snug">⭐ Get Extended Warranty</p>
+                <div className="px-7 py-6">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">10% Off Periodic Packages</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">5% Cashback to Wallet</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Free Top-Up & Inspection</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Free Car Scanning</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Free Insurance Claim Help</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Prime WhatsApp Group</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Priority Slot Booking</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[14px]">⭐</span><span className="text-[14px] text-[#222]">Get Extended Warranty</span></div>
                   </div>
 
-                  {/* Price + Download Buttons */}
-                  <div className="mt-5 pt-4 border-t border-[#f1f1f1]">
-                    <div className="flex items-baseline gap-2 mb-4">
-                      <span className="text-[34px] font-extrabold text-[#0a3d91]">₹999</span>
-                      <span className="text-[16px] text-[#999] line-through">₹1,999</span>
-                      <span className="text-[12px] font-semibold text-white bg-[#1aa260] px-2.5 py-1 rounded-full">/year</span>
+                  <div className="mt-6 pt-5 border-t border-[#f1f1f1]">
+                    <div className="flex items-baseline gap-3 mb-4">
+                      <span className="text-[18px] text-[#999] line-through">₹999</span>
+                      <span className="text-[40px] font-extrabold text-[#0a3d91]">₹699</span>
+                      <span className="text-[13px] font-semibold text-white bg-[#1aa260] px-3 py-1 rounded-full">/year</span>
                     </div>
-                    <p className="text-[13px] font-medium text-[#333] mb-3">Join MyFNG Prime — Download the app now</p>
+                    <p className="text-[15px] font-medium text-[#333] mb-4">Join MyFNG Prime — Download the app now</p>
                     <div className="flex items-center gap-3">
                       <a
                         href="https://play.google.com/store/apps/details?id=com.myfng"
@@ -451,7 +420,7 @@ export default function WorkshopPublicPage() {
                         <img
                           src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
                           alt="Get it on Google Play"
-                          className="h-[42px]"
+                          className="h-[46px]"
                         />
                       </a>
                       <a
@@ -463,7 +432,7 @@ export default function WorkshopPublicPage() {
                         <img
                           src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
                           alt="Download on the App Store"
-                          className="h-[42px]"
+                          className="h-[46px]"
                         />
                       </a>
                     </div>
@@ -877,9 +846,9 @@ export default function WorkshopPublicPage() {
       </section>
 
       {/* ABOUT MyFNG */}
-      <section className="py-[60px]" style={{ background: 'linear-gradient(135deg, #f8faff, #eef3fb)' }}>
+      <section className="py-10" style={{ background: 'linear-gradient(135deg, #f8faff, #eef3fb)' }}>
         <div className="w-[90%] max-w-[1100px] mx-auto">
-          <div className="text-center mb-10">
+          <div className="text-center mb-6">
             <h2 className="text-[32px] font-extrabold">
               About <span className="text-[#0a3d91]">MyFNG</span>
             </h2>
@@ -888,7 +857,7 @@ export default function WorkshopPublicPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Left: About Text */}
             <div className="bg-white p-8 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
               <h3 className="text-[18px] font-bold text-[#0a3d91] mb-4">Who We Are</h3>
@@ -964,26 +933,128 @@ export default function WorkshopPublicPage() {
       <WorkshopPackages packages={packages} />
 
       {/* OTHER SERVICES */}
-      <section className="py-[60px] bg-[#f2f4f8]">
+      <section className="py-10 bg-[#f2f4f8]">
         <div className="w-[90%] max-w-[1100px] mx-auto">
-          <h2 className="text-center text-[26px] font-bold mb-10">Other Services</h2>
+          <h2 className="text-center text-[26px] font-bold mb-6">Other Services</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-5">
-            {displayServices.slice(0, 10).map((service) => (
+            {otherServices.map((service) => (
               <div
-                key={service}
-                className="bg-white rounded-[14px] px-5 py-10 text-center transition-all duration-300 border border-[#e9edf3] hover:-translate-y-[6px] hover:shadow-[0_15px_35px_rgba(0,0,0,0.08)] hover:border-[#0a3d91]"
+                key={service.slug}
+                className="bg-white rounded-[14px] px-5 py-7 text-center transition-all duration-300 border border-[#e9edf3] hover:-translate-y-[6px] hover:shadow-[0_15px_35px_rgba(0,0,0,0.08)] hover:border-[#0a3d91]"
               >
-                <img
-                  src={
-                    serviceIcons[service] ||
-                    'https://img.icons8.com/ios-filled/100/0a3d91/maintenance.png'
-                  }
-                  alt={service}
-                  className="w-[60px] mx-auto mb-5"
-                />
-                <p className="font-semibold text-[15px] text-[#333]">{service}</p>
+                {service.iconImage ? (
+                  <img
+                    src={service.iconImage}
+                    alt={service.title}
+                    className="w-[60px] h-[60px] mx-auto mb-5 object-contain"
+                  />
+                ) : (
+                  <div className="w-[60px] h-[60px] mx-auto mb-5 rounded-2xl bg-[#e6f0ff] flex items-center justify-center">
+                    <service.icon className="w-7 h-7 text-[#0a3d91]" />
+                  </div>
+                )}
+                <p className="font-semibold text-[15px] text-[#333]">{service.title}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ROADSIDE ASSISTANCE (RSA) */}
+      <section className="py-10" style={{ background: 'linear-gradient(135deg, #fff5f5, #fef2f2)' }}>
+        <div className="w-[90%] max-w-[1100px] mx-auto">
+          <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)] border border-red-100 overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr]">
+              {/* Left — Info */}
+              <div className="p-8 lg:p-10 flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-14 h-14 rounded-2xl bg-[#fef2f2] flex items-center justify-center">
+                    <svg className="w-8 h-8 text-[#dc2626]" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="2" y="28" width="26" height="16" rx="3" stroke="currentColor" strokeWidth="3" fill="none" />
+                      <path d="M28 28h10l8 10v6h-18v-16z" stroke="currentColor" strokeWidth="3" fill="none" strokeLinejoin="round" />
+                      <circle cx="12" cy="47" r="5" stroke="currentColor" strokeWidth="3" fill="none" />
+                      <circle cx="40" cy="47" r="5" stroke="currentColor" strokeWidth="3" fill="none" />
+                      <line x1="17" y1="47" x2="35" y2="47" stroke="currentColor" strokeWidth="3" />
+                      <path d="M2 34h-0" stroke="currentColor" strokeWidth="3" />
+                      <path d="M50 38h8a3 3 0 013 3v3h-11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                      <path d="M55 28v-6a2 2 0 00-2-2h-4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4 3" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-[22px] font-bold text-[#dc2626]">24x7 Roadside Assistance</h2>
+                    <p className="text-[13px] text-[#666]">Emergency help, anywhere anytime</p>
+                  </div>
+                </div>
+                <p className="text-[14px] text-[#444] leading-[1.8] mb-6">
+                  Stranded on the road? MyFNG RSA gets you moving again fast. Whether it&apos;s a flat tyre, dead battery, engine breakdown, or fuel emergency — our trained mechanics reach you within minutes.
+                </p>
+                <div className="grid grid-cols-2 gap-2.5 mb-6">
+                  {[
+                    'Flat Tyre Change & Repair',
+                    'Battery Jumpstart',
+                    'Emergency Towing',
+                    'Fuel Delivery',
+                    'Key Lockout Help',
+                    'On-Spot Minor Repairs',
+                  ].map((item) => (
+                    <div key={item} className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-[#dc2626] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                      <span className="text-[13px] text-[#333]">{item}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <a
+                    href="/car-roadside-assitance"
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-xl font-semibold text-[14px] no-underline transition-colors shadow-lg shadow-red-200"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                    Request RSA Now
+                  </a>
+                  {whatsappNumber && (
+                    <a
+                      href={`https://wa.me/${whatsappNumber}?text=Hi, I need roadside assistance`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-5 py-3 bg-white border-2 border-[#dc2626] text-[#dc2626] rounded-xl font-semibold text-[14px] no-underline hover:bg-[#fef2f2] transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg>
+                      WhatsApp for RSA
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Right — Stats & USPs */}
+              <div className="bg-gradient-to-br from-[#dc2626] to-[#991b1b] p-8 lg:p-10 flex flex-col justify-center text-white">
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center">
+                    <p className="text-[28px] font-extrabold">24/7</p>
+                    <p className="text-[12px] text-white/80">Available</p>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center">
+                    <p className="text-[28px] font-extrabold">30 min</p>
+                    <p className="text-[12px] text-white/80">Avg Response</p>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center">
+                    <p className="text-[28px] font-extrabold">6+</p>
+                    <p className="text-[12px] text-white/80">Cities Covered</p>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 text-center">
+                    <p className="text-[28px] font-extrabold">Free</p>
+                    <p className="text-[12px] text-white/80">For Prime Members</p>
+                  </div>
+                </div>
+                <div className="space-y-2.5">
+                  {['Trained & Verified Mechanics', 'Real-Time Tracking on WhatsApp', 'Transparent Pricing — No Hidden Charges', 'Cashless Service for Members'].map((usp) => (
+                    <div key={usp} className="flex items-center gap-2.5">
+                      <svg className="w-4 h-4 text-[#fbbf24] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                      <span className="text-[13px] font-medium">{usp}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

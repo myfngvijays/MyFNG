@@ -9,14 +9,16 @@ import {
   History,
   Flame,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import './push-admin-theme.css';
 import PushDashboardSection from './sections/DashboardSection';
 import PushFirebaseSettingsSection from './sections/FirebaseSettingsSection';
 import PushComposeSection from './sections/ComposeSection';
+import AdvancedComposeSection from './sections/AdvancedComposeSection';
 import PushHistorySection from './sections/HistorySection';
 
-type SectionId = 'dashboard' | 'firebase' | 'compose' | 'history';
+type SectionId = 'dashboard' | 'firebase' | 'compose' | 'advanced' | 'history';
 
 type AdminProfile = {
   name: string;
@@ -31,11 +33,12 @@ const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Devices & broadcast KPIs' },
   { id: 'firebase', label: 'Firebase Settings', icon: Flame, description: 'FCM credentials' },
   { id: 'compose', label: 'Send Notification', icon: Send, description: 'Compose & broadcast' },
+  { id: 'advanced', label: 'Advanced Send', icon: Sparkles, description: 'Targeted by city, membership & phone list' },
   { id: 'history', label: 'Notification History', icon: History, description: 'Delivery logs' },
 ];
 
 function sectionFromParam(value: string | null): SectionId {
-  const allowed = new Set<SectionId>(['dashboard', 'firebase', 'compose', 'history']);
+  const allowed = new Set<SectionId>(['dashboard', 'firebase', 'compose', 'advanced', 'history']);
   if (value && allowed.has(value as SectionId)) return value as SectionId;
   return 'dashboard';
 }
@@ -99,6 +102,12 @@ export default function AdvancePushApp() {
         return (
           <Suspense fallback={<div className="h-40 push-card animate-pulse" />}>
             <PushComposeSection />
+          </Suspense>
+        );
+      case 'advanced':
+        return (
+          <Suspense fallback={<div className="h-40 push-card animate-pulse" />}>
+            <AdvancedComposeSection />
           </Suspense>
         );
       case 'history':

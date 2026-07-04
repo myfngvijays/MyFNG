@@ -11,11 +11,11 @@ export default function WorkshopBrandsRow({ brands }: WorkshopBrandsRowProps) {
 
   return (
     <section
-      className="py-20 text-center overflow-hidden"
+      className="py-10 text-center overflow-hidden"
       style={{ background: 'linear-gradient(135deg, #f8faff, #eef3fb)' }}
     >
       <div className="w-[90%] max-w-[1100px] mx-auto">
-        <div className="mb-[50px]">
+        <div className="mb-6">
           <span className="inline-block bg-[#e6edff] text-[#0a3d91] px-[18px] py-2 rounded-[30px] text-[13px] font-semibold mb-[15px]">
             ✨ Brands We Serve
           </span>

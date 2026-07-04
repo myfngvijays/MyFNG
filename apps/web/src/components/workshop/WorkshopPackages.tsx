@@ -250,9 +250,9 @@ export default function WorkshopPackages({ packages }: WorkshopPackagesProps) {
 
   return (
     <>
-      <section className="py-20 bg-[#f8faff]">
+      <section className="py-10 bg-[#f8faff]">
         <div className="w-[90%] max-w-[1100px] mx-auto">
-          <div className="text-center mb-[50px]">
+          <div className="text-center mb-6">
             <h2 className="text-[32px] font-extrabold">Periodic Service Packages</h2>
             <p className="text-sm text-[#666] mt-2">
               Choose the best car service package for your vehicle
