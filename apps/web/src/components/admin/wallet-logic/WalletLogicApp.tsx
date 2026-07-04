@@ -23,9 +23,16 @@ import {
   Plus,
   Trash2,
   Layers,
+  ArrowDown,
+  Calculator,
+  TrendingUp,
+  Banknote,
+  Car,
+  BadgeCheck,
+  Info,
 } from 'lucide-react';
-import type { WalletCoreRules, WalletLogicFullSettings, WalletPlatformSettings, WalletRoadmapIdea, WalletUsageMode } from '@/lib/wallet-config';
-import { computeUsageCapFromRules, createDefaultWalletLogicSettings, formatUsageLimitLabel, resolvePlatformCoreRules } from '@/lib/wallet-config';
+import type { WalletCoreRules, WalletLogicFullSettings, WalletPlatformSettings, WalletRoadmapIdea, WalletSourceGroup, WalletSourceUsageLimits, WalletUsageMode } from '@/lib/wallet-config';
+import { computeUsageCapFromRules, createDefaultWalletLogicSettings, formatUsageLimitLabel, resolvePlatformCoreRules, WALLET_SOURCE_GROUPS, WALLET_SOURCE_LABELS } from '@/lib/wallet-config';
 import WalletLogicAdvancedSection from './WalletLogicAdvancedSection';
 
 type PlatformTab = 'global' | 'android' | 'ios' | 'advanced';
@@ -372,6 +379,678 @@ function RulesForm({
   );
 }
 
+function PerSourceLimitsSection({
+  settings,
+  onToggle,
+  onPatchSourceLimit,
+}: {
+  settings: WalletLogicFullSettings;
+  onToggle: (enabled: boolean) => void;
+  onPatchSourceLimit: (group: WalletSourceGroup, field: 'service_percent' | 'membership_percent', value: string) => void;
+}) {
+  const SOURCE_ICONS: Record<WalletSourceGroup, { accent: string; icon: React.ReactNode }> = {
+    welcome_bonus: { accent: 'bg-emerald-100 text-emerald-700', icon: <Gift className="h-4 w-4" /> },
+    referral: { accent: 'bg-blue-100 text-blue-700', icon: <Users className="h-4 w-4" /> },
+    membership_cashback: { accent: 'bg-violet-100 text-violet-700', icon: <Crown className="h-4 w-4" /> },
+    admin_credit: { accent: 'bg-sky-100 text-sky-700', icon: <BadgeCheck className="h-4 w-4" /> },
+  };
+
+  return (
+    <div className="space-y-4">
+      <Toggle
+        label="Enable per-source wallet limits"
+        hint="On = har source ka alag usage % hoga. Off = global % poore balance pe lagta hai (current behavior)"
+        checked={settings.per_source_limits_enabled}
+        onChange={onToggle}
+      />
+
+      {settings.per_source_limits_enabled ? (
+        <>
+          <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-amber-800">Per-source limits additive hain</p>
+                <p className="text-[11px] text-amber-700 mt-0.5">
+                  Har source independently apna cap lagata hai. Agar welcome 10% aur referral 20% hai, toh ₹5,000 booking pe welcome se max ₹500 + referral se max ₹1,000 = total ₹1,500 kat sakta hai (agar balance ho).
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-3 text-left font-bold text-gray-700">Source</th>
+                  <th className="px-4 py-3 text-center font-bold text-gray-700">Service Booking %</th>
+                  <th className="px-4 py-3 text-center font-bold text-gray-700">Membership %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {WALLET_SOURCE_GROUPS.map((group) => {
+                  const meta = SOURCE_ICONS[group];
+                  const limits = settings.source_limits[group];
+                  return (
+                    <tr key={group} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${meta.accent}`}>
+                            {meta.icon}
+                          </div>
+                          <span className="font-semibold text-gray-900">{WALLET_SOURCE_LABELS[group]}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={limits.service_percent}
+                            onChange={(e) => onPatchSourceLimit(group, 'service_percent', e.target.value)}
+                            className="w-20 rounded-xl border border-gray-200 bg-white px-3 py-2 text-center text-sm font-bold"
+                          />
+                          <span className="text-xs font-bold text-gray-400">%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={limits.membership_percent}
+                            onChange={(e) => onPatchSourceLimit(group, 'membership_percent', e.target.value)}
+                            className="w-20 rounded-xl border border-gray-200 bg-white px-3 py-2 text-center text-sm font-bold"
+                          />
+                          <span className="text-xs font-bold text-gray-400">%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Live example */}
+          <div className="rounded-2xl bg-gradient-to-b from-violet-50 to-white border border-violet-200 p-4">
+            <p className="text-xs font-bold text-violet-800 mb-3">Example: ₹1,000 Welcome + ₹500 Referral = ₹1,500 balance → ₹5,000 service booking</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(() => {
+                const exampleBooking = 5000;
+                const welcomeBal = 1000;
+                const referralBal = 500;
+                const wCap = Math.round(exampleBooking * (settings.source_limits.welcome_bonus.service_percent / 100));
+                const rCap = Math.round(exampleBooking * (settings.source_limits.referral.service_percent / 100));
+                const wDed = Math.min(welcomeBal, wCap);
+                const rDed = Math.min(referralBal, rCap);
+                const total = wDed + rDed;
+                return [
+                  { label: 'Welcome', bal: welcomeBal, pct: settings.source_limits.welcome_bonus.service_percent, cap: wCap, ded: wDed, accent: 'text-emerald-700' },
+                  { label: 'Referral', bal: referralBal, pct: settings.source_limits.referral.service_percent, cap: rCap, ded: rDed, accent: 'text-blue-700' },
+                ].map((row) => (
+                  <div key={row.label} className="rounded-xl bg-white border border-violet-100 px-3 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-bold ${row.accent}`}>{row.label} (₹{row.bal.toLocaleString('en-IN')})</span>
+                      <span className="text-xs text-gray-400">{row.pct}% = cap {inr(row.cap)}</span>
+                    </div>
+                    <p className="text-lg font-black text-gray-900 mt-1">
+                      {inr(row.ded)}
+                      {row.ded === row.bal ? <span className="text-[10px] text-gray-400 ml-1">(balance limit)</span> : null}
+                      {row.ded === row.cap && row.ded < row.bal ? <span className="text-[10px] text-gray-400 ml-1">(cap limit)</span> : null}
+                    </p>
+                  </div>
+                )).concat(
+                  <div key="total" className="sm:col-span-2 rounded-xl bg-violet-100 border border-violet-200 px-3 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-violet-800">Total Wallet Deduction</span>
+                      <span className="text-xs text-violet-600">Customer pays {inr(exampleBooking - total)}</span>
+                    </div>
+                    <p className="text-xl font-black text-violet-900 mt-1">{inr(total)}</p>
+                  </div>,
+                );
+              })()}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
+          Currently using global cap: <strong>{formatUsageLimitLabel(settings.global, 'SERVICE')}</strong> for service,{' '}
+          <strong>{formatUsageLimitLabel(settings.global, 'MEMBERSHIP')}</strong> for membership — applied to <em>total</em> balance regardless of source.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WalletUsageSimulator({
+  settings,
+  effectiveRules,
+}: {
+  settings: WalletLogicFullSettings;
+  effectiveRules: WalletCoreRules;
+}) {
+  const [simBalance, setSimBalance] = useState(1500);
+  const [simBooking, setSimBooking] = useState(5000);
+  const [simCoupon, setSimCoupon] = useState(0);
+  const [simChannel, setSimChannel] = useState<'SERVICE' | 'MEMBERSHIP'>('SERVICE');
+  const [simWelcome, setSimWelcome] = useState(1000);
+  const [simReferral, setSimReferral] = useState(500);
+  const [simCashback, setSimCashback] = useState(0);
+  const [simAdmin, setSimAdmin] = useState(0);
+
+  const perSourceTotal = simWelcome + simReferral + simCashback + simAdmin;
+  const effectiveBalance = settings.per_source_limits_enabled ? perSourceTotal : simBalance;
+
+  const result = useMemo(() => {
+    const payableBeforeWallet = Math.max(0, simBooking - simCoupon);
+    const bal = settings.per_source_limits_enabled ? perSourceTotal : simBalance;
+
+    if (settings.per_source_limits_enabled) {
+      const isMembership = simChannel === 'MEMBERSHIP';
+      const sources = [
+        { group: 'welcome_bonus' as const, balance: simWelcome },
+        { group: 'referral' as const, balance: simReferral },
+        { group: 'membership_cashback' as const, balance: simCashback },
+        { group: 'admin_credit' as const, balance: simAdmin },
+      ];
+      let totalDeduction = 0;
+      const breakdown: Array<{ group: string; balance: number; pct: number; cap: number; deduction: number }> = [];
+
+      for (const { group, balance } of sources) {
+        if (balance <= 0) continue;
+        const pct = isMembership ? settings.source_limits[group].membership_percent : settings.source_limits[group].service_percent;
+        const cap = Math.round(payableBeforeWallet * (pct / 100));
+        const ded = Math.round(Math.min(balance, cap));
+        totalDeduction += ded;
+        breakdown.push({ group, balance, pct, cap, deduction: ded });
+      }
+
+      if (settings.min_payable_for_wallet > 0 && payableBeforeWallet < settings.min_payable_for_wallet) {
+        totalDeduction = 0;
+      }
+      if (settings.max_absolute_deduction > 0) {
+        totalDeduction = Math.min(totalDeduction, settings.max_absolute_deduction);
+      }
+      totalDeduction = Math.min(totalDeduction, bal);
+      const finalAmount = Math.max(0, payableBeforeWallet - totalDeduction);
+
+      return {
+        payableBeforeWallet, maxFromOrder: 0, deduction: totalDeduction, finalAmount,
+        capLabel: 'per-source', limitingFactor: '', breakdown,
+      };
+    }
+
+    const maxFromOrder = Math.round(computeUsageCapFromRules(payableBeforeWallet, simChannel, effectiveRules));
+    let deduction = Math.min(bal, maxFromOrder);
+    if (settings.min_payable_for_wallet > 0 && payableBeforeWallet < settings.min_payable_for_wallet) {
+      deduction = 0;
+    }
+    if (settings.max_absolute_deduction > 0) {
+      deduction = Math.min(deduction, settings.max_absolute_deduction);
+    }
+    deduction = Math.round(deduction);
+    const finalAmount = Math.max(0, payableBeforeWallet - deduction);
+    const capPercent = simChannel === 'SERVICE' ? effectiveRules.service_usage_percent : effectiveRules.membership_usage_percent;
+    const capMode = simChannel === 'SERVICE' ? effectiveRules.service_usage_mode : effectiveRules.membership_usage_mode;
+    const capLabel = capMode === 'AMOUNT'
+      ? `₹${(simChannel === 'SERVICE' ? effectiveRules.service_usage_amount : effectiveRules.membership_usage_amount).toLocaleString('en-IN')}`
+      : `${capPercent}%`;
+    const limitingFactor =
+      deduction === 0 && payableBeforeWallet > 0 && bal > 0
+        ? settings.min_payable_for_wallet > 0 && payableBeforeWallet < settings.min_payable_for_wallet
+          ? 'Min payable not met'
+          : 'No wallet available'
+        : deduction === bal
+          ? 'Limited by wallet balance'
+          : settings.max_absolute_deduction > 0 && deduction === settings.max_absolute_deduction
+            ? 'Limited by absolute cap'
+            : deduction === maxFromOrder
+              ? `Limited by ${capLabel} cap`
+              : '';
+    return { payableBeforeWallet, maxFromOrder, deduction, finalAmount, capLabel, limitingFactor, breakdown: [] as Array<{ group: string; balance: number; pct: number; cap: number; deduction: number }> };
+  }, [simBalance, simBooking, simCoupon, simChannel, settings, effectiveRules, perSourceTotal, simWelcome, simReferral, simCashback, simAdmin]);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2">
+        {settings.per_source_limits_enabled ? (
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-gray-800 mb-2">Balance by Source (total: {inr(perSourceTotal)})</label>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {([
+                { label: 'Welcome', value: simWelcome, set: setSimWelcome, accent: 'border-emerald-200 bg-emerald-50/50' },
+                { label: 'Referral', value: simReferral, set: setSimReferral, accent: 'border-blue-200 bg-blue-50/50' },
+                { label: 'Cashback', value: simCashback, set: setSimCashback, accent: 'border-violet-200 bg-violet-50/50' },
+                { label: 'Admin', value: simAdmin, set: setSimAdmin, accent: 'border-sky-200 bg-sky-50/50' },
+              ] as const).map((src) => (
+                <div key={src.label} className={`rounded-xl border p-2.5 ${src.accent}`}>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">{src.label}</label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                    <input
+                      type="number"
+                      value={src.value}
+                      onChange={(e) => src.set(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-full rounded-lg border border-gray-200 bg-white pl-7 pr-2 py-1.5 text-sm font-semibold"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-1">Wallet Balance</label>
+            <div className="relative">
+              <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="number"
+                value={simBalance}
+                onChange={(e) => setSimBalance(Math.max(0, Number(e.target.value) || 0))}
+                className="w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 py-2.5 text-sm font-semibold"
+              />
+            </div>
+            <div className="flex gap-1.5 mt-2">
+              {[500, 1000, 1500, 2000, 5000].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setSimBalance(v)}
+                  className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${simBalance === v ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >
+                  ₹{v.toLocaleString('en-IN')}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <label className="block text-sm font-semibold text-gray-800 mb-1">Booking Amount</label>
+          <div className="relative">
+            <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="number"
+              value={simBooking}
+              onChange={(e) => setSimBooking(Math.max(0, Number(e.target.value) || 0))}
+              className="w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 py-2.5 text-sm font-semibold"
+            />
+          </div>
+          <div className="flex gap-1.5 mt-2">
+            {[2000, 5000, 10000, 15000, 20000].map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setSimBooking(v)}
+                className={`rounded-lg px-2 py-1 text-[11px] font-bold transition ${simBooking === v ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                ₹{v.toLocaleString('en-IN')}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-800 mb-1">Coupon Discount</label>
+          <div className="relative">
+            <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="number"
+              value={simCoupon}
+              onChange={(e) => setSimCoupon(Math.max(0, Number(e.target.value) || 0))}
+              className="w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 py-2.5 text-sm font-semibold"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-800 mb-1">Checkout Type</label>
+          <div className="flex gap-2">
+            {([['SERVICE', 'Service Booking'], ['MEMBERSHIP', 'Membership']] as const).map(([ch, label]) => (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => setSimChannel(ch)}
+                className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
+                  simChannel === ch
+                    ? 'bg-violet-600 text-white border-violet-600'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-violet-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Flow visualization */}
+      <div className="rounded-2xl bg-gradient-to-b from-gray-50 to-white border border-gray-200 p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <ArrowDown className="h-4 w-4 text-violet-600" />
+          <span className="text-sm font-bold text-gray-900">Deduction Flow</span>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between rounded-xl bg-white border border-gray-100 px-4 py-2.5">
+            <span className="text-sm text-gray-600">Booking Subtotal</span>
+            <span className="text-sm font-black text-gray-900">{inr(simBooking)}</span>
+          </div>
+          {simCoupon > 0 ? (
+            <div className="flex items-center justify-between rounded-xl bg-orange-50 border border-orange-100 px-4 py-2.5">
+              <span className="text-sm text-orange-700">− Coupon Discount</span>
+              <span className="text-sm font-black text-orange-700">−{inr(simCoupon)}</span>
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between rounded-xl bg-blue-50 border border-blue-100 px-4 py-2.5">
+            <span className="text-sm text-blue-700">= Payable Before Wallet</span>
+            <span className="text-sm font-black text-blue-900">{inr(result.payableBeforeWallet)}</span>
+          </div>
+          {result.breakdown.length > 0 ? (
+            <div className="space-y-1.5 rounded-xl bg-violet-50 border border-violet-200 px-4 py-2.5">
+              <span className="text-sm text-violet-700 font-semibold">− Wallet Deduction (per-source)</span>
+              {result.breakdown.map((b) => (
+                <div key={b.group} className="flex items-center justify-between text-xs rounded-lg bg-white/70 px-3 py-1.5">
+                  <span className="text-gray-600 capitalize">{b.group.replace(/_/g, ' ')} ({inr(b.balance)}) @ {b.pct}%</span>
+                  <span className="font-bold text-violet-700">−{inr(b.deduction)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between pt-1 border-t border-violet-200">
+                <span className="text-sm text-violet-700">Total wallet</span>
+                <span className="text-sm font-black text-violet-800">−{inr(result.deduction)}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-xl bg-violet-50 border border-violet-200 px-4 py-2.5">
+              <div>
+                <span className="text-sm text-violet-700">− Wallet Deduction</span>
+                <span className="text-[11px] text-violet-500 ml-2">
+                  (max {result.capLabel} of {inr(result.payableBeforeWallet)} = {inr(result.maxFromOrder)})
+                </span>
+              </div>
+              <span className="text-sm font-black text-violet-800">−{inr(result.deduction)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+            <span className="text-sm font-bold text-emerald-800">= Customer Pays</span>
+            <span className="text-lg font-black text-emerald-900">{inr(result.finalAmount)}</span>
+          </div>
+        </div>
+        {result.limitingFactor ? (
+          <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+            <Info className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="text-xs font-semibold text-amber-700">{result.limitingFactor}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Quick scenario table */}
+      <div>
+        <p className="text-sm font-bold text-gray-900 mb-3">
+          Quick Scenarios — {settings.per_source_limits_enabled ? `${inr(perSourceTotal)} total (per-source)` : `₹${simBalance.toLocaleString('en-IN')} balance`}, {simChannel === 'SERVICE' ? 'Service' : 'Membership'}
+        </p>
+        <div className="overflow-x-auto rounded-2xl border border-gray-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-4 py-2.5 font-bold text-gray-700">Booking ₹</th>
+                <th className="px-4 py-2.5 font-bold text-gray-700">Max Wallet</th>
+                <th className="px-4 py-2.5 font-bold text-gray-700">Deducted</th>
+                <th className="px-4 py-2.5 font-bold text-gray-700">Pays</th>
+                <th className="px-4 py-2.5 font-bold text-gray-700">Why</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {[1000, 2000, 3000, 5000, 8000, 10000, 15000, 20000].map((amt) => {
+                let ded = 0;
+                let cap = 0;
+                const bal = settings.per_source_limits_enabled ? perSourceTotal : simBalance;
+
+                if (settings.per_source_limits_enabled) {
+                  const isMem = simChannel === 'MEMBERSHIP';
+                  const srcBalances = [
+                    { group: 'welcome_bonus' as const, balance: simWelcome },
+                    { group: 'referral' as const, balance: simReferral },
+                    { group: 'membership_cashback' as const, balance: simCashback },
+                    { group: 'admin_credit' as const, balance: simAdmin },
+                  ];
+                  for (const { group, balance } of srcBalances) {
+                    if (balance <= 0) continue;
+                    const pct = isMem ? settings.source_limits[group].membership_percent : settings.source_limits[group].service_percent;
+                    const srcCap = Math.round(amt * (pct / 100));
+                    cap += srcCap;
+                    ded += Math.min(balance, srcCap);
+                  }
+                } else {
+                  cap = Math.round(computeUsageCapFromRules(amt, simChannel, effectiveRules));
+                  ded = Math.min(bal, cap);
+                }
+
+                if (settings.max_absolute_deduction > 0) {
+                  cap = Math.min(cap, settings.max_absolute_deduction);
+                  ded = Math.min(ded, settings.max_absolute_deduction);
+                }
+                if (settings.min_payable_for_wallet > 0 && amt < settings.min_payable_for_wallet) ded = 0;
+                ded = Math.round(ded);
+                cap = Math.round(cap);
+
+                const reason =
+                  ded === 0 ? '—'
+                    : ded === bal ? 'Balance limit'
+                    : settings.max_absolute_deduction > 0 && ded === settings.max_absolute_deduction ? 'Abs. cap'
+                    : 'Cap limit';
+                return (
+                  <tr key={amt} className="hover:bg-gray-50/50">
+                    <td className="px-4 py-2 font-semibold text-gray-900">{inr(amt)}</td>
+                    <td className="px-4 py-2 text-violet-700 font-semibold">{inr(cap)}</td>
+                    <td className="px-4 py-2 font-black text-violet-800">{inr(ded)}</td>
+                    <td className="px-4 py-2 font-bold text-emerald-700">{inr(amt - ded)}</td>
+                    <td className="px-4 py-2 text-xs text-gray-500">{reason}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WalletFundingSources({ settings }: { settings: WalletLogicFullSettings }) {
+  const welcomeEnabled = settings.global.welcome_bonus_enabled !== false;
+
+  const sources = [
+    {
+      icon: <Gift className="h-5 w-5" />,
+      accent: 'bg-emerald-100 text-emerald-700',
+      title: 'Welcome Bonus',
+      who: 'Naye user ko signup pe',
+      amount: welcomeEnabled ? inr(settings.global.welcome_bonus_amount) : 'Off',
+      expiry: welcomeEnabled ? `${settings.global.welcome_expiry_days} din` : '—',
+      autoExpire: true,
+      active: welcomeEnabled,
+    },
+    {
+      icon: <Users className="h-5 w-5" />,
+      accent: 'bg-blue-100 text-blue-700',
+      title: 'Referral Friend Bonus',
+      who: 'Friend ko jab referral code apply kare',
+      amount: inr(settings.referral_friend_bonus),
+      expiry: `${settings.referral_expiry_days} din`,
+      autoExpire: false,
+      active: true,
+    },
+    {
+      icon: <TrendingUp className="h-5 w-5" />,
+      accent: 'bg-amber-100 text-amber-700',
+      title: 'Referral Reward (1st)',
+      who: 'Referrer ko pehli referral pe',
+      amount: inr(settings.referral_first_reward),
+      expiry: `${settings.referral_expiry_days} din`,
+      autoExpire: false,
+      active: true,
+    },
+    {
+      icon: <TrendingUp className="h-5 w-5" />,
+      accent: 'bg-orange-100 text-orange-700',
+      title: 'Referral Reward (Repeat)',
+      who: 'Referrer ko har agle referral pe',
+      amount: inr(settings.referral_repeat_reward),
+      expiry: `${settings.referral_expiry_days} din`,
+      autoExpire: false,
+      active: true,
+    },
+    {
+      icon: <Crown className="h-5 w-5" />,
+      accent: 'bg-violet-100 text-violet-700',
+      title: 'Membership Cashback',
+      who: 'Prime members ko bill pay hone pe',
+      amount: `${settings.global.membership_cashback_rate_percent}% (max ${inr(settings.global.membership_cashback_max)})`,
+      expiry: 'No expiry',
+      autoExpire: false,
+      active: true,
+    },
+    {
+      icon: <BadgeCheck className="h-5 w-5" />,
+      accent: 'bg-sky-100 text-sky-700',
+      title: 'Admin Credit',
+      who: 'Admin manually ya bulk credit',
+      amount: 'Custom',
+      expiry: 'Optional',
+      autoExpire: false,
+      active: true,
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {sources.map((src) => (
+        <div
+          key={src.title}
+          className={`rounded-2xl border bg-white p-4 shadow-sm transition ${!src.active ? 'opacity-50' : ''}`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${src.accent}`}>
+              {src.icon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900">{src.title}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{src.who}</p>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-lg font-black text-gray-900">{src.amount}</p>
+              <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {src.expiry}
+                {src.autoExpire ? <span className="text-emerald-600 font-semibold ml-1">• Auto-expire</span> : null}
+              </p>
+            </div>
+            {!src.active ? (
+              <span className="text-[10px] font-bold uppercase bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Disabled</span>
+            ) : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WalletUsageRulesOverview({ settings, effectiveRules }: { settings: WalletLogicFullSettings; effectiveRules: WalletCoreRules }) {
+  const serviceLabel = formatUsageLimitLabel(effectiveRules, 'SERVICE');
+  const membershipLabel = formatUsageLimitLabel(effectiveRules, 'MEMBERSHIP');
+
+  const rules = [
+    {
+      icon: <Car className="h-4 w-4" />,
+      label: 'Service Booking',
+      cap: serviceLabel,
+      mode: effectiveRules.service_usage_mode,
+      example: `₹5,000 bill → max ${inr(Math.round(computeUsageCapFromRules(5000, 'SERVICE', effectiveRules)))} wallet`,
+    },
+    {
+      icon: <Crown className="h-4 w-4" />,
+      label: 'Membership Purchase',
+      cap: membershipLabel,
+      mode: effectiveRules.membership_usage_mode,
+      example: `₹699 plan → max ${inr(Math.round(computeUsageCapFromRules(699, 'MEMBERSHIP', effectiveRules)))} wallet`,
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {rules.map((r) => (
+          <div key={r.label} className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-8 w-8 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center">{r.icon}</div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">{r.label}</p>
+                <p className="text-[11px] text-gray-500">Mode: {r.mode}</p>
+              </div>
+            </div>
+            <p className="text-2xl font-black text-violet-800">{r.cap}</p>
+            <p className="text-xs text-gray-500 mt-1">{r.example}</p>
+          </div>
+        ))}
+      </div>
+      {settings.min_payable_for_wallet > 0 || settings.max_absolute_deduction > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {settings.min_payable_for_wallet > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-bold text-amber-800">Min Payable Required</p>
+              <p className="text-sm font-black text-amber-900 mt-1">{inr(settings.min_payable_for_wallet)}</p>
+              <p className="text-[11px] text-amber-600">Isse kam bill pe wallet nahi lagega</p>
+            </div>
+          ) : null}
+          {settings.max_absolute_deduction > 0 ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-xs font-bold text-red-800">Absolute Cap per Checkout</p>
+              <p className="text-sm font-black text-red-900 mt-1">{inr(settings.max_absolute_deduction)}</p>
+              <p className="text-[11px] text-red-600">% ke baad bhi ye max limit lagegi</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+        <p className="text-xs font-bold text-gray-700 mb-2">Discount Order (sabse pehle se last tak)</p>
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+          {[
+            { label: 'Subtotal', color: 'bg-gray-200 text-gray-800' },
+            { label: '→', color: '' },
+            { label: '− Coupon', color: 'bg-orange-100 text-orange-700' },
+            { label: '→', color: '' },
+            { label: '− Membership Bundle', color: 'bg-blue-100 text-blue-700' },
+            { label: '→', color: '' },
+            { label: '− Wallet', color: 'bg-violet-100 text-violet-700' },
+            { label: '=', color: '' },
+            { label: 'Final Amount', color: 'bg-emerald-100 text-emerald-800' },
+          ].map((step, i) =>
+            step.color ? (
+              <span key={i} className={`rounded-lg px-2 py-1 ${step.color}`}>{step.label}</span>
+            ) : (
+              <span key={i} className="text-gray-400">{step.label}</span>
+            ),
+          )}
+        </div>
+        <p className="text-[11px] text-gray-500 mt-2">Wallet sabse last mein lagta hai — coupon aur membership discount ke baad jo amount bachta hai uspe wallet % lagta hai</p>
+      </div>
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+        <div className="flex items-start gap-2">
+          <Car className="h-4 w-4 text-sky-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-bold text-sky-800">Vehicle Blocking Rule</p>
+            <p className="text-[11px] text-sky-700 mt-0.5">
+              Agar vehicle number kisi doosre customer ke account pe registered hai, toh wallet use nahi hoga — ye server enforce karta hai
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WalletLogicApp() {
   const [settings, setSettings] = useState<WalletLogicFullSettings>(cloneDefaults());
   const [tab, setTab] = useState<PlatformTab>('global');
@@ -453,7 +1132,7 @@ export default function WalletLogicApp() {
     setDirty(true);
   };
 
-  const patchExtra = (key: keyof Pick<WalletLogicFullSettings, 'referral_first_reward' | 'referral_repeat_reward' | 'min_payable_for_wallet' | 'max_absolute_deduction'>, value: string) => {
+  const patchExtra = (key: keyof Pick<WalletLogicFullSettings, 'referral_first_reward' | 'referral_repeat_reward' | 'referral_friend_bonus' | 'referral_expiry_days' | 'min_payable_for_wallet' | 'max_absolute_deduction'>, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value === '' ? '' : Number(value) }));
     setDirty(true);
   };
@@ -483,6 +1162,25 @@ export default function WalletLogicApp() {
                 : value === ''
                   ? ''
                   : Number(value),
+        },
+      },
+    }));
+    setDirty(true);
+  };
+
+  const togglePerSourceLimits = (enabled: boolean) => {
+    setSettings((prev) => ({ ...prev, per_source_limits_enabled: enabled }));
+    setDirty(true);
+  };
+
+  const patchSourceLimit = (group: WalletSourceGroup, field: 'service_percent' | 'membership_percent', value: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      source_limits: {
+        ...prev.source_limits,
+        [group]: {
+          ...prev.source_limits[group],
+          [field]: value === '' ? '' : Math.max(0, Math.min(100, Number(value) || 0)),
         },
       },
     }));
@@ -620,8 +1318,8 @@ export default function WalletLogicApp() {
               />
               <StatCard
                 label="Referral rewards"
-                value={`${inr(settings.referral_first_reward)} / ${inr(settings.referral_repeat_reward)}`}
-                sub="First / Repeat"
+                value={`${inr(settings.referral_friend_bonus)} / ${inr(settings.referral_first_reward)} / ${inr(settings.referral_repeat_reward)}`}
+                sub="Friend / 1st Referrer / Repeat"
                 accent="bg-amber-100 text-amber-700"
                 icon={<Users className="h-5 w-5" />}
               />
@@ -802,14 +1500,28 @@ export default function WalletLogicApp() {
                     </div>
                     <div className="grid gap-5 md:grid-cols-2">
                       <MoneyField
-                        label="First successful referral"
+                        label="Friend bonus (referee gets)"
+                        hint="Jab koi referral code apply kare toh friend ko instant milega"
+                        value={settings.referral_friend_bonus}
+                        onChange={(v) => patchExtra('referral_friend_bonus', v)}
+                      />
+                      <MoneyField
+                        label="First successful referral (referrer gets)"
+                        hint="Referrer ko pehli successful referral par"
                         value={settings.referral_first_reward}
                         onChange={(v) => patchExtra('referral_first_reward', v)}
                       />
                       <MoneyField
-                        label="Every next referral"
+                        label="Repeat referral reward (referrer gets)"
+                        hint="Har agle successful referral par referrer ko"
                         value={settings.referral_repeat_reward}
                         onChange={(v) => patchExtra('referral_repeat_reward', v)}
+                      />
+                      <DaysField
+                        label="Referral credit expiry"
+                        hint="Referral credits kitne din baad expire honge"
+                        value={settings.referral_expiry_days}
+                        onChange={(v) => patchExtra('referral_expiry_days', v)}
                       />
                     </div>
                   </section>
@@ -838,6 +1550,64 @@ export default function WalletLogicApp() {
                         onChange={(v) => patchExtra('max_absolute_deduction', v)}
                       />
                     </div>
+                  </section>
+
+                  {/* Per-Source Wallet Limits */}
+                  <section className="rounded-3xl border border-teal-200 bg-gradient-to-b from-teal-50/30 to-white p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center">
+                        <Layers className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold !text-gray-900">Per-Source Wallet Limits</h2>
+                        <p className="text-xs text-gray-500">Har source (welcome, referral, cashback, admin) ke liye alag usage % set karo</p>
+                      </div>
+                    </div>
+                    <PerSourceLimitsSection
+                      settings={settings}
+                      onToggle={togglePerSourceLimits}
+                      onPatchSourceLimit={patchSourceLimit}
+                    />
+                  </section>
+
+                  {/* Wallet Logic Explained */}
+                  <section className="rounded-3xl border border-indigo-200 bg-gradient-to-b from-indigo-50/50 to-white p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                        <Banknote className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold !text-gray-900">Wallet Funding Sources</h2>
+                        <p className="text-xs text-gray-500">Wallet mein paisa kahan se aata hai — saare 6 sources</p>
+                      </div>
+                    </div>
+                    <WalletFundingSources settings={settings} />
+                  </section>
+
+                  <section className="rounded-3xl border border-violet-200 bg-gradient-to-b from-violet-50/30 to-white p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center">
+                        <Percent className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold !text-gray-900">Wallet Usage Rules</h2>
+                        <p className="text-xs text-gray-500">Wallet balance kaise aur kitna use hota hai checkout pe</p>
+                      </div>
+                    </div>
+                    <WalletUsageRulesOverview settings={settings} effectiveRules={effectiveRules} />
+                  </section>
+
+                  <section className="rounded-3xl border border-emerald-200 bg-gradient-to-b from-emerald-50/30 to-white p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Calculator className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold !text-gray-900">Wallet Usage Simulator</h2>
+                        <p className="text-xs text-gray-500">Balance aur booking amount daal ke dekho — kitna wallet lagega</p>
+                      </div>
+                    </div>
+                    <WalletUsageSimulator settings={settings} effectiveRules={effectiveRules} />
                   </section>
 
                   <section className="rounded-3xl border border-dashed border-violet-200 bg-violet-50/50 p-5 sm:p-6">

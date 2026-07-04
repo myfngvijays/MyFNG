@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2 } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { filterBookingLeads, enrichBookingLead } from '@/lib/booking-lead-utils';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
@@ -140,6 +140,9 @@ export default function SuperAdminBookingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // CSV upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -330,6 +333,7 @@ export default function SuperAdminBookingsPage() {
   }, [activeTab, statusFilter]);
 
   useEffect(() => {
+    setSelectedIds(new Set());
     const timer = setTimeout(() => {
       fetchData();
     }, 250);
@@ -402,6 +406,56 @@ export default function SuperAdminBookingsPage() {
       toast.error(err?.message || 'Delete failed');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === displayedServiceLeads.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayedServiceLeads.map((l) => String(l.id)).filter(Boolean)));
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!window.confirm(`Delete ${count} selected lead${count > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    let deleted = 0;
+    let failed = 0;
+    const ids = Array.from(selectedIds);
+
+    const BATCH = 5;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const batch = ids.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map((id) => fetch(`/api/super_admin/leads/${id}`, { method: 'DELETE' }).then((r) => {
+          if (!r.ok) throw new Error('fail');
+          return id;
+        })),
+      );
+      for (const r of results) {
+        if (r.status === 'fulfilled') deleted++; else failed++;
+      }
+    }
+
+    setServiceLeads((prev) => prev.filter((l) => !selectedIds.has(String(l.id))));
+    setSelectedIds(new Set());
+    setBulkDeleting(false);
+
+    if (failed > 0) {
+      toast.error(`${deleted} deleted, ${failed} failed (may be linked to jobs/invoices)`);
+    } else {
+      toast.success(`${deleted} lead${deleted > 1 ? 's' : ''} deleted`);
     }
   };
 
@@ -553,6 +607,34 @@ export default function SuperAdminBookingsPage() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {activeTab === 'service_leads' && selectedIds.size > 0 ? (
+        <div className="sticky top-[200px] z-10 mx-4 sm:mx-6 lg:mx-8 mt-2 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 text-white px-5 py-3 shadow-lg flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <CheckSquare className="w-5 h-5" />
+            <span className="text-sm font-bold">{selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} selected</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-1.5 rounded-lg border border-white/30 text-xs font-semibold hover:bg-white/10 transition"
+            >
+              Clear Selection
+            </button>
+            <button
+              type="button"
+              disabled={bulkDeleting}
+              onClick={bulkDelete}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-white text-rose-700 text-xs font-bold hover:bg-rose-50 transition disabled:opacity-60"
+            >
+              {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} Lead${selectedIds.size > 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="px-4 sm:px-6 lg:px-8 py-5">
         {activeTab === 'upload_crm' ? (
           <div className="space-y-5">
@@ -673,6 +755,17 @@ export default function SuperAdminBookingsPage() {
                 <table className="w-full min-w-[1280px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <th className="px-3 py-3 w-10">
+                        <button type="button" onClick={toggleSelectAll} className="p-0.5 rounded hover:bg-gray-200 transition">
+                          {selectedIds.size === 0 ? (
+                            <Square className="w-4.5 h-4.5 text-gray-400" />
+                          ) : selectedIds.size === displayedServiceLeads.length ? (
+                            <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
+                          ) : (
+                            <MinusSquare className="w-4.5 h-4.5 text-blue-600" />
+                          )}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
                       <th className="px-4 py-3 whitespace-nowrap">Source</th>
                       <th className="px-4 py-3 whitespace-nowrap">Customer</th>
@@ -690,12 +783,29 @@ export default function SuperAdminBookingsPage() {
                   <tbody>
                     {displayedServiceLeads.map((lead) => {
                       const serviceLabel = getServiceLabel(lead);
+                      const leadId = String(lead.id || '');
+                      const isSelected = leadId ? selectedIds.has(leadId) : false;
                       return (
                       <tr
                         key={String(lead.id || `${lead.lead_number}-${lead.created_at}`)}
                         onClick={() => openDetail('Service Lead Details', lead)}
-                        className="border-b border-gray-100 hover:bg-blue-50/50 cursor-pointer transition"
+                        className={`border-b border-gray-100 cursor-pointer transition ${isSelected ? 'bg-blue-50 hover:bg-blue-100/60' : 'hover:bg-blue-50/50'}`}
                       >
+                        <td className="px-3 py-3 w-10">
+                          {leadId ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleSelect(leadId); }}
+                              className="p-0.5 rounded hover:bg-gray-200 transition"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
+                              ) : (
+                                <Square className="w-4.5 h-4.5 text-gray-400" />
+                              )}
+                            </button>
+                          ) : null}
+                        </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           <SourceBadge label={lead.booking_source_label || 'Website'} source={lead.booking_source || 'WEBSITE'} />
@@ -793,11 +903,30 @@ export default function SuperAdminBookingsPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 lg:hidden">
-              {activeData.map((item) => (
+              {activeData.map((item) => {
+                const itemId = String(item.id || '');
+                const isItemSelected = activeTab === 'service_leads' && itemId ? selectedIds.has(itemId) : false;
+                return (
                 <div
                   key={String(item.id || `${item.session_id || item.lead_number}-${item.created_at}`)}
-                  className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+                  className={`bg-white border rounded-xl p-4 shadow-sm ${isItemSelected ? 'border-blue-400 bg-blue-50/30' : 'border-gray-200'}`}
                 >
+                  {activeTab === 'service_leads' && itemId ? (
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(itemId)}
+                        className="p-0.5 rounded"
+                      >
+                        {isItemSelected ? (
+                          <CheckSquare className="w-5 h-5 text-blue-600" />
+                        ) : (
+                          <Square className="w-5 h-5 text-gray-400" />
+                        )}
+                      </button>
+                      <span className="text-xs text-gray-500">Select</span>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() =>
@@ -874,7 +1003,7 @@ export default function SuperAdminBookingsPage() {
                     </div>
                   ) : null}
                 </div>
-              ))}
+              );})}
             </div>
           </>
         )}

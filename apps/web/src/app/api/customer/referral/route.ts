@@ -33,7 +33,7 @@ export async function GET() {
 
   const { data: events } = await supabaseAdmin
     .from('referral_events')
-    .select('*')
+    .select('*, referee:referee_customer_id(id, full_name, phone)')
     .eq('referrer_customer_id', customer.id)
     .order('created_at', { ascending: false });
 
@@ -43,10 +43,30 @@ export async function GET() {
     .eq('customer_id', customer.id)
     .order('created_at', { ascending: false });
 
+  const { count: totalReferred } = await supabaseAdmin
+    .from('referral_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('referrer_customer_id', customer.id);
+
+  const { count: totalRewarded } = await supabaseAdmin
+    .from('referral_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('referrer_customer_id', customer.id)
+    .eq('status', 'REWARDED');
+
+  const totalEarned = (rewards || [])
+    .filter((r: any) => r.status === 'CREDITED')
+    .reduce((sum: number, r: any) => sum + Number(r.reward_amount || 0), 0);
+
   return NextResponse.json({
     code: codeRow,
     events: events || [],
     rewards: rewards || [],
+    stats: {
+      total_referred: totalReferred || 0,
+      total_rewarded: totalRewarded || 0,
+      total_earned: totalEarned,
+    },
   });
 }
 

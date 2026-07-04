@@ -15,6 +15,13 @@ export type WalletServiceOverride = {
   membership_cashback_max: number;
 };
 
+export type WalletSourceUsageLimits = {
+  welcome_bonus: { service_percent: number; membership_percent: number };
+  referral: { service_percent: number; membership_percent: number };
+  membership_cashback: { service_percent: number; membership_percent: number };
+  admin_credit: { service_percent: number; membership_percent: number };
+};
+
 export type WalletRules = {
   wallet_enabled: boolean;
   service_usage_mode: WalletUsageMode;
@@ -33,6 +40,8 @@ export type WalletRules = {
   max_absolute_deduction: number;
   advanced_enabled: boolean;
   service_overrides: WalletServiceOverride[];
+  per_source_limits_enabled: boolean;
+  source_limits: WalletSourceUsageLimits | null;
 };
 
 export type WalletServiceLine = {
@@ -58,6 +67,8 @@ const DEFAULT_WALLET_RULES: WalletRules = {
   max_absolute_deduction: 0,
   advanced_enabled: false,
   service_overrides: [],
+  per_source_limits_enabled: false,
+  source_limits: null,
 };
 
 let rulesCache: WalletRules = { ...DEFAULT_WALLET_RULES };
@@ -180,6 +191,8 @@ export async function loadWalletRules(apiUrl: string = ENV.API_URL): Promise<Wal
       referral_repeat_reward: numOrDefault(json.referral_repeat_reward, DEFAULT_WALLET_RULES.referral_repeat_reward),
       min_payable_for_wallet: numOrDefault(json.min_payable_for_wallet, DEFAULT_WALLET_RULES.min_payable_for_wallet),
       max_absolute_deduction: numOrDefault(json.max_absolute_deduction, DEFAULT_WALLET_RULES.max_absolute_deduction),
+      per_source_limits_enabled: Boolean(json.per_source_limits_enabled),
+      source_limits: json.source_limits && typeof json.source_limits === 'object' ? json.source_limits : null,
       advanced_enabled: Boolean(json.advanced_enabled),
       service_overrides: Array.isArray(json.service_overrides)
         ? json.service_overrides.map((row: any) => ({

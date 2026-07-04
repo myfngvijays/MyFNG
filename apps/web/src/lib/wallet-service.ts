@@ -4,9 +4,12 @@ import {
   getWalletLogicSettings,
   parseWalletPlatform,
   resolveServiceWalletConfig,
+  WALLET_SOURCE_GROUPS,
   type WalletLogicFullSettings,
   type WalletPlatform,
   type WalletRuntimeConfig,
+  type WalletSourceGroup,
+  type WalletSourceUsageLimits,
 } from './wallet-config';
 
 /** @deprecated Use getWalletConfig() — kept for backwards compatibility */
@@ -233,6 +236,111 @@ export async function calculateMaxWalletUsage(
 ): Promise<number> {
   const config = await getWalletConfig(supabaseAdmin, platform);
   return calculateMaxWalletUsageWithConfig(payableAmount, spendableBalance, channel, config);
+}
+
+export type WalletBalanceBySource = {
+  welcome_bonus: number;
+  referral: number;
+  membership_cashback: number;
+  admin_credit: number;
+  other: number;
+  total: number;
+};
+
+function mapCreditSourceToGroup(source: string): WalletSourceGroup | 'other' {
+  switch (source.toUpperCase()) {
+    case 'WELCOME_BONUS': return 'welcome_bonus';
+    case 'REFERRAL':
+    case 'REFERRAL_BONUS': return 'referral';
+    case 'MEMBERSHIP_CASHBACK': return 'membership_cashback';
+    case 'ADMIN_CREDIT': return 'admin_credit';
+    default: return 'other';
+  }
+}
+
+export async function getWalletBalanceBySource(
+  supabaseAdmin: any,
+  customerId: string,
+): Promise<WalletBalanceBySource> {
+  const { data: txs } = await supabaseAdmin
+    .from('wallet_transactions')
+    .select('transaction_type, source, amount')
+    .eq('customer_id', customerId);
+
+  const sourceCredits: Record<string, number> = {
+    welcome_bonus: 0, referral: 0, membership_cashback: 0, admin_credit: 0, other: 0,
+  };
+  let totalDebits = 0;
+
+  for (const tx of txs || []) {
+    const type = String(tx.transaction_type || '').toUpperCase();
+    const source = String(tx.source || '');
+    const amount = Number(tx.amount || 0);
+    if (amount <= 0) continue;
+
+    if (type === 'CREDIT') {
+      sourceCredits[mapCreditSourceToGroup(source)] += amount;
+    } else if (type === 'EXPIRE') {
+      const group = mapCreditSourceToGroup(source);
+      sourceCredits[group] = Math.max(0, sourceCredits[group] - amount);
+    } else if (type === 'DEBIT') {
+      totalDebits += amount;
+    }
+  }
+
+  const totalNetCredits = Object.values(sourceCredits).reduce((s, v) => s + v, 0);
+
+  const result: WalletBalanceBySource = {
+    welcome_bonus: 0, referral: 0, membership_cashback: 0, admin_credit: 0, other: 0, total: 0,
+  };
+
+  if (totalNetCredits > 0 && totalNetCredits > totalDebits) {
+    for (const group of [...WALLET_SOURCE_GROUPS, 'other' as const]) {
+      const share = sourceCredits[group] / totalNetCredits;
+      const allocatedDebit = totalDebits * share;
+      result[group] = roundMoney(Math.max(0, sourceCredits[group] - allocatedDebit));
+    }
+  }
+
+  result.total = roundMoney(
+    result.welcome_bonus + result.referral + result.membership_cashback + result.admin_credit + result.other,
+  );
+  return result;
+}
+
+export function calculateMaxWalletUsagePerSource(
+  payableAmount: number,
+  balanceBySource: WalletBalanceBySource,
+  channel: WalletChannel,
+  sourceLimits: WalletSourceUsageLimits,
+  config: WalletRuntimeConfig,
+): number {
+  if (!config.WALLET_ENABLED || payableAmount <= 0 || balanceBySource.total <= 0) return 0;
+  if (config.MIN_PAYABLE_FOR_WALLET > 0 && payableAmount < config.MIN_PAYABLE_FOR_WALLET) return 0;
+
+  const isMembership = channel === 'MEMBERSHIP';
+  let totalDeduction = 0;
+
+  for (const group of WALLET_SOURCE_GROUPS) {
+    const sourceBalance = balanceBySource[group];
+    if (sourceBalance <= 0) continue;
+    const pct = isMembership ? sourceLimits[group].membership_percent : sourceLimits[group].service_percent;
+    const cap = roundMoney(payableAmount * (pct / 100));
+    totalDeduction += roundMoney(Math.min(sourceBalance, cap));
+  }
+
+  if (balanceBySource.other > 0) {
+    const globalCap = computeCapFromConfig(payableAmount, channel, config);
+    totalDeduction += roundMoney(Math.min(balanceBySource.other, globalCap));
+  }
+
+  totalDeduction = roundMoney(Math.min(totalDeduction, balanceBySource.total));
+
+  if (config.MAX_ABSOLUTE_DEDUCTION > 0) {
+    totalDeduction = roundMoney(Math.min(totalDeduction, config.MAX_ABSOLUTE_DEDUCTION));
+  }
+
+  return totalDeduction;
 }
 
 export async function ensureWalletAccountFull(supabaseAdmin: any, customerId: string): Promise<WalletAccount> {
@@ -551,7 +659,18 @@ export async function resolveWalletDeduction(
   }
 
   let deduction = 0;
-  if (channel === 'SERVICE' && serviceLines?.length) {
+
+  if (settings.per_source_limits_enabled) {
+    const balanceBySource = await getWalletBalanceBySource(supabaseAdmin, customerId);
+    deduction = calculateMaxWalletUsagePerSource(
+      payableAmount,
+      balanceBySource,
+      channel,
+      settings.source_limits,
+      config,
+    );
+    deduction = roundMoney(Math.min(deduction, summary.spendable_balance));
+  } else if (channel === 'SERVICE' && serviceLines?.length) {
     deduction = calculateWalletDeductionForServiceLines(
       serviceLines,
       summary.spendable_balance,

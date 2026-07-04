@@ -94,6 +94,23 @@ export type WalletServiceOverride = {
   membership_cashback_max: number;
 };
 
+export type WalletSourceUsageLimits = {
+  welcome_bonus: { service_percent: number; membership_percent: number };
+  referral: { service_percent: number; membership_percent: number };
+  membership_cashback: { service_percent: number; membership_percent: number };
+  admin_credit: { service_percent: number; membership_percent: number };
+};
+
+export const WALLET_SOURCE_GROUPS = ['welcome_bonus', 'referral', 'membership_cashback', 'admin_credit'] as const;
+export type WalletSourceGroup = (typeof WALLET_SOURCE_GROUPS)[number];
+
+export const WALLET_SOURCE_LABELS: Record<WalletSourceGroup, string> = {
+  welcome_bonus: 'Welcome Bonus',
+  referral: 'Referral (Friend + Referrer)',
+  membership_cashback: 'Membership Cashback',
+  admin_credit: 'Admin Credit',
+};
+
 export type WalletLogicFullSettings = {
   global: WalletCoreRules;
   android: WalletPlatformSettings;
@@ -107,6 +124,8 @@ export type WalletLogicFullSettings = {
   roadmap_ideas: WalletRoadmapIdea[];
   advanced_enabled: boolean;
   service_overrides: WalletServiceOverride[];
+  per_source_limits_enabled: boolean;
+  source_limits: WalletSourceUsageLimits;
 };
 
 const GLOBAL_KEYS = {
@@ -166,6 +185,15 @@ const DEFAULT_CORE_RULES: WalletCoreRules = {
 const ROADMAP_KEY = 'wallet_roadmap_ideas';
 const SERVICE_OVERRIDES_KEY = 'wallet_service_overrides';
 const ADVANCED_ENABLED_KEY = 'wallet_advanced_enabled';
+const PER_SOURCE_LIMITS_ENABLED_KEY = 'wallet_per_source_limits_enabled';
+const SOURCE_LIMITS_KEY = 'wallet_source_limits';
+
+const DEFAULT_SOURCE_LIMITS: WalletSourceUsageLimits = {
+  welcome_bonus: { service_percent: 10, membership_percent: 30 },
+  referral: { service_percent: 10, membership_percent: 30 },
+  membership_cashback: { service_percent: 10, membership_percent: 30 },
+  admin_credit: { service_percent: 10, membership_percent: 30 },
+};
 
 export const DEFAULT_WALLET_ROADMAP: WalletRoadmapIdea[] = [
   { id: 'default-1', title: 'Festival bonus campaigns', desc: 'Time-bound extra wallet credits (Diwali, New Year)', status: 'planned' },
@@ -188,6 +216,8 @@ const DEFAULT_FULL_SETTINGS: WalletLogicFullSettings = {
   roadmap_ideas: DEFAULT_WALLET_ROADMAP.map((item) => ({ ...item })),
   advanced_enabled: false,
   service_overrides: [],
+  per_source_limits_enabled: false,
+  source_limits: JSON.parse(JSON.stringify(DEFAULT_SOURCE_LIMITS)),
 };
 
 let cached: { config: WalletRuntimeConfig; at: number; platform: WalletPlatform } | null = null;
@@ -384,7 +414,28 @@ function allSettingKeys(): string[] {
     ROADMAP_KEY,
     SERVICE_OVERRIDES_KEY,
     ADVANCED_ENABLED_KEY,
+    PER_SOURCE_LIMITS_ENABLED_KEY,
+    SOURCE_LIMITS_KEY,
   ];
+}
+
+export function parseSourceLimits(raw: unknown): WalletSourceUsageLimits {
+  const fallback = JSON.parse(JSON.stringify(DEFAULT_SOURCE_LIMITS)) as WalletSourceUsageLimits;
+  let obj: any = raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try { obj = JSON.parse(raw); } catch { return fallback; }
+  }
+  if (!obj || typeof obj !== 'object') return fallback;
+
+  for (const group of WALLET_SOURCE_GROUPS) {
+    if (obj[group] && typeof obj[group] === 'object') {
+      fallback[group] = {
+        service_percent: toNumber(obj[group].service_percent, DEFAULT_SOURCE_LIMITS[group].service_percent),
+        membership_percent: toNumber(obj[group].membership_percent, DEFAULT_SOURCE_LIMITS[group].membership_percent),
+      };
+    }
+  }
+  return fallback;
 }
 
 export function parseServiceOverrides(raw: unknown): WalletServiceOverride[] {
@@ -494,6 +545,8 @@ export async function getWalletLogicSettings(supabaseAdmin?: any): Promise<Walle
     roadmap_ideas: parseRoadmapIdeas(map.get(ROADMAP_KEY)),
     advanced_enabled: toBool(map.get(ADVANCED_ENABLED_KEY), false),
     service_overrides: parseServiceOverrides(map.get(SERVICE_OVERRIDES_KEY)),
+    per_source_limits_enabled: toBool(map.get(PER_SOURCE_LIMITS_ENABLED_KEY), false),
+    source_limits: parseSourceLimits(map.get(SOURCE_LIMITS_KEY)),
   };
 }
 
@@ -595,6 +648,19 @@ export function validateWalletLogicFullSettings(input: Partial<WalletLogicFullSe
 
   for (const idea of input.roadmap_ideas || []) {
     if (!String(idea.title || '').trim()) return 'Each roadmap idea needs a title';
+  }
+
+  if (input.per_source_limits_enabled && input.source_limits) {
+    for (const group of WALLET_SOURCE_GROUPS) {
+      const limits = input.source_limits[group];
+      if (!limits) return `${WALLET_SOURCE_LABELS[group]}: source limits missing`;
+      if (limits.service_percent < 0 || limits.service_percent > 100) {
+        return `${WALLET_SOURCE_LABELS[group]}: service % must be 0–100`;
+      }
+      if (limits.membership_percent < 0 || limits.membership_percent > 100) {
+        return `${WALLET_SOURCE_LABELS[group]}: membership % must be 0–100`;
+      }
+    }
   }
 
   const seenServiceIds = new Set<string>();
@@ -713,6 +779,22 @@ export async function saveWalletLogicSettings(
     updatedBy,
   );
 
+  await upsertSetting(
+    supabaseAdmin,
+    PER_SOURCE_LIMITS_ENABLED_KEY,
+    String(Boolean(payload.per_source_limits_enabled)),
+    'BOOLEAN',
+    updatedBy,
+  );
+
+  await upsertSetting(
+    supabaseAdmin,
+    SOURCE_LIMITS_KEY,
+    JSON.stringify(payload.source_limits || DEFAULT_SOURCE_LIMITS),
+    'JSON',
+    updatedBy,
+  );
+
   clearWalletConfigCache();
   return payload;
 }
@@ -756,5 +838,9 @@ export function walletRulesToPublicPayload(
     service_overrides: settings?.advanced_enabled
       ? (settings.service_overrides || []).filter((row) => row.active)
       : [],
+    per_source_limits_enabled: Boolean(settings?.per_source_limits_enabled),
+    source_limits: settings?.per_source_limits_enabled
+      ? settings.source_limits || DEFAULT_SOURCE_LIMITS
+      : null,
   };
 }
