@@ -81,6 +81,17 @@ export default function WorkshopPublicPage() {
   const [fallbackBrands, setFallbackBrands] = useState<{ name: string; logo_url: string }[]>([]);
   const [showTimingDropdown, setShowTimingDropdown] = useState(false);
   const timingRef = useRef<HTMLDivElement>(null);
+  const [companyStats, setCompanyStats] = useState({
+    cars_serviced: '1 Million+',
+    happy_customers: '25 Lacs+',
+    avg_rating: '4.8',
+    touch_points: '1000+',
+    verified_workshops: '100+',
+    cities_covered: '6+',
+    about_description: "Mumbai & Pune's Trusted Multi-Brand Car Service Network — 100+ verified workshops, AI-powered booking, and transparent service for every car owner.",
+    who_we_are_1: 'MyFNG (My Friendly Neighbourhood Garage) is a network of 100+ A-Grade multi-brand car servicing workshops across Mumbai, Navi Mumbai, Thane, Palghar, Nashik, and Pune.',
+    who_we_are_2: 'We connect car owners with professional technicians, advanced diagnostic tools, and transparent pricing — so you never overpay or worry about your car\'s health again.',
+  });
 
   useEffect(() => {
     if (slug) fetchWorkshopPage();
@@ -88,7 +99,17 @@ export default function WorkshopPublicPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') setQrValue(window.location.href);
+    fetchCompanyStats();
   }, []);
+
+  const fetchCompanyStats = async () => {
+    try {
+      const res = await fetch('/api/public/company-stats');
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json?.stats) setCompanyStats((prev) => ({ ...prev, ...json.stats }));
+    } catch {}
+  };
 
   useEffect(() => {
     if (!page || (Array.isArray(page.brands) && page.brands.length > 0)) return;
@@ -211,22 +232,18 @@ export default function WorkshopPublicPage() {
   const roundedAuditScore = displayRating ? Math.round(displayRating) : 0;
   const fullAddress = [workshop.address, workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ');
 
+  const periodicTagKeywords = ['basic service', 'periodic', '15 points', '30 points', '50 points', '60 points', '15-point', '30-point', '50-point', '60-point'];
   const serviceTags = services.length
-    ? services
-    : ['Auto Repair', 'Vehicle Repair', 'Periodic Service', 'Car Engine Repairs', 'Car Battery Repairs', 'Roadside Assistance', 'Car Garage', 'Multibrand Workshop', 'Car Service Center'];
+    ? services.filter((s) => !periodicTagKeywords.some((k) => s.toLowerCase().includes(k)))
+    : ['Auto Repair', 'Car Engine Repairs', 'Car AC Service', 'Car Battery Service', 'Car Brake Service', 'Roadside Assistance', 'Car Garage', 'Multibrand Workshop', 'Car Service Center'];
 
   const otherServices = DEFAULT_SERVICES.filter((s) => s.slug !== 'periodic-service');
 
-  const mapsEmbedUrl = page.google_maps_url
-    ? page.google_maps_url.includes('/embed')
-      ? page.google_maps_url
-      : null
-    : null;
+  const mapsEmbedUrl = (page as any).map_embed_url
+    || (page.google_maps_url?.includes('/embed') ? page.google_maps_url : null);
 
-  const directionsUrl = page.google_maps_url
-    ? page.google_maps_url.includes('/embed')
-      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(workshop.name || '')}`
-      : page.google_maps_url
+  const directionsUrl = page.google_maps_url && !page.google_maps_url.includes('/embed')
+    ? page.google_maps_url
     : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress)}`;
 
   return (
@@ -519,14 +536,14 @@ export default function WorkshopPublicPage() {
                   <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-[#e6f0ff] flex items-center justify-center">
                     <svg className="w-5 h-5 text-[#0a3d91]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
                   </div>
-                  <h3 className="text-[#0a3d91] text-[18px] font-bold">1 Million+</h3>
+                  <h3 className="text-[#0a3d91] text-[18px] font-bold">{companyStats.cars_serviced}</h3>
                   <p className="text-[12px] text-[#666]">Cars Serviced</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl border border-[#e8ecf4] shadow-[0_2px_12px_rgba(0,0,0,0.04)] text-center">
                   <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-[#fff4e5] flex items-center justify-center">
                     <svg className="w-5 h-5 text-[#f97316]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                   </div>
-                  <h3 className="text-[#0a3d91] text-[18px] font-bold">25 Lacs+</h3>
+                  <h3 className="text-[#0a3d91] text-[18px] font-bold">{companyStats.happy_customers}</h3>
                   <p className="text-[12px] text-[#666]">Happy Customers</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl border border-[#e8ecf4] shadow-[0_2px_12px_rgba(0,0,0,0.04)] text-center">
@@ -540,7 +557,7 @@ export default function WorkshopPublicPage() {
                   <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-[#fef3f2] flex items-center justify-center">
                     <svg className="w-5 h-5 text-[#ef4444]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                   </div>
-                  <h3 className="text-[#0a3d91] text-[18px] font-bold">1000+</h3>
+                  <h3 className="text-[#0a3d91] text-[18px] font-bold">{companyStats.touch_points}</h3>
                   <p className="text-[12px] text-[#666]">Touch Points</p>
                 </div>
               </div>
@@ -655,16 +672,15 @@ export default function WorkshopPublicPage() {
 
               {/* About Section Card — Redesigned */}
               <div className="bg-white p-6 rounded-2xl border border-[#e8ecf4] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
-                <h3 className="font-bold text-[16px] mb-3">About This Business</h3>
+                <h3 className="font-bold text-[16px] mb-3">About {workshop.name || 'This Business'}</h3>
                 {page.full_description ? (
                   <div className="text-[14px] leading-[1.8] text-[#444] whitespace-pre-line mb-5">
                     {page.full_description.replace(/^[\s]*[-–—]/gm, '•').replace(/\n[-–—]\s*/g, '\n• ')}
                   </div>
                 ) : (
                   <p className="text-[14px] leading-[1.8] text-[#444] mb-5">
-                    At MY FNG, our focus is on delivering car care that not only meets but exceeds
-                    your expectations. We are a leading multi-brand car garage in{' '}
-                    {workshop.city || 'your city'}, connecting car owners with professional
+                    Welcome to {workshop.name || 'our workshop'}, your trusted automotive service partner in{' '}
+                    {workshop.city || 'your city'}. We are a leading multi-brand car garage connecting car owners with professional
                     technicians and advanced diagnostic systems.
                   </p>
                 )}
@@ -853,7 +869,7 @@ export default function WorkshopPublicPage() {
               About <span className="text-[#0a3d91]">MyFNG</span>
             </h2>
             <p className="mt-2 text-[15px] text-[#666] max-w-[700px] mx-auto">
-              Mumbai & Pune&apos;s Trusted Multi-Brand Car Service Network — 100+ verified workshops, AI-powered booking, and transparent service for every car owner.
+              {companyStats.about_description}
             </p>
           </div>
 
@@ -862,10 +878,10 @@ export default function WorkshopPublicPage() {
             <div className="bg-white p-8 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
               <h3 className="text-[18px] font-bold text-[#0a3d91] mb-4">Who We Are</h3>
               <p className="text-[14px] text-[#444] leading-[1.8] mb-4">
-                MyFNG (My Friendly Neighbourhood Garage) is a network of 100+ A-Grade multi-brand car servicing workshops across Mumbai, Navi Mumbai, Thane, Palghar, Nashik, and Pune.
+                {companyStats.who_we_are_1}
               </p>
               <p className="text-[14px] text-[#444] leading-[1.8]">
-                We connect car owners with professional technicians, advanced diagnostic tools, and transparent pricing — so you never overpay or worry about your car&apos;s health again.
+                {companyStats.who_we_are_2}
               </p>
             </div>
 
@@ -874,19 +890,19 @@ export default function WorkshopPublicPage() {
               <h3 className="text-[18px] font-bold text-[#0a3d91] mb-4">By The Numbers</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-[#f8fafc] p-4 rounded-xl text-center">
-                  <p className="text-[22px] font-extrabold text-[#0a3d91]">100+</p>
+                  <p className="text-[22px] font-extrabold text-[#0a3d91]">{companyStats.verified_workshops}</p>
                   <p className="text-[12px] text-[#666]">Verified Workshops</p>
                 </div>
                 <div className="bg-[#f8fafc] p-4 rounded-xl text-center">
-                  <p className="text-[22px] font-extrabold text-[#0a3d91]">1 Million+</p>
+                  <p className="text-[22px] font-extrabold text-[#0a3d91]">{companyStats.cars_serviced}</p>
                   <p className="text-[12px] text-[#666]">Cars Serviced</p>
                 </div>
                 <div className="bg-[#f8fafc] p-4 rounded-xl text-center">
-                  <p className="text-[22px] font-extrabold text-[#0a3d91]">6+</p>
+                  <p className="text-[22px] font-extrabold text-[#0a3d91]">{companyStats.cities_covered}</p>
                   <p className="text-[12px] text-[#666]">Cities Covered</p>
                 </div>
                 <div className="bg-[#f8fafc] p-4 rounded-xl text-center">
-                  <p className="text-[22px] font-extrabold text-[#0a3d91]">4.8★</p>
+                  <p className="text-[22px] font-extrabold text-[#0a3d91]">{companyStats.avg_rating}★</p>
                   <p className="text-[12px] text-[#666]">Average Rating</p>
                 </div>
               </div>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter } from 'next/navigation';
-import { Globe, Search, Plus, Edit2, Eye, ExternalLink, Image as ImageIcon, CheckCircle, XCircle, Star, Upload, X, MapPin, RefreshCw, PlugZap } from 'lucide-react';
+import { Globe, Search, Plus, Edit2, Eye, ExternalLink, Image as ImageIcon, CheckCircle, XCircle, Star, Upload, X, MapPin, RefreshCw, PlugZap, BarChart3, ChevronDown, ChevronUp, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { GmbData } from '@/components/workshop/types';
 
@@ -56,6 +56,7 @@ export default function WorkshopPublicPagesPage() {
     instagram_url: '',
     youtube_url: '',
     google_maps_url: '',
+    map_embed_url: '',
     gallery_images: [] as string[],
     meta_title: '',
     meta_description: '',
@@ -86,6 +87,19 @@ export default function WorkshopPublicPagesPage() {
   const [selectedGbpLocation, setSelectedGbpLocation] = useState('');
   const [syncingAll, setSyncingAll] = useState(false);
   const initializedRef = useRef(false);
+  const [showCompanyStats, setShowCompanyStats] = useState(false);
+  const [companyStats, setCompanyStats] = useState({
+    cars_serviced: '1 Million+',
+    happy_customers: '25 Lacs+',
+    avg_rating: '4.8',
+    touch_points: '1000+',
+    verified_workshops: '100+',
+    cities_covered: '6+',
+    about_description: "Mumbai & Pune's Trusted Multi-Brand Car Service Network — 100+ verified workshops, AI-powered booking, and transparent service for every car owner.",
+    who_we_are_1: 'MyFNG (My Friendly Neighbourhood Garage) is a network of 100+ A-Grade multi-brand car servicing workshops across Mumbai, Navi Mumbai, Thane, Palghar, Nashik, and Pune.',
+    who_we_are_2: 'We connect car owners with professional technicians, advanced diagnostic tools, and transparent pricing — so you never overpay or worry about your car\'s health again.',
+  });
+  const [savingStats, setSavingStats] = useState(false);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -94,7 +108,40 @@ export default function WorkshopPublicPagesPage() {
     fetchWorkshops();
     fetchGoogleBusinessStatus();
     checkGoogleBusinessConnectToast();
+    fetchCompanyStats();
   }, []);
+
+  const fetchCompanyStats = async () => {
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'company_stats')
+        .maybeSingle();
+      if (data?.setting_value) {
+        try {
+          const parsed = JSON.parse(data.setting_value);
+          setCompanyStats((prev) => ({ ...prev, ...parsed }));
+        } catch {}
+      }
+    } catch {}
+  };
+
+  const saveCompanyStats = async () => {
+    setSavingStats(true);
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .update({ setting_value: JSON.stringify(companyStats) })
+        .eq('setting_key', 'company_stats');
+      if (error) throw error;
+      toast.success('Company stats updated!');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save stats');
+    } finally {
+      setSavingStats(false);
+    }
+  };
 
   const fetchGoogleBusinessStatus = async () => {
     try {
@@ -213,7 +260,7 @@ export default function WorkshopPublicPagesPage() {
     try {
       const { data, error } = await supabase
         .from('workshops')
-        .select('id, name, address, city, state, public_gmb_url')
+        .select('id, name, address, city, state, pincode, phone, email, public_gmb_url, audit_score')
         .eq('is_verified', true)
         .order('name');
 
@@ -231,18 +278,109 @@ export default function WorkshopPublicPagesPage() {
       .replace(/(^-|-$)/g, '');
   };
 
+  const defaultServices = [
+    'AC Service', 'Battery Service', 'Brake Service', 'Clutch Service',
+    'Tyre & Wheel Care', 'Denting & Painting', 'Car Detailing', 'Engine Repair',
+    'Suspension Service', 'Roadside Assistance', 'Car Garage', 'Multibrand Workshop', 'Car Service Center'
+  ];
+
+  const defaultBrands = [
+    { name: 'Maruti Suzuki', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Maruti_Suzuki_Logo.svg/200px-Maruti_Suzuki_Logo.svg.png' },
+    { name: 'Hyundai', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Hyundai_Motor_Company_logo.svg/200px-Hyundai_Motor_Company_logo.svg.png' },
+    { name: 'Tata Motors', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Tata_logo.svg/200px-Tata_logo.svg.png' },
+    { name: 'Honda', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Honda_logo2.svg/200px-Honda_logo2.svg.png' },
+    { name: 'Toyota', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Toyota.svg/200px-Toyota.svg.png' },
+    { name: 'Mahindra', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Mahindra_%26_Mahindra_Logo.svg/200px-Mahindra_%26_Mahindra_Logo.svg.png' },
+    { name: 'Kia', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Kia-logo.png/200px-Kia-logo.png' },
+    { name: 'MG Motor', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/MG_Motor_new_logo.png/200px-MG_Motor_new_logo.png' },
+    { name: 'Volkswagen', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Volkswagen_logo_2019.svg/200px-Volkswagen_logo_2019.svg.png' },
+    { name: 'Skoda', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fd/%C5%A0koda_Auto_2016.svg/200px-%C5%A0koda_Auto_2016.svg.png' },
+    { name: 'Ford', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Ford_Motor_Company_Logo.svg/200px-Ford_Motor_Company_Logo.svg.png' },
+    { name: 'Renault', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Renault_2021_Text.svg/200px-Renault_2021_Text.svg.png' },
+  ];
+
+  const defaultPackages = [
+    { name: 'Basic Service', price: '₹2,999', features: ['Engine Oil Replacement', 'Oil Filter Replacement', 'Air Filter Cleaning', 'Spark Plugs Servicing', 'Interior Vacuuming & Body Wash'] },
+    { name: 'General Service', price: '₹5,000', features: ['Everything in Basic +', 'Brake Pads & Fluid Check', 'Battery Terminal Cleaning', 'AC Performance Check', 'Test Drive & Final Inspection'] },
+    { name: 'Premium Service', price: '₹6,800', features: ['Everything in General +', 'All Brake Cleaning & Lubrication', 'AC Disinfectant Spray', 'Tyre Rotation & Torque', 'Diagnostics Scan & Report'] },
+    { name: 'Platinum Service', price: '₹11,300', features: ['Everything in Premium +', 'Engine Compression Test', 'Throttle Body & EGR Cleaning', 'Interior Deep Cleaning', 'Paint Protection & Underbody Coating'] },
+  ];
+
+  const defaultFaqsData = [
+    { question: 'What is My FNG – Car Garage & Repairs?', answer: 'My FNG (Friendly Neighbourhood Garage) is a trusted network of 100+ A-Grade multi-brand car servicing and repair workshops across Mumbai, Navi Mumbai, Thane, Palghar, Nashik, and Pune.' },
+    { question: 'What brands of cars do you service?', answer: 'We service all major car brands and models, including hatchbacks, sedans, SUVs, and premium cars. Our technicians are trained to work on both petrol and diesel cars.' },
+    { question: 'How can I find a My FNG car service center near me?', answer: 'You can locate the nearest My FNG car service center by visiting www.myfng.in. You may also contact our customer support team for location details and booking assistance.' },
+    { question: 'What car services are offered?', answer: 'We provide a full range of car services including basic & general car service, periodic maintenance, oil changes, brake inspection & repairs, engine diagnostics & repairs, tyre services, car AC service & gas refill, battery replacement, suspension & steering work, and mechanical & electrical repairs.' },
+    { question: 'How can I book a car service appointment?', answer: 'You can book an AI-enabled car service appointment online via www.myfng.in or by calling our customer support team. We offer flexible appointment scheduling.' },
+    { question: 'Are the technicians certified?', answer: 'Yes. All technicians at My FNG are trained, experienced, and certified. They regularly undergo skill upgrades and use advanced diagnostic tools.' },
+    { question: 'Do you use genuine parts for car repairs and servicing?', answer: 'Yes. My FNG uses only genuine and high-quality car parts for all repairs to ensure safety, performance, and long-term reliability.' },
+    { question: 'Is there a warranty on services provided?', answer: 'Yes. My FNG offers service and parts warranty. Warranty terms vary based on service performed. Visit www.myfng.in or contact support for details.' },
+    { question: 'How do I know if my car needs servicing?', answer: 'Look for dashboard warning lights, unusual engine or brake noises, reduced fuel efficiency, poor driving performance, or delayed braking response. A basic car service is recommended every 5,000 km or 6 months.' },
+    { question: 'How can I contact My FNG for more questions?', answer: 'Visit www.myfng.in or call our customer support team. We are always ready to assist you.' },
+  ];
+
   const handleWorkshopChange = (workshopId: string) => {
     const workshop = workshops.find(w => w.id === workshopId);
     if (workshop) {
+      const isNewPage = !editingPage;
+      const cityName = workshop.city || '';
+      const workshopName = workshop.name || '';
+      const defaultDesc = `Welcome to ${workshopName}, your trusted automotive service partner in ${cityName}! We specialize in providing high-quality car maintenance and repair services to keep your vehicle running smoothly.
+
+With years of experience and a team of skilled technicians, we offer:
+- Complete diagnostic services
+- Engine repair and maintenance
+- AC service and repair
+- Brake and clutch services
+- Battery replacement and charging
+- Tyre services
+- Car detailing and washing
+- Paint and denting work
+
+Our workshop is equipped with modern tools and genuine parts to ensure the best service for your vehicle. Customer satisfaction is our top priority, and we guarantee quality workmanship at competitive prices.
+
+Visit us today and experience the difference!`;
+      const defaultShortDesc = `Premier auto service center in ${cityName} offering comprehensive car maintenance, repair, and detailing services with expert technicians.`;
+      const defaultMetaTitle = `${workshopName} ${cityName} - Best Car Service Center | MyFNG`;
+      const defaultMetaDesc = `${workshopName} in ${cityName} offers expert car servicing, AC repair, battery replacement, brake service, and more. Trusted auto service center with skilled technicians. Book now!`;
+
       setFormData(prev => ({
         ...prev,
         workshop_id: workshopId,
-        slug: editingPage ? prev.slug : generateSlug(workshop.name),
-        google_maps_url: workshop.public_gmb_url || prev.google_maps_url
+        slug: isNewPage ? generateSlug(`${workshopName}-${cityName}`) : prev.slug,
+        google_maps_url: workshop.public_gmb_url || prev.google_maps_url,
+        whatsapp_number: isNewPage ? '9167779696' : prev.whatsapp_number,
+        alternate_phone: isNewPage ? '9672132022' : prev.alternate_phone,
+        website_url: isNewPage ? 'https://www.myfng.in' : prev.website_url,
+        facebook_url: isNewPage ? 'https://www.facebook.com/myfngcarservices' : prev.facebook_url,
+        instagram_url: isNewPage ? 'https://www.instagram.com/myfngcarservices' : prev.instagram_url,
+        youtube_url: isNewPage ? 'https://www.youtube.com/@myfng_car_servicing' : prev.youtube_url,
+        short_description: isNewPage ? defaultShortDesc : prev.short_description,
+        full_description: isNewPage ? defaultDesc : prev.full_description,
+        services_offered: isNewPage ? defaultServices : prev.services_offered,
+        brands: isNewPage ? defaultBrands : prev.brands,
+        packages: isNewPage ? defaultPackages : prev.packages,
+        faqs: isNewPage ? defaultFaqsData : prev.faqs,
+        meta_title: isNewPage ? defaultMetaTitle : prev.meta_title,
+        meta_description: isNewPage ? defaultMetaDesc : prev.meta_description,
+        meta_keywords: isNewPage ? [`car service ${cityName.toLowerCase()}`, `auto workshop ${cityName.toLowerCase()}`, `car repair ${cityName.toLowerCase()}`, workshopName.toLowerCase()] : prev.meta_keywords,
+        business_hours: isNewPage ? {
+          monday: '24 Hours',
+          tuesday: '24 Hours',
+          wednesday: '24 Hours',
+          thursday: '24 Hours',
+          friday: '24 Hours',
+          saturday: '24 Hours',
+          sunday: '24 Hours',
+        } : prev.business_hours,
       }));
       setGmbPreview(null);
       setSelectedGbpLocation('');
       if (gbpConnected && gbpLocations.length === 0) fetchGoogleBusinessLocations();
+
+      if (isNewPage) {
+        toast.success(`Auto-filled defaults for ${workshopName}. You can edit everything below.`);
+      }
     }
   };
 
@@ -675,6 +813,18 @@ export default function WorkshopPublicPagesPage() {
     }
   };
 
+  const handleDelete = async (page: any) => {
+    if (!confirm(`Delete public page for "${page.workshop?.name || page.slug}"? This cannot be undone.`)) return;
+    try {
+      const { error } = await supabase.from('workshop_public_pages').delete().eq('id', page.id);
+      if (error) throw error;
+      toast.success('Page deleted');
+      fetchPages();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete');
+    }
+  };
+
   const handleEdit = (page: any) => {
     setEditingPage(page);
     setFormData({
@@ -696,6 +846,7 @@ export default function WorkshopPublicPagesPage() {
       instagram_url: page.instagram_url || '',
       youtube_url: page.youtube_url || '',
       google_maps_url: page.google_maps_url || '',
+      map_embed_url: page.map_embed_url || '',
       gallery_images: page.gallery_images || [],
       meta_title: page.meta_title || '',
       meta_description: page.meta_description || '',
@@ -720,18 +871,19 @@ export default function WorkshopPublicPagesPage() {
       cover_image: '',
       short_description: '',
       full_description: '',
-      services_offered: [],
+      services_offered: defaultServices,
       business_hours: {
-        monday: '', tuesday: '', wednesday: '', thursday: '',
-        friday: '', saturday: '', sunday: ''
+        monday: '24 Hours', tuesday: '24 Hours', wednesday: '24 Hours', thursday: '24 Hours',
+        friday: '24 Hours', saturday: '24 Hours', sunday: '24 Hours'
       },
-      whatsapp_number: '',
-      alternate_phone: '',
-      website_url: '',
-      facebook_url: '',
-      instagram_url: '',
-      youtube_url: '',
+      whatsapp_number: '9167779696',
+      alternate_phone: '9672132022',
+      website_url: 'https://www.myfng.in',
+      facebook_url: 'https://www.facebook.com/myfngcarservices',
+      instagram_url: 'https://www.instagram.com/myfngcarservices',
+      youtube_url: 'https://www.youtube.com/@myfng_car_servicing',
       google_maps_url: '',
+      map_embed_url: '',
       gallery_images: [],
       meta_title: '',
       meta_description: '',
@@ -828,6 +980,83 @@ export default function WorkshopPublicPagesPage() {
         </div>
       </div>
 
+      {/* Company-Wide Stats (shown on all workshop pages) */}
+      <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowCompanyStats(!showCompanyStats)}
+          className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
+            <span className="font-semibold text-gray-900">Company-Wide Stats</span>
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Same on all pages</span>
+          </div>
+          {showCompanyStats ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+        </button>
+        {showCompanyStats && (
+          <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+            <p className="text-xs text-gray-500 mb-4">These numbers appear on all workshop public pages (Store Header Stats & About MyFNG section).</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+              {([
+                { key: 'cars_serviced', label: 'Cars Serviced' },
+                { key: 'happy_customers', label: 'Happy Customers' },
+                { key: 'avg_rating', label: 'Avg Rating' },
+                { key: 'touch_points', label: 'Touch Points' },
+                { key: 'verified_workshops', label: 'Verified Workshops' },
+                { key: 'cities_covered', label: 'Cities Covered' },
+              ] as { key: keyof typeof companyStats; label: string }[]).map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">{label}</label>
+                  <input
+                    type="text"
+                    value={companyStats[key]}
+                    onChange={(e) => setCompanyStats({ ...companyStats, [key]: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">About Description (subtitle)</label>
+                <input
+                  type="text"
+                  value={companyStats.about_description}
+                  onChange={(e) => setCompanyStats({ ...companyStats, about_description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Who We Are - Paragraph 1</label>
+                <textarea
+                  value={companyStats.who_we_are_1}
+                  onChange={(e) => setCompanyStats({ ...companyStats, who_we_are_1: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Who We Are - Paragraph 2</label>
+                <textarea
+                  value={companyStats.who_we_are_2}
+                  onChange={(e) => setCompanyStats({ ...companyStats, who_we_are_2: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <button
+              onClick={saveCompanyStats}
+              disabled={savingStats}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-60 text-sm font-medium"
+            >
+              <Save className="w-4 h-4" />
+              {savingStats ? 'Saving...' : 'Save Stats'}
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Pages Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPages.map((page) => (
@@ -880,6 +1109,12 @@ export default function WorkshopPublicPagesPage() {
                   <Edit2 className="w-4 h-4" />
                   Edit
                 </button>
+                <button
+                  onClick={() => handleDelete(page)}
+                  className="flex items-center justify-center gap-2 bg-red-50 text-red-600 px-3 py-2 rounded hover:bg-red-100"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
                 {page.is_published && (
                   <a
                     href={`/workshop/${page.slug}`}
@@ -907,825 +1142,223 @@ export default function WorkshopPublicPagesPage() {
       {/* Create/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">
-                  {editingPage ? 'Edit Public Page' : 'Create Public Page'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ✕
-                </button>
-              </div>
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-gray-900">{editingPage ? 'Edit Public Page' : 'Create Public Page'}</h2>
+              <button onClick={() => { setShowModal(false); resetForm(); }} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+            </div>
+            <div className="p-5">
+              <form onSubmit={handleSubmit} className="space-y-4">
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Workshop Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Workshop *
-                  </label>
-                  <select
-                    value={formData.workshop_id}
-                    onChange={(e) => handleWorkshopChange(e.target.value)}
-                    required
-                    disabled={!!editingPage}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select Workshop</option>
-                    {workshops.map(workshop => (
-                      <option key={workshop.id} value={workshop.id}>
-                        {workshop.name} - {workshop.city}
-                      </option>
-                    ))}
-                  </select>
+                {/* ─── SECTION 0: Workshop & URL ─── */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold">0</span>
+                    Workshop & Page URL
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Workshop *</label>
+                      <select value={formData.workshop_id} onChange={(e) => handleWorkshopChange(e.target.value)} required disabled={!!editingPage} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select Workshop</option>
+                        {workshops.map(w => <option key={w.id} value={w.id}>{w.name} - {w.city}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">URL Slug *</label>
+                      <input type="text" value={formData.slug} onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                      <p className="text-[10px] text-gray-400 mt-0.5">myfng.in/workshop/{formData.slug || 'slug'}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-3">
+                    <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.is_published} onChange={(e) => setFormData(prev => ({ ...prev, is_published: e.target.checked }))} className="w-4 h-4 rounded" /> Published</label>
+                    <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.is_featured} onChange={(e) => setFormData(prev => ({ ...prev, is_featured: e.target.checked }))} className="w-4 h-4 rounded" /> Featured</label>
+                  </div>
                 </div>
 
-                {/* Slug */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    URL Slug * (e.g., delhi-auto-care)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.slug}
-                    onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    URL: www.domain.in/workshop/{formData.slug || 'workshop-name'}
-                  </p>
-                </div>
-
-                {/* Google Maps URL + Fetch GMB */}
+                {/* ─── GMB SYNC ─── */}
                 {formData.workshop_id && (
-                <div>
+                <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                  <h3 className="text-sm font-bold text-green-800 mb-3 flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Google Business Auto-Fill</h3>
                   {gbpConnected && (
                     <div className="mb-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Google Business Location
-                        {fetchingGmb && selectedGbpLocation && (
-                          <span className="ml-2 text-xs text-blue-600 font-normal animate-pulse">Fetching details...</span>
-                        )}
-                      </label>
-                      <select
-                        value={selectedGbpLocation}
-                        onChange={(e) => handleGbpLocationSelect(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        disabled={loadingGbpLocations || fetchingGmb}
-                      >
-                        <option value="">
-                          {loadingGbpLocations ? 'Loading GMB locations...' : 'Select GMB location to auto-fill details'}
-                        </option>
-                        {gbpLocations.map((loc, index) => (
-                          <option key={`${loc.resource_name || loc.place_id || 'gbp'}-${index}`} value={loc.resource_name}>
-                            {loc.title}{loc.address ? ` — ${loc.address}` : ''}
-                          </option>
-                        ))}
+                      <label className="block text-xs font-medium text-gray-600 mb-1">GBP Location {fetchingGmb && selectedGbpLocation && <span className="text-blue-600 animate-pulse ml-1">Fetching...</span>}</label>
+                      <select value={selectedGbpLocation} onChange={(e) => handleGbpLocationSelect(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white" disabled={loadingGbpLocations || fetchingGmb}>
+                        <option value="">{loadingGbpLocations ? 'Loading...' : 'Select GMB location'}</option>
+                        {gbpLocations.map((loc, i) => <option key={`${loc.resource_name || loc.place_id || 'gbp'}-${i}`} value={loc.resource_name}>{loc.title}{loc.address ? ` — ${loc.address}` : ''}</option>)}
                       </select>
-                      {selectedGbpLocation && !fetchingGmb && (
-                        <p className="text-xs text-green-700 mt-1">✓ GMB location linked — details auto-synced daily.</p>
-                      )}
+                      {selectedGbpLocation && !fetchingGmb && <p className="text-[10px] text-green-700 mt-0.5">✓ Linked — auto-synced daily</p>}
                     </div>
                   )}
-
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <MapPin className="w-4 h-4 inline mr-1" />
-                    Google Maps URL
-                  </label>
                   <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={formData.google_maps_url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, google_maps_url: e.target.value }))}
-                      placeholder="https://maps.google.com/..."
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleFetchGMB}
-                      disabled={fetchingGmb || (!formData.google_maps_url.trim() && !selectedGbpLocation && !gbpConnected)}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${fetchingGmb ? 'animate-spin' : ''}`} />
-                      {fetchingGmb ? 'Fetching...' : 'Re-sync GMB'}
+                    <input type="url" value={formData.google_maps_url} onChange={(e) => setFormData(prev => ({ ...prev, google_maps_url: e.target.value }))} placeholder="Google Maps URL" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                    <button type="button" onClick={handleFetchGMB} disabled={fetchingGmb || (!formData.google_maps_url.trim() && !selectedGbpLocation && !gbpConnected)} className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1.5 text-sm whitespace-nowrap">
+                      <RefreshCw className={`w-3.5 h-3.5 ${fetchingGmb ? 'animate-spin' : ''}`} />{fetchingGmb ? 'Fetching...' : 'Sync GMB'}
                     </button>
                   </div>
 
                   {gmbPreview && (
-                    <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
-                      {/* Header */}
+                    <div className="mt-3 p-3 bg-white border border-green-200 rounded-lg space-y-2 text-xs">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-green-900 text-sm">GMB Data Preview</h4>
-                        <div className="flex items-center gap-2">
-                          {(gmbPreview as any).open_status && (
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${(gmbPreview as any).open_status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {(gmbPreview as any).open_status === 'OPEN' ? 'Open' : (gmbPreview as any).open_status === 'CLOSED_PERMANENTLY' ? 'Closed Permanently' : 'Closed'}
-                            </span>
-                          )}
-                          {gmbPreview.rating != null && (
-                            <span className="flex items-center gap-1 text-sm font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded">
-                              <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
-                              {gmbPreview.rating} ({gmbPreview.total_reviews || 0} reviews)
-                            </span>
-                          )}
+                        <span className="font-semibold text-gray-900">{gmbPreview.name || gmbPreview.business_name}</span>
+                        <div className="flex gap-1.5">
+                          {(gmbPreview as any).open_status && <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${(gmbPreview as any).open_status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{(gmbPreview as any).open_status}</span>}
+                          {gmbPreview.rating != null && <span className="text-yellow-600 font-medium"><Star className="w-3 h-3 inline fill-yellow-500 text-yellow-500" /> {gmbPreview.rating} ({gmbPreview.total_reviews || 0})</span>}
                         </div>
                       </div>
-
-                      {/* Business info */}
-                      <div className="space-y-1">
-                        {gmbPreview.business_name && (
-                          <p className="text-sm text-gray-800"><span className="font-medium">Business:</span> {gmbPreview.business_name}</p>
-                        )}
-                        {(gmbPreview as any).primary_category?.display_name && (
-                          <p className="text-sm text-gray-800"><span className="font-medium">Category:</span> {(gmbPreview as any).primary_category.display_name}
-                            {(gmbPreview as any).additional_categories?.length > 0 && (
-                              <span className="text-gray-500"> + {(gmbPreview as any).additional_categories.map((c: any) => c.display_name).join(', ')}</span>
-                            )}
-                          </p>
-                        )}
-                        {gmbPreview.formatted_address && (
-                          <p className="text-sm text-gray-800"><span className="font-medium">Address:</span> {gmbPreview.formatted_address}</p>
-                        )}
-                        {gmbPreview.phone_number && (
-                          <p className="text-sm text-gray-800"><span className="font-medium">Phone:</span> {gmbPreview.phone_number}</p>
-                        )}
-                        {gmbPreview.website && (
-                          <p className="text-sm text-gray-800"><span className="font-medium">Website:</span> {gmbPreview.website}</p>
-                        )}
-                        {(gmbPreview as any).description && (
-                          <p className="text-sm text-gray-800"><span className="font-medium">Description:</span> {(gmbPreview as any).description}</p>
-                        )}
-                      </div>
-
-                      {/* Services */}
-                      {(gmbPreview as any).service_items?.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium text-gray-800 mb-1">Services ({(gmbPreview as any).service_items.length}):</p>
-                          <div className="flex flex-wrap gap-1">
-                            {(gmbPreview as any).service_items.slice(0, 12).map((s: any, i: number) => (
-                              <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{s.display_name}</span>
-                            ))}
-                            {(gmbPreview as any).service_items.length > 12 && (
-                              <span className="text-xs text-gray-500">+{(gmbPreview as any).service_items.length - 12} more</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Hours */}
-                      {gmbPreview.opening_hours && gmbPreview.opening_hours.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium text-gray-800 mb-1">Hours:</p>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-                            {gmbPreview.opening_hours.map((h, i) => (
-                              <p key={i} className="text-xs text-gray-600">{h}</p>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Attributes */}
-                      {(gmbPreview as any).attributes?.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium text-gray-800 mb-1">Attributes:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {(gmbPreview as any).attributes.slice(0, 8).map((a: any, i: number) => (
-                              <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{a.display_name || a.name}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Reviews */}
+                      {gmbPreview.phone_number && <p><span className="font-medium">Phone:</span> {gmbPreview.phone_number}</p>}
+                      {Array.isArray(gmbPreview.opening_hours) && gmbPreview.opening_hours.length > 0 && <div className="grid grid-cols-2 gap-0.5 text-[10px] text-gray-600">{gmbPreview.opening_hours.map((h, i) => <span key={i}>{h}</span>)}</div>}
                       {gmbPreview.reviews && gmbPreview.reviews.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium text-gray-800 mb-1">Recent Reviews ({gmbPreview.total_reviews || gmbPreview.reviews.length}):</p>
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {gmbPreview.reviews.map((r, i) => (
-                              <div key={i} className="text-xs text-gray-600 bg-white p-2 rounded border border-green-100">
-                                <div className="flex items-center gap-1 mb-0.5">
-                                  {r.author_photo && <img src={r.author_photo} alt="" className="w-4 h-4 rounded-full" />}
-                                  <span className="font-medium">{r.author_name}</span>
-                                  <span className="text-yellow-500">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
-                                  {r.relative_time && <span className="text-gray-400 ml-auto">{r.relative_time}</span>}
-                                </div>
-                                {r.text && <p className="line-clamp-2 text-gray-600">{r.text}</p>}
-                                {(r as any).reply && <p className="mt-1 text-xs text-blue-600 border-l-2 border-blue-200 pl-2 line-clamp-1">Reply: {(r as any).reply}</p>}
-                              </div>
-                            ))}
-                          </div>
+                        <div className="max-h-24 overflow-y-auto space-y-1">
+                          {gmbPreview.reviews.slice(0, 3).map((r, i) => (
+                            <div key={i} className="bg-gray-50 p-1.5 rounded text-[10px]">
+                              <span className="font-medium">{r.author_name}</span> <span className="text-yellow-500">{'★'.repeat(r.rating)}</span>
+                              {r.text && <p className="text-gray-500 line-clamp-1 mt-0.5">{r.text}</p>}
+                            </div>
+                          ))}
                         </div>
                       )}
-
-                      <p className="text-xs text-green-700">✓ Hours, phone, website, description & services auto-filled below.</p>
+                      <p className="text-green-700">✓ Hours, phone, services auto-filled.</p>
                     </div>
                   )}
                 </div>
                 )}
 
-                {/* Images */}
-                <div className="space-y-4">
-                  {/* Profile Image */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Profile Image
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        value={formData.profile_image}
-                        onChange={(e) => setFormData(prev => ({ ...prev, profile_image: e.target.value }))}
-                        placeholder="Image URL"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                      <label className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 whitespace-nowrap">
-                        <Upload className="w-4 h-4" />
-                        {uploadingImages.profile ? 'Uploading...' : 'Upload'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleImageUpload(file, 'profile');
-                          }}
-                          className="hidden"
-                          disabled={uploadingImages.profile}
-                        />
-                      </label>
+                {/* ─── SECTION 1: HERO SECTION ─── */}
+                <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-200">
+                  <h3 className="text-sm font-bold text-[#0a3d91] mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#0a3d91] text-white text-xs flex items-center justify-center font-bold">1</span>
+                    Hero Section
+                    <span className="text-[10px] text-gray-500 font-normal ml-auto">Name &amp; city auto from workshop</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Profile Image</label>
+                      <div className="flex gap-1.5">
+                        <input type="url" value={formData.profile_image} onChange={(e) => setFormData(prev => ({ ...prev, profile_image: e.target.value }))} placeholder="Image URL" className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                        <label className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer flex items-center gap-1 text-xs whitespace-nowrap">
+                          <Upload className="w-3.5 h-3.5" />{uploadingImages.profile ? '...' : 'Upload'}
+                          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'profile'); }} className="hidden" disabled={uploadingImages.profile} />
+                        </label>
+                      </div>
+                      {formData.profile_image && <div className="mt-1.5 relative inline-block"><img src={formData.profile_image} alt="" className="w-16 h-16 object-cover rounded-lg border" /><button type="button" onClick={() => setFormData(prev => ({ ...prev, profile_image: '' }))} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"><X className="w-3 h-3" /></button></div>}
                     </div>
-                    {formData.profile_image && (
-                      <div className="mt-2 relative inline-block">
-                        <img
-                          src={formData.profile_image}
-                          alt="Profile preview"
-                          className="w-24 h-24 object-cover rounded-lg border-2 border-gray-200"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, profile_image: '' }))}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Cover Image</label>
+                      <div className="flex gap-1.5">
+                        <input type="url" value={formData.cover_image} onChange={(e) => setFormData(prev => ({ ...prev, cover_image: e.target.value }))} placeholder="Image URL" className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                        <label className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer flex items-center gap-1 text-xs whitespace-nowrap">
+                          <Upload className="w-3.5 h-3.5" />{uploadingImages.cover ? '...' : 'Upload'}
+                          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'cover'); }} className="hidden" disabled={uploadingImages.cover} />
+                        </label>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Cover Image */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Cover Image
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        value={formData.cover_image}
-                        onChange={(e) => setFormData(prev => ({ ...prev, cover_image: e.target.value }))}
-                        placeholder="Image URL"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                      <label className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 whitespace-nowrap">
-                        <Upload className="w-4 h-4" />
-                        {uploadingImages.cover ? 'Uploading...' : 'Upload'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleImageUpload(file, 'cover');
-                          }}
-                          className="hidden"
-                          disabled={uploadingImages.cover}
-                        />
-                      </label>
+                      {formData.cover_image && <div className="mt-1.5 relative inline-block"><img src={formData.cover_image} alt="" className="h-16 max-w-full object-cover rounded-lg border" /><button type="button" onClick={() => setFormData(prev => ({ ...prev, cover_image: '' }))} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"><X className="w-3 h-3" /></button></div>}
                     </div>
-                    {formData.cover_image && (
-                      <div className="mt-2 relative inline-block">
-                        <img
-                          src={formData.cover_image}
-                          alt="Cover preview"
-                          className="w-full max-w-md h-32 object-cover rounded-lg border-2 border-gray-200"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, cover_image: '' }))}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Short Description (Hero subtext)</label>
+                    <textarea value={formData.short_description} onChange={(e) => setFormData(prev => ({ ...prev, short_description: e.target.value }))} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Service Tags (shown in store header)</label>
+                    <div className="flex gap-1.5 mb-1.5">
+                      <input type="text" value={serviceInput} onChange={(e) => setServiceInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddService())} placeholder="Add service tag" className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                      <button type="button" onClick={handleAddService} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Add</button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">{formData.services_offered.map((s, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">{s}<button type="button" onClick={() => handleRemoveService(i)} className="text-blue-600 hover:text-blue-800 font-bold">×</button></span>
+                    ))}</div>
                   </div>
                 </div>
 
-                {/* Descriptions */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Short Description
-                  </label>
-                  <textarea
-                    value={formData.short_description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, short_description: e.target.value }))}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Full Description
-                  </label>
-                  <textarea
-                    value={formData.full_description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, full_description: e.target.value }))}
-                    rows={5}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Services */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Services Offered
-                  </label>
-                  <div className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={serviceInput}
-                      onChange={(e) => setServiceInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddService())}
-                      placeholder="Add service"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddService}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                    >
-                      Add
-                    </button>
+                {/* ─── SECTION 2: WORKSHOP DETAILS ─── */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#0a3d91] text-white text-xs flex items-center justify-center font-bold">2</span>
+                    Workshop Details
+                    <span className="text-[10px] text-gray-500 font-normal ml-auto">Address from workshop, hours from GMB</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">WhatsApp</label><input type="tel" value={formData.whatsapp_number} onChange={(e) => setFormData(prev => ({ ...prev, whatsapp_number: e.target.value }))} placeholder="9999999999" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Alternate Phone</label><input type="tel" value={formData.alternate_phone} onChange={(e) => setFormData(prev => ({ ...prev, alternate_phone: e.target.value }))} placeholder="9999999999" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {formData.services_offered.map((service, index) => (
-                      <span
-                        key={index}
-                        className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                      >
-                        {service}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveService(index)}
-                          className="text-blue-600 hover:text-blue-800"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="block text-xs font-medium text-gray-600">Business Hours</label>
+                    <button type="button" onClick={() => setFormData(prev => ({ ...prev, business_hours: { monday: '24 Hours', tuesday: '24 Hours', wednesday: '24 Hours', thursday: '24 Hours', friday: '24 Hours', saturday: '24 Hours', sunday: '24 Hours' } }))} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-200">Set All 24 Hours</button>
                   </div>
-                </div>
-
-                {/* Brands */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Brands We Serve
-                  </label>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={brandName}
-                      onChange={(e) => setBrandName(e.target.value)}
-                      placeholder="Brand name"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="url"
-                      value={brandLogo}
-                      onChange={(e) => setBrandLogo(e.target.value)}
-                      placeholder="Logo URL"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddBrand}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {formData.brands.map((brand, index) => (
-                      <span
-                        key={`${brand.name}-${index}`}
-                        className="inline-flex items-center gap-2 bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm"
-                      >
-                        {brand.name}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveBrand(index)}
-                          className="text-gray-600 hover:text-gray-900"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Packages */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Periodic Service Packages
-                  </label>
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={packageName}
-                      onChange={(e) => setPackageName(e.target.value)}
-                      placeholder="Package name"
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="text"
-                      value={packagePrice}
-                      onChange={(e) => setPackagePrice(e.target.value)}
-                      placeholder="Price (optional)"
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={packageFeature}
-                      onChange={(e) => setPackageFeature(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddPackageFeature())}
-                      placeholder="Add package feature"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddPackageFeature}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                    >
-                      Add Feature
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddPackage}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      Add Package
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {packageFeatures.map((feature, index) => (
-                      <span
-                        key={`${feature}-${index}`}
-                        className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                      >
-                        {feature}
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePackageFeature(index)}
-                          className="text-blue-600 hover:text-blue-800"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="space-y-2">
-                    {formData.packages.map((pkg, index) => (
-                      <div
-                        key={`${pkg.name}-${index}`}
-                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-900">
-                            {pkg.name} {pkg.price ? `• ${pkg.price}` : ''}
-                          </div>
-                          {pkg.features.length ? (
-                            <ul className="text-xs text-gray-600 mt-2 space-y-1">
-                              {pkg.features.map((feature, featureIndex) => (
-                                <li key={`${pkg.name}-feature-${featureIndex}`}>• {feature}</li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePackage(index)}
-                          className="text-gray-600 hover:text-gray-900"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* FAQs */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    FAQs
-                  </label>
-                  <div className="space-y-2 mb-2">
-                    <input
-                      type="text"
-                      value={faqQuestion}
-                      onChange={(e) => setFaqQuestion(e.target.value)}
-                      placeholder="FAQ question"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <textarea
-                      value={faqAnswer}
-                      onChange={(e) => setFaqAnswer(e.target.value)}
-                      rows={2}
-                      placeholder="FAQ answer"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddFaq}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                    >
-                      Add FAQ
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {formData.faqs.map((faq, index) => (
-                      <div
-                        key={`${faq.question}-${index}`}
-                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-900">{faq.question}</div>
-                          <div className="text-sm text-gray-600 mt-1">{faq.answer}</div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFaq(index)}
-                          className="text-gray-600 hover:text-gray-900"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Business Hours */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Business Hours
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-4 gap-2 mb-3">
                     {Object.keys(formData.business_hours).map(day => (
-                      <div key={day}>
-                        <label className="block text-xs text-gray-600 mb-1 capitalize">{day}</label>
-                        <input
-                          type="text"
-                          value={formData.business_hours[day as keyof typeof formData.business_hours]}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            business_hours: { ...prev.business_hours, [day]: e.target.value }
-                          }))}
-                          placeholder="9:00 AM - 6:00 PM"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
+                      <div key={day}><label className="block text-[10px] text-gray-500 capitalize">{day.slice(0, 3)}</label><input type="text" value={formData.business_hours[day as keyof typeof formData.business_hours]} onChange={(e) => setFormData(prev => ({ ...prev, business_hours: { ...prev.business_hours, [day]: e.target.value } }))} placeholder="9 AM-7 PM" className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500" /></div>
                     ))}
                   </div>
-                </div>
-
-                {/* Contact Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      WhatsApp Number
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.whatsapp_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, whatsapp_number: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Alternate Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.alternate_phone}
-                      onChange={(e) => setFormData(prev => ({ ...prev, alternate_phone: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1"><MapPin className="w-3.5 h-3.5 inline mr-0.5" />Google Maps URL</label><input type="url" value={formData.google_maps_url} onChange={(e) => setFormData(prev => ({ ...prev, google_maps_url: e.target.value }))} placeholder="https://maps.google.com/..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1"><MapPin className="w-3.5 h-3.5 inline mr-0.5" />Map Embed URL</label><input type="url" value={formData.map_embed_url} onChange={(e) => setFormData(prev => ({ ...prev, map_embed_url: e.target.value }))} placeholder="https://google.com/maps/embed?pb=..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /><p className="text-[10px] text-gray-400 mt-0.5">Google Maps → Share → Embed → copy src URL</p></div>
                   </div>
                 </div>
 
-                {/* Social Media */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
-                    <input
-                      type="url"
-                      value={formData.website_url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, website_url: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Facebook</label>
-                    <input
-                      type="url"
-                      value={formData.facebook_url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, facebook_url: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Instagram</label>
-                    <input
-                      type="url"
-                      value={formData.instagram_url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, instagram_url: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">YouTube</label>
-                    <input
-                      type="url"
-                      value={formData.youtube_url}
-                      onChange={(e) => setFormData(prev => ({ ...prev, youtube_url: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                {/* ─── SECTION 3: ABOUT THE BUSINESS ─── */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#0a3d91] text-white text-xs flex items-center justify-center font-bold">3</span>
+                    About the Business
+                    <span className="text-[10px] text-gray-500 font-normal ml-auto">Heading auto: &quot;About {'{'}workshop name{'}'}&quot;</span>
+                  </h3>
+                  <textarea value={formData.full_description} onChange={(e) => setFormData(prev => ({ ...prev, full_description: e.target.value }))} rows={5} placeholder="Write about this workshop..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
                 </div>
 
-                {/* Gallery */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Gallery Images <span className="text-red-500">*</span>
-                    <span className="text-xs text-gray-500 font-normal ml-2">
-                      ({formData.gallery_images.length}/25) - Minimum 2 required
-                    </span>
-                  </label>
-                  <div className="flex gap-2 mb-2">
-                    <input
-                      type="url"
-                      value={galleryInput}
-                      onChange={(e) => setGalleryInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddGalleryImage())}
-                      placeholder="Image URL"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddGalleryImage}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                    >
-                      Add URL
-                    </button>
-                    <label className={`px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                      formData.gallery_images.length >= 25
-                        ? 'bg-gray-400 text-white cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}>
-                      <Upload className="w-4 h-4" />
-                      {uploadingImages.gallery ? 'Uploading...' : 'Upload'}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files || []);
-                          const remainingSlots = 25 - formData.gallery_images.length;
-                          if (files.length > remainingSlots) {
-                            toast.error(`Only ${remainingSlots} more images can be uploaded (max 25 total)`);
-                            const filesToUpload = files.slice(0, remainingSlots);
-                            filesToUpload.forEach(file => handleImageUpload(file, 'gallery'));
-                          } else {
-                            files.forEach(file => handleImageUpload(file, 'gallery'));
-                          }
-                        }}
-                        className="hidden"
-                        disabled={uploadingImages.gallery || formData.gallery_images.length >= 25}
-                      />
+                {/* ─── SECTION 4: WORKSHOP GALLERY ─── */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#0a3d91] text-white text-xs flex items-center justify-center font-bold">4</span>
+                    Workshop Gallery
+                    <span className="text-xs text-gray-500 font-normal ml-auto">{formData.gallery_images.length}/25 (min 2)</span>
+                  </h3>
+                  <div className="flex gap-1.5 mb-2">
+                    <input type="url" value={galleryInput} onChange={(e) => setGalleryInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddGalleryImage())} placeholder="Image URL" className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                    <button type="button" onClick={handleAddGalleryImage} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Add URL</button>
+                    <label className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-1 text-sm whitespace-nowrap ${formData.gallery_images.length >= 25 ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                      <Upload className="w-3.5 h-3.5" />{uploadingImages.gallery ? '...' : 'Upload'}
+                      <input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); const rem = 25 - formData.gallery_images.length; if (files.length > rem) { toast.error(`Only ${rem} more allowed`); files.slice(0, rem).forEach(f => handleImageUpload(f, 'gallery')); } else files.forEach(f => handleImageUpload(f, 'gallery')); }} className="hidden" disabled={uploadingImages.gallery || formData.gallery_images.length >= 25} />
                     </label>
                   </div>
-                  {formData.gallery_images.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2">
-                      {formData.gallery_images.map((url, index) => (
-                        <div key={index} className="relative group">
-                          <img
-                            src={url}
-                            alt={`Gallery ${index + 1}`}
-                            className="w-full h-24 object-cover rounded border-2 border-gray-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveGalleryImage(index)}
-                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                  {formData.gallery_images.length > 0 ? (
+                    <div className="grid grid-cols-4 gap-1.5">{formData.gallery_images.map((url, i) => (
+                      <div key={i} className="relative group"><img src={url} alt={`Gallery ${i + 1}`} className="w-full h-20 object-cover rounded border border-gray-200" /><button type="button" onClick={() => handleRemoveGalleryImage(i)} className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"><X className="w-3 h-3" /></button></div>
+                    ))}</div>
+                  ) : (
+                    <div className="text-center py-6 border-2 border-dashed border-gray-300 rounded-lg"><ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-1" /><p className="text-xs text-gray-500">No images yet. <span className="text-red-500">Min 2 required</span></p></div>
                   )}
-                  {formData.gallery_images.length === 0 && (
-                    <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                      <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500">No gallery images added yet</p>
-                      <p className="text-xs text-red-500 mt-1">At least 2 images are required</p>
-                    </div>
-                  )}
-                  {formData.gallery_images.length > 0 && formData.gallery_images.length < 2 && (
-                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800">
-                        ⚠️ Add {2 - formData.gallery_images.length} more image(s) (minimum 2 required)
-                      </p>
-                    </div>
-                  )}
-                  {formData.gallery_images.length >= 25 && (
-                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm text-blue-800">
-                        ✓ Maximum limit reached (25/25 images)
-                      </p>
-                    </div>
-                  )}
+                  {formData.gallery_images.length > 0 && formData.gallery_images.length < 2 && <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 mt-2">Add {2 - formData.gallery_images.length} more image(s) (min 2)</p>}
                 </div>
 
-                {/* SEO */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Meta Title</label>
-                  <input
-                    type="text"
-                    value={formData.meta_title}
-                    onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
+                {/* ─── SECTION 5: SOCIAL & SEO ─── */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#0a3d91] text-white text-xs flex items-center justify-center font-bold">5</span>
+                    Social Links &amp; SEO
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Website</label><input type="url" value={formData.website_url} onChange={(e) => setFormData(prev => ({ ...prev, website_url: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Facebook</label><input type="url" value={formData.facebook_url} onChange={(e) => setFormData(prev => ({ ...prev, facebook_url: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Instagram</label><input type="url" value={formData.instagram_url} onChange={(e) => setFormData(prev => ({ ...prev, instagram_url: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">YouTube</label><input type="url" value={formData.youtube_url} onChange={(e) => setFormData(prev => ({ ...prev, youtube_url: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Meta Title</label><input type="text" value={formData.meta_title} onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Meta Description</label><input type="text" value={formData.meta_description} onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Meta Description</label>
-                  <textarea
-                    value={formData.meta_description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
+                {/* ─── INFO: Same for all ─── */}
+                <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
+                  <p className="text-xs text-amber-800"><strong>Same for all workshops:</strong> Brands, Periodic Packages, FAQs, About MyFNG, Other Services, RSA — auto-filled with defaults, editable from Company Stats above.</p>
                 </div>
 
-                {/* Status */}
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_published}
-                      onChange={(e) => setFormData(prev => ({ ...prev, is_published: e.target.checked }))}
-                      className="w-4 h-4"
-                    />
-                    <span>Published</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_featured}
-                      onChange={(e) => setFormData(prev => ({ ...prev, is_featured: e.target.checked }))}
-                      className="w-4 h-4"
-                    />
-                    <span>Featured</span>
-                  </label>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowModal(false);
-                      resetForm();
-                    }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {saving ? 'Saving...' : editingPage ? 'Update Page' : 'Create Page'}
-                  </button>
+                {/* ─── ACTIONS ─── */}
+                <div className="flex gap-3 justify-end pt-2 border-t border-gray-200">
+                  <button type="button" onClick={() => { setShowModal(false); resetForm(); }} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">{saving ? 'Saving...' : editingPage ? 'Update Page' : 'Create Page'}</button>
                 </div>
               </form>
             </div>
