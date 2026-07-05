@@ -13,7 +13,7 @@ export const metadata = buildPageMetadata({
     'car service center near me',
   ],
   keyphrase: 'car workshop near me',
-  canonicalPath: '/workshops',
+  canonicalPath: '/workshop-locator',
   city: 'Mumbai',
 });
 

@@ -866,7 +866,7 @@ export default function HomePage() {
                 </button>
 
                 <Link
-                  href="/workshops"
+                  href="/workshop-locator"
                   className="hidden btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-gray-900 bg-white/70 backdrop-blur border border-gray-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:text-blue-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
                   <MapPin className="w-5 h-5" />

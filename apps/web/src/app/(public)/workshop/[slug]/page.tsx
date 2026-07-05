@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -72,6 +72,7 @@ const defaultFaqs = [
 
 export default function WorkshopPublicPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params?.slug as string;
   const [page, setPage] = useState<WorkshopPublicPageType | null>(null);
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
@@ -147,6 +148,12 @@ export default function WorkshopPublicPage() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!loading && (!page || !workshop)) {
+      router.replace('/');
+    }
+  }, [loading, page, workshop, router]);
+
   const fetchWorkshopPage = async () => {
     try {
       const supabase = createClient();
@@ -185,18 +192,7 @@ export default function WorkshopPublicPage() {
   }
 
   if (!page || !workshop) {
-    return (
-      <div className="min-h-screen bg-[#f5f7fb]">
-        <Navbar />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Workshop Not Found</h1>
-            <p className="text-gray-600">The workshop page you&apos;re looking for doesn&apos;t exist or is not published.</p>
-          </div>
-        </div>
-        <Footer />
-      </div>
-    );
+    return null;
   }
 
   const services: string[] = Array.isArray(page.services_offered) ? page.services_offered : [];
@@ -227,10 +223,12 @@ export default function WorkshopPublicPage() {
   const hoursEntries = gmbHoursEntries.length > 0 ? gmbHoursEntries : manualHoursEntries;
   const primaryHours = hoursEntries.length ? hoursEntries[0][1] : null;
 
+  const displayName = gmb?.business_name || workshop.name || 'Multi Brand Car Garage';
   const displayRating = gmbRating ?? (typeof workshop.audit_score === 'number' ? workshop.audit_score : null);
   const auditScore = typeof workshop.audit_score === 'number' ? workshop.audit_score : null;
   const roundedAuditScore = displayRating ? Math.round(displayRating) : 0;
-  const fullAddress = [workshop.address, workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ');
+  const gmbAddress = gmb?.formatted_address;
+  const fullAddress = gmbAddress || [workshop.address, workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ');
 
   const periodicTagKeywords = ['basic service', 'periodic', '15 points', '30 points', '50 points', '60 points', '15-point', '30-point', '50-point', '60-point'];
   const serviceTags = services.length
@@ -278,8 +276,7 @@ export default function WorkshopPublicPage() {
                   <span className="text-[#ffc107] text-[13px] font-semibold tracking-wide uppercase">MyFNG Prime Membership</span>
                 </div>
                 <h1 className="text-[32px] sm:text-[42px] lg:text-[50px] font-extrabold leading-[1.15] mb-5 text-white">
-                  {workshop.name || `Multi Brand Car Garage`}
-                  <span className="block text-[#ffc107] mt-1">in {workshop.city || 'Your City'}</span>
+                  {displayName}
                 </h1>
                 <p className="text-white/80 text-[16px] lg:text-[18px] leading-relaxed mb-6 max-w-[520px] mx-auto lg:mx-0">
                   Get exclusive benefits with <strong className="text-white">MyFNG Prime</strong> — priority booking, flat 20% off on all services, free roadside assistance & more.
@@ -473,7 +470,7 @@ export default function WorkshopPublicPage() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h2 className="text-[22px] font-bold text-[#111] mb-1.5">
-                      {workshop.name} – {workshop.city || 'Car Service'}
+                      {displayName} – {workshop.city || 'Car Service'}
                     </h2>
                     <div className="flex items-center gap-3 text-[13px]">
                       <div className="flex items-center gap-1">
@@ -672,14 +669,14 @@ export default function WorkshopPublicPage() {
 
               {/* About Section Card — Redesigned */}
               <div className="bg-white p-6 rounded-2xl border border-[#e8ecf4] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
-                <h3 className="font-bold text-[16px] mb-3">About {workshop.name || 'This Business'}</h3>
+                <h3 className="font-bold text-[16px] mb-3">About {displayName}</h3>
                 {page.full_description ? (
                   <div className="text-[14px] leading-[1.8] text-[#444] whitespace-pre-line mb-5">
                     {page.full_description.replace(/^[\s]*[-–—]/gm, '•').replace(/\n[-–—]\s*/g, '\n• ')}
                   </div>
                 ) : (
                   <p className="text-[14px] leading-[1.8] text-[#444] mb-5">
-                    Welcome to {workshop.name || 'our workshop'}, your trusted automotive service partner in{' '}
+                    Welcome to {displayName}, your trusted automotive service partner in{' '}
                     {workshop.city || 'your city'}. We are a leading multi-brand car garage connecting car owners with professional
                     technicians and advanced diagnostic systems.
                   </p>
@@ -1076,7 +1073,7 @@ export default function WorkshopPublicPage() {
       </section>
 
       {/* FAQ SECTION */}
-      <WorkshopFaqs faqs={faqs} workshopName={workshop.name || 'My FNG'} city={workshop.city || ''} />
+      <WorkshopFaqs faqs={faqs} workshopName={displayName} city={workshop.city || ''} />
 
       <Footer />
     </div>

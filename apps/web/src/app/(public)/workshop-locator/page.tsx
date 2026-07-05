@@ -34,6 +34,16 @@ function cx(...classes: Array<string | undefined | false | null>) {
   return classes.filter(Boolean).join(' ');
 }
 
+function shortGmbName(row: any): string {
+  const gmb = row?.gmb_data?.business_name as string | undefined;
+  if (!gmb) return row?.workshop?.name || 'Workshop';
+  const cleaned = gmb
+    .replace(/^My\s*FNG\s*[-–—]\s*Multi[\s-]*Brand\s*Car\s*Garage\s*&\s*Repairs\s*(at|in)\s*/i, '')
+    .replace(/^MY\s*FNG\s*[-–—]\s*Multi[-\s]*Brand\s*Car\s*Servicing\s*and\s*Repairs\s*Across\s*India$/i, 'India HQ')
+    .trim();
+  return `My FNG ${cleaned}`;
+}
+
 function hashString(input: string): number {
   // Deterministic small hash for layout (not crypto).
   let h = 2166136261;
@@ -123,8 +133,20 @@ export default function WorkshopsPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [headerH, setHeaderH] = useState(140);
 
   const cardRefs = useRef(new Map<string, HTMLDivElement | null>());
+
+  useEffect(() => {
+    function measure() {
+      const header = document.querySelector('header');
+      if (header) setHeaderH(header.getBoundingClientRect().height);
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    const timer = setTimeout(measure, 500);
+    return () => { window.removeEventListener('resize', measure); clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -144,6 +166,7 @@ export default function WorkshopsPage() {
             profile_image,
             cover_image,
             views_count,
+            gmb_data,
             workshop:workshops(name,address,city,state,pincode,phone,latitude,longitude,map_link)
           `
           )
@@ -202,7 +225,7 @@ export default function WorkshopsPage() {
     const cityQuery = city.trim().toLowerCase();
     return rows.filter((r) => {
       const w = r.workshop;
-      const hay = `${w?.name ?? ''} ${w?.city ?? ''} ${w?.state ?? ''} ${r.short_description ?? ''}`.toLowerCase();
+      const hay = `${(r as any).gmb_data?.business_name ?? ''} ${w?.name ?? ''} ${w?.city ?? ''} ${w?.state ?? ''} ${r.short_description ?? ''}`.toLowerCase();
       if (query && !hay.includes(query)) return false;
       if (cityQuery && (w?.city ?? '').toLowerCase() !== cityQuery) return false;
       return true;
@@ -276,7 +299,7 @@ export default function WorkshopsPage() {
     return filtered.map((r) => {
       const ll = getRowLatLng(r);
       if (!ll) return null as any;
-      const title = r.workshop?.name ?? 'Workshop';
+      const title = shortGmbName(r);
       return {
         id: r.id,
         lat: ll.lat,
@@ -322,9 +345,9 @@ export default function WorkshopsPage() {
     <div className="min-h-screen bg-white font-poppins text-text-body">
       <Navbar />
 
-      <main className="pt-16 sm:pt-20 md:pt-24 pb-16 bg-white">
-        {/* Top search/filter bar (Airbnb-like) */}
-        <div className="sticky top-16 sm:top-20 md:top-24 z-40 bg-white/90 backdrop-blur border-b border-gray-100">
+      <main style={{ paddingTop: headerH }} className="pb-16 bg-white">
+        {/* Top search/filter bar */}
+        <div style={{ top: headerH }} className="sticky z-40 bg-white/90 backdrop-blur border-b border-gray-100">
           <div className="mx-auto w-full px-4 sm:px-6 lg:px-8 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -410,8 +433,8 @@ export default function WorkshopsPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
                     {filtered.map((r) => {
                       const w = r.workshop;
-                      const title = w?.name ?? 'Workshop';
-                      const location = [w?.city, w?.state].filter(Boolean).join(', ');
+                      const title = shortGmbName(r);
+                      const location = (r as any).gmb_data?.formatted_address || [w?.city, w?.state].filter(Boolean).join(', ');
                       const cover = r.cover_image || r.profile_image;
                       const selected = activeId === r.id;
                       const kmAway =
@@ -455,20 +478,23 @@ export default function WorkshopsPage() {
 
                           <div className="p-5">
                             <div className="min-w-0">
-                              <div className="text-base font-extrabold text-gray-900 truncate">{title}</div>
-                              <div className="mt-1 text-sm text-gray-600 flex items-center gap-2">
-                                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                <span className="truncate">{location || '—'}</span>
+                              <div className="flex items-start gap-2">
+                                <div className="text-sm font-extrabold text-gray-900 line-clamp-2 leading-snug min-w-0 flex-1">{title}</div>
+                                {typeof kmAway === 'number' && Number.isFinite(kmAway) && kmAway < 9999 ? (
+                                  <span className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700 border border-blue-100 whitespace-nowrap">
+                                    <MapPin className="w-3 h-3" />
+                                    {kmAway.toFixed(1)} km
+                                  </span>
+                                ) : null}
                               </div>
-                              {typeof kmAway === 'number' && Number.isFinite(kmAway) && kmAway < 9999 ? (
-                                <div className="mt-1 text-xs text-gray-500 font-semibold">
-                                  {kmAway.toFixed(1)} km away
-                                </div>
-                              ) : null}
+                              <div className="mt-1.5 text-xs text-gray-600 flex items-start gap-1.5">
+                                <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+                                <span className="line-clamp-2">{location || '—'}</span>
+                              </div>
                             </div>
 
                             {r.short_description ? (
-                              <p className="mt-3 text-sm text-gray-600 leading-relaxed line-clamp-2">{r.short_description}</p>
+                              <p className="mt-3 text-sm text-gray-600 leading-relaxed">{r.short_description}</p>
                             ) : null}
 
                             <div className="mt-4 flex items-center justify-between gap-3">
@@ -509,8 +535,8 @@ export default function WorkshopsPage() {
 
             {/* Right: map (desktop) */}
             <aside className="hidden lg:block lg:col-span-5 xl:col-span-4">
-              <div className="sticky top-28">
-                <div className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl h-[calc(100vh-11rem)] min-h-[520px]">
+              <div className="sticky" style={{ top: headerH + 56 }}>
+                <div className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl h-[calc(100vh-12rem)] min-h-[520px]">
                   <WorkshopMap
                     className="absolute inset-0"
                     center={mapCenter}
@@ -532,7 +558,7 @@ export default function WorkshopsPage() {
                             {(activeRow.cover_image || activeRow.profile_image) ? (
                               <img
                                 src={activeRow.cover_image || activeRow.profile_image || ''}
-                                alt={activeRow.workshop?.name ?? 'Workshop'}
+                                alt={shortGmbName(activeRow)}
                                 className="absolute inset-0 w-full h-full object-cover"
                               />
                             ) : null}
@@ -540,11 +566,11 @@ export default function WorkshopsPage() {
                           <div className="p-4 min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="text-sm font-extrabold text-gray-900 truncate">
-                                  {activeRow.workshop?.name ?? 'Workshop'}
+                                <div className="text-xs font-extrabold text-gray-900 line-clamp-2 leading-snug">
+                                  {shortGmbName(activeRow)}
                                 </div>
-                                <div className="mt-1 text-xs text-gray-600 truncate">
-                                  {activeRow.workshop?.city ?? ''} {activeRow.workshop?.state ? `• ${activeRow.workshop?.state}` : ''}
+                                <div className="mt-1 text-xs text-gray-600 line-clamp-1">
+                                  {(activeRow as any).gmb_data?.formatted_address || [activeRow.workshop?.city, activeRow.workshop?.state].filter(Boolean).join(', ')}
                                 </div>
                               </div>
                               <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-900">
