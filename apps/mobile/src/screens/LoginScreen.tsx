@@ -31,6 +31,7 @@ import {
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import { ReferralCodeModal } from '../components/ReferralCodeModal';
+import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralDeepLink';
 import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
@@ -57,6 +58,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
   const [referralModalVisible, setReferralModalVisible] = useState(false);
+  const [deepLinkReferralCode, setDeepLinkReferralCode] = useState('');
   const pendingHomeNavigationRef = useRef(false);
   const isNewCustomerRef = useRef(false);
   const pendingWelcomeCustomerIdRef = useRef<string | null>(null);
@@ -104,7 +106,13 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const finishLoginNavigation = () => {
     if (isNewCustomerRef.current) {
       isNewCustomerRef.current = false;
-      setReferralModalVisible(true);
+      getPendingReferralCode().then((pendingCode) => {
+        if (pendingCode) {
+          setDeepLinkReferralCode(pendingCode);
+          void clearPendingReferralCode();
+        }
+        setReferralModalVisible(true);
+      });
       return;
     }
     navigation?.navigate?.('PublicHome');
@@ -674,6 +682,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       />
       <ReferralCodeModal
         visible={referralModalVisible}
+        initialCode={deepLinkReferralCode}
         onClose={() => {
           setReferralModalVisible(false);
           navigation?.navigate?.('PublicHome');

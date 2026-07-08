@@ -33,6 +33,10 @@ import DigitalAuthorProfileScreen from '../screens/dashboard/digital_author/Digi
 import CustomerVehiclesScreen from '../screens/dashboard/customer/CustomerVehiclesScreen';
 import CustomerWalletScreen from '../screens/dashboard/customer/CustomerWalletScreen';
 import CustomerReferScreen from '../screens/dashboard/customer/CustomerReferScreen';
+import ReferAndRiseScreen from '../screens/dashboard/customer/ReferAndRiseScreen';
+import ReferAndRiseMilestonesScreen from '../screens/dashboard/customer/ReferAndRiseMilestonesScreen';
+import ReferAndRiseGarageShelfScreen from '../screens/dashboard/customer/ReferAndRiseGarageShelfScreen';
+import ReferAndRiseHistoryScreen from '../screens/dashboard/customer/ReferAndRiseHistoryScreen';
 import CustomerNotificationsScreen from '../screens/dashboard/customer/CustomerNotificationsScreen';
 import CustomerMembershipScreen from '../screens/dashboard/customer/CustomerMembershipScreen';
 import CustomerCartScreen from '../screens/dashboard/customer/CustomerCartScreen';
@@ -1344,8 +1348,23 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         />
         <Stack.Screen
           name="CustomerRefer"
-          component={CustomerReferScreen}
-          options={{ title: 'Refer & Earn' }}
+          component={ReferAndRiseScreen}
+          options={{ title: 'Refer & Rise' }}
+        />
+        <Stack.Screen
+          name="ReferAndRiseMilestones"
+          component={ReferAndRiseMilestonesScreen}
+          options={{ title: 'Milestones' }}
+        />
+        <Stack.Screen
+          name="ReferAndRiseGarageShelf"
+          component={ReferAndRiseGarageShelfScreen}
+          options={{ title: 'My Rewards' }}
+        />
+        <Stack.Screen
+          name="ReferAndRiseHistory"
+          component={ReferAndRiseHistoryScreen}
+          options={{ title: 'Referral History' }}
         />
         <Stack.Screen
           name="CustomerNotifications"

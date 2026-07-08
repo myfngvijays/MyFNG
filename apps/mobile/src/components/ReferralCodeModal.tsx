@@ -16,10 +16,11 @@ import { apiFetch } from '../lib/api';
 type Props = {
   visible: boolean;
   onClose: () => void;
+  initialCode?: string;
 };
 
-export function ReferralCodeModal({ visible, onClose }: Props) {
-  const [code, setCode] = useState('');
+export function ReferralCodeModal({ visible, onClose, initialCode }: Props) {
+  const [code, setCode] = useState(initialCode || '');
   const [loading, setLoading] = useState(false);
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState('');

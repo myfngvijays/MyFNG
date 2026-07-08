@@ -711,6 +711,15 @@ async function handlePaymentSuccess(payload: any, supabase: any) {
           invoice_number: invoice.invoice_number,
           lead: invoice.lead,
         });
+
+        // Auto-reward referrer on first paid booking
+        try {
+          const { maybeRewardReferrer } = await import('@/lib/referral-reward');
+          const invoiceCustomerId = (invoice as any).customer_id || (invoice as any).lead?.customer_id;
+          if (invoiceCustomerId) {
+            await maybeRewardReferrer(supabaseAdmin, invoiceCustomerId);
+          }
+        } catch {}
       }
     }
   }

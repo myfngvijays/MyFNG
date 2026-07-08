@@ -816,6 +816,17 @@ export async function POST(
           console.warn('Non-blocking: membership cashback after payment failed:', cashbackErr);
         }
 
+        // Auto-reward referrer on first paid booking
+        try {
+          const { maybeRewardReferrer } = await import('@/lib/referral-reward');
+          const invoiceCustomerId = (invoice as any).customer_id || (invoice as any).lead?.customer_id;
+          if (invoiceCustomerId) {
+            await maybeRewardReferrer(supabaseAdmin, invoiceCustomerId);
+          }
+        } catch (refErr) {
+          console.warn('Non-blocking: referral reward after payment failed:', refErr);
+        }
+
         try {
           // Call receipt generation API
           const receiptResponse = await fetch(

@@ -58,10 +58,38 @@ export async function GET() {
     .filter((r: any) => r.status === 'CREDITED')
     .reduce((sum: number, r: any) => sum + Number(r.reward_amount || 0), 0);
 
+  // Fetch milestone claims (picks)
+  let picks: Record<number, string> = {};
+  const { data: claimsData } = await supabaseAdmin
+    .from('referral_milestone_claims')
+    .select('milestone_count, chosen_family')
+    .eq('customer_id', customer.id);
+
+  if (claimsData && claimsData.length > 0) {
+    picks = Object.fromEntries(claimsData.map((c: any) => [c.milestone_count, c.chosen_family]));
+  } else {
+    // Fallback: check referral_rewards with milestone metadata
+    const { data: fallbackClaims } = await supabaseAdmin
+      .from('referral_rewards')
+      .select('metadata')
+      .eq('customer_id', customer.id)
+      .eq('reward_type', 'MILESTONE_REWARD');
+
+    if (fallbackClaims && fallbackClaims.length > 0) {
+      for (const fc of fallbackClaims) {
+        const meta = fc.metadata as any;
+        if (meta?.milestone_count && meta?.family) {
+          picks[meta.milestone_count] = meta.family;
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     code: codeRow,
     events: events || [],
     rewards: rewards || [],
+    refer_and_rise: { picks },
     stats: {
       total_referred: totalReferred || 0,
       total_rewarded: totalRewarded || 0,

@@ -45,6 +45,8 @@ export const ENV = {
   API_URL,
   PLAYSTORE_URL: 'https://play.google.com/store/apps/details?id=com.myfng.app',
   APPSTORE_URL: 'https://apps.apple.com/in/app/myfng/id6744942498',
+  REFERRAL_LINK_BASE: 'https://myfng.in/refer',
+  WEBSITE_URL: 'https://myfng.in',
 };
 
 export function isIosSimulator(): boolean {

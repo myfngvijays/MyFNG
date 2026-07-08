@@ -343,6 +343,17 @@ export async function POST(
     // Send delivery confirmation to customer
     // TODO: Send SMS/Email/WhatsApp notification
 
+    // Auto-reward referrer on delivery completion
+    try {
+      const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+      const { maybeRewardReferrer } = await import('@/lib/referral-reward');
+      const { supabaseAdmin } = getSupabaseAdmin();
+      const customerId = (lead as any).customer_id;
+      if (supabaseAdmin && customerId) {
+        await maybeRewardReferrer(supabaseAdmin, customerId);
+      }
+    } catch {}
+
     // Workshop Admin notification (final)
     try {
       if ((lead as any)?.workshop_id) {

@@ -2,6 +2,7 @@
   "expo": {
     "name": "MyFNG",
     "slug": "myfng-app",
+    "scheme": "myfng",
     "version": "1.2.3",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
@@ -20,6 +21,9 @@
       "bundleIdentifier": "com.myfng.app",
       "buildNumber": "30",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
+      "associatedDomains": [
+        "applinks:myfng.in"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "MyFNG needs access to your camera to take photos of your vehicle for service inspections, before/after service documentation, and incident reports during pickup and delivery.",
@@ -56,6 +60,16 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "myfng.in", "pathPrefix": "/refer" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "web": {
@@ -64,7 +78,13 @@
     "plugins": [
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow MyFNG to access your contacts to invite friends via Refer & Rise."
+        }
+      ]
     ],
     "owner": "myfngvijays",
     "extra": {

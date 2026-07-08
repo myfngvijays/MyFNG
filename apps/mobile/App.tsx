@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
+import { AppState, Linking, Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
 
 const TextInputWithDefaults = RNTextInput as typeof RNTextInput & {
   defaultProps?: Partial<React.ComponentProps<typeof RNTextInput>>;
@@ -62,6 +62,7 @@ import { NotificationProvider } from './src/context/NotificationContext';
 import { supabase } from './src/lib/supabase';
 import { ENV } from './src/config/environment';
 import { getCustomerSessionToken } from './src/lib/customerSession';
+import { storeReferralCode, checkPlayStoreReferrer } from './src/lib/referralDeepLink';
 import { performCustomerLogout } from './src/lib/customerLogout';
 import { preloadWalletRules } from './src/lib/wallet';
 import { preloadMembershipTerms } from './src/lib/membershipTerms';
@@ -130,6 +131,31 @@ function AppContent() {
     if (!isCustomerSessionUser) return;
     void syncCustomerPushToken();
   }, [isCustomerSessionUser, user?.id]);
+
+  // Deep link handling — capture referral code from myfng.in/refer/CODE
+  useEffect(() => {
+    // Check Play Store install referrer (Android)
+    void checkPlayStoreReferrer();
+
+    const handleDeepLink = (event: { url: string }) => {
+      const url = event.url;
+      // Match /refer/CODE or ?code=CODE
+      const pathMatch = url.match(/\/refer\/([A-Za-z0-9]+)/);
+      const queryMatch = url.match(/[?&]code=([^&]+)/);
+      const code = pathMatch?.[1] || queryMatch?.[1];
+      if (code) {
+        void storeReferralCode(code);
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
+    return () => { subscription.remove(); };
+  }, []);
 
   const runForceUpdateCheck = useCallback(async () => {
     if (__DEV__) {

@@ -36,6 +36,8 @@ import {
 } from '../constants/publicAppData';
 import { COLORS } from '../constants/theme';
 import ReferAndFooter from '../components/ReferAndFooter';
+import ReferAndRiseInline from '../components/ReferAndRiseInline';
+import type { ReferAndRiseHandle } from '../components/ReferAndRiseInline';
 import WalletScreenContent from '../components/WalletScreenContent';
 import { calculateWalletUsage, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules } from '../lib/wallet';
 import { apiFetch } from '../lib/api';
@@ -130,7 +132,7 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'orders', label: 'Order History', icon: 'receipt' },
   { id: 'cart', label: 'Cart', icon: 'cart' },
   { id: 'coupons', label: 'My Coupons', icon: 'pricetag' },
-  { id: 'referral', label: 'Refer & Earn', icon: 'gift' },
+  { id: 'referral', label: 'Refer & Rise', icon: 'trophy' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
 
@@ -236,6 +238,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const [activeSubPage, setActiveSubPage] = useState<string | null>(resolveSubPage(route?.params?.initialSubPage ?? route?.params?.subPage ?? null));
   const activeSubPageRef = useRef(activeSubPage);
   activeSubPageRef.current = activeSubPage;
+  const referAndRiseRef = useRef<ReferAndRiseHandle>(null);
+  const [referAndRiseTitle, setReferAndRiseTitle] = useState('Refer & Rise');
   const [enabledMenuIds, setEnabledMenuIds] = useState<Set<string> | null>(null);
   const [vehicleEntryOnly, setVehicleEntryOnly] = useState(false);
   const [dismissedVehicleKeys, setDismissedVehicleKeys] = useState<string[]>([]);
@@ -1074,7 +1078,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       if (showAddAddress) { setShowAddAddress(false); return true; }
       if (showProfileEditor) { setShowProfileEditor(false); return true; }
       if (vehicleEntryOnly) { setVehicleEntryOnly(false); return true; }
-      if (activeSubPage) { setActiveSubPage(null); return true; }
+      if (activeSubPage) {
+        if ((activeSubPage === 'Refer & Rise' || activeSubPage === 'Refer & Earn') && referAndRiseRef.current?.handleBack()) return true;
+        setActiveSubPage(null); return true;
+      }
       return false;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
@@ -3407,7 +3414,16 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             }}
           >
             <View style={styles.gridCardIconWrap}>
-              <Ionicons name={item.icon} size={18} color={COLORS.primary} />
+              {item.id === 'referral' ? (
+                <View style={{ position: 'relative' }}>
+                  <Ionicons name="trophy" size={18} color={COLORS.primary} />
+                  <Ionicons name="star" size={7} color="#F5B942" style={{ position: 'absolute', top: -3, right: -4 }} />
+                  <Ionicons name="star" size={5} color="#EF4444" style={{ position: 'absolute', bottom: 0, right: -5 }} />
+                  <Ionicons name="star" size={5} color="#22D3EE" style={{ position: 'absolute', top: -2, left: -3 }} />
+                </View>
+              ) : (
+                <Ionicons name={item.icon} size={18} color={COLORS.primary} />
+              )}
               {item.id === 'orders' && pendingMembershipOffer ? (
                 <View style={styles.menuOfferDot} />
               ) : null}
@@ -4310,193 +4326,17 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             onBuyMembership={() => setActiveSubPage('Membership')}
           />
         );
+      case 'Refer & Rise':
       case 'Refer & Earn':
         trackEvent('referral_screen_viewed');
         return (
-          <View style={styles.subWrap}>
-            {/* Hero Banner */}
-            <View style={styles.refHeroBanner}>
-              <View style={styles.refHeroIcons}>
-                <View style={[styles.refHeroIconCircle, { backgroundColor: '#F97316' }]}>
-                  <Ionicons name="gift" size={18} color="#FFFFFF" />
-                </View>
-                <View style={[styles.refHeroIconCircle, { backgroundColor: COLORS.primary }]}>
-                  <Ionicons name="construct" size={18} color="#FFFFFF" />
-                </View>
-              </View>
-              <Text style={styles.refHeroTitle}>{'Refer Friends & Earn\nService Rewards 🎉'}</Text>
-              <Text style={styles.refHeroSub}>
-                Invite your friends to MyFNG. They get ₹1,500 wallet balance instantly, and you earn rewards when they book their first service.
-              </Text>
-              <TouchableOpacity
-                style={styles.refInviteBtn}
-                activeOpacity={1}
-                onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n📱 Download Now:\n▶️ Android: https://play.google.com/store/apps/details?id=com.myfng.app\n🍎 iOS: https://apps.apple.com/in/app/myfng/id6744942498\n\nApply my code after signup & get instant wallet bonus!` }); }}
-              >
-                <Text style={styles.refInviteBtnText}>Invite Friends</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Referral Code */}
-            <View style={styles.refCodeCard}>
-              <Text style={styles.refCodeLabel}>YOUR REFERRAL CODE</Text>
-              <Text style={styles.refCodeValue}>{referralCode || 'MYFNG...'}</Text>
-              <View style={styles.refCodeActions}>
-                <TouchableOpacity
-                  style={styles.refCopyBtn}
-                  activeOpacity={1}
-                  onPress={async () => {
-                    if (referralCode) {
-                      await Clipboard.setStringAsync(referralCode);
-                      trackEvent('referral_code_copied');
-                      Alert.alert('Copied!', 'Referral code copied to clipboard.');
-                    }
-                  }}
-                >
-                  <Ionicons name="copy-outline" size={14} color="#111827" />
-                  <Text style={styles.refCopyBtnText}>Copy Code</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.refShareBtn}
-                  activeOpacity={1}
-                  onPress={() => { trackEvent('referral_share_tapped'); Share.share({ message: `Join MyFNG – India's #1 AI-powered car service platform! Use my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n📱 Download Now:\n▶️ Android: https://play.google.com/store/apps/details?id=com.myfng.app\n🍎 iOS: https://apps.apple.com/in/app/myfng/id6744942498\n\nApply my code after signup & get instant wallet bonus!` }); }}
-                >
-                  <Ionicons name="share-social-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.refShareBtnText}>Share Link</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Your Rewards */}
-            <View style={styles.refSectionCard}>
-              <View style={styles.refSectionHeader}>
-                <Ionicons name="ribbon" size={18} color={COLORS.primary} />
-                <Text style={styles.refSectionTitle}>Your Rewards</Text>
-              </View>
-              <View style={styles.refRewardRow}>
-                <Text style={styles.refRewardEmoji}>🎁</Text>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.refRewardBadge}>
-                    <Text style={styles.refRewardBadgeText}>FIRST SUCCESSFUL REFERRAL</Text>
-                  </View>
-                  <Text style={styles.refRewardValue}>Earn ₹500 reward</Text>
-                </View>
-              </View>
-              <View style={styles.refRewardRow}>
-                <Text style={styles.refRewardEmoji}>💝</Text>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.refRewardBadge}>
-                    <Text style={styles.refRewardBadgeText}>EVERY NEXT REFERRAL</Text>
-                  </View>
-                  <Text style={styles.refRewardValue}>Earn ₹250 reward</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Friend Benefits */}
-            <View style={styles.refSectionCard}>
-              <View style={styles.refSectionHeader}>
-                <Ionicons name="gift" size={18} color="#F97316" />
-                <Text style={styles.refSectionTitle}>Friend Benefits</Text>
-              </View>
-              <Text style={styles.refFriendDesc}>
-                When your friend installs the MyFNG app using your referral code, they receive:
-              </Text>
-              <View style={styles.refFriendBenefitRow}>
-                <Text style={styles.refRewardEmoji}>💰</Text>
-                <Text style={styles.refFriendBenefitText}>₹1,000 welcome bonus (instant)</Text>
-              </View>
-              <View style={styles.refFriendBenefitRow}>
-                <Text style={styles.refRewardEmoji}>🎁</Text>
-                <Text style={styles.refFriendBenefitText}>₹500 referral bonus (instant)</Text>
-              </View>
-              <View style={styles.refFriendBenefitRow}>
-                <Text style={styles.refRewardEmoji}>🚗</Text>
-                <Text style={styles.refFriendBenefitText}>Free pickup & drop on first service</Text>
-              </View>
-              <View style={styles.refFriendBenefitRow}>
-                <Text style={styles.refRewardEmoji}>⭐</Text>
-                <Text style={styles.refFriendBenefitText}>Priority booking slot</Text>
-              </View>
-            </View>
-
-            {/* How It Works */}
-            <View style={styles.refSectionCard}>
-              <Text style={styles.refSectionTitle}>How It Works</Text>
-              {([
-                { icon: 'share-social-outline' as const, label: 'STEP 1', text: 'Share your referral code with friends.' },
-                { icon: 'phone-portrait-outline' as const, label: 'STEP 2', text: 'Friend installs the app & gets ₹1,500 wallet balance instantly.' },
-                { icon: 'car-sport-outline' as const, label: 'STEP 3', text: 'Friend books their first service through the app.' },
-                { icon: 'gift-outline' as const, label: 'STEP 4', text: 'You earn ₹500 (first) or ₹250 (repeat) referral reward!' },
-              ]).map((item, idx) => (
-                <View key={String(idx)} style={styles.refStepCard}>
-                  <View style={styles.refStepIconWrap}>
-                    <Ionicons name={item.icon} size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.refStepLabel}>{item.label}</Text>
-                    <Text style={styles.refStepText}>{item.text}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            {/* Stats */}
-            <View style={styles.refStatsRow}>
-              <View style={styles.refStatBox}>
-                <Text style={styles.refStatNum}>0</Text>
-                <Text style={styles.refStatLabel}>TOTAL INVITES{'\n'}SENT</Text>
-              </View>
-              <View style={styles.refStatBox}>
-                <Text style={styles.refStatNum}>0</Text>
-                <Text style={styles.refStatLabel}>SUCCESSFUL{'\n'}REFERRALS</Text>
-              </View>
-            </View>
-
-            {/* Referral History */}
-            <View style={styles.refSectionCard}>
-              <Text style={styles.refSectionTitle}>Referral History</Text>
-              <View style={styles.refHistoryEmpty}>
-                <Text style={styles.refHistoryCount}>0 Referrals</Text>
-                {!isLoggedIn ? (
-                  <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                    <Text style={styles.refHistoryLogin}>Login to See</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={styles.refHistoryNone}>No referrals yet. Start inviting!</Text>
-                )}
-              </View>
-            </View>
-
-            {/* Terms & Conditions Dropdown */}
-            <TouchableOpacity
-              style={styles.refTncHeader}
-              onPress={() => { trackEvent('referral_terms_toggled'); setShowReferTnC((prev) => !prev); }}
-              activeOpacity={0.8}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
-                <Text style={styles.refTncHeaderText}>TERMS & CONDITIONS</Text>
-              </View>
-              <Ionicons name={showReferTnC ? 'chevron-up' : 'chevron-down'} size={16} color="#6B7280" />
-            </TouchableOpacity>
-            {showReferTnC ? (
-              <View style={styles.refTncBody}>
-                {[
-                  'First successful referral gives you ₹500 reward.',
-                  'Every next referral gives you ₹250 reward.',
-                  'Your referral reward unlocks when your friend books their first service.',
-                  'Your friend gets ₹1,500 wallet balance (₹1,000 welcome + ₹500 referral bonus) instantly on signup.',
-                  'Wallet balance expires in 90 days.',
-                  'Maximum wallet usage: 10% of service booking amount.',
-                  'Rewards cannot be converted to cash.',
-                  'Self-referral and fraudulent referrals will be rejected.',
-                ].map((term, idx) => (
-                  <Text key={String(idx)} style={styles.refTncItem}>• {term}</Text>
-                ))}
-              </View>
-            ) : null}
-          </View>
+          <ReferAndRiseInline
+            ref={referAndRiseRef}
+            referralCode={referralCode}
+            isLoggedIn={isLoggedIn}
+            onLogin={() => navigation.navigate('Login')}
+            onViewChange={setReferAndRiseTitle}
+          />
         );
       case 'Order History': {
         trackEvent('order_history_viewed');
@@ -5845,9 +5685,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const allMenuItems = [...MAIN_MENU, ...LEGAL_MENU];
   const subPageLabel = useMemo(() => {
     if (!activeSubPage) return 'Settings';
+    if (activeSubPage === 'Refer & Rise' || activeSubPage === 'Refer & Earn') return referAndRiseTitle;
     const found = allMenuItems.find((m) => m.id === activeSubPage);
     return found?.label || activeSubPage;
-  }, [activeSubPage]);
+  }, [activeSubPage, referAndRiseTitle]);
 
   useEffect(() => {
     navigation.setOptions({ gestureEnabled: !activeSubPage });
@@ -5873,6 +5714,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       },
       onPanResponderRelease: (_evt, gestureState) => {
         if (gestureState.dx > screenWidth * 0.35 || gestureState.vx > 0.5) {
+          const subPage = activeSubPageRef.current;
+          if ((subPage === 'Refer & Rise' || subPage === 'Refer & Earn') && referAndRiseRef.current?.handleBack()) {
+            Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true }).start();
+            return;
+          }
           Animated.timing(swipeAnim, {
             toValue: screenWidth,
             duration: 200,
@@ -5903,8 +5749,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
         <TouchableOpacity
           style={styles.iconCircle}
           onPress={() => {
-            if (activeSubPage) setActiveSubPage(null);
-            else navigation.goBack();
+            if (activeSubPage) {
+              if ((activeSubPage === 'Refer & Rise' || activeSubPage === 'Refer & Earn') && referAndRiseRef.current?.handleBack()) return;
+              setActiveSubPage(null);
+            } else {
+              navigation.goBack();
+            }
           }}
         >
           <Ionicons name="chevron-back" size={18} color="#111827" />
@@ -5917,8 +5767,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           style={{ flex: 1, transform: [{ translateX: swipeAnim }] }}
           {...panResponder.panHandlers}
         >
-          {activeSubPage === 'Your Wallet' ? (
-            subPageContent
+          {activeSubPage === 'Your Wallet' || activeSubPage === 'Refer & Rise' || activeSubPage === 'Refer & Earn' ? (
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {subPageContent}
+            </ScrollView>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {subPageContent}
