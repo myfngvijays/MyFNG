@@ -52,6 +52,7 @@ import {
   Search,
   PanelLeftClose,
   PanelLeftOpen,
+  HeartPulse,
 } from 'lucide-react';
 
 type NavItem = {
@@ -433,6 +434,12 @@ const navigationItems: NavItem[] = [
   {
     name: 'System & Governance',
     isSection: true,
+  },
+  {
+    name: 'System Monitor',
+    href: '/dashboard/super_admin/system-monitor',
+    icon: HeartPulse,
+    description: 'Real-time health check & alerts'
   },
   {
     name: 'Audit Logs',

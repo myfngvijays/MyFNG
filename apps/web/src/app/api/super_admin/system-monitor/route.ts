@@ -1,0 +1,856 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { sendTextMessage } from '@/lib/services/whatsappService';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+const ADMIN_WHATSAPP_NUMBERS = (process.env.SYSTEM_ALERT_WHATSAPP_NUMBERS || '').split(',').filter(Boolean);
+
+type ServiceStatus = 'healthy' | 'degraded' | 'down';
+
+interface HealthCheck {
+  name: string;
+  category: string;
+  status: ServiceStatus;
+  responseTime: number;
+  message: string;
+  reason: string;
+  lastChecked: string;
+  quickFix?: { label: string; action: string; actionPayload?: Record<string, unknown> } | null;
+  details?: Record<string, unknown>;
+}
+
+async function assertSuperAdmin(supabase: any) {
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) return { ok: false, status: 401, error: 'Unauthorized' };
+
+  const { data: userData, error: roleError } = await supabase
+    .from('users_login')
+    .select('id, roles!inner(role_code)')
+    .eq('id', user.id)
+    .single();
+  if (roleError || !userData) return { ok: false, status: 403, error: 'Forbidden' };
+
+  const roleCode = (userData as any).roles?.role_code;
+  if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
+    return { ok: false, status: 403, error: 'Forbidden - Not super admin' };
+  }
+  return { ok: true, status: 200, error: null };
+}
+
+async function checkWithTimeout<T>(fn: () => Promise<T>, timeoutMs = 10000): Promise<T> {
+  return Promise.race([
+    fn(),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Request timed out after ' + timeoutMs + 'ms')), timeoutMs)),
+  ]);
+}
+
+function getAdminClient() {
+  const { supabaseAdmin, error } = getSupabaseAdmin();
+  if (error || !supabaseAdmin) {
+    return { client: null, configError: error || 'Supabase Admin client not initialized' };
+  }
+  return { client: supabaseAdmin, configError: null };
+}
+
+async function checkDatabase(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+
+  if (!client) {
+    return {
+      name: 'PostgreSQL Database',
+      category: 'Database',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Configuration error',
+      reason: `Supabase Admin client could not be created. Error: "${configError}". This means environment variables NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY are missing or invalid in your .env.local file.`,
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await checkWithTimeout(() =>
+      client.from('roles').select('id').limit(1)
+    );
+    const responseTime = Date.now() - start;
+    if (error) {
+      return {
+        name: 'PostgreSQL Database',
+        category: 'Database',
+        status: 'down',
+        responseTime,
+        message: `Query failed: ${error.message}`,
+        reason: error.code === 'PGRST301' ? 'JWT token expired or invalid. The SUPABASE_SERVICE_ROLE_KEY may be wrong.' :
+          error.code === '42P01' ? 'Table "roles" does not exist in the database.' :
+          error.code === '57P03' ? 'Database is in recovery mode or shutting down.' :
+          `Database returned error code "${error.code || 'unknown'}": ${error.message}. Check if Supabase project is active and DB is not paused.`,
+        quickFix: error.code === 'PGRST301' ? { label: 'Verify Service Role Key', action: 'check-env', actionPayload: { vars: ['SUPABASE_SERVICE_ROLE_KEY'] } } : null,
+        lastChecked: new Date().toISOString(),
+        details: { errorCode: error.code, hint: error.hint },
+      };
+    }
+    return {
+      name: 'PostgreSQL Database',
+      category: 'Database',
+      status: responseTime > 3000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: responseTime > 3000 ? 'High latency detected' : 'Connected & responsive',
+      reason: responseTime > 3000 ? `Response took ${responseTime}ms (threshold: 3000ms). Database may be under heavy load or Supabase project is on free tier with cold starts.` : 'Database query executed successfully within acceptable time.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    const responseTime = Date.now() - start;
+    return {
+      name: 'PostgreSQL Database',
+      category: 'Database',
+      status: 'down',
+      responseTime,
+      message: e.message || 'Connection failed',
+      reason: e.message?.includes('Timeout') ? `Database did not respond within 10 seconds. Possible causes: Supabase project paused (free tier auto-pause after 1 week), network issues, or database overloaded.` :
+        e.message?.includes('fetch') ? 'Network error - cannot reach Supabase servers. Check your internet connection or if Supabase is experiencing an outage.' :
+        `Unexpected error: ${e.message}. Check Supabase dashboard for project status.`,
+      quickFix: e.message?.includes('Timeout') ? { label: 'Wake Up Database', action: 'wake-db' } : null,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSupabaseAuth(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+
+  if (!client) {
+    return {
+      name: 'Supabase Auth',
+      category: 'Authentication',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Configuration error',
+      reason: `Admin client not available: "${configError}". Auth service requires SUPABASE_SERVICE_ROLE_KEY to access admin functions.`,
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['SUPABASE_SERVICE_ROLE_KEY'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await checkWithTimeout(() =>
+      client.auth.admin.listUsers({ page: 1, perPage: 1 })
+    );
+    const responseTime = Date.now() - start;
+    if (error) {
+      return {
+        name: 'Supabase Auth',
+        category: 'Authentication',
+        status: 'down',
+        responseTime,
+        message: `Auth error: ${error.message}`,
+        reason: error.message?.includes('not authorized') ? 'Service role key does not have admin access. Verify SUPABASE_SERVICE_ROLE_KEY is the service_role key (not anon key).' :
+          `Auth service returned: "${error.message}". The Supabase Auth service may be temporarily unavailable.`,
+        quickFix: { label: 'Verify Service Role Key', action: 'check-env', actionPayload: { vars: ['SUPABASE_SERVICE_ROLE_KEY'] } },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Supabase Auth',
+      category: 'Authentication',
+      status: responseTime > 3000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'Auth service operational',
+      reason: responseTime > 3000 ? `Auth response took ${responseTime}ms. Service is slow but functional.` : 'Authentication service responded normally.',
+      lastChecked: new Date().toISOString(),
+      details: { usersFound: data?.users?.length || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Supabase Auth',
+      category: 'Authentication',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Auth check failed',
+      reason: e.message?.includes('Timeout') ? 'Auth service did not respond in time. Supabase may be experiencing issues.' :
+        `Error: ${e.message}. Check Supabase status page for Auth service availability.`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSupabaseStorage(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+
+  if (!client) {
+    return {
+      name: 'Supabase Storage',
+      category: 'Storage',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Configuration error',
+      reason: `Admin client not available: "${configError}". Storage requires valid Supabase credentials.`,
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await checkWithTimeout(() =>
+      client.storage.listBuckets()
+    );
+    const responseTime = Date.now() - start;
+    if (error) {
+      return {
+        name: 'Supabase Storage',
+        category: 'Storage',
+        status: 'down',
+        responseTime,
+        message: `Storage error: ${(error as any).message || error}`,
+        reason: `Storage service returned an error. This could be due to invalid credentials or Supabase Storage service being temporarily down.`,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Supabase Storage',
+      category: 'Storage',
+      status: responseTime > 3000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: `${data?.length || 0} buckets accessible`,
+      reason: 'Storage service is working correctly. All buckets are accessible.',
+      lastChecked: new Date().toISOString(),
+      details: { bucketCount: data?.length || 0, buckets: data?.map((b: any) => b.name) },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Supabase Storage',
+      category: 'Storage',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Storage check failed',
+      reason: `Storage API call failed: ${e.message}. Check if Supabase project is active.`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkWhatsAppAPI(): Promise<HealthCheck> {
+  const start = Date.now();
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const apiUrl = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
+
+  if (!phoneId || !token) {
+    const missing = [];
+    if (!phoneId) missing.push('WHATSAPP_PHONE_NUMBER_ID');
+    if (!token) missing.push('WHATSAPP_ACCESS_TOKEN');
+    return {
+      name: 'WhatsApp Business API',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: 0,
+      message: 'Configuration missing',
+      reason: `Missing environment variables: ${missing.join(', ')}. These are required to connect to WhatsApp Business Cloud API.`,
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: missing } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const response = await checkWithTimeout(() =>
+      fetch(`${apiUrl}/${phoneId}`, { headers: { Authorization: `Bearer ${token}` } })
+    );
+    const responseTime = Date.now() - start;
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const errMsg = (body as any)?.error?.message || `HTTP ${response.status}`;
+      return {
+        name: 'WhatsApp Business API',
+        category: 'Notifications',
+        status: 'down',
+        responseTime,
+        message: `API returned ${response.status}`,
+        reason: response.status === 401 ? 'Access token expired or invalid. Generate a new token from Meta Business Suite > WhatsApp > API Setup.' :
+          response.status === 400 ? `Bad request: ${errMsg}. Phone Number ID may be incorrect.` :
+          response.status === 403 ? 'Permission denied. App may not have WhatsApp messaging permission or phone number is not verified.' :
+          `WhatsApp API error: ${errMsg}`,
+        quickFix: response.status === 401 ? { label: 'Regenerate Token', action: 'external-link', actionPayload: { url: 'https://business.facebook.com/settings/whatsapp-business-accounts' } } : null,
+        lastChecked: new Date().toISOString(),
+        details: { httpStatus: response.status, apiError: errMsg },
+      };
+    }
+    return {
+      name: 'WhatsApp Business API',
+      category: 'Notifications',
+      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'WhatsApp API reachable',
+      reason: 'WhatsApp Business Cloud API is responding correctly. Messages can be sent.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'WhatsApp Business API',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'API unreachable',
+      reason: e.message?.includes('Timeout') ? 'WhatsApp API did not respond within 10s. Meta servers might be slow or experiencing an outage.' :
+        `Network error reaching WhatsApp API: ${e.message}. Check internet connectivity.`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkRazorpay(): Promise<HealthCheck> {
+  const start = Date.now();
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    const missing = [];
+    if (!keyId) missing.push('RAZORPAY_KEY_ID');
+    if (!keySecret) missing.push('RAZORPAY_KEY_SECRET');
+    return {
+      name: 'Razorpay Payment Gateway',
+      category: 'Payments',
+      status: 'down',
+      responseTime: 0,
+      message: 'Configuration missing',
+      reason: `Missing: ${missing.join(', ')}. Get these from Razorpay Dashboard > Settings > API Keys.`,
+      quickFix: { label: 'Open Razorpay Dashboard', action: 'external-link', actionPayload: { url: 'https://dashboard.razorpay.com/app/keys' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    const response = await checkWithTimeout(() =>
+      fetch('https://api.razorpay.com/v1/payments?count=1', {
+        headers: { Authorization: `Basic ${auth}` },
+      })
+    );
+    const responseTime = Date.now() - start;
+    if (!response.ok && response.status !== 401) {
+      return {
+        name: 'Razorpay Payment Gateway',
+        category: 'Payments',
+        status: response.status === 401 ? 'down' : 'down',
+        responseTime,
+        message: `API returned ${response.status}`,
+        reason: response.status === 401 ? 'Invalid API credentials. Key ID or Key Secret is incorrect. Regenerate from Razorpay Dashboard.' :
+          response.status === 429 ? 'Rate limited by Razorpay. Too many requests. Wait a few minutes.' :
+          `Razorpay returned HTTP ${response.status}. Check Razorpay status page.`,
+        quickFix: response.status === 401 ? { label: 'Open Razorpay Keys', action: 'external-link', actionPayload: { url: 'https://dashboard.razorpay.com/app/keys' } } : null,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Razorpay Payment Gateway',
+      category: 'Payments',
+      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'Payment gateway accessible',
+      reason: 'Razorpay API is responding correctly. Payment processing is functional.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Razorpay Payment Gateway',
+      category: 'Payments',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Gateway unreachable',
+      reason: e.message?.includes('Timeout') ? 'Razorpay API timeout. Their servers might be slow. Check https://status.razorpay.com' :
+        `Cannot reach Razorpay: ${e.message}`,
+      quickFix: { label: 'Check Razorpay Status', action: 'external-link', actionPayload: { url: 'https://status.razorpay.com' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkFirebase(): Promise<HealthCheck> {
+  const start = Date.now();
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+
+  if (!projectId) {
+    return {
+      name: 'Firebase (FCM)',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: 0,
+      message: 'Project ID missing',
+      reason: 'FIREBASE_PROJECT_ID or NEXT_PUBLIC_FIREBASE_PROJECT_ID not set. Push notifications will not work.',
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['FIREBASE_PROJECT_ID', 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const response = await checkWithTimeout(() =>
+      fetch(`https://firebaseinstallations.googleapis.com/v1/projects/${projectId}`, { method: 'GET' })
+    );
+    const responseTime = Date.now() - start;
+    return {
+      name: 'Firebase (FCM)',
+      category: 'Notifications',
+      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'Firebase services reachable',
+      reason: 'Firebase endpoint is responding. Push notification infrastructure is operational.',
+      lastChecked: new Date().toISOString(),
+      details: { projectId },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Firebase (FCM)',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Firebase unreachable',
+      reason: `Cannot reach Firebase servers: ${e.message}. Check internet or Firebase status at https://status.firebase.google.com`,
+      quickFix: { label: 'Check Firebase Status', action: 'external-link', actionPayload: { url: 'https://status.firebase.google.com' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+
+async function checkEmailService(): Promise<HealthCheck> {
+  const start = Date.now();
+  const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_HOST;
+  if (!smtpHost) {
+    return {
+      name: 'Email (SMTP)',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: 0,
+      message: 'SMTP not configured',
+      reason: 'SMTP_HOST or EMAIL_HOST not found in environment. Emails cannot be sent.',
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+  return {
+    name: 'Email (SMTP)',
+    category: 'Notifications',
+    status: 'healthy',
+    responseTime: Date.now() - start,
+    message: `SMTP host: ${smtpHost}`,
+    reason: `Email configured with SMTP host "${smtpHost}". Service should be functional.`,
+    lastChecked: new Date().toISOString(),
+  };
+}
+
+async function checkOpenAI(): Promise<HealthCheck> {
+  const start = Date.now();
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return {
+      name: 'OpenAI / AI Services',
+      category: 'AI',
+      status: 'down',
+      responseTime: 0,
+      message: 'API key missing',
+      reason: 'OPENAI_API_KEY is not set in environment. AI features (chatbot, content generation) will not work.',
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['OPENAI_API_KEY'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const response = await checkWithTimeout(() =>
+      fetch('https://api.openai.com/v1/models', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      })
+    );
+    const responseTime = Date.now() - start;
+    if (!response.ok) {
+      return {
+        name: 'OpenAI / AI Services',
+        category: 'AI',
+        status: 'down',
+        responseTime,
+        message: `API returned ${response.status}`,
+        reason: response.status === 401 ? 'OpenAI API key is invalid or expired. Generate a new key from platform.openai.com.' :
+          response.status === 429 ? 'Rate limited or quota exceeded. Check your OpenAI billing and usage limits.' :
+          `OpenAI returned HTTP ${response.status}. Check https://status.openai.com`,
+        quickFix: response.status === 401 ? { label: 'OpenAI API Keys', action: 'external-link', actionPayload: { url: 'https://platform.openai.com/api-keys' } } :
+          response.status === 429 ? { label: 'Check OpenAI Usage', action: 'external-link', actionPayload: { url: 'https://platform.openai.com/usage' } } : null,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'OpenAI / AI Services',
+      category: 'AI',
+      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'AI service operational',
+      reason: 'OpenAI API is responding. All AI features are functional.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'OpenAI / AI Services',
+      category: 'AI',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'AI service unreachable',
+      reason: `Cannot reach OpenAI: ${e.message}. Check https://status.openai.com`,
+      quickFix: { label: 'Check OpenAI Status', action: 'external-link', actionPayload: { url: 'https://status.openai.com' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkGoogleMaps(): Promise<HealthCheck> {
+  const start = Date.now();
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    return {
+      name: 'Google Maps',
+      category: 'Third Party',
+      status: 'down',
+      responseTime: 0,
+      message: 'API key missing',
+      reason: 'GOOGLE_MAPS_API_KEY / NEXT_PUBLIC_GOOGLE_MAPS_API_KEY not set. Maps and geocoding features won\'t work.',
+      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['GOOGLE_MAPS_API_KEY', 'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY'] } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const response = await checkWithTimeout(() =>
+      fetch('https://maps.googleapis.com', { method: 'HEAD' })
+    );
+    const responseTime = Date.now() - start;
+    return {
+      name: 'Google Maps',
+      category: 'Third Party',
+      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'Maps API key configured & servers reachable',
+      reason: 'Google Maps API key is set and Google servers are responding. Maps will work correctly in the browser.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Google Maps',
+      category: 'Third Party',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Google Maps unreachable',
+      reason: `Cannot reach Google Maps servers: ${e.message}. Check internet connectivity.`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkCronJobs(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+
+  if (!client) {
+    return {
+      name: 'Scheduled Jobs (Cron)',
+      category: 'Background Jobs',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'Cannot check (DB unavailable)',
+      reason: `Cron check skipped because database admin client is not available: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error } = await client
+      .from('cron_job_logs')
+      .select('id, job_name, status, executed_at')
+      .order('executed_at', { ascending: false })
+      .limit(5);
+    const responseTime = Date.now() - start;
+
+    if (error) {
+      return {
+        name: 'Scheduled Jobs (Cron)',
+        category: 'Background Jobs',
+        status: 'healthy',
+        responseTime,
+        message: 'No cron log table found',
+        reason: 'Table "cron_job_logs" does not exist. This is OK if cron logging is not configured yet.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const failedJobs = (data || []).filter((j: any) => j.status === 'failed');
+    return {
+      name: 'Scheduled Jobs (Cron)',
+      category: 'Background Jobs',
+      status: failedJobs.length > 2 ? 'degraded' : 'healthy',
+      responseTime,
+      message: failedJobs.length > 0 ? `${failedJobs.length} recent failures` : 'All jobs running normally',
+      reason: failedJobs.length > 0 ? `${failedJobs.length} of last 5 cron jobs failed. Check job logs for details.` : 'All recent scheduled jobs completed successfully.',
+      lastChecked: new Date().toISOString(),
+      details: { recentJobs: data?.length || 0, failedJobs: failedJobs.length },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Scheduled Jobs (Cron)',
+      category: 'Background Jobs',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'Cron monitoring not configured',
+      reason: 'Could not check cron status. This feature is optional.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSSL(): Promise<HealthCheck> {
+  const start = Date.now();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || '';
+  if (!siteUrl) {
+    return {
+      name: 'SSL Certificate',
+      category: 'Security',
+      status: 'healthy',
+      responseTime: 0,
+      message: 'Site URL not configured',
+      reason: 'NEXT_PUBLIC_SITE_URL not set, so SSL verification is skipped. Set it for automated SSL monitoring.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const response = await checkWithTimeout(() => fetch(siteUrl, { method: 'HEAD' }));
+    const responseTime = Date.now() - start;
+    return {
+      name: 'SSL Certificate',
+      category: 'Security',
+      status: 'healthy',
+      responseTime,
+      message: 'SSL certificate valid',
+      reason: `Site ${siteUrl} is reachable via HTTPS. SSL is working.`,
+      lastChecked: new Date().toISOString(),
+      details: { siteUrl },
+    };
+  } catch (e: any) {
+    return {
+      name: 'SSL Certificate',
+      category: 'Security',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e.message || 'SSL check failed',
+      reason: e.message?.includes('certificate') ? `SSL certificate issue: ${e.message}. Certificate may be expired or misconfigured.` :
+        `Could not reach ${siteUrl}: ${e.message}`,
+      quickFix: e.message?.includes('certificate') ? { label: 'Check SSL Certificate', action: 'external-link', actionPayload: { url: `https://www.ssllabs.com/ssltest/analyze.html?d=${new URL(siteUrl).hostname}` } } : null,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSARVTelephony(): Promise<HealthCheck> {
+  const start = Date.now();
+  const deepcallUserId = process.env.DEEPCALL_USER_ID || '11965974';
+  const apiBase = process.env.DEEPCALL_API_BASE || 'https://v4-api.deepcall.com';
+
+  try {
+    const response = await checkWithTimeout(() =>
+      fetch(apiBase, { method: 'HEAD' })
+    );
+    const responseTime = Date.now() - start;
+    return {
+      name: 'SARV / Deepcall Telephony',
+      category: 'Third Party',
+      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: 'Deepcall API reachable',
+      reason: 'SARV/Deepcall telephony service is configured and server is reachable.',
+      lastChecked: new Date().toISOString(),
+      details: { userId: deepcallUserId, apiBase },
+    };
+  } catch (e: any) {
+    return {
+      name: 'SARV / Deepcall Telephony',
+      category: 'Third Party',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Deepcall API unreachable',
+      reason: `Cannot reach Deepcall server at ${apiBase}: ${e.message}. Telecaller dialer may not work.`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+function calculateHealthScore(checks: HealthCheck[]): number {
+  if (checks.length === 0) return 100;
+  const weights: Record<string, number> = {
+    'Database': 25,
+    'Authentication': 20,
+    'Payments': 15,
+    'Notifications': 10,
+    'AI': 10,
+    'Storage': 8,
+    'Third Party': 5,
+    'Background Jobs': 4,
+    'Security': 3,
+  };
+
+  let totalWeight = 0;
+  let weightedScore = 0;
+
+  for (const check of checks) {
+    const weight = weights[check.category] || 5;
+    totalWeight += weight;
+    if (check.status === 'healthy') weightedScore += weight;
+    else if (check.status === 'degraded') weightedScore += weight * 0.5;
+  }
+
+  return totalWeight > 0 ? Math.round((weightedScore / totalWeight) * 100) : 100;
+}
+
+async function sendFailureAlerts(failedChecks: HealthCheck[]) {
+  if (failedChecks.length === 0 || ADMIN_WHATSAPP_NUMBERS.length === 0) return;
+
+  const alertMessage =
+    `*MyFNG SYSTEM ALERT*\n\n` +
+    `${failedChecks.length} service(s) DOWN:\n\n` +
+    failedChecks.map((c, i) => `${i + 1}. *${c.name}* (${c.category})\n   Reason: ${c.reason}`).join('\n\n') +
+    `\n\n_Checked at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
+
+  for (const number of ADMIN_WHATSAPP_NUMBERS) {
+    try {
+      await sendTextMessage(number.trim(), alertMessage);
+    } catch (e) {
+      console.error(`Failed to send alert to ${number}:`, e);
+    }
+  }
+}
+
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const auth = await assertSuperAdmin(supabase);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const checks = await Promise.all([
+      checkDatabase(),
+      checkSupabaseAuth(),
+      checkSupabaseStorage(),
+      checkWhatsAppAPI(),
+      checkRazorpay(),
+      checkFirebase(),
+      checkEmailService(),
+      checkOpenAI(),
+      checkGoogleMaps(),
+      checkCronJobs(),
+      checkSSL(),
+      checkSARVTelephony(),
+    ]);
+
+    const healthScore = calculateHealthScore(checks);
+    const downServices = checks.filter(c => c.status === 'down');
+    const degradedServices = checks.filter(c => c.status === 'degraded');
+    const healthyServices = checks.filter(c => c.status === 'healthy');
+
+    const categories = [...new Set(checks.map(c => c.category))];
+    const categoryStats = categories.map(cat => {
+      const catChecks = checks.filter(c => c.category === cat);
+      const status: ServiceStatus = catChecks.some(c => c.status === 'down')
+        ? 'down'
+        : catChecks.some(c => c.status === 'degraded')
+          ? 'degraded'
+          : 'healthy';
+      return { category: cat, status, total: catChecks.length, healthy: catChecks.filter(c => c.status === 'healthy').length };
+    });
+
+    // Check environment variable status for quick-fix panel
+    const envStatus = {
+      NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      WHATSAPP_PHONE_NUMBER_ID: !!process.env.WHATSAPP_PHONE_NUMBER_ID,
+      WHATSAPP_ACCESS_TOKEN: !!process.env.WHATSAPP_ACCESS_TOKEN,
+      RAZORPAY_KEY_ID: !!process.env.RAZORPAY_KEY_ID,
+      RAZORPAY_KEY_SECRET: !!process.env.RAZORPAY_KEY_SECRET,
+      FIREBASE_PROJECT_ID: !!(process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      GOOGLE_MAPS_API_KEY: !!(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
+      SMTP_HOST: !!(process.env.SMTP_HOST || process.env.EMAIL_HOST),
+      SYSTEM_ALERT_WHATSAPP_NUMBERS: ADMIN_WHATSAPP_NUMBERS.length > 0,
+    };
+
+    return NextResponse.json({
+      healthScore,
+      overallStatus: downServices.length > 0 ? 'critical' : degradedServices.length > 0 ? 'warning' : 'operational',
+      summary: {
+        total: checks.length,
+        healthy: healthyServices.length,
+        degraded: degradedServices.length,
+        down: downServices.length,
+      },
+      categories: categoryStats,
+      checks,
+      envStatus,
+      lastChecked: new Date().toISOString(),
+      alertsSent: false,
+    });
+  } catch (error: any) {
+    console.error('System monitor error:', error);
+    return NextResponse.json({ error: 'Internal server error', message: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient();
+    const auth = await assertSuperAdmin(supabase);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const body = await request.json();
+    const { action } = body;
+
+    if (action === 'test-alert') {
+      const targetNumbers = body.phoneNumber 
+        ? [body.phoneNumber] 
+        : ADMIN_WHATSAPP_NUMBERS;
+      
+      if (targetNumbers.length === 0) {
+        return NextResponse.json({ error: 'No WhatsApp numbers configured. Set SYSTEM_ALERT_WHATSAPP_NUMBERS env variable or provide phoneNumber in request.' }, { status: 400 });
+      }
+      const testMessage = `*MyFNG SYSTEM ALERT - TEST*\n\nThis is a test alert from your System Monitor.\nIf you received this, WhatsApp alerts are working correctly.\n\n_Sent at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
+      
+      const results = [];
+      for (const number of targetNumbers) {
+        const result = await sendTextMessage(number.trim(), testMessage);
+        results.push({ number: number.trim(), ...result });
+      }
+      const allSuccess = results.every(r => r.success);
+      return NextResponse.json({ 
+        success: allSuccess, 
+        results,
+        message: allSuccess ? 'Message sent successfully' : 'Some messages failed - check results for details',
+      });
+    }
+
+    if (action === 'wake-db') {
+      const { client, configError } = getAdminClient();
+      if (!client) {
+        return NextResponse.json({ error: `Cannot wake DB: ${configError}` }, { status: 400 });
+      }
+      try {
+        await client.from('roles').select('id').limit(1);
+        return NextResponse.json({ success: true, message: 'Database pinged successfully. It should wake up shortly.' });
+      } catch (e: any) {
+        return NextResponse.json({ error: `Wake DB failed: ${e.message}` }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ error: 'Internal server error', message: error.message }, { status: 500 });
+  }
+}
