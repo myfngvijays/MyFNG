@@ -14,6 +14,9 @@ type Props = {
 export default function ReferAndFooter({ hideRefer = false }: Props) {
   const { footer, refreshFooter } = useAppFooter();
   const [referralCode, setReferralCode] = useState('');
+  const [bannerTitle, setBannerTitle] = useState('Refer & Rise');
+  const [bannerSubtitle, setBannerSubtitle] = useState('Unlock rewards you love — invite friends!');
+  const [shareTemplate, setShareTemplate] = useState('');
 
   useFocusEffect(
     React.useCallback(() => {
@@ -21,15 +24,27 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
       apiFetch<{ code: any }>('/api/customer/referral')
         .then((res) => setReferralCode(res?.code?.code || ''))
         .catch(() => {});
+      fetch(`${ENV.API_URL}/api/public/referral-config`)
+        .then((r) => r.json())
+        .then((json) => {
+          const content = json?.refer_and_rise_config?.content;
+          if (content) {
+            if (content.bannerTitle) setBannerTitle(content.bannerTitle);
+            if (content.bannerSubtitle) setBannerSubtitle(content.bannerSubtitle);
+            if (content.shareMessage) setShareTemplate(content.shareMessage);
+          }
+        })
+        .catch(() => {});
     }, [refreshFooter]),
   );
 
   const shareReferral = () => {
     const code = referralCode || 'MYFNG';
     const link = `https://play.google.com/store/apps/details?id=com.myfng.app&referrer=${encodeURIComponent(`referral_code=${code}`)}`;
-    Share.share({
-      message: `🚗 Great cars deserve great care!\n\nJoin MyFNG and let's keep your car always performing at its best.\n\nUse my referral code *${code}* to get ₹1,500 wallet bonus instantly.\n\n👉 ${link}`,
-    });
+    const message = shareTemplate
+      ? shareTemplate.replace(/\{\{CODE\}\}/g, code).replace(/\{\{LINK\}\}/g, link)
+      : `🚗 Great cars deserve great care!\n\nJoin MyFNG and let's keep your car always performing at its best.\n\nUse my referral code *${code}* to get ₹1,500 wallet bonus instantly.\n\n👉 ${link}`;
+    Share.share({ message });
   };
 
   return (
@@ -45,8 +60,8 @@ export default function ReferAndFooter({ hideRefer = false }: Props) {
                 <Ionicons name="star" size={5} color="#22D3EE" style={{ position: 'absolute', top: 6, left: 4 }} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.referTitle}>Refer & Rise</Text>
-                <Text style={s.referSub}>Unlock rewards you love — invite friends!</Text>
+                <Text style={s.referTitle}>{bannerTitle}</Text>
+                <Text style={s.referSub}>{bannerSubtitle}</Text>
               </View>
             </View>
             <TouchableOpacity

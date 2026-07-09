@@ -321,6 +321,21 @@ export async function createAuthenticatedServiceBooking(
     });
   } catch (syncErr: any) {
     console.error('[service-booking-create] TeleCRM sync failed:', syncErr?.message || syncErr);
+    try {
+      await supabaseAdmin.from('telecrm_api').insert({
+        name: leadInsert.customer_name || null,
+        mobile: normalizedPhone,
+        city: leadInsert.city || null,
+        service_type: leadInsert.service_type || null,
+        vehicle_number: leadInsert.vehicle_number || null,
+        vehicle_model: leadInsert.vehicle_make ? `${leadInsert.vehicle_make} ${leadInsert.vehicle_model || ''}`.trim() : null,
+        customer_quoted_amount: finalAmount || null,
+        disposition: 'App Booking',
+        disposition_note: `Lead ${serviceLead.lead_number} - TeleCRM direct push failed, queued for cron retry`,
+      });
+    } catch (fallbackErr: any) {
+      console.error('[service-booking-create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
+    }
   }
 
   return NextResponse.json({

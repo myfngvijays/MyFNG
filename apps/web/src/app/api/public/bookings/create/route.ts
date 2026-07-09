@@ -354,6 +354,21 @@ export async function POST(request: NextRequest) {
       });
     } catch (err) {
       console.error('[bookings/create] external sync failed:', err);
+      try {
+        await supabaseAdmin.from('telecrm_api').insert({
+          name: serviceLead?.customer_name || null,
+          mobile: customerPhone,
+          city: serviceLead?.city || null,
+          service_type: serviceLead?.service_type || null,
+          vehicle_number: serviceLead?.vehicle_number || null,
+          vehicle_model: serviceLead?.vehicle_make ? `${serviceLead.vehicle_make} ${serviceLead.vehicle_model || ''}`.trim() : null,
+          customer_quoted_amount: serviceLead?.estimated_amount || null,
+          disposition: isMobileClient ? 'App Booking' : 'Website Booking',
+          disposition_note: `Lead ${serviceLead?.lead_number || leadNumber} - TeleCRM direct push failed, queued for cron retry`,
+        });
+      } catch (fallbackErr: any) {
+        console.error('[bookings/create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
+      }
     }
 
     return NextResponse.json(

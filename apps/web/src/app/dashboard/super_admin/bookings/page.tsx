@@ -11,7 +11,8 @@ type ChatbotBooking = Record<string, any>;
 type CsvRow = Record<string, string>;
 type ActiveTab = 'service_leads' | 'chatbot_bookings' | 'upload_crm';
 
-const STATUS_OPTIONS = ['ALL', 'NEW', 'PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
+const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
+const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'OTHER'] as const;
 const COUPON_OPTIONS = ['ALL', 'YES', 'NO'] as const;
 
@@ -1039,7 +1040,7 @@ export default function SuperAdminBookingsPage() {
                 <div>
                   <label className="text-xs font-semibold text-gray-500">Status</label>
                   <select className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
-                    {STATUS_OPTIONS.filter((s) => s !== 'ALL').map((s) => (
+                    {LEAD_STATUS_ENUM.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>

@@ -8,20 +8,19 @@ import {
   Modal,
   Linking,
   Platform,
+  TextInput,
+  FlatList,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { apiFetch } from '../lib/api';
 import { ENV } from '../config/environment';
 import {
-  FAMILIES,
   FAMILY_ORDER,
-  MILESTONES,
-  MILESTONE_COUNTS,
   MAX_REFERRALS,
-  getNextMilestone,
-  getUnlockedMilestone,
-  getCurrentMilestoneIndex,
   type FamilyKey,
   type Milestone,
 } from '../constants/referAndRise';
@@ -43,7 +42,7 @@ export type ReferAndRiseHandle = {
   getViewTitle: () => string;
 };
 
-type ViewName = 'home' | 'milestones' | 'garageShelf' | 'history' | 'share' | 'dashboard';
+type ViewName = 'home' | 'milestones' | 'garageShelf' | 'history' | 'share' | 'dashboard' | 'contacts';
 
 const VIEW_TITLES: Record<ViewName, string> = {
   home: 'Refer & Rise',
@@ -52,6 +51,7 @@ const VIEW_TITLES: Record<ViewName, string> = {
   history: 'Referral History',
   share: 'Share Referral',
   dashboard: 'Referral Dashboard',
+  contacts: 'Invite Contacts',
 };
 
 type HistoryItem = {
@@ -67,6 +67,8 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   const remoteConfig = useReferAndRiseConfig();
   const activeMilestones = remoteConfig.milestones;
   const activeFamilies = remoteConfig.families;
+  const FAMILIES = activeFamilies;
+  const MILESTONES = activeMilestones;
   const activeMaxReferrals = activeMilestones.length > 0 ? activeMilestones[activeMilestones.length - 1].referralCount : MAX_REFERRALS;
 
   const changeView = (view: ViewName) => {
@@ -82,6 +84,9 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   const [copied, setCopied] = useState(false);
   const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null);
   const [historyTab, setHistoryTab] = useState<'completed' | 'pending'>('completed');
+  const [contactsList, setContactsList] = useState<{ id: string; name: string; phone: string; initials: string }[]>([]);
+  const [contactsSearch, setContactsSearch] = useState('');
+  const [contactsLoading, setContactsLoading] = useState(false);
 
   useImperativeHandle(ref, () => ({
     handleBack: () => {
@@ -104,30 +109,84 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       .catch(() => {});
   }, [isLoggedIn]);
 
-  const currentIdx = getCurrentMilestoneIndex(referrals);
-  const nextMilestone = getNextMilestone(referrals);
-  const progressPct = (referrals / MAX_REFERRALS) * 100;
+  const currentIdx = (() => { for (let i = MILESTONES.length - 1; i >= 0; i--) { if (referrals >= MILESTONES[i].referralCount) return i; } return -1; })();
+  const nextMilestone = MILESTONES.find((m) => m.referralCount > referrals) || null;
+  const progressPct = (referrals / activeMaxReferrals) * 100;
   const referralsToNext = nextMilestone ? nextMilestone.referralCount - referrals : 0;
 
   const referralLink = `https://play.google.com/store/apps/details?id=com.myfng.app&referrer=${encodeURIComponent(`referral_code=${referralCode || 'MYFNG'}`)}`;
 
-  const shareMessage = `🚗 Great cars deserve great care!\n\nJoin MyFNG and let's keep your car always performing at its best.\n\nUse my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n👉 ${referralLink}`;
+  const shareMessage = remoteConfig.content.shareMessage
+    ? remoteConfig.content.shareMessage
+        .replace(/\{\{CODE\}\}/g, referralCode || 'MYFNG')
+        .replace(/\{\{LINK\}\}/g, referralLink)
+    : `🚗 Great cars deserve great care!\n\nJoin MyFNG and let's keep your car always performing at its best.\n\nUse my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n👉 ${referralLink}`;
 
   const simulateReferral = () => {
-    if (pendingMilestone || referrals >= MAX_REFERRALS) return;
+    if (pendingMilestone || referrals >= activeMaxReferrals) return;
     const next = referrals + 1;
     setReferrals(next);
-    const unlocked = getUnlockedMilestone(next);
+    const unlocked = MILESTONES.find((m) => m.referralCount === next) || null;
     if (unlocked) {
       setPendingMilestone(unlocked);
     }
   };
 
   const shareOnWhatsApp = () => Share.share({ message: shareMessage });
-  const inviteFromContacts = () => {
-    const smsBody = encodeURIComponent(shareMessage);
-    Linking.openURL(`sms:&body=${smsBody}`).catch(() => Share.share({ message: shareMessage }));
+
+  const inviteFromContacts = async () => {
+    // Check if ExpoContacts native module is available in this build
+    const { NativeModules } = require('react-native');
+    if (!NativeModules.ExpoContacts && !(global as any).expo?.modules?.ExpoContacts) {
+      Share.share({ message: shareMessage });
+      return;
+    }
+
+    const Contacts = require('expo-contacts');
+    changeView('contacts');
+    setContactsLoading(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to contacts to invite friends.', [
+          { text: 'Cancel', style: 'cancel', onPress: () => changeView('home') },
+          { text: 'Open Settings', onPress: () => { Linking.openSettings(); changeView('home'); } },
+        ]);
+        setContactsLoading(false);
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+        sort: Contacts.SortTypes.FirstName,
+      });
+      const parsed = (data || [])
+        .filter((c: any) => c.phoneNumbers && c.phoneNumbers.length > 0)
+        .map((c: any) => {
+          const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.name || 'Unknown';
+          const phone = c.phoneNumbers[0]?.number || '';
+          const initials = name.split(' ').map((w: string) => w[0]?.toUpperCase() || '').slice(0, 2).join('');
+          return { id: c.id || phone, name, phone, initials };
+        });
+      setContactsList(parsed);
+    } catch (err: any) {
+      changeView('home');
+      Share.share({ message: shareMessage });
+    }
+    setContactsLoading(false);
   };
+
+  const inviteContact = (phone: string) => {
+    const cleanPhone = phone.replace(/[\s\-()]/g, '');
+    const whatsappUrl = `whatsapp://send?phone=91${cleanPhone.slice(-10)}&text=${encodeURIComponent(shareMessage)}`;
+    Linking.openURL(whatsappUrl).catch(() => {
+      const smsUrl = Platform.OS === 'ios' ? `sms:${phone}&body=${encodeURIComponent(shareMessage)}` : `sms:${phone}?body=${encodeURIComponent(shareMessage)}`;
+      Linking.openURL(smsUrl).catch(() => Share.share({ message: shareMessage }));
+    });
+  };
+
+  const filteredContacts = contactsSearch
+    ? contactsList.filter((c) => c.name.toLowerCase().includes(contactsSearch.toLowerCase()) || c.phone.includes(contactsSearch))
+    : contactsList;
 
   const copyCode = async () => {
     if (!referralCode) return;
@@ -183,7 +242,8 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       <View style={s.header}>
         <View>
           <Text style={s.headerLabel}>MYFNG</Text>
-          <Text style={s.headerTitle}>Refer & Rise</Text>
+          <Text style={s.headerTitle}>{remoteConfig.content.heroTitle || 'Refer & Rise'}</Text>
+          {remoteConfig.content.heroSubtitle ? <Text style={s.headerSub}>{remoteConfig.content.heroSubtitle}</Text> : null}
         </View>
         <View style={s.headerBadge}>
           <Ionicons name="sparkles" size={12} color={BRAND} />
@@ -210,17 +270,17 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
             : "You've completed all milestones!"}
         </Text>
         {/* Milestone dots */}
-        <View style={s.dotsRow}>
-          {MILESTONE_COUNTS.map((count) => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dotsScroll} contentContainerStyle={s.dotsRow}>
+          {MILESTONES.map((m) => m.referralCount).map((count) => (
             <View key={count} style={[s.dot, referrals >= count && s.dotFilled, nextMilestone?.referralCount === count && s.dotNext]}>
               <Text style={[s.dotText, referrals >= count && s.dotTextFilled]}>{count}</Text>
             </View>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
       {/* Invite Button */}
-      <TouchableOpacity style={s.inviteBtn} onPress={simulateReferral} activeOpacity={0.85} disabled={!!pendingMilestone || referrals >= MAX_REFERRALS}>
+      <TouchableOpacity style={s.inviteBtn} onPress={simulateReferral} activeOpacity={0.85} disabled={!!pendingMilestone || referrals >= activeMaxReferrals}>
         <Ionicons name="people" size={16} color="#FFFFFF" />
         <Text style={s.inviteBtnText}>Invite Friends</Text>
       </TouchableOpacity>
@@ -333,22 +393,25 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
         const picked = picks[m.referralCount];
         const isNext = nextMilestone?.referralCount === m.referralCount;
         const canClaim = unlocked && !picked;
-        const isExpanded = expandedMilestone === m.referralCount;
+        const isExpanded = expandedMilestone === m.referralCount || isNext;
+        const isLocked = !unlocked && !isNext;
         return (
           <TouchableOpacity
             key={m.referralCount}
-            style={ms.row}
+            style={[ms.row, isLocked && { opacity: 0.5 }]}
             onPress={() => {
               if (canClaim) { setPendingMilestone(m); setSelectedReward(null); }
-              else { setExpandedMilestone(isExpanded ? null : m.referralCount); }
+              else if (!isLocked) { setExpandedMilestone(isExpanded && !isNext ? null : m.referralCount); }
             }}
-            activeOpacity={0.7}
+            activeOpacity={isLocked ? 1 : 0.7}
           >
             <View style={[ms.node, unlocked && ms.nodeUnlocked, isNext && ms.nodeNext]}>
               {unlocked ? (
                 picked ? <Ionicons name={FAMILIES[picked].icon} size={14} color="#FFFFFF" /> : <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-              ) : (
+              ) : isNext ? (
                 <Text style={ms.nodeText}>{m.referralCount}</Text>
+              ) : (
+                <Ionicons name="lock-closed" size={12} color="#9CA3AF" />
               )}
             </View>
             <View style={{ flex: 1 }}>
@@ -356,8 +419,8 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
               <Text style={ms.rowDesc} numberOfLines={1}>
                 {picked ? `${FAMILIES[picked].name} claimed` : unlocked ? 'Tap to claim reward' : isNext ? 'Unlock exciting rewards' : `${m.referralCount - referrals} more to unlock`}
               </Text>
-              {/* Expanded reward details */}
-              {isExpanded && (
+              {/* Expanded reward details - only for unlocked/next milestone */}
+              {isExpanded && !isLocked && (
                 <View style={ms.expandedRewards}>
                   {FAMILY_ORDER.map((key) => (
                     <View key={key} style={ms.expandedRow}>
@@ -372,8 +435,8 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                   ))}
                 </View>
               )}
-              {/* Reward preview icons (collapsed) */}
-              {!picked && !isExpanded && (
+              {/* Reward preview icons - only for claimed or next */}
+              {!picked && !isExpanded && !isLocked && (
                 <View style={ms.rewardPreview}>
                   {FAMILY_ORDER.map((key) => (
                     <View key={key} style={[ms.rewardMini, { backgroundColor: FAMILIES[key].color + '12' }]}>
@@ -388,7 +451,8 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
             </View>
             {unlocked && picked && <Ionicons name="checkmark-circle" size={18} color="#10B981" />}
             {unlocked && !picked && <Ionicons name="gift-outline" size={16} color={BRAND} />}
-            {!unlocked && <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#7BA3D0" />}
+            {isNext && !unlocked && <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={BRAND} />}
+            {isLocked && <Ionicons name="lock-closed" size={14} color="#D1D5DB" />}
           </TouchableOpacity>
         );
       })}
@@ -612,7 +676,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
         {filtered.length > 0 ? filtered.map((item, i) => (
           <View key={i} style={ht.row}>
             <View style={ht.avatar}>
-              <Ionicons name="person" size={16} color="#6B7280" />
+              <Ionicons name="person" size={16} color="#4DA6FF" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={ht.name}>{item.name}</Text>
@@ -629,7 +693,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
           </View>
         )) : (
           <View style={ht.empty}>
-            <Ionicons name="document-text-outline" size={30} color="#D1D5DB" />
+            <Ionicons name="document-text-outline" size={30} color="#3A6A9E" />
             <Text style={ht.emptyText}>No {historyTab} referrals yet</Text>
           </View>
         )}
@@ -645,7 +709,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
             ].map((step, i) => (
               <View key={i} style={ht.howStep}>
                 <View style={ht.howStepIcon}>
-                  <Ionicons name={step.icon} size={18} color={BRAND} />
+                  <Ionicons name={step.icon} size={18} color="#4DA6FF" />
                 </View>
                 <Text style={ht.howStepTitle}>{step.title}</Text>
                 <Text style={ht.howStepDesc}>{step.desc}</Text>
@@ -662,8 +726,8 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     <View>
       <View style={sh.hero}>
         <Text style={sh.heroLabel}>MYFNG</Text>
-        <Text style={sh.heroTitle}>Great cars{'\n'}deserve{'\n'}great care!</Text>
-        <Text style={sh.heroDesc}>Join MYFNG and let's keep your car always performing at its best.</Text>
+        <Text style={sh.heroTitle}>{remoteConfig.content.heroTitle || 'Great cars\ndeserve\ngreat care!'}</Text>
+        <Text style={sh.heroDesc}>{remoteConfig.content.heroSubtitle || 'Join MYFNG and let\'s keep your car always performing at its best.'}</Text>
       </View>
       <View style={sh.codeCard}>
         <Text style={sh.codeLabel}>YOUR REFERRAL CODE</Text>
@@ -672,6 +736,10 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       <TouchableOpacity style={sh.whatsappBtn} onPress={shareOnWhatsApp} activeOpacity={0.85}>
         <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
         <Text style={sh.whatsappText}>Share on WhatsApp</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={sh.contactsBtn} onPress={inviteFromContacts} activeOpacity={0.85}>
+        <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+        <Text style={sh.contactsBtnText}>Invite from Contacts</Text>
       </TouchableOpacity>
       <TouchableOpacity style={sh.moreBtn} onPress={() => Share.share({ message: shareMessage })} activeOpacity={0.8}>
         <Text style={sh.moreText}>More Options</Text>
@@ -724,16 +792,77 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     </View>
   );
 
+  // ═══════════════ CONTACTS ═══════════════
+  const renderContacts = () => (
+    <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 }}>
+          <Ionicons name="search-outline" size={18} color="#9CA3AF" />
+          <TextInput
+            style={{ flex: 1, marginLeft: 8, fontSize: 14, color: '#111827' }}
+            placeholder="Search and refer your friends"
+            placeholderTextColor="#9CA3AF"
+            value={contactsSearch}
+            onChangeText={setContactsSearch}
+          />
+        </View>
+      </View>
+      {contactsLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
+          <ActivityIndicator size="large" color={BRAND} />
+          <Text style={{ marginTop: 12, color: '#6B7280', fontSize: 14 }}>Loading contacts...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredContacts}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+          ListHeaderComponent={
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 12 }}>
+              Invite Friends And Earn Rewards
+            </Text>
+          }
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 40 }}>
+              <Ionicons name="people-outline" size={40} color="#D1D5DB" />
+              <Text style={{ marginTop: 8, color: '#6B7280' }}>No contacts found</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND_LIGHT, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>{item.initials}</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#111827' }} numberOfLines={1}>{item.name}</Text>
+                <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{item.phone}</Text>
+              </View>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#25D366', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, gap: 4 }}
+                onPress={() => inviteContact(item.phone)}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Invite</Text>
+                <Ionicons name="logo-whatsapp" size={14} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+
   // ═══════════════ RENDER ═══════════════
-  const isDarkView = currentView === 'garageShelf' || currentView === 'share' || currentView === 'dashboard';
+  const isDarkView = currentView === 'garageShelf' || currentView === 'share' || currentView === 'dashboard' || currentView === 'history';
   return (
-    <View style={[s.root, isDarkView && { backgroundColor: '#001030' }]}>
+    <View style={[s.root, isDarkView && { backgroundColor: '#001030', flex: 1, minHeight: '100%' }]}>
       {currentView === 'home' && renderHome()}
       {currentView === 'milestones' && renderMilestones()}
       {currentView === 'garageShelf' && renderGarageShelf()}
       {currentView === 'history' && renderHistory()}
       {currentView === 'share' && renderShare()}
       {currentView === 'dashboard' && renderDashboard()}
+      {currentView === 'contacts' && renderContacts()}
       {renderRewardPicker()}
       {renderCongrats()}
     </View>
@@ -749,6 +878,7 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   headerLabel: { fontSize: 10, letterSpacing: 2, color: '#4A6FA5', fontWeight: '600' },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#0A1A3A' },
+  headerSub: { fontSize: 11, color: '#4A6FA5', marginTop: 2 },
   headerBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1, borderColor: '#D6E8FA' },
   headerBadgeText: { fontSize: 11, fontWeight: '600', color: BRAND },
 
@@ -759,7 +889,8 @@ const s = StyleSheet.create({
   progressCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#EDF4FF', borderWidth: 3, borderColor: BRAND, alignItems: 'center', justifyContent: 'center' },
   progressPct: { fontSize: 14, fontWeight: '800', color: BRAND },
   progressHint: { fontSize: 12, color: '#4A6FA5', marginBottom: 12 },
-  dotsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dotsScroll: { marginTop: 4 },
+  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 4 },
   dot: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#EDF4FF', borderWidth: 1.5, borderColor: '#B8D4F0', alignItems: 'center', justifyContent: 'center' },
   dotFilled: { backgroundColor: BRAND, borderColor: BRAND },
   dotNext: { borderColor: BRAND, borderWidth: 2 },
@@ -892,27 +1023,27 @@ const gs = StyleSheet.create({
 });
 
 const ht = StyleSheet.create({
-  tabs: { flexDirection: 'row', backgroundColor: '#E8F1FD', borderRadius: 10, padding: 3, marginBottom: 16 },
+  tabs: { flexDirection: 'row', backgroundColor: '#002060', borderRadius: 10, padding: 3, marginBottom: 16 },
   tab: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 8 },
-  tabActive: { backgroundColor: '#FFFFFF' },
-  tabText: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
-  tabTextActive: { color: '#0A1A3A' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E8F1FD' },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E8F1FD', alignItems: 'center', justifyContent: 'center' },
-  name: { fontSize: 13, fontWeight: '600', color: '#0A1A3A' },
-  date: { fontSize: 11, color: '#7BA3D0', marginTop: 2 },
+  tabActive: { backgroundColor: '#003090' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#5A8BC4' },
+  tabTextActive: { color: '#FFFFFF' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1A3A6B' },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#002060', alignItems: 'center', justifyContent: 'center' },
+  name: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  date: { fontSize: 11, color: '#93B4E0', marginTop: 2 },
   rewardPill: { alignItems: 'flex-end' },
-  rewardLabel: { fontSize: 9, color: '#9CA3AF' },
-  rewardValue: { fontSize: 11, fontWeight: '700', color: BRAND },
+  rewardLabel: { fontSize: 9, color: '#5A8BC4' },
+  rewardValue: { fontSize: 11, fontWeight: '700', color: '#4DA6FF' },
   empty: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyText: { fontSize: 12, color: '#9CA3AF' },
-  howCard: { marginTop: 20, backgroundColor: '#E8F1FD', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#D6E8FA' },
-  howTitle: { fontSize: 13, fontWeight: '700', color: '#0A1A3A', marginBottom: 14 },
+  emptyText: { fontSize: 12, color: '#5A8BC4' },
+  howCard: { marginTop: 20, backgroundColor: '#002060', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#1A3A6B' },
+  howTitle: { fontSize: 13, fontWeight: '700', color: '#FFFFFF', marginBottom: 14 },
   howSteps: { flexDirection: 'row', justifyContent: 'space-between' },
   howStep: { alignItems: 'center', width: '30%' },
-  howStepIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: BRAND_LIGHT, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  howStepTitle: { fontSize: 11, fontWeight: '700', color: '#0A1A3A', marginBottom: 2 },
-  howStepDesc: { fontSize: 9, color: '#4A6FA5', textAlign: 'center', lineHeight: 13 },
+  howStepIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#003090', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  howStepTitle: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
+  howStepDesc: { fontSize: 9, color: '#93B4E0', textAlign: 'center', lineHeight: 13 },
 });
 
 const sh = StyleSheet.create({
@@ -925,6 +1056,8 @@ const sh = StyleSheet.create({
   codeValue: { fontSize: 24, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 },
   whatsappBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#25D366', borderRadius: 14, padding: 16, marginBottom: 10 },
   whatsappText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  contactsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#003090', borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: '#1A4A8B' },
+  contactsBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   moreBtn: { alignItems: 'center', paddingVertical: 10 },
   moreText: { fontSize: 13, fontWeight: '600', color: '#4DA6FF' },
 });

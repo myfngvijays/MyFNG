@@ -31,6 +31,17 @@ export async function GET() {
       try { tnc = JSON.parse(tncRow.setting_value); } catch {}
     }
 
+    const { data: riseRow } = await supabaseAdmin
+      .from('system_settings')
+      .select('setting_value')
+      .eq('setting_key', 'refer_and_rise_config')
+      .maybeSingle();
+
+    let referAndRiseConfig = null;
+    if (riseRow?.setting_value) {
+      try { referAndRiseConfig = JSON.parse(riseRow.setting_value); } catch {}
+    }
+
     return NextResponse.json({
       success: true,
       referral_first_reward: config.REFERRAL_FIRST_REWARD,
@@ -40,6 +51,7 @@ export async function GET() {
       welcome_bonus: config.WELCOME_BONUS_AMOUNT,
       total_friend_bonus: config.REFERRAL_FRIEND_BONUS + config.WELCOME_BONUS_AMOUNT,
       tnc,
+      refer_and_rise_config: referAndRiseConfig,
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

@@ -41,12 +41,21 @@ export function useReferAndRiseConfig(): RemoteConfig {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${ENV.API_URL}/api/customer/referral/config`);
+        const res = await fetch(`${ENV.API_URL}/api/public/referral-config`);
         const json = await res.json();
         if (cancelled) return;
-        if (json.success && json.config) {
-          const merged = applyRemoteConfig(json.config);
-          const content: ContentConfig = json.config.content || data.content;
+        const riseConfig = json.refer_and_rise_config;
+        if (riseConfig) {
+          const merged = applyRemoteConfig(riseConfig);
+          const remoteContent = riseConfig.content;
+          const content: ContentConfig = {
+            heroTitle: remoteContent?.heroTitle || data.content.heroTitle,
+            heroSubtitle: remoteContent?.heroSubtitle || data.content.heroSubtitle,
+            shareMessage: remoteContent?.shareMessage || data.content.shareMessage,
+            bannerTitle: remoteContent?.bannerTitle || data.content.bannerTitle,
+            bannerSubtitle: remoteContent?.bannerSubtitle || data.content.bannerSubtitle,
+            tnc: remoteContent?.tnc || json.tnc || data.content.tnc,
+          };
           setData({ ...merged, content, loaded: true });
         } else {
           setData((prev) => ({ ...prev, loaded: true }));

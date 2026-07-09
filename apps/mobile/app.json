@@ -27,6 +27,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "MyFNG needs access to your camera to take photos of your vehicle for service inspections, before/after service documentation, and incident reports during pickup and delivery.",
+        "NSContactsUsageDescription": "MyFNG needs access to your contacts so you can invite friends and share your referral code with them.",
         "NSLocationWhenInUseUsageDescription": "MyFNG uses your location to show nearby workshops, calculate accurate ETAs for vehicle pickup, track your service request, and help drivers reach your location.",
         "NSPhotoLibraryUsageDescription": "MyFNG needs access to your photo library so you can attach existing photos of your vehicle for service requests, complaints, and inspection records.",
         "NSPhotoLibraryAddUsageDescription": "MyFNG needs permission to save photos to your library, such as service invoices, inspection reports, and vehicle documentation.",
@@ -57,6 +58,7 @@
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
+        "READ_CONTACTS",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "POST_NOTIFICATIONS"
