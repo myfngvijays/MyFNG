@@ -139,10 +139,23 @@ export async function POST(request: NextRequest) {
     let pendingCount = 0;
     if (pendingRows.length > 0) {
       for (const row of pendingRows) {
-        const { error: pendErr } = await supabaseAdmin
+        // Check if already assigned (partial unique index can't be used with upsert)
+        const { data: existing } = await supabaseAdmin
           .from('customer_coupon_assignments')
-          .upsert(row, { onConflict: 'pending_phone,coupon_id', ignoreDuplicates: true });
-        if (!pendErr) pendingCount++;
+          .select('id')
+          .eq('pending_phone', row.pending_phone)
+          .eq('coupon_id', row.coupon_id)
+          .is('customer_id', null)
+          .maybeSingle();
+
+        if (!existing) {
+          const { error: pendErr } = await supabaseAdmin
+            .from('customer_coupon_assignments')
+            .insert(row);
+          if (!pendErr) pendingCount++;
+        } else {
+          pendingCount++; // already assigned, count as success
+        }
       }
     }
 

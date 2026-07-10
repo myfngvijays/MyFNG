@@ -348,6 +348,18 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+
+        if (targetCouponUsers === 'assigned') {
+          let assignQuery = supabaseAdmin.from('customer_coupon_assignments').select('customer_id, coupon_id').not('customer_id', 'is', null).is('redeemed_at', null);
+          if (targetCouponCodes.length > 0) {
+            const { data: couponRows } = await supabaseAdmin.from('coupons').select('id').in('code', targetCouponCodes);
+            const couponIds = (couponRows || []).map((c: any) => c.id);
+            if (couponIds.length > 0) assignQuery = assignQuery.in('coupon_id', couponIds);
+          }
+          const { data: assignments } = await assignQuery;
+          const assignedCustomerIds = new Set((assignments || []).map((a: any) => a.customer_id));
+          filteredCustomerIds = filteredCustomerIds !== null ? new Set([...filteredCustomerIds].filter((id) => assignedCustomerIds.has(id))) : assignedCustomerIds;
+        }
       }
 
       const targetIds = filteredCustomerIds ? [...filteredCustomerIds] : [];

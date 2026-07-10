@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(Math.max(1, Number(request.nextUrl.searchParams.get('limit') || 25)), 100);
     const search = (request.nextUrl.searchParams.get('search') || '').trim();
     const filter = (request.nextUrl.searchParams.get('filter') || '').toLowerCase(); // 'registered' | 'pending' | ''
+    const couponId = (request.nextUrl.searchParams.get('coupon_id') || '').trim();
+    const dateFrom = (request.nextUrl.searchParams.get('date_from') || '').trim();
+    const dateTo = (request.nextUrl.searchParams.get('date_to') || '').trim();
     const offset = (page - 1) * limit;
 
     let query = supabaseAdmin
@@ -53,6 +56,17 @@ export async function GET(request: NextRequest) {
       query = query.is('customer_id', null).not('pending_phone', 'is', null);
     } else if (filter === 'registered') {
       query = query.not('customer_id', 'is', null);
+    }
+
+    if (couponId) {
+      query = query.eq('coupon_id', couponId);
+    }
+
+    if (dateFrom) {
+      query = query.gte('created_at', `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      query = query.lte('created_at', `${dateTo}T23:59:59`);
     }
 
     if (search) {
@@ -78,6 +92,11 @@ export async function GET(request: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .not('redeemed_at', 'is', null);
 
+    const { data: couponsData } = await supabaseAdmin
+      .from('coupons')
+      .select('id, code')
+      .order('code');
+
     return NextResponse.json({
       assignments: data || [],
       pagination: {
@@ -93,6 +112,7 @@ export async function GET(request: NextRequest) {
         redeemed: redeemedCount || 0,
         open: (totalCount || 0) - (redeemedCount || 0),
       },
+      coupons: couponsData || [],
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

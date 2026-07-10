@@ -19,8 +19,15 @@ export default function PcmCustomersSection() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [filter, setFilter] = useState<'' | 'registered' | 'pending'>('');
+  const [couponId, setCouponId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [datePreset, setDatePreset] = useState('');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+  const [coupons, setCoupons] = useState<{ id: string; code: string }[]>([]);
 
-  const fetchData = useCallback(async (p = page, s = search, f = filter, ps = pageSize) => {
+  const fetchData = useCallback(async (p = page, s = search, f = filter, ps = pageSize, cId = couponId, dFrom = dateFrom, dTo = dateTo) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -29,6 +36,9 @@ export default function PcmCustomersSection() {
       });
       if (s) params.set('search', s);
       if (f) params.set('filter', f);
+      if (cId) params.set('coupon_id', cId);
+      if (dFrom) params.set('date_from', dFrom);
+      if (dTo) params.set('date_to', dTo);
 
       const res = await fetch(`/api/admin/coupons/assignments?${params}`);
       const json = await res.json();
@@ -37,13 +47,14 @@ export default function PcmCustomersSection() {
         setTotalPages(json.pagination?.total_pages || 1);
         setTotal(json.pagination?.total || 0);
         if (json.counts) setCounts(json.counts);
+        if (json.coupons && json.coupons.length > 0) setCoupons(json.coupons);
       }
     } finally {
       setLoading(false);
     }
-  }, [page, search, filter, pageSize]);
+  }, [page, search, filter, pageSize, couponId, dateFrom, dateTo]);
 
-  useEffect(() => { fetchData(page, search, filter, pageSize); }, [page, search, filter, pageSize]);
+  useEffect(() => { fetchData(page, search, filter, pageSize, couponId, dateFrom, dateTo); }, [page, search, filter, pageSize, couponId, dateFrom, dateTo]);
 
   const handleSearch = () => {
     setSearch(searchInput.trim());
@@ -146,29 +157,75 @@ export default function PcmCustomersSection() {
         <PcmStatCard label="Redeemed" value={counts.redeemed} icon={<CheckCircle2 className="w-5 h-5" />} accent="violet" />
       </div>
 
-      {/* Search + Filter */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="flex-1 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              className="w-full pl-9 pr-8 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-              placeholder="Search by phone number or customer name…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            {searchInput && (
-              <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-              </button>
-            )}
-          </div>
-          <button onClick={handleSearch} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
-            Search
-          </button>
+      {/* Search + Filters Row */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            placeholder="Search by phone or name…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+          {searchInput && (
+            <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600" />
+            </button>
+          )}
         </div>
-        <div className="flex gap-1.5">
+        <button onClick={handleSearch} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shrink-0">
+          Search
+        </button>
+        <div className="w-px h-6 bg-gray-200 shrink-0" />
+        <select
+          value={couponId}
+          onChange={(e) => { setCouponId(e.target.value); setPage(1); }}
+          className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 min-w-[140px] shrink-0"
+        >
+          <option value="">All Coupons</option>
+          {coupons.map((c) => (
+            <option key={c.id} value={c.id}>{c.code}</option>
+          ))}
+        </select>
+        <select
+          value={datePreset}
+          onChange={(e) => {
+            const val = e.target.value;
+            setDatePreset(val);
+            const today = new Date();
+            const fmt = (d: Date) => d.toISOString().split('T')[0];
+            if (val === '') {
+              setDateFrom(''); setDateTo('');
+            } else if (val === 'today') {
+              setDateFrom(fmt(today)); setDateTo(fmt(today));
+            } else if (val === 'yesterday') {
+              const y = new Date(today); y.setDate(y.getDate() - 1);
+              setDateFrom(fmt(y)); setDateTo(fmt(y));
+            } else if (val === '7d') {
+              const d = new Date(today); d.setDate(d.getDate() - 7);
+              setDateFrom(fmt(d)); setDateTo(fmt(today));
+            } else if (val === '14d') {
+              const d = new Date(today); d.setDate(d.getDate() - 14);
+              setDateFrom(fmt(d)); setDateTo(fmt(today));
+            } else if (val === '30d') {
+              const d = new Date(today); d.setDate(d.getDate() - 30);
+              setDateFrom(fmt(d)); setDateTo(fmt(today));
+            }
+            setPage(1);
+          }}
+          className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 min-w-[120px] shrink-0"
+        >
+          <option value="">All Time</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="14d">Last 14 Days</option>
+          <option value="30d">Last 30 Days</option>
+          <option value="custom">Custom Range</option>
+        </select>
+        <div className="w-px h-6 bg-gray-200 shrink-0" />
+        <div className="flex gap-1 shrink-0">
           {([
             { id: '' as const, label: 'All' },
             { id: 'registered' as const, label: 'Registered' },
@@ -177,7 +234,7 @@ export default function PcmCustomersSection() {
             <button
               key={f.id}
               onClick={() => handleFilter(f.id)}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                 filter === f.id
                   ? 'bg-blue-600 text-white border-blue-600'
                   : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -187,7 +244,34 @@ export default function PcmCustomersSection() {
             </button>
           ))}
         </div>
+        {(couponId || datePreset) && (
+          <button
+            onClick={() => { setCouponId(''); setDateFrom(''); setDateTo(''); setDatePreset(''); setCustomDateFrom(''); setCustomDateTo(''); setFilter(''); setPage(1); }}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1 shrink-0"
+          >
+            <X className="w-3 h-3" /> Clear
+          </button>
+        )}
       </div>
+
+      {/* Date Range - inline with custom pickers */}
+      {datePreset === 'custom' && (
+        <div className="flex items-center gap-2 mb-3">
+          <input
+            type="date"
+            value={customDateFrom}
+            onChange={(e) => { setCustomDateFrom(e.target.value); setDateFrom(e.target.value); setPage(1); }}
+            className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+          />
+          <span className="text-xs text-gray-400">–</span>
+          <input
+            type="date"
+            value={customDateTo}
+            onChange={(e) => { setCustomDateTo(e.target.value); setDateTo(e.target.value); setPage(1); }}
+            className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+          />
+        </div>
+      )}
 
       {/* Bulk Actions */}
       {selected.size > 0 && (

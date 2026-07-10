@@ -105,7 +105,7 @@ function getCategoryIconUrl(category: string): string {
 
 type Props = { navigation: any; route?: any };
 
-type CityRow = { id: string; name: string; state?: string | null; zone_id?: string | null };
+type CityRow = { id: string; name: string; state?: string | null; zone_id?: string | null; city_pincodes?: string | null };
 type CarModelRow = { id: string; make: string; model_name: string; variant?: string | null; class?: string | null };
 type ServiceTypeRow = {
   id: string;
@@ -861,7 +861,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     try {
       const { data, error } = await supabase
         .from('cities')
-        .select('id,name,state,zone_id,is_active')
+        .select('id,name,state,zone_id,is_active,city_pincodes')
         .eq('is_active', true)
         .order('name');
       if (error) throw error;
@@ -908,7 +908,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         if (detectedCity) {
           const normalised = detectedCity.toLowerCase();
           const districtNorm = (addr.state_district || '').toLowerCase();
-          const match = list.find(
+          const pincode = (addr.postcode || '').replace(/\D/g, '').trim();
+          let match = list.find(
             (c) => {
               const cn = c.name.toLowerCase();
               return cn === normalised ||
@@ -917,6 +918,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 (districtNorm && (cn === districtNorm || cn.includes(districtNorm) || districtNorm.includes(cn)));
             }
           );
+          if (!match && pincode.length === 6) {
+            match = list.find(
+              (c) => c.city_pincodes && c.city_pincodes.includes(pincode)
+            );
+          }
           if (match) {
             setForm((p) => ({ ...p, city: match }));
             setDetectedCityNotServiceable(null);

@@ -126,6 +126,7 @@ export default function ReferralApp() {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editConfig, setEditConfig] = useState<ReferralConfig | null>(null);
+  const [rewardingId, setRewardingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -213,6 +214,29 @@ export default function ReferralApp() {
   const removeTncItem = (idx: number) => {
     if (!editConfig) return;
     patchConfig('referral_tnc', editConfig.referral_tnc.filter((_, i) => i !== idx));
+  };
+
+  const handleManualReward = async (eventId: string) => {
+    if (!window.confirm('Mark this referral as completed and credit wallet to referrer?')) return;
+    setRewardingId(eventId);
+    try {
+      const res = await fetch('/api/super_admin/referral/manual-reward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: eventId }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setMessage(`Rewarded! ₹${json.amount} credited to referrer's wallet.`);
+        fetchData();
+      } else {
+        setError(json.error || 'Failed to reward');
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setRewardingId(null);
+    }
   };
 
   if (loading) {
@@ -372,7 +396,8 @@ export default function ReferralApp() {
                     <th className="pb-3 pr-4">Referrer</th>
                     <th className="pb-3 pr-4">Friend</th>
                     <th className="pb-3 pr-4">Code</th>
-                    <th className="pb-3">Status</th>
+                    <th className="pb-3 pr-4">Status</th>
+                    <th className="pb-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -390,7 +415,18 @@ export default function ReferralApp() {
                         {ev.referee?.phone && <span className="text-gray-400 text-xs ml-1">{ev.referee.phone}</span>}
                       </td>
                       <td className="py-3 pr-4 font-mono text-xs font-bold text-gray-600">{ev.referral_code}</td>
-                      <td className="py-3"><StatusBadge status={ev.status} /></td>
+                      <td className="py-3 pr-4"><StatusBadge status={ev.status} /></td>
+                      <td className="py-3">
+                        {ev.status === 'PENDING' && (
+                          <button
+                            onClick={() => handleManualReward(ev.id)}
+                            disabled={rewardingId === ev.id}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition"
+                          >
+                            {rewardingId === ev.id ? 'Rewarding…' : 'Mark Rewarded'}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

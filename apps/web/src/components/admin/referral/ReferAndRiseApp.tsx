@@ -78,7 +78,7 @@ type LeaderboardEntry = {
   pending: number;
   total_earned: number;
   referral_code: string;
-  referees: { full_name: string; phone: string; status: string; created_at: string }[];
+  referees: { event_id: string; full_name: string; phone: string; status: string; created_at: string }[];
 };
 
 const DEFAULT_CATEGORIES: Record<string, RewardCategory> = {
@@ -162,6 +162,7 @@ export default function ReferAndRiseApp() {
   const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity'>('milestones');
   const [backfilling, setBackfilling] = useState(false);
+  const [rewardingId, setRewardingId] = useState<string | null>(null);
 
   const runBackfill = async () => {
     setBackfilling(true);
@@ -180,6 +181,29 @@ export default function ReferAndRiseApp() {
       setError('Backfill network error');
     } finally {
       setBackfilling(false);
+    }
+  };
+
+  const handleManualReward = async (eventId: string) => {
+    if (!window.confirm('Mark this referral as completed and credit wallet to referrer?')) return;
+    setRewardingId(eventId);
+    try {
+      const res = await fetch('/api/super_admin/referral/manual-reward', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: eventId }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setMessage(`Rewarded! ₹${json.amount} credited to referrer's wallet.`);
+        void fetchData();
+      } else {
+        setError(json.error || 'Failed to reward');
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setRewardingId(null);
     }
   };
 
@@ -776,6 +800,15 @@ export default function ReferAndRiseApp() {
                                         <p className="text-[10px] text-gray-400">{ref.phone}</p>
                                       </div>
                                       <StatusBadge status={ref.status} />
+                                      {ref.status === 'PENDING' && ref.event_id && (
+                                        <button
+                                          onClick={() => handleManualReward(ref.event_id)}
+                                          disabled={rewardingId === ref.event_id}
+                                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition shrink-0"
+                                        >
+                                          {rewardingId === ref.event_id ? '…' : 'Reward'}
+                                        </button>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -807,7 +840,8 @@ export default function ReferAndRiseApp() {
                       <th className="pb-3 pr-4">Referrer</th>
                       <th className="pb-3 pr-4">Friend</th>
                       <th className="pb-3 pr-4">Code</th>
-                      <th className="pb-3">Status</th>
+                      <th className="pb-3 pr-4">Status</th>
+                      <th className="pb-3">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -825,7 +859,18 @@ export default function ReferAndRiseApp() {
                           {ev.referee?.phone && <span className="text-gray-400 text-xs ml-1">{ev.referee.phone}</span>}
                         </td>
                         <td className="py-3 pr-4 font-mono text-xs font-bold text-gray-600">{ev.referral_code}</td>
-                        <td className="py-3"><StatusBadge status={ev.status} /></td>
+                        <td className="py-3 pr-4"><StatusBadge status={ev.status} /></td>
+                        <td className="py-3">
+                          {ev.status === 'PENDING' && (
+                            <button
+                              onClick={() => handleManualReward(ev.id)}
+                              disabled={rewardingId === ev.id}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition"
+                            >
+                              {rewardingId === ev.id ? 'Rewarding…' : 'Mark Rewarded'}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

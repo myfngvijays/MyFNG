@@ -146,7 +146,7 @@ export default function AdvancedComposeSection() {
   const [targetServiceCenters, setTargetServiceCenters] = useState<string[]>([]);
   const [targetCarBrands, setTargetCarBrands] = useState<string[]>([]);
   const [targetCustomerType, setTargetCustomerType] = useState<'all' | 'new' | 'returning'>('all');
-  const [targetCouponUsers, setTargetCouponUsers] = useState<'all' | 'used' | 'never'>('all');
+  const [targetCouponUsers, setTargetCouponUsers] = useState<'all' | 'used' | 'never' | 'assigned'>('all');
   const [targetCouponCodes, setTargetCouponCodes] = useState<string[]>([]);
   const [availableCoupons, setAvailableCoupons] = useState<{ id: string; code: string }[]>([]);
   const [targetPhoneList, setTargetPhoneList] = useState('');
@@ -328,7 +328,7 @@ export default function AdvancedComposeSection() {
           target_car_brands: targetCarBrands.length > 0 ? targetCarBrands : undefined,
           target_customer_type: targetCustomerType !== 'all' ? targetCustomerType : undefined,
           target_coupon_users: targetCouponUsers !== 'all' ? targetCouponUsers : undefined,
-          target_coupon_codes: targetCouponUsers === 'used' && targetCouponCodes.length > 0 ? targetCouponCodes : undefined,
+          target_coupon_codes: (targetCouponUsers === 'used' || targetCouponUsers === 'assigned') && targetCouponCodes.length > 0 ? targetCouponCodes : undefined,
           target_phone_list: phoneList?.length ? phoneList : undefined,
         }),
       });
@@ -523,15 +523,15 @@ export default function AdvancedComposeSection() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-600 flex items-center gap-1.5"><Ticket className="w-3.5 h-3.5" /> Coupon Users</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {([['all', 'All'], ['used', 'Used Coupons'], ['never', 'Never Used']] as const).map(([val, label]) => (
-                    <button key={val} type="button" onClick={() => { setTargetCouponUsers(val); if (val !== 'used') setTargetCouponCodes([]); }}
+                  {([['all', 'All'], ['used', 'Used Coupons'], ['never', 'Never Used'], ['assigned', 'Assigned Coupon']] as const).map(([val, label]) => (
+                    <button key={val} type="button" onClick={() => { setTargetCouponUsers(val); if (val !== 'used' && val !== 'assigned') setTargetCouponCodes([]); }}
                       className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition ${targetCouponUsers === val ? 'bg-amber-600 border-amber-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-amber-400'}`}
                     >{label}</button>
                   ))}
                 </div>
-                {targetCouponUsers === 'used' && availableCoupons.length > 0 ? (
+                {(targetCouponUsers === 'used' || targetCouponUsers === 'assigned') && availableCoupons.length > 0 ? (
                   <DropdownMulti
-                    label="Coupons"
+                    label={targetCouponUsers === 'assigned' ? 'Assigned Coupons' : 'Coupons'}
                     icon={<Ticket className="w-3.5 h-3.5" />}
                     items={availableCoupons.map((c) => c.code)}
                     selected={targetCouponCodes}

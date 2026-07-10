@@ -134,12 +134,13 @@ export async function GET() {
         // Fetch referred friends
         const { data: refereeEvents } = await supabaseAdmin
           .from('referral_events')
-          .select('status, created_at, referee:referee_customer_id(full_name, phone)')
+          .select('id, status, created_at, referee:referee_customer_id(full_name, phone)')
           .eq('referrer_customer_id', rc.customer_id)
           .order('created_at', { ascending: false })
           .limit(20);
 
         const referees = (refereeEvents || []).map((ev: any) => ({
+          event_id: ev.id,
           full_name: ev.referee?.full_name || '',
           phone: ev.referee?.phone || '',
           status: ev.status,
