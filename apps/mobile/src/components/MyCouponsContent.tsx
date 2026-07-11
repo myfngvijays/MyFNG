@@ -176,7 +176,7 @@ export default function MyCouponsContent({ coupons, loading, onUseInCart, onLogi
         <View style={styles.heroRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroEyebrow}>MYFNG REWARDS</Text>
-            <Text style={styles.heroTitle}>My Coupons</Text>
+            <Text style={styles.heroTitle}>Offers & Coupons</Text>
             <Text style={styles.heroSub}>Tap code to copy · Apply instantly at cart checkout</Text>
           </View>
           {!loading ? (

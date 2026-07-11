@@ -50,6 +50,8 @@ import {
 } from '../lib/membershipTheme';
 import { openPhoneCall, openEmail } from '../lib/phone';
 import { trackEvent } from '../lib/trackEvent';
+import { getUpsellSuggestions, getUpsellHeading } from '../lib/serviceUpsells';
+import { fetchServicePricingMap, resolveCityZoneId, resolveVehicleClass } from '../lib/servicePricing';
 import { ENV } from '../config/environment';
 import { reverseGeocodeCoords } from '../lib/reverseGeocode';
 import { notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
@@ -128,10 +130,10 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'profile', label: 'My Profile', icon: 'person' },
   { id: 'addresses', label: 'Your Addresses', icon: 'location' },
   { id: 'membership', label: 'Membership', icon: 'trophy' },
-  { id: 'wallet', label: 'Your Wallet', icon: 'wallet' },
+  { id: 'wallet', label: 'FNG Wallet', icon: 'wallet' },
   { id: 'orders', label: 'Order History', icon: 'receipt' },
   { id: 'cart', label: 'Cart', icon: 'cart' },
-  { id: 'coupons', label: 'My Coupons', icon: 'pricetag' },
+  { id: 'coupons', label: 'Offers & Coupons', icon: 'pricetag' },
   { id: 'referral', label: 'Refer & Rise', icon: 'trophy' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
@@ -228,12 +230,17 @@ function mapSavedVehicleRecord(v: any) {
 export default function SettingsScreen({ navigation, route, onCustomerLogout }: Props) {
   const resolveSubPage = (value: string | null | undefined): string | null => {
     if (!value) return null;
+    const legacyLabels: Record<string, string> = {
+      'Your Wallet': 'FNG Wallet',
+      'My Coupons': 'Offers & Coupons',
+    };
+    const normalized = legacyLabels[value] || value;
     const all = [...MAIN_MENU, ...LEGAL_MENU];
-    const byLabel = all.find((m) => m.label === value);
+    const byLabel = all.find((m) => m.label === normalized);
     if (byLabel) return byLabel.label;
-    const byId = all.find((m) => m.id === value);
+    const byId = all.find((m) => m.id === normalized);
     if (byId) return byId.label;
-    return value;
+    return normalized;
   };
   const [activeSubPage, setActiveSubPage] = useState<string | null>(resolveSubPage(route?.params?.initialSubPage ?? route?.params?.subPage ?? null));
   const activeSubPageRef = useRef(activeSubPage);
@@ -362,6 +369,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const [cartLeads, setCartLeads] = useState<any[]>([]);
   const [cartDrafts, setCartDrafts] = useState<BookingDraft[]>([]);
   const [cartSelectedDraftId, setCartSelectedDraftId] = useState<string | null>(null);
+  const [cartUpsellServices, setCartUpsellServices] = useState<Array<{ id: string; name: string; category?: string; points?: number }>>([]);
+  const [cartUpsellPricing, setCartUpsellPricing] = useState<Record<string, number>>({});
   const [cartSelectedLeadId, setCartSelectedLeadId] = useState<string | null>(null);
   const [cartWorkshops, setCartWorkshops] = useState<any[]>([]);
   const [cartWorkshopLoading, setCartWorkshopLoading] = useState(false);
@@ -1639,7 +1648,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   }, [carSearch, activeSubPage]);
 
   useEffect(() => {
-    if (activeSubPage !== 'Your Wallet') return;
+    if (activeSubPage !== 'FNG Wallet') return;
     if (!isLoggedIn) return;
     let cancelled = false;
     (async () => {
@@ -1660,7 +1669,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   }, [activeSubPage, isLoggedIn]);
 
   useEffect(() => {
-    if (activeSubPage !== 'My Coupons') return;
+    if (activeSubPage !== 'Offers & Coupons') return;
     if (!isLoggedIn) return;
     let cancelled = false;
     setMyCouponsLoading(true);
@@ -1714,6 +1723,35 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       if (drafts.length > 0 && !cartSelectedDraftId) setCartSelectedDraftId(drafts[0].id);
     }).catch(() => {});
   }, [activeSubPage]);
+
+  // Load upsell data for cart page
+  useEffect(() => {
+    if (activeSubPage !== 'Cart') return;
+    const draft = cartDrafts.find((d) => d.id === cartSelectedDraftId) || cartDrafts[0];
+    if (!draft?.selectedServices?.length) { setCartUpsellServices([]); return; }
+    let active = true;
+    (async () => {
+      try {
+        const { data: catRows } = await supabase.from('categories').select('uuid, category').order('category');
+        const categoryMap: Record<string, string> = {};
+        ((catRows as any[]) || []).forEach((c: any) => { if (c.uuid && c.category) categoryMap[c.uuid] = c.category.toUpperCase(); });
+        const { data } = await supabase.from('service_types').select('id,name,description,is_active,category_uuid').eq('is_active', true).order('name');
+        if (!active) return;
+        const allSvc = ((data as any[]) || []).map((s: any) => ({
+          ...s,
+          category: s.category_uuid ? categoryMap[s.category_uuid] || 'OTHER SERVICES' : 'OTHER SERVICES',
+        }));
+        setCartUpsellServices(allSvc);
+        const cityId = draft.city?.id || null;
+        const zoneId = cityId ? await resolveCityZoneId(cityId) : null;
+        const vehicleClass = draft.carModel?.id ? await resolveVehicleClass(draft.carModel.id) : null;
+        const ids = allSvc.map((s: any) => s.id);
+        const prices = await fetchServicePricingMap(ids, cityId, zoneId, vehicleClass);
+        if (active) setCartUpsellPricing(prices);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [activeSubPage, cartDrafts, cartSelectedDraftId]);
 
   useEffect(() => {
     if (activeSubPage !== 'Cart') return;
@@ -4310,7 +4348,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           </View>
         );
       }
-      case 'Your Wallet':
+      case 'FNG Wallet':
         trackEvent('wallet_viewed');
         return (
           <WalletScreenContent
@@ -4546,7 +4584,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           </ScrollView>
         );
       }
-      case 'My Coupons':
+      case 'Offers & Coupons':
         return (
           <MyCouponsContent
             isLoggedIn={isLoggedIn}
@@ -5408,6 +5446,58 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               </>
             ) : null}
 
+            {/* ── Cart Upsell: Add more services ── */}
+            {draftBlocksCheckout && activeDraft?.selectedServices?.length ? (() => {
+              const draftPricing = { ...getDraftDisplayPrices(activeDraft), ...cartUpsellPricing };
+              const suggestions = getUpsellSuggestions(
+                activeDraft.selectedServices || [],
+                cartUpsellServices,
+                draftPricing,
+              );
+              if (suggestions.length === 0) return null;
+              const selectedCats = new Set<string>();
+              for (const sid of (activeDraft.selectedServices || [])) {
+                const svc = cartUpsellServices.find((s) => s.id === sid);
+                if (svc?.category) selectedCats.add(svc.category);
+              }
+              const heading = getUpsellHeading(selectedCats);
+              return (
+                <View style={{ backgroundColor: '#FFFBEB', borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A', padding: 14, marginTop: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <Ionicons name="sparkles" size={16} color="#F59E0B" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#92400E' }}>{heading}</Text>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
+                    {suggestions.map((s) => {
+                      const price = draftPricing[s.id] || 0;
+                      const catLabel = String(s.category || '').split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+                      return (
+                        <TouchableOpacity
+                          key={s.id}
+                          style={{ width: 150, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A', padding: 12 }}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            trackEvent('booking_upsell_added', { service_id: s.id, placement: 'cart' });
+                            navigation.navigate('PublicBookServiceNow', { resumeDraft: buildResumeDraft(activeDraft), selectedServiceId: s.id });
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#92400E', marginBottom: 4 }} numberOfLines={1}>{catLabel}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E293B', marginBottom: 4, lineHeight: 17 }} numberOfLines={2}>{s.name}</Text>
+                          {price > 0 ? (
+                            <Text style={{ fontSize: 13, fontWeight: '900', color: '#047857', marginBottom: 8 }}>₹{Math.round(price).toLocaleString('en-IN')}</Text>
+                          ) : null}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: 6 }}>
+                            <Ionicons name="add" size={14} color="#FFFFFF" />
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>Add</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              );
+            })() : null}
+
             {(showCartCheckout || draftBlocksCheckout) ? (
             <>
             {showCartCheckout ? (
@@ -5767,7 +5857,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           style={{ flex: 1, transform: [{ translateX: swipeAnim }] }}
           {...panResponder.panHandlers}
         >
-          {activeSubPage === 'Your Wallet' || activeSubPage === 'Refer & Rise' || activeSubPage === 'Refer & Earn' ? (
+          {activeSubPage === 'FNG Wallet' || activeSubPage === 'Refer & Rise' || activeSubPage === 'Refer & Earn' ? (
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {subPageContent}
             </ScrollView>

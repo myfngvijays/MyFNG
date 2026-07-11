@@ -83,6 +83,7 @@ import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
+import { getUpsellSuggestions, getUpsellHeading } from '../lib/serviceUpsells';
 import VehicleImage from '../components/VehicleImage';
 import { trackEvent } from '../lib/trackEvent';
 
@@ -515,6 +516,25 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [form.selectedServices, pricing]);
 
   const hasActiveMembership = isMembershipActive(currentMembership);
+
+  const selectedCategories = useMemo(() => {
+    const cats = new Set<string>();
+    for (const sid of form.selectedServices) {
+      const svc = serviceTypes.find((s) => s.id === sid);
+      if (svc?.category) cats.add(svc.category);
+    }
+    return cats;
+  }, [form.selectedServices, serviceTypes]);
+
+  const upsellSuggestions = useMemo(
+    () => getUpsellSuggestions(form.selectedServices, serviceTypes, pricing),
+    [form.selectedServices, serviceTypes, pricing],
+  );
+
+  const upsellHeading = useMemo(
+    () => getUpsellHeading(selectedCategories),
+    [selectedCategories],
+  );
 
   const membershipLinePrice = useMemo(() => {
     if (!includeBookingMembership || hasActiveMembership || !primeMembershipPlan) return 0;
@@ -2011,6 +2031,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setTimeout(() => persistBookingSession(), 0);
   }, [persistBookingSession]);
 
+  const handleUpsellAdd = useCallback((serviceId: string, placement: 'step2' | 'step4') => {
+    trackEvent('booking_upsell_added', { service_id: serviceId, placement });
+    handleServiceToggle(serviceId);
+  }, [handleServiceToggle]);
+
   const removeSelectedService = useCallback((serviceId: string) => {
     setForm((prev) => ({
       ...prev,
@@ -2919,6 +2944,54 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <Text style={styles.selectedCartContinueBtnText}>Continue</Text>
                       <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
                     </TouchableOpacity>
+
+                    {/* ── Upsell: You might also need ── */}
+                    {upsellSuggestions.length > 0 ? (
+                      <View style={styles.upsellSection}>
+                        <View style={styles.upsellHeader}>
+                          <Ionicons name="sparkles" size={16} color="#F59E0B" />
+                          <Text style={styles.upsellTitle}>{upsellHeading}</Text>
+                        </View>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.upsellScrollContent}
+                        >
+                          {upsellSuggestions.map((s) => {
+                            const price = pricing[s.id] || 0;
+                            const catLabel = String(s.category || '')
+                              .split(' ')
+                              .map((w: string) => w.charAt(0) + w.slice(1).toLowerCase())
+                              .join(' ');
+                            const iconUrl = getCategoryIconUrl(s.category || '');
+                            return (
+                              <View key={s.id} style={styles.upsellCard}>
+                                <View style={styles.upsellCardTop}>
+                                  {iconUrl ? (
+                                    <Image source={{ uri: iconUrl }} style={styles.upsellCatIcon} resizeMode="contain" />
+                                  ) : (
+                                    <Ionicons name="construct-outline" size={16} color={COLORS.primary} />
+                                  )}
+                                  <Text style={styles.upsellCatLabel} numberOfLines={1}>{catLabel}</Text>
+                                </View>
+                                <Text style={styles.upsellServiceName} numberOfLines={2}>{s.name}</Text>
+                                {price > 0 ? (
+                                  <Text style={styles.upsellPrice}>{inr(price)}</Text>
+                                ) : null}
+                                <TouchableOpacity
+                                  style={styles.upsellAddBtn}
+                                  onPress={() => handleUpsellAdd(s.id, 'step2')}
+                                  activeOpacity={0.85}
+                                >
+                                  <Ionicons name="add" size={14} color="#FFFFFF" />
+                                  <Text style={styles.upsellAddBtnText}>Add</Text>
+                                </TouchableOpacity>
+                              </View>
+                            );
+                          })}
+                        </ScrollView>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
 
@@ -3807,6 +3880,42 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         {walletBlockReason || 'Wallet cannot be used — this vehicle is linked to another account.'}
                       </Text>
                     ) : null}
+                  </View>
+                ) : null}
+
+                {/* ── Upsell: Add before you pay ── */}
+                {upsellSuggestions.length > 0 ? (
+                  <View style={styles.upsellStep4Section}>
+                    <View style={styles.upsellStep4Header}>
+                      <Ionicons name="bulb" size={16} color="#F59E0B" />
+                      <Text style={styles.upsellStep4Title}>Add before you pay</Text>
+                    </View>
+                    {upsellSuggestions.map((s) => {
+                      const price = pricing[s.id] || 0;
+                      const catLabel = String(s.category || '')
+                        .split(' ')
+                        .map((w: string) => w.charAt(0) + w.slice(1).toLowerCase())
+                        .join(' ');
+                      return (
+                        <View key={s.id} style={styles.upsellStep4Row}>
+                          <View style={styles.upsellStep4Info}>
+                            <Text style={styles.upsellStep4Name} numberOfLines={1}>{s.name}</Text>
+                            <Text style={styles.upsellStep4Cat}>{catLabel}</Text>
+                          </View>
+                          {price > 0 ? (
+                            <Text style={styles.upsellStep4Price}>{inr(price)}</Text>
+                          ) : null}
+                          <TouchableOpacity
+                            style={styles.upsellStep4AddBtn}
+                            onPress={() => handleUpsellAdd(s.id, 'step4')}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="add" size={14} color={COLORS.primary} />
+                            <Text style={styles.upsellStep4AddText}>Add</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
                   </View>
                 ) : null}
 
@@ -6416,5 +6525,142 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
     textDecorationLine: 'underline',
+  },
+
+  // ── Upsell (Step 2) ──
+  upsellSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0F2FE',
+  },
+  upsellHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  upsellTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  upsellScrollContent: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  upsellCard: {
+    width: 150,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 12,
+  },
+  upsellCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  upsellCatIcon: {
+    width: 18,
+    height: 18,
+  },
+  upsellCatLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#92400E',
+    flex: 1,
+  },
+  upsellServiceName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 4,
+    lineHeight: 17,
+  },
+  upsellPrice: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#047857',
+    marginBottom: 8,
+  },
+  upsellAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    paddingVertical: 6,
+  },
+  upsellAddBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+
+  // ── Upsell (Step 4) ──
+  upsellStep4Section: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 14,
+    marginBottom: 12,
+  },
+  upsellStep4Header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  upsellStep4Title: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  upsellStep4Row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#FEF3C7',
+    gap: 8,
+  },
+  upsellStep4Info: {
+    flex: 1,
+  },
+  upsellStep4Name: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  upsellStep4Cat: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#92400E',
+    marginTop: 1,
+  },
+  upsellStep4Price: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#047857',
+  },
+  upsellStep4AddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  upsellStep4AddText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.primary,
   },
 });
