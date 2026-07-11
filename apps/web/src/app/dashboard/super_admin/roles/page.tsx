@@ -11,7 +11,7 @@ type RoleGroup = 'admin_roles' | 'manager_roles' | 'internal_staff' | 'workshop_
 const ROLE_HIERARCHY: Record<RoleGroup, string[]> = {
   admin_roles: ['SUPER_ADMIN', 'SUB_ADMIN'],
   manager_roles: ['LEAD_MANAGER', 'RSA_MANAGER', 'HOME_SERVICE_MANAGER'],
-  internal_staff: ['TELECALLER', 'CUSTOMER_SERVICE_EXECUTIVE', 'AUDITOR', 'ACCOUNTS_TEAM', 'DIGITAL_MARKETING', 'DIGITAL_AUTHOR'],
+  internal_staff: ['TELECALLER', 'CUSTOMER_SERVICE_EXECUTIVE', 'AUDITOR', 'ACCOUNTS_TEAM', 'DIGITAL_MARKETING', 'DIGITAL_AUTHOR', 'APP_OPERATIONS'],
   workshop_staff: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_MECHANIC', 'WORKSHOP_PICKUP_BOY'],
   company_field_staff: ['COMPANY_MECHANIC_RSA', 'COMPANY_VAN_TECHNICIAN', 'COMPANY_VAN_DRIVER'],
   customers: ['CUSTOMER'],
@@ -45,6 +45,7 @@ const ROLE_MENU_ITEMS: Record<string, string[]> = {
   COMPANY_VAN_DRIVER: ['Dashboard', 'My Trips', 'History', 'Profile'],
   DIGITAL_MARKETING: ['Dashboard', 'Blogs', 'Blog Categories', 'Campaigns', 'Analytics', 'Leads', 'Profile'],
   DIGITAL_AUTHOR: ['Dashboard', 'My Blogs', 'Profile'],
+  APP_OPERATIONS: ['Dashboard', 'Bookings & Leads', 'App Customers', 'Membership Customers', 'Refer & Earn', 'Profile'],
   CUSTOMER: ['Dashboard', 'My Bookings', 'My Vehicles', 'Invoices', 'Support', 'Profile'],
 };
 
@@ -67,6 +68,7 @@ const ROLE_COLORS: Record<string, string> = {
   COMPANY_VAN_DRIVER: 'bg-green-100 text-green-800 border-green-200',
   DIGITAL_MARKETING: 'bg-pink-100 text-pink-800 border-pink-200',
   DIGITAL_AUTHOR: 'bg-rose-100 text-rose-800 border-rose-200',
+  APP_OPERATIONS: 'bg-cyan-100 text-cyan-800 border-cyan-200',
   CUSTOMER: 'bg-gray-100 text-gray-800 border-gray-200',
 };
 
@@ -75,7 +77,7 @@ const ALL_KNOWN_PERMISSIONS = [
   'manage_users', 'view_reports', 'manage_leads', 'manage_workshops',
   'view_leads', 'assign_leads', 'manage_normal_leads', 'manage_rsa_leads', 'manage_home_service_leads',
   'call_customers', 'update_lead_status',
-  'view_customers', 'handle_support', 'manage_escalations',
+  'view_customers', 'handle_support', 'manage_escalations', 'manage_referrals',
   'view_workshops', 'audit_workshops', 'update_audit_scores',
   'view_invoices', 'manage_payments', 'generate_reports',
   'view_workshop_leads', 'accept_reject_leads', 'manage_workshop_staff',

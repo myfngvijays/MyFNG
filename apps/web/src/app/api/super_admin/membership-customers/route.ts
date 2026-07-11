@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   exportMembershipCustomersCsv,
+  fetchMembershipBenefitClaims,
   fetchMembershipCustomersDashboard,
   fetchMembershipCustomersList,
   fetchMembershipCustomersOverview,
@@ -33,7 +34,7 @@ async function assertSuperAdmin() {
   }
 
   const roleCode = (userData as any).roles?.role_code;
-  if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
+  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'APP_OPERATIONS'].includes(roleCode)) {
     return { ok: false, status: 403, error: 'Forbidden - Not super admin' };
   }
 
@@ -85,8 +86,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    if (view === 'benefit_claims') {
+      const benefitCode = String(searchParams.get('benefit_code') || '').trim();
+      if (!benefitCode) {
+        return NextResponse.json({ error: 'benefit_code is required' }, { status: 400 });
+      }
+      const result = await fetchMembershipBenefitClaims(supabaseAdmin, {
+        benefit_code: benefitCode,
+        preset,
+        start,
+        end,
+        platform,
+      });
+      return NextResponse.json(result);
+    }
+
     if (view === 'dashboard') {
-      const dashboard = await fetchMembershipCustomersDashboard(supabaseAdmin, { preset, start, end });
+      const dashboard = await fetchMembershipCustomersDashboard(supabaseAdmin, { preset, start, end, platform });
       const overview = await fetchMembershipCustomersOverview(supabaseAdmin);
       return NextResponse.json({ dashboard, overview });
     }

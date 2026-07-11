@@ -31,7 +31,7 @@ async function assertSuperAdmin() {
   }
 
   const roleCode = (userData as any).roles?.role_code;
-  if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
+  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'APP_OPERATIONS'].includes(roleCode)) {
     return { ok: false, status: 403, error: 'Forbidden - Not super admin' };
   }
 

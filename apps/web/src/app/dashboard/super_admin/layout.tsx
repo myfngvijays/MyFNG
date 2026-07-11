@@ -494,6 +494,7 @@ export default function SuperAdminLayout({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserClient(), []);
+  const [authReady, setAuthReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -510,6 +511,37 @@ export default function SuperAdminLayout({
     'App Customers': false,
     WhatsApp: false,
   });
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+      const { data: profile } = await supabase
+        .from('users_login')
+        .select('is_active, roles!inner(role_code)')
+        .eq('id', user.id)
+        .maybeSingle();
+      const roleCode = String((profile?.roles as { role_code?: string } | null)?.role_code || '');
+      if (!profile?.is_active || !roleCode) {
+        router.replace('/login');
+        return;
+      }
+      if (roleCode === 'APP_OPERATIONS') {
+        router.replace('/dashboard/app_operations');
+        return;
+      }
+      if (roleCode !== 'SUPER_ADMIN') {
+        router.replace(`/dashboard/${roleCode.toLowerCase()}`);
+        return;
+      }
+      if (active) setAuthReady(true);
+    })();
+    return () => { active = false; };
+  }, [router, supabase]);
 
   React.useEffect(() => {
     if (
@@ -631,6 +663,14 @@ export default function SuperAdminLayout({
     if (!item.children?.length) return false;
     return item.children.some((c) => isActive(c.href));
   };
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-sm text-gray-500">Loading…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">

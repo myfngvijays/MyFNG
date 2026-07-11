@@ -148,7 +148,8 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${s.bg} ${s.text}`}>{status}</span>;
 }
 
-export default function ReferAndRiseApp() {
+export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'analytics-only' }) {
+  const analyticsOnly = mode === 'analytics-only';
   const [config, setConfig] = useState<ReferAndRiseConfig | null>(null);
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [events, setEvents] = useState<ReferralEvent[]>([]);
@@ -160,7 +161,7 @@ export default function ReferAndRiseApp() {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity'>('milestones');
+  const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity'>(analyticsOnly ? 'users' : 'milestones');
   const [backfilling, setBackfilling] = useState(false);
   const [rewardingId, setRewardingId] = useState<string | null>(null);
 
@@ -378,17 +379,21 @@ export default function ReferAndRiseApp() {
               </div>
               <h1 className="text-2xl sm:text-3xl font-black mt-3 text-white">Refer &amp; Rise Management</h1>
               <p className="text-sm sm:text-base text-blue-100 mt-2 max-w-2xl">
-                Manage milestones, rewards categories, and track referral activity. Changes reflect instantly in the app.
+                {analyticsOnly
+                  ? 'View referral performance, leaderboard, and user analytics.'
+                  : 'Manage milestones, rewards categories, and track referral activity. Changes reflect instantly in the app.'}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button onClick={runBackfill} disabled={backfilling} className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2.5 text-sm font-bold transition disabled:opacity-50">
-                <CheckCircle2 className="h-4 w-4" /> {backfilling ? 'Processing...' : 'Sync Rewards'}
-              </button>
+              {!analyticsOnly && (
+                <button onClick={runBackfill} disabled={backfilling} className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2.5 text-sm font-bold transition disabled:opacity-50">
+                  <CheckCircle2 className="h-4 w-4" /> {backfilling ? 'Processing...' : 'Sync Rewards'}
+                </button>
+              )}
               <button onClick={fetchData} className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2.5 text-sm font-bold transition">
                 <RefreshCw className="h-4 w-4" /> Refresh
               </button>
-              {dirty && (
+              {!analyticsOnly && dirty && (
                 <button onClick={handleSave} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-white text-blue-700 px-5 py-2.5 text-sm font-black shadow-lg hover:shadow-xl transition disabled:opacity-50">
                   <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -412,6 +417,7 @@ export default function ReferAndRiseApp() {
         )}
 
         {/* Tabs */}
+        {!analyticsOnly && (
         <div className="flex gap-1 bg-white/70 backdrop-blur rounded-xl p-1 border border-gray-200/50 w-fit">
           {[
             { key: 'milestones' as const, label: 'Milestones & Rewards', icon: <Trophy className="h-3.5 w-3.5" /> },
@@ -428,8 +434,9 @@ export default function ReferAndRiseApp() {
             </button>
           ))}
         </div>
+        )}
 
-        {activeTab === 'milestones' && config && (
+        {!analyticsOnly && activeTab === 'milestones' && config && (
           <>
             {/* Global Settings */}
             <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
@@ -600,7 +607,7 @@ export default function ReferAndRiseApp() {
         )}
 
         {/* Content Tab */}
-        {activeTab === 'content' && config && (
+        {!analyticsOnly && activeTab === 'content' && config && (
           <>
             {/* UI Text */}
             <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm space-y-5">
@@ -695,7 +702,7 @@ export default function ReferAndRiseApp() {
         )}
 
         {/* Users & Analytics Tab */}
-        {activeTab === 'users' && (
+        {(analyticsOnly || activeTab === 'users') && (
           <div className="space-y-6">
             {/* Analytics Summary */}
             {stats && (
@@ -800,7 +807,7 @@ export default function ReferAndRiseApp() {
                                         <p className="text-[10px] text-gray-400">{ref.phone}</p>
                                       </div>
                                       <StatusBadge status={ref.status} />
-                                      {ref.status === 'PENDING' && ref.event_id && (
+                                      {!analyticsOnly && ref.status === 'PENDING' && ref.event_id && (
                                         <button
                                           onClick={() => handleManualReward(ref.event_id)}
                                           disabled={rewardingId === ref.event_id}
@@ -826,7 +833,7 @@ export default function ReferAndRiseApp() {
         )}
 
         {/* Activity Tab */}
-        {activeTab === 'activity' && (
+        {!analyticsOnly && activeTab === 'activity' && (
           <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
             <h2 className="text-lg font-black text-gray-900 mb-4">Recent Referral Activity</h2>
             {events.length === 0 ? (

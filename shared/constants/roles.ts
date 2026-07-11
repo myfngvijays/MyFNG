@@ -22,6 +22,7 @@ export enum UserRole {
   COMPANY_VAN_DRIVER = 'COMPANY_VAN_DRIVER',
   DIGITAL_MARKETING = 'DIGITAL_MARKETING',
   DIGITAL_AUTHOR = 'DIGITAL_AUTHOR',
+  APP_OPERATIONS = 'APP_OPERATIONS',
   CUSTOMER = 'CUSTOMER',
 }
 
@@ -44,6 +45,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.COMPANY_VAN_DRIVER]: 'Company Van Driver',
   [UserRole.DIGITAL_MARKETING]: 'Digital Marketing',
   [UserRole.DIGITAL_AUTHOR]: 'Digital Author',
+  [UserRole.APP_OPERATIONS]: 'App Operations',
   [UserRole.CUSTOMER]: 'Customer',
 };
 
@@ -66,6 +68,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   [UserRole.COMPANY_VAN_DRIVER]: 'Driver for service vans',
   [UserRole.DIGITAL_MARKETING]: 'Manages marketing campaigns, analytics, lead generation, and promotional activities',
   [UserRole.DIGITAL_AUTHOR]: 'Creates and manages blog content, saves drafts, and writes articles',
+  [UserRole.APP_OPERATIONS]: 'Manages service bookings & leads, app customers, and refer & earn',
   [UserRole.CUSTOMER]: 'End user booking services',
 };
 
@@ -73,7 +76,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 export const ROLE_HIERARCHY = {
   admin_roles: [UserRole.SUPER_ADMIN, UserRole.SUB_ADMIN],
   manager_roles: [UserRole.LEAD_MANAGER, UserRole.RSA_MANAGER, UserRole.HOME_SERVICE_MANAGER],
-  internal_staff: [UserRole.TELECALLER, UserRole.CUSTOMER_SERVICE_EXECUTIVE, UserRole.AUDITOR, UserRole.ACCOUNTS_TEAM, UserRole.DIGITAL_MARKETING, UserRole.DIGITAL_AUTHOR],
+  internal_staff: [UserRole.TELECALLER, UserRole.CUSTOMER_SERVICE_EXECUTIVE, UserRole.AUDITOR, UserRole.ACCOUNTS_TEAM, UserRole.DIGITAL_MARKETING, UserRole.DIGITAL_AUTHOR, UserRole.APP_OPERATIONS],
   workshop_staff: [UserRole.WORKSHOP_ADMIN, UserRole.WORKSHOP_SUPERVISOR, UserRole.WORKSHOP_MECHANIC, UserRole.WORKSHOP_PICKUP_BOY],
   company_field_staff: [UserRole.COMPANY_MECHANIC_RSA, UserRole.COMPANY_VAN_TECHNICIAN, UserRole.COMPANY_VAN_DRIVER],
   customers: [UserRole.CUSTOMER],
@@ -99,6 +102,7 @@ export const ROLE_PERMISSIONS = {
   [UserRole.COMPANY_VAN_DRIVER]: ['view_home_service_tasks', 'update_delivery_status'],
   [UserRole.DIGITAL_MARKETING]: ['manage_campaigns', 'view_analytics', 'manage_promotions', 'track_leads', 'manage_content', 'edit_blogs', 'approve_blogs', 'publish_blogs', 'delete_blogs', 'manage_categories', 'manage_tags', 'restore_versions'],
   [UserRole.DIGITAL_AUTHOR]: ['create_blogs', 'save_drafts', 'edit_own_blogs'],
+  [UserRole.APP_OPERATIONS]: ['view_leads', 'manage_leads', 'view_customers', 'manage_referrals'],
   [UserRole.CUSTOMER]: ['create_booking', 'view_my_bookings', 'track_service'],
 };
 

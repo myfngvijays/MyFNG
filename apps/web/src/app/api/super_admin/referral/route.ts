@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-async function assertSuperAdmin() {
+async function assertReferralViewer() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -13,7 +13,7 @@ async function assertSuperAdmin() {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    return { ok: false as const, status: 401, error: 'Unauthorized', user: null };
+    return { ok: false as const, status: 401, error: 'Unauthorized', user: null, roleCode: null };
   }
 
   const { data: userData, error: roleError } = await supabase
@@ -23,20 +23,30 @@ async function assertSuperAdmin() {
     .single();
 
   if (roleError || !userData) {
-    return { ok: false as const, status: 403, error: 'Forbidden - Role check failed', user: null };
+    return { ok: false as const, status: 403, error: 'Forbidden - Role check failed', user: null, roleCode: null };
   }
 
   const roleCode = (userData as any).roles?.role_code;
-  if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
-    return { ok: false as const, status: 403, error: 'Forbidden - Not super admin', user: null };
+  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'APP_OPERATIONS'].includes(roleCode)) {
+    return { ok: false as const, status: 403, error: 'Forbidden - Not super admin', user: null, roleCode: null };
   }
 
-  return { ok: true as const, status: 200, error: null, user };
+  return { ok: true as const, status: 200, error: null, user, roleCode };
+}
+
+/** Config edits — Super Admin only. */
+async function assertReferralEditor() {
+  const auth = await assertReferralViewer();
+  if (!auth.ok) return auth;
+  if (auth.roleCode !== 'SUPER_ADMIN') {
+    return { ok: false as const, status: 403, error: 'Forbidden - Super Admin only', user: auth.user, roleCode: auth.roleCode };
+  }
+  return auth;
 }
 
 export async function GET() {
   try {
-    const auth = await assertSuperAdmin();
+    const auth = await assertReferralViewer();
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
@@ -195,7 +205,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await assertSuperAdmin();
+    const auth = await assertReferralEditor();
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }

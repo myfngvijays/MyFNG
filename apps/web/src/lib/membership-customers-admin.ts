@@ -57,14 +57,24 @@ export type MembershipCustomerOverview = {
 
 export type MembershipCustomerDashboard = {
   range_label: string;
+  platform_filter: string;
   new_memberships: number;
+  first_time_signups: number;
+  renewals_in_period: number;
   active_now: number;
+  expiring_soon: number;
   revenue_inr: number;
+  total_wallet_balance: number;
+  members_with_wallet: number;
   benefits_claimed: number;
   service_bookings: number;
   android_count: number;
   ios_count: number;
+  unknown_platform_count: number;
+  second_car_count: number;
   plan_breakdown: Array<{ plan_name: string; count: number; revenue_inr: number }>;
+  benefit_breakdown: Array<{ benefit_code: string; title: string; count: number }>;
+  source_breakdown: Array<{ source: string; count: number; revenue_inr: number }>;
   daily_signups: Array<{ date: string; count: number }>;
 };
 
@@ -226,16 +236,95 @@ async function fetchAllMembershipCustomerIds(supabaseAdmin: any): Promise<string
   return [...ids];
 }
 
+async function fetchMembershipCustomerPlatformMap(
+  supabaseAdmin: any,
+  customerIds: string[],
+): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  if (!customerIds.length) return map;
+
+  for (let i = 0; i < customerIds.length; i += OR_FILTER_BATCH) {
+    const batch = customerIds.slice(i, i + OR_FILTER_BATCH);
+    const { data, error } = await supabaseAdmin
+      .from('customers')
+      .select('id, app_platform')
+      .in('id', batch);
+    if (error) throw new Error(error.message || 'Failed to fetch customer platforms');
+    for (const row of data || []) {
+      map.set(String(row.id), row.app_platform ? String(row.app_platform) : null);
+    }
+  }
+
+  return map;
+}
+
+async function fetchBenefitTitleMap(supabaseAdmin: any): Promise<Map<string, string>> {
+  const { data } = await supabaseAdmin
+    .from('membership_benefits')
+    .select('benefit_code, title')
+    .eq('active', true);
+
+  const map = new Map<string, string>();
+  for (const row of data || []) {
+    const code = String(row.benefit_code || '').toUpperCase();
+    if (!map.has(code)) map.set(code, String(row.title || code));
+  }
+  return map;
+}
+
+async function countRenewalsInPeriod(
+  supabaseAdmin: any,
+  rows: Array<{ customer_id: string; created_at: string }>,
+): Promise<number> {
+  const customerIds = [...new Set(rows.map((r) => String(r.customer_id)).filter(Boolean))];
+  if (!customerIds.length) return 0;
+
+  const earliestByCustomer = new Map<string, string>();
+  for (const row of rows) {
+    const cid = String(row.customer_id);
+    const createdAt = String(row.created_at || '');
+    const existing = earliestByCustomer.get(cid);
+    if (!existing || createdAt < existing) earliestByCustomer.set(cid, createdAt);
+  }
+
+  const priorCountByCustomer = new Map<string, number>();
+  for (let i = 0; i < customerIds.length; i += OR_FILTER_BATCH) {
+    const batch = customerIds.slice(i, i + OR_FILTER_BATCH);
+    const { data, error } = await supabaseAdmin
+      .from('customer_memberships')
+      .select('customer_id, created_at')
+      .in('customer_id', batch);
+    if (error) throw new Error(error.message || 'Failed to fetch prior memberships');
+
+    for (const row of data || []) {
+      const cid = String(row.customer_id);
+      const createdAt = String(row.created_at || '');
+      const periodStart = earliestByCustomer.get(cid);
+      if (periodStart && createdAt < periodStart) {
+        priorCountByCustomer.set(cid, (priorCountByCustomer.get(cid) || 0) + 1);
+      }
+    }
+  }
+
+  let renewals = 0;
+  for (const row of rows) {
+    const cid = String(row.customer_id);
+    if ((priorCountByCustomer.get(cid) || 0) > 0) renewals += 1;
+  }
+  return renewals;
+}
+
 async function countServiceBookingsForMemberCustomers(
   supabaseAdmin: any,
   range: { start: string; end: string },
+  customerIds?: string[],
 ): Promise<number> {
-  const customerIds = await fetchAllMembershipCustomerIds(supabaseAdmin);
-  if (!customerIds.length) return 0;
+  const ids = customerIds?.length ? customerIds : await fetchAllMembershipCustomerIds(supabaseAdmin);
+  if (!ids.length) return 0;
 
   let total = 0;
-  for (let i = 0; i < customerIds.length; i += OR_FILTER_BATCH) {
-    const batch = customerIds.slice(i, i + OR_FILTER_BATCH);
+  for (let i = 0; i < ids.length; i += OR_FILTER_BATCH) {
+    const batch = ids.slice(i, i + OR_FILTER_BATCH);
     const { count, error } = await supabaseAdmin
       .from('service_leads')
       .select('id', { count: 'exact', head: true })
@@ -368,17 +457,37 @@ export async function fetchMembershipCustomersOverview(
   };
 }
 
+async function fetchMembershipCustomerIdsByPlatform(
+  supabaseAdmin: any,
+  platformFilter: string,
+): Promise<string[] | undefined> {
+  if (platformFilter === 'ALL') return undefined;
+
+  const rows = await fetchAllMembershipRawRows(supabaseAdmin, (query) => query);
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (
+      matchesPlatformFilter(row.customer?.app_platform ? String(row.customer.app_platform) : null, platformFilter)
+    ) {
+      ids.add(String(row.customer_id));
+    }
+  }
+  return [...ids];
+}
+
 export async function fetchMembershipCustomersDashboard(
   supabaseAdmin: any,
-  opts: { preset?: string; start?: string | null; end?: string | null },
+  opts: { preset?: string; start?: string | null; end?: string | null; platform?: string },
 ): Promise<MembershipCustomerDashboard> {
   const range = resolveDateParams(opts.preset, opts.start, opts.end);
   const allTime = isAllTimePreset(opts.preset);
   const nowIso = new Date().toISOString();
+  const platformFilter = String(opts.platform || 'ALL').trim().toUpperCase();
+  const expiringSoonIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   let periodQuery = supabaseAdmin.from('customer_memberships').select(
     `
-      id, customer_id, created_at, status, ends_at,
+      id, customer_id, created_at, status, ends_at, source, has_second_car,
       customer:customers(app_platform),
       plan:membership_plans(name, price)
     `,
@@ -386,54 +495,129 @@ export async function fetchMembershipCustomersDashboard(
   if (!allTime) {
     periodQuery = periodQuery.gte('created_at', range.start).lte('created_at', range.end);
   }
-  const { data: periodRows } = await periodQuery;
+  const { data: periodRows, error: periodError } = await periodQuery;
+  if (periodError) throw new Error(periodError.message || 'Failed to fetch period memberships');
 
-  const rows = periodRows || [];
+  let rows = periodRows || [];
+  if (platformFilter !== 'ALL') {
+    rows = rows.filter((row: any) =>
+      matchesPlatformFilter(row.customer?.app_platform ? String(row.customer.app_platform) : null, platformFilter),
+    );
+  }
+
   const newMemberships = rows.length;
   const revenue = rows.reduce((sum: number, r: any) => sum + Number(r.plan?.price || 0), 0);
+  const renewalsInPeriod = await countRenewalsInPeriod(
+    supabaseAdmin,
+    rows.map((r: any) => ({ customer_id: String(r.customer_id), created_at: String(r.created_at || '') })),
+  );
+  const firstTimeSignups = Math.max(0, newMemberships - renewalsInPeriod);
+  const secondCarCount = rows.filter((r: any) => Boolean(r.has_second_car)).length;
 
   let android = 0;
   let ios = 0;
+  let unknownPlatform = 0;
   const planMap = new Map<string, { plan_name: string; count: number; revenue_inr: number }>();
+  const sourceMap = new Map<string, { source: string; count: number; revenue_inr: number }>();
   const dailyMap = new Map<string, number>();
 
   for (const r of rows) {
-    const platform = String(r.customer?.app_platform || '').toUpperCase();
+    const platform = normalizeAppPlatform(r.customer?.app_platform);
     if (platform === 'ANDROID') android += 1;
     else if (platform === 'IOS') ios += 1;
+    else unknownPlatform += 1;
 
     const planName = String(r.plan?.name || 'Unknown');
     const price = Number(r.plan?.price || 0);
     if (!planMap.has(planName)) planMap.set(planName, { plan_name: planName, count: 0, revenue_inr: 0 });
-    const entry = planMap.get(planName)!;
-    entry.count += 1;
-    entry.revenue_inr += price;
+    const planEntry = planMap.get(planName)!;
+    planEntry.count += 1;
+    planEntry.revenue_inr += price;
+
+    const source = String(r.source || 'PURCHASE').trim().toUpperCase() || 'PURCHASE';
+    if (!sourceMap.has(source)) sourceMap.set(source, { source, count: 0, revenue_inr: 0 });
+    const sourceEntry = sourceMap.get(source)!;
+    sourceEntry.count += 1;
+    sourceEntry.revenue_inr += price;
 
     const day = String(r.created_at || '').slice(0, 10);
     if (day) dailyMap.set(day, (dailyMap.get(day) || 0) + 1);
   }
 
-  let benefitsClaimed = 0;
-  let benefitsQuery = supabaseAdmin.from('membership_usage').select('id', { count: 'exact', head: true });
-  if (!allTime) {
-    benefitsQuery = benefitsQuery.gte('created_at', range.start).lte('created_at', range.end);
+  const activeRows = await fetchAllMembershipRawRows(supabaseAdmin, (query) =>
+    query.eq('status', 'ACTIVE').gt('ends_at', nowIso),
+  );
+  const activeDeduped = dedupeActivePerCustomer(activeRows);
+  const activeFiltered =
+    platformFilter === 'ALL'
+      ? activeDeduped
+      : activeDeduped.filter((row: any) =>
+          matchesPlatformFilter(row.customer?.app_platform ? String(row.customer.app_platform) : null, platformFilter),
+        );
+
+  const expiringSoon = activeFiltered.filter((row: any) => {
+    const endsAt = new Date(String(row.ends_at || 0)).getTime();
+    return endsAt > Date.now() && endsAt <= new Date(expiringSoonIso).getTime();
+  }).length;
+
+  const scopedCustomerIds = [...new Set(activeFiltered.map((row: any) => String(row.customer_id)).filter(Boolean))];
+  let totalWalletBalance = 0;
+  let membersWithWallet = 0;
+  if (scopedCustomerIds.length) {
+    const { data: wallets, error: walletError } = await supabaseAdmin
+      .from('wallet_accounts')
+      .select('customer_id, current_balance')
+      .in('customer_id', scopedCustomerIds);
+    if (walletError) throw new Error(walletError.message || 'Failed to fetch wallet balances');
+    for (const wallet of wallets || []) {
+      const balance = Number(wallet.current_balance || 0);
+      if (balance > 0) membersWithWallet += 1;
+      totalWalletBalance += balance;
+    }
   }
-  const { count: benefitsCount, error: benefitsError } = await benefitsQuery;
-  if (benefitsError) throw new Error(benefitsError.message || 'Failed to count benefit claims');
-  benefitsClaimed = Number(benefitsCount || 0);
+
+  let usageQuery = supabaseAdmin.from('membership_usage').select('id, customer_id, benefit_code');
+  if (!allTime) {
+    usageQuery = usageQuery.gte('created_at', range.start).lte('created_at', range.end);
+  }
+  const { data: usageRows, error: usageError } = await usageQuery;
+  if (usageError) throw new Error(usageError.message || 'Failed to fetch benefit usage');
+
+  let filteredUsage = usageRows || [];
+  if (platformFilter !== 'ALL') {
+    const usageCustomerIds = [...new Set(filteredUsage.map((row: any) => String(row.customer_id)).filter(Boolean))];
+    const platformMap = await fetchMembershipCustomerPlatformMap(supabaseAdmin, usageCustomerIds);
+    filteredUsage = filteredUsage.filter((row: any) =>
+      matchesPlatformFilter(platformMap.get(String(row.customer_id)), platformFilter),
+    );
+  }
+
+  const benefitTitleMap = await fetchBenefitTitleMap(supabaseAdmin);
+  const benefitCountMap = new Map<string, number>();
+  for (const usage of filteredUsage) {
+    const code = String(usage.benefit_code || '').toUpperCase() || 'UNKNOWN';
+    benefitCountMap.set(code, (benefitCountMap.get(code) || 0) + 1);
+  }
+  const benefit_breakdown = [...benefitCountMap.entries()]
+    .map(([benefit_code, count]) => ({
+      benefit_code,
+      title: benefitTitleMap.get(benefit_code) || benefit_code,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const membershipCustomerIds = await fetchMembershipCustomerIdsByPlatform(supabaseAdmin, platformFilter);
 
   const serviceBookings = allTime
-    ? await countServiceBookingsForMemberCustomers(supabaseAdmin, {
-        start: '1970-01-01T00:00:00.000+05:30',
-        end: range.end,
-      })
-    : await countServiceBookingsForMemberCustomers(supabaseAdmin, range);
-
-  const { count: activeNow } = await supabaseAdmin
-    .from('customer_memberships')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'ACTIVE')
-    .gt('ends_at', nowIso);
+    ? await countServiceBookingsForMemberCustomers(
+        supabaseAdmin,
+        {
+          start: '1970-01-01T00:00:00.000+05:30',
+          end: range.end,
+        },
+        membershipCustomerIds,
+      )
+    : await countServiceBookingsForMemberCustomers(supabaseAdmin, range, membershipCustomerIds);
 
   const daily_signups = [...dailyMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
@@ -441,15 +625,168 @@ export async function fetchMembershipCustomersDashboard(
 
   return {
     range_label: range.label,
+    platform_filter: platformFilter,
     new_memberships: newMemberships,
-    active_now: Number(activeNow || 0),
+    first_time_signups: firstTimeSignups,
+    renewals_in_period: renewalsInPeriod,
+    active_now: activeFiltered.length,
+    expiring_soon: expiringSoon,
     revenue_inr: Math.round(revenue),
-    benefits_claimed: benefitsClaimed,
+    total_wallet_balance: Math.round(totalWalletBalance),
+    members_with_wallet: membersWithWallet,
+    benefits_claimed: filteredUsage.length,
     service_bookings: serviceBookings,
     android_count: android,
     ios_count: ios,
+    unknown_platform_count: unknownPlatform,
+    second_car_count: secondCarCount,
     plan_breakdown: [...planMap.values()].sort((a, b) => b.count - a.count),
+    benefit_breakdown,
+    source_breakdown: [...sourceMap.values()].sort((a, b) => b.count - a.count),
     daily_signups,
+  };
+}
+
+export type MembershipBenefitClaimRow = {
+  id: string;
+  benefit_code: string;
+  benefit_title: string;
+  customer_id: string;
+  customer_name: string;
+  phone: string;
+  app_platform: string | null;
+  plan_name: string | null;
+  vehicle_number: string | null;
+  vehicle_label: string | null;
+  lead_number: string | null;
+  lead_status: string | null;
+  created_at: string;
+};
+
+export async function fetchMembershipBenefitClaims(
+  supabaseAdmin: any,
+  opts: {
+    benefit_code: string;
+    preset?: string;
+    start?: string | null;
+    end?: string | null;
+    platform?: string;
+  },
+): Promise<{
+  benefit_code: string;
+  title: string;
+  range_label: string;
+  platform_filter: string;
+  claims: MembershipBenefitClaimRow[];
+}> {
+  const benefitCode = String(opts.benefit_code || '').trim().toUpperCase();
+  if (!benefitCode) throw new Error('benefit_code is required');
+
+  const range = resolveDateParams(opts.preset, opts.start, opts.end);
+  const allTime = isAllTimePreset(opts.preset);
+  const platformFilter = String(opts.platform || 'ALL').trim().toUpperCase();
+  const benefitTitleMap = await fetchBenefitTitleMap(supabaseAdmin);
+  const title = benefitTitleMap.get(benefitCode) || benefitCode;
+
+  let usageQuery = supabaseAdmin
+    .from('membership_usage')
+    .select(
+      `
+      id, benefit_code, customer_id, customer_membership_id, reference_type, reference_id, created_at,
+      customer:customers(id, phone, full_name, app_platform)
+    `,
+    )
+    .eq('benefit_code', benefitCode)
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  if (!allTime) {
+    usageQuery = usageQuery.gte('created_at', range.start).lte('created_at', range.end);
+  }
+
+  const { data: usageRows, error } = await usageQuery;
+  if (error) throw new Error(error.message || 'Failed to fetch benefit claims');
+
+  let rows = usageRows || [];
+  if (platformFilter !== 'ALL') {
+    rows = rows.filter((row: any) =>
+      matchesPlatformFilter(row.customer?.app_platform ? String(row.customer.app_platform) : null, platformFilter),
+    );
+  }
+
+  const membershipIds = [
+    ...new Set(rows.map((row: any) => String(row.customer_membership_id)).filter(Boolean)),
+  ];
+  const membershipById = new Map<string, any>();
+  for (let i = 0; i < membershipIds.length; i += OR_FILTER_BATCH) {
+    const batch = membershipIds.slice(i, i + OR_FILTER_BATCH);
+    const { data: memberships, error: membershipError } = await supabaseAdmin
+      .from('customer_memberships')
+      .select('id, primary_vehicle_snapshot, plan:membership_plans(name)')
+      .in('id', batch);
+    if (membershipError) throw new Error(membershipError.message || 'Failed to fetch memberships');
+    for (const membership of memberships || []) {
+      membershipById.set(String(membership.id), membership);
+    }
+  }
+
+  const leadIds = [
+    ...new Set(
+      rows
+        .filter((row: any) => String(row.reference_type || '').toUpperCase() === 'LEAD' && row.reference_id)
+        .map((row: any) => String(row.reference_id)),
+    ),
+  ];
+
+  const leadById = new Map<string, any>();
+  for (let i = 0; i < leadIds.length; i += OR_FILTER_BATCH) {
+    const batch = leadIds.slice(i, i + OR_FILTER_BATCH);
+    const { data: leads, error: leadError } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, meta')
+      .in('id', batch);
+    if (leadError) throw new Error(leadError.message || 'Failed to fetch linked bookings');
+    for (const lead of leads || []) {
+      leadById.set(String(lead.id), lead);
+    }
+  }
+
+  const claims: MembershipBenefitClaimRow[] = rows.map((row: any) => {
+    const lead = row.reference_id ? leadById.get(String(row.reference_id)) : null;
+    const claimMeta = (lead?.meta as any)?.membership_claim || {};
+    const membership = membershipById.get(String(row.customer_membership_id));
+    const snapshot = membership?.primary_vehicle_snapshot;
+    const snapshotPlate = snapshot?.vehicle_number ? String(snapshot.vehicle_number) : null;
+    const snapshotLabel = [snapshot?.make, snapshot?.model].filter(Boolean).join(' ') || null;
+
+    return {
+      id: String(row.id),
+      benefit_code: benefitCode,
+      benefit_title: String(claimMeta.benefit_title || title),
+      customer_id: String(row.customer_id),
+      customer_name: String(
+        row.customer?.full_name || `User ${String(row.customer?.phone || '').slice(-4)}`,
+      ),
+      phone: String(row.customer?.phone || ''),
+      app_platform: row.customer?.app_platform ? String(row.customer.app_platform) : null,
+      plan_name: membership?.plan?.name ? String(membership.plan.name) : null,
+      vehicle_number: claimMeta.vehicle_number || lead?.vehicle_number || snapshotPlate,
+      vehicle_label:
+        claimMeta.vehicle_label ||
+        [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ') ||
+        snapshotLabel,
+      lead_number: lead?.lead_number ? String(lead.lead_number) : null,
+      lead_status: lead?.status ? String(lead.status) : null,
+      created_at: String(row.created_at || ''),
+    };
+  });
+
+  return {
+    benefit_code: benefitCode,
+    title,
+    range_label: allTime ? 'All time' : range.label,
+    platform_filter: platformFilter,
+    claims,
   };
 }
 

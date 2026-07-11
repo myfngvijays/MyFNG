@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   Crown,
   Search,
@@ -21,6 +22,9 @@ import {
   Smartphone,
   Wrench,
   Trash2,
+  RotateCcw,
+  AlertTriangle,
+  Wallet,
 } from 'lucide-react';
 import { appPlatformBadgeClass, appPlatformLabel } from '@/lib/app-platform';
 import { REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
@@ -33,15 +37,48 @@ type Overview = {
 
 type Dashboard = {
   range_label: string;
+  platform_filter: string;
   new_memberships: number;
+  first_time_signups: number;
+  renewals_in_period: number;
   active_now: number;
+  expiring_soon: number;
   revenue_inr: number;
+  total_wallet_balance: number;
+  members_with_wallet: number;
   benefits_claimed: number;
   service_bookings: number;
   android_count: number;
   ios_count: number;
+  unknown_platform_count: number;
+  second_car_count: number;
   plan_breakdown: Array<{ plan_name: string; count: number; revenue_inr: number }>;
+  benefit_breakdown: Array<{ benefit_code: string; title: string; count: number }>;
+  source_breakdown: Array<{ source: string; count: number; revenue_inr: number }>;
   daily_signups: Array<{ date: string; count: number }>;
+};
+
+type BenefitClaimRow = {
+  id: string;
+  benefit_code: string;
+  benefit_title: string;
+  customer_id: string;
+  customer_name: string;
+  phone: string;
+  app_platform: string | null;
+  plan_name: string | null;
+  vehicle_number: string | null;
+  vehicle_label: string | null;
+  lead_number: string | null;
+  lead_status: string | null;
+  created_at: string;
+};
+
+type BenefitClaimsModal = {
+  benefit_code: string;
+  title: string;
+  range_label: string;
+  claims: BenefitClaimRow[];
 };
 
 type VehicleDetails = {
@@ -83,6 +120,21 @@ type MembershipRow = {
   has_second_car: boolean;
   created_at: string;
 };
+
+function fmtSourceLabel(source: string) {
+  const value = String(source || '').trim().toUpperCase();
+  if (value === 'PURCHASE') return 'App purchase';
+  if (value === 'ADMIN' || value === 'ADMIN_ACTIVATE') return 'Admin activated';
+  if (value === 'RENEWAL') return 'Renewal';
+  return value.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function platformFilterLabel(filter: PlatformFilter) {
+  if (filter === 'ANDROID') return 'Android';
+  if (filter === 'IOS') return 'iOS';
+  if (filter === 'UNKNOWN') return 'Unknown platform';
+  return 'All platforms';
+}
 
 function inr(n: number) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
@@ -237,6 +289,10 @@ function PlatformTabButton({
 }
 
 export default function MembershipCustomersApp() {
+  const pathname = usePathname();
+  const dashboardBase = pathname?.startsWith('/dashboard/app_operations')
+    ? '/dashboard/app_operations'
+    : '/dashboard/super_admin';
   const [tab, setTab] = useState<'dashboard' | 'customers'>('dashboard');
   const [overview, setOverview] = useState<Overview | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -258,6 +314,8 @@ export default function MembershipCustomersApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [benefitModal, setBenefitModal] = useState<BenefitClaimsModal | null>(null);
+  const [benefitModalLoading, setBenefitModalLoading] = useState(false);
 
   const queryBase = useMemo(() => {
     const params = new URLSearchParams({ preset });
@@ -268,12 +326,18 @@ export default function MembershipCustomersApp() {
     return params;
   }, [preset, customStart, customEnd]);
 
+  const applyPlatformFilter = (next: PlatformFilter) => {
+    setPlatformFilter(next);
+    setPage(1);
+  };
+
   const fetchDashboard = useCallback(async () => {
     setDashboardLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams(queryBase);
       params.set('view', 'dashboard');
+      params.set('platform', platformFilter);
       const res = await fetch(`/api/super_admin/membership-customers?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load dashboard');
@@ -284,7 +348,7 @@ export default function MembershipCustomersApp() {
     } finally {
       setDashboardLoading(false);
     }
-  }, [queryBase]);
+  }, [platformFilter, queryBase]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -312,6 +376,39 @@ export default function MembershipCustomersApp() {
       setLoading(false);
     }
   }, [filter, page, platformFilter, search, queryBase]);
+
+  const openBenefitClaims = async (benefit: { benefit_code: string; title: string }) => {
+    setBenefitModalLoading(true);
+    setBenefitModal({
+      benefit_code: benefit.benefit_code,
+      title: benefit.title,
+      range_label: dashboard?.range_label || rangeLabel,
+      claims: [],
+    });
+    setError(null);
+    try {
+      const params = new URLSearchParams(queryBase);
+      params.set('view', 'benefit_claims');
+      params.set('benefit_code', benefit.benefit_code);
+      params.set('platform', platformFilter);
+      const res = await fetch(`/api/super_admin/membership-customers?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load benefit claims');
+      setBenefitModal({
+        benefit_code: json.benefit_code,
+        title: json.title,
+        range_label: json.range_label,
+        claims: json.claims || [],
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load benefit claims');
+      setBenefitModal(null);
+    } finally {
+      setBenefitModalLoading(false);
+    }
+  };
+
+  const closeBenefitModal = () => setBenefitModal(null);
 
   useEffect(() => {
     if (tab === 'dashboard') void fetchDashboard();
@@ -476,40 +573,25 @@ export default function MembershipCustomersApp() {
           <PlatformTabButton
             active={platformFilter === 'ANDROID'}
             label="Android"
-            onClick={() => {
-              setTab('customers');
-              setPlatformFilter('ANDROID');
-              setPage(1);
-            }}
+            onClick={() => applyPlatformFilter('ANDROID')}
             className="bg-emerald-600 text-white border-emerald-600"
           />
           <PlatformTabButton
             active={platformFilter === 'IOS'}
             label="iOS"
-            onClick={() => {
-              setTab('customers');
-              setPlatformFilter('IOS');
-              setPage(1);
-            }}
+            onClick={() => applyPlatformFilter('IOS')}
             className="bg-slate-900 text-white border-slate-900"
           />
           <PlatformTabButton
             active={platformFilter === 'UNKNOWN'}
             label="Unknown"
-            onClick={() => {
-              setTab('customers');
-              setPlatformFilter('UNKNOWN');
-              setPage(1);
-            }}
+            onClick={() => applyPlatformFilter('UNKNOWN')}
             className="bg-gray-500 text-white border-gray-500"
           />
           {platformFilter !== 'ALL' ? (
             <button
               type="button"
-              onClick={() => {
-                setPlatformFilter('ALL');
-                setPage(1);
-              }}
+              onClick={() => applyPlatformFilter('ALL')}
               className="rounded-xl px-3 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100"
             >
               Clear platform
@@ -576,18 +658,27 @@ export default function MembershipCustomersApp() {
             </div>
           ) : (
             <>
+              {platformFilter !== 'ALL' ? (
+                <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 flex flex-wrap items-center gap-2">
+                  <Smartphone className="h-4 w-4 shrink-0" />
+                  <span>
+                    Showing <strong>{platformFilterLabel(platformFilter)}</strong> only · {dashboard.range_label}
+                  </span>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
                 <StatCard
-                  label="New in period"
+                  label="Purchases in period"
                   value={dashboard.new_memberships}
-                  sub={dashboard.range_label}
+                  sub={`${dashboard.first_time_signups} new · ${dashboard.renewals_in_period} renewals`}
                   accent="bg-violet-50"
                   icon={<Calendar className="h-5 w-5 text-violet-600" />}
                 />
                 <StatCard
                   label="Active now"
                   value={dashboard.active_now}
-                  sub="All live memberships"
+                  sub={`${dashboard.expiring_soon} expiring in 30 days`}
                   accent="bg-emerald-50"
                   icon={<Crown className="h-5 w-5 text-emerald-600" />}
                 />
@@ -599,25 +690,56 @@ export default function MembershipCustomersApp() {
                   icon={<IndianRupee className="h-5 w-5 text-blue-600" />}
                 />
                 <StatCard
+                  label="Wallet balance"
+                  value={inr(dashboard.total_wallet_balance)}
+                  sub={`${dashboard.members_with_wallet} members with balance`}
+                  accent="bg-sky-50"
+                  icon={<Wallet className="h-5 w-5 text-sky-600" />}
+                />
+                <StatCard
                   label="Benefits claimed"
                   value={dashboard.benefits_claimed}
-                  sub="All members · selected period"
+                  sub="Selected period"
                   accent="bg-amber-50"
                   icon={<Gift className="h-5 w-5 text-amber-600" />}
                 />
                 <StatCard
                   label="Service bookings"
                   value={dashboard.service_bookings}
-                  sub="Membership customers · selected period"
+                  sub="Membership customers · period"
                   accent="bg-orange-50"
                   icon={<Wrench className="h-5 w-5 text-orange-600" />}
                 />
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard
                   label="Platform split"
-                  value={`${dashboard.android_count} / ${dashboard.ios_count}`}
-                  sub="Android / iOS"
+                  value={`${dashboard.android_count} / ${dashboard.ios_count} / ${dashboard.unknown_platform_count}`}
+                  sub="Android / iOS / Unknown"
                   accent="bg-slate-50"
                   icon={<Smartphone className="h-5 w-5 text-slate-600" />}
+                />
+                <StatCard
+                  label="Second car add-ons"
+                  value={dashboard.second_car_count}
+                  sub="Purchases with 2nd vehicle"
+                  accent="bg-rose-50"
+                  icon={<Car className="h-5 w-5 text-rose-600" />}
+                />
+                <StatCard
+                  label="Renewals"
+                  value={dashboard.renewals_in_period}
+                  sub="Repeat purchases in period"
+                  accent="bg-indigo-50"
+                  icon={<RotateCcw className="h-5 w-5 text-indigo-600" />}
+                />
+                <StatCard
+                  label="Expiring soon"
+                  value={dashboard.expiring_soon}
+                  sub="Active · ends within 30 days"
+                  accent="bg-yellow-50"
+                  icon={<AlertTriangle className="h-5 w-5 text-yellow-600" />}
                 />
               </div>
 
@@ -650,6 +772,53 @@ export default function MembershipCustomersApp() {
                             <div className="text-xs text-gray-500">{p.count} purchase{p.count === 1 ? '' : 's'}</div>
                           </div>
                           <div className="font-extrabold text-gray-900">{inr(p.revenue_inr)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <h3 className="font-bold text-gray-900 mb-3">Benefits claimed</h3>
+                  {dashboard.benefit_breakdown.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-6 text-center">No benefits claimed in period</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {dashboard.benefit_breakdown.map((b) => (
+                        <button
+                          key={b.benefit_code}
+                          type="button"
+                          onClick={() => void openBenefitClaims(b)}
+                          className="w-full flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2 text-left hover:bg-amber-50 hover:border-amber-200 transition-colors cursor-pointer"
+                        >
+                          <div>
+                            <div className="font-bold text-amber-900">{b.title}</div>
+                            <div className="text-xs text-gray-500">{b.benefit_code} · Tap to view claims</div>
+                          </div>
+                          <div className="font-extrabold text-gray-900">{b.count}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <h3 className="font-bold text-gray-900 mb-3">Purchase source</h3>
+                  {dashboard.source_breakdown.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-6 text-center">No purchases in period</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {dashboard.source_breakdown.map((s) => (
+                        <div
+                          key={s.source}
+                          className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2"
+                        >
+                          <div>
+                            <div className="font-bold text-gray-900">{fmtSourceLabel(s.source)}</div>
+                            <div className="text-xs text-gray-500">{s.count} purchase{s.count === 1 ? '' : 's'}</div>
+                          </div>
+                          <div className="font-extrabold text-gray-900">{inr(s.revenue_inr)}</div>
                         </div>
                       ))}
                     </div>
@@ -1051,7 +1220,7 @@ export default function MembershipCustomersApp() {
                   </div>
 
                   <Link
-                    href="/dashboard/super_admin/customer-insights"
+                    href={`${dashboardBase}/customer-insights`}
                     className="inline-flex items-center gap-2 text-sm font-semibold text-violet-700 hover:underline"
                   >
                     Open App Customers (search {selectedRow?.phone || 'phone'}) →
@@ -1062,6 +1231,90 @@ export default function MembershipCustomersApp() {
           ) : null}
         </div>
       )}
+
+      {benefitModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeBenefitModal}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 bg-amber-50">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Gift className="h-5 w-5 text-amber-600" />
+                  {benefitModal.title}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {benefitModal.benefit_code} · {benefitModal.range_label}
+                  {platformFilter !== 'ALL' ? ` · ${platformFilterLabel(platformFilter)}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBenefitModal}
+                className="rounded-lg p-2 hover:bg-white text-gray-600"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[calc(85vh-80px)] p-5">
+              {benefitModalLoading ? (
+                <div className="py-12 text-center text-gray-400 flex items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Loading claims...
+                </div>
+              ) : benefitModal.claims.length === 0 ? (
+                <p className="py-12 text-center text-gray-400">No claims found in this period</p>
+              ) : (
+                <div className="space-y-3">
+                  {benefitModal.claims.map((claim) => (
+                    <div key={claim.id} className="rounded-xl border border-gray-100 p-4 text-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="font-bold text-gray-900">{claim.customer_name}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{claim.phone}</div>
+                          {claim.plan_name ? (
+                            <div className="text-xs text-violet-700 font-semibold mt-1">{claim.plan_name}</div>
+                          ) : null}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500">{fmtDate(claim.created_at)}</div>
+                          {claim.app_platform ? (
+                            <span
+                              className={`inline-block mt-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${appPlatformBadgeClass(claim.app_platform as any)}`}
+                            >
+                              {appPlatformLabel(claim.app_platform as any)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      {claim.vehicle_number || claim.vehicle_label ? (
+                        <div className="mt-2 text-xs text-gray-600 flex items-center gap-1.5">
+                          <Car className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            {[claim.vehicle_label, claim.vehicle_number].filter(Boolean).join(' · ')}
+                          </span>
+                        </div>
+                      ) : null}
+                      {claim.lead_number ? (
+                        <div className="mt-2 text-xs font-semibold text-violet-700">
+                          Booking #{claim.lead_number}
+                          {claim.lead_status ? ` · ${claim.lead_status}` : ''}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
