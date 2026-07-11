@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { appPlatformBadgeClass, appPlatformLabel } from '@/lib/app-platform';
 import { REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
 type Overview = {
   total_memberships: number;
@@ -238,26 +239,122 @@ function StatCard({
   );
 }
 
+function fmtChartDateDDMM(ymd: string) {
+  const [year, month, day] = String(ymd || '').slice(0, 10).split('-');
+  if (!year || !month || !day) return ymd;
+  return `${day}-${month}`;
+}
+
+const PIE_COLORS = [
+  '#7c3aed',
+  '#059669',
+  '#0f172a',
+  '#f59e0b',
+  '#3b82f6',
+  '#ec4899',
+  '#06b6d4',
+  '#84cc16',
+  '#ef4444',
+  '#9ca3af',
+];
+
+const PLATFORM_PIE_COLORS: Record<string, string> = {
+  Android: '#059669',
+  iOS: '#0f172a',
+  Unknown: '#9ca3af',
+};
+
 function MiniBarChart({ data }: { data: Array<{ date: string; count: number }> }) {
   const max = Math.max(1, ...data.map((d) => d.count));
   if (!data.length) {
     return <p className="text-sm text-gray-400 py-6 text-center">No signups in this period</p>;
   }
   return (
-    <div className="flex items-end gap-1.5 h-32 pt-2">
+    <div className="flex items-end gap-1.5 h-36 pt-2">
       {data.map((d) => (
         <div key={d.date} className="flex-1 min-w-0 flex flex-col items-center gap-1">
           <span className="text-[10px] font-bold text-violet-700">{d.count || ''}</span>
           <div
             className="w-full rounded-t-md bg-gradient-to-t from-violet-600 to-violet-400 min-h-[4px]"
             style={{ height: `${Math.max(8, (d.count / max) * 100)}%` }}
-            title={`${d.date}: ${d.count}`}
+            title={`${fmtChartDateDDMM(d.date)}: ${d.count}`}
           />
           <span className="text-[9px] text-gray-400 truncate w-full text-center">
-            {d.date.slice(5)}
+            {fmtChartDateDDMM(d.date)}
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function DonutChartCard({
+  title,
+  subtitle,
+  data,
+  emptyLabel,
+  colorByName,
+}: {
+  title: string;
+  subtitle?: string;
+  data: Array<{ name: string; value: number }>;
+  emptyLabel: string;
+  colorByName?: Record<string, string>;
+}) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  if (!data.length || total <= 0) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm h-full">
+        <h3 className="font-bold text-gray-900">{title}</h3>
+        {subtitle ? <p className="text-xs text-gray-500 mt-1">{subtitle}</p> : null}
+        <p className="text-sm text-gray-400 py-10 text-center">{emptyLabel}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm h-full">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h3 className="font-bold text-gray-900">{title}</h3>
+          {subtitle ? <p className="text-xs text-gray-500 mt-1">{subtitle}</p> : null}
+        </div>
+        <span className="text-xs font-semibold text-violet-700 bg-violet-50 px-2 py-1 rounded-lg">
+          {total} total
+        </span>
+      </div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="46%"
+              outerRadius="72%"
+              innerRadius="48%"
+              paddingAngle={2}
+              label={({ percent }) => (percent && percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : '')}
+              labelLine={false}
+            >
+              {data.map((item, idx) => (
+                <Cell
+                  key={item.name}
+                  fill={colorByName?.[item.name] || PIE_COLORS[idx % PIE_COLORS.length]}
+                  stroke="#fff"
+                  strokeWidth={2}
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(value: number, name: string) => [`${value}`, name]}
+              contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }}
+            />
+            <Legend verticalAlign="bottom" height={32} iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -751,33 +848,52 @@ export default function MembershipCustomersApp() {
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                   <h3 className="font-bold text-gray-900 mb-3">Daily signups</h3>
                   <MiniBarChart data={dashboard.daily_signups} />
                 </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-3">Plan breakdown</h3>
-                  {dashboard.plan_breakdown.length === 0 ? (
-                    <p className="text-sm text-gray-400 py-6 text-center">No purchases in period</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {dashboard.plan_breakdown.map((p) => (
-                        <div
-                          key={p.plan_name}
-                          className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2"
-                        >
-                          <div>
-                            <div className="font-bold text-violet-900">{p.plan_name}</div>
-                            <div className="text-xs text-gray-500">{p.count} purchase{p.count === 1 ? '' : 's'}</div>
-                          </div>
-                          <div className="font-extrabold text-gray-900">{inr(p.revenue_inr)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <DonutChartCard
+                  title="Platform split"
+                  subtitle="Purchases in selected period"
+                  data={[
+                    { name: 'Android', value: dashboard.android_count },
+                    { name: 'iOS', value: dashboard.ios_count },
+                    { name: 'Unknown', value: dashboard.unknown_platform_count },
+                  ].filter((item) => item.value > 0)}
+                  emptyLabel="No platform data in period"
+                  colorByName={PLATFORM_PIE_COLORS}
+                />
+                <DonutChartCard
+                  title="Plan mix"
+                  subtitle="Share of plan purchases"
+                  data={dashboard.plan_breakdown.map((plan) => ({
+                    name: plan.plan_name,
+                    value: plan.count,
+                  }))}
+                  emptyLabel="No purchases in period"
+                />
               </div>
+
+              {dashboard.plan_breakdown.length > 0 ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <h3 className="font-bold text-gray-900 mb-3">Plan revenue</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {dashboard.plan_breakdown.map((p) => (
+                      <div
+                        key={p.plan_name}
+                        className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2"
+                      >
+                        <div>
+                          <div className="font-bold text-violet-900">{p.plan_name}</div>
+                          <div className="text-xs text-gray-500">{p.count} purchase{p.count === 1 ? '' : 's'}</div>
+                        </div>
+                        <div className="font-extrabold text-gray-900">{inr(p.revenue_inr)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
