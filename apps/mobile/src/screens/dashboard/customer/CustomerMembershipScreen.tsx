@@ -3,6 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
+import {
+  membershipAmountFromOrder,
+  notifyMembershipPaymentFailedOnServer,
+} from '../../../lib/whatsappAutomationClient';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CustomerMembershipScreen({ navigation }: any) {
@@ -34,8 +38,10 @@ export default function CustomerMembershipScreen({ navigation }: any) {
   }, [benefits]);
 
   const subscribe = async (planId: string) => {
+    let orderRes: any = null;
+    const selectedPlan = plans.find((row) => String(row.id) === String(planId));
     try {
-      const orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
+      orderRes = await apiFetch<any>('/api/customer/membership/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan_id: planId }),
@@ -78,6 +84,7 @@ export default function CustomerMembershipScreen({ navigation }: any) {
           razorpay_payment_id: paymentResult.razorpay_payment_id,
           razorpay_order_id: paymentResult.razorpay_order_id,
           razorpay_signature: paymentResult.razorpay_signature,
+          amount_paid: membershipAmountFromOrder(orderRes),
         }),
       });
 
@@ -89,6 +96,12 @@ export default function CustomerMembershipScreen({ navigation }: any) {
       await load();
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      void notifyMembershipPaymentFailedOnServer({
+        planId,
+        planName: selectedPlan?.name,
+        amountPaid: membershipAmountFromOrder(orderRes),
+        reason: cancelled ? 'cancelled' : 'failed',
+      });
       if (cancelled) {
         Alert.alert('Payment Cancelled', 'No charges were made.');
       } else {

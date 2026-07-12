@@ -22,6 +22,7 @@ import {
   resolveBookingServiceLabel,
   resolveServiceBookingWallet,
 } from '@/lib/booking-wallet-apply';
+import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 
 function generateLeadNumber() {
   return `L-${Date.now().toString().slice(-8)}`;
@@ -336,6 +337,32 @@ export async function createAuthenticatedServiceBooking(
     } catch (fallbackErr: any) {
       console.error('[service-booking-create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
     }
+  }
+
+  try {
+    const whatsappResult = await notifyBookingConfirmedWhatsApp({
+      lead: {
+        id: serviceLead.id,
+        lead_number: serviceLead.lead_number,
+        customer_name: leadInsert.customer_name,
+        customer_phone: normalizedPhone,
+        vehicle_number: leadInsert.vehicle_number,
+        vehicle_make: leadInsert.vehicle_make,
+        vehicle_model: leadInsert.vehicle_model,
+        vehicle_variant: leadInsert.vehicle_variant,
+        service_type: leadInsert.service_type,
+        preferred_slot_start: leadInsert.preferred_slot_start,
+        preferred_date: leadInsert.preferred_date,
+        preferred_time_slot: leadInsert.preferred_time_slot,
+      },
+      customerId: customer.id,
+      body,
+    });
+    if (whatsappResult.skipped || !whatsappResult.sent) {
+      console.log('[service-booking-create] booking confirmed WhatsApp skipped:', whatsappResult.skipReason || whatsappResult.error);
+    }
+  } catch (whatsappErr: any) {
+    console.error('[service-booking-create] booking confirmed WhatsApp failed:', whatsappErr?.message || whatsappErr);
   }
 
   return NextResponse.json({

@@ -1,7 +1,7 @@
 import { normalizePhone } from './coupon-rules';
-import { enrichBookingLead } from './booking-lead-utils';
+import { enrichBookingLead, enrichLeadsServiceDisplay, getLeadVehicleLabel, getLeadPricingBreakdown } from './booking-lead-utils';
 import { getPostBookingMembershipConfig } from './post-booking-membership-config';
-import { syncServiceLeadMembershipPricingForAdmin } from './post-booking-membership-offer';
+import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmount } from './post-booking-membership-offer';
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
 import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
@@ -222,6 +222,7 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
       coupon_redeemed_count: couponStats.redeemed,
       has_membership: Boolean(membership),
       membership_plan: membership?.plan?.name || null,
+      membership_plan_code: membership?.plan?.code || null,
       membership_type: membership?.plan?.membership_type || null,
       is_app_user: Boolean(c.firebase_uid || c.phone_verified || c.last_login_at),
     };
@@ -330,6 +331,59 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     ),
   );
 
+  await enrichLeadsServiceDisplay(supabaseAdmin, syncedLeads);
+
+  const leadIds = syncedLeads.map((lead) => String(lead.id || '')).filter(Boolean);
+  const walletDebitByLeadId = new Map<string, { amount: number; percent?: number }>();
+
+  if (leadIds.length) {
+    const { data: bookingWalletTx } = await supabaseAdmin
+      .from('wallet_transactions')
+      .select('amount, idempotency_key, metadata, source')
+      .eq('customer_id', customerId)
+      .eq('transaction_type', 'DEBIT');
+
+    for (const tx of bookingWalletTx || []) {
+      const txMeta =
+        tx.metadata && typeof tx.metadata === 'object'
+          ? (tx.metadata as Record<string, unknown>)
+          : {};
+      const leadId =
+        String(txMeta.lead_id || '').trim() ||
+        String(tx.idempotency_key || '')
+          .replace(/^booking:/, '')
+          .trim();
+      if (!leadId || !leadIds.includes(leadId)) continue;
+      const amt = Math.abs(Number(tx.amount || 0));
+      if (amt <= 0) continue;
+      walletDebitByLeadId.set(leadId, {
+        amount: amt,
+        percent: Number(txMeta.usage_percent || 0) || undefined,
+      });
+    }
+  }
+
+  const serviceBookings = syncedLeads.map((lead: Record<string, unknown>) => {
+    const leadId = String(lead.id || '');
+    const walletTx = walletDebitByLeadId.get(leadId);
+    const payable = resolveAdminBookingPayableAmount(lead, pbConfig);
+    const pricing = getLeadPricingBreakdown(lead, {
+      walletTxAmount: walletTx?.amount,
+      walletTxPercent: walletTx?.percent,
+      payableOverride: payable,
+    });
+
+    return {
+      ...lead,
+      payment_amount: pricing.payable,
+      vehicle_display: getLeadVehicleLabel(lead),
+      original_amount: pricing.original,
+      wallet_used: pricing.walletUsed,
+      wallet_usage_percent: pricing.walletUsagePercent,
+      coupon_discount_amount: pricing.couponDiscount,
+    };
+  });
+
   const walletSummary = await getWalletSummary(supabaseAdmin, customerId).catch(() => null);
   const walletTotals = await computeWalletRewardTotals(supabaseAdmin, customerId).catch(() => ({
     earned_cashback: 0,
@@ -398,7 +452,7 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     membership_usage: usage,
     coupon_assignments: assignmentsRes.data || [],
     coupon_redemptions: redemptions,
-    service_bookings: syncedLeads,
+    service_bookings: serviceBookings,
     chatbot_bookings: chatbotRes.data || [],
     analytics_events: eventsRes.data || [],
   };

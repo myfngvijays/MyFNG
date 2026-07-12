@@ -4,6 +4,7 @@ import {
   calculateBookingMembershipExtraDiscount,
 } from './bookingMembershipDiscount';
 import { membershipCartUnitPrice } from './membershipCart';
+import { membershipAmountFromOrder } from './whatsappAutomationClient';
 
 export type PostBookingMembershipQuote = {
   membershipPrice: number;
@@ -235,6 +236,7 @@ export async function activatePostBookingMembership(opts: {
       razorpay_payment_id: paymentResult.razorpay_payment_id,
       razorpay_order_id: paymentResult.razorpay_order_id,
       razorpay_signature: paymentResult.razorpay_signature,
+      amount_paid: membershipAmountFromOrder(orderRes),
     }),
   });
 

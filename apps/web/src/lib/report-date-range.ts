@@ -23,6 +23,17 @@ export const REPORT_DATE_PRESETS: Array<{ value: ReportDatePreset; label: string
   { value: 'custom', label: 'Custom range' },
 ];
 
+/** Common export dropdown presets (Today → Custom). */
+export const EXPORT_DATE_PRESETS: Array<{ value: ReportDatePreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last_7_days', label: 'Last 7 days' },
+  { value: 'last_14_days', label: 'Last 14 days' },
+  { value: 'last_30_days', label: 'Last 30 days' },
+  { value: 'all_time', label: 'All time' },
+  { value: 'custom', label: 'Custom' },
+];
+
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 function istParts(date = new Date()) {
@@ -149,6 +160,24 @@ export function resolveReportDateRange(
     endYmd,
     label,
   };
+}
+
+/** Apply created_at (or any timestamp column) filter when preset is not all_time. */
+export function shouldApplyDateRangeFilter(preset?: string | null) {
+  const normalized = String(preset || 'all_time').trim().toLowerCase();
+  return normalized !== 'all_time' && normalized !== '';
+}
+
+export function applyReportDateRangeFilter<T extends { gte: (col: string, val: string) => T; lte: (col: string, val: string) => T }>(
+  query: T,
+  column: string,
+  preset?: string | null,
+  customStart?: string | null,
+  customEnd?: string | null,
+): T {
+  if (!shouldApplyDateRangeFilter(preset)) return query;
+  const range = resolveReportDateRange(String(preset), customStart, customEnd);
+  return query.gte(column, range.start).lte(column, range.end);
 }
 
 export function rowsToCsv(rows: Record<string, unknown>[], columns: Array<{ key: string; label: string }>) {

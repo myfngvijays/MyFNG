@@ -26,6 +26,8 @@ import {
   ChevronUp,
   Info,
   Key,
+  MessageSquare,
+  FileText,
 } from 'lucide-react';
 
 type ServiceStatus = 'healthy' | 'degraded' | 'down';
@@ -55,6 +57,25 @@ interface CategoryStat {
   healthy: number;
 }
 
+interface HealthAlertTemplateStatus {
+  templateName: string;
+  exists: boolean;
+  isApproved: boolean;
+  metaStatus: string | null;
+  templateId: string | null;
+  canSendTemplate: boolean;
+}
+
+interface TemplatePreview {
+  template_name: string;
+  display_name: string;
+  language_code: string;
+  category: string;
+  body_text: string;
+  variable_keys: string[];
+  example_values: string[];
+}
+
 interface MonitorData {
   healthScore: number;
   overallStatus: 'operational' | 'warning' | 'critical';
@@ -62,6 +83,8 @@ interface MonitorData {
   categories: CategoryStat[];
   checks: HealthCheck[];
   envStatus: Record<string, boolean>;
+  healthAlertTemplate?: HealthAlertTemplateStatus;
+  templatePreview?: TemplatePreview;
   lastChecked: string;
   alertsSent: boolean;
 }
@@ -96,6 +119,9 @@ export default function SystemMonitorPage() {
   const [expandedChecks, setExpandedChecks] = useState<Set<number>>(new Set());
   const [fixingService, setFixingService] = useState<string | null>(null);
   const [fixResult, setFixResult] = useState<{ name: string; message: string; success: boolean } | null>(null);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [syncingTemplate, setSyncingTemplate] = useState(false);
+  const [templateActionResult, setTemplateActionResult] = useState<string | null>(null);
 
   const fetchHealthData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -180,6 +206,37 @@ export default function SystemMonitorPage() {
     }
   };
 
+  const handleTemplateAction = async (action: 'create-health-template' | 'sync-health-template') => {
+    if (action === 'create-health-template') setCreatingTemplate(true);
+    else setSyncingTemplate(true);
+    setTemplateActionResult(null);
+
+    try {
+      const res = await fetch('/api/super_admin/system-monitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setTemplateActionResult(json.error || 'Template action failed');
+        return;
+      }
+
+      setTemplateActionResult(json.message || 'Template updated successfully');
+      if (json.healthAlertTemplate) {
+        setData((prev) => (prev ? { ...prev, healthAlertTemplate: json.healthAlertTemplate } : prev));
+      } else {
+        await fetchHealthData(true);
+      }
+    } catch (e: any) {
+      setTemplateActionResult(e.message || 'Template action failed');
+    } finally {
+      setCreatingTemplate(false);
+      setSyncingTemplate(false);
+    }
+  };
+
   const handleTestAlert = async () => {
     if (!testPhone.trim()) {
       setAlertResult('Please enter a phone number');
@@ -188,15 +245,21 @@ export default function SystemMonitorPage() {
     setTestingAlert(true);
     setAlertResult(null);
     try {
+      const useTemplate = Boolean(data?.healthAlertTemplate?.canSendTemplate);
       const res = await fetch('/api/super_admin/system-monitor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'test-alert', phoneNumber: testPhone.trim() }),
+        body: JSON.stringify({
+          action: 'test-alert',
+          phoneNumber: testPhone.trim(),
+          useTemplate,
+        }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
         const msgId = json.results?.[0]?.messageId;
-        setAlertResult(`Sent! Message ID: ${msgId || 'N/A'}`);
+        const mode = json.deliveryMode === 'template' ? 'Template' : 'Text';
+        setAlertResult(`${mode} sent! Message ID: ${msgId || 'N/A'}`);
       } else {
         const errDetail = json.results?.[0]?.error || json.error || 'Failed';
         setAlertResult(`Failed: ${errDetail}`);
@@ -259,6 +322,18 @@ export default function SystemMonitorPage() {
   if (!data) return null;
 
   const overallBadge = getOverallStatusBadge(data.overallStatus);
+  const templateStatus = data.healthAlertTemplate;
+  const templatePreview = data.templatePreview;
+  const templateStatusLabel = templateStatus?.canSendTemplate
+    ? 'Approved — 24/7 alerts enabled'
+    : templateStatus?.exists
+      ? `Submitted — ${templateStatus.metaStatus || 'Pending Meta approval'}`
+      : 'Not created yet';
+  const templateStatusClass = templateStatus?.canSendTemplate
+    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+    : templateStatus?.exists
+      ? 'bg-amber-50 border-amber-200 text-amber-800'
+      : 'bg-red-50 border-red-200 text-red-800';
   const circumference = 2 * Math.PI * 45;
   const scoreOffset = circumference - (data.healthScore / 100) * circumference;
 
@@ -542,17 +617,100 @@ export default function SystemMonitorPage() {
           )}
         </div>
 
+        {/* WhatsApp Template Setup */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-green-600" />
+                  <h2 className="text-lg font-semibold text-gray-900">WhatsApp Alert Template</h2>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Create the approved Meta template once from here. After approval, health alerts work 24/7 without needing a &quot;Hi&quot; message first.
+                </p>
+              </div>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${templateStatusClass}`}>
+                {templateStatusLabel}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-gray-600" />
+                  <p className="text-sm font-medium text-gray-900">Template Preview</p>
+                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Name: <code className="bg-white px-1 py-0.5 rounded">{templatePreview?.template_name || 'system_health_alert'}</code>
+                  {' · '}
+                  Category: {templatePreview?.category || 'UTILITY'}
+                </p>
+                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans bg-white border border-gray-200 rounded-lg p-3">
+                  {templatePreview?.body_text || 'Template preview unavailable'}
+                </pre>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                <p className="text-sm text-gray-700">
+                  <strong>Why this is needed:</strong> plain text alerts only deliver inside WhatsApp&apos;s 24-hour reply window. The approved template lets cron alerts reach all admin numbers every 3 hours reliably.
+                </p>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>1. Click <strong>Create &amp; Submit to Meta</strong></li>
+                  <li>2. Wait for Meta approval (usually a few minutes)</li>
+                  <li>3. Click <strong>Refresh Template Status</strong></li>
+                  <li>4. Send test alert — it will use the template automatically</li>
+                </ul>
+                <div className="flex items-center gap-3 flex-wrap pt-1">
+                  <button
+                    onClick={() => handleTemplateAction('create-health-template')}
+                    disabled={creatingTemplate || syncingTemplate || templateStatus?.canSendTemplate}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  >
+                    <MessageSquare className={`w-4 h-4 ${creatingTemplate ? 'animate-pulse' : ''}`} />
+                    {creatingTemplate ? 'Submitting...' : templateStatus?.exists ? 'Template Submitted' : 'Create & Submit to Meta'}
+                  </button>
+                  <button
+                    onClick={() => handleTemplateAction('sync-health-template')}
+                    disabled={creatingTemplate || syncingTemplate}
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${syncingTemplate ? 'animate-spin' : ''}`} />
+                    {syncingTemplate ? 'Refreshing...' : 'Refresh Template Status'}
+                  </button>
+                  <a
+                    href="/dashboard/super_admin/whatsapp-templates"
+                    className="text-sm text-blue-600 hover:text-blue-700 underline"
+                  >
+                    Open WhatsApp Templates
+                  </a>
+                </div>
+                {templateActionResult && (
+                  <p className={`text-sm font-medium ${templateActionResult.toLowerCase().includes('fail') || templateActionResult.toLowerCase().includes('error') ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {templateActionResult}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* WhatsApp Alert Test */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex flex-col gap-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">WhatsApp Alert System</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Instant notifications are sent to admin WhatsApp when any service goes down.
+                Test alerts to a phone number. Uses the approved template automatically when available.
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 For auto-alerts, set: <code className="bg-gray-100 px-1 py-0.5 rounded">SYSTEM_ALERT_WHATSAPP_NUMBERS=918652710389</code> in .env.local
               </p>
+              {!templateStatus?.canSendTemplate && (
+                <p className="text-xs text-amber-700 mt-2">
+                  Template not approved yet — test alerts will use plain text and may fail unless the 24-hour WhatsApp window is open.
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <input
@@ -588,7 +746,8 @@ export default function SystemMonitorPage() {
               <ul className="text-sm text-blue-700 mt-1 space-y-1">
                 <li>- Click on any service row to expand and see the detailed reason + quick fix</li>
                 <li>- Services marked DOWN are auto-expanded on page load</li>
-                <li>- If any service is DOWN, an instant WhatsApp alert is sent to configured admin numbers</li>
+                <li>- Cron alerts run every 3 hours and prefer the approved WhatsApp template when available</li>
+                <li>- Create the template from the section above so alerts work without the 24-hour WhatsApp window</li>
                 <li>- Health score is weighted: Database (25%), Auth (20%), Payments (15%), Notifications (10%), AI (10%)</li>
                 <li>- Quick Fix buttons let you open relevant dashboards or trigger recovery actions directly</li>
               </ul>

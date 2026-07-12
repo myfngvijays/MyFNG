@@ -32,7 +32,7 @@ INSERT INTO public.smart_tools (
   ('car_health', 'Smart Health Checkup', 'AI vehicle health score', 'native', 'CarHealthCheck', NULL, true, false, false, true, true, 1),
   ('fuel_calculator', 'Fuel Cost Calculator', 'Trip fuel estimate', 'native', 'FuelCostCalculator', NULL, true, false, false, true, true, 2),
   ('price_compare', 'Compare Service Cost', 'Workshop price comparison', 'native', 'AuthorisedPricing', NULL, true, false, false, true, true, 3),
-  ('car_loan', 'Loan Against Car', 'Instant loan options', 'webview', 'SmartToolWeb', 'https://myfng.in/car-loan', true, false, false, true, true, 4),
+  ('car_loan', 'Loan Against Car', 'Instant loan options', 'webview', 'SmartToolWeb', 'https://myfng.in/car-loan?embed=1', true, false, false, true, true, 4),
   ('resale_value', 'Car Resale Value', 'Market resale estimate', 'native', 'ResaleValue', NULL, true, false, false, true, true, 5),
   ('car_quiz', 'Car Quiz', 'Daily car trivia', 'native', 'CarQuizGame', NULL, true, false, false, true, true, 6),
   ('parking_finder', 'Nearby Parking', 'Find parking near you', 'webview', 'SmartToolWeb', 'https://www.google.com/maps/search/parking+near+me', true, false, false, true, true, 7),

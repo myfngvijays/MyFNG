@@ -32,6 +32,141 @@ export function enrichBookingLead(lead: Record<string, any>) {
   return { ...lead, ...resolveBookingSource(lead) };
 }
 
+export function prettifyServiceType(value?: string | null) {
+  if (!value) return '';
+  return String(value)
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+export function getLeadDisplayAmount(lead: Record<string, any>) {
+  const display = lead.amount_display;
+  const estimated = Number(lead.estimated_amount || lead.actual_amount || 0);
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  const subtotal = Number(meta.service_subtotal || 0);
+  const wallet = meta.wallet_applied ? Number(meta.wallet_deduction || 0) : 0;
+
+  if (display !== null && display !== undefined && display !== '') {
+    const num = Number(display);
+    if (Number.isFinite(num)) {
+      if (wallet > 0 && subtotal > 0 && num >= subtotal - 0.01 && estimated > 0 && estimated < num) {
+        return estimated;
+      }
+      return num;
+    }
+  }
+
+  if (wallet > 0 && subtotal > 0) {
+    return Math.max(0, subtotal - wallet);
+  }
+
+  const fallback = Number(lead.payment_amount ?? lead.estimated_amount ?? lead.actual_amount ?? 0);
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+export function getLeadServiceLabel(lead: Record<string, any>) {
+  if (lead.service_display) return String(lead.service_display);
+  if (lead.service_type) return prettifyServiceType(lead.service_type);
+  return 'Service';
+}
+
+export function getLeadVehicleLabel(lead: Record<string, any>) {
+  const makeModel = [lead.vehicle_make, lead.vehicle_model, lead.vehicle_variant]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (makeModel) return makeModel;
+  const model = String(lead.vehicle_model || '').trim();
+  return model || null;
+}
+
+export function getLeadPricingBreakdown(
+  lead: Record<string, any>,
+  opts?: { walletTxAmount?: number; payableOverride?: number; walletTxPercent?: number },
+) {
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  let walletUsed = Number(lead.wallet_deduction_display ?? 0);
+  if (walletUsed <= 0 && meta.wallet_applied) {
+    walletUsed = Number(meta.wallet_deduction || 0);
+  }
+  if (walletUsed <= 0 && Number(opts?.walletTxAmount || 0) > 0) {
+    walletUsed = Number(opts?.walletTxAmount);
+  }
+
+  const couponDiscount = Number(
+    lead.coupon_display_discount ?? lead.discount_amount ?? meta.coupon_discount ?? 0,
+  );
+
+  let original = Number(meta.service_subtotal || 0);
+  if (original <= 0) {
+    const estimated = Number(lead.estimated_amount || lead.actual_amount || 0);
+    original = estimated + walletUsed + couponDiscount;
+  }
+  if (original <= 0) {
+    original = Number(lead.estimated_amount || lead.actual_amount || 0);
+  }
+
+  let payable =
+    opts?.payableOverride ??
+    Number(lead.amount_display ?? lead.payment_amount ?? getLeadDisplayAmount(lead) ?? 0);
+
+  if (walletUsed <= 0 && original > payable + couponDiscount + 0.01) {
+    walletUsed = Math.round((original - payable - couponDiscount) * 100) / 100;
+  }
+
+  if (walletUsed > 0 && original > 0 && Math.abs(payable - original) < 0.02) {
+    payable = Math.max(0, Math.round((original - walletUsed - couponDiscount) * 100) / 100);
+  }
+
+  const walletUsagePercent =
+    Number(opts?.walletTxPercent || 0) > 0
+      ? Number(opts?.walletTxPercent)
+      : walletUsed > 0 && original > 0
+        ? Math.round((walletUsed / original) * 1000) / 10
+        : null;
+
+  return {
+    original: Number.isFinite(original) ? original : 0,
+    walletUsed: Number.isFinite(walletUsed) ? walletUsed : 0,
+    couponDiscount: Number.isFinite(couponDiscount) ? couponDiscount : 0,
+    payable: Number.isFinite(payable) ? payable : 0,
+    walletUsagePercent,
+  };
+}
+
+export async function enrichLeadsServiceDisplay(supabaseAdmin: any, leads: Record<string, any>[]) {
+  const allServiceTypeIds = new Set<string>();
+  for (const lead of leads) {
+    if (Array.isArray(lead.service_type_ids)) {
+      lead.service_type_ids.forEach((id: string) => allServiceTypeIds.add(id));
+    }
+  }
+
+  const serviceNameMap: Record<string, string> = {};
+  if (allServiceTypeIds.size > 0) {
+    const { data: stRows } = await supabaseAdmin
+      .from('service_types')
+      .select('id, name')
+      .in('id', Array.from(allServiceTypeIds));
+    for (const row of stRows || []) {
+      serviceNameMap[String((row as { id: string }).id)] = String((row as { name: string }).name);
+    }
+  }
+
+  for (const lead of leads) {
+    if (Array.isArray(lead.service_type_ids) && lead.service_type_ids.length > 0) {
+      const names = lead.service_type_ids.map((id: string) => serviceNameMap[id]).filter(Boolean);
+      if (names.length > 0) {
+        lead.service_display = names.join(', ');
+      }
+    }
+  }
+
+  return leads;
+}
+
 export function filterBookingLeads(
   leads: Record<string, any>[],
   filters: {

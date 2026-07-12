@@ -83,7 +83,7 @@ function AIBookingPageInner() {
     {
       id: 'm0',
       role: 'assistant',
-      text: "Hi! I'm MISA AI Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?",
+      text: "Hi! I'm MISA — MyFNG Instant Service Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?",
     },
   ]);
 

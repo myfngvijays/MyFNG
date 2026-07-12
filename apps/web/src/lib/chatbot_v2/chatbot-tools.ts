@@ -223,6 +223,8 @@ export async function executeToolCall(toolName: string, args: any): Promise<any>
                 max_price: p.max_price,
                 description: p.description,
               })),
+              plan_count: sorted.length,
+              instruction: `List ALL ${sorted.length} service plans returned. Do not show only 3.`,
               location: `PIN ${pincode}`,
             };
           } else if (plans.length > 0 && (plans[0] as any).error) {

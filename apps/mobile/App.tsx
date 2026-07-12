@@ -73,6 +73,7 @@ import {
   subscribeToFcmTokenRefresh,
 } from './src/services/pushNotifications';
 import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
+import { notifyAppSessionIncompleteOnServer } from './src/lib/whatsappAutomationClient';
 import { initializeClarity } from './src/lib/clarity';
 import { initializeFirebaseAnalytics } from './src/lib/firebaseAnalytics';
 import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
@@ -91,6 +92,10 @@ function AppContent() {
   const [loginScreenKey, setLoginScreenKey] = useState(0);
   const isCustomerSessionUser =
     user?.type === 'customer_session' && userProfile?.role?.role_code === 'CUSTOMER';
+  const isLoggedInConsumer =
+    Boolean(user && userProfile) &&
+    (isCustomerSessionUser || userProfile?.role?.role_code === 'CUSTOMER');
+  const appSessionStartedAtRef = useRef<number | null>(null);
 
   const syncCustomerPushToken = async (source = 'app') => {
     try {
@@ -183,13 +188,27 @@ function AppContent() {
         if (isCustomerSessionUser) {
           void syncCustomerPushToken();
         }
+        if (isLoggedInConsumer && authReady && !showSplash) {
+          appSessionStartedAtRef.current = Date.now();
+        }
+        return;
+      }
+
+      if (nextState === 'background' || nextState === 'inactive') {
+        const startedAt = appSessionStartedAtRef.current;
+        appSessionStartedAtRef.current = null;
+        if (!startedAt || !isLoggedInConsumer) return;
+        const durationSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+        if (durationSec <= 10) {
+          void notifyAppSessionIncompleteOnServer(durationSec);
+        }
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [runForceUpdateCheck, isCustomerSessionUser]);
+  }, [runForceUpdateCheck, isCustomerSessionUser, isLoggedInConsumer, authReady, showSplash]);
 
   useEffect(() => {
     void preloadWalletRules(ENV.API_URL);

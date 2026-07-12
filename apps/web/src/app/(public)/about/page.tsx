@@ -126,12 +126,13 @@ export default function AboutPage() {
                     <Bot className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">MISA AI</h3>
+                    <h3 className="text-xl font-bold text-gray-900">MISA</h3>
+                    <p className="text-sm text-gray-500">MyFNG Instant Service Assistant</p>
                     <p className="text-sm text-gray-600">Smart Booking Assistant</p>
                   </div>
                 </div>
                 <p className="text-gray-700 leading-relaxed mb-4">
-                  Our AI-powered chatbot MISA helps you book car services in under 60 seconds – no forms, no calls. Just chat naturally and get instant recommendations, pricing, and scheduling.
+                  Our AI-powered assistant MISA (MyFNG Instant Service Assistant) helps you book car services in under 60 seconds – no forms, no calls. Just chat naturally and get instant recommendations, pricing, and scheduling.
                 </p>
                 <ul className="space-y-2">
                   {[

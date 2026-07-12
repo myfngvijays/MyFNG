@@ -50,6 +50,31 @@ export default function PropertiesPanel({ selectedNode, templateOptions, onPatch
         />
       </div>
 
+      {nodeType === 'message' || nodeType === 'end' ? (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-gray-600">Message Body</label>
+          <textarea
+            className="w-full rounded-lg border px-2 py-1.5 text-xs"
+            rows={4}
+            value={String(data.messageBody || data.text || '')}
+            onChange={(e) => onPatchNodeData({ messageBody: e.target.value })}
+            placeholder="Text sent to the customer on WhatsApp"
+          />
+        </div>
+      ) : null}
+
+      {nodeType === 'handoff' ? (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-gray-600">Handoff Note (internal)</label>
+          <input
+            className="w-full rounded-lg border px-2 py-1.5 text-xs"
+            value={String(data.handoffNote || '')}
+            onChange={(e) => onPatchNodeData({ handoffNote: e.target.value })}
+            placeholder="Shown to agents in chat assignment"
+          />
+        </div>
+      ) : null}
+
       {nodeType === 'template' ? (
         <>
           <div className="space-y-1">

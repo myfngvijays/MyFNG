@@ -55,6 +55,7 @@ import {
   activatePostBookingMembership,
   quotePostBookingMembership,
 } from '../lib/postBookingMembership';
+import { SERVICE_BOOKING_PAY_NOW_ENABLED } from '../lib/bookingPaymentConfig';
 import {
   formatOfferCountdown,
   membershipOfferCardTitle,
@@ -82,6 +83,7 @@ import {
 import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
+import { completeBookingDraftOnServer, syncBookingDraftToServer } from '../lib/bookingDraftSync';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
 import { getUpsellSuggestions, getUpsellHeading } from '../lib/serviceUpsells';
 import VehicleImage from '../components/VehicleImage';
@@ -309,7 +311,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         pickupDate: resumeDraft.pickupDate || '',
         pickupTime: resumeDraft.pickupTime || '',
         pickupAddress: resumeDraft.pickupAddress || '',
-        paymentMethod: (resumeDraft.paymentMethod as any) || 'PAY_LATER',
+        paymentMethod:
+          SERVICE_BOOKING_PAY_NOW_ENABLED && (resumeDraft.paymentMethod as any) === 'PAY_NOW'
+            ? 'PAY_NOW'
+            : 'PAY_LATER',
       };
     }
     return base;
@@ -359,6 +364,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [currentMembership, setCurrentMembership] = useState<any>(null);
   const [primeMembershipPlan, setPrimeMembershipPlan] = useState<AppMembershipPlan | null>(null);
   const [includeBookingMembership, setIncludeBookingMembership] = useState(true);
+  const [payMembershipNow, setPayMembershipNow] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [useWalletForBooking, setUseWalletForBooking] = useState(true);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
@@ -541,6 +547,15 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     return membershipCartUnitPrice(primeMembershipPlan);
   }, [includeBookingMembership, hasActiveMembership, primeMembershipPlan]);
 
+  const showMembershipPayOption =
+    includeBookingMembership && !hasActiveMembership && Boolean(primeMembershipPlan) && membershipLinePrice > 0;
+
+  const bookingMembershipPayable = useMemo(() => {
+    if (!showMembershipPayOption || totalPrice <= 0) return 0;
+    const quote = quotePostBookingMembership(totalPrice, primeMembershipPlan);
+    return quote?.payable ?? membershipLinePrice;
+  }, [showMembershipPayOption, totalPrice, primeMembershipPlan, membershipLinePrice]);
+
   const membershipBundleDiscount = useMemo(
     () =>
       calculateBookingMembershipExtraDiscount(totalPrice, {
@@ -713,6 +728,18 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }
   }, [form.selectedServices.length, hasActiveMembership, primeMembershipPlan]);
 
+  useEffect(() => {
+    if (!SERVICE_BOOKING_PAY_NOW_ENABLED && form.paymentMethod === 'PAY_NOW') {
+      setForm((prev) => ({ ...prev, paymentMethod: 'PAY_LATER' }));
+    }
+  }, [form.paymentMethod]);
+
+  useEffect(() => {
+    if (!showMembershipPayOption) {
+      setPayMembershipNow(false);
+    }
+  }, [showMembershipPayOption]);
+
   const cartServiceCount = countLiveBookingCart(
     form.selectedServices,
     includeBookingMembership,
@@ -815,6 +842,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       paymentMethod: liveForm.paymentMethod || undefined,
     };
     saveBookingDraft(draft);
+    void syncBookingDraftToServer(draft, liveStep);
     notifyCartBadgeCountChanged();
   }, [draftId, resumeDraft?.createdAt]);
 
@@ -1629,6 +1657,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       trackEvent('booking_submitted');
       await persistNewPickupAddressIfNeeded();
       await removeBookingDraft(draftId);
+      void completeBookingDraftOnServer(draftId);
       notifyCartBadgeCountChanged();
 
       const createdLeadId = createdLead.id;
@@ -1655,7 +1684,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         ? Number(createdLead.amount_payable ?? finalPayableAmount)
         : couponAdjustedTotal;
 
-      if (form.paymentMethod === 'PAY_NOW' && amountToPay > 0 && createdLeadId) {
+      const vehicleNumber = form.vehicleNumber.trim().toUpperCase();
+      const vehicleMake = String(form.carModel?.make || '').trim();
+      const vehicleModel = String(form.carModel?.model_name || '').trim();
+
+      if (
+        SERVICE_BOOKING_PAY_NOW_ENABLED &&
+        form.paymentMethod === 'PAY_NOW' &&
+        amountToPay > 0 &&
+        createdLeadId
+      ) {
         try {
           const intentRes = await fetch(`${ENV.API_URL}/api/payments/create-intent`, {
             method: 'POST',
@@ -1746,6 +1784,57 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
             isPaid: false,
           });
         }
+      } else if (
+        payMembershipNow &&
+        bookingMembershipPayable > 0 &&
+        createdLeadId &&
+        primeMembershipPlan &&
+        vehicleNumber &&
+        vehicleMake &&
+        vehicleModel
+      ) {
+        try {
+          const result = await activatePostBookingMembership({
+            apiFetch,
+            plan: primeMembershipPlan,
+            leadId: createdLeadId,
+            serviceSubtotal: totalPrice,
+            expectedPayable: bookingMembershipPayable,
+            vehicle: { vehicle_number: vehicleNumber, make: vehicleMake, model: vehicleModel },
+          });
+
+          if (result.membership) {
+            setCurrentMembership(result.membership);
+          } else {
+            const memRes = await apiFetch<any>('/api/customer/membership').catch(() => null);
+            if (memRes?.membership) setCurrentMembership(memRes.membership);
+          }
+
+          const walletNote =
+            result.walletCredit && result.walletCredit > 0
+              ? ` ₹${Math.round(result.walletCredit).toLocaleString('en-IN')} booking discount added to your wallet.`
+              : '';
+
+          setBookingSuccess({
+            ...successBase,
+            membershipActivated: true,
+            title: 'Booking & Membership Confirmed!',
+            message: `Your booking is confirmed and Prime membership is active for ${vehicleNumber}.${walletNote} Our team will contact you shortly for pickup details.`,
+            isPaid: true,
+          });
+        } catch (payErr: any) {
+          const cancelled =
+            payErr?.code === 'PAYMENT_CANCELLED' || payErr?.description?.includes('cancelled');
+          setBookingSuccess({
+            ...successBase,
+            title: 'Booking Confirmed!',
+            message: cancelled
+              ? 'Your booking has been created. Membership payment was cancelled — you can pay for Prime from this screen or Settings → Membership.'
+              : payErr?.message ||
+                'Your booking has been created. Membership payment could not be processed — you can pay for Prime later from Settings → Membership.',
+            isPaid: false,
+          });
+        }
       } else {
         setBookingSuccess({
           ...successBase,
@@ -1766,6 +1855,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         landmark: '',
         selectedWorkshop: null,
       }));
+      setPayMembershipNow(false);
     } catch (error: any) {
       trackEvent('booking_submit_failed');
       Alert.alert('Failed', error?.message || 'Could not create booking. Please try again.');
@@ -3662,23 +3752,36 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
                 {/* Pay Now */}
                 <TouchableOpacity
-                  style={[styles.payRow, form.paymentMethod === 'PAY_NOW' ? styles.payRowActive : null]}
+                  style={[
+                    styles.payRow,
+                    form.paymentMethod === 'PAY_NOW' ? styles.payRowActive : null,
+                    !SERVICE_BOOKING_PAY_NOW_ENABLED ? styles.payRowDisabled : null,
+                  ]}
                   onPress={() => {
+                    if (!SERVICE_BOOKING_PAY_NOW_ENABLED) return;
                     trackEvent('booking_payment_method_selected', { method: 'PAY_NOW' });
                     setForm((p) => ({ ...p, paymentMethod: 'PAY_NOW' }));
                   }}
-                  activeOpacity={0.9}
+                  activeOpacity={SERVICE_BOOKING_PAY_NOW_ENABLED ? 0.9 : 1}
+                  disabled={!SERVICE_BOOKING_PAY_NOW_ENABLED}
                 >
                   <Ionicons
                     name="card"
                     size={18}
-                    color={form.paymentMethod === 'PAY_NOW' ? '#fff' : COLORS.primary}
+                    color={
+                      !SERVICE_BOOKING_PAY_NOW_ENABLED
+                        ? COLORS.gray[400]
+                        : form.paymentMethod === 'PAY_NOW'
+                          ? '#fff'
+                          : COLORS.primary
+                    }
                   />
                   <View style={{ flex: 1 }}>
                     <Text
                       style={[
                         styles.payTitle,
                         form.paymentMethod === 'PAY_NOW' ? styles.payTitleActive : null,
+                        !SERVICE_BOOKING_PAY_NOW_ENABLED ? styles.payTitleDisabled : null,
                       ]}
                     >
                       Pay Now
@@ -3687,9 +3790,12 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       style={[
                         styles.paySub,
                         form.paymentMethod === 'PAY_NOW' ? styles.paySubActive : null,
+                        !SERVICE_BOOKING_PAY_NOW_ENABLED ? styles.paySubDisabled : null,
                       ]}
                     >
-                      Pay securely via UPI, Card, or Netbanking.
+                      {SERVICE_BOOKING_PAY_NOW_ENABLED
+                        ? 'Pay securely via UPI, Card, or Netbanking.'
+                        : 'Temporarily unavailable — pay after inspection / final approval.'}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -3820,6 +3926,45 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       Membership added — you save {inr(membershipBundleDiscount)} on this service booking
                     </Text>
                   </View>
+                ) : null}
+
+                {showMembershipPayOption && bookingMembershipPayable > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.payRow, payMembershipNow ? styles.payRowActive : null]}
+                    onPress={() => {
+                      const next = !payMembershipNow;
+                      setPayMembershipNow(next);
+                      if (next) {
+                        setForm((p) => ({ ...p, paymentMethod: 'PAY_LATER' }));
+                      }
+                      trackEvent('booking_membership_pay_toggle', { enabled: next });
+                    }}
+                    activeOpacity={0.9}
+                  >
+                    <Ionicons
+                      name="diamond"
+                      size={18}
+                      color={payMembershipNow ? '#fff' : '#7C3AED'}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.payTitle,
+                          payMembershipNow ? styles.payTitleActive : null,
+                        ]}
+                      >
+                        Pay for Membership — {inr(bookingMembershipPayable)}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.paySub,
+                          payMembershipNow ? styles.paySubActive : null,
+                        ]}
+                      >
+                        Pay membership now; service amount due after inspection / approval.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 ) : null}
 
                 {isLoggedIn && payableBeforeWallet > 0 ? (
@@ -4162,9 +4307,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   {step === 1 && !isLoggedIn && !otpVerified
                     ? (otpSent ? 'Verify OTP →' : 'Send OTP →')
                     : step === steps.length - 1
-                      ? form.paymentMethod === 'PAY_NOW'
-                        ? 'Pay & Book'
-                        : 'Book Service'
+                      ? payMembershipNow && bookingMembershipPayable > 0
+                        ? `Pay ${inr(bookingMembershipPayable)} & Book`
+                        : SERVICE_BOOKING_PAY_NOW_ENABLED && form.paymentMethod === 'PAY_NOW'
+                          ? 'Pay & Book'
+                          : 'Book Service'
                       : 'Continue'}
                 </Text>
                 <Ionicons name="arrow-forward" size={16} color="#fff" />
@@ -5446,10 +5593,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payRowActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  payRowDisabled: {
+    opacity: 0.55,
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+  },
   payTitle: { fontSize: 13, fontWeight: '900', color: COLORS.primaryDark },
   payTitleActive: { color: '#fff' },
+  payTitleDisabled: { color: COLORS.gray[500] },
   paySub: { marginTop: 2, fontSize: 11, fontWeight: '700', color: COLORS.gray[600] },
   paySubActive: { color: 'rgba(255,255,255,0.8)' },
+  paySubDisabled: { color: COLORS.gray[400] },
   couponBox: {
     marginTop: 8,
     padding: 12,

@@ -3,8 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { filterBookingLeads, enrichBookingLead } from '@/lib/booking-lead-utils';
+import ExportDateRangeMenu from '@/components/admin/ExportDateRangeMenu';
+import { filterBookingLeads, enrichBookingLead, getLeadServiceLabel, getLeadDisplayAmount } from '@/lib/booking-lead-utils';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
+import type { ReportDatePreset } from '@/lib/report-date-range';
 
 type ServiceLead = Record<string, any>;
 type ChatbotBooking = Record<string, any>;
@@ -15,6 +17,46 @@ const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PR
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'OTHER'] as const;
 const COUPON_OPTIONS = ['ALL', 'YES', 'NO'] as const;
+
+function leadStatusSelectClass(status?: string | null) {
+  const s = String(status || 'NEW').toUpperCase();
+  if (s === 'COMPLETED' || s === 'READY_FOR_DELIVERY') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  if (s === 'CANCELLED' || s === 'REJECTED') return 'bg-rose-100 text-rose-800 border-rose-200';
+  if (s === 'IN_PROGRESS' || s === 'ACCEPTED') return 'bg-amber-100 text-amber-800 border-amber-200';
+  if (s === 'ASSIGNED' || s === 'HOLD') return 'bg-violet-100 text-violet-800 border-violet-200';
+  return 'bg-blue-100 text-blue-700 border-blue-200';
+}
+
+function LeadStatusSelect({
+  value,
+  updating,
+  onChange,
+}: {
+  value: string;
+  updating: boolean;
+  onChange: (status: string, e: React.ChangeEvent<HTMLSelectElement>) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 shrink-0" /> : null}
+      <select
+        value={value || 'NEW'}
+        disabled={updating}
+        onChange={(e) => onChange(e.target.value, e)}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className={`max-w-[148px] text-[11px] font-semibold rounded-full pl-2 pr-6 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 ${leadStatusSelectClass(value)}`}
+        aria-label="Change lead status"
+      >
+        {LEAD_STATUS_ENUM.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 function formatDateTime(value?: string | null) {
   if (!value) return '-';
@@ -69,40 +111,9 @@ function CouponBadge({ code, discount }: { code?: string | null; discount?: numb
   );
 }
 
-function getLeadDisplayAmount(lead: ServiceLead) {
-  const display = lead.amount_display;
-  const estimated = Number(lead.estimated_amount || lead.actual_amount || 0);
-  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
-  const subtotal = Number(meta.service_subtotal || 0);
-  const wallet = meta.wallet_applied ? Number(meta.wallet_deduction || 0) : 0;
-
-  if (display !== null && display !== undefined && display !== '') {
-    const num = Number(display);
-    if (Number.isFinite(num)) {
-      if (wallet > 0 && subtotal > 0 && num >= subtotal - 0.01 && estimated > 0 && estimated < num) {
-        return estimated;
-      }
-      return num;
-    }
-  }
-
-  if (wallet > 0 && subtotal > 0) {
-    return Math.max(0, subtotal - wallet);
-  }
-
-  return lead.estimated_amount;
-}
 
 function getServiceLabel(lead: ServiceLead) {
-  if (lead.service_display) return String(lead.service_display);
-  if (lead.service_type) {
-    return String(lead.service_type)
-      .replace(/_/g, ' ')
-      .split(' ')
-      .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(' ');
-  }
-  return '-';
+  return getLeadServiceLabel(lead);
 }
 
 function prettifyKey(key: string) {
@@ -115,6 +126,9 @@ export default function SuperAdminBookingsPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
   const [couponFilter, setCouponFilter] = useState<(typeof COUPON_OPTIONS)[number]>('ALL');
+  const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,6 +155,7 @@ export default function SuperAdminBookingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -309,6 +324,11 @@ export default function SuperAdminBookingsPage() {
 
       const query = new URLSearchParams();
       query.set('limit', '500');
+      query.set('preset', datePreset);
+      if (datePreset === 'custom') {
+        if (customStart) query.set('start', customStart);
+        if (customEnd) query.set('end', customEnd);
+      }
       if (statusFilter !== 'ALL') query.set('status', statusFilter);
 
       const res = await fetch(`${endpoint}?${query.toString()}`);
@@ -331,7 +351,7 @@ export default function SuperAdminBookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, statusFilter]);
+  }, [activeTab, statusFilter, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -363,6 +383,45 @@ export default function SuperAdminBookingsPage() {
       service_type: lead.service_display || lead.service_type || '',
     });
     setEditOpen(true);
+  };
+
+  const updateLeadStatus = async (
+    lead: ServiceLead,
+    newStatus: string,
+    e?: React.SyntheticEvent,
+  ) => {
+    e?.stopPropagation();
+    if (!lead?.id || String(lead.status || 'NEW') === newStatus) return;
+
+    setStatusUpdatingId(String(lead.id));
+    try {
+      const res = await fetch(`/api/super_admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Status update failed');
+
+      const updatedLead = enrichBookingLead(json.lead || { ...lead, status: newStatus });
+
+      setServiceLeads((prev) => {
+        if (statusFilter !== 'ALL' && newStatus !== statusFilter) {
+          return prev.filter((row) => row.id !== lead.id);
+        }
+        return prev.map((row) => (row.id === lead.id ? updatedLead : row));
+      });
+
+      if (detailOpen && detailItem?.id === lead.id) {
+        setDetailItem(updatedLead);
+      }
+
+      toast.success(`Status updated to ${newStatus}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Status update failed');
+    } finally {
+      setStatusUpdatingId(null);
+    }
   };
 
   const saveEdit = async () => {
@@ -460,6 +519,46 @@ export default function SuperAdminBookingsPage() {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      const params = new URLSearchParams({ export: '1', preset: datePreset });
+      if (datePreset === 'custom') {
+        if (customStart) params.set('start', customStart);
+        if (customEnd) params.set('end', customEnd);
+      }
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+
+      if (activeTab === 'service_leads') {
+        if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
+        if (couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
+      }
+
+      const endpoint =
+        activeTab === 'service_leads' ? '/api/super_admin/leads' : '/api/super_admin/chatbot-bookings';
+
+      const res = await fetch(`${endpoint}?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'Export failed');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download =
+        activeTab === 'service_leads'
+          ? `service-leads-${datePreset}.csv`
+          : `ai-bookings-${datePreset}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Export downloaded');
+    } catch (err: any) {
+      toast.error(err?.message || 'Export failed');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
@@ -524,6 +623,21 @@ export default function SuperAdminBookingsPage() {
               <Upload className="w-4 h-4" />
               Upload CRM Data
             </button>
+
+            {activeTab !== 'upload_crm' ? (
+              <ExportDateRangeMenu
+                preset={datePreset}
+                customStart={customStart}
+                customEnd={customEnd}
+                onRangeChange={({ preset, customStart: start, customEnd: end }) => {
+                  setDatePreset(preset);
+                  setCustomStart(start);
+                  setCustomEnd(end);
+                }}
+                onExport={handleExport}
+                disabled={loading}
+              />
+            ) : null}
           </div>
 
           {activeTab === 'service_leads' ? (
@@ -824,9 +938,11 @@ export default function SuperAdminBookingsPage() {
                           <CouponBadge code={lead.coupon_display_code} discount={lead.coupon_display_discount} />
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <span className="inline-flex px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold whitespace-nowrap">
-                            {lead.status || '-'}
-                          </span>
+                          <LeadStatusSelect
+                            value={String(lead.status || 'NEW')}
+                            updating={statusUpdatingId === leadId}
+                            onChange={(status, ev) => void updateLeadStatus(lead, status, ev)}
+                          />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(getLeadDisplayAmount(lead))}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(lead.created_at)}</td>
@@ -928,15 +1044,14 @@ export default function SuperAdminBookingsPage() {
                       <span className="text-xs text-gray-500">Select</span>
                     </div>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openDetail(activeTab === 'service_leads' ? 'Service Lead Details' : 'AI Booking Details', item)
-                    }
-                    className="text-left w-full"
-                  >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openDetail(activeTab === 'service_leads' ? 'Service Lead Details' : 'AI Booking Details', item)
+                      }
+                      className="text-left flex-1 min-w-0"
+                    >
                       <p className="text-sm font-bold text-gray-900">
                         {activeTab === 'service_leads'
                           ? item.customer_name || item.lead_number || '-'
@@ -953,37 +1068,44 @@ export default function SuperAdminBookingsPage() {
                           ) : null}
                         </div>
                       ) : null}
-                    </div>
-                    <span className="inline-flex px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">
-                      {item.status || '-'}
-                    </span>
-                  </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
-                    <div>
-                      <p className="text-gray-500">City</p>
-                      <p className="font-medium text-gray-800">{item.city || '-'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">{activeTab === 'service_leads' ? 'Vehicle' : 'Car Model'}</p>
-                      <p className="font-medium text-gray-800">
-                        {activeTab === 'service_leads' ? item.vehicle_number || '-' : item.car_model || '-'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">{activeTab === 'service_leads' ? 'Amount' : 'Price'}</p>
-                      <p className="font-medium text-gray-800">
-                        {activeTab === 'service_leads'
-                          ? formatCurrency(getLeadDisplayAmount(item))
-                          : formatCurrency(item.quoted_price)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Date</p>
-                      <p className="font-medium text-gray-800">{formatDateTime(item.created_at)}</p>
-                    </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                        <div>
+                          <p className="text-gray-500">City</p>
+                          <p className="font-medium text-gray-800">{item.city || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">{activeTab === 'service_leads' ? 'Vehicle' : 'Car Model'}</p>
+                          <p className="font-medium text-gray-800">
+                            {activeTab === 'service_leads' ? item.vehicle_number || '-' : item.car_model || '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">{activeTab === 'service_leads' ? 'Amount' : 'Price'}</p>
+                          <p className="font-medium text-gray-800">
+                            {activeTab === 'service_leads'
+                              ? formatCurrency(getLeadDisplayAmount(item))
+                              : formatCurrency(item.quoted_price)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Date</p>
+                          <p className="font-medium text-gray-800">{formatDateTime(item.created_at)}</p>
+                        </div>
+                      </div>
+                    </button>
+                    {activeTab === 'service_leads' ? (
+                      <LeadStatusSelect
+                        value={String(item.status || 'NEW')}
+                        updating={statusUpdatingId === String(item.id)}
+                        onChange={(status, ev) => void updateLeadStatus(item, status, ev)}
+                      />
+                    ) : (
+                      <span className="inline-flex px-2 py-1 rounded-full bg-purple-100 text-purple-700 text-[11px] font-semibold shrink-0">
+                        {item.status || '-'}
+                      </span>
+                    )}
                   </div>
-                  </button>
                   {activeTab === 'service_leads' && item.id ? (
                     <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
                       <button

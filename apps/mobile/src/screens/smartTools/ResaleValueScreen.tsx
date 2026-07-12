@@ -25,7 +25,7 @@ import HealthCheckShell, {
   YearPickerField,
 } from '../../components/smartTools/HealthCheckShell';
 import type { PublicBrand } from '../../constants/publicAppData';
-import { SMART_TOOL_WEB_URLS } from '../../constants/smartTools';
+import { SMART_TOOL_WEB_URLS, smartToolWebUrl } from '../../constants/smartTools';
 import { COLORS } from '../../constants/theme';
 import {
   fetchActiveCities,
@@ -478,7 +478,7 @@ export default function ResaleValueScreen({ navigation }: Props) {
   const openLoanAgainstCar = () => {
     navigation.navigate('SmartToolWeb', {
       title: 'Loan Against Car',
-      url: SMART_TOOL_WEB_URLS.car_loan,
+      url: smartToolWebUrl('car_loan', SMART_TOOL_WEB_URLS.car_loan),
     });
   };
 

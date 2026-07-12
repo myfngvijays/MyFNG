@@ -3,6 +3,7 @@ import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
 import { recordCouponRedemption } from '@/lib/coupon-validate';
 import { applyBookingMembershipBundleToLead } from '@/lib/booking-post-membership';
 import { debitWallet } from '@/lib/wallet-service';
+import { notifyMembershipPaymentSuccessWhatsApp } from '@/lib/services/membershipPaymentWhatsApp';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -176,6 +177,22 @@ export async function POST(request: NextRequest) {
       console.error('[membership/subscribe] coupon redemption failed:', redemptionErr);
     }
   }
+
+  const amountPaid =
+    Number(body.amount_paid || body.amount || 0) > 0
+      ? Number(body.amount_paid || body.amount)
+      : Number(plan.price || 0);
+
+  void notifyMembershipPaymentSuccessWhatsApp({
+    customerId: customer.id,
+    phone: String(customer.phone || '').trim(),
+    customerName: customer.full_name,
+    amount: amountPaid,
+    planName: String(plan.name || 'MyFNG Prime'),
+    transactionId: razorpayPaymentId,
+  }).catch((error) => {
+    console.warn('[membership/subscribe] WhatsApp notify failed:', error?.message || error);
+  });
 
   return NextResponse.json({
     success: true,

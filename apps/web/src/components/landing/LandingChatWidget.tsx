@@ -29,7 +29,8 @@ export default function LandingChatWidget() {
                 <Bot className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-white font-bold text-xs sm:text-sm truncate">MISA AI Assistant</p>
+                <p className="text-white font-bold text-xs sm:text-sm truncate">MISA</p>
+                <p className="text-white/80 text-[10px] truncate">MyFNG Instant Service Assistant</p>
                 <p className="text-blue-100 text-[10px] sm:text-xs truncate">Online • Book service directly</p>
               </div>
             </div>
@@ -43,7 +44,7 @@ export default function LandingChatWidget() {
                 <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-primary" />
               </div>
               <div className="bg-white p-2.5 sm:p-3 rounded-xl sm:rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-xs sm:text-sm text-gray-700">
-                Hi! 👋 I&apos;m MISA AI Assistant. Book your car service directly with me - no employee needed!
+                Hi! 👋 I&apos;m MISA — MyFNG Instant Service Assistant. Book your car service directly with me - no employee needed!
                 <br />
                 <br />
                 What service do you need today?

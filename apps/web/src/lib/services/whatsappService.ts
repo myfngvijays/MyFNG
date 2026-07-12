@@ -97,6 +97,107 @@ async function sendMessagePayload(payload: unknown): Promise<WhatsAppSendResult>
   }
 }
 
+export type WhatsAppReplyButton = {
+  id: string;
+  title: string;
+};
+
+export type WhatsAppListRow = {
+  id: string;
+  title: string;
+  description?: string;
+};
+
+export type WhatsAppListSection = {
+  title?: string;
+  rows: WhatsAppListRow[];
+};
+
+export async function sendReplyButtonsMessage(input: {
+  phoneNumber: string;
+  body: string;
+  buttons: WhatsAppReplyButton[];
+  header?: string;
+  footer?: string;
+}): Promise<WhatsAppSendResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+
+  const buttons = (input.buttons || [])
+    .map((btn) => ({
+      type: 'reply' as const,
+      reply: {
+        id: String(btn.id || '').trim().slice(0, 256),
+        title: String(btn.title || '').trim().slice(0, 20),
+      },
+    }))
+    .filter((btn) => btn.reply.id && btn.reply.title)
+    .slice(0, 3);
+
+  if (!buttons.length) return { success: false, error: 'At least one reply button is required' };
+  if (!input.body?.trim()) return { success: false, error: 'Message body is required' };
+
+  return sendMessagePayload({
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: input.header?.trim() ? { type: 'text', text: input.header.trim().slice(0, 60) } : undefined,
+      body: { text: input.body.trim().slice(0, 1024) },
+      footer: input.footer?.trim() ? { text: input.footer.trim().slice(0, 60) } : undefined,
+      action: { buttons },
+    },
+  });
+}
+
+export async function sendListMessage(input: {
+  phoneNumber: string;
+  body: string;
+  buttonLabel: string;
+  sections: WhatsAppListSection[];
+  header?: string;
+  footer?: string;
+}): Promise<WhatsAppSendResult> {
+  const to = normalizePhoneNumber(input.phoneNumber);
+  if (!to) return { success: false, error: 'Invalid recipient phone number' };
+  if (!input.body?.trim()) return { success: false, error: 'Message body is required' };
+
+  const sections = (input.sections || [])
+    .map((section) => ({
+      title: section.title?.trim().slice(0, 24) || undefined,
+      rows: (section.rows || [])
+        .map((row) => ({
+          id: String(row.id || '').trim().slice(0, 200),
+          title: String(row.title || '').trim().slice(0, 24),
+          description: row.description?.trim().slice(0, 72) || undefined,
+        }))
+        .filter((row) => row.id && row.title)
+        .slice(0, 10),
+    }))
+    .filter((section) => section.rows.length > 0)
+    .slice(0, 10);
+
+  const rowCount = sections.reduce((sum, section) => sum + section.rows.length, 0);
+  if (!rowCount) return { success: false, error: 'List message requires at least one row' };
+
+  return sendMessagePayload({
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      header: input.header?.trim() ? { type: 'text', text: input.header.trim().slice(0, 60) } : undefined,
+      body: { text: input.body.trim().slice(0, 1024) },
+      footer: input.footer?.trim() ? { text: input.footer.trim().slice(0, 60) } : undefined,
+      action: {
+        button: String(input.buttonLabel || 'View options').trim().slice(0, 20),
+        sections,
+      },
+    },
+  });
+}
+
 export async function sendTextMessage(phoneNumber: string, message: string): Promise<WhatsAppSendResult> {
   const to = normalizePhoneNumber(phoneNumber);
   if (!to) return { success: false, error: 'Invalid recipient phone number' };

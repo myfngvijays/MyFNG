@@ -66,7 +66,12 @@ export default function WorkshopManagementPage() {
   };
 
   const handleEditClick = (workshop: any) => {
-    setEditingWorkshop({ ...workshop }); // Create a copy
+    const mapping = Array.isArray(workshop.mapping_pincodes)
+      ? workshop.mapping_pincodes.join(', ')
+      : typeof workshop.mapping_pincodes === 'string'
+        ? workshop.mapping_pincodes
+        : '';
+    setEditingWorkshop({ ...workshop, mapping_pincodes_text: mapping });
     setShowEditModal(true);
   };
 
@@ -95,6 +100,14 @@ export default function WorkshopManagementPage() {
           state: editingWorkshop.state,
           pincode: editingWorkshop.pincode,
           service_pincode: editingWorkshop.service_pincode || null,
+          mapping_pincodes: (() => {
+            const raw = String(editingWorkshop.mapping_pincodes_text || '').trim();
+            if (!raw) return null;
+            return raw
+              .split(/[|,;\s]+/)
+              .map((p: string) => p.trim())
+              .filter((p: string) => /^\d{6}$/.test(p));
+          })(),
           map_link: editingWorkshop.map_link || null,
           latitude:
             editingWorkshop.latitude === '' || editingWorkshop.latitude == null
@@ -1293,6 +1306,22 @@ export default function WorkshopManagementPage() {
                   value={editingWorkshop.service_pincode || ''}
                   onChange={(e) => setEditingWorkshop({ ...editingWorkshop, service_pincode: e.target.value })}
                 />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Mapping Pincodes</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 text-sm border rounded-lg"
+                  value={editingWorkshop.mapping_pincodes_text || ''}
+                  onChange={(e) =>
+                    setEditingWorkshop({ ...editingWorkshop, mapping_pincodes_text: e.target.value })
+                  }
+                  placeholder="400601, 400602, 400603"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Extra pincodes this workshop services (comma-separated). Used for pricing & workshop lookup.
+                </p>
               </div>
 
               {/* Zone Selector */}

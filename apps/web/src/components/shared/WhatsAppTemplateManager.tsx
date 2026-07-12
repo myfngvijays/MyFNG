@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Eye, Grid3X3, List, Plus, RefreshCcw, Search, Trash2 } from 'lucide-react';
+import ToggleSwitch from '@/components/shared/ToggleSwitch';
 
 type TemplateRow = {
   id: string;
@@ -60,6 +61,7 @@ export default function WhatsAppTemplateManager() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [languageFilter, setLanguageFilter] = useState('ALL');
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     template_name: '',
     display_name: '',
@@ -153,18 +155,20 @@ export default function WhatsAppTemplateManager() {
     return values.sort();
   }, [templates]);
 
-  const loadTemplates = async () => {
-    setLoading(true);
+  const loadTemplates = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch('/api/whatsapp/templates');
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to fetch templates');
       setTemplates(Array.isArray(data.templates) ? data.templates : []);
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to fetch templates');
-      setTemplates([]);
+      if (!silent) {
+        toast.error(error?.message || 'Failed to fetch templates');
+        setTemplates([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -217,7 +221,7 @@ export default function WhatsAppTemplateManager() {
         example_values: '',
       });
       setShowCreateForm(false);
-      await loadTemplates();
+      await loadTemplates(true);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create template');
     } finally {
@@ -225,18 +229,22 @@ export default function WhatsAppTemplateManager() {
     }
   };
 
-  const handleToggleActive = async (row: TemplateRow) => {
+  const handleToggleActive = async (row: TemplateRow, nextActive: boolean) => {
+    setTogglingId(row.id);
+    setTemplates((prev) => prev.map((item) => (item.id === row.id ? { ...item, is_active: nextActive } : item)));
     try {
       const res = await fetch(`/api/whatsapp/templates/${row.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: !row.is_active }),
+        body: JSON.stringify({ is_active: nextActive }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to update template');
-      setTemplates((prev) => prev.map((item) => (item.id === row.id ? { ...item, is_active: !item.is_active } : item)));
     } catch (error: any) {
+      setTemplates((prev) => prev.map((item) => (item.id === row.id ? { ...item, is_active: row.is_active } : item)));
       toast.error(error?.message || 'Failed to update template');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -261,7 +269,7 @@ export default function WhatsAppTemplateManager() {
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to push template to Meta');
       toast.success(data?.message || 'Template pushed to Meta');
-      await loadTemplates();
+      await loadTemplates(true);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to push template to Meta');
     }
@@ -279,7 +287,7 @@ export default function WhatsAppTemplateManager() {
       if (data?.synced != null) parts.push(`Synced ${data.synced} templates`);
       if (data?.deleted) parts.push(`Deleted ${data.deleted} stale`);
       toast.success(parts.length > 0 ? parts.join(', ') : 'Templates synced from Meta successfully');
-      await loadTemplates();
+      await loadTemplates(true);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to sync templates');
     } finally {
@@ -621,7 +629,7 @@ export default function WhatsAppTemplateManager() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading && templates.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
                     Loading templates...
@@ -657,20 +665,29 @@ export default function WhatsAppTemplateManager() {
                       <p className="mt-1 text-xs text-gray-500">1 Number</p>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex flex-col items-start gap-1">
-                        <button
-                          type="button"
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                      <div className="flex flex-col items-start gap-2">
+                        <div className="flex items-center gap-2">
+                          <ToggleSwitch
+                            enabled={row.is_active}
+                            busy={togglingId === row.id}
+                            size="sm"
+                            onChange={(next) => handleToggleActive(row, next)}
+                            label={`Toggle ${row.template_name}`}
+                          />
+                          <span className={`text-xs font-semibold ${row.is_active ? 'text-emerald-600' : 'text-gray-400'}`}>
+                            {togglingId === row.id ? 'Saving...' : row.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                             row.is_active
                               ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                               : 'border-gray-300 bg-gray-50 text-gray-600'
                           }`}
-                          onClick={() => handleToggleActive(row)}
                         >
-                          {row.is_active ? 'Approved' : 'Inactive'}
-                        </button>
-                        <span className="text-[11px] text-gray-500">
-                          Meta: {String(row.meta?.status || 'NOT_SYNCED').toUpperCase()}
+                          {String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'APPROVED'
+                            ? 'Meta Approved'
+                            : `Meta: ${String(row.meta?.status || 'NOT_SYNCED').toUpperCase()}`}
                         </span>
                       </div>
                     </td>

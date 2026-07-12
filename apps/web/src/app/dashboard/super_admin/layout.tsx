@@ -398,7 +398,7 @@ const navigationItems: NavItem[] = [
     name: 'Admin AI Chat',
     href: '/dashboard/super_admin/admin-ai-chat',
     icon: Bot,
-    description: 'Chat with MISA AI'
+    description: 'Chat with MISA — MyFNG Instant Service Assistant'
   },
   {
     name: 'WhatsApp',
@@ -422,6 +422,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/whatsapp-templates',
         icon: MessageSquare,
         description: 'Create/manage WhatsApp templates',
+      },
+      {
+        name: 'WhatsApp Automation',
+        href: '/dashboard/super_admin/whatsapp-automation',
+        icon: Send,
+        description: 'Booking & lifecycle WhatsApp triggers',
       },
       {
         name: 'Bot Flow',

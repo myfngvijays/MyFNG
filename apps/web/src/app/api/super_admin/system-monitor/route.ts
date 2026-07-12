@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendTextMessage } from '@/lib/services/whatsappService';
+import {
+  createHealthAlertTemplate,
+  getHealthAlertTemplateStatus,
+  sendHealthAlertMessage,
+  syncHealthAlertTemplate,
+  SYSTEM_HEALTH_ALERT_TEMPLATE,
+} from '@/lib/services/systemHealthAlertTemplate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +43,7 @@ async function assertSuperAdmin(supabase: any) {
   if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
     return { ok: false, status: 403, error: 'Forbidden - Not super admin' };
   }
-  return { ok: true, status: 200, error: null };
+  return { ok: true, status: 200, error: null, userProfile: userData };
 }
 
 async function checkWithTimeout<T>(fn: () => Promise<T>, timeoutMs = 10000): Promise<T> {
@@ -709,24 +715,6 @@ function calculateHealthScore(checks: HealthCheck[]): number {
   return totalWeight > 0 ? Math.round((weightedScore / totalWeight) * 100) : 100;
 }
 
-async function sendFailureAlerts(failedChecks: HealthCheck[]) {
-  if (failedChecks.length === 0 || ADMIN_WHATSAPP_NUMBERS.length === 0) return;
-
-  const alertMessage =
-    `*MyFNG SYSTEM ALERT*\n\n` +
-    `${failedChecks.length} service(s) DOWN:\n\n` +
-    failedChecks.map((c, i) => `${i + 1}. *${c.name}* (${c.category})\n   Reason: ${c.reason}`).join('\n\n') +
-    `\n\n_Checked at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
-
-  for (const number of ADMIN_WHATSAPP_NUMBERS) {
-    try {
-      await sendTextMessage(number.trim(), alertMessage);
-    } catch (e) {
-      console.error(`Failed to send alert to ${number}:`, e);
-    }
-  }
-}
-
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -781,6 +769,8 @@ export async function GET() {
       SYSTEM_ALERT_WHATSAPP_NUMBERS: ADMIN_WHATSAPP_NUMBERS.length > 0,
     };
 
+    const healthAlertTemplate = await getHealthAlertTemplateStatus();
+
     return NextResponse.json({
       healthScore,
       overallStatus: downServices.length > 0 ? 'critical' : degradedServices.length > 0 ? 'warning' : 'operational',
@@ -793,6 +783,8 @@ export async function GET() {
       categories: categoryStats,
       checks,
       envStatus,
+      healthAlertTemplate,
+      templatePreview: SYSTEM_HEALTH_ALERT_TEMPLATE,
       lastChecked: new Date().toISOString(),
       alertsSent: false,
     });
@@ -813,6 +805,26 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action } = body;
 
+    if (action === 'create-health-template') {
+      const result = await createHealthAlertTemplate(auth.userProfile?.id);
+      const healthAlertTemplate = await getHealthAlertTemplateStatus();
+      return NextResponse.json({
+        success: true,
+        ...result,
+        healthAlertTemplate,
+      });
+    }
+
+    if (action === 'sync-health-template') {
+      const result = await syncHealthAlertTemplate(auth.userProfile?.id);
+      const healthAlertTemplate = await getHealthAlertTemplateStatus();
+      return NextResponse.json({
+        success: true,
+        ...result,
+        healthAlertTemplate,
+      });
+    }
+
     if (action === 'test-alert') {
       const targetNumbers = body.phoneNumber 
         ? [body.phoneNumber] 
@@ -821,18 +833,39 @@ export async function POST(request: Request) {
       if (targetNumbers.length === 0) {
         return NextResponse.json({ error: 'No WhatsApp numbers configured. Set SYSTEM_ALERT_WHATSAPP_NUMBERS env variable or provide phoneNumber in request.' }, { status: 400 });
       }
-      const testMessage = `*MyFNG SYSTEM ALERT - TEST*\n\nThis is a test alert from your System Monitor.\nIf you received this, WhatsApp alerts are working correctly.\n\n_Sent at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
+
+      const templateStatus = await getHealthAlertTemplateStatus();
+      const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const useTemplate = Boolean(body.useTemplate) && templateStatus.canSendTemplate;
+      const summary = {
+        timestamp,
+        total: 10,
+        healthy: 10,
+        degraded: 0,
+        down: 0,
+        downServices: [],
+        degradedServices: [],
+      };
       
       const results = [];
       for (const number of targetNumbers) {
-        const result = await sendTextMessage(number.trim(), testMessage);
-        results.push({ number: number.trim(), ...result });
+        const result = await sendHealthAlertMessage(number.trim(), summary, {
+          test: !useTemplate,
+          forceText: !useTemplate,
+        });
+        results.push({ number: number.trim(), deliveryMode: useTemplate ? 'template' : 'text', ...result });
       }
       const allSuccess = results.every(r => r.success);
       return NextResponse.json({ 
         success: allSuccess, 
         results,
-        message: allSuccess ? 'Message sent successfully' : 'Some messages failed - check results for details',
+        deliveryMode: useTemplate ? 'template' : 'text',
+        templateStatus,
+        message: allSuccess
+          ? useTemplate
+            ? 'Template alert sent successfully'
+            : 'Text alert sent successfully (requires 24-hour WhatsApp window unless template is approved)'
+          : 'Some messages failed - check results for details',
       });
     }
 

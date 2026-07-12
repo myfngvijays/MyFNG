@@ -31,9 +31,18 @@ export const SMART_TOOLS: SmartToolItem[] = [
 ];
 
 export const SMART_TOOL_WEB_URLS: Record<string, string> = {
-  car_loan: 'https://myfng.in/car-loan',
+  car_loan: 'https://myfng.in/car-loan?embed=1',
   parking_finder: 'https://www.google.com/maps/search/parking+near+me',
 };
+
+export function smartToolWebUrl(toolId: string, baseUrl?: string | null): string {
+  const url = String(baseUrl || SMART_TOOL_WEB_URLS[toolId] || '').trim();
+  if (!url) return url;
+  if (toolId === 'car_loan' && !url.includes('embed=1')) {
+    return `${url}${url.includes('?') ? '&' : '?'}embed=1`;
+  }
+  return url;
+}
 
 export const COMPARE_SERVICE_CATEGORIES = [
   { id: 'periodic', name: 'Periodic Service', icon: 'construct' as const, color: '#2563EB', bg: '#EFF6FF' },

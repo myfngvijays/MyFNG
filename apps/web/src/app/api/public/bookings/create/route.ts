@@ -17,6 +17,7 @@ import {
   resolveServiceBookingWallet,
 } from '@/lib/booking-wallet-apply';
 import { buildPostBookingMembershipOffer } from '@/lib/post-booking-membership-offer';
+import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 
 type BookingPayload = {
   lead?: Record<string, any>;
@@ -369,6 +370,19 @@ export async function POST(request: NextRequest) {
       } catch (fallbackErr: any) {
         console.error('[bookings/create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
       }
+    }
+
+    try {
+      const whatsappResult = await notifyBookingConfirmedWhatsApp({
+        lead: serviceLead as Record<string, any>,
+        customerId: registeredCustomer?.id || null,
+        body,
+      });
+      if (whatsappResult.skipped || !whatsappResult.sent) {
+        console.log('[bookings/create] booking confirmed WhatsApp skipped:', whatsappResult.skipReason || whatsappResult.error);
+      }
+    } catch (whatsappErr: any) {
+      console.error('[bookings/create] booking confirmed WhatsApp failed:', whatsappErr?.message || whatsappErr);
     }
 
     return NextResponse.json(

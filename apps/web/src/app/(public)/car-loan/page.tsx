@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 
@@ -24,6 +25,16 @@ interface F { pan:string; mobile:string; vehicle:string; income:string; occupati
 interface E { pan?:string; mobile?:string; vehicle?:string; income?:string; occupation?:string; }
 
 export default function CarLoanPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>}>
+      <CarLoanPageInner />
+    </Suspense>
+  );
+}
+
+function CarLoanPageInner() {
+  const searchParams = useSearchParams();
+  const isEmbed = searchParams.get('embed') === '1';
   const [form, setForm]           = useState<F>({ pan:'', mobile:'', vehicle:'', income:'', occupation:'' });
   const [utm, setUtm] = useState({
     utm_source: '',
@@ -36,16 +47,16 @@ export default function CarLoanPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState(false);
   useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search);
 
-  setUtm({
-    utm_source: params.get('utm_source') || '',
-    utm_medium: params.get('utm_medium') || '',
-    utm_campaign: params.get('utm_campaign') || '',
-    utm_term: params.get('utm_term') || '',
-    utm_content: params.get('utm_content') || ''
-  });
-}, []);
+    setUtm({
+      utm_source: params.get('utm_source') || (isEmbed ? 'mobile_app' : ''),
+      utm_medium: params.get('utm_medium') || (isEmbed ? 'in_app_webview' : ''),
+      utm_campaign: params.get('utm_campaign') || (isEmbed ? 'car_loan_form' : ''),
+      utm_term: params.get('utm_term') || '',
+      utm_content: params.get('utm_content') || '',
+    });
+  }, [isEmbed]);
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
     const { name, value } = e.target;
     let v = value;
@@ -95,6 +106,99 @@ export default function CarLoanPage() {
       setSubmitting(false);
     }
   }, [form, utm]);
+
+  const eligibilityForm = (
+    <>
+      <h3>Check Eligibility</h3>
+
+      {submitted ? (
+        <div style={{ textAlign:'center', padding:'30px 20px' }}>
+          <div style={{ fontSize:56, marginBottom:12 }}>🎉</div>
+          <h3 style={{ color:'#16a34a', fontSize:22, fontWeight:700, marginBottom:10 }}>
+            Thank You!
+          </h3>
+          <p style={{ color:'#374151', fontSize:15, lineHeight:1.7, marginBottom:18 }}>
+            Your eligibility has been checked successfully.<br />
+            Our executive will contact you shortly with the best loan offers for your car.
+          </p>
+          <div style={{ background:'#f0fdf4', borderRadius:12, padding:'14px 18px', marginBottom:18 }}>
+            <p style={{ color:'#15803d', fontSize:14, fontWeight:600 }}>
+              ✅ Application Received &bull; ⏱ Response within 24-48 hrs
+            </p>
+          </div>
+          <button
+            type="button"
+            className="cl-btn"
+            onClick={() => setSubmitted(false)}
+            style={{ maxWidth:220, margin:'0 auto' }}
+          >
+            Submit Another
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} noValidate>
+          <input type="hidden" name="utm_source" value={utm.utm_source} />
+          <input type="hidden" name="utm_medium" value={utm.utm_medium} />
+          <input type="hidden" name="utm_campaign" value={utm.utm_campaign} />
+          <input type="hidden" name="utm_term" value={utm.utm_term} />
+          <input type="hidden" name="utm_content" value={utm.utm_content} />
+          <div className={`cl-field${errors.pan ? ' invalid' : ''}`}>
+            <input type="text" name="pan" id="pan" value={form.pan} onChange={handleChange}
+              maxLength={10} placeholder=" " autoComplete="off" />
+            <label htmlFor="pan">Enter PAN No. of loan applicant</label>
+            {errors.pan && <small className="cl-error">{errors.pan}</small>}
+          </div>
+
+          <div className={`cl-field${errors.mobile ? ' invalid' : ''}`}>
+            <input type="tel" name="mobile" id="mobile" value={form.mobile} onChange={handleChange}
+              maxLength={10} placeholder=" " autoComplete="off" />
+            <label htmlFor="mobile">Enter mobile linked with applicant&apos;s PAN</label>
+            {errors.mobile && <small className="cl-error">{errors.mobile}</small>}
+          </div>
+
+          <div className={`cl-field${errors.vehicle ? ' invalid' : ''}`}>
+            <input type="text" name="vehicle" id="vehicle" value={form.vehicle} onChange={handleChange}
+              placeholder=" " autoComplete="off" />
+            <label htmlFor="vehicle">Enter vehicle registration number</label>
+            {errors.vehicle && <small className="cl-error">{errors.vehicle}</small>}
+          </div>
+
+          <div className={`cl-field${errors.income ? ' invalid' : ''}`}>
+            <input type="number" name="income" id="income" value={form.income} onChange={handleChange}
+              min={1} placeholder=" " autoComplete="off" />
+            <label htmlFor="income">Enter monthly income</label>
+            {errors.income && <small className="cl-error">{errors.income}</small>}
+          </div>
+
+          <div className={`cl-field${errors.occupation ? ' invalid' : ''}`}>
+            <select name="occupation" id="occupation" value={form.occupation} onChange={handleChange} required>
+              <option value="" disabled />
+              <option>Salaried</option>
+              <option>Self Employed</option>
+              <option>Business Owner</option>
+            </select>
+            <label htmlFor="occupation">Enter occupation</label>
+            {errors.occupation && <small className="cl-error">{errors.occupation}</small>}
+          </div>
+
+          <p className="cl-rating">⭐ 4.9 in Google Rating | 70,000 Happy customers</p>
+          <p className="cl-consent">
+            By submitting this form, you agree to the Privacy Policy &amp; Terms of Use
+          </p>
+
+          {apiError && (
+            <p style={{ color:'#e53935', fontSize:13, textAlign:'center', marginBottom:10, fontWeight:500 }}>
+              {apiError}
+            </p>
+          )}
+
+          <button type="submit" className="cl-btn" disabled={submitting}>
+            {submitting ? 'Submitting…' : 'Check Eligibility'}
+          </button>
+        </form>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -311,8 +415,28 @@ export default function CarLoanPage() {
             padding:12px 10px; font-size:12px; text-align:center;
           }
         }
+        .cl-embed-page{
+          min-height:100vh;
+          background:#f5f7fb;
+          padding:16px;
+          display:flex;
+          justify-content:center;
+          align-items:flex-start;
+        }
+        .cl-embed-page .cl-form-box{
+          width:100%;
+          max-width:520px;
+          margin:0;
+          box-shadow:0 8px 24px rgba(0,0,0,.08);
+        }
       ` }} />
 
+      {isEmbed ? (
+        <div className="cl-embed-page">
+          <div className="cl-form-box">{eligibilityForm}</div>
+        </div>
+      ) : (
+        <>
       <Navbar />
 
       <div className="cl-page">
@@ -334,94 +458,7 @@ export default function CarLoanPage() {
         </div>
 
         <div className="cl-form-box">
-          <h3>Check Eligibility</h3>
-
-          {submitted ? (
-            <div style={{ textAlign:'center', padding:'30px 20px' }}>
-              <div style={{ fontSize:56, marginBottom:12 }}>🎉</div>
-              <h3 style={{ color:'#16a34a', fontSize:22, fontWeight:700, marginBottom:10 }}>
-                Thank You!
-              </h3>
-              <p style={{ color:'#374151', fontSize:15, lineHeight:1.7, marginBottom:18 }}>
-                Your eligibility has been checked successfully.<br />
-                Our executive will contact you shortly with the best loan offers for your car.
-              </p>
-              <div style={{ background:'#f0fdf4', borderRadius:12, padding:'14px 18px', marginBottom:18 }}>
-                <p style={{ color:'#15803d', fontSize:14, fontWeight:600 }}>
-                  ✅ Application Received &bull; ⏱ Response within 24-48 hrs
-                </p>
-              </div>
-              <button
-                type="button"
-                className="cl-btn"
-                onClick={() => setSubmitted(false)}
-                style={{ maxWidth:220, margin:'0 auto' }}
-              >
-                Submit Another
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} noValidate>
-              <input type="hidden" name="utm_source" value={utm.utm_source} />
-              <input type="hidden" name="utm_medium" value={utm.utm_medium} />
-              <input type="hidden" name="utm_campaign" value={utm.utm_campaign} />
-              <input type="hidden" name="utm_term" value={utm.utm_term} />
-              <input type="hidden" name="utm_content" value={utm.utm_content} />
-              <div className={`cl-field${errors.pan ? ' invalid' : ''}`}>
-                <input type="text" name="pan" id="pan" value={form.pan} onChange={handleChange}
-                  maxLength={10} placeholder=" " autoComplete="off" />
-                <label htmlFor="pan">Enter PAN No. of loan applicant</label>
-                {errors.pan && <small className="cl-error">{errors.pan}</small>}
-              </div>
-
-              <div className={`cl-field${errors.mobile ? ' invalid' : ''}`}>
-                <input type="tel" name="mobile" id="mobile" value={form.mobile} onChange={handleChange}
-                  maxLength={10} placeholder=" " autoComplete="off" />
-                <label htmlFor="mobile">Enter mobile linked with applicant&apos;s PAN</label>
-                {errors.mobile && <small className="cl-error">{errors.mobile}</small>}
-              </div>
-
-              <div className={`cl-field${errors.vehicle ? ' invalid' : ''}`}>
-                <input type="text" name="vehicle" id="vehicle" value={form.vehicle} onChange={handleChange}
-                  placeholder=" " autoComplete="off" />
-                <label htmlFor="vehicle">Enter vehicle registration number</label>
-                {errors.vehicle && <small className="cl-error">{errors.vehicle}</small>}
-              </div>
-
-              <div className={`cl-field${errors.income ? ' invalid' : ''}`}>
-                <input type="number" name="income" id="income" value={form.income} onChange={handleChange}
-                  min={1} placeholder=" " autoComplete="off" />
-                <label htmlFor="income">Enter monthly income</label>
-                {errors.income && <small className="cl-error">{errors.income}</small>}
-              </div>
-
-              <div className={`cl-field${errors.occupation ? ' invalid' : ''}`}>
-                <select name="occupation" id="occupation" value={form.occupation} onChange={handleChange} required>
-                  <option value="" disabled />
-                  <option>Salaried</option>
-                  <option>Self Employed</option>
-                  <option>Business Owner</option>
-                </select>
-                <label htmlFor="occupation">Enter occupation</label>
-                {errors.occupation && <small className="cl-error">{errors.occupation}</small>}
-              </div>
-
-              <p className="cl-rating">⭐ 4.9 in Google Rating | 70,000 Happy customers</p>
-              <p className="cl-consent">
-                By submitting this form, you agree to the Privacy Policy &amp; Terms of Use
-              </p>
-
-              {apiError && (
-                <p style={{ color:'#e53935', fontSize:13, textAlign:'center', marginBottom:10, fontWeight:500 }}>
-                  {apiError}
-                </p>
-              )}
-
-              <button type="submit" className="cl-btn" disabled={submitting}>
-                {submitting ? 'Submitting…' : 'Check Eligibility'}
-              </button>
-            </form>
-          )}
+          {eligibilityForm}
         </div>
       </section>
 
@@ -576,6 +613,8 @@ export default function CarLoanPage() {
       </div>{/* end .cl-page */}
 
       <Footer />
+        </>
+      )}
     </>
   );
 }

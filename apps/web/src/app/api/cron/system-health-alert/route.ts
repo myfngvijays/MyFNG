@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendTextMessage } from '@/lib/services/whatsappService';
+import {
+  buildHealthAlertContent,
+  sendHealthAlertMessage,
+} from '@/lib/services/systemHealthAlertTemplate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -152,42 +155,21 @@ export async function GET(request: NextRequest) {
   const total = checks.length;
 
   const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-
-  let alertMessage: string;
-
-  if (downServices.length > 0) {
-    alertMessage =
-      `*MyFNG SYSTEM HEALTH REPORT*\n` +
-      `_${timestamp}_\n\n` +
-      `*Status: CRITICAL*\n` +
-      `${downServices.length} service(s) DOWN out of ${total}\n\n` +
-      `*DOWN Services:*\n` +
-      downServices.map((s, i) => `${i + 1}. ${s.name} — ${s.message}`).join('\n') +
-      (degradedServices.length > 0 ? `\n\n*Degraded:* ${degradedServices.map(s => s.name).join(', ')}` : '') +
-      `\n\n*Healthy:* ${healthyServices.length}/${total}` +
-      `\n\n_Next check in 3 hours_`;
-  } else if (degradedServices.length > 0) {
-    alertMessage =
-      `*MyFNG SYSTEM HEALTH REPORT*\n` +
-      `_${timestamp}_\n\n` +
-      `*Status: WARNING*\n` +
-      `${degradedServices.length} service(s) degraded\n\n` +
-      `*Degraded:* ${degradedServices.map(s => s.name).join(', ')}\n` +
-      `*Healthy:* ${healthyServices.length}/${total}` +
-      `\n\n_Next check in 3 hours_`;
-  } else {
-    alertMessage =
-      `*MyFNG SYSTEM HEALTH REPORT*\n` +
-      `_${timestamp}_\n\n` +
-      `*Status: ALL SYSTEMS OPERATIONAL*\n` +
-      `All ${total} services are healthy.\n\n` +
-      `_Next check in 3 hours_`;
-  }
+  const summary = {
+    timestamp,
+    total,
+    healthy: healthyServices.length,
+    degraded: degradedServices.length,
+    down: downServices.length,
+    downServices: downServices.map((service) => ({ name: service.name, message: service.message })),
+    degradedServices: degradedServices.map((service) => ({ name: service.name })),
+  };
+  const alertContent = buildHealthAlertContent(summary);
 
   const sendResults = [];
   for (const number of ADMIN_WHATSAPP_NUMBERS) {
-    const result = await sendTextMessage(number.trim(), alertMessage);
-    sendResults.push({ number: number.trim(), ...result });
+    const result = await sendHealthAlertMessage(number.trim(), summary);
+    sendResults.push({ number: number.trim(), ...result, preview: alertContent.statusLabel });
   }
 
   return NextResponse.json({

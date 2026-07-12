@@ -41,6 +41,10 @@ import type { ReferAndRiseHandle } from '../components/ReferAndRiseInline';
 import WalletScreenContent from '../components/WalletScreenContent';
 import { calculateWalletUsage, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules } from '../lib/wallet';
 import { apiFetch } from '../lib/api';
+import {
+  membershipAmountFromOrder,
+  notifyMembershipPaymentFailedOnServer,
+} from '../lib/whatsappAutomationClient';
 import { submitServiceBooking } from '../lib/serviceBooking';
 import {
   formatMembershipExpiry,
@@ -2133,6 +2137,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
     const wasGuestCheckout = membershipGuestCheckout;
     setMembershipActivating(true);
+    let membershipOrderRes: any = null;
     try {
       let primaryVehicleId: string | null = null;
       let secondVehicleId: string | null = null;
@@ -2184,6 +2189,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           second_vehicle_number: secondSnapshot?.vehicle_number || null,
         }),
       });
+      membershipOrderRes = orderRes;
 
       if (!orderRes?.order_id) {
         Alert.alert('Error', orderRes?.error || 'Could not create payment order. Please try again.');
@@ -2209,6 +2215,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           razorpay_order_id: paymentResult.razorpay_order_id,
           razorpay_signature: paymentResult.razorpay_signature,
           wallet_deduction: Number(orderRes?.wallet_deduction || 0),
+          amount_paid: membershipAmountFromOrder(orderRes),
         }),
       });
 
@@ -2232,6 +2239,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       setMembershipGuestCheckout(false);
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      void notifyMembershipPaymentFailedOnServer({
+        planId,
+        planName: plan?.name,
+        amountPaid: membershipAmountFromOrder(membershipOrderRes),
+        reason: cancelled ? 'cancelled' : 'failed',
+      });
       if (cancelled) {
         Alert.alert('Payment Cancelled', 'Membership upgrade was cancelled. No charges were made.');
       } else {
@@ -2916,6 +2929,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     }
 
     setCartBookingLoading(true);
+    let membershipOrderRes: any = null;
     try {
       const rawPrimary = allAssociatedVehicles.find(
         (v, idx) => getVehicleKey(v, idx) === selectedVehicleKey || v === selectedVehicle,
@@ -2958,6 +2972,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           second_vehicle_number: secondSnapshot?.vehicle_number || null,
         }),
       });
+      membershipOrderRes = orderRes;
 
       if (!orderRes?.order_id) {
         Alert.alert('Error', orderRes?.error || 'Could not create payment order. Please try again.');
@@ -2987,6 +3002,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           coupon_meta: orderRes?.coupon_meta || cartCouponResult?.coupon_meta || null,
           discount_amount: orderRes?.discount_amount || cartCouponResult?.discount_amount || 0,
           wallet_deduction: Number(orderRes?.wallet_deduction || 0),
+          amount_paid: membershipAmountFromOrder(orderRes),
         }),
       });
 
@@ -3013,6 +3029,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       setActiveSubPage('Membership');
     } catch (err: any) {
       const cancelled = err?.code === 'PAYMENT_CANCELLED' || err?.description?.includes('cancelled');
+      void notifyMembershipPaymentFailedOnServer({
+        planId,
+        planName: String(item?.service_type || 'MyFNG Prime'),
+        amountPaid: membershipAmountFromOrder(membershipOrderRes),
+        reason: cancelled ? 'cancelled' : 'failed',
+      });
       if (cancelled) {
         Alert.alert('Payment Cancelled', 'Membership purchase was cancelled. No charges were made.');
       } else {

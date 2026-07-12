@@ -139,7 +139,7 @@ export default function HomePage() {
     {
       id: 'm0',
       role: 'assistant',
-      text: `Hi! I'm MISA AI. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikhा dunga.\n\nAapko kis type ka issue aa raha hai?`,
+      text: `Hi! I'm MISA — MyFNG Instant Service Assistant. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikha dunga.\n\nAapko kis type ka issue aa raha hai?`,
     },
   ]);
 
@@ -2024,7 +2024,8 @@ export default function HomePage() {
                 </svg>
               </div>
               <div>
-                <p className="text-white font-bold text-sm">MISA AI</p>
+                <p className="text-white font-bold text-sm">MISA</p>
+                <p className="text-white/80 text-[10px]">MyFNG Instant Service Assistant</p>
                 <p className="text-white/70 text-xs">Your Car Care Assistant</p>
               </div>
             </div>
@@ -2034,7 +2035,7 @@ export default function HomePage() {
                 setIsChatOpen(false);
                 setShowPrimeInChat(false);
                 setShowOtherServices(false);
-                setChatMessages([{ id: 'm0', role: 'assistant', text: `Hi! I'm MISA AI. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikhा dunga.\n\nAapko kis type ka issue aa raha hai?` }]);
+                setChatMessages([{ id: 'm0', role: 'assistant', text: `Hi! I'm MISA — MyFNG Instant Service Assistant. Aap apni car problem simple words me batao - main Service/RSA suggest kar dunga aur approx price range dikha dunga.\n\nAapko kis type ka issue aa raha hai?` }]);
               }}
               className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all"
             >

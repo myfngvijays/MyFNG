@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { enrichBookingLead, filterBookingLeads } from '@/lib/booking-lead-utils';
+import { enrichBookingLead, filterBookingLeads, enrichLeadsServiceDisplay } from '@/lib/booking-lead-utils';
 import { getPostBookingMembershipConfig } from '@/lib/post-booking-membership-config';
 import { syncServiceLeadMembershipPricingForAdmin } from '@/lib/post-booking-membership-offer';
+import { exportServiceLeadsCsv } from '@/lib/admin-exports';
+import { applyReportDateRangeFilter } from '@/lib/report-date-range';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -55,12 +57,37 @@ export async function GET(request: NextRequest) {
     const source = String(searchParams.get('source') || 'ALL').trim().toUpperCase();
     const hasCoupon = String(searchParams.get('has_coupon') || 'ALL').trim().toUpperCase();
     const limit = Math.min(Number(searchParams.get('limit') || 500), 1000);
+    const exportCsv = searchParams.get('export') === '1';
+    const preset = String(searchParams.get('preset') || 'all_time');
+    const start = searchParams.get('start');
+    const end = searchParams.get('end');
+
+    if (exportCsv) {
+      const result = await exportServiceLeadsCsv(supabaseAdmin, {
+        search,
+        status,
+        source,
+        hasCoupon,
+        preset,
+        start,
+        end,
+      });
+      return new NextResponse(result.csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${result.filename}"`,
+        },
+      });
+    }
 
     let query = supabaseAdmin
       .from('service_leads')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(Number.isFinite(limit) && limit > 0 ? limit : 200);
+
+    query = applyReportDateRangeFilter(query, 'created_at', preset, start, end);
 
     if (status && status !== 'ALL') {
       query = query.eq('status', status);
@@ -97,34 +124,7 @@ export async function GET(request: NextRequest) {
       leads.map((lead) => syncServiceLeadMembershipPricingForAdmin(supabaseAdmin, lead, pbConfig)),
     );
 
-    const allServiceTypeIds = new Set<string>();
-    for (const lead of leads) {
-      if (Array.isArray(lead.service_type_ids)) {
-        lead.service_type_ids.forEach((id: string) => allServiceTypeIds.add(id));
-      }
-    }
-
-    const serviceNameMap: Record<string, string> = {};
-    if (allServiceTypeIds.size > 0) {
-      const { data: stRows } = await supabaseAdmin
-        .from('service_types')
-        .select('id, name')
-        .in('id', Array.from(allServiceTypeIds));
-      if (stRows) {
-        for (const row of stRows as any[]) {
-          serviceNameMap[row.id] = row.name;
-        }
-      }
-    }
-
-    for (const lead of leads) {
-      if ((!lead.service_type || lead.service_type === 'CAR_SERVICE') && Array.isArray(lead.service_type_ids) && lead.service_type_ids.length > 0) {
-        const names = lead.service_type_ids.map((id: string) => serviceNameMap[id]).filter(Boolean);
-        if (names.length > 0) {
-          lead.service_display = names.join(', ');
-        }
-      }
-    }
+    await enrichLeadsServiceDisplay(supabaseAdmin, leads);
 
     return NextResponse.json({
       leads,

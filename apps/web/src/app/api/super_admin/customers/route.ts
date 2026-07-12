@@ -5,6 +5,8 @@ import {
   fetchCustomerOverview,
   matchesPlatformFilter,
 } from '@/lib/customer-insights-admin';
+import { exportCustomersCsv } from '@/lib/admin-exports';
+import { applyReportDateRangeFilter } from '@/lib/report-date-range';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +59,29 @@ export async function GET(request: NextRequest) {
     const platform = String(searchParams.get('platform') || 'ALL').trim().toUpperCase();
     const page = Math.max(1, Number(searchParams.get('page') || 1));
     const limit = Math.min(Math.max(Number(searchParams.get('limit') || 40), 1), 100);
+    const exportCsv = searchParams.get('export') === '1';
+    const preset = String(searchParams.get('preset') || 'all_time');
+    const start = searchParams.get('start');
+    const end = searchParams.get('end');
+
+    if (exportCsv) {
+      const result = await exportCustomersCsv(supabaseAdmin, {
+        search,
+        filter,
+        platform,
+        preset,
+        start,
+        end,
+      });
+      return new NextResponse(result.csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${result.filename}"`,
+        },
+      });
+    }
+
     const filteredMode = filter !== 'ALL' || platform !== 'ALL';
     const fetchLimit = filteredMode ? 500 : limit;
     const offset = filteredMode ? 0 : (page - 1) * limit;
@@ -72,6 +97,8 @@ export async function GET(request: NextRequest) {
       },
       )
       .order('created_at', { ascending: false });
+
+    query = applyReportDateRangeFilter(query, 'created_at', preset, start, end);
 
     if (search) {
       query = query.or(

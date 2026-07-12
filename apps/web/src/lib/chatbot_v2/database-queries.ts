@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { filterWorkshopsForPincode } from '../whatsappBotFlow/workshopPincode';
 
 interface PricingParams {
   service: string;
@@ -66,23 +67,24 @@ export async function getWorkshops({ city, limit = 5 }: WorkshopParams) {
     const isPincode = /^\d{6}$/.test(city);
 
     if (isPincode) {
-      // Search for workshops that service this PIN code
       console.log(`[DB] Searching workshops by service PIN code: ${city}`);
 
       const { data, error } = await supabase
         .from('workshops')
-        .select('id, name, workshop_name, short_address, address, city, pincode, service_pincode, phone, working_time, map_link, near_area_google_map')
+        .select(
+          'id, name, workshop_name, short_address, address, city, pincode, service_pincode, mapping_pincodes, phone, working_time, map_link, near_area_google_map'
+        )
         .eq('is_verified', true)
-        .ilike('service_pincode', `%${city}%`)
-        .limit(limit);
+        .limit(Math.max(limit * 4, 40));
 
       if (error) {
         console.error('Error fetching workshops:', error);
         return [];
       }
 
-      console.log(`[DB] Found ${data?.length || 0} workshops for PIN ${city}`);
-      return (data || []).map((w: any) => ({ ...w, phone: DEFAULT_WORKSHOP_PHONE }));
+      const matched = filterWorkshopsForPincode(data || [], city).slice(0, limit);
+      console.log(`[DB] Found ${matched.length} workshops for PIN ${city}`);
+      return matched.map((w: any) => ({ ...w, phone: DEFAULT_WORKSHOP_PHONE }));
     }
 
     // Fuzzy city name match
@@ -451,16 +453,17 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
       console.log(`[DB] Found car: ${carMatches[0].make} ${carMatches[0].model_name} (${targetClass})`);
     }
 
-    // Step 2: Find workshops that service this PIN code
-    const { data: workshops, error: workshopError } = await supabase
+    // Step 2: Find workshops that service this PIN code (service_pincode + mapping_pincodes)
+    const { data: workshopCandidates, error: workshopError } = await supabase
       .from('workshops')
-      .select('id, name, pincode, service_pincode')
-      .eq('is_verified', true)
-      .ilike('service_pincode', `%${pincode}%`);
+      .select('id, name, pincode, service_pincode, mapping_pincodes, city')
+      .eq('is_verified', true);
     if (workshopError) {
       console.error('[DB] Error fetching workshops:', workshopError);
       return [];
     }
+
+    const workshops = filterWorkshopsForPincode(workshopCandidates || [], pincode);
 
     if (!workshops || workshops.length === 0) {
       console.log(`[DB] No workshops service PIN code ${pincode}`);
@@ -579,12 +582,33 @@ export async function getCityByPincode(pincode: string) {
       .ilike('city_pincodes', `%${pincode}%`)
       .eq('is_active', true)
       .limit(1)
-      .single();
+      .maybeSingle();
+    if (data) return data;
+
     if (error) {
       console.warn(`[DB] No city found for PIN ${pincode}:`, error.message);
-      return null;
     }
-    return data || null; // Returns { id, name }
+
+    const { data: workshopCandidates } = await supabase
+      .from('workshops')
+      .select('id, city, service_pincode, mapping_pincodes')
+      .eq('is_verified', true);
+
+    const matchedWorkshop = filterWorkshopsForPincode(workshopCandidates || [], pincode)[0];
+    if (!matchedWorkshop?.city) return null;
+
+    const cityName = String(matchedWorkshop.city || '').trim();
+    const { data: cityByWorkshop } = await supabase
+      .from('cities')
+      .select('id, name')
+      .ilike('name', `%${cityName}%`)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (cityByWorkshop) return cityByWorkshop;
+
+    return { id: null, name: cityName };
   } catch (err) {
     console.error('Unexpected error in getCityByPincode:', err);
     return null;

@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import {
   SMART_TOOLS,
   SMART_TOOL_WEB_URLS,
+  smartToolWebUrl,
   type SmartToolId,
   type SmartToolItem,
 } from '../constants/smartTools';
@@ -234,7 +235,7 @@ export function navigateToSmartTool(
   if (tool.webUrl || tool.screen === 'SmartToolWeb') {
     navigation.navigate('SmartToolWeb', {
       title: tool.title,
-      url: tool.webUrl || SMART_TOOL_WEB_URLS[tool.id],
+      url: smartToolWebUrl(tool.id, tool.webUrl || SMART_TOOL_WEB_URLS[tool.id]),
       useLocation: tool.id === 'parking_finder',
       city: opts.city,
     });

@@ -2,6 +2,11 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { processWhatsAppBrainMessage } from '@/lib/whatsappBotFlow/brain';
+import {
+  extractInboundBrainText,
+  isBrainEligibleInboundType,
+} from '@/lib/whatsappBotFlow/inboundMessage';
 
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
@@ -271,12 +276,14 @@ export async function POST(request: NextRequest) {
         const contactProfile = contacts.find((c: any) => c?.wa_id === inbound?.from);
         const profileName = contactProfile?.profile?.name || null;
 
+        const brainText = extractInboundBrainText(inbound);
         const textBody =
-          messageType === 'text'
+          brainText ||
+          (messageType === 'text'
             ? inbound?.text?.body || null
             : messageType === 'button'
-            ? JSON.stringify(inbound?.button || {})
-            : null;
+              ? JSON.stringify(inbound?.button || {})
+              : null);
 
         const mediaObj = (inbound as any)?.[messageType] || null;
         const mediaId =
@@ -325,6 +332,20 @@ export async function POST(request: NextRequest) {
         }
 
         inboundCount += 1;
+
+        if (senderPhone && brainText && isBrainEligibleInboundType(messageType)) {
+          void processWhatsAppBrainMessage({
+            phone: senderPhone,
+            message: brainText,
+            profileName,
+            inboundReceivedAt: statusAt || now,
+          }).catch((brainError) => {
+            console.error('WhatsApp AI brain auto-reply failed:', {
+              senderPhone,
+              error: brainError?.message || brainError,
+            });
+          });
+        }
       }
 
       const statuses: WhatsAppStatus[] = Array.isArray(change?.value?.statuses) ? change.value.statuses : [];

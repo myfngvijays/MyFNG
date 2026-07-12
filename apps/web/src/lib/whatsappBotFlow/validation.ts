@@ -16,6 +16,11 @@ export type BotFlowNode = {
     templateName?: string;
     templateVariableCount?: number;
     templateParamsMapping?: string[];
+    messageBody?: string;
+    text?: string;
+    condition?: string;
+    handoffNote?: string;
+    nodeType?: string;
     mustTerminate?: boolean;
     [key: string]: unknown;
   };

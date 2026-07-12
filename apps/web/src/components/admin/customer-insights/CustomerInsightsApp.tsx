@@ -26,6 +26,9 @@ import {
   customerAccountStatusLabel,
   type CustomerAccountStatus,
 } from '@/lib/customer-account-admin';
+import ExportDateRangeMenu from '@/components/admin/ExportDateRangeMenu';
+import { getLeadServiceLabel, getLeadVehicleLabel, getLeadPricingBreakdown } from '@/lib/booking-lead-utils';
+import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
 
 type Overview = {
   total_customers: number;
@@ -57,6 +60,7 @@ type CustomerRow = {
   coupon_redeemed_count: number;
   has_membership: boolean;
   membership_plan?: string | null;
+  membership_plan_code?: string | null;
   membership_type?: string | null;
   is_app_user: boolean;
   app_platform?: AppPlatform;
@@ -83,6 +87,30 @@ function fmtDate(value?: string | null) {
 function toDateTimeLocalValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function isPrimeMembership(customer?: {
+  membership_type?: string | null;
+  membership_plan?: string | null;
+  membership_plan_code?: string | null;
+} | null) {
+  if (!customer) return false;
+  const parts = [
+    customer.membership_type,
+    customer.membership_plan,
+    customer.membership_plan_code,
+  ]
+    .map((v) => String(v || '').trim().toUpperCase())
+    .filter(Boolean);
+  return parts.some((v) => v.includes('PRIME'));
+}
+
+function membershipCrownClass(customer?: {
+  membership_type?: string | null;
+  membership_plan?: string | null;
+  membership_plan_code?: string | null;
+} | null) {
+  return isPrimeMembership(customer) ? 'text-violet-600' : 'text-amber-500';
 }
 
 function buildDefaultActivateDates(plan?: { duration_days?: number | null }) {
@@ -150,6 +178,9 @@ export default function CustomerInsightsApp() {
   const [walletCreditNote, setWalletCreditNote] = useState('');
   const [walletCreditLoading, setWalletCreditLoading] = useState(false);
   const [walletCreditMessage, setWalletCreditMessage] = useState<string | null>(null);
+  const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
   const reloadDetail = useCallback(async (customerId: string) => {
     const res = await fetch(`/api/super_admin/customers/${customerId}`);
@@ -168,7 +199,12 @@ export default function CustomerInsightsApp() {
         limit: '40',
         filter,
         platform,
+        preset: datePreset,
       });
+      if (datePreset === 'custom') {
+        if (customStart) params.set('start', customStart);
+        if (customEnd) params.set('end', customEnd);
+      }
       if (search.trim()) params.set('search', search.trim());
 
       const res = await fetch(`/api/super_admin/customers?${params.toString()}`);
@@ -184,7 +220,7 @@ export default function CustomerInsightsApp() {
     } finally {
       setLoading(false);
     }
-  }, [filter, page, platform, search]);
+  }, [customEnd, customStart, datePreset, filter, page, platform, search]);
 
   useEffect(() => {
     fetchList();
@@ -485,6 +521,39 @@ export default function CustomerInsightsApp() {
 
   const totalPages = Math.max(1, Math.ceil(total / 40));
 
+  const rangeLabel = useMemo(
+    () => resolveReportDateRange(datePreset, customStart, customEnd).label,
+    [customEnd, customStart, datePreset],
+  );
+
+  const handleExport = async () => {
+    setError(null);
+    try {
+      const params = new URLSearchParams({ export: '1', preset: datePreset, filter, platform });
+      if (datePreset === 'custom') {
+        if (customStart) params.set('start', customStart);
+        if (customEnd) params.set('end', customEnd);
+      }
+      if (search.trim()) params.set('search', search.trim());
+
+      const res = await fetch(`/api/super_admin/customers?${params.toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'Export failed');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `app-customers-${datePreset}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e?.message || 'Export failed');
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -497,14 +566,29 @@ export default function CustomerInsightsApp() {
             App install users — service bookings, coupons, wallet, membership &amp; benefit usage
           </p>
         </div>
-        <button
-          type="button"
-          onClick={fetchList}
-          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportDateRangeMenu
+            preset={datePreset}
+            customStart={customStart}
+            customEnd={customEnd}
+            onRangeChange={({ preset, customStart: start, customEnd: end }) => {
+              setDatePreset(preset);
+              setCustomStart(start);
+              setCustomEnd(end);
+              setPage(1);
+            }}
+            onExport={handleExport}
+            disabled={loading}
+          />
+          <button
+            type="button"
+            onClick={fetchList}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {overview ? (
@@ -514,7 +598,12 @@ export default function CustomerInsightsApp() {
           <StatCard label="iOS" value={overview.ios_users} icon={<Smartphone className="h-5 w-5" />} />
           <StatCard label="Unknown Platform" value={overview.unknown_platform_users} icon={<Smartphone className="h-5 w-5" />} />
           <StatCard label="Service Bookings" value={overview.total_service_bookings} icon={<ClipboardList className="h-5 w-5" />} />
-          <StatCard label="Coupon Bookings" value={overview.bookings_with_coupon} icon={<Ticket className="h-5 w-5" />} />
+          <StatCard
+            label="Coupon Bookings"
+            value={overview.bookings_with_coupon}
+            sub={`${overview.coupon_redemptions} redeemed · ${overview.open_coupon_assignments} open`}
+            icon={<Ticket className="h-5 w-5" />}
+          />
           <StatCard label="Active Memberships" value={overview.active_memberships} icon={<Crown className="h-5 w-5" />} />
           <StatCard
             label="Wallet Users"
@@ -522,6 +611,18 @@ export default function CustomerInsightsApp() {
             sub={`Total ${inr(overview.total_wallet_balance)}`}
             icon={<Wallet className="h-5 w-5" />}
           />
+        </div>
+      ) : null}
+
+      {datePreset !== 'all_time' ? (
+        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
+          Showing customers who joined in <strong>{rangeLabel}</strong>
+          {total > 0 ? (
+            <>
+              {' '}
+              · <strong>{total}</strong> matched
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -601,6 +702,7 @@ export default function CustomerInsightsApp() {
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Customer</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Platform</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Joined</th>
+                    <th className="px-4 py-3 text-left font-bold text-gray-600">Last Login</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Bookings</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Wallet</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Membership</th>
@@ -610,13 +712,13 @@ export default function CustomerInsightsApp() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                         Loading customers...
                       </td>
                     </tr>
                   ) : customers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                         No customers found
                       </td>
                     </tr>
@@ -633,8 +735,17 @@ export default function CustomerInsightsApp() {
                         }}
                       >
                         <td className="px-4 py-3">
-                          <div className="font-bold text-gray-900">{c.full_name || 'Unnamed'}</div>
+                          <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                            <span>{c.full_name || 'Unnamed'}</span>
+                            {c.has_membership ? (
+                              <Crown
+                                className={`h-3.5 w-3.5 shrink-0 ${membershipCrownClass(c)}`}
+                                title={c.membership_plan || 'Member'}
+                              />
+                            ) : null}
+                          </div>
                           <div className="text-xs text-gray-500">{c.phone}</div>
+                          {c.email ? <div className="text-[11px] text-gray-400 truncate max-w-[180px]">{c.email}</div> : null}
                           {c.account_status && c.account_status !== 'ACTIVE' ? (
                             <span
                               className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${customerAccountStatusBadgeClass(c.account_status)}`}
@@ -651,6 +762,7 @@ export default function CustomerInsightsApp() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(c.created_at)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(c.last_login_at)}</td>
                         <td className="px-4 py-3">
                           <span className="font-semibold">{c.bookings_count}</span>
                           {c.coupon_bookings_count > 0 ? (
@@ -660,7 +772,14 @@ export default function CustomerInsightsApp() {
                         <td className="px-4 py-3 font-semibold text-blue-700">{inr(c.wallet_balance)}</td>
                         <td className="px-4 py-3">
                           {c.has_membership ? (
-                            <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${
+                                isPrimeMembership(c)
+                                  ? 'bg-violet-100 text-violet-700'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              <Crown className={`h-3 w-3 ${membershipCrownClass(c)}`} />
                               {c.membership_plan || 'Active'}
                             </span>
                           ) : (
@@ -709,8 +828,26 @@ export default function CustomerInsightsApp() {
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm sticky top-4 max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
               <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-4">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">
-                    {selectedCustomer?.full_name || detail?.customer?.full_name || 'Customer'}
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <span>{selectedCustomer?.full_name || detail?.customer?.full_name || 'Customer'}</span>
+                    {(selectedCustomer?.has_membership || detail?.memberships?.some((m: any) => m.status === 'ACTIVE')) ? (
+                      <Crown
+                        className={`h-4 w-4 shrink-0 ${membershipCrownClass({
+                          membership_type:
+                            selectedCustomer?.membership_type ||
+                            detail?.memberships?.[0]?.plan?.membership_type,
+                          membership_plan:
+                            selectedCustomer?.membership_plan || detail?.memberships?.[0]?.plan?.name,
+                          membership_plan_code:
+                            selectedCustomer?.membership_plan_code || detail?.memberships?.[0]?.plan?.code,
+                        })}`}
+                        title={
+                          selectedCustomer?.membership_plan ||
+                          detail?.memberships?.[0]?.plan?.name ||
+                          'Member'
+                        }
+                      />
+                    ) : null}
                   </h2>
                   <p className="text-sm text-gray-500">{selectedCustomer?.phone || detail?.customer?.phone}</p>
                 </div>
@@ -906,16 +1043,72 @@ export default function CustomerInsightsApp() {
                     {(detail.service_bookings || []).length === 0 ? (
                       <p className="text-sm text-gray-400">No service bookings</p>
                     ) : (
-                      detail.service_bookings.map((b: any) => (
+                      detail.service_bookings.map((b: any) => {
+                        const serviceLabel = getLeadServiceLabel(b);
+                        const vehicleLabel = b.vehicle_display || getLeadVehicleLabel(b);
+                        const pricing = getLeadPricingBreakdown(b, {
+                          walletTxAmount: b.wallet_used,
+                          walletTxPercent: b.wallet_usage_percent,
+                          payableOverride: b.payment_amount,
+                        });
+                        const reg =
+                          b.vehicle_number && String(b.vehicle_number).trim().toUpperCase() !== 'NA'
+                            ? String(b.vehicle_number).trim()
+                            : null;
+                        return (
                         <div key={b.id} className="rounded-xl border p-3 text-sm">
                           <div className="flex justify-between gap-2">
                             <span className="font-bold">{b.lead_number || 'Lead'}</span>
                             <span className="text-xs rounded-full bg-gray-100 px-2 py-0.5">{b.status}</span>
                           </div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            {b.service_type || b.service_display || 'Service'} · {b.city || '—'}
+                          <div className="font-semibold text-gray-900 mt-1">{serviceLabel}</div>
+                          {vehicleLabel || reg ? (
+                            <div className="mt-2 flex items-start gap-2 text-xs text-gray-700">
+                              <Car className="h-3.5 w-3.5 text-gray-400 shrink-0 mt-0.5" />
+                              <div>
+                                {vehicleLabel ? <div className="font-semibold">{vehicleLabel}</div> : null}
+                                {reg ? <div className="text-gray-500">{reg}</div> : null}
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 mt-2">
+                            {b.city ? <div><span className="text-gray-400">City:</span> {b.city}</div> : null}
+                            {b.booking_source_label ? <div><span className="text-gray-400">Source:</span> {b.booking_source_label}</div> : null}
                           </div>
-                          <div className="text-xs text-gray-500 mt-1">{fmtDate(b.created_at)} · {b.booking_source_label}</div>
+                          {pricing.original > 0 || pricing.payable > 0 ? (
+                            <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-2.5 space-y-1 text-xs">
+                              {pricing.original > 0 ? (
+                                <div className="flex justify-between gap-3">
+                                  <span className="text-gray-500">Original amount</span>
+                                  <span className="font-semibold text-gray-800">{inr(pricing.original)}</span>
+                                </div>
+                              ) : null}
+                              {pricing.walletUsed > 0 ? (
+                                <div className="flex justify-between gap-3 text-blue-700">
+                                  <span>
+                                    Wallet used
+                                    {b.wallet_usage_percent
+                                      ? ` (${b.wallet_usage_percent}%)`
+                                      : pricing.walletUsagePercent
+                                        ? ` (${pricing.walletUsagePercent}%)`
+                                        : ''}
+                                  </span>
+                                  <span className="font-semibold">−{inr(pricing.walletUsed)}</span>
+                                </div>
+                              ) : null}
+                              {pricing.couponDiscount > 0 ? (
+                                <div className="flex justify-between gap-3 text-emerald-700">
+                                  <span>Coupon discount</span>
+                                  <span className="font-semibold">−{inr(pricing.couponDiscount)}</span>
+                                </div>
+                              ) : null}
+                              <div className="flex justify-between gap-3 border-t border-gray-200 pt-1.5 mt-1">
+                                <span className="font-bold text-gray-700">Payable</span>
+                                <span className="font-extrabold text-emerald-700">{inr(pricing.payable)}</span>
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="text-xs text-gray-500 mt-2">{fmtDate(b.created_at)}</div>
                           {b.coupon_display_code ? (
                             <div className="mt-2 text-xs font-bold text-emerald-700">
                               Coupon: {b.coupon_display_code}
@@ -923,7 +1116,7 @@ export default function CustomerInsightsApp() {
                             </div>
                           ) : null}
                         </div>
-                      ))
+                      );})
                     )}
 
                     {(detail.chatbot_bookings || []).length > 0 ? (
@@ -932,8 +1125,11 @@ export default function CustomerInsightsApp() {
                         {detail.chatbot_bookings.map((b: any) => (
                           <div key={b.id} className="rounded-xl border border-dashed p-3 text-sm">
                             <div className="font-bold">{b.service_name || 'Chatbot booking'}</div>
-                            <div className="text-xs text-gray-500">{b.car_model} · {b.city}</div>
-                            <div className="text-xs text-gray-400 mt-1">{fmtDate(b.created_at)}</div>
+                            <div className="text-xs text-gray-600 mt-1">{b.car_model || '—'} · {b.city || '—'}</div>
+                            {b.quoted_price ? (
+                              <div className="text-xs font-bold text-emerald-700 mt-1">{inr(Number(b.quoted_price))}</div>
+                            ) : null}
+                            <div className="text-xs text-gray-400 mt-1">{fmtDate(b.created_at)} · {b.status || '—'}</div>
                           </div>
                         ))}
                       </>
