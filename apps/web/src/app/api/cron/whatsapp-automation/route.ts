@@ -5,6 +5,7 @@ import {
   runMembershipExpiringReminderJob,
   runServiceDueReminderJob,
 } from '@/lib/services/whatsappAutomationJobs';
+import { runAppUninstallProbeJob } from '@/lib/services/appUninstallDetection';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,6 +50,9 @@ export async function GET(request: NextRequest) {
   }
   if (job === 'all' || job === 'membership-expiring') {
     results.membershipExpiring = await runMembershipExpiringReminderJob();
+  }
+  if (job === 'all' || job === 'app-uninstall-probe') {
+    results.appUninstallProbe = await runAppUninstallProbeJob();
   }
 
   return NextResponse.json({

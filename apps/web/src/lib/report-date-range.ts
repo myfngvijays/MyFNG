@@ -68,6 +68,23 @@ function addDaysYmd(ymd: string, delta: number) {
   return istYmd(shifted);
 }
 
+export function enumerateYmdRange(startYmd: string, endYmd: string): string[] {
+  const start = String(startYmd || '').slice(0, 10);
+  const end = String(endYmd || '').slice(0, 10);
+  if (!start || !end) return [];
+
+  const dates: string[] = [];
+  let cursor = start <= end ? start : end;
+  const last = start <= end ? end : start;
+
+  while (cursor <= last) {
+    dates.push(cursor);
+    cursor = addDaysYmd(cursor, 1);
+  }
+
+  return dates;
+}
+
 export function resolveReportDateRange(
   preset: string,
   customStart?: string | null,

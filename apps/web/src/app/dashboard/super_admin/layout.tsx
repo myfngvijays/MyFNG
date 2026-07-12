@@ -412,6 +412,12 @@ const navigationItems: NavItem[] = [
         description: 'Delivery & messaging overview',
       },
       {
+        name: 'Message Logs',
+        href: '/dashboard/super_admin/whatsapp-messages',
+        icon: ClipboardList,
+        description: 'Outbound messages, failures & export',
+      },
+      {
         name: 'WhatsApp Message',
         href: '/dashboard/super_admin/whatsapp-chat',
         icon: MessageSquare,

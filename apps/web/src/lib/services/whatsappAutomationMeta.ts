@@ -25,6 +25,8 @@ export const WHATSAPP_AUTOMATION_TEMPLATE_EXAMPLES: Record<WhatsAppAutomationTri
   admin_daily_summary: ['13 Jul 2026', '24', '3', '45000', '5', '1'],
   service_due_reminder: ['Rahul Sharma', 'Honda City', 'MH01AB1234', '12 Jan 2026'],
   membership_expiring: ['Rahul Sharma', '31 Jul 2026'],
+  account_deleted: ['Rahul Sharma'],
+  app_uninstalled: ['Rahul Sharma'],
 };
 
 async function resolveMembershipPrimePrice(): Promise<number> {
@@ -174,8 +176,17 @@ async function upsertLocalTemplateFromSetting(
   actorId?: string,
   createResponse?: Record<string, unknown>
 ) {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) throw new Error('Supabase admin client is not available');
+
   const metaStatus = String(verified?.status || 'PENDING').toUpperCase();
   const exampleValues = await getAutomationTemplateExamples(setting.trigger_key as WhatsAppAutomationTriggerKey);
+
+  const { data: existingTemplate } = await supabaseAdmin
+    .from('whatsapp_templates')
+    .select('is_active')
+    .eq('template_name', setting.template_name)
+    .maybeSingle();
 
   const row = {
     template_name: setting.template_name,
@@ -185,7 +196,10 @@ async function upsertLocalTemplateFromSetting(
     body_text: setting.template_body,
     variable_keys: setting.variable_keys,
     example_values: exampleValues,
-    is_active: metaStatus === 'APPROVED',
+    is_active:
+      existingTemplate?.is_active !== undefined && existingTemplate?.is_active !== null
+        ? Boolean(existingTemplate.is_active)
+        : metaStatus === 'APPROVED',
     meta: {
       source: 'whatsapp_automation',
       trigger_key: setting.trigger_key,
@@ -203,9 +217,6 @@ async function upsertLocalTemplateFromSetting(
     ...(actorId ? { created_by: actorId } : {}),
   };
 
-  const { supabaseAdmin } = getSupabaseAdmin();
-  if (!supabaseAdmin) throw new Error('Supabase admin client is not available');
-
   const { error } = await supabaseAdmin.from('whatsapp_templates').upsert(row, { onConflict: 'template_name' });
   if (error) throw new Error(error.message || 'Failed to save template locally');
 
@@ -219,6 +230,40 @@ async function upsertLocalTemplateFromSetting(
   };
 }
 
+function countTemplateVariables(templateBody: string): number {
+  const matches = templateBody.match(/\{\{\d+\}\}/g) || [];
+  const indices = matches.map((token) => Number(token.replace(/[{}]/g, '')));
+  return indices.length ? Math.max(...indices) : 0;
+}
+
+function buildExampleValuesForTemplate(
+  triggerKey: WhatsAppAutomationTriggerKey,
+  templateBody: string,
+  examples: string[]
+): string[] {
+  const count = countTemplateVariables(templateBody);
+  if (count <= 0) return [];
+
+  const values = [...examples];
+  while (values.length < count) {
+    values.push(`sample_${values.length + 1}`);
+  }
+  return values.slice(0, count);
+}
+
+function formatMetaApiError(metaResult: Record<string, unknown>): string {
+  const err = (metaResult?.error || {}) as Record<string, unknown>;
+  const parts = [
+    err.error_user_msg,
+    err.error_user_title,
+    err.message,
+    err.error_subcode ? `subcode ${err.error_subcode}` : null,
+  ]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+  return parts.join(' — ') || 'Failed to create template on Meta';
+}
+
 export async function createAutomationTemplateFromSetting(
   triggerKey: WhatsAppAutomationTriggerKey,
   actorId?: string
@@ -228,6 +273,12 @@ export async function createAutomationTemplateFromSetting(
 
   const existing = await verifyTemplateOnMeta(setting.template_name).catch(() => null);
   if (existing) {
+    const existingStatus = String(existing?.status || '').toUpperCase();
+    if (existingStatus === 'REJECTED') {
+      throw new Error(
+        `Meta rejected template "${setting.template_name}". Run database/262_goodbye_templates_meta_utility.sql for a new template name, refresh this page, then submit again.`
+      );
+    }
     return syncAutomationTemplateFromSetting(triggerKey, actorId);
   }
 
@@ -235,7 +286,12 @@ export async function createAutomationTemplateFromSetting(
     throw new Error('WhatsApp API credentials are not configured');
   }
 
-  const exampleValues = await getAutomationTemplateExamples(triggerKey);
+  const rawExamples = await getAutomationTemplateExamples(triggerKey);
+  const exampleValues = buildExampleValuesForTemplate(
+    triggerKey,
+    setting.template_body,
+    rawExamples
+  );
 
   const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates`, {
     method: 'POST',
@@ -262,10 +318,7 @@ export async function createAutomationTemplateFromSetting(
 
   const metaResult = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const msg =
-      String(metaResult?.error?.error_user_msg || metaResult?.error?.message || '').trim() ||
-      'Failed to create template on Meta';
-    throw new Error(msg);
+    throw new Error(formatMetaApiError(metaResult as Record<string, unknown>));
   }
 
   try {

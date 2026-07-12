@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { deactivateFcmTokens, sendFcmPush } from '@/lib/push/fcmPush';
+import { deactivateInvalidFcmTokensAndDetectUninstall } from '@/lib/services/appUninstallDetection';
 import { formatFcmAdminErrorMessage } from '@/lib/push/fcmErrorMessages';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
 import { assertPushAdmin } from '@/lib/push/admin-auth';
@@ -541,7 +542,7 @@ export async function POST(request: NextRequest) {
         platformStats[os].failed += delivery.platformStats[os].failed;
       }
       if (delivery.invalidTokens.length) {
-        await deactivateFcmTokens(supabaseAdmin, delivery.invalidTokens);
+        await deactivateInvalidFcmTokensAndDetectUninstall(supabaseAdmin, delivery.invalidTokens);
       }
     }
 

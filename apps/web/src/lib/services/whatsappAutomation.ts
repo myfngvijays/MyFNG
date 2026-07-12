@@ -10,6 +10,8 @@ export const WHATSAPP_AUTOMATION_TRIGGER_KEYS = [
   'admin_daily_summary',
   'service_due_reminder',
   'membership_expiring',
+  'account_deleted',
+  'app_uninstalled',
 ] as const;
 
 export type WhatsAppAutomationTriggerKey = (typeof WHATSAPP_AUTOMATION_TRIGGER_KEYS)[number];
@@ -95,6 +97,9 @@ export async function isAutomationTemplateApproved(templateName: string): Promis
     .maybeSingle();
 
   if (!data) return false;
+
+  if ((data as { is_active?: boolean }).is_active === false) return false;
+
   const metaStatus = String((data as { meta?: { status?: string } }).meta?.status || '').toUpperCase();
   const approved = Boolean((data as { is_active?: boolean }).is_active) || metaStatus === 'APPROVED';
   if (!approved) return false;

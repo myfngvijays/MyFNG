@@ -164,6 +164,33 @@ export async function POST() {
 
     const metaTemplateNames = new Set(normalizedRows.map((r) => r.template_name));
 
+    // Preserve admin toggle (is_active) when re-syncing existing templates from Meta.
+    const existingActiveByName = new Map<string, boolean>();
+    if (normalizedRows.length > 0) {
+      const { data: existingRows } = await adminDb
+        .from('whatsapp_templates')
+        .select('template_name, is_active')
+        .in(
+          'template_name',
+          normalizedRows.map((row) => row.template_name)
+        );
+
+      for (const row of existingRows || []) {
+        const name = String((row as { template_name?: string }).template_name || '')
+          .trim()
+          .toLowerCase();
+        if (!name) continue;
+        existingActiveByName.set(name, Boolean((row as { is_active?: boolean }).is_active));
+      }
+    }
+
+    const rowsToUpsert = normalizedRows.map((row) => ({
+      ...row,
+      is_active: existingActiveByName.has(row.template_name)
+        ? existingActiveByName.get(row.template_name)!
+        : row.is_active,
+    }));
+
     if (normalizedRows.length === 0) {
       // No templates on Meta — delete all local templates
       const { data: allLocal } = await adminDb
@@ -184,7 +211,7 @@ export async function POST() {
 
     const { error } = await adminDb
       .from('whatsapp_templates')
-      .upsert(normalizedRows, { onConflict: 'template_name' });
+      .upsert(rowsToUpsert, { onConflict: 'template_name' });
 
     if (error) {
       return NextResponse.json({ error: error.message || 'Failed to sync templates' }, { status: 500 });
@@ -212,9 +239,9 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       fetched: metaTemplates.length,
-      synced: normalizedRows.length,
+      synced: rowsToUpsert.length,
       deleted: deletedCount,
-      message: `Synced ${normalizedRows.length} templates from Meta.${deletedCount > 0 ? ` Deleted ${deletedCount} stale templates.` : ''}`,
+      message: `Synced ${rowsToUpsert.length} templates from Meta.${deletedCount > 0 ? ` Deleted ${deletedCount} stale templates.` : ''}`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

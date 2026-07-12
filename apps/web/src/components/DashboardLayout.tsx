@@ -621,6 +621,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           children: [
             { href: '/dashboard/super_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
             { href: '/dashboard/super_admin/whatsapp-dashboard', icon: <BarChart3 className="w-5 h-5" />, label: 'WhatsApp Dashboard' },
+            { href: '/dashboard/super_admin/whatsapp-messages', icon: <ClipboardList className="w-5 h-5" />, label: 'Message Logs' },
             { href: '/dashboard/super_admin/bot-flow', icon: <Activity className="w-5 h-5" />, label: 'Bot Flow' },
           ],
         },

@@ -7,6 +7,7 @@ import {
   WHATSAPP_AUTOMATION_TRIGGER_KEYS,
 } from '@/lib/services/whatsappAutomation';
 import {
+  createAutomationTemplateFromSetting,
   getAutomationTemplateExamples,
   getAutomationTemplateStatus,
   setAutomationTriggerEnabled,

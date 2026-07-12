@@ -1,7 +1,8 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { MOBILE_PUSH_PLATFORM } from '@/lib/push/constants';
-import { deactivateFcmTokens, sendFcmPush } from '@/lib/push/fcmPush';
+import { sendFcmPush } from '@/lib/push/fcmPush';
+import { deactivateInvalidFcmTokensAndDetectUninstall } from '@/lib/services/appUninstallDetection';
 
 type CustomerPushPayload = {
   title: string;
@@ -76,7 +77,7 @@ export async function dispatchPushToCustomer(
     );
 
     if (delivery.invalidTokens.length) {
-      await deactivateFcmTokens(supabaseAdmin, delivery.invalidTokens);
+      await deactivateInvalidFcmTokensAndDetectUninstall(supabaseAdmin, delivery.invalidTokens);
     }
 
     return { attempted: delivery.attempted, delivered: delivery.delivered };

@@ -23,6 +23,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getCustomerFromSession, getSessionCookieName } from '@/lib/customer-session';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { notifyAccountDeletedWhatsApp } from '@/lib/services/accountDeletedWhatsApp';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,8 @@ export async function POST() {
   }
 
   const customerId = customer.id;
+  const originalPhone = String(customer.phone || '').trim();
+  const originalName = String(customer.full_name || 'Customer').trim();
   const shortId = customerId.replace(/-/g, '').substring(0, 12);
   const anonymizedPhone = `del_${shortId}`;
   const anonymizedEmail = `deleted_${customerId}@deleted.invalid`;
@@ -65,6 +68,14 @@ export async function POST() {
     );
   }
 
+  void notifyAccountDeletedWhatsApp({
+    customerId,
+    phone: originalPhone,
+    customerName: originalName,
+  }).catch((error) => {
+    console.warn('[delete-account] WhatsApp notify failed:', error?.message || error);
+  });
+
   // 2. Best-effort cleanup of auxiliary user-controlled tables.
   //    Errors here are not fatal — primary anonymization above already satisfies the policy.
   const cleanupTables: Array<{ table: string; column: string }> = [
@@ -72,6 +83,7 @@ export async function POST() {
     { table: 'customer_carts', column: 'customer_id' },
     { table: 'customer_addresses', column: 'customer_id' },
     { table: 'customer_vehicles', column: 'customer_id' },
+    { table: 'booking_drafts', column: 'customer_id' },
     { table: 'notification_devices', column: 'customer_id' },
     { table: 'customer_notification_preferences', column: 'customer_id' },
   ];

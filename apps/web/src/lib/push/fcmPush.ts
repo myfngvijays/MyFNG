@@ -12,6 +12,8 @@ export type FcmPushMessage = {
   priority?: 'default' | 'high';
   imageUrl?: string;
   os?: FcmDeviceOs;
+  /** Data-only ping — used for silent uninstall token probes */
+  dataOnly?: boolean;
 };
 
 export type FcmPlatformDeliveryStats = {
@@ -81,42 +83,63 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
   for (let i = 0; i < messages.length; i += BATCH_SIZE) {
     const batch = messages.slice(i, i + BATCH_SIZE);
     const response = await messaging.sendEach(
-      batch.map((msg) => ({
-        token: msg.token,
-        notification: {
-          title: msg.title,
-          body: msg.body,
-          ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
-        },
-        data: stringifyData(msg.data),
-        android: {
-          priority: msg.priority === 'high' ? 'high' : 'normal',
+      batch.map((msg) => {
+        if (msg.dataOnly) {
+          return {
+            token: msg.token,
+            data: stringifyData({ ...(msg.data || {}), probe: '1' }),
+            android: { priority: 'normal' },
+            apns: {
+              headers: {
+                'apns-priority': '5',
+                'apns-push-type': 'background',
+              },
+              payload: {
+                aps: {
+                  'content-available': 1,
+                },
+              },
+            },
+          };
+        }
+
+        return {
+          token: msg.token,
           notification: {
-            channelId: androidChannel,
-            sound: 'default',
+            title: msg.title,
+            body: msg.body,
             ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
           },
-        },
-        apns: {
-          headers: {
-            'apns-priority': '10',
-            'apns-push-type': 'alert',
-            'apns-topic': iosBundleId,
-          },
-          payload: {
-            aps: {
-              alert: {
-                title: msg.title,
-                body: msg.body,
-              },
+          data: stringifyData(msg.data),
+          android: {
+            priority: msg.priority === 'high' ? 'high' : 'normal',
+            notification: {
+              channelId: androidChannel,
               sound: 'default',
-              ...(msg.imageUrl ? { 'mutable-content': 1 } : {}),
+              ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
             },
-            ...(msg.imageUrl ? { fcm_options: { image: msg.imageUrl } } : {}),
           },
-          ...(msg.imageUrl ? { fcmOptions: { imageUrl: msg.imageUrl } } : {}),
-        },
-      })),
+          apns: {
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert',
+              'apns-topic': iosBundleId,
+            },
+            payload: {
+              aps: {
+                alert: {
+                  title: msg.title,
+                  body: msg.body,
+                },
+                sound: 'default',
+                ...(msg.imageUrl ? { 'mutable-content': 1 } : {}),
+              },
+              ...(msg.imageUrl ? { fcm_options: { image: msg.imageUrl } } : {}),
+            },
+            ...(msg.imageUrl ? { fcmOptions: { imageUrl: msg.imageUrl } } : {}),
+          },
+        };
+      }),
     );
 
     response.responses.forEach((result, index) => {
