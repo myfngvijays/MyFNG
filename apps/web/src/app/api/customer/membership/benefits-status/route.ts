@@ -9,6 +9,6 @@ export async function GET() {
   if ('response' in ctx) return ctx.response;
   const { customer, supabaseAdmin } = ctx;
 
-  const status = await getMembershipBenefitsStatus(supabaseAdmin, customer.id);
+  const status = await getMembershipBenefitsStatus(supabaseAdmin, customer.id, customer.phone);
   return NextResponse.json(status);
 }

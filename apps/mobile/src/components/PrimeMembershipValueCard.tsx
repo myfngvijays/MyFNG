@@ -118,6 +118,8 @@ type Props = {
   membershipTerms?: string[];
   benefitStatuses?: MembershipBenefitStatusRow[];
   claimHistory?: MembershipClaimHistoryRow[];
+  claimsUnlocked?: boolean;
+  claimsUnlockMessage?: string | null;
   claimingBenefitCode?: string | null;
   onClaimBenefit?: (payload: {
     benefitCode: string;
@@ -645,6 +647,8 @@ export default function PrimeMembershipValueCard({
   membershipTerms: membershipTermsProp,
   benefitStatuses = [],
   claimHistory = [],
+  claimsUnlocked = true,
+  claimsUnlockMessage = null,
   claimingBenefitCode = null,
   onClaimBenefit,
   style,
@@ -832,6 +836,12 @@ export default function PrimeMembershipValueCard({
       ) : null}
 
       <View style={[styles.benefitsSection, preview ? styles.benefitsSectionPreview : null]}>
+        {isActive && !claimsUnlocked && claimsUnlockMessage ? (
+          <View style={styles.claimsLockedBanner}>
+            <Ionicons name="time-outline" size={16} color="#92400E" />
+            <Text style={styles.claimsLockedBannerText}>{claimsUnlockMessage}</Text>
+          </View>
+        ) : null}
         <View style={styles.benefitsHead}>
           <Text style={[styles.benefitsHeadText, styles.benefitsHeadLeft]}>{benefitsHead}</Text>
           <Text style={styles.benefitsHeadText}>{valueColumnLabel}</Text>
@@ -839,7 +849,7 @@ export default function PrimeMembershipValueCard({
         {cardBenefits.map((b, idx) => {
           const benefitCode = resolveBenefitCode(b, idx);
           const status = benefitCode ? statusByCode[String(benefitCode).toUpperCase()] : null;
-          const showClaimButton = isBenefitClaimButtonEnabled(b, status);
+          const showClaimButton = isBenefitClaimButtonEnabled(b, status, claimsUnlocked);
           const remainingLabel = formatClaimRemaining(status);
           const canClaim = Boolean(isActive && benefitCode && showClaimButton && onClaimBenefit && (status?.claimable ?? true));
           const isClaiming = claimingBenefitCode === benefitCode;
@@ -1372,6 +1382,25 @@ const styles = StyleSheet.create({
   bSub: { fontSize: 9.5, color: '#9A9A9A', marginTop: 1, lineHeight: 13 },
   bRemaining: { fontSize: 9, fontWeight: '700', color: '#047857', marginTop: 3 },
   bRightCol: { alignItems: 'flex-end', gap: 6, minWidth: 72 },
+  claimsLockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  claimsLockedBannerText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
+    lineHeight: 16,
+  },
   claimBtn: {
     backgroundColor: '#004AAD',
     borderRadius: 999,

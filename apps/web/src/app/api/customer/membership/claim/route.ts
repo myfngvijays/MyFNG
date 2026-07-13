@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       console.error('[membership-claim] analytics event failed:', message);
     }
 
-    const status = await getMembershipBenefitsStatus(supabaseAdmin, customer.id);
+    const status = await getMembershipBenefitsStatus(supabaseAdmin, customer.id, customer.phone);
 
     return NextResponse.json({
       success: true,
@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
       claim: result.claim,
       benefits: status.benefits,
       history: status.history,
+      claims_unlocked: status.claims_unlocked,
+      claims_unlock_message: status.claims_unlock_message,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unable to claim this benefit.';

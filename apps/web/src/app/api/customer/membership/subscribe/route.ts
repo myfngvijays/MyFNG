@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
     second_vehicle_id: body.second_vehicle_id || null,
     primary_vehicle_snapshot: body.primary_vehicle_snapshot || {},
     second_vehicle_snapshot: body.second_vehicle_snapshot || {},
+    source_lead_id: postBookingBundle && leadId ? leadId : null,
   };
 
   let inserted: any = null;

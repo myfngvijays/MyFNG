@@ -38,6 +38,13 @@ export type MembershipBenefitStatusRow = {
   claimable: boolean;
 };
 
+export type MembershipBenefitsStatusResponse = {
+  benefits?: MembershipBenefitStatusRow[];
+  history?: MembershipClaimHistoryRow[];
+  claims_unlocked?: boolean;
+  claims_unlock_message?: string | null;
+};
+
 export type MembershipClaimHistoryRow = {
   id: string;
   benefit_code: string;
@@ -59,7 +66,9 @@ export const MEMBERSHIP_CLAIM_SERVICE_CATEGORY: Record<string, string | undefine
 export function isBenefitClaimButtonEnabled(
   benefit: ValueCardBenefit,
   status?: MembershipBenefitStatusRow | null,
+  claimsUnlocked = true,
 ): boolean {
+  if (!claimsUnlocked) return false;
   if (status != null) return status.show_claim_button === true;
   return benefit.showClaimButton === true;
 }
@@ -110,6 +119,8 @@ export async function submitMembershipBenefitClaim(
   };
   benefits?: MembershipBenefitStatusRow[];
   history?: MembershipClaimHistoryRow[];
+  claims_unlocked?: boolean;
+  claims_unlock_message?: string | null;
 }> {
   return apiFetch('/api/customer/membership/claim', {
     method: 'POST',

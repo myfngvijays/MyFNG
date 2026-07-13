@@ -1,5 +1,20 @@
-import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
+import {
+  buildCustomerLeadOrFilter,
+  filterLeadsForCustomer,
+  normalizeCustomerPhone,
+} from '@/lib/customer-service-leads';
 import { pushServiceLeadToTeleCRM } from '@/lib/booking-telecrm-sync';
+
+export const COMPLETED_SERVICE_LEAD_STATUSES = [
+  'COMPLETED',
+  'DELIVERED',
+  'DELIVERED_TO_CUSTOMER',
+  'CLOSED',
+  'PAID',
+] as const;
+
+export const MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE =
+  'Benefit claims unlock after your first service is completed.';
 
 export const DEFAULT_BENEFIT_MAX_USAGE: Record<string, number | null> = {
   PERIODIC_10_OFF: null,
@@ -73,26 +88,112 @@ function membershipVehiclePlates(membership: any): Set<string> {
   return plates;
 }
 
+function isCompletedServiceLeadStatus(status: unknown): boolean {
+  return COMPLETED_SERVICE_LEAD_STATUSES.includes(
+    String(status || '').toUpperCase() as (typeof COMPLETED_SERVICE_LEAD_STATUSES)[number],
+  );
+}
+
+function isMembershipClaimLead(lead: { meta?: unknown } | null | undefined): boolean {
+  if (!lead?.meta || typeof lead.meta !== 'object') return false;
+  return Boolean((lead.meta as { membership_claim?: { benefit_code?: string } }).membership_claim?.benefit_code);
+}
+
+export async function areMembershipClaimsUnlocked(
+  supabaseAdmin: any,
+  customer: { id: string; phone?: string | null },
+  membership: {
+    id?: string;
+    starts_at?: string | null;
+    created_at?: string | null;
+    source_lead_id?: string | null;
+  },
+): Promise<{ unlocked: boolean; pendingLeadId?: string | null }> {
+  const sourceLeadId = membership?.source_lead_id ? String(membership.source_lead_id) : null;
+
+  if (sourceLeadId) {
+    const { data: lead } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, status, meta')
+      .eq('id', sourceLeadId)
+      .maybeSingle();
+
+    if (lead && isCompletedServiceLeadStatus(lead.status) && !isMembershipClaimLead(lead)) {
+      return { unlocked: true };
+    }
+    return { unlocked: false, pendingLeadId: sourceLeadId };
+  }
+
+  const normalizedPhone = normalizeCustomerPhone(customer.phone);
+  if (!normalizedPhone) return { unlocked: false };
+
+  const { data: leads } = await supabaseAdmin
+    .from('service_leads')
+    .select('id, status, meta, created_at, completed_at, customer_phone')
+    .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
+    .in('status', [...COMPLETED_SERVICE_LEAD_STATUSES])
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .limit(50);
+
+  const membershipStartMs = new Date(membership.starts_at || membership.created_at || 0).getTime();
+  const qualifying = filterLeadsForCustomer(leads, { id: customer.id, phone: normalizedPhone }).filter((lead) => {
+    if (isMembershipClaimLead(lead)) return false;
+    const doneAtMs = lead.completed_at
+      ? new Date(String(lead.completed_at)).getTime()
+      : new Date(String(lead.created_at || 0)).getTime();
+    if (!Number.isFinite(doneAtMs)) return false;
+    return doneAtMs >= membershipStartMs - 60_000;
+  });
+
+  return { unlocked: qualifying.length > 0 };
+}
+
 export async function getMembershipBenefitsStatus(
   supabaseAdmin: any,
   customerId: string,
+  customerPhone?: string | null,
 ): Promise<{
   benefits: MembershipBenefitStatus[];
   history: MembershipClaimHistoryItem[];
+  claims_unlocked: boolean;
+  claims_unlock_message: string | null;
 }> {
   const membership = await getActiveCustomerMembership(supabaseAdmin, customerId);
-  if (!membership) return { benefits: [], history: [] };
-  return getMembershipBenefitsStatusForMembership(supabaseAdmin, membership);
+  if (!membership) {
+    return {
+      benefits: [],
+      history: [],
+      claims_unlocked: false,
+      claims_unlock_message: null,
+    };
+  }
+  return getMembershipBenefitsStatusForMembership(supabaseAdmin, membership, customerPhone);
 }
 
 export async function getMembershipBenefitsStatusForMembership(
   supabaseAdmin: any,
-  membership: { id: string; customer_id: string; plan_id: string },
+  membership: {
+    id: string;
+    customer_id: string;
+    plan_id: string;
+    starts_at?: string | null;
+    created_at?: string | null;
+    source_lead_id?: string | null;
+  },
+  customerPhone?: string | null,
 ): Promise<{
   benefits: MembershipBenefitStatus[];
   history: MembershipClaimHistoryItem[];
+  claims_unlocked: boolean;
+  claims_unlock_message: string | null;
 }> {
   const customerId = String(membership.customer_id);
+  const unlockState = await areMembershipClaimsUnlocked(
+    supabaseAdmin,
+    { id: customerId, phone: customerPhone },
+    membership,
+  );
+  const claimsUnlocked = unlockState.unlocked;
   const { data: planBenefits } = await supabaseAdmin
     .from('membership_benefits')
     .select('benefit_code, title, max_usage, display_order, active, show_claim_button')
@@ -133,8 +234,8 @@ export async function getMembershipBenefitsStatusForMembership(
         max_usage: maxUsage,
         used_count: usedCount,
         remaining,
-        show_claim_button: true,
-        claimable: hasQuotaLeft,
+        show_claim_button: claimsUnlocked,
+        claimable: claimsUnlocked && hasQuotaLeft,
       };
     });
 
@@ -174,7 +275,12 @@ export async function getMembershipBenefitsStatusForMembership(
       };
     });
 
-  return { benefits, history };
+  return {
+    benefits,
+    history,
+    claims_unlocked: claimsUnlocked,
+    claims_unlock_message: claimsUnlocked ? null : MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE,
+  };
 }
 
 export async function validateMembershipClaim(
@@ -203,6 +309,20 @@ export async function validateMembershipClaim(
   const membership = await getActiveCustomerMembership(supabaseAdmin, customerId);
   if (!membership) {
     return { valid: false, error: 'Active membership required to claim this benefit.' };
+  }
+
+  const { data: customerRow } = await supabaseAdmin
+    .from('customers')
+    .select('phone')
+    .eq('id', customerId)
+    .maybeSingle();
+  const unlockState = await areMembershipClaimsUnlocked(
+    supabaseAdmin,
+    { id: customerId, phone: customerRow?.phone },
+    membership,
+  );
+  if (!unlockState.unlocked) {
+    return { valid: false, error: MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE };
   }
 
   const { data: benefit } = await supabaseAdmin

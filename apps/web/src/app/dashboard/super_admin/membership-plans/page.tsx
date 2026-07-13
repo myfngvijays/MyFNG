@@ -484,6 +484,7 @@ export default function MembershipPlansPage() {
       alert('Delete failed');
       return;
     }
+    if (editingBenefitId === id) cancelBenefitEdit();
     setBenefits((prev) => prev.filter((b) => b.id !== id));
     await fetchRows();
   }
@@ -512,6 +513,72 @@ export default function MembershipPlansPage() {
       const plan = (fresh.data || []).find((p: PlanRow) => p.id === editing.id);
       if (plan) setBenefits(plan.benefits || []);
     }
+  }
+
+  function cancelBenefitEdit() {
+    setEditingBenefitId(null);
+    setBenefitDraft({ ...EMPTY_BENEFIT, display_order: benefits.length + 1 });
+  }
+
+  function renderBenefitForm(isEditing: boolean) {
+    return (
+      <>
+        <div className="text-xs font-bold text-gray-600">{isEditing ? 'Edit Benefit' : 'Add Benefit'}</div>
+        <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Benefit title" value={benefitDraft.title} onChange={(e) => setBenefitDraft({ ...benefitDraft, title: e.target.value })} />
+        <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Sub text / description" value={benefitDraft.description} onChange={(e) => setBenefitDraft({ ...benefitDraft, description: e.target.value })} />
+        <div className="grid grid-cols-2 gap-2">
+          <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Value prefix e.g. Up to" value={benefitDraft.value_prefix} onChange={(e) => setBenefitDraft({ ...benefitDraft, value_prefix: e.target.value })} />
+          <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Value e.g. ₹1,000" value={benefitDraft.value_label} onChange={(e) => setBenefitDraft({ ...benefitDraft, value_label: e.target.value })} />
+        </div>
+        <MembershipIconField
+          value={{
+            icon: benefitDraft.icon,
+            icon_url: benefitDraft.icon_url,
+            icon_class: benefitDraft.icon_class,
+          }}
+          onChange={(patch) =>
+            setBenefitDraft({
+              ...benefitDraft,
+              icon: patch.icon ?? benefitDraft.icon,
+              icon_url: patch.icon_url ?? benefitDraft.icon_url,
+              icon_class: patch.icon_class ?? benefitDraft.icon_class,
+            })
+          }
+          uploading={uploadingIcon}
+          onUpload={uploadBenefitIcon}
+        />
+        <label className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={Boolean(benefitDraft.show_claim_button)}
+            onChange={(e) => setBenefitDraft({ ...benefitDraft, show_claim_button: e.target.checked })}
+          />
+          <span className="text-xs text-gray-700">
+            <span className="font-bold block text-gray-900">Show Claim button in app</span>
+            Active members will see a Claim button on this benefit in the membership page.
+          </span>
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={Boolean(benefitDraft.active)}
+            onChange={(e) => setBenefitDraft({ ...benefitDraft, active: e.target.checked })}
+          />
+          Benefit active (visible on membership card)
+        </label>
+        <div className={`flex gap-2 ${isEditing ? '' : ''}`}>
+          {isEditing ? (
+            <button type="button" onClick={cancelBenefitEdit} className="flex-1 rounded-lg border border-gray-300 bg-white py-2 text-sm font-bold text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+          ) : null}
+          <button type="button" onClick={saveBenefit} className={`${isEditing ? 'flex-1' : 'w-full'} rounded-lg bg-gray-900 text-white py-2 text-sm font-bold`}>
+            {isEditing ? 'Update Benefit' : 'Add Benefit'}
+          </button>
+        </div>
+      </>
+    );
   }
 
   const sortedBenefits = useMemo(
@@ -1092,87 +1159,71 @@ export default function MembershipPlansPage() {
                   <div className="pt-4 border-t space-y-3">
                     <div className="text-sm font-bold text-gray-900">Benefits of {form.name}</div>
                     {sortedBenefits.map((b, idx) => (
-                      <div key={b.id} className="rounded-lg border p-3 flex gap-2 items-start">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E6F0FB] overflow-hidden">
-                          {b.icon_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={b.icon_url} alt="" className="h-5 w-5 object-contain" />
-                          ) : b.icon_class ? (
-                            <i className={b.icon_class} style={{ fontSize: 16, color: '#023D95' }} />
-                          ) : (
-                            <span className="text-[10px] font-bold text-[#023D95]">{b.icon?.slice(0, 2)}</span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm">{b.title}</div>
-                          <div className="text-xs text-gray-500 truncate">{b.description}</div>
-                          {b.value_label ? (
-                            <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
-                              {b.value_prefix ? `${b.value_prefix} ` : ''}{b.value_label}
-                            </div>
-                          ) : null}
-                          <div className={`text-[10px] font-bold mt-1 inline-block px-2 py-0.5 rounded-full ${b.show_claim_button ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-                            Claim button: {b.show_claim_button ? 'ON' : 'OFF'}
+                      <div key={b.id} className="space-y-2">
+                        <div className={`rounded-lg border p-3 flex gap-2 items-start ${editingBenefitId === b.id ? 'border-blue-300 bg-blue-50/40 ring-1 ring-blue-200' : ''}`}>
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E6F0FB] overflow-hidden">
+                            {b.icon_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={b.icon_url} alt="" className="h-5 w-5 object-contain" />
+                            ) : b.icon_class ? (
+                              <i className={b.icon_class} style={{ fontSize: 16, color: '#023D95' }} />
+                            ) : (
+                              <span className="text-[10px] font-bold text-[#023D95]">{b.icon?.slice(0, 2)}</span>
+                            )}
                           </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm">{b.title}</div>
+                            <div className="text-xs text-gray-500 truncate">{b.description}</div>
+                            {b.value_label ? (
+                              <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
+                                {b.value_prefix ? `${b.value_prefix} ` : ''}{b.value_label}
+                              </div>
+                            ) : null}
+                            <div className={`text-[10px] font-bold mt-1 inline-block px-2 py-0.5 rounded-full ${b.show_claim_button ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                              Claim button: {b.show_claim_button ? 'ON' : 'OFF'}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <button type="button" onClick={() => moveBenefit(idx, -1)} className="p-1 rounded hover:bg-gray-100"><ChevronUp className="h-4 w-4" /></button>
+                            <button type="button" onClick={() => moveBenefit(idx, 1)} className="p-1 rounded hover:bg-gray-100"><ChevronDown className="h-4 w-4" /></button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBenefitId(b.id);
+                              setBenefitDraft({
+                                title: b.title,
+                                description: b.description || '',
+                                icon: b.icon || '',
+                                icon_url: b.icon_url || '',
+                                icon_class: b.icon_class || '',
+                                value_label: b.value_label || '',
+                                value_prefix: b.value_prefix || '',
+                                display_order: b.display_order,
+                                active: b.active,
+                                show_claim_button: Boolean(b.show_claim_button),
+                              });
+                            }}
+                            className={`text-xs font-bold ${editingBenefitId === b.id ? 'text-blue-800' : 'text-blue-600'}`}
+                          >
+                            {editingBenefitId === b.id ? 'Editing' : 'Edit'}
+                          </button>
+                          <button type="button" onClick={() => deleteBenefit(b.id)} className="text-red-600"><Trash2 className="h-4 w-4" /></button>
                         </div>
-                        <div className="flex flex-col gap-1">
-                          <button type="button" onClick={() => moveBenefit(idx, -1)} className="p-1 rounded hover:bg-gray-100"><ChevronUp className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => moveBenefit(idx, 1)} className="p-1 rounded hover:bg-gray-100"><ChevronDown className="h-4 w-4" /></button>
-                        </div>
-                        <button type="button" onClick={() => { setEditingBenefitId(b.id); setBenefitDraft({ title: b.title, description: b.description || '', icon: b.icon || '', icon_url: b.icon_url || '', icon_class: b.icon_class || '', value_label: b.value_label || '', value_prefix: b.value_prefix || '', display_order: b.display_order, active: b.active, show_claim_button: Boolean(b.show_claim_button) }); }} className="text-blue-600 text-xs font-bold">Edit</button>
-                        <button type="button" onClick={() => deleteBenefit(b.id)} className="text-red-600"><Trash2 className="h-4 w-4" /></button>
+
+                        {editingBenefitId === b.id ? (
+                          <div className="rounded-xl border border-blue-200 border-dashed p-3 space-y-2 bg-blue-50/30 ml-2">
+                            {renderBenefitForm(true)}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
 
-                    <div className="rounded-xl border border-dashed border-gray-300 p-3 space-y-2 bg-gray-50">
-                      <div className="text-xs font-bold text-gray-600">{editingBenefitId ? 'Edit Benefit' : 'Add Benefit'}</div>
-                      <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Benefit title" value={benefitDraft.title} onChange={(e) => setBenefitDraft({ ...benefitDraft, title: e.target.value })} />
-                      <input className="w-full rounded-lg border px-3 py-2 text-sm" placeholder="Sub text / description" value={benefitDraft.description} onChange={(e) => setBenefitDraft({ ...benefitDraft, description: e.target.value })} />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Value prefix e.g. Up to" value={benefitDraft.value_prefix} onChange={(e) => setBenefitDraft({ ...benefitDraft, value_prefix: e.target.value })} />
-                        <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Value e.g. ₹1,000" value={benefitDraft.value_label} onChange={(e) => setBenefitDraft({ ...benefitDraft, value_label: e.target.value })} />
+                    {!editingBenefitId ? (
+                      <div className="rounded-xl border border-dashed border-gray-300 p-3 space-y-2 bg-gray-50">
+                        {renderBenefitForm(false)}
                       </div>
-                      <MembershipIconField
-                        value={{
-                          icon: benefitDraft.icon,
-                          icon_url: benefitDraft.icon_url,
-                          icon_class: benefitDraft.icon_class,
-                        }}
-                        onChange={(patch) =>
-                          setBenefitDraft({
-                            ...benefitDraft,
-                            icon: patch.icon ?? benefitDraft.icon,
-                            icon_url: patch.icon_url ?? benefitDraft.icon_url,
-                            icon_class: patch.icon_class ?? benefitDraft.icon_class,
-                          })
-                        }
-                        uploading={uploadingIcon}
-                        onUpload={uploadBenefitIcon}
-                      />
-                      <label className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={Boolean(benefitDraft.show_claim_button)}
-                          onChange={(e) => setBenefitDraft({ ...benefitDraft, show_claim_button: e.target.checked })}
-                        />
-                        <span className="text-xs text-gray-700">
-                          <span className="font-bold block text-gray-900">Show Claim button in app</span>
-                          Active members will see a Claim button on this benefit in the membership page.
-                        </span>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(benefitDraft.active)}
-                          onChange={(e) => setBenefitDraft({ ...benefitDraft, active: e.target.checked })}
-                        />
-                        Benefit active (visible on membership card)
-                      </label>
-                      <button type="button" onClick={saveBenefit} className="w-full rounded-lg bg-gray-900 text-white py-2 text-sm font-bold">
-                        {editingBenefitId ? 'Update Benefit' : 'Add Benefit'}
-                      </button>
-                    </div>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Save the plan first, then you can add benefits.</p>

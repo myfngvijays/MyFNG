@@ -1164,7 +1164,10 @@ export async function fetchMembershipCustomerDetail(supabaseAdmin: any, membersh
       id: String(membership.id),
       customer_id: customerId,
       plan_id: String(membership.plan_id),
-    }),
+      starts_at: membership.starts_at,
+      created_at: membership.created_at,
+      source_lead_id: membership.source_lead_id,
+    }, phone),
     getWalletSummary(supabaseAdmin, customerId).catch(() => null),
     supabaseAdmin
       .from('customer_vehicles')

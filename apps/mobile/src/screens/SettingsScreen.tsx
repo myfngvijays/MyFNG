@@ -92,6 +92,7 @@ import { membershipActivateButtonLabel } from '../lib/addMembershipPlanToCart';
 import {
   submitMembershipBenefitClaim,
   type MembershipBenefitStatusRow,
+  type MembershipBenefitsStatusResponse,
   type MembershipClaimHistoryRow,
 } from '../lib/membershipClaims';
 import MembershipPlanCartCard from '../components/MembershipPlanCartCard';
@@ -333,6 +334,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     carSearchDisplay: '',
   });
   const [membershipBenefitStatuses, setMembershipBenefitStatuses] = useState<MembershipBenefitStatusRow[]>([]);
+  const [membershipClaimsUnlocked, setMembershipClaimsUnlocked] = useState(true);
+  const [membershipClaimsUnlockMessage, setMembershipClaimsUnlockMessage] = useState<string | null>(null);
   const [membershipClaimHistory, setMembershipClaimHistory] = useState<MembershipClaimHistoryRow[]>([]);
   const [claimingBenefitCode, setClaimingBenefitCode] = useState<string | null>(null);
   const [primeMembershipConfig, setPrimeMembershipConfig] = useState<PrimeMembershipDisplay | null>(null);
@@ -1326,27 +1329,33 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     if (activeSubPage !== 'Membership' || !isLoggedIn || !hasActiveMembership) {
       setMembershipBenefitStatuses([]);
       setMembershipClaimHistory([]);
+      setMembershipClaimsUnlocked(true);
+      setMembershipClaimsUnlockMessage(null);
       return;
     }
     let cancelled = false;
     (async () => {
-      const res = await apiFetch<{ benefits?: MembershipBenefitStatusRow[]; history?: MembershipClaimHistoryRow[] }>(
+      const res = await apiFetch<MembershipBenefitsStatusResponse>(
         '/api/customer/membership/benefits-status',
       ).catch(() => null);
       if (cancelled || !res) return;
       setMembershipBenefitStatuses(Array.isArray(res.benefits) ? res.benefits : []);
       setMembershipClaimHistory(Array.isArray(res.history) ? res.history : []);
+      setMembershipClaimsUnlocked(res.claims_unlocked !== false);
+      setMembershipClaimsUnlockMessage(res.claims_unlock_message || null);
     })();
     return () => { cancelled = true; };
   }, [activeSubPage, isLoggedIn, hasActiveMembership, currentMembership?.id]);
 
   const refreshMembershipClaimData = async () => {
-    const res = await apiFetch<{ benefits?: MembershipBenefitStatusRow[]; history?: MembershipClaimHistoryRow[] }>(
+    const res = await apiFetch<MembershipBenefitsStatusResponse>(
       '/api/customer/membership/benefits-status',
     ).catch(() => null);
     if (!res) return;
     setMembershipBenefitStatuses(Array.isArray(res.benefits) ? res.benefits : []);
     setMembershipClaimHistory(Array.isArray(res.history) ? res.history : []);
+    setMembershipClaimsUnlocked(res.claims_unlocked !== false);
+    setMembershipClaimsUnlockMessage(res.claims_unlock_message || null);
   };
 
   const handleMembershipBenefitClaim = async (payload: { benefitCode: string; benefitTitle: string }) => {
@@ -1373,6 +1382,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       if (Array.isArray(res.benefits)) setMembershipBenefitStatuses(res.benefits);
       if (Array.isArray(res.history)) setMembershipClaimHistory(res.history);
       else await refreshMembershipClaimData();
+      if (res.claims_unlocked !== undefined) setMembershipClaimsUnlocked(res.claims_unlocked !== false);
+      if (res.claims_unlock_message !== undefined) {
+        setMembershipClaimsUnlockMessage(res.claims_unlock_message || null);
+      }
       await hydrateCustomerData();
 
       const leadNumber = res.lead?.lead_number || '';
@@ -4357,6 +4370,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             showSecondCarAddon={(primeUI as AppMembershipPlan).showSecondCarAddonApp !== false}
             benefitStatuses={membershipBenefitStatuses}
             claimHistory={membershipClaimHistory}
+            claimsUnlocked={membershipClaimsUnlocked}
+            claimsUnlockMessage={membershipClaimsUnlockMessage}
             claimingBenefitCode={claimingBenefitCode}
             onClaimBenefit={handleMembershipBenefitClaim}
           />
