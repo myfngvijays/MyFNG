@@ -48,6 +48,17 @@ export async function GET(request: Request) {
   const rows = filterLeadsForCustomer(data, { id: customer.id, phone: normalizedPhone });
 
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
+  const nowIso = new Date().toISOString();
+  const { data: activeMembership } = await supabaseAdmin
+    .from('customer_memberships')
+    .select('id')
+    .eq('customer_id', customer.id)
+    .eq('status', 'ACTIVE')
+    .gt('ends_at', nowIso)
+    .limit(1)
+    .maybeSingle();
+  const hasActiveMembership = Boolean(activeMembership?.id);
+
   await Promise.all(
     rows.map((row: Record<string, unknown>) =>
       expireUnpaidBookingMembershipBundleIfNeeded(supabaseAdmin, row, pbConfig),
@@ -198,7 +209,9 @@ export async function GET(request: Request) {
       wallet_deduction: resolveDisplayWalletDeduction(r, pbConfig),
       membership_bundle_discount: membershipBundleDiscount,
       membership_claim: parseMembershipClaimMeta(r.meta),
-      post_booking_membership: resolvePostBookingMembershipOfferStatus(r, pbConfig),
+      post_booking_membership: hasActiveMembership
+        ? null
+        : resolvePostBookingMembershipOfferStatus(r, pbConfig),
     };
   });
 

@@ -25,6 +25,9 @@ export const WHATSAPP_AUTOMATION_TEMPLATE_EXAMPLES: Record<WhatsAppAutomationTri
   admin_daily_summary: ['13 Jul 2026', '24', '3', '45000', '5', '1'],
   service_due_reminder: ['Rahul Sharma', 'Honda City', 'MH01AB1234', '12 Jan 2026'],
   membership_expiring: ['Rahul Sharma', '31 Jul 2026'],
+  membership_claim_submitted: ['Rahul Sharma', 'Free Car Scanning', 'MH02FJ7371'],
+  membership_claim_approved: ['Rahul Sharma', 'Free Car Scanning', 'MH02FJ7371', 'L-12345678'],
+  membership_claim_rejected: ['Rahul Sharma', 'Free Car Scanning', 'MH02FJ7371'],
   account_deleted: ['Rahul Sharma'],
   app_uninstalled: ['Rahul Sharma'],
 };

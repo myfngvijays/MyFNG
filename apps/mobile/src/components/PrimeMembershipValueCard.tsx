@@ -32,6 +32,7 @@ import type { ValueCardBenefit, ValueCardConfig } from '../lib/membershipPlan';
 import type { MembershipType } from '../lib/membershipPlacements';
 import {
   formatClaimHistoryDate,
+  formatClaimHistoryStatus,
   formatClaimRemaining,
   isBenefitClaimButtonEnabled,
   resolveBenefitCode,
@@ -851,7 +852,15 @@ export default function PrimeMembershipValueCard({
           const status = benefitCode ? statusByCode[String(benefitCode).toUpperCase()] : null;
           const showClaimButton = isBenefitClaimButtonEnabled(b, status, claimsUnlocked);
           const remainingLabel = formatClaimRemaining(status);
-          const canClaim = Boolean(isActive && benefitCode && showClaimButton && onClaimBenefit && (status?.claimable ?? true));
+          const isPendingApproval = Boolean(status?.approval_pending);
+          const canClaim = Boolean(
+            isActive &&
+              benefitCode &&
+              showClaimButton &&
+              onClaimBenefit &&
+              (status?.claimable ?? true) &&
+              !isPendingApproval,
+          );
           const isClaiming = claimingBenefitCode === benefitCode;
 
           return (
@@ -866,15 +875,23 @@ export default function PrimeMembershipValueCard({
                 {remainingLabel ? (
                   <Text style={styles.bRemaining}>{remainingLabel}</Text>
                 ) : null}
+                {isPendingApproval ? (
+                  <Text style={styles.bPending}>Approval pending</Text>
+                ) : null}
               </View>
             </View>
             <View style={styles.bRightCol}>
               <BenefitValue prefix={b.valuePrefix} label={b.valueLabel} accentColor={theme.benefitValue} />
+              {isPendingApproval ? (
+                <View style={styles.claimPendingBadge}>
+                  <Text style={styles.claimPendingBadgeText}>Pending</Text>
+                </View>
+              ) : null}
               {canClaim ? (
                 <TouchableOpacity
-                  style={[styles.claimBtn, (!(status?.claimable ?? true) || isClaiming) ? styles.claimBtnDisabled : null]}
+                  style={[styles.claimBtn, isClaiming ? styles.claimBtnDisabled : null]}
                   activeOpacity={0.85}
-                  disabled={!(status?.claimable ?? true) || Boolean(claimingBenefitCode)}
+                  disabled={Boolean(claimingBenefitCode) || isClaiming}
                   onPress={() => onClaimBenefit?.({
                     benefitCode: String(benefitCode),
                     benefitTitle: b.title,
@@ -883,11 +900,14 @@ export default function PrimeMembershipValueCard({
                   {isClaiming ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.claimBtnText}>
-                      {(status?.claimable ?? true) ? 'Claim' : 'Used'}
-                    </Text>
+                    <Text style={styles.claimBtnText}>Claim</Text>
                   )}
                 </TouchableOpacity>
+              ) : null}
+              {!canClaim && !isPendingApproval && showClaimButton && isActive && status && !status.claimable ? (
+                <View style={styles.claimUsedBadge}>
+                  <Text style={styles.claimUsedBadgeText}>Used</Text>
+                </View>
               ) : null}
             </View>
           </View>
@@ -898,10 +918,23 @@ export default function PrimeMembershipValueCard({
       {isActive && claimHistory.length > 0 ? (
         <View style={styles.claimHistorySection}>
           <Text style={styles.claimHistoryTitle}>Claim History</Text>
-          {claimHistory.slice(0, 8).map((item, historyIdx) => (
+          {claimHistory.slice(0, 8).map((item, historyIdx) => {
+            const historyStatus = formatClaimHistoryStatus(item.claim_status);
+            const statusStyle =
+              String(item.claim_status || '').toUpperCase() === 'APPROVED'
+                ? styles.claimHistoryStatusApproved
+                : String(item.claim_status || '').toUpperCase() === 'REJECTED'
+                  ? styles.claimHistoryStatusRejected
+                  : styles.claimHistoryStatusPending;
+            return (
             <View key={item.id} style={[styles.claimHistoryRow, historyIdx === 0 ? styles.claimHistoryRowFirst : null]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.claimHistoryBenefit}>{item.benefit_title}</Text>
+                <View style={styles.claimHistoryTitleRow}>
+                  <Text style={styles.claimHistoryBenefit}>{item.benefit_title}</Text>
+                  <View style={[styles.claimHistoryStatusBadge, statusStyle]}>
+                    <Text style={styles.claimHistoryStatusText}>{historyStatus}</Text>
+                  </View>
+                </View>
                 <Text style={styles.claimHistoryMeta}>
                   {item.vehicle_label || item.vehicle_number || 'Vehicle'}
                   {item.vehicle_number ? ` · ${item.vehicle_number}` : ''}
@@ -912,7 +945,8 @@ export default function PrimeMembershipValueCard({
               </View>
               <Text style={styles.claimHistoryDate}>{formatClaimHistoryDate(item.created_at)}</Text>
             </View>
-          ))}
+            );
+          })}
         </View>
       ) : null}
 
@@ -1381,7 +1415,26 @@ const styles = StyleSheet.create({
   bTitle: { fontSize: 12, fontWeight: '700', color: '#1A1A1A', lineHeight: 16 },
   bSub: { fontSize: 9.5, color: '#9A9A9A', marginTop: 1, lineHeight: 13 },
   bRemaining: { fontSize: 9, fontWeight: '700', color: '#047857', marginTop: 3 },
+  bPending: { fontSize: 9, fontWeight: '700', color: '#B45309', marginTop: 3 },
   bRightCol: { alignItems: 'flex-end', gap: 6, minWidth: 72 },
+  claimPendingBadge: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  claimPendingBadgeText: { fontSize: 10, fontWeight: '800', color: '#92400E' },
+  claimUsedBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+  },
+  claimUsedBadgeText: { fontSize: 10, fontWeight: '800', color: '#64748B' },
   claimsLockedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1437,7 +1490,17 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F0',
   },
   claimHistoryRowFirst: { borderTopWidth: 0, paddingTop: 0 },
-  claimHistoryBenefit: { fontSize: 11, fontWeight: '700', color: '#1E293B' },
+  claimHistoryBenefit: { fontSize: 11, fontWeight: '700', color: '#1E293B', flex: 1 },
+  claimHistoryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  claimHistoryStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  claimHistoryStatusApproved: { backgroundColor: '#DCFCE7' },
+  claimHistoryStatusRejected: { backgroundColor: '#FEE2E2' },
+  claimHistoryStatusPending: { backgroundColor: '#FEF3C7' },
+  claimHistoryStatusText: { fontSize: 9, fontWeight: '800', color: '#334155' },
   claimHistoryMeta: { fontSize: 10, color: '#64748B', marginTop: 2 },
   claimHistoryLead: { fontSize: 9, fontWeight: '700', color: '#004AAD', marginTop: 2 },
   claimHistoryDate: { fontSize: 9, fontWeight: '600', color: '#94A3B8' },

@@ -10,6 +10,9 @@ export const WHATSAPP_AUTOMATION_TRIGGER_KEYS = [
   'admin_daily_summary',
   'service_due_reminder',
   'membership_expiring',
+  'membership_claim_submitted',
+  'membership_claim_approved',
+  'membership_claim_rejected',
   'account_deleted',
   'app_uninstalled',
 ] as const;

@@ -23,7 +23,7 @@ function resolveMaxUsage(benefit: any): number | null {
     PERIODIC_10_OFF: null,
     FREE_INSPECTION: 2,
     FREE_SCAN: 2,
-    DAMAGE_ASSESS: null,
+    DAMAGE_ASSESS: 1,
   };
   return defaults[code] ?? null;
 }
@@ -1159,7 +1159,7 @@ export async function fetchMembershipCustomerDetail(supabaseAdmin: any, membersh
   const customerId = String(membership.customer_id);
   const phone = String(membership.customer?.phone || '');
 
-  const [{ benefits, history }, walletSummary, vehiclesRes, servicesByCustomer] = await Promise.all([
+  const [{ benefits, history, pending_requests }, walletSummary, vehiclesRes, servicesByCustomer] = await Promise.all([
     getMembershipBenefitsStatusForMembership(supabaseAdmin, {
       id: String(membership.id),
       customer_id: customerId,
@@ -1200,14 +1200,18 @@ export async function fetchMembershipCustomerDetail(supabaseAdmin: any, membersh
       max_usage: status?.max_usage ?? resolveMaxUsage(b),
       used_count: status?.used_count ?? 0,
       remaining: status?.remaining ?? null,
+      pending_count: status?.pending_count ?? 0,
+      approval_pending: status?.approval_pending ?? false,
       claimable: status?.claimable ?? false,
       status_label: !b.show_claim_button
         ? 'Info only'
-        : status?.claimable
-          ? status.remaining == null
-            ? 'Available'
-            : `${status.remaining} left`
-          : 'Fully used',
+        : status?.approval_pending
+          ? 'Pending approval'
+          : status?.claimable
+            ? status.remaining == null
+              ? 'Available'
+              : `${status.remaining} left`
+            : 'Fully used',
     };
   });
 
@@ -1254,6 +1258,7 @@ export async function fetchMembershipCustomerDetail(supabaseAdmin: any, membersh
     service_bookings: servicesByCustomer.get(customerId) || [],
     benefits: all_benefits,
     claim_history: history as MembershipClaimHistoryItem[],
+    pending_claim_requests: pending_requests || [],
     claimable_benefits: benefits,
   };
 }

@@ -94,6 +94,7 @@ import {
   type MembershipBenefitStatusRow,
   type MembershipBenefitsStatusResponse,
   type MembershipClaimHistoryRow,
+  type MembershipClaimRequestRow,
 } from '../lib/membershipClaims';
 import MembershipPlanCartCard from '../components/MembershipPlanCartCard';
 import MembershipTermsCard from '../components/MembershipTermsCard';
@@ -334,6 +335,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     carSearchDisplay: '',
   });
   const [membershipBenefitStatuses, setMembershipBenefitStatuses] = useState<MembershipBenefitStatusRow[]>([]);
+  const [membershipPendingClaims, setMembershipPendingClaims] = useState<MembershipClaimRequestRow[]>([]);
   const [membershipClaimsUnlocked, setMembershipClaimsUnlocked] = useState(true);
   const [membershipClaimsUnlockMessage, setMembershipClaimsUnlockMessage] = useState<string | null>(null);
   const [membershipClaimHistory, setMembershipClaimHistory] = useState<MembershipClaimHistoryRow[]>([]);
@@ -1329,6 +1331,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     if (activeSubPage !== 'Membership' || !isLoggedIn || !hasActiveMembership) {
       setMembershipBenefitStatuses([]);
       setMembershipClaimHistory([]);
+      setMembershipPendingClaims([]);
       setMembershipClaimsUnlocked(true);
       setMembershipClaimsUnlockMessage(null);
       return;
@@ -1341,6 +1344,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       if (cancelled || !res) return;
       setMembershipBenefitStatuses(Array.isArray(res.benefits) ? res.benefits : []);
       setMembershipClaimHistory(Array.isArray(res.history) ? res.history : []);
+      setMembershipPendingClaims(Array.isArray(res.pending_requests) ? res.pending_requests : []);
       setMembershipClaimsUnlocked(res.claims_unlocked !== false);
       setMembershipClaimsUnlockMessage(res.claims_unlock_message || null);
     })();
@@ -1354,9 +1358,17 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     if (!res) return;
     setMembershipBenefitStatuses(Array.isArray(res.benefits) ? res.benefits : []);
     setMembershipClaimHistory(Array.isArray(res.history) ? res.history : []);
+    setMembershipPendingClaims(Array.isArray(res.pending_requests) ? res.pending_requests : []);
     setMembershipClaimsUnlocked(res.claims_unlocked !== false);
     setMembershipClaimsUnlockMessage(res.claims_unlock_message || null);
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeSubPage !== 'Membership' || !isLoggedIn || !hasActiveMembership) return;
+      void refreshMembershipClaimData();
+    }, [activeSubPage, isLoggedIn, hasActiveMembership, currentMembership?.id]),
+  );
 
   const handleMembershipBenefitClaim = async (payload: { benefitCode: string; benefitTitle: string }) => {
     if (claimingBenefitCode) return;
@@ -1381,6 +1393,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
       if (Array.isArray(res.benefits)) setMembershipBenefitStatuses(res.benefits);
       if (Array.isArray(res.history)) setMembershipClaimHistory(res.history);
+      if (Array.isArray(res.pending_requests)) setMembershipPendingClaims(res.pending_requests);
       else await refreshMembershipClaimData();
       if (res.claims_unlocked !== undefined) setMembershipClaimsUnlocked(res.claims_unlocked !== false);
       if (res.claims_unlock_message !== undefined) {
@@ -1388,16 +1401,10 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       }
       await hydrateCustomerData();
 
-      const leadNumber = res.lead?.lead_number || '';
-      const vehicleLabel = res.claim?.vehicle_label || vehicle.label || vehicle.vehicle_number;
-      Alert.alert(
-        'Benefit Claimed',
-        `${payload.benefitTitle} claimed for ${vehicleLabel}${leadNumber ? `.\n\nBooking #${leadNumber} created.` : '.'}\n\nOur team will contact you shortly.`,
-        [
-          { text: 'View Orders', onPress: () => setActiveSubPage('Order History') },
-          { text: 'OK' },
-        ],
-      );
+      const approvalMessage =
+        res.message ||
+        `${payload.benefitTitle} sent for approval. We will confirm on WhatsApp shortly.`;
+      Alert.alert('Sent for Approval', approvalMessage, [{ text: 'OK' }]);
     } catch (error: any) {
       Alert.alert('Claim Failed', error?.message || 'Unable to claim this benefit. Please try again.');
     } finally {

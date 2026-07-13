@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 
@@ -71,6 +72,16 @@ export async function PATCH(
       .single();
 
     if (error) return NextResponse.json({ error: error.message || 'Update failed' }, { status: 500 });
+
+    if (body?.is_active === true && data?.template_name) {
+      const { supabaseAdmin } = getSupabaseAdmin();
+      const automationDb = supabaseAdmin || db;
+      await automationDb
+        .from('whatsapp_automation_settings')
+        .update({ is_enabled: true, updated_at: new Date().toISOString() })
+        .eq('template_name', String(data.template_name));
+    }
+
     return NextResponse.json({ success: true, template: data });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

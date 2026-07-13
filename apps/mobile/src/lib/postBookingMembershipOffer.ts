@@ -41,7 +41,36 @@ export function membershipOfferCardTitle(overrideTitle?: string): string {
   return text || MEMBERSHIP_OFFER_CARD_TITLE;
 }
 
-/** Prefer server-stored offer expiry; never rely on hardcoded 180m when admin timer changed. */
+export function hasStoredPostBookingMembershipOffer(
+  source:
+    | {
+        meta?: unknown;
+        post_booking_membership?: { expires_at?: string | null; active?: boolean } | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  const fromApi = source?.post_booking_membership;
+  if (fromApi?.active && String(fromApi.expires_at || '').trim()) return true;
+
+  const meta = source?.meta && typeof source.meta === 'object' ? (source.meta as Record<string, unknown>) : {};
+  const rawOffer = meta.post_booking_membership_offer;
+  if (rawOffer && typeof rawOffer === 'object' && String((rawOffer as { expires_at?: string }).expires_at || '').trim()) {
+    return true;
+  }
+
+  const bundle = meta.booking_membership_bundle;
+  if (bundle && typeof bundle === 'object') {
+    const record = bundle as Record<string, unknown>;
+    if (!record.applied_at && !record.membership_id && Number(record.discount_amount || 0) > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** Prefer server-stored offer expiry; return null when no offer was attached to the booking. */
 export function resolveMembershipOfferExpiresAt(
   source:
     | {
@@ -52,11 +81,8 @@ export function resolveMembershipOfferExpiresAt(
     | null
     | undefined,
   offerWindowMinutes = POST_BOOKING_MEMBERSHIP_OFFER_MINUTES,
-): string {
-  const windowMinutes =
-    Number.isFinite(Number(offerWindowMinutes)) && Number(offerWindowMinutes) > 0
-      ? Math.round(Number(offerWindowMinutes))
-      : POST_BOOKING_MEMBERSHIP_OFFER_MINUTES;
+): string | null {
+  if (!hasStoredPostBookingMembershipOffer(source)) return null;
 
   const fromApi = String(source?.post_booking_membership?.expires_at || '').trim();
   if (fromApi) return fromApi;
@@ -67,6 +93,10 @@ export function resolveMembershipOfferExpiresAt(
     return String((rawOffer as { expires_at?: string }).expires_at);
   }
 
+  const windowMinutes =
+    Number.isFinite(Number(offerWindowMinutes)) && Number(offerWindowMinutes) > 0
+      ? Math.round(Number(offerWindowMinutes))
+      : POST_BOOKING_MEMBERSHIP_OFFER_MINUTES;
   const createdAt = String(source?.created_at || '').trim();
   if (createdAt) {
     const createdMs = new Date(createdAt).getTime();
@@ -75,7 +105,7 @@ export function resolveMembershipOfferExpiresAt(
     }
   }
 
-  return new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+  return null;
 }
 
 function calcBundleDiscount(serviceSubtotal: number): number {
@@ -125,7 +155,14 @@ export function parsePostBookingMembershipOfferFromOrder(
       active: new Date(String(raw.expires_at)).getTime() > Date.now(),
       expired: new Date(String(raw.expires_at)).getTime() <= Date.now(),
     };
-  } else if (order.created_at) {
+  } else if (
+    order.created_at &&
+    bundle &&
+    typeof bundle === 'object' &&
+    !bundle.applied_at &&
+    !bundle.membership_id &&
+    Number(bundle.discount_amount || 0) > 0
+  ) {
     const createdMs = new Date(order.created_at).getTime();
     const windowMinutes =
       Number.isFinite(Number(offerWindowMinutes)) && Number(offerWindowMinutes) > 0

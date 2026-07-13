@@ -1670,15 +1670,28 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         meta?: unknown;
         created_at?: string | null;
       };
+
+      let refreshedMembership = currentMembership;
+      if (isLoggedIn) {
+        try {
+          const memRes = await apiFetch<any>('/api/customer/membership');
+          refreshedMembership = memRes?.membership || null;
+          setCurrentMembership(refreshedMembership);
+        } catch {
+          // keep existing membership state
+        }
+      }
+
+      const membershipStillActive = isMembershipActive(refreshedMembership);
       const successBase = {
         leadId: createdLeadId,
         leadNumber: savedLeadNumber,
         serviceSubtotal: totalPrice,
         membershipActivated: false,
-        membershipOfferExpiresAt: resolveMembershipOfferExpiresAt(
-          createdLeadRecord,
-          latestOfferConfig.offer_window_minutes,
-        ),
+        membershipOfferExpiresAt: membershipStillActive
+          ? undefined
+          : resolveMembershipOfferExpiresAt(createdLeadRecord, latestOfferConfig.offer_window_minutes) ||
+            undefined,
       };
       const amountToPay = isLoggedIn
         ? Number(createdLead.amount_payable ?? finalPayableAmount)
@@ -2397,36 +2410,15 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const selectSavedAddress = (addr: SavedAddress) => {
     setSelectedSavedAddressId(addr.id);
-    const raw = addr.address_line1 || '';
-    const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
-
-    let flatNumber = addr.address_line2 || '';
-    let landmark = addr.landmark || '';
-    let pickupAddress = raw;
-
-    if (!flatNumber && parts.length >= 3) {
-      const pincodeIdx = parts.findIndex((p) => /^\d{6}$/.test(p));
-      const nonPinParts = parts.filter((p) => !/^\d{6}$/.test(p));
-      if (nonPinParts.length >= 2) {
-        flatNumber = nonPinParts[0] || '';
-        landmark = nonPinParts[1] || '';
-        pickupAddress = nonPinParts.slice(1).join(', ');
-      }
-    } else if (!flatNumber && parts.length === 2) {
-      flatNumber = parts[0] || '';
-      pickupAddress = parts[1] || '';
-    }
-
-    if (!pickupAddress) {
-      const cityState = [addr.city, addr.state, addr.pincode].filter(Boolean).join(', ');
-      pickupAddress = [raw, cityState].filter(Boolean).join(', ');
-    }
+    const pickupAddress = [addr.address_line1, addr.address_line2, addr.city, addr.pincode]
+      .filter(Boolean)
+      .join(', ');
 
     setForm((p) => ({
       ...p,
       pickupAddress,
-      flatNumber,
-      landmark,
+      flatNumber: String(addr.address_line1 || '').trim(),
+      landmark: String(addr.address_line2 || addr.landmark || '').trim(),
     }));
   };
 
@@ -3604,7 +3596,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         {form.pickupAddress && !showNewAddressForm ? (
                           <View style={styles.selectedAddrSummary}>
                             <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
-                            <Text style={styles.selectedAddrText} numberOfLines={2}>{form.pickupAddress}</Text>
+                            <Text style={styles.selectedAddrText}>{form.pickupAddress}</Text>
                           </View>
                         ) : null}
                       </View>

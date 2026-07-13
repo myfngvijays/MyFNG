@@ -413,6 +413,8 @@ export default function MembershipCustomersApp() {
   const [error, setError] = useState<string | null>(null);
   const [benefitModal, setBenefitModal] = useState<BenefitClaimsModal | null>(null);
   const [benefitModalLoading, setBenefitModalLoading] = useState(false);
+  const [revokingClaimId, setRevokingClaimId] = useState<string | null>(null);
+  const [reviewingClaimRequestId, setReviewingClaimRequestId] = useState<string | null>(null);
 
   const queryBase = useMemo(() => {
     const params = new URLSearchParams({ preset });
@@ -535,6 +537,79 @@ export default function MembershipCustomersApp() {
       active = false;
     };
   }, [selectedId]);
+
+  const reloadDetail = useCallback(async () => {
+    if (!selectedId) return;
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/super_admin/membership-customers/${selectedId}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load detail');
+      setDetail(json);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load detail');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [selectedId]);
+
+  const handleRevokeClaim = async (claim: {
+    id: string;
+    benefit_title?: string;
+    benefit_code?: string;
+    lead_number?: string | null;
+  }) => {
+    const label = claim.benefit_title || claim.benefit_code || 'this benefit';
+    const ok = window.confirm(
+      `Revoke "${label}" claim${claim.lead_number ? ` (Booking #${claim.lead_number})` : ''}?\n\nThis restores the benefit quota for the member. Open linked bookings will be cancelled.`,
+    );
+    if (!ok) return;
+
+    setRevokingClaimId(claim.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/super_admin/membership-customers/claims/${claim.id}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to revoke claim');
+      if (json.detail) setDetail(json.detail);
+      else await reloadDetail();
+      await fetchList();
+      if (json.warning) {
+        window.alert(json.warning);
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to revoke claim');
+    } finally {
+      setRevokingClaimId(null);
+    }
+  };
+
+  const handleReviewClaimRequest = async (requestId: string, action: 'approve' | 'reject') => {
+    const verb = action === 'approve' ? 'Approve' : 'Reject';
+    const ok = window.confirm(`${verb} this pending benefit claim?`);
+    if (!ok) return;
+
+    setReviewingClaimRequestId(requestId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/super_admin/membership-customers/claim-requests/${requestId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `Failed to ${action} claim`);
+      if (json.detail) setDetail(json.detail);
+      else await reloadDetail();
+      await fetchList();
+    } catch (e: any) {
+      setError(e?.message || `Failed to ${action} claim`);
+    } finally {
+      setReviewingClaimRequestId(null);
+    }
+  };
 
   const handleExport = async (scope: 'period' | 'all_active' = 'period') => {
     setExporting(true);
@@ -1277,7 +1352,9 @@ export default function MembershipCustomersApp() {
                             </div>
                             <span
                               className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                                b.claimable
+                                b.approval_pending
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : b.claimable
                                   ? 'bg-emerald-100 text-emerald-700'
                                   : b.show_claim_button
                                     ? 'bg-gray-100 text-gray-600'
@@ -1307,6 +1384,55 @@ export default function MembershipCustomersApp() {
 
                   <div>
                     <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      Pending approval
+                    </h3>
+                    {(detail.pending_claim_requests || []).length === 0 ? (
+                      <p className="text-sm text-gray-400">No pending benefit claims</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {detail.pending_claim_requests.map((req: any) => (
+                          <div key={req.id} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="font-bold">{req.benefit_title || req.benefit_code}</div>
+                                <div className="text-xs text-gray-500 mt-1">{fmtDate(req.created_at)}</div>
+                                {req.vehicle_label || req.vehicle_number ? (
+                                  <div className="text-xs text-gray-600 mt-1">
+                                    {req.vehicle_label || req.vehicle_number}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="flex flex-col gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewClaimRequest(req.id, 'approve')}
+                                  disabled={reviewingClaimRequestId === req.id}
+                                  className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                >
+                                  {reviewingClaimRequestId === req.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : null}
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewClaimRequest(req.id, 'reject')}
+                                  disabled={reviewingClaimRequestId === req.id}
+                                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4" />
                       Claim history
                     </h3>
@@ -1314,23 +1440,63 @@ export default function MembershipCustomersApp() {
                       <p className="text-sm text-gray-400">No benefits claimed yet</p>
                     ) : (
                       <div className="space-y-2">
-                        {detail.claim_history.map((h: any) => (
+                        {detail.claim_history.map((h: any) => {
+                          const claimStatus = String(h.claim_status || 'APPROVED').toUpperCase();
+                          const statusLabel =
+                            claimStatus === 'APPROVED'
+                              ? 'Approved'
+                              : claimStatus === 'REJECTED'
+                                ? 'Rejected'
+                                : 'Pending';
+                          const statusClass =
+                            claimStatus === 'APPROVED'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : claimStatus === 'REJECTED'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200';
+                          return (
                           <div key={h.id} className="rounded-xl border p-3 text-sm">
-                            <div className="font-bold">{h.benefit_title || h.benefit_code}</div>
-                            <div className="text-xs text-gray-500 mt-1">{fmtDate(h.created_at)}</div>
-                            {h.vehicle_label || h.vehicle_number ? (
-                              <div className="text-xs text-gray-600 mt-1">
-                                {h.vehicle_label || h.vehicle_number}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="font-bold">{h.benefit_title || h.benefit_code}</div>
+                                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClass}`}>
+                                    {statusLabel}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">{fmtDate(h.created_at)}</div>
+                                {h.vehicle_label || h.vehicle_number ? (
+                                  <div className="text-xs text-gray-600 mt-1">
+                                    {h.vehicle_label || h.vehicle_number}
+                                  </div>
+                                ) : null}
+                                {h.lead_number ? (
+                                  <div className="text-xs font-semibold text-violet-700 mt-1">
+                                    Booking #{h.lead_number}
+                                    {h.lead_status ? ` · ${h.lead_status}` : ''}
+                                  </div>
+                                ) : null}
                               </div>
-                            ) : null}
-                            {h.lead_number ? (
-                              <div className="text-xs font-semibold text-violet-700 mt-1">
-                                Booking #{h.lead_number}
-                                {h.lead_status ? ` · ${h.lead_status}` : ''}
-                              </div>
-                            ) : null}
+                              {claimStatus === 'APPROVED' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRevokeClaim(h)}
+                                disabled={revokingClaimId === h.id}
+                                className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                title="Revoke claim and restore benefit quota"
+                              >
+                                {revokingClaimId === h.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                )}
+                                Revoke
+                              </button>
+                              ) : null}
+                            </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

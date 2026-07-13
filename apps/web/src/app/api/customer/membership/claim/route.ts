@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logCustomerEvent, requireCustomer } from '@/lib/customer-api';
-import {
-  createAutoMembershipClaimBooking,
-  getMembershipBenefitsStatus,
-} from '@/lib/membership-benefits-service';
+import { getMembershipBenefitsStatus } from '@/lib/membership-benefits-service';
+import { submitMembershipClaimForApproval } from '@/lib/membership-claim-approval';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +24,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'benefit_code is required' }, { status: 400 });
     }
 
-    const result = await createAutoMembershipClaimBooking(
+    const result = await submitMembershipClaimForApproval(
       supabaseAdmin,
       customer,
       benefitCode,
@@ -38,11 +36,10 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await logCustomerEvent(supabaseAdmin, customer.id, 'membership_benefit_claimed', 'membership', {
-        benefitCode: result.claim.benefit_code,
-        leadId: result.lead.id,
-        leadNumber: result.lead.lead_number,
-        vehicleNumber: result.claim.vehicle_number,
+      await logCustomerEvent(supabaseAdmin, customer.id, 'membership_benefit_claim_submitted', 'membership', {
+        benefitCode: result.request.benefit_code,
+        requestId: result.request.id,
+        vehicleNumber: result.request.vehicle_number,
       });
     } catch (eventErr: unknown) {
       const message = eventErr instanceof Error ? eventErr.message : String(eventErr);
@@ -53,15 +50,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      lead: result.lead,
-      claim: result.claim,
+      pending: true,
+      message: result.message,
+      request: result.request,
       benefits: status.benefits,
       history: status.history,
+      pending_requests: status.pending_requests,
       claims_unlocked: status.claims_unlocked,
       claims_unlock_message: status.claims_unlock_message,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unable to claim this benefit.';
+    const message = err instanceof Error ? err.message : 'Unable to submit this benefit request.';
     console.error('[membership-claim] unhandled error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -7,6 +7,7 @@ import {
   extractInboundBrainText,
   isBrainEligibleInboundType,
 } from '@/lib/whatsappBotFlow/inboundMessage';
+import { tryHandleMembershipClaimWhatsAppReply, extractMembershipClaimButtonId } from '@/lib/membership-claim-approval';
 
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
@@ -275,6 +276,25 @@ export async function POST(request: NextRequest) {
         const statusAt = parseIsoTimestamp(inbound?.timestamp);
         const contactProfile = contacts.find((c: any) => c?.wa_id === inbound?.from);
         const profileName = contactProfile?.profile?.name || null;
+
+        const membershipClaimButtonId = extractMembershipClaimButtonId(inbound);
+        if (senderPhone && membershipClaimButtonId) {
+          try {
+            const handled = await tryHandleMembershipClaimWhatsAppReply({
+              supabaseAdmin: db,
+              senderPhone,
+              buttonId: membershipClaimButtonId,
+            });
+            if (handled) {
+              inboundCount += 1;
+              continue;
+            }
+          } catch (claimButtonError: unknown) {
+            const message =
+              claimButtonError instanceof Error ? claimButtonError.message : String(claimButtonError);
+            console.error('[whatsapp-webhook] membership claim button failed:', message);
+          }
+        }
 
         const brainText = extractInboundBrainText(inbound);
         const textBody =

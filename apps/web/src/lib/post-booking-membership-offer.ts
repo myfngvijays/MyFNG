@@ -533,6 +533,14 @@ export async function expireUnpaidBookingMembershipBundleIfNeeded(
   lead.meta = newMeta;
 }
 
+function hasUnpaidBookingMembershipBundle(meta: Record<string, unknown>): boolean {
+  const bundle = meta.booking_membership_bundle;
+  if (!bundle || typeof bundle !== 'object') return false;
+  const record = bundle as Record<string, unknown>;
+  if (record.applied_at || record.membership_id) return false;
+  return Number(record.discount_amount || 0) > 0;
+}
+
 export function resolvePostBookingMembershipOfferStatus(
   lead: Record<string, unknown>,
   config: PostBookingMembershipConfig = DEFAULT_POST_BOOKING_MEMBERSHIP_CONFIG,
@@ -553,14 +561,18 @@ export function resolvePostBookingMembershipOfferStatus(
 
   let offer = parsePostBookingMembershipOffer(meta, config);
   if (!offer) {
+    // Only reconstruct an offer for bookings that received an unpaid membership bundle
+    // discount at checkout. Prime members and plain bookings must not get a synthetic offer.
+    if (!hasUnpaidBookingMembershipBundle(meta)) return null;
+
     const createdAt = String(lead.created_at || '').trim();
     if (!createdAt) return null;
     const createdMs = new Date(createdAt).getTime();
     if (!Number.isFinite(createdMs)) return null;
     const expiresMs = createdMs + config.offer_window_minutes * 60 * 1000;
+    const serviceSubtotal = deriveServiceSubtotalFromLead(lead);
+    if (serviceSubtotal <= 0) return null;
     if (expiresMs <= Date.now()) {
-      const serviceSubtotal = deriveServiceSubtotalFromLead(lead);
-      if (serviceSubtotal <= 0) return null;
       offer = {
         offered_at: createdAt,
         expires_at: new Date(expiresMs).toISOString(),
@@ -568,8 +580,6 @@ export function resolvePostBookingMembershipOfferStatus(
         bundle_discount: bundleDiscountForSubtotal(serviceSubtotal, config),
       };
     } else {
-      const serviceSubtotal = deriveServiceSubtotalFromLead(lead);
-      if (serviceSubtotal <= 0) return null;
       offer = buildPostBookingMembershipOffer(serviceSubtotal, config);
       offer.offered_at = createdAt;
       offer.expires_at = new Date(expiresMs).toISOString();

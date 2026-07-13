@@ -41,9 +41,9 @@ export function usePendingPostBookingMembershipOffer(enabled: boolean) {
       return;
     }
     try {
-      const [ordersRes, meRes, plans, publicConfig] = await Promise.all([
+      const [ordersRes, memRes, plans, publicConfig] = await Promise.all([
         apiFetch<any>('/api/customer/orders'),
-        apiFetch<any>('/api/customer/auth/me').catch(() => null),
+        apiFetch<any>('/api/customer/membership').catch(() => null),
         fetchAppMembershipPlans(ENV.API_URL).catch(() => []),
         fetchPostBookingMembershipAppConfig().catch(() => DEFAULT_POST_BOOKING_MEMBERSHIP_APP_CONFIG),
       ]);
@@ -57,7 +57,7 @@ export function usePendingPostBookingMembershipOffer(enabled: boolean) {
         return;
       }
 
-      const membership = meRes?.membership || meRes?.customer?.membership || null;
+      const membership = memRes?.membership || null;
       const hasActiveMembership = isMembershipActive(membership);
       const plan =
         (Array.isArray(plans) && plans.length > 0 ? plans[0] : null) ||

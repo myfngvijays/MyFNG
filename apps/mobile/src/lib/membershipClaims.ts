@@ -34,13 +34,28 @@ export type MembershipBenefitStatusRow = {
   max_usage: number | null;
   used_count: number;
   remaining: number | null;
+  pending_count?: number;
+  approval_pending?: boolean;
   show_claim_button: boolean;
   claimable: boolean;
+};
+
+export type MembershipClaimRequestRow = {
+  id: string;
+  benefit_code: string;
+  benefit_title: string;
+  status: string;
+  vehicle_number: string | null;
+  vehicle_label: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+  review_note?: string | null;
 };
 
 export type MembershipBenefitsStatusResponse = {
   benefits?: MembershipBenefitStatusRow[];
   history?: MembershipClaimHistoryRow[];
+  pending_requests?: MembershipClaimRequestRow[];
   claims_unlocked?: boolean;
   claims_unlock_message?: string | null;
 };
@@ -52,9 +67,19 @@ export type MembershipClaimHistoryRow = {
   vehicle_number: string | null;
   vehicle_label: string | null;
   created_at: string;
+  reviewed_at?: string | null;
+  claim_status?: string | null;
   lead_number: string | null;
   lead_status: string | null;
 };
+
+export function formatClaimHistoryStatus(status?: string | null): string {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'APPROVED') return 'Approved';
+  if (normalized === 'REJECTED') return 'Rejected';
+  if (normalized === 'PENDING') return 'Pending';
+  return normalized ? normalized.replace(/_/g, ' ') : 'Pending';
+}
 
 export const MEMBERSHIP_CLAIM_SERVICE_CATEGORY: Record<string, string | undefined> = {
   PERIODIC_10_OFF: 'PERIODIC',
@@ -119,8 +144,12 @@ export async function submitMembershipBenefitClaim(
   };
   benefits?: MembershipBenefitStatusRow[];
   history?: MembershipClaimHistoryRow[];
+  pending_requests?: MembershipClaimRequestRow[];
   claims_unlocked?: boolean;
   claims_unlock_message?: string | null;
+  pending?: boolean;
+  message?: string;
+  request?: MembershipClaimRequestRow;
 }> {
   return apiFetch('/api/customer/membership/claim', {
     method: 'POST',

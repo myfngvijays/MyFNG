@@ -11,6 +11,8 @@ export const COMPLETED_SERVICE_LEAD_STATUSES = [
   'DELIVERED_TO_CUSTOMER',
   'CLOSED',
   'PAID',
+  'DONE',
+  'COMPLETE',
 ] as const;
 
 export const MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE =
@@ -20,7 +22,7 @@ export const DEFAULT_BENEFIT_MAX_USAGE: Record<string, number | null> = {
   PERIODIC_10_OFF: null,
   FREE_INSPECTION: 2,
   FREE_SCAN: 2,
-  DAMAGE_ASSESS: null,
+  DAMAGE_ASSESS: 1,
 };
 
 export type MembershipClaimMeta = {
@@ -36,6 +38,8 @@ export type MembershipBenefitStatus = {
   max_usage: number | null;
   used_count: number;
   remaining: number | null;
+  pending_count: number;
+  approval_pending: boolean;
   show_claim_button: boolean;
   claimable: boolean;
 };
@@ -47,6 +51,8 @@ export type MembershipClaimHistoryItem = {
   vehicle_number: string | null;
   vehicle_label: string | null;
   created_at: string;
+  reviewed_at?: string | null;
+  claim_status?: string | null;
   reference_type: string | null;
   reference_id: string | null;
   lead_number: string | null;
@@ -89,8 +95,56 @@ function membershipVehiclePlates(membership: any): Set<string> {
 }
 
 function isCompletedServiceLeadStatus(status: unknown): boolean {
-  return COMPLETED_SERVICE_LEAD_STATUSES.includes(
-    String(status || '').toUpperCase() as (typeof COMPLETED_SERVICE_LEAD_STATUSES)[number],
+  const normalized = String(status || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (!normalized) return false;
+  return (COMPLETED_SERVICE_LEAD_STATUSES as readonly string[]).includes(normalized);
+}
+
+function resolveLeadCompletionMs(lead: {
+  completed_at?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+}): number {
+  for (const value of [lead.completed_at, lead.updated_at, lead.created_at]) {
+    const ms = new Date(String(value || '')).getTime();
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  return 0;
+}
+
+function isQualifyingMembershipUnlockLead(
+  lead: { meta?: unknown; status?: unknown; completed_at?: string | null; updated_at?: string | null; created_at?: string | null },
+  membershipStartMs: number,
+): boolean {
+  if (!isCompletedServiceLeadStatus(lead.status)) return false;
+  if (isMembershipClaimLead(lead)) return false;
+  const doneAtMs = resolveLeadCompletionMs(lead);
+  if (!Number.isFinite(doneAtMs) || doneAtMs <= 0) return false;
+  return doneAtMs >= membershipStartMs - 60_000;
+}
+
+async function findQualifyingCompletedServiceLead(
+  supabaseAdmin: any,
+  customer: { id: string; phone?: string | null },
+  membership: { starts_at?: string | null; created_at?: string | null },
+): Promise<boolean> {
+  const normalizedPhone = normalizeCustomerPhone(customer.phone);
+  if (!normalizedPhone) return false;
+
+  const membershipStartMs = new Date(membership.starts_at || membership.created_at || 0).getTime();
+  const { data: leads } = await supabaseAdmin
+    .from('service_leads')
+    .select('id, status, meta, created_at, completed_at, updated_at, customer_phone')
+    .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(100);
+
+  return filterLeadsForCustomer(leads, { id: customer.id, phone: normalizedPhone }).some((lead) =>
+    isQualifyingMembershipUnlockLead(lead, membershipStartMs),
   );
 }
 
@@ -114,39 +168,33 @@ export async function areMembershipClaimsUnlocked(
   if (sourceLeadId) {
     const { data: lead } = await supabaseAdmin
       .from('service_leads')
-      .select('id, status, meta')
+      .select('id, status, meta, completed_at, updated_at, created_at')
       .eq('id', sourceLeadId)
       .maybeSingle();
 
-    if (lead && isCompletedServiceLeadStatus(lead.status) && !isMembershipClaimLead(lead)) {
+    const membershipStartMs = new Date(membership.starts_at || membership.created_at || 0).getTime();
+    if (lead && isQualifyingMembershipUnlockLead(lead, membershipStartMs)) {
       return { unlocked: true };
     }
-    return { unlocked: false, pendingLeadId: sourceLeadId };
   }
 
-  const normalizedPhone = normalizeCustomerPhone(customer.phone);
-  if (!normalizedPhone) return { unlocked: false };
+  const unlocked = await findQualifyingCompletedServiceLead(supabaseAdmin, customer, membership);
+  if (unlocked) return { unlocked: true };
 
-  const { data: leads } = await supabaseAdmin
-    .from('service_leads')
-    .select('id, status, meta, created_at, completed_at, customer_phone')
-    .or(buildCustomerLeadOrFilter({ id: customer.id, phone: normalizedPhone }))
-    .in('status', [...COMPLETED_SERVICE_LEAD_STATUSES])
-    .order('completed_at', { ascending: false, nullsFirst: false })
-    .limit(50);
-
-  const membershipStartMs = new Date(membership.starts_at || membership.created_at || 0).getTime();
-  const qualifying = filterLeadsForCustomer(leads, { id: customer.id, phone: normalizedPhone }).filter((lead) => {
-    if (isMembershipClaimLead(lead)) return false;
-    const doneAtMs = lead.completed_at
-      ? new Date(String(lead.completed_at)).getTime()
-      : new Date(String(lead.created_at || 0)).getTime();
-    if (!Number.isFinite(doneAtMs)) return false;
-    return doneAtMs >= membershipStartMs - 60_000;
-  });
-
-  return { unlocked: qualifying.length > 0 };
+  return { unlocked: false, pendingLeadId: sourceLeadId || null };
 }
+
+export type MembershipClaimRequestRow = {
+  id: string;
+  benefit_code: string;
+  benefit_title: string;
+  status: string;
+  vehicle_number: string | null;
+  vehicle_label: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+};
 
 export async function getMembershipBenefitsStatus(
   supabaseAdmin: any,
@@ -155,6 +203,7 @@ export async function getMembershipBenefitsStatus(
 ): Promise<{
   benefits: MembershipBenefitStatus[];
   history: MembershipClaimHistoryItem[];
+  pending_requests: MembershipClaimRequestRow[];
   claims_unlocked: boolean;
   claims_unlock_message: string | null;
 }> {
@@ -163,6 +212,7 @@ export async function getMembershipBenefitsStatus(
     return {
       benefits: [],
       history: [],
+      pending_requests: [],
       claims_unlocked: false,
       claims_unlock_message: null,
     };
@@ -184,10 +234,19 @@ export async function getMembershipBenefitsStatusForMembership(
 ): Promise<{
   benefits: MembershipBenefitStatus[];
   history: MembershipClaimHistoryItem[];
+  pending_requests: MembershipClaimRequestRow[];
   claims_unlocked: boolean;
   claims_unlock_message: string | null;
 }> {
   const customerId = String(membership.customer_id);
+  const { fetchPendingMembershipClaimRequests } = await import('@/lib/membership-claim-approval');
+  const pendingRequests = await fetchPendingMembershipClaimRequests(supabaseAdmin, String(membership.id));
+  const pendingByCode: Record<string, number> = {};
+  for (const row of pendingRequests) {
+    const code = String(row.benefit_code || '').toUpperCase();
+    pendingByCode[code] = (pendingByCode[code] || 0) + 1;
+  }
+
   const unlockState = await areMembershipClaimsUnlocked(
     supabaseAdmin,
     { id: customerId, phone: customerPhone },
@@ -226,16 +285,21 @@ export async function getMembershipBenefitsStatusForMembership(
       const code = String(b.benefit_code || '').toUpperCase();
       const maxUsage = resolveMaxUsage(b);
       const usedCount = usageByCode[code] || 0;
-      const remaining = maxUsage == null ? null : Math.max(0, maxUsage - usedCount);
-      const hasQuotaLeft = maxUsage == null ? true : usedCount < maxUsage;
+      const pendingCount = pendingByCode[code] || 0;
+      const reservedCount = usedCount + pendingCount;
+      const remaining = maxUsage == null ? null : Math.max(0, maxUsage - reservedCount);
+      const hasQuotaLeft = maxUsage == null ? true : reservedCount < maxUsage;
+      const approvalPending = pendingCount > 0;
       return {
         benefit_code: code,
         title: String(b.title || code),
         max_usage: maxUsage,
         used_count: usedCount,
         remaining,
+        pending_count: pendingCount,
+        approval_pending: approvalPending,
         show_claim_button: claimsUnlocked,
-        claimable: claimsUnlocked && hasQuotaLeft,
+        claimable: claimsUnlocked && hasQuotaLeft && !approvalPending,
       };
     });
 
@@ -243,24 +307,72 @@ export async function getMembershipBenefitsStatusForMembership(
     .filter((r: any) => String(r.reference_type || '').toUpperCase() === 'LEAD' && r.reference_id)
     .map((r: any) => String(r.reference_id));
 
+  const { data: claimRequestRows } = await supabaseAdmin
+    .from('membership_claim_requests')
+    .select(
+      'id, benefit_code, benefit_title, status, vehicle_number, vehicle_label, created_at, reviewed_at, lead_id, membership_usage_id',
+    )
+    .eq('customer_membership_id', membership.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  const claimLeadIds = (claimRequestRows || [])
+    .map((row: any) => String(row.lead_id || '').trim())
+    .filter(Boolean);
+  const historyLeadIds = Array.from(new Set([...leadIds, ...claimLeadIds]));
+
   const leadById: Record<string, any> = {};
-  if (leadIds.length > 0) {
+  if (historyLeadIds.length > 0) {
     const { data: leads } = await supabaseAdmin
       .from('service_leads')
       .select('id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, meta')
-      .in('id', leadIds);
+      .in('id', historyLeadIds);
     for (const lead of leads || []) {
       leadById[String(lead.id)] = lead;
     }
   }
 
-  const history: MembershipClaimHistoryItem[] = (usageRows || []).map((r: any) => {
+  const linkedUsageIds = new Set(
+    (claimRequestRows || [])
+      .map((row: any) => String(row.membership_usage_id || '').trim())
+      .filter(Boolean),
+  );
+
+  const requestHistory: MembershipClaimHistoryItem[] = (claimRequestRows || []).map((row: any) => {
+    const code = String(row.benefit_code || '').toUpperCase();
+    const lead = row.lead_id ? leadById[String(row.lead_id)] : null;
+    const claimMeta = (lead?.meta as any)?.membership_claim || {};
+    const vehicleLabel =
+      row.vehicle_label ||
+      claimMeta.vehicle_label ||
+      [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ') ||
+      null;
+    return {
+      id: String(row.id),
+      benefit_code: code,
+      benefit_title: String(row.benefit_title || titleByCode[code] || code),
+      vehicle_number: row.vehicle_number || claimMeta.vehicle_number || lead?.vehicle_number || null,
+      vehicle_label: vehicleLabel,
+      created_at: String(row.created_at || ''),
+      reviewed_at: row.reviewed_at ? String(row.reviewed_at) : null,
+      claim_status: String(row.status || 'PENDING').toUpperCase(),
+      reference_type: row.lead_id ? 'LEAD' : null,
+      reference_id: row.lead_id ? String(row.lead_id) : null,
+      lead_number: lead?.lead_number || null,
+      lead_status: lead?.status || null,
+    };
+  });
+
+  const legacyHistory: MembershipClaimHistoryItem[] = (usageRows || [])
+    .filter((row: any) => !linkedUsageIds.has(String(row.id)))
+    .map((r: any) => {
       const code = String(r.benefit_code || '').toUpperCase();
       const lead = r.reference_id ? leadById[String(r.reference_id)] : null;
       const claimMeta = (lead?.meta as any)?.membership_claim || {};
-      const vehicleLabel = claimMeta.vehicle_label
-        || [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ')
-        || null;
+      const vehicleLabel =
+        claimMeta.vehicle_label ||
+        [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ') ||
+        null;
       return {
         id: String(r.id),
         benefit_code: code,
@@ -268,6 +380,8 @@ export async function getMembershipBenefitsStatusForMembership(
         vehicle_number: claimMeta.vehicle_number || lead?.vehicle_number || null,
         vehicle_label: vehicleLabel,
         created_at: String(r.created_at || ''),
+        reviewed_at: String(r.created_at || ''),
+        claim_status: 'APPROVED',
         reference_type: r.reference_type || null,
         reference_id: r.reference_id || null,
         lead_number: lead?.lead_number || null,
@@ -275,9 +389,14 @@ export async function getMembershipBenefitsStatusForMembership(
       };
     });
 
+  const history = [...requestHistory, ...legacyHistory].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+
   return {
     benefits,
     history,
+    pending_requests: pendingRequests,
     claims_unlocked: claimsUnlocked,
     claims_unlock_message: claimsUnlocked ? null : MEMBERSHIP_CLAIMS_UNLOCK_MESSAGE,
   };
@@ -289,6 +408,7 @@ export async function validateMembershipClaim(
   benefitCodeInput: string,
   vehicleNumberInput?: string | null,
   allowedPlatesOverride?: Set<string>,
+  opts?: { ignorePendingRequestId?: string | null },
 ): Promise<
   | {
       valid: true;
@@ -349,7 +469,30 @@ export async function validateMembershipClaim(
 
   const usedCount = Number(count || 0);
   const maxUsage = resolveMaxUsage(benefit);
-  if (maxUsage != null && usedCount >= maxUsage) {
+
+  let pendingQuery = supabaseAdmin
+    .from('membership_claim_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('customer_membership_id', membership.id)
+    .eq('benefit_code', benefitCode)
+    .eq('status', 'PENDING');
+
+  const ignorePendingRequestId = String(opts?.ignorePendingRequestId || '').trim();
+  if (ignorePendingRequestId) {
+    pendingQuery = pendingQuery.neq('id', ignorePendingRequestId);
+  }
+
+  const { count: pendingCountRaw } = await pendingQuery;
+  const pendingCount = Number(pendingCountRaw || 0);
+
+  if (pendingCount > 0) {
+    return {
+      valid: false,
+      error: 'This benefit already has a pending approval request. Please wait for confirmation.',
+    };
+  }
+
+  if (maxUsage != null && usedCount + pendingCount >= maxUsage) {
     return { valid: false, error: `You have used all ${maxUsage} claims for this benefit.` };
   }
 
@@ -395,6 +538,89 @@ export async function recordMembershipClaimUsage(
     return { ok: false, error: error.message || 'Failed to record membership claim' };
   }
   return { ok: true };
+}
+
+const REVOKABLE_LEAD_STATUSES = new Set(['NEW', 'PENDING', 'OPEN', 'ASSIGNED', 'ACCEPTED']);
+
+export async function revokeMembershipBenefitClaim(
+  supabaseAdmin: any,
+  usageId: string,
+  opts?: { adminUserId?: string | null },
+): Promise<
+  | {
+      success: true;
+      membership_id: string;
+      benefit_code: string;
+      lead_cancelled: boolean;
+      warning?: string;
+    }
+  | { success: false; error: string }
+> {
+  const { data: usage, error: fetchError } = await supabaseAdmin
+    .from('membership_usage')
+    .select('id, customer_id, customer_membership_id, benefit_code, reference_type, reference_id')
+    .eq('id', usageId)
+    .maybeSingle();
+
+  if (fetchError) {
+    return { success: false, error: fetchError.message || 'Could not load claim record.' };
+  }
+  if (!usage) {
+    return { success: false, error: 'Claim record not found.' };
+  }
+
+  let leadCancelled = false;
+  let warning: string | undefined;
+
+  if (String(usage.reference_type || '').toUpperCase() === 'LEAD' && usage.reference_id) {
+    const { data: lead } = await supabaseAdmin
+      .from('service_leads')
+      .select('id, status, meta')
+      .eq('id', usage.reference_id)
+      .maybeSingle();
+
+    if (lead) {
+      const leadStatus = String(lead.status || '').toUpperCase();
+      if (REVOKABLE_LEAD_STATUSES.has(leadStatus)) {
+        const meta =
+          lead.meta && typeof lead.meta === 'object' && !Array.isArray(lead.meta)
+            ? { ...(lead.meta as Record<string, unknown>) }
+            : {};
+        meta.membership_claim_revoked_at = new Date().toISOString();
+        if (opts?.adminUserId) meta.membership_claim_revoked_by = opts.adminUserId;
+
+        const { error: leadError } = await supabaseAdmin
+          .from('service_leads')
+          .update({
+            status: 'CANCELLED',
+            meta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', lead.id);
+
+        if (leadError) {
+          return { success: false, error: leadError.message || 'Could not cancel linked booking.' };
+        }
+        leadCancelled = true;
+      } else if (!['CANCELLED', 'CLOSED'].includes(leadStatus)) {
+        warning =
+          'Claim revoked and benefit restored, but the linked booking was already in progress and was not cancelled.';
+      }
+    }
+  }
+
+  const { error: deleteError } = await supabaseAdmin.from('membership_usage').delete().eq('id', usageId);
+  if (deleteError) {
+    return { success: false, error: deleteError.message || 'Could not revoke claim.' };
+  }
+
+  return {
+    success: true,
+    membership_id: String(usage.customer_membership_id),
+    benefit_code: String(usage.benefit_code || '').toUpperCase(),
+    lead_cancelled: leadCancelled,
+    warning,
+  };
 }
 
 export function parseMembershipClaimMeta(meta: unknown): MembershipClaimMeta | null {
@@ -444,7 +670,7 @@ function snapshotToVehicle(snapshot: any): ResolvedMembershipVehicle | null {
   };
 }
 
-async function fetchMembershipVehicleCandidates(
+export async function fetchMembershipVehicleCandidates(
   supabaseAdmin: any,
   customerId: string,
   membership: any,
