@@ -700,14 +700,18 @@ export default function WhatsAppTemplateManager() {
                     </td>
                     <td className="px-3 py-3 text-right">
                       <div className="inline-flex items-center gap-2">
-                        {['', 'NOT_SYNCED'].includes(String(row.meta?.status || '').toUpperCase()) ? (
+                        {['', 'NOT_SYNCED', 'REJECTED'].includes(String(row.meta?.status || '').toUpperCase()) ? (
                           <button
                             type="button"
                             className="rounded border px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
                             onClick={() => handlePushToMeta(row)}
-                            title="Push this local template to Meta"
+                            title={
+                              String(row.meta?.status || '').toUpperCase() === 'REJECTED'
+                                ? 'Re-submit to Meta (delete rejected template from Meta Manager first if push fails)'
+                                : 'Push this local template to Meta'
+                            }
                           >
-                            Push
+                            {String(row.meta?.status || '').toUpperCase() === 'REJECTED' ? 'Re-push' : 'Push'}
                           </button>
                         ) : null}
                         <button

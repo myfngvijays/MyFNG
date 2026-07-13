@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { processWhatsAppBrainMessage } from '@/lib/whatsappBotFlow/brain';
+import { processInboundWhatsAppMessage } from '@/lib/whatsappAgents/router';
 import {
   extractInboundBrainText,
   isBrainEligibleInboundType,
@@ -354,7 +354,7 @@ export async function POST(request: NextRequest) {
         inboundCount += 1;
 
         if (senderPhone && brainText && isBrainEligibleInboundType(messageType)) {
-          void processWhatsAppBrainMessage({
+          void processInboundWhatsAppMessage({
             phone: senderPhone,
             message: brainText,
             profileName,

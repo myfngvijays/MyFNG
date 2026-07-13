@@ -18,6 +18,10 @@ import toast from 'react-hot-toast';
 import { splitWhatsAppPreviewParts } from '@/lib/whatsappBotFlow/formatReply';
 import PeriodicPlansPreview from '@/components/shared/bot-flow/PeriodicPlansPreview';
 import { extractCarModelFromMessage, type PricingPlanItem } from '@/lib/whatsappBotFlow/periodicPlansUi';
+import AgentTabs, { type AgentTabId } from './components/AgentTabs';
+import BookingAgentPanel from './components/BookingAgentPanel';
+import FollowupAgentPanel from './components/FollowupAgentPanel';
+import ChaseAgentPanel from './components/ChaseAgentPanel';
 
 type BotFlow = {
   id: string;
@@ -92,6 +96,7 @@ const DEFAULT_CONFIG: BrainConfig = {
 
 export default function SuperAdminBotFlowPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<AgentTabId>('brain');
   const [flows, setFlows] = useState<BotFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -337,7 +342,7 @@ export default function SuperAdminBotFlowPage() {
           <div>
             <h1 className="text-2xl font-bold text-yellow-300 sm:text-3xl">Bot Flows</h1>
             <p className="mt-1 text-sm text-blue-100">
-              Manage flows and the WhatsApp AI brain that auto-replies on inbound messages.
+              Manage flows, AI brain, and WhatsApp agents — Booking, Follow-up, and Chase bots.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span
@@ -408,6 +413,14 @@ export default function SuperAdminBotFlowPage() {
         </div>
       </div>
 
+      <AgentTabs activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === 'booking' ? <BookingAgentPanel /> : null}
+      {activeTab === 'followup' ? <FollowupAgentPanel /> : null}
+      {activeTab === 'chase' ? <ChaseAgentPanel /> : null}
+
+      {activeTab === 'brain' ? (
+      <>
       <div className="rounded-xl border bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
@@ -816,6 +829,8 @@ export default function SuperAdminBotFlowPage() {
             </div>
           </div>
         </div>
+      ) : null}
+      </>
       ) : null}
     </div>
   );

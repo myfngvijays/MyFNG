@@ -91,6 +91,76 @@ function normalizeTemplate(template: MetaTemplate, actorId: string) {
   };
 }
 
+function metaStatusPriority(status: string) {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'APPROVED') return 4;
+  if (normalized === 'PENDING') return 3;
+  if (normalized === 'PAUSED') return 2;
+  if (normalized === 'REJECTED') return 1;
+  return 0;
+}
+
+function deduplicateByTemplateName(rows: ReturnType<typeof normalizeTemplate>[]) {
+  const byName = new Map<string, ReturnType<typeof normalizeTemplate>>();
+
+  for (const row of rows) {
+    const existing = byName.get(row.template_name);
+    if (!existing) {
+      byName.set(row.template_name, row);
+      continue;
+    }
+
+    const existingPriority = metaStatusPriority(String(existing.meta?.status || ''));
+    const rowPriority = metaStatusPriority(String(row.meta?.status || ''));
+    if (rowPriority > existingPriority) {
+      byName.set(row.template_name, row);
+      continue;
+    }
+    if (rowPriority === existingPriority && row.language_code === 'en' && existing.language_code !== 'en') {
+      byName.set(row.template_name, row);
+    }
+  }
+
+  return Array.from(byName.values());
+}
+
+async function getProtectedTemplateNames(adminDb: any): Promise<Set<string>> {
+  const protectedNames = new Set<string>();
+
+  const { data: configs } = await adminDb.from('whatsapp_agent_configs').select('triggers_json');
+  for (const row of configs || []) {
+    const name = String((row as { triggers_json?: { outbound_template_name?: string } }).triggers_json
+      ?.outbound_template_name || '')
+      .trim()
+      .toLowerCase();
+    if (name) protectedNames.add(name);
+  }
+
+  const { data: automation } = await adminDb
+    .from('whatsapp_automation_settings')
+    .select('template_name');
+  for (const row of automation || []) {
+    const name = String((row as { template_name?: string }).template_name || '')
+      .trim()
+      .toLowerCase();
+    if (name) protectedNames.add(name);
+  }
+
+  return protectedNames;
+}
+
+function shouldPreserveLocalTemplate(row: { template_name?: string; meta?: Record<string, unknown> }, protectedNames: Set<string>) {
+  const name = String(row.template_name || '').trim().toLowerCase();
+  if (protectedNames.has(name)) return true;
+
+  const source = String(row.meta?.source || '').trim().toLowerCase();
+  if (source === 'local_draft' || source === 'meta_push_existing' || source === 'meta_create') return true;
+
+  if (row.meta?.purpose || row.meta?.deprecated) return true;
+
+  return false;
+}
+
 async function fetchAllMetaTemplates() {
   const allTemplates: MetaTemplate[] = [];
   let nextUrl = `${WHATSAPP_API_URL}/${WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates?fields=id,name,language,status,category,components&limit=100`;
@@ -155,93 +225,106 @@ export async function POST() {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const metaTemplates = await fetchAllMetaTemplates();
-    const normalizedRows = metaTemplates
-      .map((template) => normalizeTemplate(template, auth.userProfile.id))
-      .filter((row) => Boolean(row.template_name));
+    const normalizedRows = deduplicateByTemplateName(
+      metaTemplates
+        .map((template) => normalizeTemplate(template, auth.userProfile.id))
+        .filter((row) => Boolean(row.template_name))
+    );
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const adminDb = (supabaseAdmin ?? db) as any;
 
-    const metaTemplateNames = new Set(normalizedRows.map((r) => r.template_name));
+    const protectedNames = await getProtectedTemplateNames(adminDb);
+    const { data: existingAll } = await adminDb
+      .from('whatsapp_templates')
+      .select('template_name, meta, is_active');
 
-    // Preserve admin toggle (is_active) when re-syncing existing templates from Meta.
+    const doNotOverwrite = new Set<string>();
+    const existingMetaByName = new Map<string, Record<string, unknown>>();
     const existingActiveByName = new Map<string, boolean>();
-    if (normalizedRows.length > 0) {
-      const { data: existingRows } = await adminDb
-        .from('whatsapp_templates')
-        .select('template_name, is_active')
-        .in(
-          'template_name',
-          normalizedRows.map((row) => row.template_name)
-        );
 
-      for (const row of existingRows || []) {
-        const name = String((row as { template_name?: string }).template_name || '')
-          .trim()
-          .toLowerCase();
-        if (!name) continue;
-        existingActiveByName.set(name, Boolean((row as { is_active?: boolean }).is_active));
+    for (const row of existingAll || []) {
+      const name = String((row as { template_name?: string }).template_name || '')
+        .trim()
+        .toLowerCase();
+      if (!name) continue;
+      existingActiveByName.set(name, Boolean((row as { is_active?: boolean }).is_active));
+      existingMetaByName.set(name, ((row as { meta?: Record<string, unknown> }).meta || {}) as Record<string, unknown>);
+      if (shouldPreserveLocalTemplate(row as { template_name?: string; meta?: Record<string, unknown> }, protectedNames)) {
+        doNotOverwrite.add(name);
       }
     }
 
-    const rowsToUpsert = normalizedRows.map((row) => ({
-      ...row,
-      is_active: existingActiveByName.has(row.template_name)
-        ? existingActiveByName.get(row.template_name)!
-        : row.is_active,
-    }));
+    const metaTemplateNames = new Set(normalizedRows.map((r) => r.template_name));
+
+    const rowsToUpsert = normalizedRows
+      .filter((row) => !doNotOverwrite.has(row.template_name))
+      .map((row) => ({
+        ...row,
+        is_active: existingActiveByName.has(row.template_name)
+          ? existingActiveByName.get(row.template_name)!
+          : row.is_active,
+      }));
+
+    let linkedProtected = 0;
 
     if (normalizedRows.length === 0) {
-      // No templates on Meta — delete all local templates
-      const { data: allLocal } = await adminDb
-        .from('whatsapp_templates')
-        .select('id, template_name');
-      const toDelete = (allLocal || []).map((r: any) => r.id).filter(Boolean);
-      if (toDelete.length > 0) {
-        await adminDb.from('whatsapp_templates').delete().in('id', toDelete);
-      }
       return NextResponse.json({
         success: true,
         fetched: 0,
         synced: 0,
-        deleted: toDelete.length,
-        message: `No templates on Meta. Deleted ${toDelete.length} stale local templates.`,
+        deleted: 0,
+        linkedProtected: 0,
+        preserved: true,
+        message: 'No templates found on Meta. Local templates were preserved.',
       });
     }
 
-    const { error } = await adminDb
-      .from('whatsapp_templates')
-      .upsert(rowsToUpsert, { onConflict: 'template_name' });
+    if (rowsToUpsert.length > 0) {
+      const { error } = await adminDb
+        .from('whatsapp_templates')
+        .upsert(rowsToUpsert, { onConflict: 'template_name' });
 
-    if (error) {
-      return NextResponse.json({ error: error.message || 'Failed to sync templates' }, { status: 500 });
+      if (error) {
+        return NextResponse.json({ error: error.message || 'Failed to sync templates' }, { status: 500 });
+      }
     }
 
-    // Delete DB templates that no longer exist on Meta
-    const { data: allDbTemplates } = await adminDb
-      .from('whatsapp_templates')
-      .select('id, template_name');
-
-    const staleIds = (allDbTemplates || [])
-      .filter((r: any) => !metaTemplateNames.has(String(r.template_name || '').trim().toLowerCase()))
-      .map((r: any) => r.id)
-      .filter(Boolean);
-
-    let deletedCount = 0;
-    if (staleIds.length > 0) {
-      const { error: delError } = await adminDb
+    // Link Meta status onto protected local rows without overwriting body/name.
+    for (const row of normalizedRows) {
+      if (!doNotOverwrite.has(row.template_name)) continue;
+      const priorMeta = existingMetaByName.get(row.template_name) || {};
+      const metaStatus = String(row.meta?.status || '').toUpperCase();
+      const { error: linkError } = await adminDb
         .from('whatsapp_templates')
-        .delete()
-        .in('id', staleIds);
-      if (!delError) deletedCount = staleIds.length;
+        .update({
+          meta: {
+            ...priorMeta,
+            status: metaStatus,
+            template_id: row.meta?.template_id || null,
+            synced_at: new Date().toISOString(),
+            meta_linked: true,
+          },
+          is_active:
+            metaStatus === 'APPROVED'
+              ? true
+              : existingActiveByName.has(row.template_name)
+                ? existingActiveByName.get(row.template_name)!
+                : false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('template_name', row.template_name);
+      if (!linkError) linkedProtected += 1;
     }
 
     return NextResponse.json({
       success: true,
       fetched: metaTemplates.length,
       synced: rowsToUpsert.length,
-      deleted: deletedCount,
-      message: `Synced ${rowsToUpsert.length} templates from Meta.${deletedCount > 0 ? ` Deleted ${deletedCount} stale templates.` : ''}`,
+      linkedProtected,
+      deleted: 0,
+      protected: Array.from(doNotOverwrite),
+      message: `Synced ${rowsToUpsert.length} templates from Meta.${linkedProtected > 0 ? ` Linked ${linkedProtected} protected templates.` : ''} No templates were auto-deleted.`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

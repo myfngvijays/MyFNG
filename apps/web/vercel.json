@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/whatsapp-agents",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-automation",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/telecrm-push",
+      "schedule": "0 */12 * * *"
+    }
+  ]
+}

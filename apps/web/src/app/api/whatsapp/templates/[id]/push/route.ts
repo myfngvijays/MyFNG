@@ -36,7 +36,12 @@ async function createTemplateOnMeta(payload: {
   language_code: string;
   category: string;
   body_text: string;
+  example_values?: string[];
 }) {
+  const exampleValues = Array.isArray(payload.example_values)
+    ? payload.example_values.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+
   const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates`, {
     method: 'POST',
     headers: {
@@ -47,7 +52,19 @@ async function createTemplateOnMeta(payload: {
       name: payload.template_name,
       language: payload.language_code,
       category: payload.category,
-      components: [{ type: 'BODY', text: payload.body_text }],
+      components: [
+        {
+          type: 'BODY',
+          text: payload.body_text,
+          ...(exampleValues.length > 0
+            ? {
+                example: {
+                  body_text: [exampleValues],
+                },
+              }
+            : {}),
+        },
+      ],
     }),
     cache: 'no-store',
   });
@@ -121,11 +138,18 @@ export async function POST(
         language_code: String(localTemplate.language_code || 'en'),
         category: String(localTemplate.category || 'UTILITY'),
         body_text: String(localTemplate.body_text || ''),
+        example_values: Array.isArray(localTemplate.example_values)
+          ? localTemplate.example_values.map((value: unknown) => String(value || '').trim()).filter(Boolean)
+          : [],
       });
     } catch (error: any) {
-      const message = String(error?.message || '');
-      if (!message.toLowerCase().includes('already exists')) throw error;
-      // If template already exists on Meta, proceed to verify and link it.
+      const message = String(error?.message || '').toLowerCase();
+      const alreadyOnMeta =
+        message.includes('already exists') ||
+        message.includes('already english content') ||
+        message.includes('already content for this template');
+      if (!alreadyOnMeta) throw error;
+      // Template already on Meta — verify and link local row.
     }
 
     const verified = await verifyTemplateOnMeta(String(localTemplate.template_name));

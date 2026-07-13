@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { triggerChaseForTelecrmRowSafe } from '@/lib/whatsappAgents/chase/triggerOnTelecrmRow';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { fetchDeepcallRecordingUrl } from '@/lib/sarv/deepcall';
 
@@ -554,7 +555,7 @@ export async function POST(request: NextRequest) {
       // to TeleCRM, so the row has time to gather enriched details first.
       try {
         const mobile = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
-        const { error: insertErr } = await db
+        const { data: telecrmRow, error: insertErr } = await db
           .from('telecrm_api')
           .insert({
             mobile: mobile || null,
@@ -563,10 +564,14 @@ export async function POST(request: NextRequest) {
             disposition_note: upsertPayload.disposition_note || null,
             recording_url: callRow.recording_url || null,
             updated_at: now,
-          });
+          })
+          .select('id, mobile, disposition, city, pincode, service_type, vehicle_model, created_at')
+          .single();
 
         if (insertErr) {
           console.error('[sarv-webhook] telecrm_api insert failed:', insertErr.message);
+        } else if (telecrmRow) {
+          triggerChaseForTelecrmRowSafe(telecrmRow);
         }
       } catch (telecrmErr: any) {
         console.error('[sarv-webhook] telecrm_api insert failed:', telecrmErr?.message || telecrmErr);

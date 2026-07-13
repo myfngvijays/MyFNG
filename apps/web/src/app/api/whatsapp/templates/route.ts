@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 const ALLOWED_ADMIN_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN'];
 const ALLOWED_TEMPLATE_READ_ROLES = [
@@ -146,12 +147,17 @@ export async function GET() {
     const auth = await assertTemplateReader(db);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    const { data, error } = await db
+    const roleCode = (auth.userProfile as any)?.roles?.role_code;
+    const useAdminRead = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const readDb = useAdminRead && supabaseAdmin ? supabaseAdmin : db;
+
+    const { data, error } = await readDb
       .from('whatsapp_templates')
       .select(
         'id, template_name, display_name, language_code, category, body_text, variable_keys, example_values, is_active, meta, created_at, updated_at'
       )
-      .order('created_at', { ascending: false });
+      .order('updated_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true, templates: data || [] });
