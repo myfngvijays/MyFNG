@@ -5,6 +5,7 @@ import { FlaskConical, Power, RefreshCw, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { AgentConfig, AgentRuntime, AgentType } from '@/lib/whatsappAgents/shared/types';
 import AgentRulesEditor from './AgentRulesEditor';
+import BookingAgentTestModal from './BookingAgentTestModal';
 
 const API_SLUG: Record<AgentType, string> = {
   BOOKING: 'booking',
@@ -388,7 +389,11 @@ export default function AgentConfigPanel({
         </div>
       </div>
 
-      {testOpen ? (
+      {testOpen && agentType === 'BOOKING' ? (
+        <BookingAgentTestModal title={title} onClose={() => setTestOpen(false)} />
+      ) : null}
+
+      {testOpen && agentType !== 'BOOKING' ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">

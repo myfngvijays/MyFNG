@@ -6,6 +6,10 @@ export interface SessionData {
   lastShownWorkshops?: any[]; // Store recently shown workshops for selection
   lastShownPlans?: any[]; // Store service plans/pricing to handle plan selection
   lastBookingCompleted?: number; // Timestamp of last completed booking
+  phoneVerification?: {
+    phone: string;
+    verifiedAt: string;
+  };
   bookingState?: {
     selectedService?: string;
     selectedServicePlan?: {
@@ -25,6 +29,7 @@ export interface SessionData {
     phoneNumber?: string;
     address?: string;
     carModel?: string;
+    vehicleNumber?: string;
     city?: string;
     cityId?: string;
     pincode?: string;
@@ -38,10 +43,12 @@ export interface SessionData {
     currentStep?:
       | 'ASKING_SERVICE'
       | 'ASKING_CAR'
+      | 'ASKING_VEHICLE_NUMBER'
       | 'ASKING_CITY'
       | 'ASKING_PINCODE'
       | 'ASKING_NAME'
       | 'ASKING_PHONE'
+      | 'ASKING_OTP'
       | 'ASKING_ADDRESS'
       | 'ASKING_DATE'
       | 'ASKING_TIME'

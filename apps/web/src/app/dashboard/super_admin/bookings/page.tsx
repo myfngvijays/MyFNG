@@ -15,7 +15,7 @@ type ActiveTab = 'service_leads' | 'chatbot_bookings' | 'upload_crm';
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
-const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'OTHER'] as const;
+const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'MISA', 'OTHER'] as const;
 const COUPON_OPTIONS = ['ALL', 'YES', 'NO'] as const;
 
 function leadStatusSelectClass(status?: string | null) {
@@ -84,8 +84,11 @@ function SourceBadge({ label, source }: { label: string; source: string }) {
       ? 'bg-emerald-100 text-emerald-800'
       : source === 'WEBSITE'
         ? 'bg-blue-100 text-blue-800'
-        : 'bg-gray-100 text-gray-700';
-  const Icon = source === 'APP' ? Smartphone : source === 'WEBSITE' ? Globe : UserRound;
+        : source === 'MISA'
+          ? 'bg-violet-100 text-violet-800'
+          : 'bg-gray-100 text-gray-700';
+  const Icon =
+    source === 'APP' ? Smartphone : source === 'WEBSITE' ? Globe : source === 'MISA' ? Bot : UserRound;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}>
       <Icon className="w-3 h-3 shrink-0" />

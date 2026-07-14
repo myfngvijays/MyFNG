@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import {
+  getMisaCreatedFrom,
+  getMisaLeadSource,
+  getMisaTelecrmTag,
+  resolveMisaBookingChannel,
+  type MisaBookingChannel,
+} from './misaLeadSource';
 
 
 export interface BookingData {
@@ -8,6 +15,7 @@ export interface BookingData {
   service_category: string;
   customer_name: string;
   phone_number: string;
+  vehicle_number: string;
   address: string;
   car_model: string;
   car_class?: string;
@@ -18,6 +26,7 @@ export interface BookingData {
   quoted_price?: number;
   status?: string;
   notes?: string;
+  channel?: MisaBookingChannel;
 }
 
 const EXTERNAL_AUTOUPDATE_URL =
@@ -25,20 +34,31 @@ const EXTERNAL_AUTOUPDATE_URL =
 const EXTERNAL_AUTOUPDATE_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
 
-async function pushChatbotBookingToExternalApi(booking: BookingData) {
+function resolveBookingChannel(booking: BookingData): MisaBookingChannel {
+  return resolveMisaBookingChannel({
+    channel: booking.channel,
+    sessionId: booking.session_id,
+  });
+}
+
+async function pushChatbotBookingToExternalApi(booking: BookingData, channel: MisaBookingChannel) {
   const phoneDigits = String(booking.phone_number || '').replace(/\D/g, '').slice(-10);
+  const leadSource = getMisaLeadSource(channel);
+  const leadTag = getMisaTelecrmTag(channel);
 
   const payload = {
     fields: {
-      Name: String(booking.customer_name || '').trim() || 'AI Chatbot Lead',
+      Name: String(booking.customer_name || '').trim() || `${leadSource} Lead`,
       Phone: phoneDigits ? `+91${phoneDigits}` : null,
 
-      LEADTAG: 'AI Chatbot',
-      LeadSource: 'AI Chatbot',
+      LEADTAG: leadTag,
+      LeadSource: leadSource,
       LeadStatus: booking.status || 'pending',
 
       carModel: String(booking.car_model || '').trim() || null,
       VehicleModel: String(booking.car_model || '').trim() || null,
+      VehicleNumber: String(booking.vehicle_number || '').trim() || null,
+      vehicle_number: String(booking.vehicle_number || '').trim() || null,
       ServiceType: booking.service_name || booking.service_category || null,
 
       City: booking.city || null,
@@ -51,13 +71,13 @@ async function pushChatbotBookingToExternalApi(booking: BookingData) {
 
       EstimatedAmount: booking.quoted_price ?? null,
 
-      CreatedFrom: 'AI_CHATBOT',
+      CreatedFrom: getMisaCreatedFrom(channel),
       CreatedAt: new Date().toISOString(),
     },
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: 'Lead Source: AI Chatbot',
+        text: `Lead Source: ${leadSource}`,
       },
     ],
   };
@@ -77,7 +97,7 @@ async function pushChatbotBookingToExternalApi(booking: BookingData) {
   }
 }
 
-async function createServiceLead(bookingData: BookingData): Promise<string | null> {
+async function createServiceLead(bookingData: BookingData, channel: MisaBookingChannel): Promise<string | null> {
   try {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) {
@@ -90,15 +110,17 @@ async function createServiceLead(bookingData: BookingData): Promise<string | nul
 
     const leadNumber = `L-${Date.now().toString().slice(-8)}`;
     const nowIso = new Date().toISOString();
+    const leadSource = getMisaLeadSource(channel);
 
     const payload: Record<string, any> = {
       lead_number: leadNumber,
       lead_type: 'NORMAL',
-      lead_source: 'AI Chatbot',
+      lead_source: leadSource,
+      created_from: getMisaCreatedFrom(channel),
       status: 'NEW',
       customer_name: bookingData.customer_name || `Customer_${phoneDigits.slice(-4)}`,
       customer_phone: phoneDigits,
-      vehicle_number: 'NA',
+      vehicle_number: bookingData.vehicle_number || 'NA',
       vehicle_model: bookingData.car_model || null,
       service_type: bookingData.service_name || bookingData.service_category || 'CAR_SERVICE',
       description: `${bookingData.service_name || ''} - ${bookingData.service_category || ''}`.trim().replace(/^-\s*|-\s*$/g, '') || null,
@@ -138,6 +160,9 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
       return { success: false, error: 'Database not available' };
     }
 
+    const channel = resolveBookingChannel(bookingData);
+    const leadSource = getMisaLeadSource(channel);
+
     const { data, error } = await supabase
       .from('chatbot_bookings')
       .insert([
@@ -156,8 +181,10 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
           preferred_time: bookingData.preferred_time,
           quoted_price: bookingData.quoted_price,
           status: bookingData.status || 'pending',
-          notes: bookingData.notes,
-          source: 'chatbot',
+          notes: bookingData.vehicle_number
+            ? [bookingData.notes, `Vehicle: ${bookingData.vehicle_number}`].filter(Boolean).join(' | ')
+            : bookingData.notes,
+          source: leadSource,
         },
       ])
       .select('id')
@@ -171,10 +198,10 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
     console.log('[BOOKING] Successfully saved to database:', data);
 
     // Also create a service_leads entry so it appears in customer's order history
-    await createServiceLead(bookingData);
+    await createServiceLead(bookingData, channel);
 
     try {
-      await pushChatbotBookingToExternalApi(bookingData);
+      await pushChatbotBookingToExternalApi(bookingData, channel);
       console.log('[BOOKING] External TeleCRM sync succeeded');
     } catch (syncErr) {
       console.error('[BOOKING] External TeleCRM sync failed (non-blocking):', syncErr);

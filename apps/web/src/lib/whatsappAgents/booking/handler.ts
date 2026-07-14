@@ -31,6 +31,9 @@ export type BookingAgentInput = {
   dryRun?: boolean;
   inboundReceivedAt?: string | null;
   force?: boolean;
+  sessionId?: string;
+  /** Keep MISA chat history during admin dry-run tests. */
+  persistTestSession?: boolean;
 };
 
 export type BookingAgentResult = {
@@ -101,7 +104,7 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
   }
 
   if (isRsaRelatedMessage(message)) {
-    const handoffNote = 'RSA request routed from Booking Bot';
+    const handoffNote = 'RSA request routed from MISA AI';
     if (!input.dryRun) {
       await performWhatsAppHandoff({
         phone,
@@ -126,7 +129,7 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
     };
   }
 
-  const sessionId = bookingSessionId(phone);
+  const sessionId = input.sessionId || bookingSessionId(phone);
   const tools = filterBookingTools(config.tools_json);
 
   const instance = input.dryRun
@@ -143,11 +146,14 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
   const agent = await runMisaAgent({
     sessionId,
     message,
-    systemPrompt: buildBookingSystemPrompt(config, input.profileName),
+    systemPrompt: buildBookingSystemPrompt(config, input.profileName, phone, input.dryRun),
     tools,
     model: config.model,
     maxTokens: 1800,
-    persistSession: !input.dryRun,
+    persistSession: !input.dryRun || Boolean(input.persistTestSession),
+    bookingChannel: 'WHATSAPP',
+    dryRun: input.dryRun,
+    channelPhone: phone,
   });
 
   let reply = '';

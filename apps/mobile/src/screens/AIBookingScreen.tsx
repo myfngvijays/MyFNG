@@ -202,7 +202,10 @@ export default function AIBookingScreen({ navigation, route }: Props) {
       };
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mobile-client': 'true',
+        },
         body: JSON.stringify(payload),
       });
 

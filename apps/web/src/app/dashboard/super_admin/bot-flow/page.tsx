@@ -22,6 +22,7 @@ import AgentTabs, { type AgentTabId } from './components/AgentTabs';
 import BookingAgentPanel from './components/BookingAgentPanel';
 import FollowupAgentPanel from './components/FollowupAgentPanel';
 import ChaseAgentPanel from './components/ChaseAgentPanel';
+import AgentMonitoringPanel from './components/AgentMonitoringPanel';
 
 type BotFlow = {
   id: string;
@@ -418,6 +419,7 @@ export default function SuperAdminBotFlowPage() {
       {activeTab === 'booking' ? <BookingAgentPanel /> : null}
       {activeTab === 'followup' ? <FollowupAgentPanel /> : null}
       {activeTab === 'chase' ? <ChaseAgentPanel /> : null}
+      {activeTab === 'monitoring' ? <AgentMonitoringPanel /> : null}
 
       {activeTab === 'brain' ? (
       <>

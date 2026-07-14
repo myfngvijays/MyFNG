@@ -15,6 +15,8 @@ type ChatMessage = {
   }>;
 };
 
+import type { MisaBookingChannel } from './misaLeadSource';
+
 export type RunAgentOptions = {
   sessionId: string;
   message: string;
@@ -24,6 +26,9 @@ export type RunAgentOptions = {
   maxIterations?: number;
   maxTokens?: number;
   persistSession?: boolean;
+  bookingChannel?: MisaBookingChannel;
+  dryRun?: boolean;
+  channelPhone?: string;
 };
 
 export type RunAgentResult = {
@@ -84,6 +89,9 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
     maxIterations = 5,
     maxTokens = 1000,
     persistSession = true,
+    bookingChannel,
+    dryRun = false,
+    channelPhone,
   } = opts;
 
   const sessionData = await getSession(sessionId);
@@ -128,7 +136,13 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
         toolArgs.session_id = sessionId;
       }
 
-      const toolResult = await executeToolCall(toolName, toolArgs);
+      const toolResult = await executeToolCall(toolName, toolArgs, {
+        bookingChannel,
+        sessionId,
+        sessionData,
+        dryRun,
+        channelPhone,
+      });
       if (
         toolName === 'get_service_pricing' &&
         toolResult?.success &&

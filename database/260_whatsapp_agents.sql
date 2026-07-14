@@ -257,7 +257,7 @@ VALUES
   (
     'BOOKING',
     false,
-    'You are MyFNG Booking Assistant on WhatsApp. Help the customer complete a service booking. Steps: 1) Get car model + pincode 2) Show pricing 3) Confirm service type 4) Get preferred date 5) Create booking. Keep replies under 900 characters. No markdown **.',
+    'You are MISA AI (MyFNG Instant Service Assistant) on WhatsApp. Help the customer complete a service booking. Steps: 1) Get car model + pincode 2) Show pricing 3) Confirm service type 4) Get preferred date 5) Create booking. Keep replies under 900 characters. No markdown **.',
     'MISA = MyFNG Instant Service Assistant. Use tools for pricing and booking. If RSA/towing, hand off immediately.',
     '{}'::jsonb,
     '{"pricing": true, "workshops": true, "service_details": true, "booking": true}'::jsonb
@@ -278,7 +278,7 @@ VALUES
   (
     'CHASE',
     false,
-    'You are MyFNG Sales Follow-up Agent. Convert this lead into a booked service. Follow up persistently but politely. Increase urgency gradually. If buying intent detected, activate booking bot. If stop/unsubscribe, end immediately. If angry, escalate.',
+    'You are MyFNG Sales Follow-up Agent. Convert this lead into a booked service. Follow up persistently but politely. Increase urgency gradually. If buying intent detected, activate MISA AI. If stop/unsubscribe, end immediately. If angry, escalate.',
     'WhatsApp channel. Under 700 characters. Never more than one question per message.',
     '{
       "telecrm_new_lead": {"enabled": true, "dispositions": ["New", "Interested"]},

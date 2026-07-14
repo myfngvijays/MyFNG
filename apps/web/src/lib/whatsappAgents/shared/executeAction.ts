@@ -57,6 +57,22 @@ export async function executeAction(
       });
 
       if (!send.success) {
+        const retryCount = Number(instance.metadata?.send_retry_count || 0);
+        if (retryCount < 2 && instance.agent_type !== 'BOOKING') {
+          const retryAt = new Date(Date.now() + (retryCount + 1) * 15 * 60 * 1000);
+          await scheduleWakeup({
+            instanceId: instance.id,
+            wakeAt: retryAt,
+            eventType: instance.agent_type === 'CHASE' ? 'CHASE_RETRY' : 'SCHEDULED_FOLLOWUP',
+          });
+          await updateInstance(instance.id, {
+            metadata: {
+              ...instance.metadata,
+              send_retry_count: retryCount + 1,
+              last_send_error: send.error || 'Send failed',
+            },
+          });
+        }
         return { status: 'FAILED', error: send.error || 'Send failed' };
       }
 
@@ -156,7 +172,7 @@ export async function executeAction(
         phone,
         leadId: instance.lead_id,
         telecrmId: instance.telecrm_id,
-        note: 'Booking intent — handing to Booking Bot',
+        note: 'Booking intent — handing to MISA AI',
       });
       if (decision.message) {
         await sendAgentOutboundMessage({

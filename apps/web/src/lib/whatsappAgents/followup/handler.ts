@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { normalizePhoneNumber } from '@/lib/services/whatsappService';
 import { deriveBookingDraftLabels } from '@/lib/services/bookingIncompleteWhatsApp';
+import { throttleCronSends } from '../shared/cronThrottle';
 import { fetchAgentConfig } from '../shared/configStore';
 import { runAgentCycle } from '../shared/agentRunner';
 import {
@@ -477,7 +478,7 @@ export async function pollAllFollowupTriggers(): Promise<{
 }
 
 export async function processDueFollowupWakeups(): Promise<{ processed: number; errors: string[] }> {
-  const { fetchDueWakeups, markWakeupDone, markWakeupProcessing } = await import('../shared/schedulerService');
+  const { fetchDueWakeups, markWakeupDone, markWakeupProcessing, markWakeupFailed } = await import('../shared/schedulerService');
   const wakeups = await fetchDueWakeups(30);
   let processed = 0;
   const errors: string[] = [];
@@ -488,6 +489,7 @@ export async function processDueFollowupWakeups(): Promise<{ processed: number; 
       if (!inst || inst.agent_type !== 'FOLLOWUP') continue;
 
       await markWakeupProcessing(w.id);
+      await throttleCronSends(processed);
       const phone = normalizePhoneNumber(inst.phone);
       await processFollowupAgentEvent({
         phone,
@@ -497,6 +499,7 @@ export async function processDueFollowupWakeups(): Promise<{ processed: number; 
       await markWakeupDone(w.id);
       processed += 1;
     } catch (e: any) {
+      await markWakeupFailed(w.id);
       errors.push(e?.message || 'followup wakeup failed');
     }
   }

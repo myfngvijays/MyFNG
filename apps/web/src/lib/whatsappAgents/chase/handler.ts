@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { normalizePhoneNumber } from '@/lib/services/whatsappService';
+import { throttleCronSends } from '../shared/cronThrottle';
 import { fetchAgentConfig } from '../shared/configStore';
 import { runAgentCycle } from '../shared/agentRunner';
 import {
@@ -232,7 +233,7 @@ export async function pollNewTelecrmLeadsForChase(): Promise<{ created: number; 
 }
 
 export async function processDueChaseWakeups(): Promise<{ processed: number; errors: string[] }> {
-  const { fetchDueWakeups, markWakeupDone, markWakeupProcessing } = await import('../shared/schedulerService');
+  const { fetchDueWakeups, markWakeupDone, markWakeupProcessing, markWakeupFailed } = await import('../shared/schedulerService');
   const wakeups = await fetchDueWakeups(30);
   let processed = 0;
   const errors: string[] = [];
@@ -245,6 +246,7 @@ export async function processDueChaseWakeups(): Promise<{ processed: number; err
         continue;
       }
       await markWakeupProcessing(w.id);
+      await throttleCronSends(processed);
       const phone = normalizePhoneNumber(inst.phone);
       await processChaseAgentEvent({
         phone,
@@ -254,6 +256,7 @@ export async function processDueChaseWakeups(): Promise<{ processed: number; err
       await markWakeupDone(w.id);
       processed += 1;
     } catch (e: any) {
+      await markWakeupFailed(w.id);
       errors.push(e?.message || 'wakeup failed');
     }
   }

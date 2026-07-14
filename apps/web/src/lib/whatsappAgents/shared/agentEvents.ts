@@ -17,7 +17,7 @@ export const AGENT_EVENT_LABELS: Record<AgentEventType, string> = {
   SCHEDULED_WAKEUP: 'Scheduled follow-up timer',
   CRM_UPDATE: 'CRM disposition updated',
   MANUAL_TRIGGER: 'Admin manual trigger',
-  ACTIVATE_BOOKING_BOT: 'Chase → Booking handoff',
+  ACTIVATE_BOOKING_BOT: 'Chase → MISA AI handoff',
 };
 
 export function describeEvent(event: AgentEvent): string {

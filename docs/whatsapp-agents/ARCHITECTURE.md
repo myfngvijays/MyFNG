@@ -712,6 +712,8 @@ WhatsApp is the first plugin. Email/SMS can be added without changing agent logi
 
 **Exit criteria:** All 3 bots running in production, monitored, with admin visibility.
 
+**Status (2026-07-14):** Implemented — Monitoring tab, analytics/audit APIs, send retry, cron throttle, `RUNBOOK.md`.
+
 ---
 
 ### Priority Order

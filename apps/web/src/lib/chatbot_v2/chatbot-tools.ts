@@ -5,7 +5,18 @@
 
 import { getPricing, getWorkshops, getCityByPincode, getServicePlansByPincode } from './database-queries';
 import { saveBooking } from './booking';
+import {
+  isPhoneVerifiedInSession,
+  markPhoneVerifiedInSession,
+  normalizeBookingOtp,
+  normalizeBookingPhone,
+  sendBookingOtpForPhone,
+  verifyBookingOtpForPhone,
+} from './bookingOtp';
 import { getServiceChecklist } from './checklist-queries';
+import type { MisaBookingChannel } from './misaLeadSource';
+import type { SessionData } from './session';
+import { isValidVehicleNumber, normalizeVehicleNumber } from './vehicleNumber';
 
 /**
  * OpenAI Function/Tool Schemas
@@ -101,9 +112,52 @@ export const CHATBOT_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'send_booking_otp',
+      description:
+        'Send a 6-digit OTP on WhatsApp to verify the customer mobile number before booking. Call this immediately after collecting a valid 10-digit phone number.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phone_number: {
+            type: 'string',
+            description: "Customer's 10-digit mobile number to verify",
+            pattern: '^[0-9]{10}$',
+          },
+        },
+        required: ['phone_number'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'verify_booking_otp',
+      description:
+        'Verify the 6-digit OTP entered by the customer. Must be called after send_booking_otp succeeds. Booking cannot proceed until this returns verified=true.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phone_number: {
+            type: 'string',
+            description: "Same 10-digit phone number used in send_booking_otp",
+            pattern: '^[0-9]{10}$',
+          },
+          otp: {
+            type: 'string',
+            description: '6-digit OTP from customer',
+            pattern: '^[0-9]{6}$',
+          },
+        },
+        required: ['phone_number', 'otp'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'create_booking',
       description:
-        'Create a new service booking. ONLY call this when you have collected ALL required information: service, car model, customer name, phone, address, preferred date, and preferred time. Validate that phone is 10 digits and date is in future.',
+        'Create a new service booking. ONLY call after phone OTP is verified (verify_booking_otp succeeded). Requires vehicle registration number, service, car model, customer name, verified phone, address, preferred date, and preferred time.',
       parameters: {
         type: 'object',
         properties: {
@@ -123,13 +177,17 @@ export const CHATBOT_TOOLS = [
             type: 'string',
             description: "Customer's car model",
           },
+          vehicle_number: {
+            type: 'string',
+            description: "Customer's car registration number (e.g. DL01AB1234)",
+          },
           customer_name: {
             type: 'string',
             description: "Customer's full name",
           },
           phone_number: {
             type: 'string',
-            description: "Customer's 10-digit phone number",
+            description: "Customer's verified 10-digit phone number",
             pattern: '^[0-9]{10}$',
           },
           address: {
@@ -163,6 +221,7 @@ export const CHATBOT_TOOLS = [
           'service_name',
           'service_category',
           'car_model',
+          'vehicle_number',
           'customer_name',
           'phone_number',
           'address',
@@ -196,7 +255,17 @@ export const CHATBOT_TOOLS = [
  * Tool Execution Handler
  * Executes the actual function calls when LLM requests them
  */
-export async function executeToolCall(toolName: string, args: any): Promise<any> {
+export async function executeToolCall(
+  toolName: string,
+  args: any,
+  opts?: {
+    bookingChannel?: MisaBookingChannel;
+    sessionId?: string;
+    sessionData?: SessionData;
+    dryRun?: boolean;
+    channelPhone?: string;
+  },
+): Promise<any> {
   console.log(`[TOOL] Executing: ${toolName}`, args);
 
   try {
@@ -313,7 +382,77 @@ export async function executeToolCall(toolName: string, args: any): Promise<any>
         }
       }
 
+      case 'send_booking_otp': {
+        const phone = normalizeBookingPhone(args.phone_number);
+        if (phone.length !== 10) {
+          return { success: false, message: 'Please share a valid 10-digit mobile number.' };
+        }
+
+        const result = await sendBookingOtpForPhone(phone, {
+          source: 'misa_booking',
+          session_id: opts?.sessionId || null,
+          channel: opts?.bookingChannel || null,
+        }, { dryRun: opts?.dryRun });
+
+        if (!result.success) {
+          return { success: false, message: result.error || 'Failed to send OTP' };
+        }
+
+        return {
+          success: true,
+          message: result.message || 'OTP sent on WhatsApp. Ask customer for the 6-digit code.',
+          expires_in_seconds: result.expiresInSeconds || 600,
+          dry_run: Boolean(result.dryRun),
+        };
+      }
+
+      case 'verify_booking_otp': {
+        const phone = normalizeBookingPhone(args.phone_number);
+        const otp = normalizeBookingOtp(args.otp);
+        if (phone.length !== 10) {
+          return { success: false, verified: false, message: 'Valid 10-digit phone is required.' };
+        }
+
+        const result = await verifyBookingOtpForPhone(phone, otp, { dryRun: opts?.dryRun });
+        if (!result.verified) {
+          return {
+            success: false,
+            verified: false,
+            message: result.error || 'Invalid or expired OTP. Ask customer to try again or resend OTP.',
+          };
+        }
+
+        if (opts?.sessionData) {
+          markPhoneVerifiedInSession(opts.sessionData, phone);
+        }
+
+        return {
+          success: true,
+          verified: true,
+          message: 'Mobile number verified. You may continue with address, date, and time.',
+          dry_run: Boolean(result.dryRun),
+        };
+      }
+
       case 'create_booking': {
+        const phone = normalizeBookingPhone(args.phone_number);
+        const vehicleNumber = normalizeVehicleNumber(args.vehicle_number);
+
+        if (!isValidVehicleNumber(vehicleNumber)) {
+          return {
+            success: false,
+            message: 'Invalid vehicle number. Ask for registration number like DL01AB1234.',
+          };
+        }
+
+        if (!isPhoneVerifiedInSession(opts?.sessionData, phone)) {
+          return {
+            success: false,
+            message:
+              'Phone not verified. Call send_booking_otp, then verify_booking_otp before create_booking.',
+          };
+        }
+
         // Auto-derive city from PIN code if not provided
         let city = args.city;
         if (!city && args.pincode) {
@@ -330,7 +469,8 @@ export async function executeToolCall(toolName: string, args: any): Promise<any>
           service_name: args.service_name,
           service_category: args.service_category,
           customer_name: args.customer_name,
-          phone_number: args.phone_number,
+          phone_number: phone,
+          vehicle_number: vehicleNumber,
           address: args.address,
           car_model: args.car_model,
           city: city,
@@ -338,11 +478,16 @@ export async function executeToolCall(toolName: string, args: any): Promise<any>
           preferred_date: args.preferred_date,
           preferred_time: args.preferred_time,
           status: 'pending',
+          channel: opts?.bookingChannel,
         };
 
         const result = await saveBooking(bookingData);
 
         if (result.success) {
+          if (opts?.sessionData) {
+            opts.sessionData.lastBookingCompleted = Date.now();
+            opts.sessionData.phoneVerification = undefined;
+          }
           return {
             success: true,
             booking_id: result.id,

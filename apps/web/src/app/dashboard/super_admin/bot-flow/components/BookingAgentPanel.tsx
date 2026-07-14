@@ -6,8 +6,8 @@ export default function BookingAgentPanel() {
   return (
     <AgentConfigPanel
       agentType="BOOKING"
-      title="Booking Bot"
-      subtitle="Handles inbound WhatsApp conversations to complete service bookings. Uses MISA tools for pricing and booking."
+      title="MISA AI"
+      subtitle="MyFNG Instant Service Assistant — handles inbound WhatsApp conversations to complete service bookings."
       showTools
     />
   );

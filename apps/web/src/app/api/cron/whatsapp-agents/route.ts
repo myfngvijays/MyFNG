@@ -5,6 +5,7 @@ import {
   pollAllFollowupTriggers,
   processDueFollowupWakeups,
 } from '@/lib/whatsappAgents/followup/handler';
+import { recoverStuckWakeups } from '@/lib/whatsappAgents/shared/schedulerService';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   const results: Record<string, unknown> = {};
 
   try {
+    results.stuckWakeupsRecovered = await recoverStuckWakeups();
+
     if (job === 'all' || job === 'chase-wakeups') {
       results.chaseWakeups = await processDueChaseWakeups();
     }

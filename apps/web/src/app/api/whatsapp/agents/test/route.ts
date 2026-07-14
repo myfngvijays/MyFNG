@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { deleteSession } from '@/lib/chatbot_v2/session';
 import { processBookingAgentMessage } from '@/lib/whatsappAgents/booking/handler';
+import { bookingSessionId } from '@/lib/whatsappAgents/booking/prompt';
 import { processChaseAgentEvent } from '@/lib/whatsappAgents/chase/handler';
 import { runAgentCycle } from '@/lib/whatsappAgents/shared/agentRunner';
 import type { AgentEventType, AgentType } from '@/lib/whatsappAgents/shared/types';
@@ -19,6 +21,20 @@ export async function POST(request: NextRequest) {
     const phone = String(body?.phone || '9999999999').replace(/\D/g, '').slice(-10);
     const eventType = String(body?.event_type || 'MANUAL_TRIGGER').toUpperCase() as AgentEventType;
     const customerMessage = body?.customer_message ? String(body.customer_message) : undefined;
+    const sessionId = String(body?.session_id || '').trim() || bookingSessionId(phone);
+    const persistSession = body?.persist_session !== false;
+
+    if (body?.reset_session === true) {
+      if (agentType === 'BOOKING') {
+        await deleteSession(sessionId);
+      }
+      return NextResponse.json({
+        success: true,
+        agent_type: agentType,
+        reset: true,
+        session_id: sessionId,
+      });
+    }
 
     if (agentType === 'BOOKING') {
       const result = await processBookingAgentMessage({
@@ -26,6 +42,8 @@ export async function POST(request: NextRequest) {
         message: customerMessage || 'Hi, I want to book periodic service for my Swift in 400001',
         dryRun: true,
         force: true,
+        sessionId,
+        persistTestSession: persistSession,
       });
       return NextResponse.json({
         success: true,
@@ -35,6 +53,7 @@ export async function POST(request: NextRequest) {
         booking_created: result.bookingCreated,
         pricing: result.pricing,
         skipped_reason: result.skippedReason,
+        session_id: result.sessionId || sessionId,
         latency_ms: result.latencyMs,
       });
     }

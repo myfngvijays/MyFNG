@@ -1121,7 +1121,7 @@ export default function CustomerInsightsApp() {
 
                     {(detail.chatbot_bookings || []).length > 0 ? (
                       <>
-                        <h3 className="font-bold text-gray-800 pt-2">AI Chatbot Bookings</h3>
+                        <h3 className="font-bold text-gray-800 pt-2">MISA AI Bookings</h3>
                         {detail.chatbot_bookings.map((b: any) => (
                           <div key={b.id} className="rounded-xl border border-dashed p-3 text-sm">
                             <div className="font-bold">{b.service_name || 'Chatbot booking'}</div>

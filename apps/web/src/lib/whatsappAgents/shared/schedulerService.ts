@@ -82,6 +82,31 @@ export async function markWakeupProcessing(wakeupId: string): Promise<void> {
     .eq('id', wakeupId);
 }
 
+export async function markWakeupFailed(wakeupId: string): Promise<void> {
+  const db = getAdminDb();
+  await db
+    .from('whatsapp_agent_scheduled_wakeups')
+    .update({ status: 'PENDING' })
+    .eq('id', wakeupId);
+}
+
+/** Reset wakeups stuck in PROCESSING for more than 15 minutes. */
+export async function recoverStuckWakeups(): Promise<number> {
+  const db = getAdminDb();
+  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data, error } = await db
+    .from('whatsapp_agent_scheduled_wakeups')
+    .select('id')
+    .eq('status', 'PROCESSING')
+    .lt('created_at', cutoff);
+
+  if (error || !data?.length) return 0;
+
+  const ids = data.map((row: { id: string }) => row.id);
+  await db.from('whatsapp_agent_scheduled_wakeups').update({ status: 'PENDING' }).in('id', ids);
+  return ids.length;
+}
+
 export function computeWaitUntil(decision: { wait_hours?: number; wait_days?: number }): Date {
   const hours = decision.wait_hours ?? (decision.wait_days ? decision.wait_days * 24 : 24);
   return new Date(Date.now() + hours * 60 * 60 * 1000);

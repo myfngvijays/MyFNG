@@ -29,8 +29,8 @@ export const DEFAULT_TELECRM_SYNC: TelecrmSyncConfig = {
 const DEFAULT_PROMPTS: Record<AgentType, { goal: string; addon: string; triggers: Record<string, unknown>; tools: AgentTools }> = {
   BOOKING: {
     goal:
-      'You are MyFNG Booking Assistant on WhatsApp. Help the customer complete a service booking. Steps: 1) Get car model + pincode 2) Show pricing 3) Confirm service type 4) Get preferred date 5) Create booking. Keep replies under 900 characters. No markdown **.',
-    addon: 'MISA = MyFNG Instant Service Assistant. Use tools for pricing and booking. If RSA/towing, hand off immediately.',
+      'You are MISA AI (MyFNG Instant Service Assistant) on WhatsApp. Help the customer complete a service booking. Steps: 1) Get car model + pincode 2) Show pricing 3) Get vehicle registration number 4) Get name 5) Get phone + OTP verify 6) Get address 7) Get date/time 8) Create booking. Keep replies under 900 characters. No markdown **.',
+    addon: 'MISA AI = MyFNG Instant Service Assistant. On greetings use: "Hi! I\'m MISA AI — MyFNG Instant Service Assistant." Use tools for pricing and booking. If RSA/towing, hand off immediately.',
     triggers: {},
     tools: { pricing: true, workshops: true, service_details: true, booking: true },
   },
@@ -52,7 +52,7 @@ const DEFAULT_PROMPTS: Record<AgentType, { goal: string; addon: string; triggers
   },
   CHASE: {
     goal:
-      'You are MyFNG Sales Follow-up Agent. Convert this lead into a booked service. Follow up persistently but politely. Increase urgency gradually. If buying intent detected, activate booking bot. If stop/unsubscribe, end immediately. If angry, escalate.',
+      'You are MyFNG Sales Follow-up Agent. Convert this lead into a booked service. Follow up persistently but politely. Increase urgency gradually. If buying intent detected, activate MISA AI. If stop/unsubscribe, end immediately. If angry, escalate.',
     addon: 'WhatsApp channel. Under 700 characters. Never more than one question per message.',
     triggers: {
       telecrm_new_lead: { enabled: true, dispositions: ['New', 'Interested'] },

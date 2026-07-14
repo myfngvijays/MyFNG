@@ -46,11 +46,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const isMobileClient = req.headers.get('x-mobile-client') === 'true';
     const agent = await runMisaAgent({
       sessionId,
       message,
       systemPrompt: SYSTEM_PROMPT,
       model: 'gpt-4o',
+      bookingChannel: isMobileClient ? 'APP' : 'WEBSITE',
     });
     const finalResponse = agent.response;
 

@@ -1,4 +1,4 @@
-export type BookingSource = 'APP' | 'WEBSITE' | 'OTHER';
+export type BookingSource = 'APP' | 'WEBSITE' | 'MISA' | 'OTHER';
 
 export function resolveBookingSource(lead: Record<string, any>): {
   booking_source: BookingSource;
@@ -12,16 +12,40 @@ export function resolveBookingSource(lead: Record<string, any>): {
   const isApp =
     /^app booking/i.test(rawSource) ||
     /^app/i.test(rawSource) ||
+    /^misa ai \(app\)/i.test(rawSource) ||
     createdFrom.includes('MOBILE') ||
     createdFrom === 'APP';
-  const isWebsite = !isApp && (!rawSource || rawSource === 'Website' || rawSource === 'WEB');
+  const isWebsite =
+    !isApp &&
+    (!rawSource ||
+      rawSource === 'Website' ||
+      rawSource === 'WEB' ||
+      rawSource === 'AI Chatbot' ||
+      /^misa ai \(website\)/i.test(rawSource));
+  const isMisa =
+    !isApp &&
+    !isWebsite &&
+    (/whatsapp misa ai/i.test(rawSource) ||
+      /^misa ai/i.test(rawSource) ||
+      createdFrom === 'WHATSAPP');
 
   const couponCode = String(lead.coupon_code || lead.coupon_meta?.code || '').trim();
   const discountAmount = Number(lead.discount_amount || lead.coupon_meta?.discount_amount || 0);
 
+  let booking_source_label = rawSource || 'Other';
+  if (isApp) booking_source_label = 'MISA AI (App)';
+  else if (isWebsite) {
+    booking_source_label =
+      rawSource === 'AI Chatbot' || /^misa ai \(website\)/i.test(rawSource)
+        ? 'MISA AI (Website)'
+        : 'Website';
+  } else if (isMisa) {
+    booking_source_label = /whatsapp misa ai/i.test(rawSource) ? 'WhatsApp MISA AI' : rawSource || 'MISA AI';
+  }
+
   return {
-    booking_source: isApp ? 'APP' : isWebsite ? 'WEBSITE' : 'OTHER',
-    booking_source_label: isApp ? 'App Booking' : isWebsite ? 'Website' : rawSource || 'Other',
+    booking_source: isApp ? 'APP' : isWebsite ? 'WEBSITE' : isMisa ? 'MISA' : 'OTHER',
+    booking_source_label,
     has_coupon_applied: Boolean(couponCode || discountAmount > 0),
     coupon_display_code: couponCode || null,
     coupon_display_discount: discountAmount > 0 ? discountAmount : null,

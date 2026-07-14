@@ -1,6 +1,6 @@
 import { CHATBOT_TOOLS } from '@/lib/chatbot_v2/chatbot-tools';
 import { runMisaAgent } from '@/lib/chatbot_v2/runAgent';
-import { SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
+import { MISA_GREETING_EN, SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   normalizePhoneNumber,
@@ -32,8 +32,8 @@ import { sendBrainOutboundMessage } from './sessionWindow';
 
 const WHATSAPP_CHANNEL_RULES = `
 # WHATSAPP CHANNEL RULES (MANDATORY)
-- MISA = MyFNG Instant Service Assistant. Never give long self-introductions on WhatsApp.
-- On "hi/hello", greet in 1-2 lines and ask what they need (service, pricing, booking, RSA).
+- MISA = MyFNG Instant Service Assistant. Never paraphrase or reorder the full form (wrong: "Instant Service Assistant for MyFNG").
+- On "hi/hello", greet in 1-2 lines. Introduce as: "${MISA_GREETING_EN}" then ask what they need (service, pricing, booking, RSA).
 - Towing / breakdown / flat tyre / battery dead = RSA (Roadside Assistance). Never refuse towing help.
 - Do NOT use markdown **double asterisks** — WhatsApp cannot render them.
 - For emphasis use *single asterisks* sparingly, or plain text with emojis.
@@ -49,7 +49,7 @@ const TOOL_GROUPS: Record<keyof WhatsAppBrainToolsConfig, string[]> = {
   pricing: ['get_service_pricing', 'validate_pincode'],
   workshops: ['search_workshops'],
   service_details: ['get_service_details'],
-  booking: ['create_booking'],
+  booking: ['send_booking_otp', 'verify_booking_otp', 'create_booking'],
 };
 
 export type BrainProcessInput = {
@@ -376,6 +376,9 @@ async function runAiBrain(input: {
     model: input.config.model,
     maxTokens: 1800,
     persistSession: !input.dryRun,
+    bookingChannel: 'WHATSAPP',
+    dryRun: input.dryRun,
+    channelPhone: input.phone,
   });
 
   const carModel = extractCarModelFromMessage(input.message);
