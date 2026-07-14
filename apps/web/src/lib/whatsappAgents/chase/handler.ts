@@ -13,6 +13,8 @@ import { isChatAssignedToHuman, loadMemory, saveMemory } from '../shared/memoryS
 import { hasBookingIntent } from '../booking/intent';
 import { activateBookingAgentFromChase } from '../booking/handler';
 import type { AgentEventType, AgentInstance } from '../shared/types';
+import { getDispositionRulesConfig } from '../shared/dispositionRules';
+import { handleTelecrmDispositionEvent } from '../shared/telecrmDispositionHandler';
 import { shouldChaseTelecrmLead, type TelecrmLeadCandidate } from './telecrmTriggers';
 
 export type ChaseAgentInput = {
@@ -208,9 +210,24 @@ export async function pollNewTelecrmLeadsForChase(): Promise<{ created: number; 
 
   for (const lead of leads || []) {
     try {
-      if (!shouldChaseTelecrmLead(lead as TelecrmLeadCandidate, config)) continue;
       const phone = normalizeAgentPhone(lead.mobile);
       if (!phone) continue;
+
+      const { enabled: rulesEnabled } = getDispositionRulesConfig(config);
+      if (rulesEnabled && lead.disposition) {
+        const existing = await getActiveInstance('CHASE', phone);
+        const result = await handleTelecrmDispositionEvent({
+          row: lead as TelecrmLeadCandidate,
+          eventKind: existing ? 'disposition_change' : 'new_lead',
+        });
+        if (result.handled) {
+          created += 1;
+          continue;
+        }
+        if (result.skippedReason !== 'no_matching_disposition_rule') continue;
+      }
+
+      if (!shouldChaseTelecrmLead(lead as TelecrmLeadCandidate, config)) continue;
       const existing = await getActiveInstance('CHASE', phone);
       if (existing) continue;
 

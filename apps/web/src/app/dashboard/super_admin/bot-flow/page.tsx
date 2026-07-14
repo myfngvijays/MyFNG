@@ -23,6 +23,18 @@ import BookingAgentPanel from './components/BookingAgentPanel';
 import FollowupAgentPanel from './components/FollowupAgentPanel';
 import ChaseAgentPanel from './components/ChaseAgentPanel';
 import AgentMonitoringPanel from './components/AgentMonitoringPanel';
+import AgentEnvSettingsPanel from './components/AgentEnvSettingsPanel';
+import BookingAgentTestModal from './components/BookingAgentTestModal';
+import AgentDryRunTestModal from './components/AgentDryRunTestModal';
+
+type TestModalId = null | 'brain' | 'misa' | 'followup' | 'chase';
+
+const TAB_TEST_CONFIG: Partial<Record<AgentTabId, { modal: Exclude<TestModalId, null>; label: string }>> = {
+  brain: { modal: 'brain', label: 'Test Brain' },
+  booking: { modal: 'misa', label: 'Test MISA AI' },
+  followup: { modal: 'followup', label: 'Test Follow-up Bot' },
+  chase: { modal: 'chase', label: 'Test Chase Bot' },
+};
 
 type BotFlow = {
   id: string;
@@ -106,13 +118,13 @@ export default function SuperAdminBotFlowPage() {
   const [brainLoading, setBrainLoading] = useState(true);
   const [brainSaving, setBrainSaving] = useState(false);
   const [settingActiveId, setSettingActiveId] = useState<string | null>(null);
-  const [testOpen, setTestOpen] = useState(false);
-  const [testMessage, setTestMessage] = useState('Hi, periodic service price for Swift in 400001?');
-  const [testPhone, setTestPhone] = useState('919999999999');
-  const [testLoading, setTestLoading] = useState(false);
-  const [testReply, setTestReply] = useState('');
-  const [testPricing, setTestPricing] = useState<PricingPlanItem[]>([]);
-  const [testRoute, setTestRoute] = useState('');
+  const [activeTestModal, setActiveTestModal] = useState<TestModalId>(null);
+  const [brainTestMessage, setBrainTestMessage] = useState('Hi, periodic service price for Swift in 400001?');
+  const [brainTestPhone, setBrainTestPhone] = useState('919999999999');
+  const [brainTestLoading, setBrainTestLoading] = useState(false);
+  const [brainTestReply, setBrainTestReply] = useState('');
+  const [brainTestPricing, setBrainTestPricing] = useState<PricingPlanItem[]>([]);
+  const [brainTestRoute, setBrainTestRoute] = useState('');
   const [cityPins, setCityPins] = useState<CityPinRow[]>([]);
   const [cityPinsLoading, setCityPinsLoading] = useState(false);
   const [cityPinSavingId, setCityPinSavingId] = useState<string | null>(null);
@@ -198,6 +210,16 @@ export default function SuperAdminBotFlowPage() {
     loadBrain();
     loadCityPincodes();
   }, []);
+
+  useEffect(() => {
+    if (!activeTestModal) return;
+    const expected = TAB_TEST_CONFIG[activeTab]?.modal;
+    if (expected && activeTestModal !== expected) {
+      setActiveTestModal(null);
+    }
+  }, [activeTab, activeTestModal]);
+
+  const activeTabTest = TAB_TEST_CONFIG[activeTab];
 
   const loadCityPincodes = async () => {
     setCityPinsLoading(true);
@@ -293,24 +315,24 @@ export default function SuperAdminBotFlowPage() {
   };
 
   const runBrainTest = async () => {
-    setTestLoading(true);
-    setTestReply('');
-    setTestPricing([]);
+    setBrainTestLoading(true);
+    setBrainTestReply('');
+    setBrainTestPricing([]);
     try {
       const res = await fetch('/api/whatsapp/bot-flow/brain/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: testMessage, phone: testPhone }),
+        body: JSON.stringify({ message: brainTestMessage, phone: brainTestPhone }),
       });
       const json = await res.json();
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Brain test failed');
-      setTestReply(json?.result?.reply || json?.result?.skippedReason || 'No reply generated');
-      setTestPricing(Array.isArray(json?.result?.pricing) ? json.result.pricing : []);
-      setTestRoute(String(json?.result?.route || ''));
+      setBrainTestReply(json?.result?.reply || json?.result?.skippedReason || 'No reply generated');
+      setBrainTestPricing(Array.isArray(json?.result?.pricing) ? json.result.pricing : []);
+      setBrainTestRoute(String(json?.result?.route || ''));
     } catch (error: any) {
       toast.error(error?.message || 'Brain test failed');
     } finally {
-      setTestLoading(false);
+      setBrainTestLoading(false);
     }
   };
 
@@ -343,7 +365,7 @@ export default function SuperAdminBotFlowPage() {
           <div>
             <h1 className="text-2xl font-bold text-yellow-300 sm:text-3xl">Bot Flows</h1>
             <p className="mt-1 text-sm text-blue-100">
-              Manage flows, AI brain, and WhatsApp agents — Booking, Follow-up, and Chase bots.
+              Manage flows, AI brain, and WhatsApp agents — MISA AI, Follow-up, and Chase bots.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span
@@ -393,14 +415,22 @@ export default function SuperAdminBotFlowPage() {
               <Workflow className="mr-1 h-4 w-4" />
               {seedingPresets ? 'Installing...' : 'Install Preset Flows'}
             </button>
-            <button
-              type="button"
-              onClick={() => setTestOpen(true)}
-              className="inline-flex items-center rounded-lg bg-white/20 px-3 py-2 text-xs font-semibold hover:bg-white/30"
-            >
-              <FlaskConical className="mr-1 h-4 w-4" />
-              Test Brain
-            </button>
+            {activeTabTest ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveTestModal((prev) => (prev === activeTabTest.modal ? null : activeTabTest.modal))
+                }
+                className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold ${
+                  activeTestModal === activeTabTest.modal
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'bg-white/20 hover:bg-white/30'
+                }`}
+              >
+                <FlaskConical className="mr-1 h-4 w-4" />
+                {activeTabTest.label}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={handleCreateNew}
@@ -420,6 +450,7 @@ export default function SuperAdminBotFlowPage() {
       {activeTab === 'followup' ? <FollowupAgentPanel /> : null}
       {activeTab === 'chase' ? <ChaseAgentPanel /> : null}
       {activeTab === 'monitoring' ? <AgentMonitoringPanel /> : null}
+      {activeTab === 'settings' ? <AgentEnvSettingsPanel /> : null}
 
       {activeTab === 'brain' ? (
       <>
@@ -765,14 +796,17 @@ export default function SuperAdminBotFlowPage() {
         )}
       </div>
 
-      {testOpen ? (
+      </>
+      ) : null}
+
+      {activeTestModal === 'brain' ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-900">Test WhatsApp AI Brain</h3>
               <button
                 type="button"
-                onClick={() => setTestOpen(false)}
+                onClick={() => setActiveTestModal(null)}
                 className="text-sm font-semibold text-gray-500 hover:text-gray-800"
               >
                 Close
@@ -782,16 +816,16 @@ export default function SuperAdminBotFlowPage() {
               <div>
                 <label className="mb-1 block text-xs font-semibold text-gray-500">Test phone</label>
                 <input
-                  value={testPhone}
-                  onChange={(e) => setTestPhone(e.target.value)}
+                  value={brainTestPhone}
+                  onChange={(e) => setBrainTestPhone(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                 />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold text-gray-500">Customer message</label>
                 <textarea
-                  value={testMessage}
-                  onChange={(e) => setTestMessage(e.target.value)}
+                  value={brainTestMessage}
+                  onChange={(e) => setBrainTestMessage(e.target.value)}
                   rows={3}
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                 />
@@ -799,26 +833,26 @@ export default function SuperAdminBotFlowPage() {
               <button
                 type="button"
                 onClick={runBrainTest}
-                disabled={testLoading}
+                disabled={brainTestLoading}
                 className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
               >
                 <FlaskConical className="mr-1.5 h-4 w-4" />
-                {testLoading ? 'Running...' : 'Run dry test (no WhatsApp send)'}
+                {brainTestLoading ? 'Running...' : 'Run dry test (no WhatsApp send)'}
               </button>
-              {testRoute ? (
-                <p className="text-xs font-semibold text-violet-700">Route: {testRoute}</p>
+              {brainTestRoute ? (
+                <p className="text-xs font-semibold text-violet-700">Route: {brainTestRoute}</p>
               ) : null}
-              {testPricing.length > 0 ? (
+              {brainTestPricing.length > 0 ? (
                 <PeriodicPlansPreview
-                  plans={testPricing}
-                  carLabel={extractCarModelFromMessage(testMessage) || undefined}
+                  plans={brainTestPricing}
+                  carLabel={extractCarModelFromMessage(brainTestMessage) || undefined}
                 />
               ) : null}
-              {testReply ? (
+              {brainTestReply ? (
                 <div>
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">WhatsApp text reply</p>
                   <div className="rounded-lg border bg-slate-50 p-3 text-sm text-gray-800 whitespace-pre-wrap">
-                    {splitWhatsAppPreviewParts(testReply).map((part, index) =>
+                    {splitWhatsAppPreviewParts(brainTestReply).map((part, index) =>
                       part.type === 'bold' ? (
                         <strong key={index}>{part.value}</strong>
                       ) : (
@@ -832,7 +866,21 @@ export default function SuperAdminBotFlowPage() {
           </div>
         </div>
       ) : null}
-      </>
+
+      {activeTestModal === 'misa' ? (
+        <BookingAgentTestModal title="MISA AI" onClose={() => setActiveTestModal(null)} />
+      ) : null}
+
+      {activeTestModal === 'followup' ? (
+        <AgentDryRunTestModal
+          title="Follow-up Bot"
+          agentType="FOLLOWUP"
+          onClose={() => setActiveTestModal(null)}
+        />
+      ) : null}
+
+      {activeTestModal === 'chase' ? (
+        <AgentDryRunTestModal title="Chase Bot" agentType="CHASE" onClose={() => setActiveTestModal(null)} />
       ) : null}
     </div>
   );

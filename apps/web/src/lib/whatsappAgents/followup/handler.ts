@@ -10,7 +10,7 @@ import {
   getActiveInstance,
   normalizeAgentPhone,
 } from '../shared/instanceService';
-import { isChatAssignedToHuman, loadMemory, saveMemory } from '../shared/memoryService';
+import { isChatAssignedToHuman, loadMemory, loadRecentOutboundTextsForPhone, saveMemory } from '../shared/memoryService';
 import { hasBookingIntent } from '../booking/intent';
 import { activateBookingAgentFromChase } from '../booking/handler';
 import type { AgentEventType, AgentInstance } from '../shared/types';
@@ -36,9 +36,12 @@ export type FollowupAgentResult = {
   handled: boolean;
   skippedReason?: string;
   instanceId?: string;
-  decision?: unknown;
+  decision?: { action?: string; message?: string; [key: string]: unknown };
   route?: 'FOLLOWUP_AGENT';
   latencyMs?: number;
+  executionStatus?: string;
+  sendError?: string;
+  messageSent?: boolean;
 };
 
 function getAdminDb() {
@@ -107,7 +110,7 @@ export async function processFollowupAgentEvent(input: FollowupAgentInput): Prom
     return { handled: false, skippedReason: 'followup_agent_disabled' };
   }
 
-  if (config.rules_json.skip_assigned_chats && !input.dryRun && (await isChatAssignedToHuman(phone))) {
+  if (config.rules_json.skip_assigned_chats && !input.dryRun && !input.force && (await isChatAssignedToHuman(phone))) {
     return { handled: false, skippedReason: 'chat_assigned_to_human' };
   }
 
@@ -169,6 +172,17 @@ export async function processFollowupAgentEvent(input: FollowupAgentInput): Prom
   const memory = input.dryRun ? null : await loadMemory(instance.id);
   const crmContext = (memory?.crm_snapshot || instance.metadata || {}) as Record<string, unknown>;
 
+  if (!input.dryRun && memory) {
+    const priorOutbound = await loadRecentOutboundTextsForPhone(phone);
+    if (priorOutbound.length) {
+      memory.extra = {
+        ...memory.extra,
+        avoid_repeating_messages: priorOutbound,
+      };
+      await saveMemory(memory);
+    }
+  }
+
   const result = await runAgentCycle({
     agentType: 'FOLLOWUP',
     phone,
@@ -178,6 +192,7 @@ export async function processFollowupAgentEvent(input: FollowupAgentInput): Prom
     instance,
     leadId: instance.lead_id,
     dryRun: input.dryRun,
+    force: input.force,
     mockCrm: input.dryRun
       ? {
           customer_name: 'Rahul',
@@ -188,22 +203,25 @@ export async function processFollowupAgentEvent(input: FollowupAgentInput): Prom
       : crmContext,
   });
 
-  if (!input.dryRun && result.handled && result.wouldExecute) {
+  if (!input.dryRun && result.messageSent) {
     const action = result.decision?.action;
     if (action === 'SEND_MESSAGE' || action === 'END_CONVERSATION') {
       if (instance.status !== 'ENDED') {
-        await endInstance(instance.id, action === 'SEND_MESSAGE' ? 'SENT' : 'COMPLETED');
+        await endInstance(instance.id, 'MANUAL');
       }
     }
   }
 
   return {
     handled: result.handled,
-    skippedReason: result.skippedReason,
+    skippedReason: result.skippedReason || (result.executionStatus === 'FAILED' ? result.sendError : undefined),
     instanceId: instance.id,
     decision: result.decision,
     route: 'FOLLOWUP_AGENT',
     latencyMs: result.latencyMs ?? Date.now() - started,
+    executionStatus: result.executionStatus,
+    sendError: result.sendError,
+    messageSent: result.messageSent,
   };
 }
 
@@ -505,4 +523,70 @@ export async function processDueFollowupWakeups(): Promise<{ processed: number; 
   }
 
   return { processed, errors };
+}
+
+export async function triggerManualFollowupForPhone(input: {
+  phone: string;
+  customerName?: string;
+  vehicleModel?: string;
+  reason?: string;
+  force?: boolean;
+  ignoreAssigned?: boolean;
+}): Promise<FollowupAgentResult> {
+  const config = await fetchAgentConfig('FOLLOWUP');
+  if (!config.enabled) {
+    return { handled: false, skippedReason: 'followup_agent_disabled' };
+  }
+
+  const phone = normalizeAgentPhone(input.phone);
+  if (!phone) return { handled: false, skippedReason: 'invalid_phone' };
+
+  if (
+    !input.ignoreAssigned &&
+    config.rules_json.skip_assigned_chats &&
+    (await isChatAssignedToHuman(phone))
+  ) {
+    return { handled: false, skippedReason: 'chat_assigned_to_human' };
+  }
+
+  let instance = await getActiveInstance('FOLLOWUP', phone);
+
+  if (instance && input.force) {
+    await endInstance(instance.id, 'MANUAL');
+    instance = null;
+  }
+
+  if (!instance) {
+    instance = await createFollowupInstance({
+      phone,
+      sourceType: 'telecaller_follow_up',
+      sourceId: `manual-${Date.now()}`,
+      context: {
+        customer_name: input.customerName || null,
+        vehicle_model: input.vehicleModel || null,
+        follow_up_type: 'MANUAL',
+        reason: input.reason || 'Admin manual follow-up',
+        variation_seed: Date.now(),
+      },
+    });
+  } else if (!input.dryRun) {
+    const memory = await loadMemory(instance.id);
+    memory.crm_snapshot = {
+      ...memory.crm_snapshot,
+      reason: input.reason || memory.crm_snapshot?.reason || 'Admin manual follow-up',
+      variation_seed: Date.now(),
+    };
+    const priorOutbound = await loadRecentOutboundTextsForPhone(phone);
+    if (priorOutbound.length) {
+      memory.extra = { ...memory.extra, avoid_repeating_messages: priorOutbound };
+    }
+    await saveMemory(memory);
+  }
+
+  return processFollowupAgentEvent({
+    phone,
+    eventType: 'FOLLOWUP_TRIGGER',
+    instance,
+    force: true,
+  });
 }

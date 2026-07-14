@@ -11,6 +11,47 @@ export function normalizeAgentPhone(phone: string): string {
   return String(phone || '').replace(/\D/g, '').slice(-10);
 }
 
+export async function getInstanceById(instanceId: string): Promise<AgentInstance | null> {
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from('whatsapp_agent_instances')
+    .select('*')
+    .eq('id', instanceId)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '42P01') return null;
+    throw new Error(error.message);
+  }
+  return (data as AgentInstance) || null;
+}
+
+export async function getActiveInstancesByPhone(
+  phone: string,
+  agentTypes?: AgentType[],
+): Promise<AgentInstance[]> {
+  const db = getAdminDb();
+  const normalized = normalizeAgentPhone(phone);
+  if (!normalized) return [];
+
+  let query = db
+    .from('whatsapp_agent_instances')
+    .select('*')
+    .eq('phone', normalized)
+    .in('status', ['ACTIVE', 'WAITING']);
+
+  if (agentTypes?.length) {
+    query = query.in('agent_type', agentTypes);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    if (error.code === '42P01') return [];
+    throw new Error(error.message);
+  }
+  return (data as AgentInstance[]) || [];
+}
+
 export async function getActiveInstance(
   agentType: AgentType,
   phone: string,
@@ -99,6 +140,7 @@ export async function updateInstance(
     end_reason: string | null;
     lead_id: string | null;
     escalated_at: string | null;
+    telecrm_id: string | null;
     metadata: Record<string, unknown>;
   }>,
 ): Promise<void> {

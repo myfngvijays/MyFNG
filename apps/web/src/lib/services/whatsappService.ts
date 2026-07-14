@@ -3,9 +3,7 @@
  * Server-only service used by API routes.
  */
 
-const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
-const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
-const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
+import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 
 export type WhatsAppSendResult = {
   success: boolean;
@@ -34,16 +32,21 @@ type TemplateMessageInput = {
   languageCode?: string;
 };
 
-function assertWhatsAppConfig(): string | null {
-  if (!WHATSAPP_PHONE_NUMBER_ID) return 'WHATSAPP_PHONE_NUMBER_ID is not configured';
-  if (!WHATSAPP_ACCESS_TOKEN) return 'WHATSAPP_ACCESS_TOKEN is not configured';
+function assertWhatsAppConfig(creds: {
+  whatsapp_phone_number_id: string;
+  whatsapp_access_token: string;
+}): string | null {
+  if (!creds.whatsapp_phone_number_id) return 'WHATSAPP_PHONE_NUMBER_ID is not configured';
+  if (!creds.whatsapp_access_token) return 'WHATSAPP_ACCESS_TOKEN is not configured';
   return null;
 }
 
 export function normalizePhoneNumber(phoneNumber: string): string {
   const digits = phoneNumber.replace(/\D/g, '');
   if (!digits) return '';
-  return digits.startsWith('91') ? digits : `91${digits}`;
+  const last10 = digits.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
+  return digits;
 }
 
 async function parseCloudApiError(response: Response): Promise<{ message: string; raw?: unknown }> {
@@ -60,17 +63,18 @@ async function parseCloudApiError(response: Response): Promise<{ message: string
 }
 
 async function sendMessagePayload(payload: unknown): Promise<WhatsAppSendResult> {
-  const configError = assertWhatsAppConfig();
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const configError = assertWhatsAppConfig(creds);
   if (configError) {
     return { success: false, error: configError };
   }
 
   try {
-    const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    const response = await fetch(`${creds.whatsapp_api_url}/${creds.whatsapp_phone_number_id}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${creds.whatsapp_access_token}`,
       },
       body: JSON.stringify(payload),
     });
@@ -368,12 +372,13 @@ export async function checkWhatsAppMessageStatus(messageId: string): Promise<{
   delivered_at?: string;
   read_at?: string;
 }> {
-  const configError = assertWhatsAppConfig();
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const configError = assertWhatsAppConfig(creds);
   if (configError) return { status: 'error' };
 
   try {
-    const response = await fetch(`${WHATSAPP_API_URL}/${messageId}`, {
-      headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+    const response = await fetch(`${creds.whatsapp_api_url}/${messageId}`, {
+      headers: { Authorization: `Bearer ${creds.whatsapp_access_token}` },
     });
     if (!response.ok) return { status: 'error' };
     const data = await response.json();

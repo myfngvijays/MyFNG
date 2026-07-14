@@ -12,10 +12,16 @@ import { updateInstance } from './instanceService';
 import { validateRules } from './ruleEngine';
 import type { AgentInstance, AgentRunInput, AgentRunResult, BuyingIntent, Sentiment } from './types';
 import { extractJsonFromLlmText, validateDecision } from './validateDecision';
-import { emptyMemory } from './configStore';
+import { getResolvedWhatsAppAgentsCredentials } from './envConfigStore';
 
-async function callOpenAiForDecision(systemPrompt: string, userPrompt: string, model: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
+async function callOpenAiForDecision(
+  systemPrompt: string,
+  userPrompt: string,
+  model: string,
+  temperature = 0.3,
+): Promise<string> {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const apiKey = creds.openai_api_key;
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -26,7 +32,7 @@ async function callOpenAiForDecision(systemPrompt: string, userPrompt: string, m
     },
     body: JSON.stringify({
       model,
-      temperature: 0.3,
+      temperature,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: systemPrompt },
@@ -115,7 +121,12 @@ export async function runAgentCycle(input: AgentRunInput & { instance?: AgentIns
 
   let rawLlm: string;
   try {
-    rawLlm = await callOpenAiForDecision(systemPrompt, userPrompt, config.model);
+    rawLlm = await callOpenAiForDecision(
+      systemPrompt,
+      userPrompt,
+      config.model,
+      input.agentType === 'FOLLOWUP' ? 0.65 : 0.3,
+    );
   } catch (err: any) {
     return { handled: false, skippedReason: err?.message || 'LLM call failed', latencyMs: Date.now() - started };
   }
@@ -130,7 +141,7 @@ export async function runAgentCycle(input: AgentRunInput & { instance?: AgentIns
   }
 
   const dailyCount = instance ? await countDailyOutboundMessages(instance.id) : 0;
-  const isAssigned = await isChatAssignedToHuman(phone);
+  const isAssigned = input.force ? false : await isChatAssignedToHuman(phone);
 
   const validation = validateRules({
     config,
@@ -209,10 +220,14 @@ export async function runAgentCycle(input: AgentRunInput & { instance?: AgentIns
   }
 
   return {
-    handled: true,
+    handled: validation.passed && executionStatus !== 'FAILED',
+    skippedReason: executionStatus === 'FAILED' ? execResult?.error || 'Execution failed' : undefined,
     decision: parsed.decision,
     validation,
     wouldExecute: validation.passed && !input.dryRun,
+    executionStatus,
+    sendError: execResult?.error,
+    messageSent: executionStatus === 'EXECUTED' && parsed.decision.action === 'SEND_MESSAGE',
     instanceId: instance?.id,
     latencyMs: Date.now() - started,
   };

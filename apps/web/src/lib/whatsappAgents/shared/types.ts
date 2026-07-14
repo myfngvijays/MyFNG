@@ -57,6 +57,21 @@ export type TelecrmSyncConfig = {
   on_end_max_attempts?: { disposition: string; disposition_category: string };
 };
 
+export type TelecrmDispositionRule = {
+  id: string;
+  disposition: string;
+  enabled?: boolean;
+  match_mode?: 'exact' | 'contains';
+  trigger_on?: 'new_lead' | 'disposition_change' | 'both';
+  bot?: 'CHASE' | 'FOLLOWUP' | 'NONE';
+  message_mode?: 'ai' | 'fixed' | 'template' | 'skip';
+  message?: string;
+  template_name?: string;
+  template_language?: string;
+  ai_prompt_addon?: string;
+  end_active_bots?: boolean;
+};
+
 export type AgentConfig = {
   agent_type: AgentType;
   enabled: boolean;
@@ -143,6 +158,7 @@ export type AgentRunInput = {
   dryRun?: boolean;
   mockMemory?: Partial<AgentMemory>;
   mockCrm?: Record<string, unknown>;
+  force?: boolean;
 };
 
 export type AgentRunResult = {
@@ -151,6 +167,9 @@ export type AgentRunResult = {
   decision?: AgentDecision;
   validation?: RuleValidationResult;
   wouldExecute?: boolean;
+  executionStatus?: ExecutionStatus;
+  sendError?: string;
+  messageSent?: boolean;
   instanceId?: string;
   latencyMs?: number;
 };

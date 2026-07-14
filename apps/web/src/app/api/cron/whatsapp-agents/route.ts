@@ -6,12 +6,13 @@ import {
   processDueFollowupWakeups,
 } from '@/lib/whatsappAgents/followup/handler';
 import { recoverStuckWakeups } from '@/lib/whatsappAgents/shared/schedulerService';
+import { pollCrmUpdatesForActiveInstances } from '@/lib/whatsappAgents/shared/crmUpdateTrigger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
-  const authError = assertCronAuth(request);
+  const authError = await assertCronAuth(request);
   if (authError) {
     return NextResponse.json({ error: authError }, { status: 401 });
   }
@@ -21,6 +22,10 @@ export async function GET(request: NextRequest) {
 
   try {
     results.stuckWakeupsRecovered = await recoverStuckWakeups();
+
+    if (job === 'all' || job === 'crm-updates') {
+      results.crmUpdates = await pollCrmUpdatesForActiveInstances();
+    }
 
     if (job === 'all' || job === 'chase-wakeups') {
       results.chaseWakeups = await processDueChaseWakeups();

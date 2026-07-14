@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { fetchAgentConfig } from '@/lib/whatsappAgents/shared/configStore';
+import { getDispositionRulesConfig } from '@/lib/whatsappAgents/shared/dispositionRules';
+import { handleTelecrmDispositionEvent } from '@/lib/whatsappAgents/shared/telecrmDispositionHandler';
+import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
+import { normalizeAgentPhone } from '@/lib/whatsappAgents/shared/instanceService';
+import type { TelecrmLeadCandidate } from '@/lib/whatsappAgents/chase/telecrmTriggers';
+import { shouldChaseTelecrmLead } from '@/lib/whatsappAgents/chase/telecrmTriggers';
 import {
   createChaseInstanceFromTelecrmLead,
   processChaseAgentEvent,
 } from '@/lib/whatsappAgents/chase/handler';
-import { shouldChaseTelecrmLead, type TelecrmLeadCandidate } from '@/lib/whatsappAgents/chase/telecrmTriggers';
-import { fetchAgentConfig } from '@/lib/whatsappAgents/shared/configStore';
-import { normalizeAgentPhone } from '@/lib/whatsappAgents/shared/instanceService';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-function assertWebhookAuth(req: NextRequest): boolean {
-  const secret = process.env.TELECRM_WEBHOOK_SECRET || process.env.CRON_SECRET || '';
-  if (!secret) return true; // dev fallback
+async function assertWebhookAuth(req: NextRequest): Promise<boolean> {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const secret = creds.telecrm_webhook_secret || creds.cron_secret || '';
+  if (!secret) return true;
   const header = req.headers.get('x-webhook-secret') || '';
   const auth = req.headers.get('authorization') || '';
   const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
@@ -21,7 +26,7 @@ function assertWebhookAuth(req: NextRequest): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  if (!assertWebhookAuth(request)) {
+  if (!(await assertWebhookAuth(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -32,9 +37,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'phone/mobile required' }, { status: 400 });
     }
 
-    const config = await fetchAgentConfig('CHASE');
-    if (!config.enabled) {
-      return NextResponse.json({ success: true, skipped: true, reason: 'chase_disabled' });
+    const chaseConfig = await fetchAgentConfig('CHASE');
+    const followupConfig = await fetchAgentConfig('FOLLOWUP');
+    if (!chaseConfig.enabled && !followupConfig.enabled) {
+      return NextResponse.json({ success: true, skipped: true, reason: 'agents_disabled' });
     }
 
     const lead: TelecrmLeadCandidate = {
@@ -49,10 +55,6 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
     };
 
-    if (!shouldChaseTelecrmLead(lead, config)) {
-      return NextResponse.json({ success: true, skipped: true, reason: 'disposition_not_eligible' });
-    }
-
     const { supabaseAdmin } = getSupabaseAdmin();
     if (supabaseAdmin && !lead.id) {
       const { data } = await supabaseAdmin
@@ -63,6 +65,28 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
       if (data?.id) lead.id = data.id;
+    }
+
+    const { enabled: rulesEnabled } = getDispositionRulesConfig(chaseConfig);
+    if (rulesEnabled && lead.disposition) {
+      const result = await handleTelecrmDispositionEvent({
+        row: lead,
+        eventKind: 'new_lead',
+      });
+      return NextResponse.json({
+        success: true,
+        disposition_rules: true,
+        handled: result.handled,
+        rule_id: result.ruleId,
+        bot: result.bot,
+        message_mode: result.messageMode,
+        instance_id: result.instanceId,
+        skipped_reason: result.skippedReason,
+      });
+    }
+
+    if (!shouldChaseTelecrmLead(lead, chaseConfig)) {
+      return NextResponse.json({ success: true, skipped: true, reason: 'disposition_not_eligible' });
     }
 
     const instance = await createChaseInstanceFromTelecrmLead(lead);
@@ -84,7 +108,8 @@ export async function POST(request: NextRequest) {
       handled: result.handled,
       decision: result.decision,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

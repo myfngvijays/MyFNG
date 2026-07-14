@@ -4,7 +4,8 @@ export type FollowupSourceType =
   | 'telecaller_follow_up'
   | 'incomplete_booking'
   | 'service_due_reminder'
-  | 'cse_callback';
+  | 'cse_callback'
+  | 'telecrm_disposition';
 
 export type FollowupTriggerConfig = {
   telecallerFollowUpEnabled: boolean;

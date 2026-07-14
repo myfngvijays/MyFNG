@@ -104,8 +104,10 @@ database/
 └── 260_whatsapp_agents.sql                  # Migration (see Section 2)
 
 docs/whatsapp-agents/
-├── ARCHITECTURE.md                          # This file
-└── API.md                                   # Detailed API reference (generated from Section 3)
+├── ARCHITECTURE.md                          # Technical architecture
+├── API.md                                   # API reference
+├── RUNBOOK.md                               # Production ops runbook
+└── USER_GUIDE.md                            # Complete Hindi/English usage guide
 ```
 
 ### Reused existing modules (no duplication)

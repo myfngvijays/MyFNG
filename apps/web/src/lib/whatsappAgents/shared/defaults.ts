@@ -36,8 +36,9 @@ const DEFAULT_PROMPTS: Record<AgentType, { goal: string; addon: string; triggers
   },
   FOLLOWUP: {
     goal:
-      'You are MyFNG Follow-up Assistant. Send a single gentle check-in message based on the scheduled follow-up context. Keep it short, friendly, one question. Do not be pushy.',
-    addon: 'WhatsApp channel. Under 500 characters. One clear question.',
+      'You are MyFNG Follow-up Assistant for car service bookings. Send one gentle, contextual check-in based on follow-up reason (telecaller callback, incomplete booking, service due). Keep it short, friendly, one question. Do not be pushy.',
+    addon:
+      'WhatsApp channel. Under 500 characters. One clear question. Every message must be uniquely worded — vary greeting, hook, and question. Car service only unless CRM mentions otherwise.',
     triggers: {
       telecaller_follow_up: { enabled: true, offset_minutes: 0 },
       telecaller_offset_minutes: 0,
@@ -62,6 +63,50 @@ const DEFAULT_PROMPTS: Record<AgentType, { goal: string; addon: string; triggers
       outbound_template_name: 'lead_enquiry_account_update',
       outbound_template_language: 'en',
       lookback_hours: 48,
+      disposition_rules: {
+        enabled: true,
+        rules: [
+          {
+            id: 'interested',
+            disposition: 'Interested',
+            enabled: true,
+            trigger_on: 'both',
+            bot: 'CHASE',
+            message_mode: 'ai',
+            ai_prompt_addon:
+              'TeleCRM stage: Interested. Customer showed interest — offer car service booking, share value, one clear CTA.',
+          },
+          {
+            id: 'follow-up',
+            disposition: 'Follow-up',
+            enabled: true,
+            trigger_on: 'both',
+            bot: 'FOLLOWUP',
+            message_mode: 'ai',
+            ai_prompt_addon:
+              'TeleCRM stage: Follow-up. Telecaller marked callback needed — gentle reminder, ask best time for car service.',
+          },
+          {
+            id: 'attempted-contact',
+            disposition: 'Attempted Contact',
+            enabled: true,
+            trigger_on: 'both',
+            bot: 'CHASE',
+            message_mode: 'fixed',
+            message:
+              'Hi {{name}}, we tried reaching you about your car service enquiry with MyFNG. When is a good time to connect?',
+          },
+          {
+            id: 'not-interested',
+            disposition: 'Not Interested',
+            enabled: true,
+            trigger_on: 'disposition_change',
+            bot: 'NONE',
+            message_mode: 'skip',
+            end_active_bots: true,
+          },
+        ],
+      },
     },
     tools: { pricing: true, workshops: false, service_details: false, booking: false },
   },

@@ -1,8 +1,8 @@
 'use client';
 
-import { Activity, Brain, CalendarClock, ShoppingCart, Target } from 'lucide-react';
+import { Activity, Brain, CalendarClock, KeyRound, ShoppingCart, Target } from 'lucide-react';
 
-export type AgentTabId = 'brain' | 'booking' | 'followup' | 'chase' | 'monitoring';
+export type AgentTabId = 'brain' | 'booking' | 'followup' | 'chase' | 'monitoring' | 'settings';
 
 const TABS: Array<{ id: AgentTabId; label: string; icon: typeof Brain; description: string }> = [
   { id: 'brain', label: 'AI Brain', icon: Brain, description: 'Inbound router + flows' },
@@ -10,6 +10,7 @@ const TABS: Array<{ id: AgentTabId; label: string; icon: typeof Brain; descripti
   { id: 'followup', label: 'Follow-up Bot', icon: CalendarClock, description: 'Scheduled check-ins' },
   { id: 'chase', label: 'Chase Bot', icon: Target, description: 'Persistent conversion' },
   { id: 'monitoring', label: 'Monitoring', icon: Activity, description: 'Analytics + audit log' },
+  { id: 'settings', label: 'API Keys', icon: KeyRound, description: 'OpenAI + WhatsApp + Cron' },
 ];
 
 type Props = {
@@ -20,7 +21,7 @@ type Props = {
 export default function AgentTabs({ activeTab, onChange }: Props) {
   return (
     <div className="rounded-xl border bg-white p-2 shadow-sm">
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

@@ -1,4 +1,5 @@
 import type { AgentConfig } from '../shared/types';
+import { findDispositionRule, getDispositionRulesConfig } from '../shared/dispositionRules';
 
 export type TelecrmLeadCandidate = {
   id: string;
@@ -39,5 +40,15 @@ export function shouldChaseTelecrmLead(lead: TelecrmLeadCandidate, config: Agent
   const tc = getChaseTriggerConfig(config);
   if (!tc.telecrmNewEnabled) return false;
   if (!lead.mobile) return false;
+
+  const { enabled: rulesEnabled } = getDispositionRulesConfig(config);
+  if (rulesEnabled) {
+    const rule = findDispositionRule(config, lead.disposition, 'new_lead');
+    if (rule) {
+      if (rule.enabled === false || rule.end_active_bots || rule.message_mode === 'skip') return false;
+      return rule.bot === 'CHASE';
+    }
+  }
+
   return dispositionMatches(lead.disposition, tc.newLeadDispositions);
 }

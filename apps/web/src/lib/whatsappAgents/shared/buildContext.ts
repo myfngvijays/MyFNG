@@ -25,12 +25,48 @@ export function buildAgentContext(input: {
 
   const followupHint =
     input.agentType === 'FOLLOWUP'
-      ? 'This is a ONE-TIME scheduled check-in. Use action SEND_MESSAGE with one short friendly message, then the system will end the conversation. Do NOT use WAIT. If customer already engaged, use END_CONVERSATION.'
+      ? [
+          'This is a ONE-TIME scheduled check-in. Use action SEND_MESSAGE with one short friendly message, then the system will end the conversation. Do NOT use WAIT. If customer already engaged, use END_CONVERSATION.',
+          'Write a FRESH message every time — different opening, different angle, different wording. Never reuse or lightly rephrase a previous outbound.',
+          'Focus on car service / booking / callback reason from CRM context only. Do NOT mention Prime membership unless CRM explicitly mentions membership.',
+        ].join(' ')
+      : null;
+
+  const priorOutbound = Array.isArray(memory.extra?.avoid_repeating_messages)
+    ? (memory.extra.avoid_repeating_messages as string[])
+    : memory.sent_messages
+        .filter((m) => m.direction === 'outbound')
+        .map((m) => m.message)
+        .filter(Boolean);
+
+  const priorOutboundBlock =
+    input.agentType === 'FOLLOWUP' && priorOutbound.length
+      ? `Previous outbound messages — do NOT repeat or paraphrase these:\n${priorOutbound
+          .slice(0, 8)
+          .map((m, i) => `${i + 1}. ${m}`)
+          .join('\n')}`
+      : null;
+
+  const followupContext =
+    input.agentType === 'FOLLOWUP' && Object.keys(crm).length
+      ? `Follow-up context: ${JSON.stringify({
+          customer_name: crm.customer_name || crm.name,
+          vehicle_model: crm.vehicle_model || crm.car_label,
+          service_type: crm.service_type || crm.service_label,
+          follow_up_type: crm.follow_up_type,
+          reason: crm.reason,
+        })}`
+      : null;
+
+  const dispositionAddon =
+    typeof memory.extra?.disposition_prompt_addon === 'string'
+      ? memory.extra.disposition_prompt_addon
       : null;
 
   const systemPrompt = [
     config.goal_prompt,
     config.system_prompt_addon,
+    dispositionAddon ? `Disposition-specific instruction: ${dispositionAddon}` : null,
     followupHint,
     '',
     'You MUST respond with ONLY valid JSON matching this schema:',
@@ -47,7 +83,9 @@ export function buildAgentContext(input: {
     `Buying intent: ${memory.buying_intent}`,
     `Sentiment: ${memory.sentiment}`,
     memory.conversation_summary ? `Summary: ${memory.conversation_summary}` : null,
+    followupContext,
     Object.keys(crm).length ? `CRM: ${JSON.stringify(crm)}` : null,
+    priorOutboundBlock,
     conversationLines ? `Recent conversation:\n${conversationLines}` : 'No prior conversation.',
   ]
     .filter(Boolean)

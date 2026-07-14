@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
         *,
         memory:whatsapp_agent_memory(buying_intent, sentiment, conversation_summary, crm_snapshot)
       `)
-      .eq('agent_type', 'CHASE')
+      .eq('agent_type', 'FOLLOWUP')
       .in('status', statuses)
       .order('updated_at', { ascending: false })
       .limit(50);

@@ -1,11 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { FlaskConical, Power, RefreshCw, Sparkles } from 'lucide-react';
+import { Power, RefreshCw, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { AgentConfig, AgentRuntime, AgentType } from '@/lib/whatsappAgents/shared/types';
 import AgentRulesEditor from './AgentRulesEditor';
-import BookingAgentTestModal from './BookingAgentTestModal';
 
 const API_SLUG: Record<AgentType, string> = {
   BOOKING: 'booking',
@@ -34,17 +33,6 @@ export default function AgentConfigPanel({
   const [runtime, setRuntime] = useState<AgentRuntime | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [testOpen, setTestOpen] = useState(false);
-  const defaultTestMessage =
-    agentType === 'CHASE'
-      ? 'Hi, I got your message about Swift service. Still interested?'
-      : agentType === 'FOLLOWUP'
-        ? 'Following up on our call about periodic service for your Swift.'
-        : 'Hi, I want to book periodic service for my Swift in 400001';
-
-  const [testMessage, setTestMessage] = useState(defaultTestMessage);
-  const [testResult, setTestResult] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
 
   const slug = API_SLUG[agentType];
 
@@ -89,58 +77,6 @@ export default function AgentConfigPanel({
     }
   };
 
-  const runTest = async () => {
-    setTestLoading(true);
-    setTestResult('');
-    try {
-      const res = await fetch('/api/whatsapp/agents/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_type: agentType,
-          phone: '9999999999',
-          event_type: agentType === 'FOLLOWUP' ? 'FOLLOWUP_TRIGGER' : agentType === 'CHASE' ? 'NEW_LEAD' : 'CUSTOMER_REPLY',
-          customer_message: testMessage,
-          mock_crm: { name: 'Rahul', vehicle_model: 'Swift', disposition: 'Interested' },
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json?.success) throw new Error(json?.error || 'Test failed');
-      if (agentType === 'CHASE') {
-        setTestResult(
-          JSON.stringify(
-            {
-              decision: json.decision,
-              route: json.route,
-              skipped_reason: json.skipped_reason,
-            },
-            null,
-            2,
-          ),
-        );
-      } else if (agentType === 'BOOKING') {
-        setTestResult(
-          JSON.stringify(
-            {
-              reply: json.reply,
-              route: json.route,
-              booking_created: json.booking_created,
-              pricing_count: Array.isArray(json.pricing) ? json.pricing.length : 0,
-            },
-            null,
-            2,
-          ),
-        );
-      } else {
-        setTestResult(JSON.stringify(json.decision || json, null, 2));
-      }
-    } catch (error: any) {
-      toast.error(error?.message || 'Test failed');
-    } finally {
-      setTestLoading(false);
-    }
-  };
-
   if (loading || !config) {
     return <div className="rounded-xl border bg-white p-6 text-sm text-gray-500">Loading {title}...</div>;
   }
@@ -180,17 +116,6 @@ export default function AgentConfigPanel({
             >
               <RefreshCw className="mr-1 h-3.5 w-3.5" />
               Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTestResult('');
-                setTestOpen(true);
-              }}
-              className="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              <FlaskConical className="mr-1 h-3.5 w-3.5" />
-              Test
             </button>
             <button
               type="button"
@@ -388,68 +313,6 @@ export default function AgentConfigPanel({
           </div>
         </div>
       </div>
-
-      {testOpen && agentType === 'BOOKING' ? (
-        <BookingAgentTestModal title={title} onClose={() => setTestOpen(false)} />
-      ) : null}
-
-      {testOpen && agentType !== 'BOOKING' ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">Test {title}</h3>
-              <button
-                type="button"
-                onClick={() => setTestOpen(false)}
-                className="text-sm font-semibold text-gray-500 hover:text-gray-800"
-              >
-                Close
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-gray-500">
-              Dry-run only — no WhatsApp message is sent. Uses your saved prompt and rules.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-500">Test phone</label>
-                <input
-                  defaultValue="9999999999"
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  readOnly
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-500">
-                  {agentType === 'FOLLOWUP' ? 'Outbound check-in context' : 'Customer message'}
-                </label>
-                <textarea
-                  value={testMessage}
-                  onChange={(e) => setTestMessage(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={runTest}
-                disabled={testLoading}
-                className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                <FlaskConical className="mr-1.5 h-4 w-4" />
-                {testLoading ? 'Running...' : 'Run dry test (no WhatsApp send)'}
-              </button>
-              {testResult ? (
-                <div>
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">AI result</p>
-                  <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-green-300 whitespace-pre-wrap">
-                    {testResult}
-                  </pre>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

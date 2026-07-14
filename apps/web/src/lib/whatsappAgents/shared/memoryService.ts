@@ -77,6 +77,29 @@ export async function loadConversationForPhone(phone: string, limit = 20): Promi
   }));
 }
 
+export async function loadRecentOutboundTextsForPhone(phone: string, limit = 8): Promise<string[]> {
+  const db = getAdminDb();
+  const normalized = normalizePhoneNumber(phone);
+
+  const { data } = await db
+    .from('whatsapp_messages')
+    .select('text_body, created_at')
+    .or(`sender_phone.eq.${normalized},recipient_phone.eq.${normalized}`)
+    .eq('direction', 'outbound')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  const seen = new Set<string>();
+  const messages: string[] = [];
+  for (const row of data || []) {
+    const text = String((row as { text_body?: string }).text_body || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    messages.push(text);
+  }
+  return messages;
+}
+
 export async function loadCrmSnapshot(telecrmId?: string | null): Promise<Record<string, unknown>> {
   if (!telecrmId) return {};
   const db = getAdminDb();

@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { defaultAgentConfig, DEFAULT_AGENT_RULES, DEFAULT_AGENT_TOOLS, DEFAULT_TELECRM_SYNC } from './defaults';
+import { getResolvedWhatsAppAgentsCredentials } from './envConfigStore';
 import type { AgentConfig, AgentMemory, AgentRuntime, AgentType } from './types';
 
 const configCache = new Map<AgentType, { value: AgentConfig; expiresAt: number }>();
@@ -153,9 +154,11 @@ export async function fetchAgentRuntime(agentType: AgentType): Promise<AgentRunt
     activeInstances = 0;
   }
 
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+
   return {
-    openai_configured: Boolean(process.env.OPENAI_API_KEY),
-    whatsapp_configured: Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID),
+    openai_configured: Boolean(creds.openai_api_key),
+    whatsapp_configured: Boolean(creds.whatsapp_access_token && creds.whatsapp_phone_number_id),
     active_instances: activeInstances,
   };
 }

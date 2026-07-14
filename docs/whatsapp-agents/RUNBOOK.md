@@ -5,7 +5,7 @@
 | Step | Action |
 |------|--------|
 | 1 | Run SQL migrations `260` through `267` in Supabase |
-| 2 | Set env: `OPENAI_API_KEY`, `WHATSAPP_*`, `CRON_SECRET`, `TELECRM_WEBHOOK_SECRET` |
+| 2 | Set credentials: Bot Flow → **API Keys** tab (or server `.env` fallback) |
 | 3 | Meta templates approved: `lead_enquiry_account_update` (Chase), `app_session_incomplete` (Follow-up) |
 | 4 | Bot Flow → enable each agent + Save |
 | 5 | Vercel cron active: `*/10 * * * *` → `/api/cron/whatsapp-agents` |
@@ -67,6 +67,10 @@ Runs every 10 minutes (Vercel). Jobs:
 
 - Analytics (14-day): conversions, response rates, failed sends
 - Audit log: last 40 agent actions
+
+**System Monitor:** Super Admin → System Monitor → **WhatsApp AI Agents** health check
+
+**Full usage guide:** [`USER_GUIDE.md`](./USER_GUIDE.md)
 
 **APIs:**
 

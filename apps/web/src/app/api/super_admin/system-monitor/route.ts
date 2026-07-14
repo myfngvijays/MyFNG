@@ -688,6 +688,144 @@ async function checkSARVTelephony(): Promise<HealthCheck> {
   }
 }
 
+async function countActiveInstances(
+  client: any,
+  agentType: string,
+): Promise<number | null> {
+  const { count, error } = await client
+    .from('whatsapp_agent_instances')
+    .select('id', { count: 'exact', head: true })
+    .eq('agent_type', agentType)
+    .in('status', ['ACTIVE', 'WAITING']);
+
+  if (error) return null;
+  return count ?? 0;
+}
+
+async function checkWhatsAppAgents(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+
+  if (!client) {
+    return {
+      name: 'WhatsApp AI Agents',
+      category: 'AI',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Cannot check (DB unavailable)',
+      reason: `WhatsApp agent tables could not be queried: ${configError}`,
+      quickFix: { label: 'Open Bot Flow', action: 'external-link', actionPayload: { url: '/dashboard/super_admin/bot-flow' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data: configs, error: cfgError } = await checkWithTimeout(() =>
+      client.from('whatsapp_agent_configs').select('agent_type, enabled, model'),
+    );
+    const responseTime = Date.now() - start;
+
+    if (cfgError) {
+      const migrationMissing = cfgError.code === '42P01' || cfgError.message?.includes('does not exist');
+      return {
+        name: 'WhatsApp AI Agents',
+        category: 'AI',
+        status: 'down',
+        responseTime,
+        message: migrationMissing ? 'Migration not applied' : 'Config query failed',
+        reason: migrationMissing
+          ? 'Tables whatsapp_agent_configs/instances not found. Run database/260_whatsapp_agents.sql (and 267 for phase 4 indexes).'
+          : `Agent config query failed: ${cfgError.message}`,
+        quickFix: migrationMissing
+          ? { label: 'Open Bot Flow', action: 'external-link', actionPayload: { url: '/dashboard/super_admin/bot-flow' } }
+          : null,
+        lastChecked: new Date().toISOString(),
+        details: { errorCode: cfgError.code },
+      };
+    }
+
+    const rows = (configs || []) as Array<{ agent_type: string; enabled: boolean; model?: string }>;
+    const enabledAgents = rows.filter((r) => r.enabled).map((r) => r.agent_type);
+    const [bookingActive, followupActive, chaseActive] = await Promise.all([
+      countActiveInstances(client, 'BOOKING'),
+      countActiveInstances(client, 'FOLLOWUP'),
+      countActiveInstances(client, 'CHASE'),
+    ]);
+
+    const { count: pendingWakeups } = await client
+      .from('whatsapp_agent_scheduled_wakeups')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'PENDING');
+
+    const { count: stuckWakeups } = await client
+      .from('whatsapp_agent_scheduled_wakeups')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'PROCESSING');
+
+    const openAiReady = Boolean(process.env.OPENAI_API_KEY);
+    const whatsappReady = Boolean(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
+
+    let status: ServiceStatus = 'healthy';
+    let message = `${enabledAgents.length} agent(s) enabled`;
+    let reason = 'MISA AI, Follow-up Bot, and Chase Bot configs are readable. Pause/Escalate, CRM_UPDATE poll, and instance dashboards are deployed in Bot Flow.';
+
+    if (enabledAgents.length > 0 && (!openAiReady || !whatsappReady)) {
+      status = 'degraded';
+      const missing = [];
+      if (!openAiReady) missing.push('OPENAI_API_KEY');
+      if (!whatsappReady) missing.push('WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID');
+      message = `Agents enabled but missing: ${missing.join(', ')}`;
+      reason = 'One or more WhatsApp agents are enabled in Bot Flow but required env vars are missing, so live sends may fail.';
+    } else if ((stuckWakeups ?? 0) > 0) {
+      status = 'degraded';
+      message = `${stuckWakeups} wakeup(s) stuck in PROCESSING`;
+      reason = 'Scheduled agent wakeups are stuck. Cron recoverStuckWakeups should clear them on next /api/cron/whatsapp-agents run.';
+    } else if (enabledAgents.length === 0) {
+      message = 'All agents disabled (Bot Flow)';
+      reason = 'WhatsApp agent tables are OK. Enable MISA AI / Follow-up / Chase from Bot Flow when ready.';
+    }
+
+    return {
+      name: 'WhatsApp AI Agents',
+      category: 'AI',
+      status,
+      responseTime,
+      message,
+      reason,
+      quickFix: { label: 'Open Bot Flow', action: 'external-link', actionPayload: { url: '/dashboard/super_admin/bot-flow' } },
+      lastChecked: new Date().toISOString(),
+      details: {
+        enabled_agents: enabledAgents,
+        active_instances: {
+          BOOKING: bookingActive,
+          FOLLOWUP: followupActive,
+          CHASE: chaseActive,
+        },
+        pending_wakeups: pendingWakeups ?? 0,
+        stuck_wakeups: stuckWakeups ?? 0,
+        capabilities: [
+          'pause_escalate_apis',
+          'active_instances_dashboard',
+          'crm_update_auto_rerun',
+          'manual_followup_trigger',
+          'message_variety',
+        ],
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'WhatsApp AI Agents',
+      category: 'AI',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Agent health check failed',
+      reason: `Could not verify WhatsApp agent stack: ${e.message}`,
+      quickFix: { label: 'Open Bot Flow', action: 'external-link', actionPayload: { url: '/dashboard/super_admin/bot-flow' } },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 function calculateHealthScore(checks: HealthCheck[]): number {
   if (checks.length === 0) return 100;
   const weights: Record<string, number> = {
@@ -732,6 +870,7 @@ export async function GET() {
       checkFirebase(),
       checkEmailService(),
       checkOpenAI(),
+      checkWhatsAppAgents(),
       checkGoogleMaps(),
       checkCronJobs(),
       checkSSL(),

@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Play, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AgentConfigPanel from './AgentConfigPanel';
-import AgentLeadsDashboard from './AgentLeadsDashboard';
+import AgentInstancesDashboard from './AgentInstancesDashboard';
+import DispositionRulesEditor from './DispositionRulesEditor';
 
 export default function ChaseAgentPanel() {
   const [running, setRunning] = useState(false);
@@ -53,6 +54,8 @@ export default function ChaseAgentPanel() {
         ]}
       />
 
+      <DispositionRulesEditor />
+
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -82,7 +85,11 @@ export default function ChaseAgentPanel() {
         ) : null}
       </div>
 
-      <AgentLeadsDashboard />
+      <AgentInstancesDashboard
+        agentType="CHASE"
+        title="Active Chase Leads"
+        emptyMessage="No active chase leads. Enable Chase Bot and run cron or TeleCRM webhook to create instances."
+      />
 
       <div className="rounded-xl border border-dashed bg-slate-50 p-4 text-xs text-gray-600 space-y-1">
         <p className="font-semibold text-gray-800">Auto triggers (configured)</p>
