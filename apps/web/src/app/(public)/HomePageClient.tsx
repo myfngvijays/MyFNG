@@ -775,7 +775,7 @@ export default function HomePage() {
               const q = headerAiQuery.trim();
               if (!q) return;
               setChatDraft(q);
-              window.location.href = appendUtmToHref('/ai-booking');
+              window.location.href = appendUtmToHref('/misa-ai');
             }}
             className="w-full"
           >
@@ -857,7 +857,7 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     setChatDraft('I want to book a car service.');
-                    window.location.href = appendUtmToHref('/ai-booking');
+                    window.location.href = appendUtmToHref('/misa-ai');
                   }}
                   className="btn inline-flex w-full sm:w-auto sm:min-w-[240px] items-center justify-center gap-2 rounded-2xl px-7 py-4 text-base sm:text-lg font-semibold text-blue-900 bg-white border border-blue-200 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
@@ -1020,7 +1020,7 @@ export default function HomePage() {
       {/* 2. Our Services - Option G: Filter Bar + Results (shop-like) */}
       <ServiceExplorer
         services={services}
-        onAskAI={() => (window.location.href = appendUtmToHref('/ai-booking'))}
+        onAskAI={() => (window.location.href = appendUtmToHref('/misa-ai'))}
         onQuickBook={() => (window.location.href = '/book-service')}
         popularSlugs={['periodic-service', 'ac-service', 'battery-service', 'brake-service', 'engine-service']}
       />
@@ -1276,7 +1276,7 @@ export default function HomePage() {
                 title: 'AI-Powered Booking',
                 desc: '60 Secs Booking. No Calls. No Follow-Ups.',
                 icon: Bot,
-                link: '/ai-booking',
+                link: '/misa-ai',
                 pill: 'bg-blue-600 text-white',
                 card: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white',
                 glow: 'bg-blue-500/30',
@@ -1886,7 +1886,7 @@ export default function HomePage() {
               {
                 question: 'How can I book a service appointment with My FNG?',
                 answer:
-                  'You can book service via MISA AI Booking Agent - https://myfng.in/ai-booking or online through our website www.myfng.in/book-service or by calling our customer support. We offer flexible scheduling to accommodate your convenience.',
+                  'You can book service via MISA AI Booking Agent - https://myfng.in/misa-ai or online through our website www.myfng.in/book-service or by calling our customer support. We offer flexible scheduling to accommodate your convenience.',
               },
               {
                 question: 'Is the pricing really transparent?',

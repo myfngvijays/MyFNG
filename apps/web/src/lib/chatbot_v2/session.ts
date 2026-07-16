@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export interface SessionData {
   history: { role: string; content: string }[];
+  vehicleNumber?: string;
   workshopQuery?: boolean;
   lastShownWorkshops?: any[]; // Store recently shown workshops for selection
   lastShownPlans?: any[]; // Store service plans/pricing to handle plan selection

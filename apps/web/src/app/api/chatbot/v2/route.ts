@@ -3,6 +3,8 @@ import { logChatActivity } from '@/lib/chatbot_v2/telecrm';
 import { handleChatError, logError } from '@/lib/chatbot_v2/error-handler';
 import { runMisaAgent } from '@/lib/chatbot_v2/runAgent';
 import { SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
+import { buildSessionContextPatch, getVerifiedPhoneFromSession } from '@/lib/chatbot_v2/verificationSession';
+import { getSession } from '@/lib/chatbot_v2/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,14 +49,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const isMobileClient = req.headers.get('x-mobile-client') === 'true';
+    const existingSession = await getSession(sessionId);
+    const verifiedPhone = getVerifiedPhoneFromSession(existingSession || undefined);
+    const sessionHint = verifiedPhone
+      ? `\n\n[SESSION STATE: Mobile OTP already verified for ${verifiedPhone}. Do NOT ask for mobile number again. Proceed to get_service_pricing when service, car model, and PIN code are available.]`
+      : '';
+
     const agent = await runMisaAgent({
       sessionId,
       message,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: SYSTEM_PROMPT + sessionHint,
       model: 'gpt-4o',
       bookingChannel: isMobileClient ? 'APP' : 'WEBSITE',
     });
     const finalResponse = agent.response;
+    const contextPatch = buildSessionContextPatch(agent.sessionData, sessionId);
 
     void logChatActivity(sessionId, message, 'user').catch((err) => {
       logError('TeleCRM user message logging', err, { sessionId });
@@ -71,14 +80,10 @@ export async function POST(req: NextRequest) {
       message: finalResponse,
       assistantMessage: finalResponse,
       cta: '',
-      contextPatch: {
-        conversationId: sessionId,
-      },
+      contextPatch,
       data: {
         conversationId: sessionId,
-        contextPatch: {
-          conversationId: sessionId,
-        },
+        contextPatch,
       },
       sources: [],
       intent: 'llm_managed',

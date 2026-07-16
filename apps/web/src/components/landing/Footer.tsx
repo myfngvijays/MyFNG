@@ -107,7 +107,7 @@ export default function Footer() {
               🚗 Book Car Service Now
             </Link>
             <Link
-              href="/ai-booking"
+              href="/misa-ai"
               className="py-[14px] px-[30px] text-[16px] font-semibold rounded-lg border-2 border-white text-white bg-transparent hover:bg-white hover:text-[#0f172a] transition-all duration-300 no-underline"
             >
               🤖 Book via MISA AI

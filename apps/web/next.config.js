@@ -100,7 +100,7 @@ const nextConfig = {
       { source: '/rsa_landing', destination: '/car-roadside-assitance', permanent: true },
       { source: '/roadside-assistance', destination: '/car-roadside-assitance', permanent: true },
       // Legacy PHP URLs
-      { source: '/car-loan.php', destination: '/car-loan', permanent: true },
+      { source: '/ai-booking', destination: '/misa-ai', permanent: true },
     ];
   },
 };

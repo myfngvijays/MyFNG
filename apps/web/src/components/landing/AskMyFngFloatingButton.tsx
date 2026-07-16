@@ -9,7 +9,7 @@ export default function AskMyFngFloatingButton() {
   const [open, setOpen] = useState(false);
 
   // Hide widget on the dedicated full-page chat route.
-  if (pathname === '/ai-booking') return null;
+  if (pathname === '/misa-ai') return null;
 
   return (
     <>
@@ -32,7 +32,7 @@ export default function AskMyFngFloatingButton() {
             </button>
           </div>
           <iframe
-            src="/ai-booking?embed=1"
+            src="/misa-ai?embed=1"
             className="h-[560px] w-full border-0"
             title="MyFNG Chatbot"
           />

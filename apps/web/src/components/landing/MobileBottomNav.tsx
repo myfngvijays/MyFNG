@@ -33,7 +33,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Home', href: '/', icon: Home, matchPrefixes: ['/'] },
   { label: 'Services', href: '/services', icon: Wrench, matchPrefixes: ['/services', '/car-services'] },
-  { label: 'MISA AI', href: '/ai-booking', icon: Bot, matchPrefixes: ['/ai-booking'] },
+  { label: 'MISA AI', href: '/misa-ai', icon: Bot, matchPrefixes: ['/misa-ai'] },
   {
     label: 'Roadside',
     href: '/car-roadside-assitance',
@@ -68,6 +68,7 @@ export default function MobileBottomNav() {
 
   if (isEmbed) return null;
   if (pathname === '/book-service' || pathname.startsWith('/book-service/')) return null;
+  if (pathname === '/misa-ai' || pathname.startsWith('/misa-ai/')) return null;
 
   if (isServicesListPage) {
     return (

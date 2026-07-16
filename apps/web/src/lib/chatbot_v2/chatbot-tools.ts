@@ -17,6 +17,12 @@ import { getServiceChecklist } from './checklist-queries';
 import type { MisaBookingChannel } from './misaLeadSource';
 import type { SessionData } from './session';
 import { isValidVehicleNumber, normalizeVehicleNumber } from './vehicleNumber';
+import {
+  getVerifiedPhoneFromSession,
+  getVehicleNumberFromSession,
+  isPricingAllowedInSession,
+  setVehicleNumberInSession,
+} from './verificationSession';
 
 /**
  * OpenAI Function/Tool Schemas
@@ -27,7 +33,7 @@ export const CHATBOT_TOOLS = [
     function: {
       name: 'get_service_pricing',
       description:
-        "Get pricing information for a specific car service. Use this when user asks about prices or when you have service type, car model, and location (PIN code or city).",
+        "Get pricing information for a specific car service. ONLY call after mobile OTP is verified (verify_booking_otp). Requires service category, car model, and PIN code collected first.",
       parameters: {
         type: 'object',
         properties: {
@@ -112,9 +118,27 @@ export const CHATBOT_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'set_vehicle_number',
+      description:
+        'Save and validate the customer car registration number. Call ONLY at the end of booking flow, just before showing booking summary and create_booking — NOT before pricing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          vehicle_number: {
+            type: 'string',
+            description: "Customer's car registration number (e.g. DL01AB1234, MH12AB1234)",
+          },
+        },
+        required: ['vehicle_number'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'send_booking_otp',
       description:
-        'Send a 6-digit OTP on WhatsApp to verify the customer mobile number before booking. Call this immediately after collecting a valid 10-digit phone number.',
+        'Send a 6-digit OTP on WhatsApp to verify the customer mobile number. Call ONLY after service type, car model, and PIN code are collected — immediately before showing pricing.',
       parameters: {
         type: 'object',
         properties: {
@@ -271,6 +295,19 @@ export async function executeToolCall(
   try {
     switch (toolName) {
       case 'get_service_pricing': {
+        const session = opts?.sessionData;
+
+        if (!isPricingAllowedInSession(session)) {
+          const verifiedPhone = getVerifiedPhoneFromSession(session);
+          return {
+            success: false,
+            blocked_reason: verifiedPhone ? 'PHONE_NOT_VERIFIED' : 'PHONE_OTP_REQUIRED',
+            message: verifiedPhone
+              ? 'Mobile OTP verification is pending. Call verify_booking_otp with the 6-digit code.'
+              : 'Mobile OTP verification is required before showing pricing. First collect service, car model, and PIN code, then collect mobile, call send_booking_otp, and verify_booking_otp.',
+          };
+        }
+
         const { service_category, car_model, pincode, city } = args;
 
         // Prefer PIN code-based pricing
@@ -382,10 +419,39 @@ export async function executeToolCall(
         }
       }
 
+      case 'set_vehicle_number': {
+        if (!opts?.sessionData) {
+          return { success: false, message: 'Session unavailable. Please try again.' };
+        }
+
+        const result = setVehicleNumberInSession(opts.sessionData, args.vehicle_number);
+        if (!result.ok) {
+          return { success: false, message: result.message };
+        }
+
+        if (opts.sessionData.bookingState) {
+          opts.sessionData.bookingState.vehicleNumber = result.vehicleNumber;
+        }
+
+        return {
+          success: true,
+          vehicle_number: result.vehicleNumber,
+          message:
+            'Vehicle number saved. Include it in the booking summary and proceed to create_booking after user confirms.',
+        };
+      }
+
       case 'send_booking_otp': {
         const phone = normalizeBookingPhone(args.phone_number);
         if (phone.length !== 10) {
           return { success: false, message: 'Please share a valid 10-digit mobile number.' };
+        }
+
+        if (opts?.sessionData) {
+          opts.sessionData.bookingState = {
+            ...(opts.sessionData.bookingState || {}),
+            phoneNumber: phone,
+          };
         }
 
         const result = await sendBookingOtpForPhone(phone, {
@@ -429,7 +495,8 @@ export async function executeToolCall(
         return {
           success: true,
           verified: true,
-          message: 'Mobile number verified. You may continue with address, date, and time.',
+          message:
+            'Mobile number verified. You may now call get_service_pricing if service, car model, and PIN code are available.',
           dry_run: Boolean(result.dryRun),
         };
       }
@@ -438,12 +505,16 @@ export async function executeToolCall(
         const phone = normalizeBookingPhone(args.phone_number);
         const vehicleNumber = normalizeVehicleNumber(args.vehicle_number);
 
-        if (!isValidVehicleNumber(vehicleNumber)) {
+        const sessionVehicle = getVehicleNumberFromSession(opts?.sessionData);
+        if (!sessionVehicle && !isValidVehicleNumber(vehicleNumber)) {
           return {
             success: false,
-            message: 'Invalid vehicle number. Ask for registration number like DL01AB1234.',
+            message:
+              'Vehicle registration number is required before booking. Ask for car number, call set_vehicle_number, then show summary.',
           };
         }
+
+        const finalVehicleNumber = sessionVehicle || vehicleNumber;
 
         if (!isPhoneVerifiedInSession(opts?.sessionData, phone)) {
           return {
@@ -464,13 +535,21 @@ export async function executeToolCall(
           }
         }
 
+        const customerName = String(args.customer_name || '').trim();
+        if (!customerName || customerName.length < 2 || /^customer_/i.test(customerName)) {
+          return {
+            success: false,
+            message: 'Customer name is required. Ask "What\'s your name?" and wait for response before booking.',
+          };
+        }
+
         const bookingData = {
           session_id: args.session_id,
           service_name: args.service_name,
           service_category: args.service_category,
-          customer_name: args.customer_name,
+          customer_name: customerName,
           phone_number: phone,
-          vehicle_number: vehicleNumber,
+          vehicle_number: finalVehicleNumber,
           address: args.address,
           car_model: args.car_model,
           city: city,

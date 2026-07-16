@@ -10,10 +10,17 @@ export const metadata = buildPageMetadata({
     'MYFNG AI booking',
   ],
   keyphrase: 'AI car service booking',
-  canonicalPath: '/ai-booking',
+  canonicalPath: '/misa-ai',
   city: 'Mumbai',
 });
 
 export default function AiBookingLayout({ children }: { children: React.ReactNode }) {
   return children;
 }
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};

@@ -26,7 +26,7 @@ const TOP_FAQS = [
   {
     question: 'How can I book a service appointment with My FNG?',
     answer:
-      'You can book service via MyFNG AI Booking Agent at https://myfng.in/ai-booking or online through our website www.myfng.in/book-service or by calling our customer support.',
+      'You can book service via MyFNG AI Booking Agent at https://myfng.in/misa-ai or online through our website www.myfng.in/book-service or by calling our customer support.',
   },
   {
     question: 'What services does My FNG Offer?',

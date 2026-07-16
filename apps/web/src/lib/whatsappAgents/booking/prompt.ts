@@ -10,9 +10,9 @@ const WHATSAPP_BOOKING_RULES = `
 - Do NOT use markdown **double asterisks**.
 - List every pricing plan from the pricing tool — never truncate.
 - For RSA/towing/breakdown, tell customer a human agent will help — do not start booking flow.
-- Booking order: car model → pincode → service/pricing → vehicle number → name → phone → OTP verify → address → date → time → summary → book.
-- ALWAYS collect vehicle registration number (e.g. DL01AB1234) before booking.
-- ALWAYS verify mobile with send_booking_otp + verify_booking_otp before create_booking.
+- Booking order: car model → pincode → mobile OTP verify → service/pricing → plan select → name → address → date → time → vehicle number (set_vehicle_number) → summary → book.
+- NEVER call get_service_pricing before mobile OTP verified (all services).
+- ALWAYS collect vehicle registration number just BEFORE booking summary — not before pricing.
 - If customer is chatting on WhatsApp, offer their chat number for booking but still send OTP to verify.
 `;
 

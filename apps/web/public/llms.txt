@@ -27,7 +27,7 @@ My FNG Autocare Private Limited is a technology-driven car service and repair ag
 ## Book a Service
 
 - [Book Service](https://myfng.in/book-service): Book a car service online — select your car, choose a service, and get matched with a verified workshop near you.
-- [AI Booking](https://myfng.in/ai-booking): Use our AI-powered assistant to book a car service quickly.
+- [AI Booking](https://myfng.in/misa-ai): Use our AI-powered assistant to book a car service quickly.
 
 ## Service Areas
 

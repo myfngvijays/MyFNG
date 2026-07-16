@@ -3,8 +3,38 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowRight, Bot } from 'lucide-react';
+import { ArrowRight, Bot, Menu, X } from 'lucide-react';
 import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
+import {
+  assistantMessageShowsServiceList,
+  MisaCategoryCards,
+  MisaPrimePanel,
+  MisaServiceGrid,
+} from './components/MisaServicePicker';
+import { assistantNeedsMobileVerification, MisaVerificationPanel } from './components/MisaVerificationPanel';
+import { assistantAsksForCar, MisaCarPicker } from './components/MisaCarPicker';
+import {
+  extractPricingTitle,
+  MisaPricingPicker,
+  parsePricingPlansFromText,
+} from './components/MisaPricingPicker';
+import {
+  assistantAsksForPickupDate,
+  assistantAsksForPickupTime,
+  extractPickupDatePrompt,
+  extractPickupTimePrompt,
+  MisaPickupDatePicker,
+  MisaPickupTimePicker,
+} from './components/MisaDateTimePicker';
+import { assistantAsksForVehicleNumber, MisaVehicleNumberInput } from './components/MisaVehicleNumberInput';
+import { assistantAsksForPincode, MisaPincodeInput } from './components/MisaPincodeInput';
+import { assistantAsksForName, MisaNameInput } from './components/MisaNameInput';
+import {
+  assistantShowsBookingSummary,
+  extractBookingSummaryPrompt,
+  MisaBookingSummaryCard,
+  parseBookingSummary,
+} from './components/MisaBookingSummaryCard';
 
 type ChatRole = 'user' | 'assistant';
 type UiSuggestion = {
@@ -57,10 +87,42 @@ function safeParseJson<T>(raw: string | null): T | null {
   }
 }
 
+const QUICK_PROMPTS = [
+  'Car service book karni hai',
+  'Periodic service price batao',
+  'AC cooling kam hai',
+  'Nearest workshop dikhao',
+];
+
+function MisaAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  const dim = size === 'sm' ? 'h-7 w-7' : 'h-9 w-9';
+  const icon = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4';
+  return (
+    <div
+      className={`${dim} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-secondary to-brand-primary shadow-sm shadow-brand-primary/25`}
+    >
+      <Bot className={`${icon} text-white`} />
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="mb-6 flex items-start gap-2.5">
+      <MisaAvatar size="sm" />
+      <div className="flex items-center gap-1 rounded-2xl rounded-tl-md border border-brand-primary/15 bg-gradient-to-br from-brand-primary/5 to-white px-4 py-3">
+        <span className="h-2 w-2 animate-bounce rounded-full bg-brand-primary [animation-delay:0ms]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-brand-primary [animation-delay:150ms]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-brand-primary [animation-delay:300ms]" />
+      </div>
+    </div>
+  );
+}
+
 export default function AIBookingPage() {
   // Next.js requires useSearchParams() to be wrapped in Suspense.
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
       <AIBookingPageInner />
     </Suspense>
   );
@@ -78,6 +140,10 @@ function AIBookingPageInner() {
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [suggestionModal, setSuggestionModal] = useState<UiSuggestion | null>(null);
+  const [showPrimeInChat, setShowPrimeInChat] = useState(false);
+  const [showOtherServices, setShowOtherServices] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [dismissedSummaryIds, setDismissedSummaryIds] = useState<Set<string>>(() => new Set());
 
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>(() => [
     {
@@ -138,7 +204,7 @@ function AIBookingPageInner() {
   }, []);
 
   // Fallback: use selected city from the main navbar (stored in localStorage).
-  // This keeps pricing stable on /ai-booking even if GPS/reverse-geocode isn't available.
+  // This keeps pricing stable on /misa-ai even if GPS/reverse-geocode isn't available.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const existing = String(chatContext?.locationLabel || '').trim();
@@ -275,6 +341,8 @@ function AIBookingPageInner() {
     if (!text || chatLoading) return;
 
     const userId = `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    setShowPrimeInChat(false);
+    setShowOtherServices(false);
     setChatMessages((prev) => [...prev, { id: userId, role: 'user', text: shown }]);
     setChatDraft('');
     setChatLoading(true);
@@ -294,7 +362,11 @@ function AIBookingPageInner() {
           const res = await fetch(CHAT_API, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, context: nextContext }),
+            body: JSON.stringify({
+              message: text,
+              context: nextContext,
+              session_id: String(nextContext?.conversationId || chatContext?.conversationId || '').trim() || undefined,
+            }),
             signal: controller.signal,
           });
           const data: any = await res.json().catch(() => null);
@@ -563,44 +635,178 @@ function AIBookingPageInner() {
     }
   }
 
+  const lastAssistantMessage = useMemo(() => {
+    for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
+      if (chatMessages[i]?.role === 'assistant') return chatMessages[i];
+    }
+    return null;
+  }, [chatMessages]);
+
+  const latestSummaryMessageId = useMemo(() => {
+    for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
+      const msg = chatMessages[i];
+      if (msg?.role === 'assistant' && assistantShowsBookingSummary(msg.text)) {
+        return msg.id;
+      }
+    }
+    return null;
+  }, [chatMessages]);
+
+  const showCategoryPicker =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    (chatMessages.length <= 1 ||
+      Boolean(lastAssistantMessage && assistantMessageShowsServiceList(lastAssistantMessage.text)));
+
+  const hasUserStarted = chatMessages.some((m) => m.role === 'user');
+  const hasPincodeInChat = chatMessages.some((m) => m.role === 'user' && /\b\d{6}\b/.test(m.text));
+  const assistantWantsMobile = Boolean(
+    lastAssistantMessage && assistantNeedsMobileVerification(lastAssistantMessage.text),
+  );
+
+  const lastMsg = chatMessages[chatMessages.length - 1];
+  const showCarPicker =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    lastMsg?.role === 'assistant' &&
+    assistantAsksForCar(lastMsg.text);
+
+  const showPincodeInput =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    lastMsg?.role === 'assistant' &&
+    assistantAsksForPincode(lastMsg.text);
+
+  const showNameInput =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    lastMsg?.role === 'assistant' &&
+    assistantAsksForName(lastMsg.text);
+
+  const showPickupDatePicker =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    lastMsg?.role === 'assistant' &&
+    assistantAsksForPickupDate(lastMsg.text) &&
+    !assistantAsksForVehicleNumber(lastMsg.text);
+
+  const showPickupTimePicker =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    lastMsg?.role === 'assistant' &&
+    assistantAsksForPickupTime(lastMsg.text) &&
+    !assistantAsksForVehicleNumber(lastMsg.text);
+
+  const showVehicleNumberInput =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    lastMsg?.role === 'assistant' &&
+    assistantAsksForVehicleNumber(lastMsg.text);
+
+  const showVerificationPanel =
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    !chatContext?.pricingEligible &&
+    !chatContext?.phoneVerified &&
+    Boolean(chatContext?.conversationId) &&
+    hasUserStarted &&
+    (hasPincodeInChat || assistantWantsMobile);
+
+  const showQuickPrompts =
+    chatMessages.length <= 1 &&
+    !chatLoading &&
+    !showPrimeInChat &&
+    !showOtherServices &&
+    !showCategoryPicker &&
+    chatMessages.every((m) => m.role === 'assistant');
+
   return (
-    <div className={isEmbed ? 'h-full bg-gray-50' : 'min-h-screen bg-gray-50'}>
+    <div
+      className={
+        isEmbed
+          ? 'flex h-full flex-col bg-[radial-gradient(ellipse_at_top,_#e8f4fd_0%,_#ffffff_48%)]'
+          : 'flex min-h-[100dvh] flex-col bg-[radial-gradient(ellipse_at_top,_#e8f4fd_0%,_#ffffff_48%)]'
+      }
+    >
       {!isEmbed && (
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto max-w-4xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="bg-brand-primary/10 p-2 rounded-xl">
-              <Bot className="w-5 h-5 text-brand-primary" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-bold text-gray-900 truncate">Book via MISA AI</div>
-              <div className="text-xs text-gray-500 truncate">
-                {chatConnected ? 'AI Assistant • Online' : 'AI Assistant • Starting...'}
+        <header className="sticky top-0 z-40 border-b border-brand-primary/10 bg-white/85 backdrop-blur-md">
+          <div className="relative mx-auto flex max-w-2xl items-center justify-between px-4 py-3 sm:px-6">
+            <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setShowMobileMenu((v) => !v)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden"
+                aria-label="Open menu"
+              >
+                {showMobileMenu ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+              <MisaAvatar />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-semibold text-brand-secondary">MISA AI</div>
+                  <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-primary">
+                    AI Assistant
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${chatConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}
+                  />
+                  {chatConnected ? 'Online · ready to help' : 'Connecting…'}
+                  {String(chatContext?.locationLabel || '').trim()
+                    ? ` · ${String(chatContext.locationLabel)}`
+                    : ''}
+                </div>
               </div>
-              {String(chatContext?.locationLabel || '').trim() ? (
-                <div className="text-[11px] text-gray-600 truncate">City: {String(chatContext.locationLabel)}</div>
-              ) : null}
             </div>
+            <Link href="/" className="hidden text-xs font-medium text-gray-500 hover:text-brand-primary sm:inline">
+              Home
+            </Link>
+
+            {showMobileMenu && (
+              <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white py-2 shadow-xl lg:hidden">
+                {[
+                  { label: 'Home', href: '/' },
+                  { label: 'Services', href: '/services' },
+                  { label: 'Roadside', href: '/car-roadside-assitance' },
+                  { label: 'Contact', href: '/contact' },
+                  { label: 'Book Service', href: '/book-service' },
+                ].map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-brand-primary/5 hover:text-brand-primary"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-          <Link href="/" className="text-sm font-semibold text-brand-primary hover:underline">
-            Back to Home
-          </Link>
-        </div>
-      </header>
+        </header>
       )}
 
-      <main className={isEmbed ? 'h-full p-0' : 'mx-auto max-w-4xl px-4 py-6'}>
+      <main className={isEmbed ? 'flex h-full min-h-0 flex-1 flex-col' : 'mx-auto flex w-full max-w-2xl flex-1 flex-col min-h-0'}>
         {suggestionModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b flex items-center justify-between gap-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+            <div className="w-full max-w-lg overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4">
                 <div className="min-w-0">
                   {typeof suggestionModal.optionNumber === 'number' && (
-                    <div className="text-xs text-gray-500">Option {suggestionModal.optionNumber}</div>
+                    <div className="text-xs text-gray-400">Option {suggestionModal.optionNumber}</div>
                   )}
-                  <div className="font-bold text-gray-900 truncate">{suggestionModal.name}</div>
+                  <div className="truncate font-medium text-gray-900">{suggestionModal.name}</div>
                   {typeof suggestionModal.exactPrice === 'number' && suggestionModal.exactPrice > 0 && (
-                    <div className="text-sm text-green-700 mt-1">
+                    <div className="mt-1 text-sm text-gray-700">
                       ₹{Math.round(suggestionModal.exactPrice).toLocaleString('en-IN')}
                     </div>
                   )}
@@ -608,26 +814,23 @@ function AIBookingPageInner() {
                 <button
                   type="button"
                   onClick={() => setSuggestionModal(null)}
-                  className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+                  className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900"
                 >
                   Close
                 </button>
               </div>
-              <div className="p-4 max-h-[55vh] overflow-y-auto">
+              <div className="max-h-[55vh] overflow-y-auto p-4">
                 {Array.isArray(suggestionModal.checklistItems) && suggestionModal.checklistItems.length > 0 ? (
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900 mb-2">Checkpoints</div>
-                    <ul className="list-disc pl-5 text-sm text-gray-800 space-y-1">
-                      {suggestionModal.checklistItems.map((it, idx) => (
-                        <li key={idx}>{it}</li>
-                      ))}
-                    </ul>
-                  </div>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+                    {suggestionModal.checklistItems.map((it, idx) => (
+                      <li key={idx}>{it}</li>
+                    ))}
+                  </ul>
                 ) : (
-                  <div className="text-sm text-gray-700">No detailed checklist available for this service.</div>
+                  <div className="text-sm text-gray-500">No detailed checklist available.</div>
                 )}
               </div>
-              <div className="p-4 border-t flex gap-2">
+              <div className="flex gap-2 border-t border-gray-100 p-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -636,14 +839,14 @@ function AIBookingPageInner() {
                     setSuggestionModal(null);
                     sendChatMessage(raw, shown);
                   }}
-                  className="flex-1 px-4 py-2 rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover text-sm font-semibold"
+                  className="flex-1 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
                 >
-                  Choose this
+                  Choose
                 </button>
                 <button
                   type="button"
                   onClick={() => setSuggestionModal(null)}
-                  className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+                  className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
@@ -651,26 +854,75 @@ function AIBookingPageInner() {
             </div>
           </div>
         )}
-        <div className={isEmbed ? 'bg-white h-full overflow-hidden' : 'bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden'}>
-          <div ref={chatScrollRef} className={isEmbed ? 'h-[430px] bg-gray-50 p-4 overflow-y-auto' : 'h-[65vh] bg-gray-50 p-4 overflow-y-auto'}>
-            {chatMessages.map((m) => {
+        <div className={isEmbed ? 'flex h-full min-h-0 flex-1 flex-col bg-white' : 'flex min-h-0 flex-1 flex-col bg-white'}>
+          <div
+            ref={chatScrollRef}
+            className={
+              isEmbed
+                ? 'min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'
+                : 'min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'
+            }
+          >
+            {chatMessages.map((m, msgIndex) => {
               const isUser = m.role === 'user';
+              const isFirstAssistant = !isUser && msgIndex === 0;
+              const pricingPlans = !isUser ? parsePricingPlansFromText(m.text) : [];
+              const showPricingPicker = pricingPlans.length >= 2;
+              const bookingSummary = !isUser ? parseBookingSummary(m.text) : null;
+              const isActiveSummary =
+                Boolean(bookingSummary) &&
+                m.id === latestSummaryMessageId &&
+                !dismissedSummaryIds.has(m.id);
+              const isStaleSummary = Boolean(bookingSummary) && !isActiveSummary;
+              const showSummaryCard = isActiveSummary;
+              const pickerActiveOnThisMsg =
+                !isUser &&
+                lastMsg?.id === m.id &&
+                (showPickupDatePicker || showPickupTimePicker || showNameInput || showPincodeInput);
+              const hideServiceListBody =
+                !isUser &&
+                !showPricingPicker &&
+                showCategoryPicker &&
+                lastAssistantMessage?.id === m.id &&
+                assistantMessageShowsServiceList(m.text);
+              const displayText = showSummaryCard
+                ? extractBookingSummaryPrompt(m.text)
+                : isStaleSummary
+                  ? '📋 Previous booking summary'
+                  : !isUser && lastMsg?.id === m.id && showPickupTimePicker
+                    ? extractPickupTimePrompt(m.text)
+                    : !isUser && lastMsg?.id === m.id && showPickupDatePicker
+                      ? extractPickupDatePrompt(m.text)
+                      : showPricingPicker
+                ? extractPricingTitle(m.text)
+                : hideServiceListBody
+                  ? m.text
+                      .split('\n')
+                      .filter((line) => {
+                        const t = line.trim();
+                        return t && !/^[-•*]\s/.test(t) && !/^\d+[.)]\s/.test(t);
+                      })
+                      .join('\n')
+                      .trim() || 'Yeh services available hain — neeche se choose karein:'
+                  : m.text;
               return (
-                <div key={m.id} className={`mb-4 ${isUser ? 'flex justify-end' : 'flex'}`}>
-                  {!isUser && (
-                    <div className="w-8 h-8 bg-brand-primary/10 rounded-full flex items-center justify-center flex-shrink-0 mr-2">
-                      <Bot className="w-4 h-4 text-brand-primary" />
-                    </div>
-                  )}
-                  <div className="max-w-[85%]">
+                <div key={m.id} className={`mb-5 ${isUser ? 'flex justify-end' : 'flex items-start gap-2.5'}`}>
+                  {!isUser && <MisaAvatar size={isFirstAssistant ? 'md' : 'sm'} />}
+                  <div className={isUser ? 'max-w-[82%] sm:max-w-[75%]' : 'min-w-0 max-w-[92%] sm:max-w-[85%]'}>
+                    {!isUser && (
+                      <div className="mb-1 text-[11px] font-medium text-brand-primary/80">MISA</div>
+                    )}
+                    {(displayText || isUser) && (
                     <div
                       className={
                         isUser
-                          ? 'bg-brand-primary p-3 rounded-2xl rounded-tr-none shadow-sm text-sm text-white'
-                          : 'bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-800'
+                          ? 'rounded-2xl rounded-tr-md bg-brand-primary px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm shadow-brand-primary/20'
+                          : `rounded-2xl rounded-tl-md border border-brand-primary/15 bg-gradient-to-br from-brand-primary/[0.06] to-white px-4 text-sm leading-relaxed text-gray-800 shadow-sm shadow-brand-primary/10 ${
+                              showSummaryCard || pickerActiveOnThisMsg ? 'py-2' : 'py-3'
+                            }`
                       }
                     >
-                      {m.text.split('\n').map((line, idx) => {
+                      {displayText.split('\n').map((line, idx) => {
                         const mdLinkMatch = line.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/i);
                         if (mdLinkMatch?.[1] && mdLinkMatch?.[2]) {
                           const full = mdLinkMatch[0];
@@ -686,7 +938,7 @@ function AIBookingPageInner() {
                                 href={url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className={isUser ? 'underline text-white' : 'underline text-brand-primary'}
+                                className={isUser ? 'underline text-white/90' : 'underline text-brand-primary'}
                               >
                                 {label}
                               </a>
@@ -712,7 +964,7 @@ function AIBookingPageInner() {
                                 href={cleanUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className={isUser ? 'underline text-white' : 'underline text-brand-primary'}
+                                className={isUser ? 'underline text-white/90' : 'underline text-brand-primary'}
                               >
                                 {cleanUrl}
                               </a>
@@ -729,45 +981,57 @@ function AIBookingPageInner() {
                         );
                       })}
                     </div>
+                    )}
+                    {!isUser && showPricingPicker && (
+                      <MisaPricingPicker
+                        plans={pricingPlans}
+                        title={extractPricingTitle(m.text)}
+                        onSelect={(plan) =>
+                          sendChatMessage(
+                            `I want to book ${plan.name} at ₹${plan.price}`,
+                            `${plan.tier} Service · ₹${plan.price.toLocaleString('en-IN')}`,
+                          )
+                        }
+                      />
+                    )}
+                    {!isUser && showSummaryCard && bookingSummary && (
+                      <MisaBookingSummaryCard
+                        summary={bookingSummary}
+                        onConfirm={() => {
+                          setDismissedSummaryIds((prev) => new Set(prev).add(m.id));
+                          sendChatMessage('Yes', 'Yes, confirm booking');
+                        }}
+                        onReject={() => {
+                          setDismissedSummaryIds((prev) => new Set(prev).add(m.id));
+                          sendChatMessage('No', 'No, I need to edit');
+                        }}
+                      />
+                    )}
                     {!isUser && m.ui?.kind === 'CATEGORY_CAROUSEL' && (
-                      <div className="mt-2">
-                        <div className="flex gap-2 overflow-x-auto pb-2">
-                          {m.ui.items.map((it) => (
-                            <button
-                              key={it.id}
-                              type="button"
-                              onClick={() => sendChatMessage(it.id, it.label)}
-                              className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
-                            >
-                              <div className="font-semibold text-sm text-gray-900">{it.label}</div>
-                              {it.subtitle && <div className="text-xs text-gray-500 mt-1">{it.subtitle}</div>}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <MisaCategoryCards
+                        onPrime={() => setShowPrimeInChat(true)}
+                        onPeriodic={() => sendChatMessage('Car Periodic Service', 'Periodic Service')}
+                        onOther={() => setShowOtherServices(true)}
+                      />
                     )}
 
                     {!isUser && m.ui?.kind === 'DUAL_CAROUSEL' && (
-                      <div className="mt-2 space-y-3">
+                      <div className="mt-3 space-y-3">
                         {m.ui.packages.length > 0 && (
                           <div>
-                            <div className="text-xs font-semibold text-gray-600 mb-1">Packages</div>
-                            <div className="flex gap-2 overflow-x-auto pb-2">
+                            <div className="mb-1.5 text-xs text-gray-400">Packages</div>
+                            <div className="flex gap-2 overflow-x-auto pb-1">
                               {m.ui.packages.map((s) => (
                                 <button
                                   key={`${s.kind}:${s.id}`}
                                   type="button"
                                   onClick={() => setSuggestionModal(s)}
-                                  className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                                  className="min-w-[180px] flex-shrink-0 rounded-xl border border-brand-primary/15 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-brand-primary/40 hover:shadow-md"
                                 >
-                                  {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
-                                  <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                                  <div className="text-sm font-medium text-gray-900">{s.name}</div>
                                   {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
-                                    <div className="text-sm text-green-700 mt-1">₹{Math.round(s.exactPrice).toLocaleString('en-IN')}</div>
+                                    <div className="mt-0.5 text-sm text-gray-700">₹{Math.round(s.exactPrice).toLocaleString('en-IN')}</div>
                                   )}
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View details' : 'Tap to select'}
-                                  </div>
                                 </button>
                               ))}
                             </div>
@@ -776,23 +1040,19 @@ function AIBookingPageInner() {
 
                         {m.ui.services.length > 0 && (
                           <div>
-                            <div className="text-xs font-semibold text-gray-600 mb-1">Services</div>
-                            <div className="flex gap-2 overflow-x-auto pb-2">
+                            <div className="mb-1.5 text-xs text-gray-400">Services</div>
+                            <div className="flex gap-2 overflow-x-auto pb-1">
                               {m.ui.services.map((s) => (
                                 <button
                                   key={`${s.kind}:${s.id}`}
                                   type="button"
                                   onClick={() => setSuggestionModal(s)}
-                                  className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                                  className="min-w-[180px] flex-shrink-0 rounded-xl border border-brand-primary/15 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-brand-primary/40 hover:shadow-md"
                                 >
-                                  {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
-                                  <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                                  <div className="text-sm font-medium text-gray-900">{s.name}</div>
                                   {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
-                                    <div className="text-sm text-green-700 mt-1">₹{Math.round(s.exactPrice).toLocaleString('en-IN')}</div>
+                                    <div className="mt-0.5 text-sm text-gray-700">₹{Math.round(s.exactPrice).toLocaleString('en-IN')}</div>
                                   )}
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View checkpoints' : 'Tap to select'}
-                                  </div>
                                 </button>
                               ))}
                             </div>
@@ -802,57 +1062,38 @@ function AIBookingPageInner() {
                     )}
 
                     {!isUser && m.ui?.kind === 'WORKSHOP_CAROUSEL' && (
-                      <div className="mt-2">
-                        {m.ui.title && <div className="text-xs font-semibold text-gray-600 mb-1">{m.ui.title}</div>}
-                        <div className="flex gap-2 overflow-x-auto pb-2">
+                      <div className="mt-3">
+                        {m.ui.title && <div className="mb-1.5 text-xs text-gray-400">{m.ui.title}</div>}
+                        <div className="flex gap-2 overflow-x-auto pb-1">
                           {m.ui.items.map((w) => (
                             <div
                               key={w.id}
-                              className="min-w-[260px] bg-white border border-gray-200 rounded-xl overflow-hidden flex-shrink-0"
+                              className="min-w-[220px] flex-shrink-0 rounded-xl border border-brand-primary/15 bg-white p-3 shadow-sm"
                             >
-                              <div className="h-28 bg-gray-100">
-                                {w.imageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={w.imageUrl} alt={w.name} className="w-full h-full object-cover" />
-                                ) : null}
+                              <div className="text-sm font-medium text-gray-900">{w.name}</div>
+                              {w.subtitle && <div className="mt-0.5 text-xs text-gray-500">{w.subtitle}</div>}
+                              <div className="mt-2 text-xs text-gray-500">
+                                {typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : ''}
                               </div>
-                              <div className="p-3">
-                                <div className="font-semibold text-sm text-gray-900">{w.name}</div>
-                                {w.subtitle && <div className="text-xs text-gray-500 mt-1">{w.subtitle}</div>}
-                                {w.usp && <div className="text-[11px] text-gray-700 mt-1">• {w.usp}</div>}
-                                {typeof w.rating === 'number' && (
-                                  <div className="text-[11px] text-gray-700 mt-1">⭐ {Math.round(w.rating)}/100</div>
-                                )}
-                                <div className="text-xs text-gray-600 mt-2">
-                                  {typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : 'Distance unavailable'}
-                                </div>
-                                <div className="mt-2 flex gap-2">
-                                  {w.mapLink ? (
-                                    <a
-                                      href={w.mapLink}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg bg-brand-primary text-white hover:opacity-95"
-                                    >
-                                      Directions
-                                    </a>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => sendChatMessage(`workshop ${w.name}`)}
-                                      className="inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:opacity-95"
-                                    >
-                                      Select
-                                    </button>
-                                  )}
+                              <div className="mt-2 flex gap-2">
+                                {w.mapLink ? (
+                                  <a
+                                    href={w.mapLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Directions
+                                  </a>
+                                ) : (
                                   <button
                                     type="button"
-                                    onClick={() => sendChatMessage('Pickup chahiye', 'Pickup chahiye')}
-                                    className="inline-flex items-center justify-center px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50"
+                                    onClick={() => sendChatMessage(`workshop ${w.name}`)}
+                                    className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
                                   >
-                                    Pickup?
+                                    Select
                                   </button>
-                                </div>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -861,25 +1102,21 @@ function AIBookingPageInner() {
                     )}
 
                     {!isUser && !m.ui && Array.isArray(m.suggestions) && m.suggestions.length > 0 && (
-                      <div className="mt-2">
-                        <div className="flex gap-2 overflow-x-auto pb-2">
+                      <div className="mt-3">
+                        <div className="flex gap-2 overflow-x-auto pb-1">
                           {m.suggestions.map((s) => (
                             <button
                               key={`${s.kind}:${s.id}:${s.optionNumber || 0}`}
                               type="button"
                               onClick={() => setSuggestionModal(s)}
-                              className="min-w-[220px] text-left bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50 flex-shrink-0"
+                              className="min-w-[180px] flex-shrink-0 rounded-xl border border-brand-primary/15 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-brand-primary/40 hover:shadow-md"
                             >
-                              {typeof s.optionNumber === 'number' && <div className="text-xs text-gray-500">Option {s.optionNumber}</div>}
-                              <div className="font-semibold text-sm text-gray-900">{s.name}</div>
+                              <div className="text-sm font-medium text-gray-900">{s.name}</div>
                               {typeof s.exactPrice === 'number' && s.exactPrice > 0 && (
-                                <div className="text-sm text-green-700 mt-1">
+                                <div className="mt-0.5 text-sm text-gray-700">
                                   ₹{Math.round(s.exactPrice).toLocaleString('en-IN')}
                                 </div>
                               )}
-                              <div className="text-xs text-gray-500 mt-1">
-                                {Array.isArray(s.checklistItems) && s.checklistItems.length > 0 ? 'View checkpoints' : 'Tap to select'}
-                              </div>
                             </button>
                           ))}
                         </div>
@@ -890,64 +1127,160 @@ function AIBookingPageInner() {
               );
             })}
 
-            {chatLoading && (
-              <div className="flex gap-2 mb-4">
-                <div className="w-8 h-8 bg-brand-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-brand-primary" />
-                </div>
-                <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-700">
-                  Typing...
+            {showCategoryPicker && (
+              <div className="mb-4 pl-10">
+                <MisaCategoryCards
+                  onPrime={() => setShowPrimeInChat(true)}
+                  onPeriodic={() => sendChatMessage('Car Periodic Service', 'Periodic Service')}
+                  onOther={() => setShowOtherServices(true)}
+                />
+              </div>
+            )}
+
+            {showPrimeInChat && (
+              <div className="mb-4 pl-10">
+                <MisaPrimePanel onBack={() => setShowPrimeInChat(false)} />
+              </div>
+            )}
+
+            {showOtherServices && (
+              <div className="mb-4 pl-10">
+                <MisaServiceGrid
+                  onBack={() => setShowOtherServices(false)}
+                  onSelect={(message, label) => sendChatMessage(message, label)}
+                />
+              </div>
+            )}
+
+            {showCarPicker && (
+              <MisaCarPicker onSelect={(message, label) => sendChatMessage(message, label)} />
+            )}
+
+            {showPincodeInput && (
+              <div className="mb-4 pl-10">
+                <MisaPincodeInput onSubmit={(pin) => sendChatMessage(pin, pin)} />
+              </div>
+            )}
+
+            {showNameInput && (
+              <div className="mb-4 pl-10">
+                <MisaNameInput onSubmit={(name) => sendChatMessage(name, name)} />
+              </div>
+            )}
+
+            {showPickupDatePicker && (
+              <div className="mb-4 pl-10">
+                <MisaPickupDatePicker
+                  onConfirm={(_iso, label) => {
+                    setChatContext((prev: any) => ({ ...(prev || {}), pickupDate: _iso }));
+                    sendChatMessage(label, label);
+                  }}
+                />
+              </div>
+            )}
+
+            {showPickupTimePicker && (
+              <div className="mb-4 pl-10">
+                <MisaPickupTimePicker
+                  preferredDate={chatContext?.pickupDate}
+                  onConfirm={(timeLabel) => sendChatMessage(timeLabel, timeLabel)}
+                />
+              </div>
+            )}
+
+            {showVehicleNumberInput && (
+              <div className="mb-4 pl-10">
+                <MisaVehicleNumberInput
+                  sessionId={String(chatContext?.conversationId || '').trim() || undefined}
+                  onContextPatch={(patch) => setChatContext((prev: any) => ({ ...(prev || {}), ...patch }))}
+                  onSave={(vehicle) => sendChatMessage(vehicle, vehicle)}
+                />
+              </div>
+            )}
+
+            {showVerificationPanel && (
+              <MisaVerificationPanel
+                chatContext={chatContext}
+                onContextPatch={(patch) => setChatContext((prev: any) => ({ ...(prev || {}), ...patch }))}
+                onVerified={(phone) => {
+                  setChatContext((prev: any) => ({
+                    ...(prev || {}),
+                    customerPhone: phone,
+                    phoneVerified: true,
+                    pricingEligible: true,
+                  }));
+                  sendChatMessage(
+                    `My mobile ${phone} is already OTP verified on WhatsApp. Please show service pricing now. Do not ask for mobile again.`,
+                    'Verified ✓',
+                  );
+                }}
+              />
+            )}
+
+            {showQuickPrompts && (
+              <div className="mb-4 pl-10">
+                <div className="mb-2 text-xs font-medium text-gray-500">Try asking</div>
+                <div className="flex flex-wrap gap-2">
+                  {QUICK_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => sendChatMessage(prompt)}
+                      className="rounded-full border border-brand-primary/25 bg-white px-3 py-1.5 text-xs font-medium text-brand-secondary shadow-sm transition hover:border-brand-primary hover:bg-brand-primary/5"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
+
+            {chatLoading && <TypingIndicator />}
           </div>
 
-          <div className="p-4 border-t border-gray-200 bg-white">
+          <div className="sticky bottom-0 z-30 border-t border-brand-primary/10 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-sm sm:px-6">
             {chatContext?.showPayNow && chatContext?.leadId && (
               <div className="mb-3 flex flex-wrap gap-2">
                 <button
                   type="button"
                   disabled={payLoading || !razorpayReady}
                   onClick={() => payNow('BOOKING_TOKEN')}
-                  className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 text-sm font-semibold"
+                  className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                 >
-                  Pay Booking Token{typeof chatContext?.bookingTokenAmount === 'number' ? ` (₹${Math.round(chatContext.bookingTokenAmount).toLocaleString('en-IN')})` : ''}
+                  Pay token{typeof chatContext?.bookingTokenAmount === 'number' ? ` · ₹${Math.round(chatContext.bookingTokenAmount).toLocaleString('en-IN')}` : ''}
                 </button>
                 <button
                   type="button"
                   disabled={payLoading || !razorpayReady}
                   onClick={() => payNow('INVOICE')}
-                  className="px-4 py-2 rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover disabled:opacity-60 text-sm font-semibold"
+                  className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-800 disabled:opacity-50"
                 >
-                  Pay Full Amount
+                  Pay full amount
                 </button>
                 <button
                   type="button"
                   disabled={payLoading}
                   onClick={() => setChatContext((prev: any) => ({ ...(prev || {}), showPayNow: false }))}
-                  className="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-60 text-sm"
+                  className="rounded-md px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 disabled:opacity-50"
                 >
-                  Not now
+                  Later
                 </button>
               </div>
             )}
             <form
-              className="flex gap-2"
+              className="flex items-center gap-2 rounded-2xl border border-brand-primary/20 bg-white px-3 py-2 shadow-lg shadow-brand-primary/10 transition focus-within:border-brand-primary focus-within:ring-2 focus-within:ring-brand-primary/20"
               onSubmit={(e) => {
                 e.preventDefault();
                 sendChatMessage(chatDraft);
               }}
             >
+              <Bot className="h-4 w-4 shrink-0 text-brand-primary" />
               <input
                 type="text"
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}
-                placeholder={
-                  stageNow === 'INITIAL'
-                      ? 'Type your message...'
-                    : 'Type your message...'
-                }
-                className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-brand-primary"
+                placeholder="Ask MISA about service, price, booking…"
+                className="flex-1 bg-transparent text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -957,15 +1290,15 @@ function AIBookingPageInner() {
               />
               <button
                 type="submit"
-                disabled={chatLoading}
-                className="bg-brand-primary text-white p-2 rounded-full hover:bg-brand-primary-hover flex-shrink-0 disabled:opacity-60"
+                disabled={chatLoading || !chatDraft.trim()}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-white shadow-sm transition hover:bg-brand-primary-hover disabled:opacity-30"
               >
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="h-4 w-4" />
               </button>
             </form>
-            <div className="mt-2 text-xs text-gray-500">
-              Tip: Describe your issue in simple words (e.g. “AC cooling kam”, “puncture”, “price”, “warranty”).
-            </div>
+            <p className="mt-2 text-center text-[11px] text-gray-400">
+              Powered by MyFNG AI · Instant quotes · Book in chat
+            </p>
           </div>
         </div>
       </main>

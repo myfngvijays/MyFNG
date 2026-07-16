@@ -131,7 +131,7 @@ export default function ServicesClient({ categories }: { categories: CategoryRow
                   <ArrowRight className="w-5 h-5" />
                 </Link>
                 <Link
-                  href="/ai-booking"
+                  href="/misa-ai"
                   className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-gray-400 transition-all"
                 >
                   <Sparkles className="w-5 h-5" />
