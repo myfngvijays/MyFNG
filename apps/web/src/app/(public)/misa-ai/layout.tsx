@@ -1,4 +1,5 @@
 import { buildPageMetadata } from '@/lib/seo/metadata';
+import './misa-ai.css';
 
 export const metadata = buildPageMetadata({
   title: 'AI Car Service Booking | MyFNG',

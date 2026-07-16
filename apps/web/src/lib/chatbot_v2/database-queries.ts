@@ -1,5 +1,9 @@
 import { supabase } from './supabase';
 import { filterWorkshopsForPincode } from '../whatsappBotFlow/workshopPincode';
+import {
+  fetchServicePriceForBooking,
+  matchCategoryRow,
+} from '../servicePricing';
 
 interface PricingParams {
   service: string;
@@ -453,20 +457,39 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
       console.log(`[DB] Found car: ${carMatches[0].make} ${carMatches[0].model_name} (${targetClass})`);
     }
 
-    // Step 2: Find workshops that service this PIN code (service_pincode + mapping_pincodes)
-    const { data: workshopCandidates, error: workshopError } = await supabase
+    // Step 2: Resolve city + zone from PIN (same source as book-service / app)
+    const cityData = await getCityByPincode(pincode);
+    let cityId = cityData?.id ? String(cityData.id) : null;
+    let zoneId: string | null = null;
+
+    if (cityId) {
+      const { data: cityRow } = await supabase
+        .from('cities')
+        .select('zone_id')
+        .eq('id', cityId)
+        .maybeSingle();
+      zoneId = String((cityRow as any)?.zone_id || '').trim() || null;
+    } else if (cityData?.name) {
+      const { data: cityRow } = await supabase
+        .from('cities')
+        .select('id, zone_id')
+        .ilike('name', `%${cityData.name}%`)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      cityId = String((cityRow as any)?.id || '').trim() || null;
+      zoneId = String((cityRow as any)?.zone_id || '').trim() || null;
+    }
+
+    // Soft check: PIN should be serviceable, but don't block pricing if city resolved
+    const { data: workshopCandidates } = await supabase
       .from('workshops')
       .select('id, name, pincode, service_pincode, mapping_pincodes, city')
       .eq('is_verified', true);
-    if (workshopError) {
-      console.error('[DB] Error fetching workshops:', workshopError);
-      return [];
-    }
-
     const workshops = filterWorkshopsForPincode(workshopCandidates || [], pincode);
 
-    if (!workshops || workshops.length === 0) {
-      console.log(`[DB] No workshops service PIN code ${pincode}`);
+    if (!cityId && (!workshops || workshops.length === 0)) {
+      console.log(`[DB] No city or workshops for PIN code ${pincode}`);
       return [
         {
           error: 'NO_WORKSHOPS_FOR_PIN',
@@ -475,19 +498,23 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
       ] as any;
     }
 
-    const workshopIds = workshops.map((w: any) => w.id);
-    console.log(
-      `[DB] Found ${workshops.length} workshops servicing PIN ${pincode}:`,
-      workshops.map((w: any) => w.name).join(', ')
-    );
+    if (workshops.length > 0) {
+      console.log(
+        `[DB] PIN ${pincode} serviced by ${workshops.length} workshop(s):`,
+        workshops.map((w: any) => w.name).join(', '),
+      );
+    }
 
-    // Step 3: Find category UUID
-    const { data: categoryData } = await supabase
+    // Step 3: Match category (handles "Electrical & Battery Service" ↔ "ELECTRICAL & BATTERY SERVICE")
+    const { data: categoryRows, error: categoryError } = await supabase
       .from('categories')
-      .select('uuid, category')
-      .ilike('category', `%${category}%`)
-      .limit(1)
-      .single();
+      .select('uuid, category');
+    if (categoryError) {
+      console.error('[DB] Error fetching categories:', categoryError);
+      return [];
+    }
+
+    const categoryData = matchCategoryRow(category, categoryRows || []);
     if (!categoryData) {
       console.warn(`[DB] Category not found: ${category}`);
       return [];
@@ -495,77 +522,76 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
 
     console.log(`[DB] Found category: ${categoryData.category} (${categoryData.uuid})`);
 
-    // Step 4: Get pricing ONLY from workshops that service this PIN
-    const { data: pricing, error: pricingError } = await supabase
-      .from('workshop_service_pricing')
-      .select(
-        `
-        custom_price,
-        class,
-        workshop_id,
-        service_types!inner (
-          id,
-          name,
-          description,
-          category_uuid
-        )
-      `
-      )
+    // Step 4: Load active services in this category
+    const { data: serviceTypes, error: serviceError } = await supabase
+      .from('service_types')
+      .select('id, name, description')
+      .eq('category_uuid', categoryData.uuid)
       .eq('is_active', true)
-      .eq('class', targetClass)
-      .eq('service_types.category_uuid', categoryData.uuid)
-      .in('workshop_id', workshopIds);
-    if (pricingError) {
-      console.error('[DB] Error fetching pricing:', pricingError);
+      .order('name');
+
+    if (serviceError) {
+      console.error('[DB] Error fetching service types:', serviceError);
       return [];
     }
 
-    if (!pricing || pricing.length === 0) {
-      console.warn(`[DB] No pricing data found for ${carModel} (${targetClass}) from workshops servicing PIN ${pincode}`);
+    if (!serviceTypes?.length) {
+      console.warn(`[DB] No active services in category ${categoryData.category}`);
       return [];
     }
 
-    console.log(`[DB] Found ${pricing.length} pricing records for ${targetClass} from PIN ${pincode} workshops`);
-
-    // Step 5: Group by service type and get minimum price
-    const grouped = new Map<string, any>();
-    for (const item of pricing as any[]) {
-      const serviceType = Array.isArray(item.service_types) ? item.service_types[0] : item.service_types;
-      if (!serviceType?.id) continue;
-      const existing = grouped.get(serviceType.id);
-      if (!existing) {
-        grouped.set(serviceType.id, {
-          service_name: serviceType.name,
-          description: serviceType.description,
-          min_price: item.custom_price,
-          max_price: item.custom_price,
-          service_type_id: serviceType.id,
+    // Step 5: Resolve prices using city/zone/class tiers (same as app + web)
+    const plans: any[] = [];
+    for (const svc of serviceTypes) {
+      const price = await fetchServicePriceForBooking(
+        supabase,
+        svc.id,
+        cityId,
+        zoneId,
+        targetClass,
+      );
+      if (price > 0) {
+        plans.push({
+          service_name: svc.name,
+          description: svc.description,
+          min_price: price,
+          max_price: price,
+          service_type_id: svc.id,
         });
-      } else {
-        const minPrice = Math.min(existing.min_price, item.custom_price);
-        existing.min_price = minPrice;
-        existing.max_price = minPrice;
       }
     }
 
-    const plans = Array.from(grouped.values());
+    if (plans.length === 0) {
+      console.warn(
+        `[DB] No pricing for category ${categoryData.category}, class ${targetClass}, PIN ${pincode}, city ${cityId || cityData?.name || 'unknown'}`,
+      );
+      return [];
+    }
+
+    console.log(`[DB] Found ${plans.length} priced services for ${categoryData.category} (PIN ${pincode})`);
 
     // Step 6: Fetch checklists
     const serviceTypeIds = plans.map((p: any) => p.service_type_id);
     const { data: checklistData } = await supabase
       .from('service_type_checklist_templates')
-      .select('service_type_id, checklist_items')
+      .select('service_type_id, checklist_items, points')
       .in('service_type_id', serviceTypeIds);
 
-    const checklistMap = new Map<string, any[]>();
+    const checklistMap = new Map<string, { items: any[]; points: number | null }>();
     (checklistData || []).forEach((item: any) => {
-      checklistMap.set(item.service_type_id, item.checklist_items || []);
+      const items = Array.isArray(item.checklist_items) ? item.checklist_items : [];
+      const points = typeof item.points === 'number' ? item.points : items.length > 0 ? items.length : null;
+      checklistMap.set(item.service_type_id, { items, points });
     });
 
-    return plans.map((plan: any) => ({
-      ...plan,
-      checklist_items: checklistMap.get(plan.service_type_id) || [],
-    }));
+    return plans.map((plan: any) => {
+      const checklist = checklistMap.get(plan.service_type_id);
+      return {
+        ...plan,
+        checklist_items: checklist?.items || [],
+        points: checklist?.points ?? null,
+      };
+    });
   } catch (err) {
     console.error('Unexpected error in getServicePlansByPincode:', err);
     return [];

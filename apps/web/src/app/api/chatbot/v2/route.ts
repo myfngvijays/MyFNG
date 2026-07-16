@@ -3,8 +3,10 @@ import { logChatActivity } from '@/lib/chatbot_v2/telecrm';
 import { handleChatError, logError } from '@/lib/chatbot_v2/error-handler';
 import { runMisaAgent } from '@/lib/chatbot_v2/runAgent';
 import { SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
-import { buildSessionContextPatch, getVerifiedPhoneFromSession } from '@/lib/chatbot_v2/verificationSession';
-import { getSession } from '@/lib/chatbot_v2/session';
+import { buildSessionContextPatch, getVerifiedPhoneFromSession, applyTrustedCustomerToSession } from '@/lib/chatbot_v2/verificationSession';
+import { getSession, saveSession } from '@/lib/chatbot_v2/session';
+import { getCustomerFromSession } from '@/lib/customer-session';
+import { isPhoneVerifiedInSession } from '@/lib/chatbot_v2/bookingOtp';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,11 +51,40 @@ export async function POST(req: NextRequest) {
 
   try {
     const isMobileClient = req.headers.get('x-mobile-client') === 'true';
-    const existingSession = await getSession(sessionId);
-    const verifiedPhone = getVerifiedPhoneFromSession(existingSession || undefined);
-    const sessionHint = verifiedPhone
-      ? `\n\n[SESSION STATE: Mobile OTP already verified for ${verifiedPhone}. Do NOT ask for mobile number again. Proceed to get_service_pricing when service, car model, and PIN code are available.]`
-      : '';
+    let sessionData = (await getSession(sessionId)) || { history: [], bookingState: {} };
+    let loggedInCustomer: { phone: string; full_name?: string | null; id?: string } | null = null;
+
+    if (isMobileClient) {
+      const { customer } = await getCustomerFromSession();
+      if (customer?.phone) {
+        loggedInCustomer = {
+          phone: customer.phone,
+          full_name: customer.full_name,
+          id: customer.id,
+        };
+        if (!isPhoneVerifiedInSession(sessionData, customer.phone)) {
+          applyTrustedCustomerToSession(sessionData, loggedInCustomer);
+          await saveSession(sessionId, sessionData);
+        }
+      }
+    }
+
+    const verifiedPhone = getVerifiedPhoneFromSession(sessionData);
+    const sessionHintParts: string[] = [];
+    if (verifiedPhone) {
+      sessionHintParts.push(
+        `[SESSION STATE: Mobile OTP already verified for ${verifiedPhone}. Do NOT ask for mobile number again. Proceed to get_service_pricing when service, car model, and PIN code are available.]`,
+      );
+    }
+    if (loggedInCustomer) {
+      const name = String(loggedInCustomer.full_name || '').trim();
+      const ctxAddresses = Array.isArray(body?.context?.customerAddresses) ? body.context.customerAddresses : [];
+      const savedPin = String(body?.context?.savedAddressPincode || ctxAddresses[0]?.pincode || '').trim();
+      sessionHintParts.push(
+        `[APP LOGGED-IN CUSTOMER: Phone ${loggedInCustomer.phone} is already verified via app login.${name ? ` Name: ${name}.` : ''} Do NOT ask for mobile number or OTP. Do NOT ask for customer name — use profile name.${savedPin ? ` Default PIN: ${savedPin}.` : ''}${ctxAddresses.length ? ' Customer has saved addresses in app — use them instead of asking PIN/address again unless they choose a new one.' : ''}]`,
+      );
+    }
+    const sessionHint = sessionHintParts.length ? `\n\n${sessionHintParts.join('\n')}` : '';
 
     const agent = await runMisaAgent({
       sessionId,
@@ -63,7 +94,12 @@ export async function POST(req: NextRequest) {
       bookingChannel: isMobileClient ? 'APP' : 'WEBSITE',
     });
     const finalResponse = agent.response;
-    const contextPatch = buildSessionContextPatch(agent.sessionData, sessionId);
+    const contextPatch = buildSessionContextPatch(agent.sessionData, sessionId, {
+      customerName: loggedInCustomer?.full_name || sessionData.bookingState?.customerName,
+      isLoggedInCustomer: Boolean(loggedInCustomer),
+      skipNamePrompt: Boolean(loggedInCustomer?.full_name),
+      skipMobilePrompt: Boolean(loggedInCustomer),
+    });
 
     void logChatActivity(sessionId, message, 'user').catch((err) => {
       logError('TeleCRM user message logging', err, { sessionId });
@@ -87,6 +123,7 @@ export async function POST(req: NextRequest) {
       },
       sources: [],
       intent: 'llm_managed',
+      pricing: agent.pricing || [],
     });
   } catch (error) {
     return handleChatError(error, sessionId);

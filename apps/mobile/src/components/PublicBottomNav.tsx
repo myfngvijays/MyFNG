@@ -78,12 +78,14 @@ export default function PublicBottomNav({ activeTab, onPressTab }: Props) {
                     style={styles.aiButton}
                     onPress={() => onPressTab(tab.id)}
                     activeOpacity={0.85}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    hitSlop={{ top: 20, bottom: 16, left: 20, right: 20 }}
                   >
                     <BotFace size={64} scale={0.52} surface="blue" />
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.aiLabel} numberOfLines={1}>{tab.label}</Text>
+                <TouchableOpacity onPress={() => onPressTab(tab.id)} activeOpacity={0.85} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+                  <Text style={styles.aiLabel} numberOfLines={1}>{tab.label}</Text>
+                </TouchableOpacity>
               </View>
             );
           }
@@ -117,6 +119,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
+    zIndex: 999,
+    elevation: 24,
   },
   bar: {
     height: 64,
@@ -130,6 +134,7 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     shadowOffset: { width: 0, height: -10 },
     elevation: 12,
+    overflow: 'visible',
   },
   tabButton: {
     flex: 1,

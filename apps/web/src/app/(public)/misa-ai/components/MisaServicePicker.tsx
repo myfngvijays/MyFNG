@@ -5,16 +5,16 @@ import { Car, ChevronLeft, Clock, Crown, Wrench } from 'lucide-react';
 import { DEFAULT_APP_STORE_URL, DEFAULT_PLAY_STORE_URL } from '@/lib/mobile-app-version-config';
 
 export const OTHER_SERVICES = [
-  { name: 'AC Service', message: 'AC service chahiye', icon: '/icon-ac-service.png' },
-  { name: 'Battery', message: 'Battery service chahiye', icon: '/icon-battery-service.png' },
-  { name: 'Brake', message: 'Brake service chahiye', icon: '/icon-brake-service.png' },
-  { name: 'Engine', message: 'Engine service chahiye', icon: '/icon-engine-service.png' },
-  { name: 'Clutch', message: 'Clutch service chahiye', icon: '/icon-clutch-service.png' },
-  { name: 'Tyre & Wheel', message: 'Tyre and wheel care chahiye', icon: '/icon-tyre-service.png' },
-  { name: 'Detailing', message: 'Car detailing chahiye', icon: '/icon-detailing-service.png' },
-  { name: 'Denting', message: 'Denting painting chahiye', icon: '/icon-denting-service.png' },
-  { name: 'Electrical', message: 'Electrical service chahiye', icon: '/icon-electrical-service.png' },
-  { name: 'Suspension', message: 'Suspension service chahiye', icon: '/icon-suspension-service.png' },
+  { name: 'AC Service', category: 'Car AC Service', message: 'Car AC Service chahiye', icon: '/icon-ac-service.png' },
+  { name: 'Battery', category: 'Car Battery Service', message: 'Car Battery Service chahiye', icon: '/icon-battery-service.png' },
+  { name: 'Brake', category: 'Car Brake Service', message: 'Car Brake Service chahiye', icon: '/icon-brake-service.png' },
+  { name: 'Engine', category: 'Car Engine Service', message: 'Car Engine Service chahiye', icon: '/icon-engine-service.png' },
+  { name: 'Clutch', category: 'Car Clutch Service', message: 'Car Clutch Service chahiye', icon: '/icon-clutch-service.png' },
+  { name: 'Tyre & Wheel', category: 'Car Tyre & Wheel Care', message: 'Car Tyre & Wheel Care chahiye', icon: '/icon-tyre-service.png' },
+  { name: 'Detailing', category: 'Car Detailing Service', message: 'Car Detailing Service chahiye', icon: '/icon-detailing-service.png' },
+  { name: 'Denting', category: 'Car Denting & Painting', message: 'Car Denting & Painting chahiye', icon: '/icon-denting-service.png' },
+  { name: 'Electrical', category: 'Electrical & Battery Service', message: 'Electrical & Battery Service chahiye', icon: '/icon-electrical-service.png' },
+  { name: 'Suspension', category: 'Suspension & Steering Service', message: 'Suspension & Steering Service chahiye', icon: '/icon-suspension-service.png' },
 ] as const;
 
 export function assistantMessageShowsServiceList(text: string): boolean {
@@ -36,14 +36,17 @@ type CategoryCardsProps = {
 export function MisaCategoryCards({ onPrime, onPeriodic, onOther }: CategoryCardsProps) {
   return (
     <div className="mt-4">
-      <p className="mb-2.5 text-xs font-semibold text-gray-500">Choose a category</p>
+      <p className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-primary animate-pulse" />
+        Choose a category
+      </p>
       <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
         <button
           type="button"
           onClick={onPrime}
-          className="rounded-2xl border border-brand-secondary/20 bg-white p-3 text-center shadow-sm transition hover:border-brand-secondary/40 hover:shadow-md sm:p-3.5"
+          className="group rounded-2xl border border-brand-secondary/20 bg-gradient-to-br from-white to-sky-50/80 p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-brand-secondary/40 hover:shadow-lg hover:shadow-brand-secondary/15 sm:p-3.5"
         >
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-secondary to-brand-primary">
+          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-secondary to-brand-primary shadow-md ring-2 ring-white/50 transition group-hover:scale-105">
             <Crown className="h-5 w-5 text-white" />
           </div>
           <div className="text-xs font-semibold text-gray-900 sm:text-sm">Prime</div>
@@ -52,9 +55,9 @@ export function MisaCategoryCards({ onPrime, onPeriodic, onOther }: CategoryCard
         <button
           type="button"
           onClick={onPeriodic}
-          className="rounded-2xl border border-brand-primary/25 bg-white p-3 text-center shadow-sm transition hover:border-brand-primary/50 hover:shadow-md sm:p-3.5"
+          className="group rounded-2xl border border-brand-primary/25 bg-gradient-to-br from-white to-cyan-50/80 p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-brand-primary/50 hover:shadow-lg hover:shadow-brand-primary/20 sm:p-3.5"
         >
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-sky-400">
+          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-cyan-400 shadow-md ring-2 ring-white/50 transition group-hover:scale-105">
             <Wrench className="h-5 w-5 text-white" />
           </div>
           <div className="text-xs font-semibold text-gray-900 sm:text-sm">Periodic</div>
@@ -63,9 +66,9 @@ export function MisaCategoryCards({ onPrime, onPeriodic, onOther }: CategoryCard
         <button
           type="button"
           onClick={onOther}
-          className="rounded-2xl border border-emerald-200 bg-white p-3 text-center shadow-sm transition hover:border-emerald-300 hover:shadow-md sm:p-3.5"
+          className="group rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-white to-emerald-50/60 p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg hover:shadow-emerald-500/15 sm:p-3.5"
         >
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500">
+          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-md ring-2 ring-white/50 transition group-hover:scale-105">
             <Car className="h-5 w-5 text-white" />
           </div>
           <div className="text-xs font-semibold text-gray-900 sm:text-sm">Other</div>

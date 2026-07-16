@@ -7,6 +7,7 @@ import {
   getPlanPoints,
   getPlanTierLabel,
   groupPeriodicPlans,
+  isPeriodicPricing,
   type PricingPlanItem,
 } from '@/lib/whatsappBotFlow/periodicPlansUi';
 
@@ -14,20 +15,238 @@ export type PricingPlan = {
   id: string;
   name: string;
   tier: string;
-  oilType: 'semi' | 'full';
+  oilType: 'semi' | 'full' | 'unknown';
   price: number;
   description: string;
   points: string | null;
   badge: string | null;
+  isPeriodic: boolean;
+  serviceTypeId?: string | null;
+  checklistCount?: number;
 };
 
 type ChecklistItem = { name: string; category: string };
 
+type ChecklistMeta = {
+  points: number | null;
+  itemCount: number;
+  loading: boolean;
+};
+
+function checklistTierParam(plan: PricingPlan): string {
+  if (plan.isPeriodic) return plan.tier;
+  return plan.name || plan.tier;
+}
+
+function checklistFetchUrl(plan: PricingPlan): string {
+  const oilParam = plan.oilType === 'unknown' ? 'semi' : plan.oilType;
+  if (plan.serviceTypeId) {
+    return `/api/chatbot/v2/service-checklist?service_type_id=${encodeURIComponent(plan.serviceTypeId)}&oil=${oilParam}`;
+  }
+  return `/api/chatbot/v2/service-checklist?tier=${encodeURIComponent(checklistTierParam(plan))}&oil=${oilParam}`;
+}
+
+async function fetchPlanChecklistMeta(plan: PricingPlan): Promise<Omit<ChecklistMeta, 'loading'>> {
+  try {
+    const res = await fetch(checklistFetchUrl(plan));
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success) return { points: null, itemCount: 0 };
+    const items = Array.isArray(json.items) ? json.items : [];
+    const points =
+      typeof json.points === 'number' ? json.points : items.length > 0 ? items.length : null;
+    return { points, itemCount: items.length };
+  } catch {
+    return { points: null, itemCount: 0 };
+  }
+}
+
 export function assistantMessageShowsPricingList(text: string): boolean {
   const t = String(text || '');
   const prices = (t.match(/₹\s*[\d,]+/g) || []).length;
+  if (prices >= 1 && /service for your|for your/i.test(t)) return true;
+  if (prices >= 2) return true;
   const tiers = /basic service|general service|premium service|platinum service/i.test(t);
-  return prices >= 2 && tiers;
+  return prices >= 1 && tiers;
+}
+
+function cleanPlanName(raw: string): string {
+  return String(raw || '')
+    .replace(/\*\*/g, '')
+    .replace(/[✨━─📝]/g, '')
+    .replace(/^[\d️⃣]+[\s.)-]*/i, '')
+    .replace(/^\d+[.)]\s*/, '')
+    .replace(/\s*[-–—:]\s*₹.*$/i, '')
+    .replace(/\s*₹.*$/i, '')
+    .trim();
+}
+
+function buildPlanFromHeader(
+  headerLine: string,
+  price: number,
+  description: string,
+  index: number,
+  isPeriodic: boolean,
+): PricingPlan | null {
+  if (!headerLine || !price) return null;
+
+  const oilType: 'semi' | 'full' | 'unknown' =
+    /fully synthetic|full synthetic|\(fully\)/i.test(headerLine)
+      ? 'full'
+      : /semi synthetic|semi-synthetic|\(semi\)/i.test(headerLine)
+        ? 'semi'
+        : 'unknown';
+
+  const tierMatch = headerLine.match(/(basic|general|premium|platinum)/i);
+  const tier = tierMatch
+    ? tierMatch[1].charAt(0).toUpperCase() + tierMatch[1].slice(1).toLowerCase()
+    : getPlanTierLabel(headerLine);
+
+  const planItem: PricingPlanItem = {
+    service_name: headerLine,
+    min_price: price,
+    max_price: price,
+    description,
+  };
+
+  return {
+    id: `plan-${index}-${oilType}-${tier.toLowerCase().replace(/\s+/g, '-')}`,
+    name: headerLine,
+    tier: isPeriodic ? tier : headerLine,
+    oilType,
+    price,
+    description,
+    points: getPlanPoints(planItem),
+    badge: getPlanBadge(headerLine),
+    isPeriodic,
+  };
+}
+
+function isPeriodicPlanName(name: string): boolean {
+  return /basic|general|premium|platinum/i.test(String(name || ''));
+}
+
+function parseNumberedEmojiBlocks(text: string): PricingPlan[] {
+  const plans: PricingPlan[] = [];
+  const normalized = String(text || '');
+  const blockRe = /\*\*[\d]+️⃣\s*([\s\S]*?)\*\*/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockRe.exec(normalized)) !== null) {
+    const headerLine = cleanPlanName(match[1] || '');
+    if (!headerLine) continue;
+
+    const after = normalized.slice(match.index + match[0].length, match.index + match[0].length + 280);
+    const priceMatch = after.match(/₹\s*([\d,]+)/);
+    if (!priceMatch) continue;
+
+    const price = Number(priceMatch[1].replace(/,/g, ''));
+    const isPeriodic = isPeriodicPlanName(headerLine) || isPeriodicPlanName(normalized);
+    const plan = buildPlanFromHeader(headerLine, price, '', plans.length, isPeriodic);
+    if (plan) plans.push(plan);
+  }
+
+  return plans;
+}
+
+function parseGenericPricingLines(text: string): PricingPlan[] {
+  const plans: PricingPlan[] = [];
+  const lines = String(text || '').split('\n');
+
+  lines.forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line || !/₹\s*[\d,]+/.test(line)) return;
+
+    const priceMatch = line.match(/₹\s*([\d,]+)/);
+    if (!priceMatch) return;
+    const price = Number(priceMatch[1].replace(/,/g, ''));
+    if (!price) return;
+
+    let headerLine = cleanPlanName((line.split(/₹/)[0] || line).replace(/^💰\s*/, ''));
+
+    if (!headerLine || headerLine.length < 3 || /^💰/.test(line)) {
+      for (let i = index - 1; i >= 0; i -= 1) {
+        const prev = lines[i]?.trim();
+        if (!prev || /^[━─_\-=]+$/.test(prev)) continue;
+        if (/₹\s*[\d,]+/.test(prev)) break;
+        const candidate = cleanPlanName(prev);
+        if (candidate.length >= 3 && !/service for your|would you like|proceed with booking/i.test(candidate)) {
+          headerLine = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!headerLine || headerLine.length < 3) return;
+
+    const descMatch = lines[index + 1]?.trim();
+    const description =
+      descMatch && !/₹\s*[\d,]+/.test(descMatch) && !/^[\d️⃣1-9.)]/.test(descMatch)
+        ? cleanPlanName(descMatch)
+        : '';
+
+    const plan = buildPlanFromHeader(
+      headerLine,
+      price,
+      description,
+      plans.length,
+      isPeriodicPlanName(headerLine),
+    );
+    if (plan) plans.push(plan);
+  });
+
+  return plans;
+}
+
+export function parsePricingPlansFromText(text: string): PricingPlan[] {
+  const normalized = String(text || '');
+  const emojiPlans = parseNumberedEmojiBlocks(normalized);
+  if (emojiPlans.length >= 1) return emojiPlans;
+  return parseGenericPricingLines(normalized);
+}
+
+export function buildPricingPlansFromApi(
+  rows: Array<{
+    service_name: string;
+    min_price: number;
+    max_price?: number;
+    description?: string | null;
+    service_type_id?: string | null;
+    points?: number | null;
+    checklist_count?: number;
+  }>,
+): PricingPlan[] {
+  return rows.map((p, index) => {
+    const planItem: PricingPlanItem = {
+      service_name: p.service_name,
+      min_price: p.min_price,
+      max_price: p.max_price ?? p.min_price,
+      description: p.description,
+    };
+    const periodic = isPeriodicPlanName(p.service_name);
+    const parsedPoints = getPlanPoints(planItem);
+    const pointsValue =
+      typeof p.points === 'number' && p.points > 0
+        ? p.points
+        : parsedPoints
+          ? parseInt(parsedPoints, 10)
+          : (p.checklist_count ?? 0) > 0
+            ? p.checklist_count!
+            : null;
+
+    return {
+      id: `api-${index}-${p.service_type_id || p.service_name}`,
+      name: p.service_name,
+      tier: periodic ? getPlanTierLabel(p.service_name) : p.service_name,
+      oilType: 'unknown' as const,
+      price: p.min_price,
+      description: p.description || '',
+      points: pointsValue ? String(pointsValue) : null,
+      badge: getPlanBadge(p.service_name),
+      isPeriodic: periodic,
+      serviceTypeId: p.service_type_id || null,
+      checklistCount: p.checklist_count ?? 0,
+    };
+  });
 }
 
 export function extractPricingTitle(text: string): string {
@@ -41,63 +260,6 @@ export function extractPricingTitle(text: string): string {
   }
   const m = String(text || '').match(/\*\*(.+?)\*\*/);
   return m?.[1]?.trim() || 'Choose your service plan';
-}
-
-export function parsePricingPlansFromText(text: string): PricingPlan[] {
-  const normalized = String(text || '');
-  const chunks = normalized.split(/\*\*\d+️⃣\s*/i).slice(1);
-  const plans: PricingPlan[] = [];
-
-  chunks.forEach((chunk, index) => {
-    const lines = chunk
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const headerLine = (lines[0] || '').replace(/\*\*/g, '').trim();
-    if (!headerLine) return;
-
-    let price = 0;
-    let description = '';
-    for (const line of lines.slice(1)) {
-      const priceMatch = line.match(/₹\s*([\d,]+)/);
-      if (priceMatch) price = Number(priceMatch[1].replace(/,/g, ''));
-      const cleaned = line.replace(/^📝\s*/, '').replace(/\*\*/g, '').trim();
-      if (line.includes('📝') || /^periodic/i.test(cleaned)) {
-        description = cleaned;
-      } else if (!description && /checkpoint|points|maintenance with/i.test(cleaned)) {
-        description = cleaned;
-      }
-    }
-
-    if (!price) return;
-
-    const oilType: 'semi' | 'full' =
-      /fully synthetic|full synthetic|\(fully\)/i.test(headerLine) ? 'full' : 'semi';
-    const tierMatch = headerLine.match(/(basic|general|premium|platinum)/i);
-    const tier = tierMatch
-      ? tierMatch[1].charAt(0).toUpperCase() + tierMatch[1].slice(1).toLowerCase()
-      : getPlanTierLabel(headerLine);
-
-    const planItem: PricingPlanItem = {
-      service_name: headerLine,
-      min_price: price,
-      max_price: price,
-      description,
-    };
-
-    plans.push({
-      id: `plan-${index}-${oilType}-${tier.toLowerCase()}`,
-      name: headerLine,
-      tier,
-      oilType,
-      price,
-      description,
-      points: getPlanPoints(planItem),
-      badge: getPlanBadge(headerLine),
-    });
-  });
-
-  return plans;
 }
 
 function inr(value: number) {
@@ -125,9 +287,7 @@ function PointsModal({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          `/api/chatbot/v2/service-checklist?tier=${encodeURIComponent(plan.tier)}&oil=${plan.oilType}`,
-        );
+        const res = await fetch(checklistFetchUrl(plan));
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not load points');
         if (cancelled) return;
@@ -240,22 +400,62 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
   );
 
   const grouped = useMemo(() => groupPeriodicPlans(planItems), [planItems]);
+  const isPeriodic = useMemo(
+    () => plans.some((p) => p.isPeriodic) || isPeriodicPricing(planItems),
+    [plans, planItems],
+  );
   const hasSemi = grouped.semi.length > 0;
   const hasFull = grouped.full.length > 0;
-  const showOilToggle = hasSemi && hasFull;
+  const showOilToggle = isPeriodic && hasSemi && hasFull;
 
   const [oilType, setOilType] = useState<'semi' | 'full'>(hasSemi ? 'semi' : 'full');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pointsPlan, setPointsPlan] = useState<PricingPlan | null>(null);
+  const [checklistMeta, setChecklistMeta] = useState<Record<string, ChecklistMeta>>({});
 
-  const filteredPlans = useMemo(
-    () => (showOilToggle ? plans.filter((p) => p.oilType === oilType) : plans),
-    [plans, oilType, showOilToggle],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const loadingState: Record<string, ChecklistMeta> = {};
+    plans.forEach((plan) => {
+      loadingState[plan.id] = { points: null, itemCount: 0, loading: true };
+    });
+    setChecklistMeta(loadingState);
+
+    void Promise.all(
+      plans.map(async (plan) => {
+        const meta = await fetchPlanChecklistMeta(plan);
+        return { id: plan.id, meta: { ...meta, loading: false } satisfies ChecklistMeta };
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setChecklistMeta((prev) => {
+        const next = { ...prev };
+        results.forEach(({ id, meta }) => {
+          next[id] = meta;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [plans]);
+
+  const filteredPlans = useMemo(() => {
+    if (!showOilToggle) return plans;
+    return plans.filter((p) => p.oilType === oilType || p.oilType === 'unknown');
+  }, [plans, oilType, showOilToggle]);
 
   useEffect(() => {
     setSelectedId(null);
   }, [oilType]);
+
+  useEffect(() => {
+    if (filteredPlans.length === 1) {
+      setSelectedId(filteredPlans[0].id);
+    }
+  }, [filteredPlans]);
 
   const selected = filteredPlans.find((p) => p.id === selectedId) || null;
 
@@ -264,14 +464,11 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
   return (
     <>
       <div className="mt-3 space-y-3 rounded-2xl border border-blue-100 bg-gradient-to-b from-blue-50/80 to-white p-3 shadow-sm sm:p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Periodic Plans</p>
-            <p className="mt-0.5 text-sm font-semibold text-brand-secondary">{title || 'Choose your plan'}</p>
-          </div>
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-            App-style UI
-          </span>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+            {isPeriodic ? 'Periodic Plans' : 'Service Plans'}
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-brand-secondary">{title || 'Choose your plan'}</p>
         </div>
 
         {showOilToggle && (
@@ -303,7 +500,14 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
         <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory">
           {filteredPlans.map((plan) => {
             const isSelected = selectedId === plan.id;
-            const pointsNum = plan.points ? parseInt(plan.points, 10) : null;
+            const meta = checklistMeta[plan.id];
+            const parsedPoints = plan.points ? parseInt(plan.points, 10) : null;
+            const pointsNum =
+              meta && !meta.loading && meta.points != null ? meta.points : parsedPoints;
+            const hasChecklist = (meta?.itemCount ?? plan.checklistCount ?? 0) > 0;
+            const showPointsUi = hasChecklist || Boolean(pointsNum && pointsNum > 0);
+            const showViewAll =
+              (meta?.loading ? (plan.checklistCount ?? 0) > 0 : showPointsUi) && showPointsUi;
             return (
               <div
                 key={plan.id}
@@ -319,9 +523,14 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
                   </span>
                 )}
                 <button type="button" onClick={() => setSelectedId(plan.id)} className="w-full text-left">
-                  <p className="text-sm font-bold leading-tight text-gray-900">{plan.tier} Service</p>
+                  <p className="text-sm font-bold leading-tight text-gray-900">
+                    {plan.isPeriodic ? `${plan.tier} Service` : plan.tier}
+                  </p>
                   <p className="mt-1 text-lg font-extrabold text-blue-700">{inr(plan.price)}</p>
-                  {pointsNum && pointsNum > 0 && (
+                  {meta?.loading && (
+                    <p className="mt-1 text-[11px] text-gray-400">Loading points…</p>
+                  )}
+                  {!meta?.loading && showPointsUi && pointsNum && pointsNum > 0 && (
                     <p className="mt-1 flex items-center gap-1 text-xs font-bold text-brand-primary">
                       <CheckCircle className="h-3 w-3" />
                       {pointsNum} Activity Points
@@ -331,7 +540,7 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
                     <p className="mt-1 line-clamp-2 text-[11px] text-gray-500">{plan.description}</p>
                   )}
                 </button>
-                {pointsNum && pointsNum > 0 && (
+                {!meta?.loading && showViewAll && (
                   <button
                     type="button"
                     onClick={() => setPointsPlan(plan)}
@@ -352,9 +561,11 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
 
         {selected && (
           <div className="rounded-lg border border-dashed border-blue-200 bg-white/80 p-2.5 text-xs text-gray-700">
-            <span className="font-semibold text-gray-900">Selected:</span> {selected.tier} Service ·{' '}
+            <span className="font-semibold text-gray-900">Selected:</span>{' '}
+            {selected.isPeriodic ? `${selected.tier} Service` : selected.tier} ·{' '}
             <span className="font-bold text-blue-700">{inr(selected.price)}</span>
-            {oilType === 'semi' ? ' · Semi Synthetic' : ' · Fully Synthetic'}
+            {showOilToggle &&
+              (oilType === 'semi' ? ' · Semi Synthetic' : ' · Fully Synthetic')}
           </div>
         )}
 
@@ -365,7 +576,7 @@ export function MisaPricingPicker({ plans, title, onSelect }: Props) {
           className="w-full rounded-xl bg-brand-primary py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
         >
           {selected
-            ? `Continue · ${selected.tier} · ${inr(selected.price)}`
+            ? `Continue · ${selected.isPeriodic ? selected.tier : selected.tier.split(' ')[0]} · ${inr(selected.price)}`
             : 'Select a plan to continue'}
         </button>
       </div>

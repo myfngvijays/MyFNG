@@ -380,7 +380,12 @@ function AppContent() {
             <Stack.Screen
               name="AIBooking"
               component={AIBookingScreen}
-              options={{ presentation: 'transparentModal', animation: 'slide_from_bottom' }}
+              options={{
+                presentation: 'fullScreenModal',
+                animation: 'slide_from_bottom',
+                headerShown: false,
+                contentStyle: { backgroundColor: '#F9FAFB' },
+              }}
             />
             <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
             <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
@@ -419,15 +424,27 @@ function AppContent() {
             ) : null}
           </>
         ) : (
-          <Stack.Screen name="Dashboard">
-            {(props) => (
-              <DashboardNavigator
-                {...props}
-                userProfile={userProfile}
-                onLogout={handleLogout}
-              />
-            )}
-          </Stack.Screen>
+          <>
+            <Stack.Screen name="Dashboard">
+              {(props) => (
+                <DashboardNavigator
+                  {...props}
+                  userProfile={userProfile}
+                  onLogout={handleLogout}
+                />
+              )}
+            </Stack.Screen>
+            <Stack.Screen
+              name="AIBooking"
+              component={AIBookingScreen}
+              options={{
+                presentation: 'fullScreenModal',
+                animation: 'slide_from_bottom',
+                headerShown: false,
+                contentStyle: { backgroundColor: '#F9FAFB' },
+              }}
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

@@ -192,7 +192,7 @@ export async function getCustomerFromSession(): Promise<{
     if (existingCustomer.is_active === false) {
       return { customer: null, session: null };
     }
-    await supabaseAdmin
+    const { data: updated } = await supabaseAdmin
       .from('customers')
       .update({
         phone: normalizedPhone || existingCustomer.phone,
@@ -201,8 +201,10 @@ export async function getCustomerFromSession(): Promise<{
         phone_verified: normalizedPhone ? true : existingCustomer.phone_verified,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', existingCustomer.id);
-    return { customer: existingCustomer as CustomerRow, session: null };
+      .eq('id', existingCustomer.id)
+      .select('id, phone, firebase_uid, email, full_name, profile_image, phone_verified, email_verified, is_active')
+      .single();
+    return { customer: (updated as CustomerRow) || (existingCustomer as CustomerRow), session: null };
   }
 
   if (!normalizedPhone) return { customer: null, session: null };

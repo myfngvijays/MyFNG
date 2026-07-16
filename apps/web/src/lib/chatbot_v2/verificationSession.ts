@@ -2,6 +2,28 @@ import { isPhoneVerifiedInSession, markPhoneVerifiedInSession, normalizeBookingP
 import type { SessionData } from './session';
 import { isValidVehicleNumber, normalizeVehicleNumber } from './vehicleNumber';
 
+export type TrustedCustomerProfile = {
+  phone: string;
+  full_name?: string | null;
+  id?: string;
+};
+
+export function applyTrustedCustomerToSession(
+  session: SessionData,
+  customer: TrustedCustomerProfile,
+): boolean {
+  const phone = normalizeBookingPhone(customer.phone);
+  if (phone.length !== 10) return false;
+
+  markPhoneVerifiedInSession(session, phone);
+  session.bookingState = {
+    ...(session.bookingState || {}),
+    phoneNumber: phone,
+    customerName: String(customer.full_name || session.bookingState?.customerName || '').trim() || undefined,
+  };
+  return true;
+}
+
 export function getVehicleNumberFromSession(session?: SessionData): string | null {
   const raw = session?.vehicleNumber || session?.bookingState?.vehicleNumber;
   const normalized = normalizeVehicleNumber(raw);
@@ -39,16 +61,31 @@ export function isPricingAllowedInSession(session?: SessionData): boolean {
   return Boolean(getVerifiedPhoneFromSession(session));
 }
 
-export function buildSessionContextPatch(session: SessionData, conversationId: string) {
+export function buildSessionContextPatch(
+  session: SessionData,
+  conversationId: string,
+  extras?: {
+    customerName?: string;
+    isLoggedInCustomer?: boolean;
+    skipNamePrompt?: boolean;
+    skipMobilePrompt?: boolean;
+  },
+) {
   const vehicleNumber = getVehicleNumberFromSession(session);
   const customerPhone = getVerifiedPhoneFromSession(session) || normalizeBookingPhone(session?.bookingState?.phoneNumber);
   const phoneVerified = Boolean(getVerifiedPhoneFromSession(session));
+  const customerName =
+    String(extras?.customerName || session?.bookingState?.customerName || '').trim() || undefined;
 
   return {
     conversationId,
     vehicleNumber: vehicleNumber || undefined,
     customerPhone: customerPhone || undefined,
+    customerName,
     phoneVerified,
     pricingEligible: isPricingAllowedInSession(session),
+    isLoggedInCustomer: Boolean(extras?.isLoggedInCustomer),
+    skipNamePrompt: Boolean(extras?.skipNamePrompt),
+    skipMobilePrompt: Boolean(extras?.skipMobilePrompt),
   };
 }

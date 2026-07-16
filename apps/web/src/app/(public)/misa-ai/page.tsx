@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowRight, Bot, Menu, X } from 'lucide-react';
+import { ArrowRight, Bot, Menu, Sparkles, X } from 'lucide-react';
 import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
 import {
   assistantMessageShowsServiceList,
@@ -14,9 +14,11 @@ import {
 import { assistantNeedsMobileVerification, MisaVerificationPanel } from './components/MisaVerificationPanel';
 import { assistantAsksForCar, MisaCarPicker } from './components/MisaCarPicker';
 import {
+  buildPricingPlansFromApi,
   extractPricingTitle,
   MisaPricingPicker,
   parsePricingPlansFromText,
+  type PricingPlan,
 } from './components/MisaPricingPicker';
 import {
   assistantAsksForPickupDate,
@@ -35,6 +37,7 @@ import {
   MisaBookingSummaryCard,
   parseBookingSummary,
 } from './components/MisaBookingSummaryCard';
+import { MisaAiBackground } from './components/MisaAiBackground';
 
 type ChatRole = 'user' | 'assistant';
 type UiSuggestion = {
@@ -69,6 +72,7 @@ type ChatMsg = {
   text: string;
   suggestions?: UiSuggestion[];
   ui?: UiPayload;
+  pricingPlans?: PricingPlan[];
 };
 
 const STORAGE_KEY = 'myfng_ai_chat_state_v2';
@@ -94,14 +98,19 @@ const QUICK_PROMPTS = [
   'Nearest workshop dikhao',
 ];
 
-function MisaAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
+function MisaAvatar({ size = 'md', glow = false }: { size?: 'sm' | 'md'; glow?: boolean }) {
   const dim = size === 'sm' ? 'h-7 w-7' : 'h-9 w-9';
   const icon = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4';
   return (
-    <div
-      className={`${dim} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-secondary to-brand-primary shadow-sm shadow-brand-primary/25`}
-    >
-      <Bot className={`${icon} text-white`} />
+    <div className={`relative shrink-0 ${glow ? 'misa-ai-avatar-glow' : ''}`}>
+      {glow && (
+        <span className="absolute inset-0 animate-ping rounded-full bg-brand-primary/25" aria-hidden />
+      )}
+      <div
+        className={`${dim} relative flex items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 via-brand-primary to-brand-secondary shadow-lg shadow-brand-primary/40 ring-2 ring-white/30`}
+      >
+        <Bot className={`${icon} text-white drop-shadow-sm`} />
+      </div>
     </div>
   );
 }
@@ -110,10 +119,11 @@ function TypingIndicator() {
   return (
     <div className="mb-6 flex items-start gap-2.5">
       <MisaAvatar size="sm" />
-      <div className="flex items-center gap-1 rounded-2xl rounded-tl-md border border-brand-primary/15 bg-gradient-to-br from-brand-primary/5 to-white px-4 py-3">
+      <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-md border border-brand-primary/15 bg-gradient-to-br from-sky-50/90 to-white px-4 py-3 shadow-sm">
         <span className="h-2 w-2 animate-bounce rounded-full bg-brand-primary [animation-delay:0ms]" />
         <span className="h-2 w-2 animate-bounce rounded-full bg-brand-primary [animation-delay:150ms]" />
         <span className="h-2 w-2 animate-bounce rounded-full bg-brand-primary [animation-delay:300ms]" />
+        <span className="ml-1 text-[11px] font-medium text-brand-primary/70">MISA is typing</span>
       </div>
     </div>
   );
@@ -144,12 +154,13 @@ function AIBookingPageInner() {
   const [showOtherServices, setShowOtherServices] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [dismissedSummaryIds, setDismissedSummaryIds] = useState<Set<string>>(() => new Set());
+  const [dismissedPricingIds, setDismissedPricingIds] = useState<Set<string>>(() => new Set());
 
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>(() => [
     {
       id: 'm0',
       role: 'assistant',
-      text: "Hi! I'm MISA — MyFNG Instant Service Assistant.\nAapko kya help chahiye — service, repair, cleaning, ya workshop location?",
+      text: "Hi! I'm MISA — your MyFNG AI assistant.\nTell me what you need — periodic service, repair, AC, battery, or nearest workshop.\nI'll guide you step-by-step and book in chat.",
     },
   ]);
 
@@ -343,6 +354,17 @@ function AIBookingPageInner() {
     const userId = `u_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     setShowPrimeInChat(false);
     setShowOtherServices(false);
+    if (/change service|different service|edit service|service change|dusri service|doosri service|service badlo/i.test(text)) {
+      setDismissedPricingIds((prev) => {
+        const next = new Set(prev);
+        chatMessages.forEach((msg) => {
+          if (msg.role === 'assistant' && parsePricingPlansFromText(msg.text).length >= 1) {
+            next.add(msg.id);
+          }
+        });
+        return next;
+      });
+    }
     setChatMessages((prev) => [...prev, { id: userId, role: 'user', text: shown }]);
     setChatDraft('');
     setChatLoading(true);
@@ -495,7 +517,24 @@ function AIBookingPageInner() {
       console.log('[AI-BOOKING DEBUG]', { stage, carModels });
 
       const botId = `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      setChatMessages((prev) => [...prev, { id: botId, role: 'assistant', text: assistantText, suggestions: uiSuggestions, ui: uiPayload }]);
+      const apiPricing = Array.isArray(data?.pricing)
+        ? data.pricing
+        : Array.isArray(data?.data?.pricing)
+          ? data.data.pricing
+          : null;
+      const pricingPlansFromApi =
+        apiPricing && apiPricing.length > 0 ? buildPricingPlansFromApi(apiPricing) : undefined;
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: botId,
+          role: 'assistant',
+          text: assistantText,
+          suggestions: uiSuggestions,
+          ui: uiPayload,
+          pricingPlans: pricingPlansFromApi,
+        },
+      ]);
 
       if (ctxPatch) setChatContext((prev: any) => ({ ...(prev || {}), ...(nextContext || {}), ...(ctxPatch || {}) }));
       else setChatContext(nextContext);
@@ -728,37 +767,56 @@ function AIBookingPageInner() {
     !showCategoryPicker &&
     chatMessages.every((m) => m.role === 'assistant');
 
+  const dismissAllPricingPickers = () => {
+    setDismissedPricingIds((prev) => {
+      const next = new Set(prev);
+      chatMessages.forEach((msg) => {
+        if (msg.role === 'assistant' && parsePricingPlansFromText(msg.text).length >= 1) {
+          next.add(msg.id);
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleOtherServices = () => {
+    dismissAllPricingPickers();
+    setShowOtherServices(true);
+  };
+
   return (
     <div
       className={
         isEmbed
-          ? 'flex h-full flex-col bg-[radial-gradient(ellipse_at_top,_#e8f4fd_0%,_#ffffff_48%)]'
-          : 'flex min-h-[100dvh] flex-col bg-[radial-gradient(ellipse_at_top,_#e8f4fd_0%,_#ffffff_48%)]'
+          ? 'relative flex h-full flex-col bg-[radial-gradient(ellipse_at_top,_#e8f4fd_0%,_#ffffff_48%)]'
+          : 'relative flex min-h-[100dvh] flex-col'
       }
     >
+      {!isEmbed && <MisaAiBackground />}
       {!isEmbed && (
-        <header className="sticky top-0 z-40 border-b border-brand-primary/10 bg-white/85 backdrop-blur-md">
-          <div className="relative mx-auto flex max-w-2xl items-center justify-between px-4 py-3 sm:px-6">
+        <header className="sticky top-0 z-40 border-b border-white/10 bg-[#071526]/75 backdrop-blur-xl">
+          <div className="relative mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
             <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setShowMobileMenu((v) => !v)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white hover:bg-white/15 lg:hidden"
                 aria-label="Open menu"
               >
                 {showMobileMenu ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
-              <MisaAvatar />
+              <MisaAvatar glow />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-sm font-semibold text-brand-secondary">MISA AI</div>
-                  <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-primary">
+                  <div className="text-sm font-bold text-white">MISA AI</div>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+                    <Sparkles className="h-3 w-3" />
                     AI Assistant
                   </span>
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-300">
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${chatConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}
+                    className={`h-1.5 w-1.5 rounded-full ${chatConnected ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-amber-400'}`}
                   />
                   {chatConnected ? 'Online · ready to help' : 'Connecting…'}
                   {String(chatContext?.locationLabel || '').trim()
@@ -767,12 +825,12 @@ function AIBookingPageInner() {
                 </div>
               </div>
             </div>
-            <Link href="/" className="hidden text-xs font-medium text-gray-500 hover:text-brand-primary sm:inline">
+            <Link href="/" className="hidden text-xs font-medium text-slate-300 transition hover:text-white sm:inline">
               Home
             </Link>
 
             {showMobileMenu && (
-              <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white py-2 shadow-xl lg:hidden">
+              <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-white/15 bg-[#0c2d4f]/95 py-2 shadow-2xl backdrop-blur-xl lg:hidden">
                 {[
                   { label: 'Home', href: '/' },
                   { label: 'Services', href: '/services' },
@@ -784,7 +842,7 @@ function AIBookingPageInner() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setShowMobileMenu(false)}
-                    className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-brand-primary/5 hover:text-brand-primary"
+                    className="block px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
                   >
                     {item.label}
                   </Link>
@@ -795,7 +853,22 @@ function AIBookingPageInner() {
         </header>
       )}
 
-      <main className={isEmbed ? 'flex h-full min-h-0 flex-1 flex-col' : 'mx-auto flex w-full max-w-2xl flex-1 flex-col min-h-0'}>
+      {!isEmbed && (
+        <div className="pointer-events-none mx-auto w-full max-w-3xl px-4 pt-3 sm:px-6">
+          <p className="text-center text-xs font-medium text-slate-400 sm:text-sm">
+            <span className="misa-ai-shimmer-text font-semibold">Instant AI booking</span>
+            {' · '}Smart quotes · Verified workshops
+          </p>
+        </div>
+      )}
+
+      <main
+        className={
+          isEmbed
+            ? 'flex h-full min-h-0 flex-1 flex-col'
+            : 'mx-auto flex w-full max-w-3xl flex-1 flex-col min-h-0 px-3 pb-3 pt-1 sm:px-4 sm:pb-4'
+        }
+      >
         {suggestionModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
             <div className="w-full max-w-lg overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -854,20 +927,35 @@ function AIBookingPageInner() {
             </div>
           </div>
         )}
-        <div className={isEmbed ? 'flex h-full min-h-0 flex-1 flex-col bg-white' : 'flex min-h-0 flex-1 flex-col bg-white'}>
+        <div
+          className={
+            isEmbed
+              ? 'flex h-full min-h-0 flex-1 flex-col bg-white'
+              : 'flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/20 bg-white/[0.97] shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl'
+          }
+        >
           <div
             ref={chatScrollRef}
             className={
               isEmbed
                 ? 'min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'
-                : 'min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'
+                : 'min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-slate-50/80 to-white px-4 py-4 sm:px-6'
             }
           >
             {chatMessages.map((m, msgIndex) => {
               const isUser = m.role === 'user';
               const isFirstAssistant = !isUser && msgIndex === 0;
-              const pricingPlans = !isUser ? parsePricingPlansFromText(m.text) : [];
-              const showPricingPicker = pricingPlans.length >= 2;
+              const pricingPlans = !isUser
+                ? m.pricingPlans?.length
+                  ? m.pricingPlans
+                  : parsePricingPlansFromText(m.text)
+                : [];
+              const hasPricing = pricingPlans.length >= 1;
+              const userRepliedAfter = chatMessages.slice(msgIndex + 1).some((x) => x.role === 'user');
+              const isActivePricing =
+                hasPricing && !userRepliedAfter && !dismissedPricingIds.has(m.id);
+              const isStalePricing = hasPricing && !isActivePricing;
+              const showPricingPicker = !isUser && isActivePricing;
               const bookingSummary = !isUser ? parseBookingSummary(m.text) : null;
               const isActiveSummary =
                 Boolean(bookingSummary) &&
@@ -893,7 +981,7 @@ function AIBookingPageInner() {
                     ? extractPickupTimePrompt(m.text)
                     : !isUser && lastMsg?.id === m.id && showPickupDatePicker
                       ? extractPickupDatePrompt(m.text)
-                      : showPricingPicker
+                      : showPricingPicker || isStalePricing
                 ? extractPricingTitle(m.text)
                 : hideServiceListBody
                   ? m.text
@@ -910,15 +998,22 @@ function AIBookingPageInner() {
                   {!isUser && <MisaAvatar size={isFirstAssistant ? 'md' : 'sm'} />}
                   <div className={isUser ? 'max-w-[82%] sm:max-w-[75%]' : 'min-w-0 max-w-[92%] sm:max-w-[85%]'}>
                     {!isUser && (
-                      <div className="mb-1 text-[11px] font-medium text-brand-primary/80">MISA</div>
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-brand-primary">
+                        <Sparkles className="h-3 w-3 text-cyan-500" />
+                        MISA
+                      </div>
                     )}
                     {(displayText || isUser) && (
                     <div
                       className={
                         isUser
-                          ? 'rounded-2xl rounded-tr-md bg-brand-primary px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm shadow-brand-primary/20'
-                          : `rounded-2xl rounded-tl-md border border-brand-primary/15 bg-gradient-to-br from-brand-primary/[0.06] to-white px-4 text-sm leading-relaxed text-gray-800 shadow-sm shadow-brand-primary/10 ${
-                              showSummaryCard || pickerActiveOnThisMsg ? 'py-2' : 'py-3'
+                          ? 'rounded-2xl rounded-tr-md bg-gradient-to-r from-brand-secondary to-brand-primary px-4 py-2.5 text-sm leading-relaxed text-white shadow-lg shadow-brand-primary/30'
+                          : `rounded-2xl rounded-tl-md border text-sm leading-relaxed shadow-sm ${
+                              showSummaryCard || pickerActiveOnThisMsg
+                                ? 'border-brand-primary/15 bg-gradient-to-br from-sky-50/90 to-white px-4 py-2 text-gray-800'
+                                : isFirstAssistant
+                                  ? 'border-brand-primary/20 bg-gradient-to-br from-sky-50 via-white to-cyan-50/50 px-4 py-3.5 text-gray-800 shadow-md shadow-brand-primary/10'
+                                  : 'border-brand-primary/12 bg-white/90 px-4 py-3 text-gray-800 backdrop-blur-sm'
                             }`
                       }
                     >
@@ -986,12 +1081,13 @@ function AIBookingPageInner() {
                       <MisaPricingPicker
                         plans={pricingPlans}
                         title={extractPricingTitle(m.text)}
-                        onSelect={(plan) =>
+                        onSelect={(plan) => {
+                          setDismissedPricingIds((prev) => new Set(prev).add(m.id));
                           sendChatMessage(
                             `I want to book ${plan.name} at ₹${plan.price}`,
                             `${plan.tier} Service · ₹${plan.price.toLocaleString('en-IN')}`,
-                          )
-                        }
+                          );
+                        }}
                       />
                     )}
                     {!isUser && showSummaryCard && bookingSummary && (
@@ -1011,7 +1107,7 @@ function AIBookingPageInner() {
                       <MisaCategoryCards
                         onPrime={() => setShowPrimeInChat(true)}
                         onPeriodic={() => sendChatMessage('Car Periodic Service', 'Periodic Service')}
-                        onOther={() => setShowOtherServices(true)}
+                        onOther={handleOtherServices}
                       />
                     )}
 
@@ -1132,7 +1228,7 @@ function AIBookingPageInner() {
                 <MisaCategoryCards
                   onPrime={() => setShowPrimeInChat(true)}
                   onPeriodic={() => sendChatMessage('Car Periodic Service', 'Periodic Service')}
-                  onOther={() => setShowOtherServices(true)}
+                  onOther={handleOtherServices}
                 />
               </div>
             )}
@@ -1219,14 +1315,17 @@ function AIBookingPageInner() {
 
             {showQuickPrompts && (
               <div className="mb-4 pl-10">
-                <div className="mb-2 text-xs font-medium text-gray-500">Try asking</div>
+                <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                  <Sparkles className="h-3.5 w-3.5 text-brand-primary" />
+                  Try asking
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {QUICK_PROMPTS.map((prompt) => (
                     <button
                       key={prompt}
                       type="button"
                       onClick={() => sendChatMessage(prompt)}
-                      className="rounded-full border border-brand-primary/25 bg-white px-3 py-1.5 text-xs font-medium text-brand-secondary shadow-sm transition hover:border-brand-primary hover:bg-brand-primary/5"
+                      className="rounded-full border border-brand-primary/20 bg-white/90 px-3 py-1.5 text-xs font-medium text-brand-secondary shadow-sm transition hover:border-brand-primary hover:bg-brand-primary/5 hover:shadow-md"
                     >
                       {prompt}
                     </button>
@@ -1238,7 +1337,7 @@ function AIBookingPageInner() {
             {chatLoading && <TypingIndicator />}
           </div>
 
-          <div className="sticky bottom-0 z-30 border-t border-brand-primary/10 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-sm sm:px-6">
+          <div className="sticky bottom-0 z-30 border-t border-brand-primary/10 bg-gradient-to-t from-white via-white/95 to-white/80 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md sm:px-6">
             {chatContext?.showPayNow && chatContext?.leadId && (
               <div className="mb-3 flex flex-wrap gap-2">
                 <button
@@ -1268,19 +1367,21 @@ function AIBookingPageInner() {
               </div>
             )}
             <form
-              className="flex items-center gap-2 rounded-2xl border border-brand-primary/20 bg-white px-3 py-2 shadow-lg shadow-brand-primary/10 transition focus-within:border-brand-primary focus-within:ring-2 focus-within:ring-brand-primary/20"
+              className="misa-ai-input-bar flex items-center gap-2 rounded-2xl border border-brand-primary/40 px-3 py-2 shadow-[0_8px_30px_rgba(0,136,232,0.18)] transition focus-within:border-brand-primary focus-within:shadow-[0_8px_32px_rgba(0,136,232,0.28)] focus-within:ring-2 focus-within:ring-brand-primary/25"
               onSubmit={(e) => {
                 e.preventDefault();
                 sendChatMessage(chatDraft);
               }}
             >
-              <Bot className="h-4 w-4 shrink-0 text-brand-primary" />
+              <Bot className="h-4 w-4 shrink-0 text-white/90" />
               <input
                 type="text"
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}
                 placeholder="Ask MISA about service, price, booking…"
-                className="flex-1 bg-transparent text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm"
+                className="misa-ai-input flex-1 min-w-0 text-base focus:outline-none sm:text-sm"
+                autoComplete="off"
+                spellCheck={false}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -1291,12 +1392,13 @@ function AIBookingPageInner() {
               <button
                 type="submit"
                 disabled={chatLoading || !chatDraft.trim()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-primary text-white shadow-sm transition hover:bg-brand-primary-hover disabled:opacity-30"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-brand-secondary to-brand-primary text-white shadow-lg shadow-brand-primary/30 transition hover:scale-105 hover:shadow-brand-primary/40 disabled:scale-100 disabled:opacity-30"
               >
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
-            <p className="mt-2 text-center text-[11px] text-gray-400">
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] text-slate-400">
+              <Sparkles className="h-3 w-3 text-brand-primary/60" />
               Powered by MyFNG AI · Instant quotes · Book in chat
             </p>
           </div>

@@ -5,11 +5,13 @@ import { getSession, saveSession } from '@/lib/chatbot_v2/session';
 import {
   buildSessionContextPatch,
   setVehicleNumberInSession,
+  applyTrustedCustomerToSession,
 } from '@/lib/chatbot_v2/verificationSession';
+import { getCustomerFromSession } from '@/lib/customer-session';
 
 export const dynamic = 'force-dynamic';
 
-type VerificationAction = 'set_vehicle' | 'sync_phone';
+type VerificationAction = 'set_vehicle' | 'sync_phone' | 'sync_trusted_customer';
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
@@ -38,6 +40,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       contextPatch: buildSessionContextPatch(sessionData, sessionId),
+    });
+  }
+
+  if (action === 'sync_trusted_customer') {
+    const { customer } = await getCustomerFromSession();
+    if (!customer?.phone) {
+      return NextResponse.json(
+        { success: false, error: 'Logged-in customer required' },
+        { status: 401 },
+      );
+    }
+
+    applyTrustedCustomerToSession(sessionData, {
+      phone: customer.phone,
+      full_name: customer.full_name,
+      id: customer.id,
+    });
+
+    await saveSession(sessionId, sessionData);
+    return NextResponse.json({
+      success: true,
+      contextPatch: buildSessionContextPatch(sessionData, sessionId, {
+        customerName: customer.full_name || undefined,
+        isLoggedInCustomer: true,
+        skipNamePrompt: Boolean(customer.full_name),
+        skipMobilePrompt: true,
+      }),
     });
   }
 
