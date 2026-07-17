@@ -1,7 +1,9 @@
 import { Activity, Battery, Circle, Disc3, Lightbulb, Paintbrush, Snowflake, Sparkles, Wrench, Zap } from 'lucide-react';
 
-const SERVICE_IMAGE_BASE_URL =
-  'https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public';
+const SERVICE_IMAGE_BASE = '/media/Service_image_public';
+function svcImg(fileName: string) {
+  return `${SERVICE_IMAGE_BASE}/${fileName}`;
+}
 
 export type Service = {
   id: number;
@@ -68,7 +70,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Warranty on All Parts & Labor',
     ],
     benefits: ['Same-Day Servicing', 'Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Improved fuel efficiency', 'Extended Engine life', 'Preventive Maintenance', 'AI-powered Diagnostics'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Periodic_Service.png`,
+    image: svcImg('MyFNG_Car_Periodic_Service.png'),
     duration: '2-3 hours',
     warranty: '1 month / 1,000 km',
   },
@@ -93,7 +95,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Exhaust System Check',
     ],
     benefits: ['Same-Day Servicing', 'Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Optimal Engine Performance', 'Early Problem Detection', 'Reduced Breakdowns', 'Better Fuel Economy'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Engine_Service.png`,
+    image: svcImg('MyFNG_Car_Engine_Service.png'),
     duration: '3-4 hours',
     warranty: 'NA',
   },
@@ -118,7 +120,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Complete System Sanitization',
     ],
     benefits: ['Same-Day Servicing', 'Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Better Cooling Performance', 'Improved Air Quality', 'Reduced Energy Consumption', 'Fresh Cabin Environment'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_AC_Service.png`,
+    image: svcImg('MyFNG_Car_AC_Service.png'),
     duration: '2-3 hours',
     warranty: 'NA',
   },
@@ -143,7 +145,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Free Installation',
     ],
     benefits: ['Same-Day Servicing', 'Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Preventive Replacement', 'Extended Battery Life', 'Peace of Mind'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Battery_Service.png`,
+    image: svcImg('MyFNG_Car_Battery_Service.png'),
     duration: '1-2 hours',
     warranty: 'NA',
   },
@@ -168,7 +170,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Complete System Bleeding',
     ],
     benefits: ['Same-Day Servicing', 'Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Enhanced safety', 'Optimal stopping power', 'Reduced brake noise', 'Longer component life'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Brake_Service.png`,
+    image: svcImg('MyFNG_Car_Brake_Service.png'),
     duration: '2-3 hours',
     warranty: 'NA',
   },
@@ -193,7 +195,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Warranty on Parts & Labor',
     ],
     benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Smoother Gear Shifts', 'Better Drivability', 'Reduced Vibration/Noise', 'Prevents Breakdowns'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Clutch_Service.png`,
+    image: svcImg('MyFNG_Car_Clutch_Service.png'),
     duration: '3-6 hours',
     warranty: 'NA',
   },
@@ -218,7 +220,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Road Hazard Inspection',
     ],
     benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Better Fuel Efficiency', 'Extended Tyre Life', 'Improved Handling', 'Enhanced Safety'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Wheel_Care_Service.png`,
+    image: svcImg('MyFNG_Car_Wheel_Care_Service.png'),
     duration: '1-2 hours',
     warranty: 'NA',
   },
@@ -243,7 +245,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Leather Conditioning',
     ],
     benefits: ['Live Photos & Video Updates', 'Genuine OEM/OES Parts', 'Showroom Finish', 'Paint Protection', 'Increased Resale Value', 'Warranty on Service'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Detailing_Service.png`,
+    image: svcImg('MyFNG_Car_Detailing_Service.png'),
     duration: '4-6 hours',
     warranty: 'NA',
   },
@@ -268,7 +270,7 @@ export const DEFAULT_SERVICES: Service[] = [
       'Warranty Depends on Package',
     ],
     benefits: ['Live Photos & Video Updates', 'Flawless finish', 'Color Match Guarantee', 'Long-Lasting Paint', 'Increased Resale Value'],
-    image: `${SERVICE_IMAGE_BASE_URL}/MyFNG_Car_Denting-Painting_Service.png`,
+    image: svcImg('MyFNG_Car_Denting-Painting_Service.png'),
     duration: '2-5 days',
     warranty: 'NA',
   },

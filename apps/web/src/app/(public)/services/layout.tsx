@@ -1,22 +1,30 @@
-import { buildPageMetadata } from '@/lib/seo/metadata';
+import { buildManagedPageMetadata } from '@/lib/site-page-seo';
+import JsonLd from '@/components/seo/JsonLd';
+import { collectionPageSchema } from '@/lib/seo/schemas';
+import { SITE_URL } from '@/lib/seo/metadata';
+import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 
-export const metadata = buildPageMetadata({
-  title: 'Car Services - Periodic, AC, Engine & More | MyFNG',
-  description:
-    'Explore all car services at MYFNG - periodic service, AC service, engine repair, brake service, battery, clutch, denting & painting across Mumbai & Pune.',
-  keywords: [
-    'car services',
-    'periodic car service',
-    'car AC service',
-    'car engine service',
-    'car brake service',
-    'car repair services Mumbai',
-  ],
-  keyphrase: 'car services near me',
-  canonicalPath: '/car-services',
-  city: 'Mumbai',
-});
+export async function generateMetadata() {
+  return buildManagedPageMetadata('/car-services');
+}
 
 export default function ServicesLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  const items = DEFAULT_SERVICES.map((service) => ({
+    name: service.title,
+    url: `${SITE_URL}/car-services/${INTERNAL_SLUG_TO_MARKETING[service.slug]}`,
+  }));
+
+  return (
+    <>
+      <JsonLd
+        data={collectionPageSchema({
+          name: 'MyFNG Car Services',
+          description: 'Periodic service, AC service, engine repair, brake service and more at verified MYFNG workshops.',
+          url: `${SITE_URL}/car-services`,
+          items,
+        })}
+      />
+      {children}
+    </>
+  );
 }

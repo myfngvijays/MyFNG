@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import TrackedLink from '@/components/tracking/TrackedLink';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Bot, Menu, Sparkles, X } from 'lucide-react';
 import { createChatPaymentOrder, initializeRazorpayCheckout, loadRazorpayScript } from '@/lib/services/paymentService';
@@ -37,7 +37,7 @@ import {
   MisaBookingSummaryCard,
   parseBookingSummary,
 } from './components/MisaBookingSummaryCard';
-import { MisaAiBackground } from './components/MisaAiBackground';
+import { getLeadTrackingMeta } from '@/lib/utm';
 
 type ChatRole = 'user' | 'assistant';
 type UiSuggestion = {
@@ -369,7 +369,8 @@ function AIBookingPageInner() {
     setChatDraft('');
     setChatLoading(true);
 
-    const nextContext = { ...(chatContext || {}) };
+    const utm = getLeadTrackingMeta();
+    const nextContext = { ...(chatContext || {}), utm, utmParams: utm };
     // Ensure city is available even before GPS reverse-geocode finishes.
     if (!String(nextContext?.locationLabel || '').trim() && typeof window !== 'undefined') {
       const storedCity = String(window.localStorage.getItem(DETECTED_CITY_KEY) || '').trim();
@@ -825,9 +826,9 @@ function AIBookingPageInner() {
                 </div>
               </div>
             </div>
-            <Link href="/" className="hidden text-xs font-medium text-slate-300 transition hover:text-white sm:inline">
+            <TrackedLink href="/" className="hidden text-xs font-medium text-slate-300 transition hover:text-white sm:inline">
               Home
-            </Link>
+            </TrackedLink>
 
             {showMobileMenu && (
               <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-white/15 bg-[#0c2d4f]/95 py-2 shadow-2xl backdrop-blur-xl lg:hidden">
@@ -838,14 +839,14 @@ function AIBookingPageInner() {
                   { label: 'Contact', href: '/contact' },
                   { label: 'Book Service', href: '/book-service' },
                 ].map((item) => (
-                  <Link
+                  <TrackedLink
                     key={item.href}
                     href={item.href}
                     onClick={() => setShowMobileMenu(false)}
                     className="block px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
                   >
                     {item.label}
-                  </Link>
+                  </TrackedLink>
                 ))}
               </div>
             )}

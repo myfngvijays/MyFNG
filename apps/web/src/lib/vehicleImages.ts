@@ -2,8 +2,7 @@ export const VEHICLE_IMAGE_BUCKET = 'App';
 export const VEHICLE_IMAGE_PREFIX = 'car-brands-images';
 
 export function getVehicleImagePublicBase(): string {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  return `${supabaseUrl}/storage/v1/object/public/${VEHICLE_IMAGE_BUCKET}/${VEHICLE_IMAGE_PREFIX}`;
+  return '/media/App/car-brands-images';
 }
 
 export function slugifyVehiclePart(value: string): string {
@@ -66,7 +65,7 @@ export function getPublicUrlForStoragePath(storagePath: string): string {
     .split('/')
     .map((part) => encodeURIComponent(part))
     .join('/');
-  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${VEHICLE_IMAGE_BUCKET}/${encoded}`;
+  return `/media/${VEHICLE_IMAGE_BUCKET}/${encoded}`;
 }
 
 export function parseModelImagePath(storagePath: string): { makeSlug: string; modelSlug: string } | null {

@@ -8,6 +8,7 @@ import {
   Wrench, DollarSign, Sparkles
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { appendUtmToHref, getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
 
 interface BookingFormData {
   city: any | null;
@@ -591,16 +592,21 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
     try {
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
 
+      const utmParams = getCurrentOrStoredUtmParams();
+      const leadSource = getLeadSourceFromUtm(utmParams.utm_source, utmParams.utm_medium);
+
       const response = await fetch('/api/public/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
+          utm: utmParams,
           lead: {
             lead_number: leadNumber,
             created_from: 'WEB',
             status: 'NEW',
             lead_type: 'NORMAL',
-            lead_source: 'Website',
+            lead_source: leadSource,
             customer_name: formData.customerName,
             customer_phone: formData.customerPhone,
             vehicle_number: formData.vehicleNumber || null,
@@ -613,6 +619,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
             lead_priority: 'NORMAL',
             estimated_amount: totalPrice > 0 ? totalPrice : null,
             created_at: new Date().toISOString(),
+            meta: utmParams,
           },
           coupon: couponMeta
             ? {
@@ -638,7 +645,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
         setTimeout(() => {
           toast.success('🎉 Booking confirmed! We\'ll contact you shortly.');
           onClose();
-          window.location.href = `/booking-success?lead=${lead.lead_number}`;
+          window.location.href = appendUtmToHref(`/booking-success?lead=${lead.lead_number}`);
         }, 1500);
       }, 1000);
     } catch (error: any) {

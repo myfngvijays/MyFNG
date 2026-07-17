@@ -546,6 +546,7 @@ export async function executeToolCall(
           };
         }
 
+        const trackingUtm = opts?.sessionData?.bookingState?.trackingUtm;
         const bookingData = {
           session_id: args.session_id,
           service_name: args.service_name,
@@ -561,6 +562,7 @@ export async function executeToolCall(
           preferred_time: args.preferred_time,
           status: 'pending',
           channel: opts?.bookingChannel,
+          tracking_utm: trackingUtm && typeof trackingUtm === 'object' ? (trackingUtm as Record<string, string>) : undefined,
         };
 
         const result = await saveBooking(bookingData);

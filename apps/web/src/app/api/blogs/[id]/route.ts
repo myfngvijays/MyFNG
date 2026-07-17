@@ -12,6 +12,7 @@ import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, valida
 import { notifyRoleCodesGlobal } from '@/lib/notifications';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
 import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
+import { revalidateBlogSeo } from '@/lib/seo/revalidate';
 
 export async function GET(
   request: NextRequest,
@@ -461,6 +462,9 @@ export async function PUT(
     } catch (e) {
       console.warn('Failed to notify Digital Marketing (non-blocking):', e);
     }
+
+    const effectiveSlug = String(transformedBlog?.slug || updatedBlog?.slug || existingBlog.slug || '').trim();
+    if (effectiveSlug) revalidateBlogSeo(effectiveSlug);
 
     return NextResponse.json({ blog: transformedBlog, warnings });
   } catch (error: any) {

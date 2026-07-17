@@ -1,13 +1,25 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { captureUtmParamsFromUrl, decorateInternalLinks, getStoredUtmParams } from '@/lib/utm';
+import {
+  captureUtmParamsFromUrl,
+  decorateInternalLinks,
+  getStoredUtmParams,
+  installUtmPassthrough,
+} from '@/lib/utm';
 
-export default function UtmCapture() {
+function UtmCaptureInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const observerRef = useRef<MutationObserver | null>(null);
+
+  useEffect(() => {
+    installUtmPassthrough();
+    if (typeof window !== 'undefined') {
+      captureUtmParamsFromUrl(window.location.search);
+    }
+  }, []);
 
   useEffect(() => {
     const search = searchParams?.toString();
@@ -39,4 +51,12 @@ export default function UtmCapture() {
   }, [pathname, searchParams]);
 
   return null;
+}
+
+export default function UtmCapture() {
+  return (
+    <Suspense fallback={null}>
+      <UtmCaptureInner />
+    </Suspense>
+  );
 }

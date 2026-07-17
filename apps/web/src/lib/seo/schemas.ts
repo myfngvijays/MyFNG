@@ -1,6 +1,7 @@
 import { SITE_URL } from './metadata';
+import { DEFAULT_ORGANIZATION_SAME_AS } from '@/lib/site-technical-seo';
 
-export function organizationSchema() {
+export function organizationSchema(sameAs?: string[]) {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
@@ -23,12 +24,14 @@ export function organizationSchema() {
       { '@type': 'City', name: 'Thane' },
       { '@type': 'City', name: 'Navi Mumbai' },
     ],
-    sameAs: [
-      'https://www.facebook.com/myfng',
-      'https://www.instagram.com/myfng',
-      'https://www.linkedin.com/company/myfng',
-    ],
+    sameAs: sameAs?.length ? sameAs : DEFAULT_ORGANIZATION_SAME_AS,
   };
+}
+
+export async function getOrganizationSchema() {
+  const { getSiteTechnicalSeo, parseSameAsUrls: parseSameAs } = await import('@/lib/site-technical-seo');
+  const settings = await getSiteTechnicalSeo();
+  return organizationSchema(parseSameAs(settings.organization_same_as));
 }
 
 export function websiteSchema() {
@@ -125,5 +128,189 @@ export function faqPageSchema(faqs: Array<{ question: string; answer: string }>)
         text: faq.answer,
       },
     })),
+  };
+}
+
+export function workshopLocalBusinessSchema(input: {
+  name: string;
+  description?: string;
+  url: string;
+  image?: string;
+  telephone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'AutoRepair',
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    ...(input.image ? { image: input.image } : {}),
+    ...(input.telephone ? { telephone: input.telephone } : {}),
+    address: {
+      '@type': 'PostalAddress',
+      ...(input.address ? { streetAddress: input.address } : {}),
+      ...(input.city ? { addressLocality: input.city } : {}),
+      ...(input.state ? { addressRegion: input.state } : {}),
+      ...(input.pincode ? { postalCode: input.pincode } : {}),
+      addressCountry: 'IN',
+    },
+    ...(input.latitude != null && input.longitude != null
+      ? {
+          geo: {
+            '@type': 'GeoCoordinates',
+            latitude: input.latitude,
+            longitude: input.longitude,
+          },
+        }
+      : {}),
+    ...(input.rating != null
+      ? {
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: input.rating,
+            reviewCount: input.reviewCount || 0,
+          },
+        }
+      : {}),
+    parentOrganization: {
+      '@type': 'Organization',
+      name: 'MYFNG',
+      url: SITE_URL,
+    },
+  };
+}
+
+export function itemListSchema(items: Array<{ name: string; url: string }>) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListElement: items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      url: item.url,
+    })),
+  };
+}
+
+export function collectionPageSchema(input: {
+  name: string;
+  description: string;
+  url: string;
+  items: Array<{ name: string; url: string }>;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    mainEntity: itemListSchema(input.items),
+  };
+}
+
+export function contactPageSchema(input: {
+  name: string;
+  description: string;
+  url: string;
+  telephone?: string;
+  email?: string;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ContactPage',
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    mainEntity: {
+      '@type': 'Organization',
+      name: 'MYFNG',
+      url: SITE_URL,
+      ...(input.telephone ? { telephone: input.telephone } : {}),
+      ...(input.email ? { email: input.email } : {}),
+      contactPoint: {
+        '@type': 'ContactPoint',
+        telephone: input.telephone || '+91-8657575757',
+        contactType: 'customer service',
+        areaServed: 'IN',
+        availableLanguage: ['English', 'Hindi', 'Marathi'],
+      },
+    },
+  };
+}
+
+export function webPageSchema(input: {
+  name: string;
+  description: string;
+  url: string;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    isPartOf: {
+      '@type': 'WebSite',
+      name: 'MYFNG',
+      url: SITE_URL,
+    },
+  };
+}
+
+export function webApplicationSchema(input: {
+  name: string;
+  description: string;
+  url: string;
+  applicationCategory?: string;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    applicationCategory: input.applicationCategory || 'BusinessApplication',
+    operatingSystem: 'Web, Android, iOS',
+    provider: {
+      '@type': 'Organization',
+      name: 'MYFNG',
+      url: SITE_URL,
+    },
+  };
+}
+
+export function emergencyServiceSchema(input: {
+  name: string;
+  description: string;
+  url: string;
+  areaServed?: string;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    serviceType: 'Roadside Assistance',
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    provider: {
+      '@type': 'Organization',
+      name: 'MYFNG',
+      url: SITE_URL,
+    },
+    areaServed: input.areaServed || 'Mumbai, Pune, Thane, Navi Mumbai',
+    availableChannel: {
+      '@type': 'ServiceChannel',
+      serviceUrl: input.url,
+      servicePhone: '+91-8657575757',
+    },
   };
 }

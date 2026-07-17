@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { toSiteMediaUrl } from '@/lib/media/public-url';
 
 export const SITE_URL = 'https://myfng.in';
 export const SITE_NAME = 'MYFNG - Car Service & Repairs in India';
@@ -24,7 +25,7 @@ export function buildPageMetadata(config: PageSeoConfig): Metadata {
   const keywords = Array.isArray(config.keywords)
     ? config.keywords.join(', ')
     : config.keywords;
-  const ogImage = config.ogImage || DEFAULT_OG_IMAGE;
+  const ogImage = toSiteMediaUrl(config.ogImage || DEFAULT_OG_IMAGE);
   const city = config.city || 'India';
 
   return {

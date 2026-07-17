@@ -3,10 +3,10 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   getMisaCreatedFrom,
   getMisaLeadSource,
-  getMisaTelecrmTag,
   resolveMisaBookingChannel,
   type MisaBookingChannel,
 } from './misaLeadSource';
+import { buildMinimalMisaTelecrmFields, buildTelecrmFieldSummaryNote } from '@/lib/telecrm/utmFields';
 
 
 export interface BookingData {
@@ -27,6 +27,7 @@ export interface BookingData {
   status?: string;
   notes?: string;
   channel?: MisaBookingChannel;
+  tracking_utm?: Record<string, string>;
 }
 
 const EXTERNAL_AUTOUPDATE_URL =
@@ -41,45 +42,23 @@ function resolveBookingChannel(booking: BookingData): MisaBookingChannel {
   });
 }
 
-async function pushChatbotBookingToExternalApi(booking: BookingData, channel: MisaBookingChannel) {
+async function pushChatbotBookingToExternalApi(booking: BookingData, _channel: MisaBookingChannel) {
   const phoneDigits = String(booking.phone_number || '').replace(/\D/g, '').slice(-10);
-  const leadSource = getMisaLeadSource(channel);
-  const leadTag = getMisaTelecrmTag(channel);
+
+  const fields = buildMinimalMisaTelecrmFields(
+    {
+      customer_name: booking.customer_name,
+      status: booking.status || 'pending',
+      address: booking.address,
+      tracking_utm: booking.tracking_utm,
+    },
+    phoneDigits,
+  );
+  const summary = buildTelecrmFieldSummaryNote(fields);
 
   const payload = {
-    fields: {
-      Name: String(booking.customer_name || '').trim() || `${leadSource} Lead`,
-      Phone: phoneDigits ? `+91${phoneDigits}` : null,
-
-      LEADTAG: leadTag,
-      LeadSource: leadSource,
-      LeadStatus: booking.status || 'pending',
-
-      carModel: String(booking.car_model || '').trim() || null,
-      VehicleModel: String(booking.car_model || '').trim() || null,
-      VehicleNumber: String(booking.vehicle_number || '').trim() || null,
-      vehicle_number: String(booking.vehicle_number || '').trim() || null,
-      ServiceType: booking.service_name || booking.service_category || null,
-
-      City: booking.city || null,
-      Pincode: booking.pincode || null,
-      Address: booking.address || null,
-
-      PreferredSlotStart: booking.preferred_date
-        ? `${booking.preferred_date}${booking.preferred_time ? 'T' + booking.preferred_time : ''}`
-        : null,
-
-      EstimatedAmount: booking.quoted_price ?? null,
-
-      CreatedFrom: getMisaCreatedFrom(channel),
-      CreatedAt: new Date().toISOString(),
-    },
-    actions: [
-      {
-        type: 'SYSTEM_NOTE',
-        text: `Lead Source: ${leadSource}`,
-      },
-    ],
+    fields,
+    actions: summary ? [{ type: 'SYSTEM_NOTE', text: summary }] : [],
   };
 
   const res = await fetch(EXTERNAL_AUTOUPDATE_URL, {
@@ -133,6 +112,10 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       estimated_amount: bookingData.quoted_price || null,
       created_at: nowIso,
     };
+
+    if (bookingData.tracking_utm && Object.keys(bookingData.tracking_utm).length > 0) {
+      payload.meta = bookingData.tracking_utm;
+    }
 
     const { data, error } = await supabaseAdmin
       .from('service_leads')

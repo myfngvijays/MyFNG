@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pushCarLoanLeadToISanction } from '@/lib/isanction-car-loan';
+import { normalizeUtmParams } from '@/lib/utm';
+import { withTelecrmUtmFields } from '@/lib/telecrm/utmFields';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,25 +11,32 @@ const TELECRM_AUTOUPDATE_URL =
 const TELECRM_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
 
-async function pushToTeleCRM(phone: string, data: {
-  panId: string;
-  vehicleRegistrationNumber: string;
-  income: number;
-  occupation: string;
-}) {
+async function pushToTeleCRM(
+  phone: string,
+  data: {
+    panId: string;
+    vehicleRegistrationNumber: string;
+    income: number;
+    occupation: string;
+  },
+  utmRaw?: unknown,
+) {
   const payload = {
-    fields: {
-      Phone: `+91${phone}`,
-      LEADTAG: 'CAR_LOAN_WEBSITE',
-      LeadSource: 'Website Car Loan',
-      LeadStatus: 'NEW',
-      CreatedFrom: 'WEB',
-      CreatedAt: new Date().toISOString(),
-      PAN: data.panId,
-      VehicleNumber: data.vehicleRegistrationNumber,
-      MonthlyIncome: String(data.income),
-      Occupation: data.occupation,
-    },
+    fields: withTelecrmUtmFields(
+      {
+        Phone: `+91${phone}`,
+        LEADTAG: 'CAR_LOAN_WEBSITE',
+        LeadSource: 'Website Car Loan',
+        LeadStatus: 'NEW',
+        CreatedFrom: 'WEB',
+        CreatedAt: new Date().toISOString(),
+        PAN: data.panId,
+        VehicleNumber: data.vehicleRegistrationNumber,
+        MonthlyIncome: String(data.income),
+        Occupation: data.occupation,
+      },
+      utmRaw,
+    ),
     actions: [
       {
         type: 'SYSTEM_NOTE',
@@ -104,9 +113,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const utmParams = normalizeUtmParams(body);
+
     const [iSanctionResult, telecrmResult] = await Promise.allSettled([
       pushCarLoanLeadToISanction(leadData, { maxAttempts: 3 }),
-      pushToTeleCRM(phone, leadData),
+      pushToTeleCRM(phone, leadData, utmParams),
     ]);
 
     const iSanctionOk =

@@ -11,6 +11,7 @@ import {
   type PublicFaqBulkUpdate,
 } from '@/lib/public-faqs-admin';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { revalidatePublicFaqSeo } from '@/lib/seo/revalidate';
 import { createClient } from '@/lib/supabase/server';
 import { requireSuperAdmin } from '@/lib/super-admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    revalidatePublicFaqSeo();
     return NextResponse.json({
       success: true,
       imported: data?.length || rows.length,
@@ -173,6 +175,7 @@ export async function PATCH(request: NextRequest) {
         updated += 1;
       }
 
+      revalidatePublicFaqSeo();
       return NextResponse.json({
         success: true,
         updated,
@@ -209,6 +212,7 @@ export async function PATCH(request: NextRequest) {
       if (!error) updated += 1;
     }
 
+    revalidatePublicFaqSeo();
     return NextResponse.json({
       success: true,
       updated,
@@ -242,6 +246,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to bulk delete FAQs', details: error.message }, { status: 500 });
     }
 
+    revalidatePublicFaqSeo();
     return NextResponse.json({
       success: true,
       deleted: ids.length,

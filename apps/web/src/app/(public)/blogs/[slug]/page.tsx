@@ -12,6 +12,7 @@ import CopyLinkButton from '@/components/blog/CopyLinkButton';
 import BlogComments from '@/components/blog/BlogComments';
 import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
+import { serviceImagePath } from '@/lib/media/public-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -623,17 +624,17 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <h3>Book Your Service</h3>
                   <div className="service-slider">
                     <div className="service-slide active">
-                      <img src="https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Periodic_Service.png" alt="Periodic Car Service" />
+                      <img src={serviceImagePath('MyFNG_Car_Periodic_Service.png')} alt="Periodic Car Service" />
                       <h4>Periodic Car Service</h4>
                       <a href="/book-service" className="book-btn">Book Now</a>
                     </div>
                     <div className="service-slide">
-                      <img src="https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_AC_Service.png" alt="Car AC Service" />
+                      <img src={serviceImagePath('MyFNG_Car_AC_Service.png')} alt="Car AC Service" />
                       <h4>Car AC Service</h4>
                       <a href="/book-service" className="book-btn">Book Now</a>
                     </div>
                     <div className="service-slide">
-                      <img src="https://cffommijlvicfjhbqyzk.supabase.co/storage/v1/object/public/Service_image_public/MyFNG_Car_Brake_Service.png" alt="Brake Service" />
+                      <img src={serviceImagePath('MyFNG_Car_Brake_Service.png')} alt="Brake Service" />
                       <h4>Brake Service</h4>
                       <a href="/book-service" className="book-btn">Book Now</a>
                     </div>

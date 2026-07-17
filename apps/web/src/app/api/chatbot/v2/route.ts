@@ -7,6 +7,7 @@ import { buildSessionContextPatch, getVerifiedPhoneFromSession, applyTrustedCust
 import { getSession, saveSession } from '@/lib/chatbot_v2/session';
 import { getCustomerFromSession } from '@/lib/customer-session';
 import { isPhoneVerifiedInSession } from '@/lib/chatbot_v2/bookingOtp';
+import { normalizeUtmParams } from '@/lib/utm';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,18 @@ export async function POST(req: NextRequest) {
     const isMobileClient = req.headers.get('x-mobile-client') === 'true';
     let sessionData = (await getSession(sessionId)) || { history: [], bookingState: {} };
     let loggedInCustomer: { phone: string; full_name?: string | null; id?: string } | null = null;
+
+    const utmFromContext = normalizeUtmParams(body?.context?.utm || body?.context?.utmParams);
+    if (Object.keys(utmFromContext).length > 0) {
+      sessionData.bookingState = {
+        ...(sessionData.bookingState || {}),
+        trackingUtm: {
+          ...(sessionData.bookingState?.trackingUtm || {}),
+          ...utmFromContext,
+        },
+      };
+      await saveSession(sessionId, sessionData);
+    }
 
     if (isMobileClient) {
       const { customer } = await getCustomerFromSession();

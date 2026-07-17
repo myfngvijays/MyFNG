@@ -231,7 +231,9 @@ export default function BookingForm({ onClose }: { onClose: () => void }) {
       const response = await fetch('/api/public/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
+          utm: utmParams,
           lead: {
             lead_number: leadNumber,
             created_from: 'WEB',

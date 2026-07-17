@@ -1,20 +1,33 @@
-import { buildPageMetadata } from '@/lib/seo/metadata';
+import { buildManagedPageMetadata } from '@/lib/site-page-seo';
+import JsonLd from '@/components/seo/JsonLd';
+import { breadcrumbSchema, contactPageSchema } from '@/lib/seo/schemas';
+import { SITE_URL } from '@/lib/seo/metadata';
 
-export const metadata = buildPageMetadata({
-  title: 'Contact Us - MYFNG | Car Service Support',
-  description:
-    'Contact MYFNG for car service bookings, roadside assistance & support. Call +91-8657575757 or visit our workshops in Mumbai, Pune & Thane.',
-  keywords: [
-    'contact MYFNG',
-    'car service contact',
-    'MYFNG customer support',
-    'car repair helpline',
-  ],
-  keyphrase: 'contact MYFNG car service',
-  canonicalPath: '/contact-us',
-  city: 'Mumbai',
-});
+export async function generateMetadata() {
+  return buildManagedPageMetadata('/contact-us');
+}
 
 export default function ContactLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  const pageUrl = `${SITE_URL}/contact-us`;
+
+  return (
+    <>
+      <JsonLd
+        data={[
+          contactPageSchema({
+            name: 'Contact MYFNG',
+            description: 'Contact MYFNG for car service bookings, roadside assistance and customer support.',
+            url: pageUrl,
+            telephone: '+91-8657575757',
+            email: 'support@myfng.in',
+          }),
+          breadcrumbSchema([
+            { name: 'Home', url: SITE_URL },
+            { name: 'Contact Us', url: pageUrl },
+          ]),
+        ]}
+      />
+      {children}
+    </>
+  );
 }

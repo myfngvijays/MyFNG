@@ -72,6 +72,16 @@ const nextConfig = {
     serverMinification: false,
   },
 
+  async rewrites() {
+    const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://cffommijlvicfjhbqyzk.supabase.co').replace(/\/$/, '');
+    return [
+      {
+        source: '/media/:path*',
+        destination: `${supabaseUrl}/storage/v1/object/public/:path*`,
+      },
+    ];
+  },
+
   async redirects() {
     return [
       // Canonical marketing URLs (requested mappings)
@@ -101,6 +111,27 @@ const nextConfig = {
       { source: '/roadside-assistance', destination: '/car-roadside-assitance', permanent: true },
       // Legacy PHP URLs
       { source: '/ai-booking', destination: '/misa-ai', permanent: true },
+      { source: '/ai-experience', destination: '/misa-ai', permanent: true },
+    ];
+  },
+
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
+        ],
+      },
+      {
+        source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp|woff|woff2|css|js)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
     ];
   },
 };

@@ -20,6 +20,12 @@ const config: Config = {
           white: '#FFFFFF',
           grey: '#F5F7FA',
         },
+        seo: {
+          page: '#eef4fb',
+          surface: '#ffffff',
+          inset: '#f8fafc',
+          deep: '#0f172a',
+        },
         text: {
           heading: '#023D95',
           body: '#3A3F45',

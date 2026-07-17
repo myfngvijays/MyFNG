@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
+import TrackedLink from '@/components/tracking/TrackedLink';
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowRight,
@@ -204,12 +204,12 @@ export default function ServiceExplorer({
               >
                 Ask MISA AI <Sparkles className="w-5 h-5" />
               </button>
-              <Link
+              <TrackedLink
                 href="/car-services"
                 className="col-span-2 w-full sm:col-span-1 sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-6 py-3 text-gray-900 font-semibold hover:border-gray-300 transition-all"
               >
                 Explore All Services <ArrowRight className="w-5 h-5" />
-              </Link>
+              </TrackedLink>
             </div>
           </div>
 
@@ -308,12 +308,12 @@ export default function ServiceExplorer({
                             >
                               Quick Book <ArrowRight className="w-5 h-5" />
                             </button>
-                            <Link
+                            <TrackedLink
                               href={`/car-services/${INTERNAL_SLUG_TO_CAR_SERVICES[active.slug] ?? active.slug}`}
                               className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-3 text-gray-900 font-semibold"
                             >
                               Know More
-                            </Link>
+                            </TrackedLink>
                           </div>
                         </div>
                       </div>
@@ -455,13 +455,13 @@ export default function ServiceExplorer({
               >
                 Quick Book <ArrowRight className="w-5 h-5" />
               </button>
-              <Link
+              <TrackedLink
                 href={`/car-services/${INTERNAL_SLUG_TO_CAR_SERVICES[sheetService.slug] ?? sheetService.slug}`}
                 onClick={() => setSheetOpen(false)}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-3 text-gray-900 font-semibold"
               >
                 Know More
-              </Link>
+              </TrackedLink>
             </div>
           </div>
         )}

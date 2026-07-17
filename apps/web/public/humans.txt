@@ -1,0 +1,13 @@
+/* NOTE: Live site serves /humans.txt from the app route (Advanced SEO → Live Files). */
+/* TEAM */
+Company: MYFNG - My Friendly Neighbourhood Garage
+Site: https://myfng.in
+Contact: support@myfng.in
+Location: Mumbai, Maharashtra, India
+
+/* THANKS */
+Customers and workshop partners across Mumbai, Pune, Thane and Navi Mumbai.
+
+/* SITE */
+Standards: HTML5, Schema.org, Open Graph
+Components: Next.js, Supabase

@@ -60,6 +60,13 @@ export interface SessionData {
     pricingShown?: boolean; // Flag to track if pricing has been shown to user
     awaitingBookingConfirmation?: boolean; // Flag to track if we're waiting for user to confirm booking after pricing
     bookingConfirmedByUser?: boolean;
+    trackingUtm?: {
+      utm_source?: string;
+      utm_medium?: string;
+      utm_campaign?: string;
+      utm_term?: string;
+      utm_content?: string;
+    };
   };
 }
 

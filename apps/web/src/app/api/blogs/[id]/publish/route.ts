@@ -10,6 +10,7 @@ import { validateAllImgHaveAlt } from '@/lib/blog/text';
 import { createNotification } from '@/lib/notifications';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
 import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
+import { revalidateBlogSeo } from '@/lib/seo/revalidate';
 
 export async function POST(
   request: NextRequest,
@@ -176,6 +177,8 @@ export async function POST(
     } catch (e) {
       console.warn('Failed to notify author (non-blocking):', e);
     }
+
+    revalidateBlogSeo(String(existingBlog.slug || publishedBlog?.slug || ''));
 
     return NextResponse.json({ 
       message: 'Blog published successfully',

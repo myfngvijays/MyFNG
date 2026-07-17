@@ -1,1 +1,1 @@
-export { default, metadata } from '../contact/layout';
+export { default, generateMetadata } from '../contact/layout';

@@ -1,3 +1,7 @@
+# NOTE: Live site serves /llms.txt from the app route (Advanced SEO → Live Files).
+# Edit via Super Admin → Advanced SEO → Technical SEO → Live Files.
+# This file is used only as the auto-generated default template.
+
 # My FNG
 
 > My FNG (My Friendly Neighbourhood Garage) is India's first AI-powered car service booking platform. We connect car owners with verified multi-brand workshops for servicing, repairs, detailing, and 24/7 roadside assistance across Mumbai, Navi Mumbai, Thane, Palghar, and Pune.

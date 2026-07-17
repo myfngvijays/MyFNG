@@ -1,26 +1,28 @@
-import { buildPageMetadata } from '@/lib/seo/metadata';
+import { buildManagedPageMetadata } from '@/lib/site-page-seo';
 import JsonLd from '@/components/seo/JsonLd';
-import { localBusinessSchema } from '@/lib/seo/schemas';
+import { collectionPageSchema } from '@/lib/seo/schemas';
+import { SITE_URL } from '@/lib/seo/metadata';
+import { listWorkshopLocatorSchemaItems } from '@/lib/workshop-page-seo';
 
-export const metadata = buildPageMetadata({
-  title: 'Find Car Workshops Near Me | MyFNG Verified Garages',
-  description:
-    'Find verified MYFNG car workshops near you in Mumbai, Pune, Thane & Navi Mumbai. Compare ratings, services & book online instantly.',
-  keywords: [
-    'car workshop near me',
-    'garage near me',
-    'MYFNG workshops',
-    'car service center near me',
-  ],
-  keyphrase: 'car workshop near me',
-  canonicalPath: '/workshop-locator',
-  city: 'Mumbai',
-});
+export async function generateMetadata() {
+  return buildManagedPageMetadata('/workshop-locator');
+}
 
-export default function WorkshopsLayout({ children }: { children: React.ReactNode }) {
+export default async function WorkshopsLayout({ children }: { children: React.ReactNode }) {
+  const items = await listWorkshopLocatorSchemaItems(20);
+
   return (
     <>
-      <JsonLd data={localBusinessSchema('Mumbai')} />
+      {items.length ? (
+        <JsonLd
+          data={collectionPageSchema({
+            name: 'MYFNG Workshop Locator',
+            description: 'Find verified MYFNG car workshops near you across Mumbai, Pune, Thane and Navi Mumbai.',
+            url: `${SITE_URL}/workshop-locator`,
+            items,
+          })}
+        />
+      ) : null}
       {children}
     </>
   );

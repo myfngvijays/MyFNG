@@ -366,6 +366,12 @@ const navigationItems: NavItem[] = [
         icon: HelpCircle,
         description: 'General, service & RSA FAQs',
       },
+      {
+        name: 'Advanced SEO',
+        href: '/dashboard/super_admin/site-seo',
+        icon: Search,
+        description: 'Website page titles, meta & OG tags',
+      },
     ],
   },
   {
@@ -504,6 +510,7 @@ export default function SuperAdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const isSiteSeoPage = pathname?.includes('/site-seo') ?? false;
   const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserClient(), []);
   const [authReady, setAuthReady] = useState(false);
@@ -598,7 +605,8 @@ export default function SuperAdminLayout({
     if (
       pathname?.startsWith('/dashboard/super_admin/brands') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/vehicle-images') ||
-      pathname?.startsWith('/dashboard/super_admin/public-faqs')
+      pathname?.startsWith('/dashboard/super_admin/public-faqs') ||
+      pathname?.startsWith('/dashboard/super_admin/site-seo')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));
     }
@@ -685,7 +693,7 @@ export default function SuperAdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className={`flex h-screen ${isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : 'bg-gray-50'}`}>
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -1166,7 +1174,7 @@ export default function SuperAdminLayout({
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className={`flex-1 overflow-auto ${isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : ''}`}>
         {children}
       </main>
     </div>

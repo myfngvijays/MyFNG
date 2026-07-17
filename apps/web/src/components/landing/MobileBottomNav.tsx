@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import TrackedLink from '@/components/tracking/TrackedLink';
 import { usePathname } from 'next/navigation';
 import { Bot, Home, LifeBuoy, Phone, Wrench } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -74,13 +74,13 @@ export default function MobileBottomNav() {
     return (
       <>
         <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <Link
+          <TrackedLink
             href="/book-service"
             className="flex items-center justify-center gap-2 text-white font-bold text-[15px] no-underline w-full"
             style={{ background: '#1d4ed8', height: 56 }}
           >
             📅 Book Your Service Now
-          </Link>
+          </TrackedLink>
         </div>
         <div className="h-14 lg:hidden" aria-hidden="true" />
       </>
@@ -92,13 +92,13 @@ export default function MobileBottomNav() {
     return (
       <>
         <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <Link
+          <TrackedLink
             href={bookUrl}
             className="flex items-center justify-center gap-2 text-white font-bold text-[15px] no-underline w-full"
             style={{ background: '#1d4ed8', height: 56 }}
           >
             📅 {carServiceInfo.label}
-          </Link>
+          </TrackedLink>
         </div>
         <div className="h-14 lg:hidden" aria-hidden="true" />
       </>
@@ -109,13 +109,13 @@ export default function MobileBottomNav() {
     return (
       <>
         <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <Link
+          <TrackedLink
             href="/book-service"
             className="flex items-center justify-center gap-2 text-white font-bold text-[15px] no-underline w-full"
             style={{ background: '#1d4ed8', height: 56 }}
           >
             📅 Book Your Service Now
-          </Link>
+          </TrackedLink>
         </div>
         <div className="h-14 lg:hidden" aria-hidden="true" />
       </>
@@ -161,7 +161,7 @@ export default function MobileBottomNav() {
                 const Icon = item.icon;
 
                 return (
-                  <Link
+                  <TrackedLink
                     key={item.label}
                     href={item.href}
                     className={`flex flex-col items-center justify-center gap-1 py-3 ${
@@ -170,7 +170,7 @@ export default function MobileBottomNav() {
                   >
                     <Icon className="w-5 h-5" strokeWidth={3} />
                     <span className="text-[11px] font-semibold">{item.label}</span>
-                  </Link>
+                  </TrackedLink>
                 );
               })}
             </div>

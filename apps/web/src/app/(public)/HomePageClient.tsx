@@ -1021,7 +1021,7 @@ export default function HomePage() {
       <ServiceExplorer
         services={services}
         onAskAI={() => (window.location.href = appendUtmToHref('/misa-ai'))}
-        onQuickBook={() => (window.location.href = '/book-service')}
+        onQuickBook={() => (window.location.href = appendUtmToHref('/book-service'))}
         popularSlugs={['periodic-service', 'ac-service', 'battery-service', 'brake-service', 'engine-service']}
       />
 
@@ -2103,7 +2103,7 @@ export default function HomePage() {
                     <button
                       key={s.category}
                       type="button"
-                      onClick={() => { window.location.href = `/book-service?prefill_category=${encodeURIComponent(s.category)}`; }}
+                      onClick={() => { window.location.href = appendUtmToHref(`/book-service?prefill_category=${encodeURIComponent(s.category)}`); }}
                       className="p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all text-center group"
                     >
                       <div className="w-12 h-12 mx-auto mb-1.5 flex items-center justify-center">
@@ -2317,7 +2317,7 @@ export default function HomePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { window.location.href = '/book-service?prefill_category=PERIODIC'; }}
+                  onClick={() => { window.location.href = appendUtmToHref('/book-service?prefill_category=PERIODIC'); }}
                   className="p-2.5 bg-white border border-blue-200 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-all text-center group"
                 >
                   <div className="w-8 h-8 mx-auto rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-1.5">

@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useTrackedRouter } from '@/lib/useTrackedRouter';
 import Navbar from '@/components/landing/Navbar';
-import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
 import { loadRazorpayScript } from '@/lib/services/paymentService';
@@ -37,7 +36,7 @@ interface BookingFormData {
 }
 
 export default function BookServicePage() {
-  const router = useRouter();
+  const router = useTrackedRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -1293,6 +1292,7 @@ export default function BookServicePage() {
     const completeAddress = addressParts.filter(part => part.length > 0).join(', ');
 
     const payload = {
+      utm: utmParams,
       lead: {
         lead_number: leadNumber,
         created_from: 'WEB',
@@ -1340,6 +1340,7 @@ export default function BookServicePage() {
     const response = await fetch('/api/public/bookings/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify(payload),
     });
     const json = await response.json();
@@ -1978,7 +1979,6 @@ export default function BookServicePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <AppDownloadPopup />
 
       {/* Hero Section */}
       <div className="bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary pt-16 sm:pt-20 md:pt-22 pb-8 sm:pb-10 md:pb-12">

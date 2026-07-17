@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useTrackedRouter } from '@/lib/useTrackedRouter';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { createClient } from '@/lib/supabase/client';
@@ -12,7 +13,7 @@ import {
 import toast from 'react-hot-toast';
 
 function BookingDetailsContent() {
-  const router = useRouter();
+  const router = useTrackedRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   
@@ -119,7 +120,9 @@ function BookingDetailsContent() {
       const response = await fetch('/api/public/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
+          utm: utmParams,
           lead: {
             lead_number: leadNumber,
             created_from: 'WEB',

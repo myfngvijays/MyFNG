@@ -1,12 +1,23 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ExportDateRangeMenu from '@/components/admin/ExportDateRangeMenu';
-import { filterBookingLeads, enrichBookingLead, getLeadServiceLabel, getLeadDisplayAmount } from '@/lib/booking-lead-utils';
+import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
+import {
+  filterBookingLeads,
+  enrichBookingLead,
+  getLeadServiceLabel,
+  getLeadDisplayAmount,
+  getLeadUtmParams,
+  resolveLeadSourceBadgeTheme,
+  computeServiceLeadOverview,
+  computeChatbotBookingOverview,
+  type LeadSourceBadgeKind,
+} from '@/lib/booking-lead-utils';
+import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
-import type { ReportDatePreset } from '@/lib/report-date-range';
+import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
 
 type ServiceLead = Record<string, any>;
 type ChatbotBooking = Record<string, any>;
@@ -78,21 +89,87 @@ function formatCurrency(value?: number | string | null) {
   return `Rs ${num.toLocaleString('en-IN')}`;
 }
 
-function SourceBadge({ label, source }: { label: string; source: string }) {
-  const styles =
-    source === 'APP'
-      ? 'bg-emerald-100 text-emerald-800'
-      : source === 'WEBSITE'
-        ? 'bg-blue-100 text-blue-800'
-        : source === 'MISA'
-          ? 'bg-violet-100 text-violet-800'
-          : 'bg-gray-100 text-gray-700';
-  const Icon =
-    source === 'APP' ? Smartphone : source === 'WEBSITE' ? Globe : source === 'MISA' ? Bot : UserRound;
+function SourceBadgeIcon({ kind }: { kind: LeadSourceBadgeKind }) {
+  if (kind === 'google') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" aria-hidden>
+        <path
+          fill="#4285F4"
+          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+        />
+        <path
+          fill="#34A853"
+          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+        />
+        <path
+          fill="#FBBC05"
+          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+        />
+        <path
+          fill="#EA4335"
+          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+        />
+      </svg>
+    );
+  }
+
+  if (kind === 'meta') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 fill-current" aria-hidden>
+        <path d="M12 2C6.48 2 2 6.15 2 11.25c0 2.61 1.19 4.97 3.08 6.63L4.5 21.5l4.02-2.01c1.12.31 2.31.48 3.48.48 5.52 0 10-4.15 10-9.25S17.52 2 12 2zm0 15.5c-1.01 0-1.98-.16-2.89-.45l-.61-.22-2.05 1.02.39-2.24-.4-.39C5.56 14.3 5 12.82 5 11.25 5 7.69 8.13 5 12 5s7 2.69 7 6.25-3.13 6.25-7 6.25z" />
+      </svg>
+    );
+  }
+
+  if (kind === 'instagram') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 fill-current" aria-hidden>
+        <path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm5 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
+      </svg>
+    );
+  }
+
+  if (kind === 'whatsapp') return <MessageCircle className="h-3.5 w-3.5 shrink-0" />;
+  if (kind === 'app') return <Smartphone className="h-3.5 w-3.5 shrink-0" />;
+  if (kind === 'website') return <Globe className="h-3.5 w-3.5 shrink-0" />;
+  if (kind === 'misa') return <Bot className="h-3.5 w-3.5 shrink-0" />;
+  return <UserRound className="h-3.5 w-3.5 shrink-0" />;
+}
+
+function SourceBadge({ lead }: { lead: Record<string, any> }) {
+  const theme = lead.source_badge_kind
+    ? {
+        source_badge_kind: lead.source_badge_kind as LeadSourceBadgeKind,
+        source_badge_label: lead.source_badge_label,
+        source_badge_class: lead.source_badge_class,
+      }
+    : resolveLeadSourceBadgeTheme(lead);
+
+  const kind = theme.source_badge_kind;
+  const label = theme.source_badge_label || lead.lead_source || lead.booking_source_label || 'Other';
+  const styles = theme.source_badge_class || 'bg-gray-100 text-gray-700';
+
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}>
-      <Icon className="w-3 h-3 shrink-0" />
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}>
+      <SourceBadgeIcon kind={kind} />
       {label}
+    </span>
+  );
+}
+
+function getLeadUtmCampaign(lead: Record<string, any>) {
+  return String(getLeadUtmParams(lead).utm_campaign || '').trim();
+}
+
+function UtmCampaignCell({ lead }: { lead: Record<string, any> }) {
+  const campaign = getLeadUtmCampaign(lead);
+  if (!campaign) return <span className="text-gray-300">—</span>;
+  return (
+    <span
+      className="inline-block max-w-[140px] truncate rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700"
+      title={campaign}
+    >
+      {campaign}
     </span>
   );
 }
@@ -123,6 +200,262 @@ function prettifyKey(key: string) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+function DetailFieldCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-gray-200/80 bg-white p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <div className="mt-1 text-sm text-gray-900 break-words">{value ?? '-'}</div>
+    </div>
+  );
+}
+
+function DetailSection({
+  title,
+  icon: Icon,
+  className,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`rounded-xl border p-4 ${className}`}>
+      <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide">
+        <Icon className="h-4 w-4 shrink-0" />
+        {title}
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
+function formatDetailScalar(value: unknown): React.ReactNode {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
+  const meta = item.meta && typeof item.meta === 'object' ? (item.meta as Record<string, unknown>) : {};
+  const serviceLabel = getLeadServiceLabel(item);
+  const payable = getLeadDisplayAmount(item);
+
+  const paymentExtras: Array<{ label: string; value: React.ReactNode }> = [];
+  if (meta.service_subtotal) {
+    paymentExtras.push({ label: 'Service Subtotal', value: formatCurrency(Number(meta.service_subtotal)) });
+  }
+  if (meta.wallet_applied && Number(meta.wallet_deduction || 0) > 0) {
+    paymentExtras.push({ label: 'Wallet Used', value: formatCurrency(Number(meta.wallet_deduction)) });
+  }
+  if (item.coupon_display_code || item.coupon_code) {
+    paymentExtras.push({
+      label: 'Coupon',
+      value: <CouponBadge code={item.coupon_display_code || item.coupon_code} discount={item.coupon_display_discount || item.discount_amount} />,
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      <LeadTrackingSection item={item} />
+
+      <DetailSection title="Lead Overview" icon={Hash} className="border-slate-200 bg-slate-50/80">
+        <DetailFieldCard label="Lead Number" value={item.lead_number} />
+        <DetailFieldCard label="Status" value={item.status} />
+        <DetailFieldCard label="Lead Type" value={item.lead_type} />
+        <DetailFieldCard label="Priority" value={item.lead_priority} />
+        <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
+        <DetailFieldCard label="Created From" value={item.created_from} />
+        <DetailFieldCard label="Booking Channel" value={<SourceBadge lead={item} />} />
+        <DetailFieldCard label="Internal ID" value={item.id} />
+      </DetailSection>
+
+      <DetailSection title="Customer Details" icon={UserRound} className="border-emerald-200 bg-emerald-50/50">
+        <DetailFieldCard label="Customer Name" value={item.customer_name} />
+        <DetailFieldCard label="Phone" value={item.customer_phone} />
+        <DetailFieldCard label="Email" value={item.customer_email} />
+        <DetailFieldCard label="Pickup Required" value={formatDetailScalar(item.pickup_required)} />
+        <DetailFieldCard label="Customer Address" value={item.customer_address} />
+        <DetailFieldCard label="Address" value={item.address} />
+        <DetailFieldCard label="Pickup Address" value={item.pickup_address} />
+      </DetailSection>
+
+      <DetailSection title="Vehicle & Location" icon={Car} className="border-blue-200 bg-blue-50/50">
+        <DetailFieldCard label="Vehicle Number" value={item.vehicle_number} />
+        <DetailFieldCard label="Make" value={item.vehicle_make} />
+        <DetailFieldCard label="Model" value={item.vehicle_model} />
+        <DetailFieldCard label="Variant" value={item.vehicle_variant} />
+        <DetailFieldCard label="Year" value={item.vehicle_year} />
+        <DetailFieldCard label="Fuel Type" value={item.fuel_type} />
+        <DetailFieldCard label="City" value={item.city} />
+        <DetailFieldCard label="Odometer" value={item.odometer_reading} />
+      </DetailSection>
+
+      <DetailSection title="Service & Schedule" icon={Wrench} className="border-violet-200 bg-violet-50/50">
+        <DetailFieldCard label="Service" value={serviceLabel} />
+        <DetailFieldCard label="Service Type" value={item.service_type} />
+        <DetailFieldCard label="Preferred Slot" value={formatDateTime(item.preferred_slot_start)} />
+        <DetailFieldCard label="Preferred Date" value={item.preferred_date} />
+        <DetailFieldCard label="Preferred Time" value={item.preferred_time_slot || item.preferred_service_slot} />
+        <DetailFieldCard label="Problem Description" value={item.problem_description} />
+        <DetailFieldCard label="Notes" value={item.description} />
+      </DetailSection>
+
+      <DetailSection title="Payment & Pricing" icon={DollarSign} className="border-amber-200 bg-amber-50/50">
+        <DetailFieldCard label="Payable Amount" value={formatCurrency(payable)} />
+        <DetailFieldCard label="Estimated Amount" value={formatCurrency(item.estimated_amount)} />
+        <DetailFieldCard label="Actual Amount" value={formatCurrency(item.actual_amount)} />
+        <DetailFieldCard label="Payment Mode" value={item.payment_mode} />
+        <DetailFieldCard label="Payment Status" value={item.payment_status} />
+        <DetailFieldCard label="Discount" value={formatCurrency(item.discount_amount)} />
+        {paymentExtras.map((field) => (
+          <DetailFieldCard key={field.label} label={field.label} value={field.value} />
+        ))}
+      </DetailSection>
+
+      {Object.keys(meta).length > 0 ? (
+        <DetailSection title="Additional Info" icon={ClipboardList} className="border-gray-200 bg-gray-50/80">
+          {Object.entries(meta)
+            .filter(([key]) => !['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'tracking', 'customer_id'].includes(key))
+            .map(([key, value]) => (
+              <DetailFieldCard key={key} label={prettifyKey(key)} value={formatDetailScalar(value)} />
+            ))}
+        </DetailSection>
+      ) : null}
+    </div>
+  );
+}
+
+function ChatbotBookingDetailContent({ item }: { item: Record<string, any> }) {
+  return (
+    <div className="space-y-4">
+      <DetailSection title="Customer" icon={UserRound} className="border-emerald-200 bg-emerald-50/50">
+        <DetailFieldCard label="Name" value={item.customer_name} />
+        <DetailFieldCard label="Phone" value={item.phone_number} />
+        <DetailFieldCard label="City" value={item.city} />
+        <DetailFieldCard label="Pincode" value={item.pincode} />
+      </DetailSection>
+
+      <DetailSection title="Vehicle & Service" icon={Car} className="border-blue-200 bg-blue-50/50">
+        <DetailFieldCard label="Car Model" value={item.car_model} />
+        <DetailFieldCard label="Vehicle Number" value={item.vehicle_number} />
+        <DetailFieldCard label="Car Class" value={item.car_class} />
+        <DetailFieldCard label="Service" value={item.service_name} />
+        <DetailFieldCard label="Category" value={item.service_category} />
+      </DetailSection>
+
+      <DetailSection title="Booking" icon={ClipboardList} className="border-violet-200 bg-violet-50/50">
+        <DetailFieldCard label="Status" value={item.status} />
+        <DetailFieldCard label="Preferred Date" value={item.preferred_date} />
+        <DetailFieldCard label="Preferred Time" value={item.preferred_time} />
+        <DetailFieldCard label="Address" value={item.address} />
+        <DetailFieldCard label="Quoted Price" value={formatCurrency(item.quoted_price)} />
+        <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
+        <DetailFieldCard label="Session ID" value={item.session_id} />
+        <DetailFieldCard label="Notes" value={item.notes} />
+      </DetailSection>
+    </div>
+  );
+}
+
+function LeadTrackingSection({ item }: { item: Record<string, any> }) {
+  const utm = getLeadUtmParams(item);
+  const hasUtm = UTM_KEYS.some((key) => Boolean(utm[key]));
+
+  return (
+    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/70 p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-blue-800 mb-3">Campaign Tracking</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-white border border-blue-100 rounded-lg p-3">
+          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Lead Source</p>
+          <div className="mt-1.5">
+            <SourceBadge lead={item} />
+          </div>
+        </div>
+        {UTM_KEYS.map((key) => (
+          <div key={key} className="bg-white border border-blue-100 rounded-lg p-3">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">{UTM_DISPLAY_LABELS[key]}</p>
+            <p className="text-sm text-gray-900 mt-1 break-words">{utm[key] || '-'}</p>
+          </div>
+        ))}
+      </div>
+      {!hasUtm ? (
+        <p className="text-xs text-amber-700 mt-3">
+          No UTM params captured for this lead. User must land via ad URL with utm_* query params before booking.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function sourceFilterLabel(source: (typeof SOURCE_OPTIONS)[number]) {
+  switch (source) {
+    case 'ALL':
+      return 'All Sources';
+    case 'APP':
+      return 'App Booking';
+    case 'WEBSITE':
+      return 'Website';
+    case 'MISA':
+      return 'MISA AI';
+    case 'OTHER':
+      return 'Other';
+    default:
+      return source;
+  }
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+          <p className="mt-1 text-2xl font-extrabold text-gray-900">{value}</p>
+          {sub ? <p className="mt-1 text-xs text-gray-500">{sub}</p> : null}
+        </div>
+        <div className="rounded-xl bg-blue-50 p-2 text-blue-600 shrink-0">{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+  activeClassName,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  activeClassName: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
+        active ? activeClassName : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function SuperAdminBookingsPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('service_leads');
   const [searchTerm, setSearchTerm] = useState('');
@@ -132,6 +465,7 @@ export default function SuperAdminBookingsPage() {
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -290,34 +624,72 @@ export default function SuperAdminBookingsPage() {
   };
 
   const displayedChatbotBookings = useMemo(() => {
-    if (!searchTerm.trim()) return chatbotBookings;
+    let rows = chatbotBookings;
+    if (statusFilter !== 'ALL') {
+      rows = rows.filter((b) => String(b.status || '').toUpperCase() === statusFilter);
+    }
+    if (!searchTerm.trim()) return rows;
     const q = searchTerm.trim().toLowerCase();
-    return chatbotBookings.filter((b) =>
+    return rows.filter((b) =>
       [b.customer_name, b.phone_number, b.city, b.service_name, b.car_model, b.status]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(q),
     );
-  }, [chatbotBookings, searchTerm]);
+  }, [chatbotBookings, searchTerm, statusFilter]);
 
-  const displayedServiceLeads = useMemo(
-    () =>
-      filterBookingLeads(serviceLeads, {
-        source: sourceFilter,
-        hasCoupon: couponFilter,
-        search: searchTerm,
-      }),
-    [serviceLeads, sourceFilter, couponFilter, searchTerm],
-  );
+  const displayedServiceLeads = useMemo(() => {
+    let leads = filterBookingLeads(serviceLeads, {
+      source: sourceFilter,
+      hasCoupon: couponFilter,
+      search: searchTerm,
+    });
+    if (statusFilter !== 'ALL') {
+      leads = leads.filter((lead) => String(lead.status || 'NEW').toUpperCase() === statusFilter);
+    }
+    return leads;
+  }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter]);
+
+  const serviceLeadOverview = useMemo(() => computeServiceLeadOverview(serviceLeads), [serviceLeads]);
+  const chatbotOverview = useMemo(() => computeChatbotBookingOverview(chatbotBookings), [chatbotBookings]);
 
   const activeData = useMemo(
     () => (activeTab === 'service_leads' ? displayedServiceLeads : displayedChatbotBookings),
     [activeTab, displayedServiceLeads, displayedChatbotBookings],
   );
 
+  const dateRangeLabel = useMemo(
+    () => resolveReportDateRange(datePreset, customStart, customEnd).label,
+    [customStart, customEnd, datePreset],
+  );
+
+  const handleDateRangeChange = ({
+    preset,
+    customStart: start,
+    customEnd: end,
+  }: {
+    preset: ReportDatePreset;
+    customStart: string;
+    customEnd: string;
+  }) => {
+    if (preset === 'custom' && !start && !end) {
+      const defaultRange = resolveReportDateRange('last_7_days');
+      setDatePreset('custom');
+      setCustomStart(defaultRange.startYmd);
+      setCustomEnd(defaultRange.endYmd);
+      return;
+    }
+
+    setDatePreset(preset);
+    setCustomStart(start);
+    setCustomEnd(end);
+  };
+
   const fetchData = useCallback(async () => {
     if (activeTab === 'upload_crm') return;
+    if (datePreset === 'custom' && (!customStart || !customEnd)) return;
+
     setLoading(true);
     setError(null);
 
@@ -332,7 +704,6 @@ export default function SuperAdminBookingsPage() {
         if (customStart) query.set('start', customStart);
         if (customEnd) query.set('end', customEnd);
       }
-      if (statusFilter !== 'ALL') query.set('status', statusFilter);
 
       const res = await fetch(`${endpoint}?${query.toString()}`);
       const text = await res.text();
@@ -354,7 +725,7 @@ export default function SuperAdminBookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, statusFilter, datePreset, customStart, customEnd]);
+  }, [activeTab, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -523,6 +894,12 @@ export default function SuperAdminBookingsPage() {
   };
 
   const handleExport = async () => {
+    if (datePreset === 'custom' && (!customStart || !customEnd)) {
+      toast.error('Please select both start and end dates');
+      return;
+    }
+
+    setExporting(true);
     try {
       const params = new URLSearchParams({ export: '1', preset: datePreset });
       if (datePreset === 'custom') {
@@ -559,6 +936,8 @@ export default function SuperAdminBookingsPage() {
       toast.success('Export downloaded');
     } catch (err: any) {
       toast.error(err?.message || 'Export failed');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -628,100 +1007,108 @@ export default function SuperAdminBookingsPage() {
             </button>
 
             {activeTab !== 'upload_crm' ? (
-              <ExportDateRangeMenu
-                preset={datePreset}
-                customStart={customStart}
-                customEnd={customEnd}
-                onRangeChange={({ preset, customStart: start, customEnd: end }) => {
-                  setDatePreset(preset);
-                  setCustomStart(start);
-                  setCustomEnd(end);
-                }}
-                onExport={handleExport}
-                disabled={loading}
-              />
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={loading || exporting || (datePreset === 'custom' && (!customStart || !customEnd))}
+                className="ml-auto inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting ? 'Exporting...' : 'Export CSV'}
+              </button>
             ) : null}
           </div>
 
-          {activeTab === 'service_leads' ? (
-            <div className="mt-4 rounded-xl border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-orange-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-gray-700 mb-3">
-                Filter bookings — App vs Website & Coupon
-              </p>
-              <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-600">Source:</span>
-                  {SOURCE_OPTIONS.map((source) => (
-                    <button
-                      key={source}
-                      type="button"
-                      onClick={() => setSourceFilter(source)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition ${
-                        sourceFilter === source
-                          ? source === 'APP'
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                            : source === 'WEBSITE'
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                              : 'bg-gray-800 text-white border-gray-800 shadow-sm'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {source === 'APP' ? <Smartphone className="w-3.5 h-3.5" /> : null}
-                      {source === 'WEBSITE' ? <Globe className="w-3.5 h-3.5" /> : null}
-                      {source === 'ALL' ? 'All Sources' : source === 'APP' ? 'App Booking' : source === 'WEBSITE' ? 'Website' : 'Other'}
-                    </button>
-                  ))}
+          {activeTab !== 'upload_crm' ? (
+            <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
+              <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:gap-4">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0">Date</span>
+                  <ReportDateRangeFilter
+                    variant="compact"
+                    preset={datePreset}
+                    customStart={customStart}
+                    customEnd={customEnd}
+                    onChange={handleDateRangeChange}
+                  />
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-600">Coupon:</span>
-                  {COUPON_OPTIONS.map((coupon) => (
-                    <button
-                      key={coupon}
-                      type="button"
-                      onClick={() => setCouponFilter(coupon)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition ${
-                        couponFilter === coupon
-                          ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {coupon === 'YES' ? <Ticket className="w-3.5 h-3.5" /> : null}
-                      {coupon === 'ALL' ? 'All' : coupon === 'YES' ? 'With Coupon' : 'No Coupon'}
-                    </button>
-                  ))}
-                </div>
+
+                {activeTab === 'service_leads' ? (
+                  <>
+                    <div className="hidden xl:block h-8 w-px bg-gray-200 shrink-0" />
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0 mr-0.5">Source</span>
+                      {SOURCE_OPTIONS.map((source) => (
+                        <FilterChip
+                          key={source}
+                          active={sourceFilter === source}
+                          onClick={() => setSourceFilter(source)}
+                          activeClassName={
+                            source === 'APP'
+                              ? 'border-emerald-600 bg-emerald-600 text-white'
+                              : source === 'WEBSITE'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : source === 'MISA'
+                                  ? 'border-violet-600 bg-violet-600 text-white'
+                                  : 'border-slate-700 bg-slate-700 text-white'
+                          }
+                        >
+                          {source === 'APP' ? <Smartphone className="h-3 w-3" /> : null}
+                          {source === 'WEBSITE' ? <Globe className="h-3 w-3" /> : null}
+                          {source === 'MISA' ? <Bot className="h-3 w-3" /> : null}
+                          {sourceFilterLabel(source)}
+                        </FilterChip>
+                      ))}
+                    </div>
+
+                    <div className="hidden xl:block h-8 w-px bg-gray-200 shrink-0" />
+
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0 mr-0.5">Coupon</span>
+                      {COUPON_OPTIONS.map((coupon) => (
+                        <FilterChip
+                          key={coupon}
+                          active={couponFilter === coupon}
+                          onClick={() => setCouponFilter(coupon)}
+                          activeClassName="border-orange-500 bg-orange-500 text-white"
+                        >
+                          {coupon === 'YES' ? <Ticket className="h-3 w-3" /> : null}
+                          {coupon === 'ALL' ? 'All' : coupon === 'YES' ? 'With Coupon' : 'No Coupon'}
+                        </FilterChip>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+
+                {!loading ? (
+                  <p className="text-[11px] text-gray-500 xl:ml-auto shrink-0">
+                    <span className="font-bold text-gray-800">
+                      {activeTab === 'service_leads' ? displayedServiceLeads.length : displayedChatbotBookings.length}
+                    </span>
+                    {activeTab === 'service_leads' ? ` / ${serviceLeads.length} leads` : ' bookings'}
+                    {datePreset !== 'all_time' ? <span className="text-gray-400"> · {dateRangeLabel}</span> : null}
+                  </p>
+                ) : null}
               </div>
-              {serviceLeads.length > 0 ? (
-                <p className="mt-3 text-xs text-gray-600">
-                  Showing <strong className="text-emerald-700">{displayedServiceLeads.length}</strong> of{' '}
-                  <strong>{serviceLeads.length}</strong> leads
-                  {sourceFilter !== 'ALL' || couponFilter !== 'ALL' || searchTerm.trim() ? ' · filtered' : ''}
-                </p>
-              ) : null}
+
+              <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
+                {STATUS_OPTIONS.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                      statusFilter === status
+                        ? 'bg-brand-primary text-white border-brand-primary'
+                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
-
-          {activeTab !== 'upload_crm' && (
-            <>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {STATUS_OPTIONS.map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                    statusFilter === status
-                      ? 'bg-brand-primary text-white border-brand-primary'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-
-            </>
-          )}
         </div>
       </div>
 
@@ -754,6 +1141,38 @@ export default function SuperAdminBookingsPage() {
       ) : null}
 
       <div className="px-4 sm:px-6 lg:px-8 py-5">
+        {activeTab !== 'upload_crm' && !loading ? (
+          <div className="mb-5">
+            {datePreset !== 'all_time' ? (
+              <p className="mb-3 text-xs font-medium text-gray-500">Overview for {dateRangeLabel}</p>
+            ) : null}
+            {activeTab === 'service_leads' ? (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
+              <StatCard label="Total Leads" value={serviceLeadOverview.total} icon={<ClipboardList className="h-5 w-5" />} />
+              <StatCard label="App Booking" value={serviceLeadOverview.app} icon={<Smartphone className="h-5 w-5" />} />
+              <StatCard label="Website" value={serviceLeadOverview.website} icon={<Globe className="h-5 w-5" />} />
+              <StatCard label="MISA AI" value={serviceLeadOverview.misa} icon={<Bot className="h-5 w-5" />} />
+              <StatCard label="Google Ads" value={serviceLeadOverview.googleAds} icon={<Megaphone className="h-5 w-5" />} />
+              <StatCard label="Meta / Insta Ads" value={serviceLeadOverview.metaAds} icon={<Megaphone className="h-5 w-5" />} />
+              <StatCard
+                label="With Coupon"
+                value={serviceLeadOverview.withCoupon}
+                sub={`${serviceLeadOverview.total > 0 ? Math.round((serviceLeadOverview.withCoupon / serviceLeadOverview.total) * 100) : 0}% of leads`}
+                icon={<Ticket className="h-5 w-5" />}
+              />
+              <StatCard label="New Leads" value={serviceLeadOverview.newLeads} icon={<UserRound className="h-5 w-5" />} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard label="Total AI Bookings" value={chatbotOverview.total} icon={<Bot className="h-5 w-5" />} />
+              <StatCard label="Pending" value={chatbotOverview.pending} icon={<ClipboardList className="h-5 w-5" />} />
+              <StatCard label="Completed" value={chatbotOverview.completed} icon={<CheckCircle2 className="h-5 w-5" />} />
+              <StatCard label="With Quote" value={chatbotOverview.withQuote} icon={<DollarSign className="h-5 w-5" />} />
+            </div>
+          )}
+          </div>
+        ) : null}
+
         {activeTab === 'upload_crm' ? (
           <div className="space-y-5">
             {/* Upload Area */}
@@ -870,7 +1289,7 @@ export default function SuperAdminBookingsPage() {
           <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
               {activeTab === 'service_leads' ? (
-                <table className="w-full min-w-[1280px]">
+                <table className="w-full min-w-[1420px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
                       <th className="px-3 py-3 w-10">
@@ -886,11 +1305,12 @@ export default function SuperAdminBookingsPage() {
                       </th>
                       <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
                       <th className="px-4 py-3 whitespace-nowrap">Source</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Customer</th>
+                      <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th>
                       <th className="px-4 py-3 whitespace-nowrap">Phone</th>
                       <th className="px-4 py-3 whitespace-nowrap">Vehicle</th>
                       <th className="px-4 py-3 whitespace-nowrap">City</th>
                       <th className="px-4 py-3 min-w-[180px]">Service</th>
+                      <th className="px-4 py-3 whitespace-nowrap min-w-[120px]">UTM Campaign</th>
                       <th className="px-4 py-3 whitespace-nowrap">Coupon</th>
                       <th className="px-4 py-3 whitespace-nowrap">Status</th>
                       <th className="px-4 py-3 whitespace-nowrap">Amount</th>
@@ -926,16 +1346,21 @@ export default function SuperAdminBookingsPage() {
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <SourceBadge label={lead.booking_source_label || 'Website'} source={lead.booking_source || 'WEBSITE'} />
+                          <SourceBadge lead={lead} />
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-800 max-w-[140px]">
-                          <span className="block truncate" title={lead.customer_name || ''}>{lead.customer_name || '-'}</span>
+                        <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
+                          <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
+                            {lead.customer_name || '-'}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
                           <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <UtmCampaignCell lead={lead} />
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           <CouponBadge code={lead.coupon_display_code} discount={lead.coupon_display_discount} />
@@ -1055,7 +1480,7 @@ export default function SuperAdminBookingsPage() {
                       }
                       className="text-left flex-1 min-w-0"
                     >
-                      <p className="text-sm font-bold text-gray-900">
+                      <p className="text-sm font-bold text-gray-900 break-words">
                         {activeTab === 'service_leads'
                           ? item.customer_name || item.lead_number || '-'
                           : item.customer_name || '-'}
@@ -1065,7 +1490,7 @@ export default function SuperAdminBookingsPage() {
                       </p>
                       {activeTab === 'service_leads' ? (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <SourceBadge label={item.booking_source_label || 'Website'} source={item.booking_source || 'WEBSITE'} />
+                          <SourceBadge lead={item} />
                           {item.has_coupon_applied ? (
                             <CouponBadge code={item.coupon_display_code} discount={item.coupon_display_discount} />
                           ) : null}
@@ -1095,6 +1520,20 @@ export default function SuperAdminBookingsPage() {
                           <p className="text-gray-500">Date</p>
                           <p className="font-medium text-gray-800">{formatDateTime(item.created_at)}</p>
                         </div>
+                        {activeTab === 'service_leads' ? (
+                          <>
+                            <div className="col-span-2">
+                              <p className="text-gray-500">Service</p>
+                              <p className="font-medium text-gray-800">{getServiceLabel(item) || '-'}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-gray-500">UTM Campaign</p>
+                              <div className="mt-0.5">
+                                <UtmCampaignCell lead={item} />
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
                       </div>
                     </button>
                     {activeTab === 'service_leads' ? (
@@ -1178,6 +1617,23 @@ export default function SuperAdminBookingsPage() {
                     ))}
                   </select>
                 </div>
+                {editLead ? (
+                  <div className="col-span-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-blue-800 mb-2">UTM Tracking</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {UTM_KEYS.map((key) => (
+                        <div key={key}>
+                          <label className="text-[11px] font-semibold text-gray-500">{UTM_DISPLAY_LABELS[key]}</label>
+                          <input
+                            readOnly
+                            className="w-full mt-1 px-3 py-2 border rounded-lg text-sm bg-white text-gray-700"
+                            value={getLeadUtmParams(editLead)[key] || '-'}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-500">Service</label>
                   <input className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.service_type} onChange={(e) => setEditForm((f) => ({ ...f, service_type: e.target.value }))} />
@@ -1241,26 +1697,11 @@ export default function SuperAdminBookingsPage() {
             </div>
 
             <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)]">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {Object.entries(detailItem).map(([key, value]) => {
-                  const displayValue =
-                    (key === 'estimated_amount' || key === 'actual_amount') &&
-                    detailTitle.includes('Service Lead')
-                      ? getLeadDisplayAmount(detailItem)
-                      : value;
-                  return (
-                  <div key={key} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">{prettifyKey(key)}</p>
-                    <p className="text-sm text-gray-900 mt-1 break-words">
-                      {displayValue === null || displayValue === undefined || displayValue === ''
-                        ? '-'
-                        : typeof displayValue === 'object'
-                          ? JSON.stringify(displayValue, null, 2)
-                          : String(displayValue)}
-                    </p>
-                  </div>
-                );})}
-              </div>
+              {detailTitle.includes('Service Lead') ? (
+                <ServiceLeadDetailContent item={detailItem} />
+              ) : (
+                <ChatbotBookingDetailContent item={detailItem} />
+              )}
             </div>
           </div>
         </div>

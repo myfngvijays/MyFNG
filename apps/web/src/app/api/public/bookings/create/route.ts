@@ -18,6 +18,8 @@ import {
 } from '@/lib/booking-wallet-apply';
 import { buildPostBookingMembershipOffer } from '@/lib/post-booking-membership-offer';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
+import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
+import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
 
 type BookingPayload = {
   lead?: Record<string, any>;
@@ -248,6 +250,11 @@ export async function POST(request: NextRequest) {
       finalAmount = walletResult.finalAmount;
     }
 
+    const requestUtm = parseUtmFromRequest(request);
+    const leadUtm = extractUtmFromUnknown(lead);
+    const bodyUtm = extractUtmFromUnknown(body);
+    const resolvedUtm = mergeUtmParams(requestUtm, leadUtm, bodyUtm);
+
     const serviceLeadPayload = {
       ...lead,
       lead_number: leadNumber,
@@ -265,8 +272,7 @@ export async function POST(request: NextRequest) {
       estimated_amount: finalAmount,
       actual_amount: finalAmount,
       meta: (() => {
-        const nextMeta: Record<string, unknown> =
-          lead?.meta && typeof lead.meta === 'object' ? { ...(lead.meta as Record<string, unknown>) } : {};
+        const nextMeta = mergeLeadMetaWithUtm(lead?.meta, resolvedUtm, requestUtm, leadUtm, bodyUtm);
         if (registeredCustomer?.id) nextMeta.customer_id = registeredCustomer.id;
         nextMeta.service_subtotal = subtotal;
         if (includeBookingMembership) {
@@ -346,12 +352,17 @@ export async function POST(request: NextRequest) {
 
     await saveBookedVehicleToProfile(supabaseAdmin, serviceLead as Record<string, any>, customerPhone);
 
+    const telecrmLead = {
+      ...(serviceLead as Record<string, any>),
+      meta: mergeLeadMetaWithUtm((serviceLead as Record<string, any>)?.meta, resolvedUtm),
+      ...resolvedUtm,
+    };
+
     try {
-      await pushServiceLeadToTeleCRM(serviceLead as Record<string, any>, supabaseAdmin, {
+      await pushServiceLeadToTeleCRM(telecrmLead, supabaseAdmin, {
         leadTag: isMobileClient ? 'APP' : 'WEBSITE',
         leadSource: isMobileClient ? 'App Booking' : 'delhi_service',
         createdFrom: isMobileClient ? 'MOBILE_APP' : 'WEB',
-        systemNote: isMobileClient ? 'Lead Source: App Booking' : 'Lead Source: WEBSITE',
       });
     } catch (err) {
       console.error('[bookings/create] external sync failed:', err);

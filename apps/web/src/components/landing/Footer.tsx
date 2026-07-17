@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import TrackedLink from '@/components/tracking/TrackedLink';
 import { appendUtmToHref } from '@/lib/utm';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 
@@ -100,18 +100,18 @@ export default function Footer() {
             <br className="hidden md:inline" /> and reliable car care across Mumbai &amp; Pune.
           </p>
           <div className="flex justify-center gap-5 flex-wrap">
-            <Link
+            <TrackedLink
               href="/book-service"
               className="py-[14px] px-[30px] text-[16px] font-semibold rounded-lg bg-[#f97316] text-white hover:bg-[#ea580c] hover:-translate-y-[3px] transition-all duration-300 no-underline"
             >
               🚗 Book Car Service Now
-            </Link>
-            <Link
+            </TrackedLink>
+            <TrackedLink
               href="/misa-ai"
               className="py-[14px] px-[30px] text-[16px] font-semibold rounded-lg border-2 border-white text-white bg-transparent hover:bg-white hover:text-[#0f172a] transition-all duration-300 no-underline"
             >
               🤖 Book via MISA AI
-            </Link>
+            </TrackedLink>
           </div>
         </div>
       </section>
@@ -141,12 +141,12 @@ export default function Footer() {
                   { href: '/car-roadside-assistance', label: 'Roadside Assistance' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
-                    <Link
+                    <TrackedLink
                       href={item.href}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {item.label}
-                    </Link>
+                    </TrackedLink>
                   </li>
                 ))}
               </ul>
@@ -161,12 +161,12 @@ export default function Footer() {
                   label: s.title,
                 })).map((item) => (
                   <li key={item.href} className="mb-0">
-                    <Link
+                    <TrackedLink
                       href={item.href}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {item.label}
-                    </Link>
+                    </TrackedLink>
                   </li>
                 ))}
               </ul>
@@ -181,12 +181,12 @@ export default function Footer() {
                   'Porsche', 'Rolls Royce', 'Mitsubishi', 'Volvo',
                 ].map((brand) => (
                   <li key={brand} className="mb-0">
-                    <Link
+                    <TrackedLink
                       href={`/car-services`}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {brand}
-                    </Link>
+                    </TrackedLink>
                   </li>
                 ))}
               </ul>
@@ -208,12 +208,12 @@ export default function Footer() {
                   { label: 'Volkswagen', slug: 'volkswagen' },
                 ].map((brand) => (
                   <li key={brand.slug} className="mb-0">
-                    <Link
+                    <TrackedLink
                       href={`/car-services`}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {brand.label}
-                    </Link>
+                    </TrackedLink>
                   </li>
                 ))}
               </ul>
@@ -232,14 +232,14 @@ export default function Footer() {
                   { href: '/workshop/my-fng-best-car-service-and-repairs-in-ambernath', label: 'Car Service in Ambernath' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
-                    <Link
+                    <TrackedLink
                       href={item.href}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
                       {item.label}
-                    </Link>
+                    </TrackedLink>
                   </li>
                 ))}
               </ul>
@@ -306,7 +306,7 @@ export default function Footer() {
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-lohgaon-wagholi-road-pune', label: 'Car Service in Lohgaon-Wagholi, Pune' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-pathardi-phata-nashik', label: 'Car Service in Pathardi Phata, Nashik' },
               ].map((loc) => (
-                <Link
+                <TrackedLink
                   key={loc.href + loc.label}
                   href={loc.href}
                   target="_blank"
@@ -314,7 +314,7 @@ export default function Footer() {
                   className="block text-white text-[10px] font-bold no-underline hover:text-white transition-all duration-300"
                 >
                   {loc.label}
-                </Link>
+                </TrackedLink>
               ))}
             </div>
           </div>

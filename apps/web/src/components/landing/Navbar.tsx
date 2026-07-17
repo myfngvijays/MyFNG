@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import TrackedLink from '@/components/tracking/TrackedLink';
 import { usePathname } from 'next/navigation';
 import { MapPin, Loader2, ChevronDown, Search, Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -342,15 +342,15 @@ export default function Navbar() {
 
   const NAV_LINKS = (
     <>
-      <Link href="/" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Home</Link>
-      <Link href="/car-services" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">All Services</Link>
+      <TrackedLink href="/" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Home</TrackedLink>
+      <TrackedLink href="/car-services" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">All Services</TrackedLink>
       {DEFAULT_SERVICES.map((s) => (
-        <Link key={s.slug} href={`/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`} onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ {s.title}</Link>
+        <TrackedLink key={s.slug} href={`/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`} onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg pl-7">↳ {s.title}</TrackedLink>
       ))}
-      <Link href="/about-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">About Us</Link>
-      <Link href="/car-roadside-assitance" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Roadside Assistance</Link>
-      <Link href="/blogs" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Blog</Link>
-      <Link href="/contact-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Contact</Link>
+      <TrackedLink href="/about-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">About Us</TrackedLink>
+      <TrackedLink href="/car-roadside-assitance" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Roadside Assistance</TrackedLink>
+      <TrackedLink href="/blogs" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Blog</TrackedLink>
+      <TrackedLink href="/contact-us" onClick={() => setShowHamburgerMenu(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition rounded-lg">Contact</TrackedLink>
     </>
   );
 
@@ -377,53 +377,53 @@ export default function Navbar() {
                 <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 py-2 max-h-[80vh] overflow-y-auto">
                   {NAV_LINKS}
                   <div className="px-4 pt-3 pb-1 border-t border-gray-100 mt-1">
-                    <Link
+                    <TrackedLink
                       href="/book-service"
                       onClick={() => setShowHamburgerMenu(false)}
                       className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white font-semibold text-sm rounded-xl hover:bg-blue-700 transition-all"
                     >
                       📅 Book Your Service Now
-                    </Link>
+                    </TrackedLink>
                   </div>
                 </div>
               )}
             </div>
 
-            <Link href="/" className="hidden lg:flex items-center min-w-0 flex-shrink-0">
+            <TrackedLink href="/" className="hidden lg:flex items-center min-w-0 flex-shrink-0">
               <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 md:h-14 w-auto flex-shrink-0" />
-            </Link>
+            </TrackedLink>
           </div>
 
           {/* Mobile logo (right on other pages, centered on home — see absolute logo below) */}
           {!isHomePage && (
-            <Link href="/" className="lg:hidden flex items-center min-w-0 flex-shrink-0">
+            <TrackedLink href="/" className="lg:hidden flex items-center min-w-0 flex-shrink-0">
               <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 w-auto flex-shrink-0" />
-            </Link>
+            </TrackedLink>
           )}
 
           {/* Desktop nav (visible on lg+) */}
           <div className="hidden lg:flex items-center gap-4 md:gap-6 lg:gap-8 flex-shrink-0">
-            <Link href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</Link>
+            <TrackedLink href="/" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Home</TrackedLink>
             <div className="relative group">
-              <Link
+              <TrackedLink
                 href="/car-services"
                 className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap inline-flex items-center gap-1"
               >
                 Services
                 <ChevronDown className="w-4 h-4 text-text-body group-hover:text-brand-primary transition" />
-              </Link>
+              </TrackedLink>
               <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
                 <div className="py-2">
                   {DEFAULT_SERVICES.map((s) => (
-                    <Link key={s.slug} href={`/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`} className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">{s.title}</Link>
+                    <TrackedLink key={s.slug} href={`/car-services/${INTERNAL_SLUG_TO_MARKETING[s.slug] ?? s.slug}`} className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition">{s.title}</TrackedLink>
                   ))}
                 </div>
               </div>
             </div>
-            <Link href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</Link>
-            <Link href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</Link>
-            <Link href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</Link>
-            <Link href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</Link>
+            <TrackedLink href="/about-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">About Us</TrackedLink>
+            <TrackedLink href="/car-roadside-assitance" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Roadside Assistance</TrackedLink>
+            <TrackedLink href="/blogs" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Blog</TrackedLink>
+            <TrackedLink href="/contact-us" className="text-sm md:text-base text-text-body hover:text-brand-primary transition font-medium whitespace-nowrap">Contact</TrackedLink>
           </div>
 
           <div className={`items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0 ${isHomePage ? 'flex' : 'hidden lg:flex'}`}>
@@ -519,12 +519,12 @@ export default function Navbar() {
 
         {/* Mobile home: logo centered between hamburger and location */}
         {isHomePage && (
-          <Link
+          <TrackedLink
             href="/"
             className="lg:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-auto"
           >
             <img src="/logo.png" alt="MyFNG Logo" className="h-10 sm:h-12 w-auto flex-shrink-0" />
-          </Link>
+          </TrackedLink>
         )}
       </nav>
       </div>

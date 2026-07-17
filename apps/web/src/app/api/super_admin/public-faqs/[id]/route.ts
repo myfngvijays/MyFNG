@@ -6,6 +6,7 @@ import {
   PUBLIC_FAQS_TABLE,
 } from '@/lib/public-faqs-db';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { revalidatePublicFaqSeo } from '@/lib/seo/revalidate';
 import { createClient } from '@/lib/supabase/server';
 import { requireSuperAdmin } from '@/lib/super-admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
@@ -53,6 +54,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       );
     }
 
+    revalidatePublicFaqSeo();
     return NextResponse.json({ data: mapPublicFaqRow(data) });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
@@ -79,6 +81,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       );
     }
 
+    revalidatePublicFaqSeo();
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });

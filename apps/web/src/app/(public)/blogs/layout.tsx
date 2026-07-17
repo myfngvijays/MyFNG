@@ -1,1 +1,1 @@
-export { default, metadata } from '../blog/layout';
+export { default, generateMetadata } from '../blog/layout';

@@ -68,7 +68,8 @@ export default function WorkshopPublicPagesPage() {
     packages: [] as { name: string; price: string | null; features: string[] }[],
     faqs: [] as { question: string; answer: string }[],
     is_published: false,
-    is_featured: false
+    is_featured: false,
+    noindex: false,
   });
   const [serviceInput, setServiceInput] = useState('');
   const [galleryInput, setGalleryInput] = useState('');
@@ -954,6 +955,12 @@ Visit us today and experience the difference!`;
 
       if (error) throw error;
 
+      await fetch('/api/workshops/public-pages/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: formData.slug }),
+      }).catch(() => null);
+
       toast.success(editingPage ? 'Page updated successfully' : 'Page created successfully');
       setShowModal(false);
       resetForm();
@@ -969,8 +976,14 @@ Visit us today and experience the difference!`;
   const handleDelete = async (page: any) => {
     if (!confirm(`Delete public page for "${page.gmb_data?.business_name || page.workshop?.name || page.slug}"? This cannot be undone.`)) return;
     try {
+      const slug = String(page.slug || '').trim().toLowerCase();
       const { error } = await supabase.from('workshop_public_pages').delete().eq('id', page.id);
       if (error) throw error;
+      await fetch('/api/workshops/public-pages/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug }),
+      }).catch(() => null);
       toast.success('Page deleted');
       fetchPages();
     } catch (e: any) {
@@ -1008,7 +1021,8 @@ Visit us today and experience the difference!`;
       packages: page.packages || [],
       faqs: page.faqs || [],
       is_published: page.is_published || false,
-      is_featured: page.is_featured || false
+      is_featured: page.is_featured || false,
+      noindex: page.noindex || false,
     });
     setGmbPreview(page.gmb_data || null);
     setSelectedGbpLocation(page.gmb_location_name || page.gmb_data?.gmb_location_name || '');
@@ -1045,7 +1059,8 @@ Visit us today and experience the difference!`;
       packages: [],
       faqs: [],
       is_published: false,
-      is_featured: false
+      is_featured: false,
+      noindex: false,
     });
     setBrandName('');
     setBrandLogo('');
@@ -1710,6 +1725,7 @@ Visit us today and experience the difference!`;
                       </div>
                       <div className="flex gap-3 mt-3">
                         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.is_published} onChange={(e) => setFormData(prev => ({ ...prev, is_published: e.target.checked }))} className="w-4 h-4 rounded" /> Published</label>
+                        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.noindex} onChange={(e) => setFormData(prev => ({ ...prev, noindex: e.target.checked }))} className="w-4 h-4 rounded" /> Noindex</label>
                         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.is_featured} onChange={(e) => setFormData(prev => ({ ...prev, is_featured: e.target.checked }))} className="w-4 h-4 rounded" /> Featured</label>
                       </div>
                     </>
@@ -1770,6 +1786,7 @@ Visit us today and experience the difference!`;
                           </div>
                           <div className="flex items-end gap-3 pb-1">
                             <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.is_published} onChange={(e) => setFormData(prev => ({ ...prev, is_published: e.target.checked }))} className="w-4 h-4 rounded" /> Published</label>
+                        <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.noindex} onChange={(e) => setFormData(prev => ({ ...prev, noindex: e.target.checked }))} className="w-4 h-4 rounded" /> Noindex</label>
                             <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={formData.is_featured} onChange={(e) => setFormData(prev => ({ ...prev, is_featured: e.target.checked }))} className="w-4 h-4 rounded" /> Featured</label>
                           </div>
                         </div>

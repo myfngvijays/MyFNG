@@ -1,58 +1,104 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, CheckCircle2, Clock, Shield, HeadphonesIcon, Award, Percent, Wallet, Wrench, Scan, FileCheck, MessageCircle, CalendarClock, ShieldCheck } from 'lucide-react';
+import {
+  X,
+  CheckCircle2,
+  Clock,
+  Shield,
+  HeadphonesIcon,
+  Award,
+  Percent,
+  Wallet,
+  Wrench,
+  Scan,
+  FileCheck,
+  MessageCircle,
+  CalendarClock,
+  ShieldCheck,
+} from 'lucide-react';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
-export default function AppDownloadPopup({ pageKey }: { pageKey?: string }) {
-  const pathname = usePathname();
-  const key = pageKey || pathname;
+const POPUP_VIEWS_KEY = 'myfng_app_download_popup_views';
+const MAX_VIEWS = 2;
+const OPEN_DELAY_MS = 4000;
+const SCROLL_TRIGGER = 0.6;
+const EXCLUDED_PATH_PREFIXES = ['/book-service'];
 
+function getViewCount(): number {
+  if (typeof window === 'undefined') return MAX_VIEWS;
+  try {
+    const raw = localStorage.getItem(POPUP_VIEWS_KEY);
+    const count = raw ? parseInt(raw, 10) : 0;
+    return Number.isFinite(count) && count >= 0 ? count : 0;
+  } catch {
+    return MAX_VIEWS;
+  }
+}
+
+function recordView() {
+  try {
+    localStorage.setItem(POPUP_VIEWS_KEY, String(getViewCount() + 1));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function isExcludedPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return EXCLUDED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function canShowPopup(pathname: string | null): boolean {
+  return !isExcludedPath(pathname) && getViewCount() < MAX_VIEWS;
+}
+
+export default function AppDownloadPopup() {
+  const pathname = usePathname();
   const [show, setShow] = useState(false);
-  const scrollTriggered = useRef(false);
-  const showRef = useRef(false);
+  const openedRef = useRef(false);
 
   const open = useCallback(() => {
+    if (openedRef.current || !canShowPopup(pathname)) return;
+    openedRef.current = true;
+    recordView();
     setShow(true);
-    showRef.current = true;
-  }, []);
+  }, [pathname]);
 
   const close = useCallback(() => {
     setShow(false);
-    showRef.current = false;
-    sessionStorage.setItem(`app_popup_${key}`, '1');
-  }, [key]);
+  }, []);
 
   useEffect(() => {
-    scrollTriggered.current = false;
-    showRef.current = false;
+    openedRef.current = false;
+    setShow(false);
 
-    const seen = sessionStorage.getItem(`app_popup_${key}`);
-    if (!seen) {
+    if (!canShowPopup(pathname)) return;
+
+    const timer = window.setTimeout(() => {
       open();
-    }
-  }, [key, open]);
+    }, OPEN_DELAY_MS);
 
-  useEffect(() => {
     function onScroll() {
-      if (scrollTriggered.current || showRef.current) return;
+      if (openedRef.current) return;
 
-      const scrollPercent =
-        window.scrollY / (document.documentElement.scrollHeight - window.innerHeight);
+      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (scrollHeight <= 0) return;
 
-      if (scrollPercent >= 0.6) {
-        scrollTriggered.current = true;
-        const seen = sessionStorage.getItem(`app_popup_${key}`);
-        if (!seen) {
-          open();
-        }
+      const scrollPercent = window.scrollY / scrollHeight;
+      if (scrollPercent >= SCROLL_TRIGGER) {
+        window.clearTimeout(timer);
+        open();
       }
     }
 
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [key, open]);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [pathname, open]);
 
   if (!show) return null;
 
@@ -73,10 +119,8 @@ export default function AppDownloadPopup({ pageKey }: { pageKey?: string }) {
         </button>
 
         <div className="rounded-2xl overflow-hidden shadow-2xl">
-          {/* Main Content */}
           <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800 p-5 sm:p-8">
             <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-8">
-              {/* Phone Mockup with App Screenshot */}
               <div className="hidden sm:flex flex-shrink-0 items-center justify-center">
                 <div className="relative w-44 h-[22rem] bg-black rounded-[2.5rem] border-[5px] border-gray-800 shadow-2xl overflow-hidden">
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10" />
@@ -90,22 +134,17 @@ export default function AppDownloadPopup({ pageKey }: { pageKey?: string }) {
                 </div>
               </div>
 
-              {/* Content */}
               <div className="flex-1 text-center sm:text-left">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1">
-                  Download MyFNG App
-                </h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1">Download MyFNG App</h2>
                 <p className="text-yellow-300 font-semibold text-sm sm:text-base mb-3">
                   Get <span className="text-lg font-bold">MyFNG Prime</span> Membership @ just ₹699/year!
                 </p>
 
-                {/* Limited Time Badge */}
                 <div className="inline-flex items-center gap-2 bg-yellow-400 text-gray-900 px-3 py-1.5 rounded-full text-xs font-bold mb-3 shadow-lg">
                   <Clock className="w-3.5 h-3.5" />
                   LIMITED TIME OFFER
                 </div>
 
-                {/* Prime Membership Benefits */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-5">
                   {[
                     { icon: Percent, text: '10% Off Periodic Packages' },
@@ -124,7 +163,6 @@ export default function AppDownloadPopup({ pageKey }: { pageKey?: string }) {
                   ))}
                 </div>
 
-                {/* Download Buttons */}
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
                   <a
                     href="https://play.google.com/store/apps/details?id=com.myfng.app"
@@ -160,7 +198,6 @@ export default function AppDownloadPopup({ pageKey }: { pageKey?: string }) {
             </div>
           </div>
 
-          {/* Bottom Trust Bar */}
           <div className="bg-gradient-to-r from-indigo-900 to-purple-900 px-4 py-3 sm:px-6 sm:py-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               {[

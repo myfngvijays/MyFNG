@@ -23,6 +23,8 @@ import {
   resolveServiceBookingWallet,
 } from '@/lib/booking-wallet-apply';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
+import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
+import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
 
 function generateLeadNumber() {
   return `L-${Date.now().toString().slice(-8)}`;
@@ -59,6 +61,10 @@ export async function createAuthenticatedServiceBooking(
 ) {
   const { customer, supabaseAdmin } = ctx;
   const lead = body?.lead || {};
+  const requestUtm = parseUtmFromRequest(request);
+  const leadUtm = extractUtmFromUnknown(lead);
+  const bodyUtm = extractUtmFromUnknown(body);
+  const resolvedUtm = mergeUtmParams(requestUtm, leadUtm, bodyUtm);
   const useWallet = Boolean(body.use_wallet);
   const subtotal = Number(body.subtotal || lead.estimated_amount || 0);
   const pbConfig = await getPostBookingMembershipConfig(supabaseAdmin);
@@ -203,8 +209,7 @@ export async function createAuthenticatedServiceBooking(
     status: lead.status || 'NEW',
     created_from: lead.created_from || 'MOBILE_APP',
     meta: (() => {
-      const nextMeta: Record<string, unknown> =
-        lead.meta && typeof lead.meta === 'object' ? { ...(lead.meta as Record<string, unknown>) } : {};
+      const nextMeta = mergeLeadMetaWithUtm(lead.meta, resolvedUtm, requestUtm, leadUtm, bodyUtm);
       nextMeta.customer_id = customer.id;
       nextMeta.service_subtotal = subtotal;
       if (includeBookingMembership) {
@@ -313,12 +318,18 @@ export async function createAuthenticatedServiceBooking(
 
   await saveBookedVehicleToProfile(supabaseAdmin, leadInsert, normalizedPhone);
 
+  const telecrmLead = {
+    ...leadInsert,
+    ...serviceLead,
+    meta: mergeLeadMetaWithUtm(leadInsert.meta, resolvedUtm),
+    ...resolvedUtm,
+  };
+
   try {
-    await pushServiceLeadToTeleCRM({ ...leadInsert, ...serviceLead }, supabaseAdmin, {
+    await pushServiceLeadToTeleCRM(telecrmLead, supabaseAdmin, {
       leadTag: 'APP',
       leadSource: String(lead.lead_source || 'App Booking'),
       createdFrom: String(leadInsert.created_from || 'MOBILE_APP'),
-      systemNote: 'Lead Source: App Booking (Logged-in Customer)',
     });
   } catch (syncErr: any) {
     console.error('[service-booking-create] TeleCRM sync failed:', syncErr?.message || syncErr);

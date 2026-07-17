@@ -1,1 +1,1 @@
-export { default, metadata } from '../services/layout';
+export { default, generateMetadata } from '../services/layout';

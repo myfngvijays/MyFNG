@@ -1,20 +1,29 @@
-import { buildPageMetadata } from '@/lib/seo/metadata';
+import { buildManagedPageMetadata } from '@/lib/site-page-seo';
+import JsonLd from '@/components/seo/JsonLd';
+import { collectionPageSchema } from '@/lib/seo/schemas';
+import { SITE_URL } from '@/lib/seo/metadata';
+import { listBlogListingSchemaItems } from '@/lib/blog/seo';
 
-export const metadata = buildPageMetadata({
-  title: 'Car Service Blogs - Tips, Guides & Maintenance | MyFNG',
-  description:
-    'Read expert car service blogs, maintenance tips, repair guides and local SEO articles from MYFNG workshops across Mumbai, Pune & Thane.',
-  keywords: [
-    'car service blog',
-    'car maintenance tips',
-    'car repair guide',
-    'MYFNG blog',
-  ],
-  keyphrase: 'car service blog',
-  canonicalPath: '/blogs',
-  city: 'Mumbai',
-});
+export async function generateMetadata() {
+  return buildManagedPageMetadata('/blogs');
+}
 
-export default function BlogLayout({ children }: { children: React.ReactNode }) {
-  return children;
+export default async function BlogLayout({ children }: { children: React.ReactNode }) {
+  const items = await listBlogListingSchemaItems(8);
+
+  return (
+    <>
+      {items.length ? (
+        <JsonLd
+          data={collectionPageSchema({
+            name: 'MyFNG Car Service Blogs',
+            description: 'Car maintenance tips, service guides and local automotive articles from MYFNG.',
+            url: `${SITE_URL}/blogs`,
+            items,
+          })}
+        />
+      ) : null}
+      {children}
+    </>
+  );
 }

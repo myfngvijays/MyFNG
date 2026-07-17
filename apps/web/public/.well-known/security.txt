@@ -1,0 +1,7 @@
+# NOTE: Live site serves /.well-known/security.txt from the app route (Advanced SEO → Live Files).
+Contact: mailto:support@myfng.in
+Contact: tel:+91-8657575757
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en, hi
+Canonical: https://myfng.in/.well-known/security.txt
+Policy: https://myfng.in/privacy-policy

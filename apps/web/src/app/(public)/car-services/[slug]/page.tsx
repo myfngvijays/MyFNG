@@ -8,37 +8,17 @@ import Image from 'next/image';
 import { findServiceBySlug, makeShortDescription, MARKETING_SLUG_TO_INTERNAL } from '@/lib/services/catalog';
 import AppDownloadPopup from '@/components/landing/AppDownloadPopup';
 import AppDownloadSection from '@/components/landing/AppDownloadSection';
-import { buildPageMetadata, SITE_URL } from '@/lib/seo/metadata';
+import { SITE_URL } from '@/lib/seo/metadata';
 import { breadcrumbSchema, serviceSchema } from '@/lib/seo/schemas';
 import JsonLd from '@/components/seo/JsonLd';
+import { buildManagedServicePageMetadata } from '@/lib/service-page-seo';
+import { toSiteMediaSrc, toSiteMediaUrl } from '@/lib/media/public-url';
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
   const { slug: marketingSlug } = await params;
-  const internalSlug = MARKETING_SLUG_TO_INTERNAL[marketingSlug];
-  const service = internalSlug ? findServiceBySlug(internalSlug) : null;
-
-  if (!service) return {};
-
-  const description = makeShortDescription(service.longDescription) || service.description;
-  const title = `${service.title} | MyFNG`;
-
-  return buildPageMetadata({
-    title,
-    description,
-    keywords: [
-      service.title.toLowerCase(),
-      `${service.title} near me`,
-      'car service Mumbai',
-      'car service Pune',
-      'MYFNG',
-    ],
-    keyphrase: `${service.title} near me`,
-    canonicalPath: `/car-services/${marketingSlug}`,
-    ogImage: service.image?.startsWith('http') ? service.image : `${SITE_URL}${service.image}`,
-    city: 'Mumbai',
-  });
+  return buildManagedServicePageMetadata(marketingSlug);
 }
 
 export default async function CarServiceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -53,7 +33,7 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
 
   const description = makeShortDescription(service.longDescription) || service.description;
   const serviceUrl = `${SITE_URL}/car-services/${marketingSlug}`;
-  const serviceImage = service.image?.startsWith('http') ? service.image : `${SITE_URL}${service.image}`;
+  const serviceImage = toSiteMediaUrl(service.image);
 
   return (
     <div className="min-h-screen bg-white">
@@ -163,7 +143,7 @@ export default async function CarServiceDetailPage({ params }: { params: Promise
               {/* Image */}
               <div>
                 <div className="relative h-[300px] sm:h-[400px] md:h-[500px] rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl">
-                  <Image src={service.image} alt={service.title} fill className="object-cover" />
+                  <Image src={toSiteMediaSrc(service.image)} alt={service.title} fill className="object-cover" />
                 </div>
               </div>
             </div>

@@ -16,6 +16,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
 import { createClient } from '@/lib/supabase/client';
 import {
   Car,
@@ -164,16 +165,21 @@ export default function CreateLeadPage() {
       // Generate lead number
       const leadNumber = `LN${Date.now().toString().slice(-6)}`;
 
+      const utmParams = getCurrentOrStoredUtmParams();
+      const leadSource = getLeadSourceFromUtm(utmParams.utm_source, utmParams.utm_medium);
+
       const response = await fetch('/api/public/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
+          utm: utmParams,
           lead: {
             lead_number: leadNumber,
             created_from: 'WEB',
             status: 'NEW',
             lead_type: 'NORMAL',
-            lead_source: 'Website',
+            lead_source: leadSource,
             customer_name: customer.full_name,
             customer_email: customer.email,
             customer_phone: customer.phone,
@@ -190,6 +196,7 @@ export default function CreateLeadPage() {
             preferred_service_slot: `${preferredDate} ${preferredTime}`,
             workshop_id: workshopId,
             lead_priority: 'NORMAL',
+            meta: utmParams,
           },
         }),
       });
