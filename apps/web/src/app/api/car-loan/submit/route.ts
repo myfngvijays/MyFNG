@@ -14,10 +14,12 @@ const TELECRM_BEARER =
 async function pushToTeleCRM(
   phone: string,
   data: {
+    fullName: string;
     panId: string;
     vehicleRegistrationNumber: string;
     income: number;
     occupation: string;
+    loanAmount: number;
   },
   utmRaw?: unknown,
 ) {
@@ -25,6 +27,7 @@ async function pushToTeleCRM(
     fields: withTelecrmUtmFields(
       {
         Phone: `+91${phone}`,
+        Name: data.fullName,
         LEADTAG: 'CAR_LOAN_WEBSITE',
         LeadSource: 'Website Car Loan',
         LeadStatus: 'NEW',
@@ -33,6 +36,7 @@ async function pushToTeleCRM(
         PAN: data.panId,
         VehicleNumber: data.vehicleRegistrationNumber,
         MonthlyIncome: String(data.income),
+        LoanAmount: String(data.loanAmount),
         Occupation: data.occupation,
       },
       utmRaw,
@@ -64,9 +68,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    const { pan, mobile, vehicle, income, occupation } = body;
+    const { pan, mobile, vehicle, income, occupation, full_name, fullName, loan_amount, loanAmount } = body;
 
-    if (!pan || !mobile || !vehicle || !income || !occupation) {
+    if (!pan || !mobile || !vehicle || !income || !occupation || !(full_name || fullName) || !(loan_amount ?? loanAmount)) {
       return NextResponse.json(
         { success: false, error: 'All fields are required' },
         { status: 400 },
@@ -81,12 +85,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsedLoanAmount = Number(loan_amount ?? loanAmount);
+    if (!Number.isFinite(parsedLoanAmount) || parsedLoanAmount < 10000) {
+      return NextResponse.json(
+        { success: false, error: 'Loan amount must be at least ₹10,000' },
+        { status: 400 },
+      );
+    }
+
     const leadData = {
       mobileNo: phone,
       panId: String(pan).toUpperCase(),
       vehicleRegistrationNumber: String(vehicle).toUpperCase(),
+      fullName: String(full_name || fullName).trim(),
       income: Number(income),
       occupation: String(occupation),
+      loanAmount: parsedLoanAmount,
     };
 
     const { supabaseAdmin } = getSupabaseAdmin();
@@ -95,6 +109,8 @@ export async function POST(request: NextRequest) {
       const { data: dbLead, error: dbError } = await supabaseAdmin
         .from('car_loan_leads')
         .insert({
+          full_name: leadData.fullName,
+          loan_amount: leadData.loanAmount,
           pan: leadData.panId,
           mobile: phone,
           vehicle_number: leadData.vehicleRegistrationNumber,

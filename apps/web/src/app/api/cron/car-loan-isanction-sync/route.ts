@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const { data: rows, error: fetchErr } = await supabaseAdmin
     .from('car_loan_leads')
-    .select('id, pan, mobile, vehicle_number, monthly_income, occupation, status, isanction_synced')
+    .select('id, full_name, loan_amount, pan, mobile, vehicle_number, monthly_income, occupation, status, isanction_synced')
     .eq('isanction_synced', false)
     .in('status', ['NEW', 'API_FAILED'])
     .order('created_at', { ascending: true })
@@ -49,13 +49,16 @@ export async function GET(request: NextRequest) {
   const details: Array<{ id: string; ok: boolean; message?: string }> = [];
 
   for (const row of rows) {
+    const loanAmount = Number(row.loan_amount || 0);
     const result = await pushCarLoanLeadToISanction(
       {
         mobileNo: String(row.mobile || '').replace(/\D/g, '').slice(-10),
         panId: String(row.pan || '').toUpperCase(),
         vehicleRegistrationNumber: String(row.vehicle_number || '').toUpperCase(),
+        fullName: String(row.full_name || '').trim() || 'MyFNG Customer',
         income: Number(row.monthly_income || 0),
         occupation: String(row.occupation || ''),
+        ...(loanAmount > 0 ? { loanAmount } : {}),
       },
       { maxAttempts: 2 },
     );

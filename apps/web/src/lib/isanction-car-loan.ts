@@ -2,21 +2,27 @@ export type ISanctionCarLoanLead = {
   mobileNo: string;
   panId: string;
   vehicleRegistrationNumber: string;
+  fullName: string;
   income: number;
   occupation: string;
+  loanAmount?: number;
 };
 
 export type ISanctionPushResult =
   | { ok: true; body: Record<string, unknown> }
   | { ok: false; status: number; message: string; retryable: boolean };
 
-const DEFAULT_ISANCTION_URL = 'https://backend2.isanction.in/api/web/leads/partners';
-const LEGACY_ISANCTION_API_KEY = '1flSSHcw$z7v77/F6qHdHbDrRByPqcbudRBqR@JZFTw=';
+const DEFAULT_ISANCTION_URL = 'https://backend-isanction-crm.isanction.in/api/v1/leads';
+const DEFAULT_LEAD_TYPE = 'USED_CAR_LOAN';
+const DEFAULT_LEAD_SOURCE = 'partner_website';
 
 function isanctionConfig() {
   return {
     url: String(process.env.ISANCTION_API_URL || DEFAULT_ISANCTION_URL).trim(),
-    apiKey: String(process.env.ISANCTION_API_KEY || LEGACY_ISANCTION_API_KEY).trim(),
+    clientId: String(process.env.ISANCTION_CLIENT_ID || '').trim(),
+    clientSecret: String(process.env.ISANCTION_CLIENT_SECRET || '').trim(),
+    leadType: String(process.env.ISANCTION_LEAD_TYPE || DEFAULT_LEAD_TYPE).trim(),
+    leadSource: String(process.env.ISANCTION_LEAD_SOURCE || DEFAULT_LEAD_SOURCE).trim(),
   };
 }
 
@@ -25,7 +31,9 @@ function sleep(ms: number) {
 }
 
 function parseErrorMessage(status: number, rawBody: string, jsonBody: Record<string, unknown>): string {
-  const jsonMessage = String(jsonBody.message || jsonBody.error || '').trim();
+  const jsonMessage = String(
+    jsonBody.message || jsonBody.error || jsonBody.detail || jsonBody.msg || '',
+  ).trim();
   if (jsonMessage) return jsonMessage;
 
   const trimmed = rawBody.trim();
@@ -40,16 +48,42 @@ function parseErrorMessage(status: number, rawBody: string, jsonBody: Record<str
   return `iSanction API failed (${status})`;
 }
 
+function isSuccessResponse(status: number, jsonBody: Record<string, unknown>): boolean {
+  if (status < 200 || status >= 300) return false;
+  if (jsonBody.success === false) return false;
+  if (jsonBody.error || jsonBody.errors) return false;
+  if (jsonBody.success === true) return true;
+  if (jsonBody.id || jsonBody.lead_id || jsonBody.leadId) return true;
+  return true;
+}
+
+function buildLeadPayload(
+  data: ISanctionCarLoanLead,
+  config: ReturnType<typeof isanctionConfig>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    lead_type: config.leadType,
+    mobile_no: data.mobileNo,
+    full_name: String(data.fullName || 'MyFNG Customer').trim(),
+    pan_id: data.panId,
+    registration_no: data.vehicleRegistrationNumber,
+    source: config.leadSource,
+    loan_amount: data.loanAmount,
+  };
+
+  return payload;
+}
+
 export async function pushCarLoanLeadToISanction(
   data: ISanctionCarLoanLead,
   opts?: { maxAttempts?: number },
 ): Promise<ISanctionPushResult> {
-  const { url, apiKey } = isanctionConfig();
-  if (!apiKey) {
+  const config = isanctionConfig();
+  if (!config.clientId || !config.clientSecret) {
     return {
       ok: false,
       status: 500,
-      message: 'iSanction API key is not configured on server',
+      message: 'iSanction client credentials are not configured on server',
       retryable: false,
     };
   }
@@ -62,22 +96,18 @@ export async function pushCarLoanLeadToISanction(
     retryable: true,
   };
 
+  const payload = buildLeadPayload(data, config);
+
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const res = await fetch(url, {
+      const res = await fetch(config.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': apiKey,
+          'X-Client-ID': config.clientId,
+          'X-Client-Secret': config.clientSecret,
         },
-        body: JSON.stringify({
-          mobileNo: data.mobileNo,
-          type: 'CAR_LOAN',
-          vehicleRegistrationNumber: data.vehicleRegistrationNumber,
-          panId: data.panId,
-          income: data.income,
-          occupation: data.occupation,
-        }),
+        body: JSON.stringify(payload),
         cache: 'no-store',
       });
 
@@ -91,7 +121,7 @@ export async function pushCarLoanLeadToISanction(
         }
       }
 
-      if (res.ok && jsonBody.success === true) {
+      if (isSuccessResponse(res.status, jsonBody)) {
         return { ok: true, body: jsonBody };
       }
 

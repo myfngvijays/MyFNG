@@ -19,10 +19,12 @@ function validateVehicle(v: string){
   return /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/.test(v) && v.length >= 9 && v.length <= 11;
 }
 function validateIncome(v: string)     { return Number(v) > 0; }
+function validateLoanAmount(v: string) { const n = Number(v); return Number.isFinite(n) && n >= 10000; }
 function validateOccupation(v: string) { return v !== ''; }
+function validateFullName(v: string)    { return /^[A-Za-z][A-Za-z\s.'-]{1,98}[A-Za-z.]$/.test(v.trim()); }
 
-interface F { pan:string; mobile:string; vehicle:string; income:string; occupation:string; }
-interface E { pan?:string; mobile?:string; vehicle?:string; income?:string; occupation?:string; }
+interface F { fullName:string; pan:string; mobile:string; vehicle:string; loanAmount:string; income:string; occupation:string; }
+interface E { fullName?:string; pan?:string; mobile?:string; vehicle?:string; loanAmount?:string; income?:string; occupation?:string; }
 
 export default function CarLoanPage() {
   return (
@@ -35,7 +37,7 @@ export default function CarLoanPage() {
 function CarLoanPageInner() {
   const searchParams = useSearchParams();
   const isEmbed = searchParams.get('embed') === '1';
-  const [form, setForm]           = useState<F>({ pan:'', mobile:'', vehicle:'', income:'', occupation:'' });
+  const [form, setForm]           = useState<F>({ fullName:'', pan:'', mobile:'', vehicle:'', loanAmount:'', income:'', occupation:'' });
   const [utm, setUtm] = useState({
     utm_source: '',
     utm_medium: '',
@@ -61,7 +63,8 @@ function CarLoanPageInner() {
     const { name, value } = e.target;
     let v = value;
     if (name === 'pan' || name === 'vehicle') v = value.toUpperCase().replace(/[^A-Z0-9]/g,'');
-    if (name === 'mobile') v = value.replace(/[^0-9]/g,'');
+    if (name === 'mobile' || name === 'loanAmount') v = value.replace(/[^0-9]/g,'');
+    if (name === 'fullName') v = value.replace(/[^A-Za-z\s.'-]/g,'');
     setForm(p => ({ ...p, [name]: v }));
     setErrors(p => ({ ...p, [name]: undefined }));
   }, []);
@@ -72,9 +75,11 @@ function CarLoanPageInner() {
     e.preventDefault();
     setApiError('');
     const ne: E = {};
+    if (!validateFullName(form.fullName))  ne.fullName   = 'Enter full name as per PAN';
     if (!validatePAN(form.pan))            ne.pan        = 'Invalid PAN format (Example: ABCDE1234F)';
     if (!validateMobile(form.mobile))      ne.mobile     = 'Enter valid 10 digit mobile number';
     if (!validateVehicle(form.vehicle))    ne.vehicle    = 'Invalid vehicle number (Example: MH03BJ7842)';
+    if (!validateLoanAmount(form.loanAmount)) ne.loanAmount = 'Enter loan amount (minimum ₹10,000)';
     if (!validateIncome(form.income))      ne.income     = 'This field is required';
     if (!validateOccupation(form.occupation)) ne.occupation = 'This field is required';
     if (Object.keys(ne).length) { setErrors(ne); return; }
@@ -85,9 +90,11 @@ function CarLoanPageInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          full_name: form.fullName.trim(),
           pan: form.pan,
           mobile: form.mobile,
           vehicle: form.vehicle,
+          loan_amount: Number(form.loanAmount),
           income: Number(form.income),
           occupation: form.occupation,
           ...utm
@@ -96,7 +103,7 @@ function CarLoanPageInner() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         setSubmitted(true);
-        setForm({ pan:'', mobile:'', vehicle:'', income:'', occupation:'' });
+        setForm({ fullName:'', pan:'', mobile:'', vehicle:'', loanAmount:'', income:'', occupation:'' });
       } else {
         setApiError(data.error || 'Something went wrong. Please try again.');
       }
@@ -142,6 +149,13 @@ function CarLoanPageInner() {
           <input type="hidden" name="utm_campaign" value={utm.utm_campaign} />
           <input type="hidden" name="utm_term" value={utm.utm_term} />
           <input type="hidden" name="utm_content" value={utm.utm_content} />
+          <div className={`cl-field${errors.fullName ? ' invalid' : ''}`}>
+            <input type="text" name="fullName" id="fullName" value={form.fullName} onChange={handleChange}
+              maxLength={100} placeholder=" " autoComplete="name" />
+            <label htmlFor="fullName">Enter full name of loan applicant</label>
+            {errors.fullName && <small className="cl-error">{errors.fullName}</small>}
+          </div>
+
           <div className={`cl-field${errors.pan ? ' invalid' : ''}`}>
             <input type="text" name="pan" id="pan" value={form.pan} onChange={handleChange}
               maxLength={10} placeholder=" " autoComplete="off" />
@@ -161,6 +175,13 @@ function CarLoanPageInner() {
               placeholder=" " autoComplete="off" />
             <label htmlFor="vehicle">Enter vehicle registration number</label>
             {errors.vehicle && <small className="cl-error">{errors.vehicle}</small>}
+          </div>
+
+          <div className={`cl-field${errors.loanAmount ? ' invalid' : ''}`}>
+            <input type="tel" name="loanAmount" id="loanAmount" value={form.loanAmount} onChange={handleChange}
+              maxLength={9} placeholder=" " autoComplete="off" inputMode="numeric" />
+            <label htmlFor="loanAmount">Enter desired loan amount (₹)</label>
+            {errors.loanAmount && <small className="cl-error">{errors.loanAmount}</small>}
           </div>
 
           <div className={`cl-field${errors.income ? ' invalid' : ''}`}>

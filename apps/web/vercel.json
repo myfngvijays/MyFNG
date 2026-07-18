@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/telecrm-push",
       "schedule": "0 */12 * * *"
+    },
+    {
+      "path": "/api/cron/car-loan-isanction-sync",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
