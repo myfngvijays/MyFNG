@@ -331,6 +331,7 @@ export async function executeToolCall(
                 service_type_id: p.service_type_id || null,
                 points: typeof p.points === 'number' ? p.points : null,
                 checklist_count: Array.isArray(p.checklist_items) ? p.checklist_items.length : 0,
+                checklist_items: Array.isArray(p.checklist_items) ? p.checklist_items : [],
               })),
               plan_count: sorted.length,
               instruction: `List ALL ${sorted.length} service plans returned. Do not show only 3.`,

@@ -13,6 +13,65 @@ export const dynamic = 'force-dynamic';
 
 type VerificationAction = 'set_vehicle' | 'sync_phone' | 'sync_trusted_customer';
 
+function mapCustomerVehicle(raw: Record<string, unknown>) {
+  return {
+    id: String(raw?.id || ''),
+    make: String(raw?.make || '').trim(),
+    model: String(raw?.model_name || raw?.model || '').trim(),
+    vehicle_number: String(raw?.vehicle_number || raw?.registration_number || '').trim() || undefined,
+    variant: raw?.variant ? String(raw.variant) : undefined,
+    is_default: Boolean(raw?.is_default),
+  };
+}
+
+function mapCustomerAddress(raw: Record<string, unknown>) {
+  const id = String(raw?.id || '').trim();
+  const line1 = String(raw?.line1 || raw?.address_line1 || '').trim();
+  if (!id || !line1) return null;
+  return {
+    id,
+    label: String(raw?.label || raw?.address_type || 'Home').trim(),
+    line1,
+    line2: String(raw?.line2 || raw?.address_line2 || '').trim() || undefined,
+    city: String(raw?.city || '').trim() || undefined,
+    pincode: String(raw?.pincode || '').trim() || undefined,
+  };
+}
+
+async function loadCustomerPrefillByPhone(
+  supabaseAdmin: NonNullable<ReturnType<typeof getSupabaseAdmin>['supabaseAdmin']>,
+  phone: string,
+) {
+  const { data: customer } = await supabaseAdmin
+    .from('customers')
+    .select('id, full_name, phone')
+    .eq('phone', phone)
+    .maybeSingle();
+
+  if (!customer?.id) return null;
+
+  const [{ data: vehicles }, { data: addresses }] = await Promise.all([
+    supabaseAdmin
+      .from('customer_vehicles')
+      .select('id, make, model_name, model, vehicle_number, registration_number, variant, is_default')
+      .eq('customer_id', customer.id)
+      .order('is_default', { ascending: false }),
+    supabaseAdmin
+      .from('customer_addresses')
+      .select('*')
+      .eq('customer_id', customer.id)
+      .order('is_default', { ascending: false }),
+  ]);
+
+  return {
+    customer,
+    vehicles: (vehicles || []).map((row) => mapCustomerVehicle(row as Record<string, unknown>)),
+    addresses: (addresses || [])
+      .map((row) => mapCustomerAddress(row as Record<string, unknown>))
+      .filter(Boolean),
+  };
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     action?: VerificationAction;
@@ -109,10 +168,35 @@ export async function POST(req: NextRequest) {
       phoneNumber: phone,
     };
 
+    const prefill = await loadCustomerPrefillByPhone(supabaseAdmin, phone);
+    if (prefill?.customer) {
+      applyTrustedCustomerToSession(sessionData, {
+        phone: prefill.customer.phone,
+        full_name: prefill.customer.full_name,
+        id: prefill.customer.id,
+      });
+      const defaultVehicle = prefill.vehicles.find((v) => v.vehicle_number) || prefill.vehicles[0];
+      if (defaultVehicle?.vehicle_number) {
+        const vehicleResult = setVehicleNumberInSession(sessionData, defaultVehicle.vehicle_number);
+        if (!vehicleResult.ok) {
+          // ignore invalid stored numbers
+        }
+      }
+    }
+
     await saveSession(sessionId, sessionData);
     return NextResponse.json({
       success: true,
-      contextPatch: buildSessionContextPatch(sessionData, sessionId),
+      contextPatch: {
+        ...buildSessionContextPatch(sessionData, sessionId, {
+          customerName: prefill?.customer?.full_name || undefined,
+          skipNamePrompt: Boolean(prefill?.customer?.full_name),
+          skipMobilePrompt: true,
+          isLoggedInCustomer: Boolean(prefill?.customer),
+        }),
+        customerVehicles: prefill?.vehicles || [],
+        customerAddresses: prefill?.addresses || [],
+      },
     });
   }
 

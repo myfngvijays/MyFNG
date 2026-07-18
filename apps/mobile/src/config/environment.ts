@@ -46,7 +46,8 @@ export const ENV = {
   PLAYSTORE_URL: 'https://play.google.com/store/apps/details?id=com.myfng.app',
   APPSTORE_URL: 'https://apps.apple.com/in/app/myfng/id6744942498',
   REFERRAL_LINK_BASE: 'https://myfng.in/refer',
-  WEBSITE_URL: 'https://myfng.in',
+  /** Same origin as API in dev so /misa-ai WebView hits local Next.js when testing. */
+  WEBSITE_URL: API_URL,
 };
 
 export function isIosSimulator(): boolean {

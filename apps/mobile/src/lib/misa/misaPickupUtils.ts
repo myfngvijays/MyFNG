@@ -86,3 +86,23 @@ export function getDefaultPickupDate(): string {
   if (getAvailableSlotsForDate(today).length === 0) return getNextDateIST();
   return today;
 }
+
+export function formatDateForButton(isoDate: string): string {
+  const date = new Date(isoDate + 'T00:00:00+05:30');
+  const dayName = new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(date);
+  if (isoDate === getCurrentDateIST()) return `Today, ${dayName}`;
+  if (isoDate === getNextDateIST()) return `Tomorrow, ${dayName}`;
+  return dayName;
+}
+
+export function buildQuickDates(minDate: string, count = 7): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    out.push(addDaysToIsoDate(minDate, i));
+  }
+  return out;
+}
+
+export function isoFromDatePickerValue(value: Date): string {
+  return toIsoDate(value.getFullYear(), value.getMonth() + 1, value.getDate());
+}

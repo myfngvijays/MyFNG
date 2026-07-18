@@ -37,6 +37,7 @@ import {
   MisaBookingSummaryCard,
   parseBookingSummary,
 } from './components/MisaBookingSummaryCard';
+import { MisaAiBackground } from './components/MisaAiBackground';
 import { getLeadTrackingMeta } from '@/lib/utm';
 
 type ChatRole = 'user' | 'assistant';
@@ -143,6 +144,8 @@ function AIBookingPageInner() {
   const CHAT_API = '/api/chatbot/v2';
   const searchParams = useSearchParams();
   const isEmbed = searchParams.get('embed') === '1';
+  const cityParam = String(searchParams.get('city') || '').trim();
+  const prefillParam = String(searchParams.get('prefill') || '').trim();
 
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -169,6 +172,7 @@ function AIBookingPageInner() {
   const [chatContext, setChatContext] = useState<any>({ docMode: false });
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const lastAppliedSyncAtRef = useRef<number>(0);
+  const prefillSentRef = useRef(false);
 
   const stageNow: string = chatContext?.conversationStage || 'INITIAL';
 
@@ -214,10 +218,22 @@ function AIBookingPageInner() {
     }
   }, []);
 
+  // App / deep-link: ?city=Delhi from mobile WebView
+  useEffect(() => {
+    if (typeof window === 'undefined' || !cityParam) return;
+    window.localStorage.setItem(DETECTED_CITY_KEY, cityParam);
+    window.localStorage.setItem(DETECTED_CITY_TS_KEY, String(Date.now()));
+    setChatContext((prev: any) => ({
+      ...(prev || {}),
+      locationLabel: cityParam,
+    }));
+  }, [cityParam]);
+
   // Fallback: use selected city from the main navbar (stored in localStorage).
   // This keeps pricing stable on /misa-ai even if GPS/reverse-geocode isn't available.
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (cityParam) return;
     const existing = String(chatContext?.locationLabel || '').trim();
     if (existing) return;
     const storedCity = String(window.localStorage.getItem(DETECTED_CITY_KEY) || '').trim();
@@ -784,6 +800,14 @@ function AIBookingPageInner() {
     dismissAllPricingPickers();
     setShowOtherServices(true);
   };
+
+  // Mobile app WebView: ?prefill=... sends first message automatically
+  useEffect(() => {
+    if (!prefillParam || prefillSentRef.current || chatLoading) return;
+    if (chatMessages.some((m) => m.role === 'user')) return;
+    prefillSentRef.current = true;
+    void sendChatMessage(prefillParam);
+  }, [prefillParam, chatLoading, chatMessages]);
 
   return (
     <div

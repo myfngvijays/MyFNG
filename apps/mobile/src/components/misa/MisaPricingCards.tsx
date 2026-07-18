@@ -15,12 +15,18 @@ import type { MisaPricingPlan } from '../../lib/misa/misaPricing';
 import {
   getOilTypeForPlan,
   groupPeriodicPlans,
+  isKnownPeriodicTier,
   isPeriodicPricing,
 } from '../../lib/misa/misaPricing';
 import { ENV } from '../../config/environment';
 
 type ChecklistItem = { name: string; category: string };
-type ChecklistMeta = { points: number | null; itemCount: number; loading: boolean };
+type ChecklistMeta = {
+  points: number | null;
+  itemCount: number;
+  preview: string[];
+  loading: boolean;
+};
 
 type Props = {
   plans: MisaPricingPlan[];
@@ -32,54 +38,162 @@ function inr(value: number) {
   return `₹${Math.round(Number(value || 0)).toLocaleString('en-IN')}`;
 }
 
+function resolveFetchOil(plan: MisaPricingPlan, activeOil: 'semi' | 'full'): 'semi' | 'full' {
+  if (plan.isPeriodic || isKnownPeriodicTier(plan.tier)) return activeOil;
+  if (plan.oilType === 'full' || plan.oilType === 'semi') return plan.oilType;
+  return activeOil;
+}
+
 function checklistTierParam(plan: MisaPricingPlan): string {
-  if (plan.isPeriodic) return plan.tier;
+  if (plan.isPeriodic || isKnownPeriodicTier(plan.tier)) return plan.tier;
   return plan.name || plan.tier;
 }
 
-function checklistFetchUrl(plan: MisaPricingPlan): string {
-  const oilParam = plan.oilType === 'unknown' ? 'semi' : plan.oilType;
+function checklistFetchUrl(plan: MisaPricingPlan, activeOil: 'semi' | 'full'): string {
+  const oilParam = resolveFetchOil(plan, activeOil);
   if (plan.serviceTypeId) {
     return `${ENV.API_URL}/api/chatbot/v2/service-checklist?service_type_id=${encodeURIComponent(plan.serviceTypeId)}&oil=${oilParam}`;
   }
   return `${ENV.API_URL}/api/chatbot/v2/service-checklist?tier=${encodeURIComponent(checklistTierParam(plan))}&oil=${oilParam}`;
 }
 
-async function fetchPlanChecklistMeta(plan: MisaPricingPlan): Promise<Omit<ChecklistMeta, 'loading'>> {
+function normalizeChecklistItems(raw: unknown): ChecklistItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') {
+        const name = item.trim();
+        return name ? { name, category: 'General' } : null;
+      }
+      const name = String((item as any)?.name || (item as any)?.title || (item as any)?.label || '').trim();
+      if (!name) return null;
+      return { name, category: String((item as any)?.category || 'General').trim() || 'General' };
+    })
+    .filter(Boolean) as ChecklistItem[];
+}
+
+function planFallbackItems(plan: MisaPricingPlan): ChecklistItem[] {
+  if (plan.checklistItems?.length) return plan.checklistItems;
+  return (plan.checklistPreview || []).map((name) => ({ name, category: 'General' }));
+}
+
+async function parseChecklistResponse(res: Response): Promise<any> {
+  const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+  const raw = await res.text();
+  if (!contentType.includes('application/json')) {
+    throw new Error('Checklist API unavailable');
+  }
   try {
-    const res = await fetch(checklistFetchUrl(plan));
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.success) return { points: null, itemCount: 0 };
-    const items = Array.isArray(json.items) ? json.items : [];
-    const points = typeof json.points === 'number' ? json.points : items.length > 0 ? items.length : null;
-    return { points, itemCount: items.length };
+    return raw ? JSON.parse(raw) : {};
   } catch {
-    return { points: null, itemCount: 0 };
+    throw new Error('Invalid checklist response');
   }
 }
 
-function PointsModal({ plan, onClose }: { plan: MisaPricingPlan; onClose: () => void }) {
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<ChecklistItem[]>([]);
+async function fetchPlanChecklistMeta(
+  plan: MisaPricingPlan,
+  activeOil: 'semi' | 'full',
+): Promise<Omit<ChecklistMeta, 'loading'>> {
+  const fallbackItems = planFallbackItems(plan);
+  const fallbackCount = plan.checklistCount ?? fallbackItems.length;
+  const fallbackPoints = plan.points ? parseInt(plan.points, 10) : fallbackCount > 0 ? fallbackCount : null;
+  const fallbackPreview = fallbackItems.slice(0, 4).map((item) => item.name);
+
+  if (fallbackItems.length >= 3 && fallbackPoints) {
+    return {
+      points: fallbackPoints,
+      itemCount: fallbackCount,
+      preview: fallbackPreview,
+    };
+  }
+
+  try {
+    const res = await fetch(checklistFetchUrl(plan, activeOil));
+    const json = await parseChecklistResponse(res);
+    if (!res.ok || !json?.success) {
+      return {
+        points: fallbackPoints,
+        itemCount: fallbackCount,
+        preview: fallbackPreview,
+      };
+    }
+    const items = normalizeChecklistItems(json.items);
+    const points =
+      typeof json.points === 'number' ? json.points : items.length > 0 ? items.length : fallbackPoints;
+    const preview = items.slice(0, 4).map((item) => item.name);
+    return {
+      points,
+      itemCount: items.length || fallbackCount,
+      preview: preview.length ? preview : fallbackPreview,
+    };
+  } catch {
+    return {
+      points: fallbackPoints,
+      itemCount: fallbackCount,
+      preview: fallbackPreview,
+    };
+  }
+}
+
+function shouldShowViewAll(plan: MisaPricingPlan, meta?: ChecklistMeta): boolean {
+  if (plan.isPeriodic || isKnownPeriodicTier(plan.tier)) return true;
+  return (meta?.itemCount ?? plan.checklistCount ?? 0) > 0 || (plan.checklistPreview?.length ?? 0) > 0;
+}
+
+function PointsModal({
+  plan,
+  activeOil,
+  onClose,
+}: {
+  plan: MisaPricingPlan;
+  activeOil: 'semi' | 'full';
+  onClose: () => void;
+}) {
+  const fallbackItems = useMemo(() => planFallbackItems(plan), [plan]);
+  const [loading, setLoading] = useState(fallbackItems.length === 0);
+  const [items, setItems] = useState<ChecklistItem[]>(fallbackItems);
   const [modalTitle, setModalTitle] = useState(`${plan.tier} Service`);
-  const [points, setPoints] = useState<number | null>(plan.points ? parseInt(plan.points, 10) : null);
+  const [points, setPoints] = useState<number | null>(
+    plan.points ? parseInt(plan.points, 10) : fallbackItems.length > 0 ? fallbackItems.length : null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (fallbackItems.length >= 3) {
+        setLoading(false);
+        setItems(fallbackItems);
+        if (!points && fallbackItems.length > 0) setPoints(fallbackItems.length);
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(checklistFetchUrl(plan));
-        const json = await res.json().catch(() => ({}));
+        const res = await fetch(checklistFetchUrl(plan, activeOil));
+        const json = await parseChecklistResponse(res);
         if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not load points');
         if (cancelled) return;
-        setItems(Array.isArray(json.items) ? json.items : []);
+        const parsed = normalizeChecklistItems(json.items);
+        if (parsed.length > 0) {
+          setItems(parsed);
+        } else if (fallbackItems.length > 0) {
+          setItems(fallbackItems);
+        }
         if (typeof json.points === 'number') setPoints(json.points);
+        else if (parsed.length > 0) setPoints(parsed.length);
+        else if (fallbackItems.length > 0) setPoints(fallbackItems.length);
         if (json.title) setModalTitle(String(json.title));
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || 'Failed to load checklist');
+        if (cancelled) return;
+        if (fallbackItems.length > 0) {
+          setItems(fallbackItems);
+          if (!points) setPoints(fallbackItems.length);
+          setError(null);
+        } else {
+          setError(e?.message || 'Failed to load checklist');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -87,7 +201,7 @@ function PointsModal({ plan, onClose }: { plan: MisaPricingPlan; onClose: () => 
     return () => {
       cancelled = true;
     };
-  }, [plan]);
+  }, [plan, activeOil, fallbackItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ChecklistItem[]>();
@@ -164,17 +278,28 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
     });
   }, [plans, oilType, showOilToggle]);
 
+  const fetchKey = useMemo(
+    () => visiblePlans.map((p) => `${p.id}:${p.serviceTypeId || ''}:${p.tier}:${oilType}`).join('|'),
+    [visiblePlans, oilType],
+  );
+
   useEffect(() => {
     let cancelled = false;
     const loadingMap: Record<string, ChecklistMeta> = {};
     visiblePlans.forEach((p) => {
-      loadingMap[p.id] = { points: null, itemCount: 0, loading: true };
+      loadingMap[p.id] = {
+        points: p.points ? parseInt(p.points, 10) : null,
+        itemCount: p.checklistCount ?? p.checklistPreview?.length ?? 0,
+        preview: p.checklistPreview || [],
+        loading: true,
+      };
     });
     setChecklistMeta(loadingMap);
+
     void Promise.all(
       visiblePlans.map(async (plan) => {
-        const m = await fetchPlanChecklistMeta(plan);
-        return { id: plan.id, meta: { ...m, loading: false } };
+        const m = await fetchPlanChecklistMeta(plan, oilType);
+        return { id: plan.id, meta: { ...m, loading: false } satisfies ChecklistMeta };
       }),
     ).then((rows) => {
       if (cancelled) return;
@@ -186,10 +311,11 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
         return next;
       });
     });
+
     return () => {
       cancelled = true;
     };
-  }, [visiblePlans]);
+  }, [fetchKey, oilType, visiblePlans]);
 
   useEffect(() => {
     setSelectedId(null);
@@ -227,15 +353,17 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {visiblePlans.map((plan) => {
           const meta = checklistMeta[plan.id];
+          const parsedPoints = plan.points ? parseInt(plan.points, 10) : null;
           const pointsNum =
-            meta && !meta.loading && meta.points != null
-              ? meta.points
-              : plan.points
-                ? parseInt(plan.points, 10)
-                : null;
-          const hasChecklist = (meta?.itemCount ?? plan.checklistCount ?? 0) > 0;
-          const showPointsUi = hasChecklist || Boolean(pointsNum && pointsNum > 0);
+            meta && !meta.loading && meta.points != null ? meta.points : parsedPoints;
+          const previewItems =
+            meta && !meta.loading && meta.preview.length > 0
+              ? meta.preview
+              : plan.checklistPreview || [];
+          const showPointsUi = Boolean(pointsNum && pointsNum > 0) || previewItems.length > 0;
+          const showViewAll = shouldShowViewAll(plan, meta);
           const isSelected = selectedId === plan.id;
+
           return (
             <TouchableOpacity
               key={plan.id}
@@ -248,7 +376,8 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
                 {plan.isPeriodic ? `${plan.tier} Service` : plan.tier}
               </Text>
               <Text style={styles.cardPrice}>{inr(plan.price)}</Text>
-              {meta?.loading ? (
+
+              {meta?.loading && previewItems.length === 0 ? (
                 <Text style={styles.metaLoading}>Loading points…</Text>
               ) : showPointsUi && pointsNum ? (
                 <View style={styles.pointsRow}>
@@ -256,7 +385,23 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
                   <Text style={styles.pointsText}>{pointsNum} Activity Points</Text>
                 </View>
               ) : null}
-              {!meta?.loading && showPointsUi ? (
+
+              {previewItems.slice(0, 3).map((item, idx) => (
+                <View key={`${plan.id}-preview-${idx}`} style={styles.previewRow}>
+                  <Ionicons name="checkmark" size={10} color="#059669" />
+                  <Text style={styles.previewText} numberOfLines={1}>
+                    {item}
+                  </Text>
+                </View>
+              ))}
+
+              {plan.description ? (
+                <Text style={styles.cardDesc} numberOfLines={2}>
+                  {plan.description}
+                </Text>
+              ) : null}
+
+              {showViewAll ? (
                 <TouchableOpacity
                   onPress={(e) => {
                     e.stopPropagation?.();
@@ -266,6 +411,12 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
                 >
                   <Text style={styles.viewPoints}>View all points</Text>
                 </TouchableOpacity>
+              ) : null}
+
+              {isSelected ? (
+                <View style={styles.selectedBadge}>
+                  <Ionicons name="checkmark" size={12} color="#fff" />
+                </View>
               ) : null}
             </TouchableOpacity>
           );
@@ -289,7 +440,9 @@ export function MisaPricingCards({ plans, title, onSelect }: Props) {
         </Text>
       </TouchableOpacity>
 
-      {pointsPlan ? <PointsModal plan={pointsPlan} onClose={() => setPointsPlan(null)} /> : null}
+      {pointsPlan ? (
+        <PointsModal plan={pointsPlan} activeOil={oilType} onClose={() => setPointsPlan(null)} />
+      ) : null}
     </View>
   );
 }
@@ -321,12 +474,14 @@ const styles = StyleSheet.create({
   oilBtnTextActive: { color: '#fff' },
   row: { gap: 10, paddingVertical: 8 },
   card: {
-    width: 168,
+    width: 176,
+    minHeight: 168,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     backgroundColor: '#fff',
     padding: 12,
+    position: 'relative',
   },
   cardSelected: { borderColor: COLORS.primary, borderWidth: 2 },
   badge: {
@@ -343,10 +498,24 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 13, fontWeight: '800', color: '#111827' },
   cardPrice: { marginTop: 6, fontSize: 18, fontWeight: '900', color: '#1D4ED8' },
+  cardDesc: { marginTop: 4, fontSize: 10, fontWeight: '600', color: '#6B7280', lineHeight: 14 },
   metaLoading: { marginTop: 6, fontSize: 10, color: '#9CA3AF' },
   pointsRow: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
   pointsText: { fontSize: 11, fontWeight: '800', color: COLORS.primary },
-  viewPoints: { marginTop: 6, fontSize: 11, fontWeight: '800', color: COLORS.primary, textDecorationLine: 'underline' },
+  previewRow: { marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  previewText: { flex: 1, fontSize: 10, fontWeight: '600', color: '#4B5563' },
+  viewPoints: { marginTop: 8, fontSize: 11, fontWeight: '800', color: COLORS.primary, textDecorationLine: 'underline' },
+  selectedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   selectedLine: { marginTop: 4, fontSize: 11, fontWeight: '700', color: '#374151' },
   continueBtn: {
     marginTop: 8,

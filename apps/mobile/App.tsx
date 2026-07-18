@@ -384,7 +384,7 @@ function AppContent() {
                 presentation: 'fullScreenModal',
                 animation: 'slide_from_bottom',
                 headerShown: false,
-                contentStyle: { backgroundColor: '#F9FAFB' },
+                contentStyle: { backgroundColor: '#071526' },
               }}
             />
             <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
@@ -441,7 +441,7 @@ function AppContent() {
                 presentation: 'fullScreenModal',
                 animation: 'slide_from_bottom',
                 headerShown: false,
-                contentStyle: { backgroundColor: '#F9FAFB' },
+                contentStyle: { backgroundColor: '#071526' },
               }}
             />
           </>

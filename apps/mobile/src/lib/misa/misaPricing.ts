@@ -10,9 +10,42 @@ export type MisaPricingPlan = {
   isPeriodic: boolean;
   serviceTypeId?: string | null;
   checklistCount?: number;
+  checklistPreview?: string[];
+  checklistItems?: Array<{ name: string; category: string }>;
   points?: string | null;
   badge?: string | null;
 };
+
+function normalizeChecklistItems(raw: unknown): Array<{ name: string; category: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') {
+        const name = item.trim();
+        return name ? { name, category: 'General' } : null;
+      }
+      const name = String((item as any)?.name || (item as any)?.title || (item as any)?.label || '').trim();
+      if (!name) return null;
+      return { name, category: String((item as any)?.category || 'General').trim() || 'General' };
+    })
+    .filter(Boolean) as Array<{ name: string; category: string }>;
+}
+
+function normalizeChecklistPreview(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      const name = String((item as any)?.name || (item as any)?.title || (item as any)?.label || '').trim();
+      return name;
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+export function isKnownPeriodicTier(tier: string): boolean {
+  return /basic|general|premium|platinum/i.test(String(tier || ''));
+}
 
 function cleanPlanName(raw: string): string {
   return String(raw || '')
@@ -154,13 +187,16 @@ export function buildPricingPlansFromApi(rows: any[]): MisaPricingPlan[] {
     const periodic = isPeriodicPlanName(name);
     const oilType = getOilTypeForPlan(name, description);
     const parsedPoints = getPlanPoints(name, description);
+    const preview = normalizeChecklistPreview(p?.checklist_items);
+    const checklistItems = normalizeChecklistItems(p?.checklist_items);
+    const checklistCount = checklistItems.length > 0 ? checklistItems.length : Number(p?.checklist_count || 0);
     const pointsValue =
       typeof p?.points === 'number' && p.points > 0
         ? String(p.points)
         : parsedPoints
           ? parsedPoints
-          : (p?.checklist_count ?? 0) > 0
-            ? String(p.checklist_count)
+          : checklistCount > 0
+            ? String(checklistCount)
             : null;
     return {
       id: `api-${index}-${p?.service_type_id || name}-${oilType}`,
@@ -171,7 +207,9 @@ export function buildPricingPlansFromApi(rows: any[]): MisaPricingPlan[] {
       description,
       isPeriodic: periodic,
       serviceTypeId: p?.service_type_id || null,
-      checklistCount: Number(p?.checklist_count || 0),
+      checklistCount,
+      checklistPreview: preview,
+      checklistItems,
       points: pointsValue,
       badge: getPlanBadge(name),
     };
