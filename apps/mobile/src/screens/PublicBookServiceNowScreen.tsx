@@ -80,7 +80,7 @@ import {
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
-import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { checkSmsOtpAllowed, sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBadgeCount';
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { completeBookingDraftOnServer, syncBookingDraftToServer } from '../lib/bookingDraftSync';
@@ -2222,6 +2222,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     const cleanPhone = form.customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    const smsCheck = await checkSmsOtpAllowed();
+    if (!smsCheck.allowed) {
+      Alert.alert('SMS OTP Unavailable', smsCheck.message);
       return;
     }
     if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {

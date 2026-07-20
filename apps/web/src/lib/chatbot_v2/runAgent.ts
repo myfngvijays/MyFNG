@@ -1,4 +1,5 @@
 import { CHATBOT_TOOLS, executeToolCall } from './chatbot-tools';
+import { logMisaAiUsage } from './misaAiUsageLog';
 import { getSession, saveSession, type SessionData } from './session';
 
 type ChatMessage = {
@@ -43,12 +44,23 @@ export type RunAgentResult = {
   }>;
 };
 
+type CompletionUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
+type CompletionResult = {
+  message?: ChatMessage;
+  usage?: CompletionUsage;
+};
+
 async function createCompletion(
   messages: ChatMessage[],
   model: string,
   tools: typeof CHATBOT_TOOLS,
   maxTokens: number,
-) {
+): Promise<CompletionResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error('OpenAI API key is missing');
@@ -76,7 +88,19 @@ async function createCompletion(
   }
 
   const data = (await res.json()) as any;
-  return data?.choices?.[0]?.message as ChatMessage | undefined;
+  const usageRaw = data?.usage;
+  const usage = usageRaw
+    ? {
+        prompt_tokens: Number(usageRaw.prompt_tokens || 0),
+        completion_tokens: Number(usageRaw.completion_tokens || 0),
+        total_tokens: Number(usageRaw.total_tokens || 0),
+      }
+    : undefined;
+
+  return {
+    message: data?.choices?.[0]?.message as ChatMessage | undefined,
+    usage,
+  };
 }
 
 export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
@@ -106,7 +130,8 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
     { role: 'user', content: message },
   ];
 
-  let assistantMessage = await createCompletion(messages, model, tools, maxTokens);
+  let assistantCompletion = await createCompletion(messages, model, tools, maxTokens);
+  let assistantMessage = assistantCompletion.message;
   let toolCalls = assistantMessage?.tool_calls || [];
   let finalResponse = String(assistantMessage?.content || '');
   let pricing:
@@ -119,8 +144,23 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
     | undefined;
 
   let iteration = 0;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let toolCallsCount = 0;
+
+  const accumulateUsage = (usage?: CompletionUsage) => {
+    if (!usage) return;
+    promptTokens += usage.prompt_tokens;
+    completionTokens += usage.completion_tokens;
+    totalTokens += usage.total_tokens || usage.prompt_tokens + usage.completion_tokens;
+  };
+
+  accumulateUsage(assistantCompletion.usage);
+
   while (toolCalls.length > 0 && iteration < maxIterations) {
     iteration += 1;
+    toolCallsCount += toolCalls.length;
     messages.push({
       role: 'assistant',
       content: String(assistantMessage?.content || ''),
@@ -158,7 +198,9 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
       });
     }
 
-    assistantMessage = await createCompletion(messages, model, tools, maxTokens);
+    assistantCompletion = await createCompletion(messages, model, tools, maxTokens);
+    accumulateUsage(assistantCompletion.usage);
+    assistantMessage = assistantCompletion.message;
     toolCalls = assistantMessage?.tool_calls || [];
     finalResponse = String(assistantMessage?.content || '');
   }
@@ -173,6 +215,20 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
 
   if (persistSession) {
     await saveSession(sessionId, sessionData);
+  }
+
+  if (!dryRun) {
+    await logMisaAiUsage({
+      sessionId,
+      channel: bookingChannel || 'WEBSITE',
+      model,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      toolCallsCount,
+      iterations: iteration + 1,
+      userMessagePreview: message,
+    });
   }
 
   return {

@@ -1,4 +1,5 @@
 import { NativeModules, Platform } from 'react-native';
+import { isFirebaseAnalyticsEnabledSync } from './mobileAuthConfig';
 
 type AnalyticsModule = typeof import('@react-native-firebase/analytics').default;
 
@@ -20,8 +21,12 @@ function getAnalytics(): AnalyticsModule | null {
   }
 }
 
+function analyticsAllowed(): boolean {
+  return isFirebaseAnalyticsEnabledSync();
+}
+
 export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || !analyticsAllowed()) return;
   const analytics = getAnalytics();
   if (!analytics) return;
   try {
@@ -32,7 +37,7 @@ export function trackEvent(name: string, params?: Record<string, string | number
 }
 
 export function trackScreen(screenName: string): void {
-  if (Platform.OS === 'web' || !screenName.trim()) return;
+  if (Platform.OS === 'web' || !screenName.trim() || !analyticsAllowed()) return;
   const analytics = getAnalytics();
   if (!analytics) return;
   try {
@@ -43,7 +48,7 @@ export function trackScreen(screenName: string): void {
 }
 
 export function setUserProperty(key: string, value: string | null): void {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || !analyticsAllowed()) return;
   const analytics = getAnalytics();
   if (!analytics) return;
   try {
@@ -54,7 +59,7 @@ export function setUserProperty(key: string, value: string | null): void {
 }
 
 export function setUserId(userId: string | null): void {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || !analyticsAllowed()) return;
   const analytics = getAnalytics();
   if (!analytics) return;
   try {

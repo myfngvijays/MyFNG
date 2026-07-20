@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Eye, Grid3X3, List, Plus, RefreshCcw, Search, Trash2 } from 'lucide-react';
+import { Calendar, ChevronDown, Eye, Grid3X3, List, Plus, RefreshCcw, Search, Trash2 } from 'lucide-react';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
+import WhatsAppTemplatePreviewModal, {
+  WhatsAppTemplateBubble,
+} from '@/components/shared/WhatsAppTemplatePreviewModal';
 
 type TemplateRow = {
   id: string;
@@ -19,6 +22,38 @@ type TemplateRow = {
   created_at: string;
   updated_at: string;
 };
+
+type ViewMode = 'list' | 'grid';
+type DateField = 'created' | 'updated';
+
+type ColumnVisibility = {
+  preview: boolean;
+  waba: boolean;
+  createdBy: boolean;
+  createdOn: boolean;
+  lastUpdated: boolean;
+};
+
+const DEFAULT_COLUMNS: ColumnVisibility = {
+  preview: true,
+  waba: true,
+  createdBy: true,
+  createdOn: true,
+  lastUpdated: true,
+};
+
+function toYmd(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseRowDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return toYmd(date);
+}
 
 type TemplateLanguage = {
   code: string;
@@ -60,6 +95,14 @@ export default function WhatsAppTemplateManager() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [languageFilter, setLanguageFilter] = useState('ALL');
+  const [dateField, setDateField] = useState<DateField>('updated');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [showViewOptions, setShowViewOptions] = useState(false);
+  const [columns, setColumns] = useState<ColumnVisibility>(DEFAULT_COLUMNS);
+  const [previewTemplate, setPreviewTemplate] = useState<TemplateRow | null>(null);
+  const viewOptionsRef = useRef<HTMLDivElement | null>(null);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -141,9 +184,12 @@ export default function WhatsAppTemplateManager() {
         (statusFilter === 'INACTIVE' && !row.is_active);
       const matchesCategory = categoryFilter === 'ALL' || row.category === categoryFilter;
       const matchesLanguage = languageFilter === 'ALL' || row.language_code === languageFilter;
-      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage;
+      const rowDate = parseRowDate(dateField === 'created' ? row.created_at : row.updated_at);
+      const matchesDateFrom = !dateFrom || (rowDate != null && rowDate >= dateFrom);
+      const matchesDateTo = !dateTo || (rowDate != null && rowDate <= dateTo);
+      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDateFrom && matchesDateTo;
     });
-  }, [templates, search, statusFilter, categoryFilter, languageFilter]);
+  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, dateFrom, dateTo]);
 
   const categories = useMemo(() => {
     const values = Array.from(new Set(templates.map((row) => row.category).filter(Boolean)));
@@ -175,6 +221,29 @@ export default function WhatsAppTemplateManager() {
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (!viewOptionsRef.current?.contains(event.target as Node)) {
+        setShowViewOptions(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const openTemplatePreview = (row: TemplateRow) => {
+    setPreviewTemplate(row);
+  };
+
+  const toggleColumn = (key: keyof ColumnVisibility) => {
+    setColumns((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const clearDateFilter = () => {
+    setDateFrom('');
+    setDateTo('');
+  };
 
   const handleCreate = async () => {
     if (!form.template_name.trim()) {
@@ -299,7 +368,10 @@ export default function WhatsAppTemplateManager() {
     <div className="space-y-6">
       <div className="rounded-xl border bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-bold text-gray-900">Templates</h2>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Templates</h2>
+            <p className="text-xs text-gray-500">Click any template to open WhatsApp-style preview</p>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -523,10 +595,14 @@ export default function WhatsAppTemplateManager() {
 
               <div className="rounded-lg border bg-white p-3">
                 <p className="text-sm font-semibold text-gray-900">Template Preview</p>
-                <div className="mt-3 rounded-2xl border bg-[#f7f5f3] p-3">
-                  <div className="rounded-xl bg-white p-2 text-xs text-gray-700 shadow-sm">
-                    {templatePreview || 'Type template body to preview message...'}
-                  </div>
+                <div className="mt-3">
+                  <WhatsAppTemplateBubble
+                    template={{
+                      template_name: form.template_name || 'new_template',
+                      body_text: templatePreview || 'Type template body to preview message...',
+                      example_values: [],
+                    }}
+                  />
                 </div>
                 <div className="mt-3 text-xs text-gray-600">
                   <p>
@@ -586,6 +662,42 @@ export default function WhatsAppTemplateManager() {
             ))}
           </select>
 
+          <div className="flex items-center gap-1 rounded-lg border px-2 py-1">
+            <Calendar className="h-4 w-4 text-gray-400" />
+            <select
+              className="border-0 bg-transparent py-1 text-sm outline-none"
+              value={dateField}
+              onChange={(e) => setDateField(e.target.value as DateField)}
+            >
+              <option value="updated">Updated</option>
+              <option value="created">Created</option>
+            </select>
+            <input
+              type="date"
+              className="w-[130px] border-0 bg-transparent py-1 text-sm outline-none"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              title="From date"
+            />
+            <span className="text-xs text-gray-400">to</span>
+            <input
+              type="date"
+              className="w-[130px] border-0 bg-transparent py-1 text-sm outline-none"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              title="To date"
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={clearDateFilter}
+                className="rounded px-1.5 py-0.5 text-xs text-gray-500 hover:bg-gray-100"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={handleSyncTemplates}
@@ -597,34 +709,117 @@ export default function WhatsAppTemplateManager() {
             {syncing ? 'Syncing...' : 'Sync'}
           </button>
 
-          <button
-            type="button"
-            className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <Eye className="mr-1 h-4 w-4" />
-            View Options
-          </button>
+          <div className="relative" ref={viewOptionsRef}>
+            <button
+              type="button"
+              onClick={() => setShowViewOptions((value) => !value)}
+              className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Eye className="mr-1 h-4 w-4" />
+              View Options
+              <ChevronDown className="ml-1 h-4 w-4" />
+            </button>
+            {showViewOptions ? (
+              <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border bg-white p-3 shadow-lg">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Columns</p>
+                {(
+                  [
+                    ['preview', 'Preview'],
+                    ['waba', 'WABA'],
+                    ['createdBy', 'Created by'],
+                    ['createdOn', 'Created on'],
+                    ['lastUpdated', 'Last updated'],
+                  ] as Array<[keyof ColumnVisibility, string]>
+                ).map(([key, label]) => (
+                  <label key={key} className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={columns[key]}
+                      onChange={() => toggleColumn(key)}
+                      className="rounded border-gray-300"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <div className="inline-flex items-center overflow-hidden rounded-lg border">
-            <button type="button" className="bg-gray-100 px-2 py-2 text-gray-700">
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`px-2 py-2 ${viewMode === 'grid' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+              title="Grid view"
+            >
               <Grid3X3 className="h-4 w-4" />
             </button>
-            <button type="button" className="px-2 py-2 text-gray-700">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`px-2 py-2 ${viewMode === 'list' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+              title="List view"
+            >
               <List className="h-4 w-4" />
             </button>
           </div>
         </div>
 
+        {viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {loading && templates.length === 0 ? (
+              <div className="col-span-full rounded-lg border px-3 py-8 text-center text-gray-500">
+                Loading templates...
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="col-span-full rounded-lg border px-3 py-8 text-center text-gray-500">
+                No templates found for current filters.
+              </div>
+            ) : (
+              filteredTemplates.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => openTemplatePreview(row)}
+                  className="rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-gray-900">{row.display_name || row.template_name}</p>
+                      <p className="text-xs text-gray-500">{row.template_name}</p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        row.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'APPROVED'
+                        ? 'Approved'
+                        : String(row.meta?.status || 'NOT_SYNCED')}
+                    </span>
+                  </div>
+                  <WhatsAppTemplateBubble template={row} compact />
+                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                      {row.category} · {row.language_code.toUpperCase()}
+                    </span>
+                    <span>{new Date(row.updated_at).toLocaleDateString()}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-2">Template Name</th>
-                <th className="px-3 py-2">Preview</th>
-                <th className="px-3 py-2">WABA</th>
+                {columns.preview ? <th className="px-3 py-2">Preview</th> : null}
+                {columns.waba ? <th className="px-3 py-2">WABA</th> : null}
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Created by</th>
-                <th className="px-3 py-2">Created on</th>
-                <th className="px-3 py-2">Last updated</th>
+                {columns.createdBy ? <th className="px-3 py-2">Created by</th> : null}
+                {columns.createdOn ? <th className="px-3 py-2">Created on</th> : null}
+                {columns.lastUpdated ? <th className="px-3 py-2">Last updated</th> : null}
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -643,7 +838,11 @@ export default function WhatsAppTemplateManager() {
                 </tr>
               ) : (
                 filteredTemplates.map((row) => (
-                  <tr key={row.id} className="border-t align-top">
+                  <tr
+                    key={row.id}
+                    className="cursor-pointer border-t align-top hover:bg-emerald-50/40"
+                    onClick={() => openTemplatePreview(row)}
+                  >
                     <td className="px-3 py-3">
                       <p className="font-semibold text-gray-900">{row.display_name || row.template_name}</p>
                       <p className="mt-1 text-xs text-gray-500">{row.template_name}</p>
@@ -654,17 +853,20 @@ export default function WhatsAppTemplateManager() {
                         <span className="text-xs text-gray-500">{row.language_code.toUpperCase()}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-3">
-                      <div className="max-w-[260px] rounded-md border bg-gray-50 p-2 text-xs text-gray-700">
-                        {row.body_text.slice(0, 140)}
-                        {row.body_text.length > 140 ? '...' : ''}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-gray-700">
-                      <p className="font-medium">My FNG Car Service</p>
-                      <p className="mt-1 text-xs text-gray-500">1 Number</p>
-                    </td>
-                    <td className="px-3 py-3">
+                    {columns.preview ? (
+                      <td className="px-3 py-3">
+                        <div className="max-w-[220px]">
+                          <WhatsAppTemplateBubble template={row} compact />
+                        </div>
+                      </td>
+                    ) : null}
+                    {columns.waba ? (
+                      <td className="px-3 py-3 text-gray-700">
+                        <p className="font-medium">My FNG Car Service</p>
+                        <p className="mt-1 text-xs text-gray-500">1 Number</p>
+                      </td>
+                    ) : null}
+                    <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
                       <div className="flex flex-col items-start gap-2">
                         <div className="flex items-center gap-2">
                           <ToggleSwitch
@@ -691,14 +893,14 @@ export default function WhatsAppTemplateManager() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-gray-600">Admin</td>
-                    <td className="px-3 py-3 text-gray-600">
-                      {new Date(row.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-3 py-3 text-gray-600">
-                      {new Date(row.updated_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-3 py-3 text-right">
+                    {columns.createdBy ? <td className="px-3 py-3 text-gray-600">Admin</td> : null}
+                    {columns.createdOn ? (
+                      <td className="px-3 py-3 text-gray-600">{new Date(row.created_at).toLocaleDateString()}</td>
+                    ) : null}
+                    {columns.lastUpdated ? (
+                      <td className="px-3 py-3 text-gray-600">{new Date(row.updated_at).toLocaleDateString()}</td>
+                    ) : null}
+                    <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}>
                       <div className="inline-flex items-center gap-2">
                         {['', 'NOT_SYNCED', 'REJECTED'].includes(String(row.meta?.status || '').toUpperCase()) ? (
                           <button
@@ -730,11 +932,20 @@ export default function WhatsAppTemplateManager() {
             </tbody>
           </table>
         </div>
+        )}
 
         <div className="mt-3 text-xs text-gray-500">
           Showing {filteredTemplates.length} of {templates.length} templates
+          {(dateFrom || dateTo) && (
+            <span>
+              {' '}
+              · Date filter ({dateField}): {dateFrom || '…'} to {dateTo || '…'}
+            </span>
+          )}
         </div>
       </div>
+
+      <WhatsAppTemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} />
     </div>
   );
 }

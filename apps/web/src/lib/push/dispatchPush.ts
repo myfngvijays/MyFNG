@@ -36,11 +36,21 @@ async function getFcmTokens(userId: string) {
   if (!supabaseAdmin) return [];
   const { data } = await supabaseAdmin
     .from('notification_devices')
-    .select('token')
+    .select('token, device_name')
     .eq('user_id', userId)
     .eq('platform', MOBILE_PUSH_PLATFORM)
     .eq('is_active', true);
-  return (data || []).map((r: any) => String(r.token));
+  return (data || []).map((r: any) => ({
+    token: String(r.token),
+    device_name: r.device_name ? String(r.device_name) : null,
+  }));
+}
+
+function inferDeviceOs(deviceName: string | null | undefined): 'ios' | 'android' | 'unknown' {
+  const name = String(deviceName || '').toLowerCase();
+  if (name.includes('ios') || name.includes('iphone') || name.includes('ipad')) return 'ios';
+  if (name.includes('android')) return 'android';
+  return 'unknown';
 }
 
 async function getWebPushSubscriptions(userId: string): Promise<WebPushSubscription[]> {
@@ -78,8 +88,9 @@ export async function dispatchPushToUser(userId: string, notification: Notificat
     const tokens = await getFcmTokens(userId);
     if (tokens.length > 0) {
       const delivery = await sendFcmPush(
-        tokens.map((token) => ({
-          token,
+        tokens.map((device) => ({
+          token: device.token,
+          os: inferDeviceOs(device.device_name),
           title,
           body,
           data,

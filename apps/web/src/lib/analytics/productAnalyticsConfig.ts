@@ -377,6 +377,23 @@ export async function saveProductAnalyticsConfig(
   return { ok: true, config: { ...config, updated_at: now } };
 }
 
+export async function updateMobileFirebaseAnalyticsFlags(
+  flags: { android?: boolean; ios?: boolean },
+  updatedBy: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const config = await loadProductAnalyticsConfig(supabaseAdmin, { bypassCache: true });
+  if (flags.android !== undefined) {
+    config.platforms.android.firebase_analytics_enabled = flags.android;
+  }
+  if (flags.ios !== undefined) {
+    config.platforms.ios.firebase_analytics_enabled = flags.ios;
+  }
+  const result = await saveProductAnalyticsConfig(config, updatedBy);
+  if (!result.ok) return result;
+  return { ok: true };
+}
+
 export type PlatformAnalyticsStatus = {
   platform: AnalyticsPlatform;
   label: string;

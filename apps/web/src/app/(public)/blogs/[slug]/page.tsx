@@ -13,6 +13,12 @@ import BlogComments from '@/components/blog/BlogComments';
 import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
 import { serviceImagePath } from '@/lib/media/public-url';
+import {
+  normalizeBlogHtmlMedia,
+  normalizeBlogMediaAbsoluteUrl,
+  normalizeBlogMediaUrl,
+  normalizeBlogSeoData,
+} from '@/lib/blog/normalizeBlogMedia';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +111,7 @@ function buildSchemas(blog: Blog) {
         name: 'MyFNG',
         url: 'https://myfng.in',
       },
-      image: featuredImage ? [featuredImage] : undefined,
+      image: featuredImage ? [normalizeBlogMediaAbsoluteUrl(String(featuredImage))] : undefined,
       keywords: keywords || undefined,
     });
   }
@@ -206,7 +212,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const canonical = String(seo?.canonical_url || `https://myfng.in/blogs/${encodeURIComponent(blog.slug)}`).trim();
   const ogTitle = String(seo?.og_title || title || blog.title || '').trim();
   const ogDesc = String(seo?.og_description || description).trim();
-  const ogImage = String(seo?.og_image || blog.featured_image || '').trim() || undefined;
+  const ogImage =
+    normalizeBlogMediaAbsoluteUrl(String(seo?.og_image || blog.featured_image || '').trim()) || undefined;
 
   const city = normalizeCity(seo?.local_city) || 'Pune';
   const areas = resolveLocalAreas(seo);
@@ -309,6 +316,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   const transformed: Blog = {
     ...blog,
+    featured_image: blog.featured_image ? normalizeBlogMediaUrl(String(blog.featured_image)) : blog.featured_image,
+    content: normalizeBlogHtmlMedia(String(blog.content || '')),
+    seo_data: normalizeBlogSeoData(blog.seo_data as Record<string, unknown> | null | undefined),
     tags: (blog as any)?.tags?.map((t: any) => t?.tag).filter(Boolean) || [],
     categories: (blog as any)?.categories?.map((c: any) => c?.category).filter(Boolean) || [],
     faqs: (faqs || []).map((f: any) => ({ question: f.question, answer: f.answer })),
@@ -645,7 +655,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <h3>Recent Posts</h3>
                   {(recentPosts || []).map((p: any) => (
                     <div key={p.id} className="recent-post">
-                      <img src={p.featured_image || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
+                      <img src={normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
                       <Link href={`/blogs/${p.slug}`}>{p.title}</Link>
                     </div>
                   ))}
@@ -655,7 +665,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <h3>Related Articles</h3>
                   {(recentPosts || []).map((p: any) => (
                     <div key={`related-${p.id}`} className="recent-post">
-                      <img src={p.featured_image || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
+                      <img src={normalizeBlogMediaUrl(String(p.featured_image || '')) || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70'} alt={p.title} />
                       <Link href={`/blogs/${p.slug}`}>{p.title}</Link>
                     </div>
                   ))}

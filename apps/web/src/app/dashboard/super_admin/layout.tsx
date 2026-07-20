@@ -395,16 +395,29 @@ const navigationItems: NavItem[] = [
     isSection: true,
   },
   {
-    name: 'AI Learning Inbox',
-    href: '/dashboard/super_admin/kb-questions',
-    icon: MessageSquare,
-    description: 'Review & add answers to KB'
-  },
-  {
-    name: 'Admin AI Chat',
-    href: '/dashboard/super_admin/admin-ai-chat',
+    name: 'MISA AI',
     icon: Bot,
-    description: 'Chat with MISA — MyFNG Instant Service Assistant'
+    description: 'Dashboard, conversations, usage & billing',
+    children: [
+      {
+        name: 'MISA Dashboard',
+        href: '/dashboard/super_admin/misa-ai',
+        icon: BarChart3,
+        description: 'Usage, bookings, billing & performance',
+      },
+      {
+        name: 'AI Learning Inbox',
+        href: '/dashboard/super_admin/kb-questions',
+        icon: MessageSquare,
+        description: 'Review & add answers to KB',
+      },
+      {
+        name: 'Admin AI Chat',
+        href: '/dashboard/super_admin/admin-ai-chat',
+        icon: Bot,
+        description: 'Chat with MISA — MyFNG Instant Service Assistant',
+      },
+    ],
   },
   {
     name: 'WhatsApp',
@@ -529,6 +542,7 @@ export default function SuperAdminLayout({
     'Shared Content': false,
     'App Customers': false,
     WhatsApp: false,
+    'MISA AI': false,
   });
 
   React.useEffect(() => {
@@ -601,6 +615,13 @@ export default function SuperAdminLayout({
     }
     if (pathname?.startsWith('/dashboard/super_admin/advance-notifications')) {
       setOpenGroups((prev) => ({ ...prev, 'Push Notifications': true }));
+    }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/misa-ai') ||
+      pathname?.startsWith('/dashboard/super_admin/kb-questions') ||
+      pathname?.startsWith('/dashboard/super_admin/admin-ai-chat')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'MISA AI': true }));
     }
     if (
       pathname?.startsWith('/dashboard/super_admin/brands') ||

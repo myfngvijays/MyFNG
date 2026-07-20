@@ -391,3 +391,21 @@ export async function setAutomationTriggerEnabled(triggerKey: WhatsAppAutomation
   if (error) throw new Error(error.message || 'Failed to update trigger');
   return data;
 }
+
+export async function setAutomationTriggerCronEnabled(
+  triggerKey: WhatsAppAutomationTriggerKey,
+  cronEnabled: boolean,
+) {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) throw new Error('Supabase admin client is not available');
+
+  const { data, error } = await supabaseAdmin
+    .from('whatsapp_automation_settings')
+    .update({ cron_enabled: cronEnabled, updated_at: new Date().toISOString() })
+    .eq('trigger_key', triggerKey)
+    .select('trigger_key, cron_enabled')
+    .single();
+
+  if (error) throw new Error(error.message || 'Failed to update cron setting');
+  return data;
+}

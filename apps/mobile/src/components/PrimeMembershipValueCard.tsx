@@ -16,7 +16,7 @@ import {
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
-import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { checkSmsOtpAllowed, sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import { COLORS } from '../constants/theme';
@@ -307,6 +307,11 @@ function GuestPhoneOtpSection({
   const handleSendSmsOtp = async () => {
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    const smsCheck = await checkSmsOtpAllowed();
+    if (!smsCheck.allowed) {
+      Alert.alert('SMS OTP Unavailable', smsCheck.message);
       return;
     }
     if (shouldSkipFirebaseSmsOnSimulator(cleanPhone)) {

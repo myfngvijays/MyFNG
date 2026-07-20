@@ -69,3 +69,10 @@ export function serviceImagePath(fileName: string): string {
 export function serviceImageUrl(fileName: string): string {
   return toSiteMediaUrl(serviceImagePath(fileName));
 }
+
+/** Same-site path for a Supabase storage object (rewritten via /media/* in next.config). */
+export function mediaPathFromStorage(bucket: string, filePath: string): string {
+  const bucketName = String(bucket || '').replace(/^\/+|\/+$/g, '');
+  const objectPath = String(filePath || '').replace(/^\/+/, '');
+  return `/media/${bucketName}/${objectPath}`;
+}

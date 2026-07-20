@@ -11,6 +11,12 @@ import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, valida
 import { autoFillSeoFromSummary } from '@/lib/blog/seo';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
 import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
+import {
+  normalizeBlogHtmlMedia,
+  normalizeBlogMediaUrl,
+  normalizeBlogRecordForResponse,
+  normalizeBlogSeoData,
+} from '@/lib/blog/normalizeBlogMedia';
 
 export async function GET(request: NextRequest) {
   try {
@@ -116,6 +122,7 @@ export async function GET(request: NextRequest) {
     // Transform tags structure
     const transformedBlogs = filteredBlogs.map((blog: any) => ({
       ...blog,
+      featured_image: blog.featured_image ? normalizeBlogMediaUrl(String(blog.featured_image)) : blog.featured_image,
       tags: blog.tags?.map((t: any) => t.tag) || [],
       categories: (blog.categories || []).map((c: any) => c?.category).filter(Boolean) || [],
     }));
@@ -187,8 +194,13 @@ export async function POST(request: NextRequest) {
     const normalizedCategoryId =
       typeof category_id === 'string' ? (category_id.trim() ? category_id.trim() : null) : (category_id ?? null);
     const normalizedFeaturedImage =
-      typeof featured_image === 'string' ? (featured_image.trim() ? featured_image.trim() : null) : (featured_image ?? null);
+      typeof featured_image === 'string'
+        ? normalizeBlogMediaUrl(featured_image.trim() ? featured_image.trim() : null)
+        : featured_image != null
+          ? normalizeBlogMediaUrl(String(featured_image))
+          : null;
     const normalizedExcerpt = typeof excerpt === 'string' ? (excerpt.trim() ? excerpt.trim() : null) : (excerpt ?? null);
+    const normalizedContent = normalizeBlogHtmlMedia(String(content || ''));
 
     // Digital Author restrictions
     let finalStatus = requestedStatus;
@@ -206,12 +218,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Validation
-    if (!title || !slug || !content) {
+    if (!title || !slug || !normalizedContent) {
       return NextResponse.json({ error: 'Title, slug, and content are required' }, { status: 400 });
     }
 
     // Enforce ALT tags on all images inside the HTML body.
-    const altCheck = validateAllImgHaveAlt(String(content), 125);
+    const altCheck = validateAllImgHaveAlt(normalizedContent, 125);
     if (!altCheck.ok) return NextResponse.json({ error: altCheck.error }, { status: 400 });
 
     // Featured image ALT must be provided (stored in seo_data.featured_image_alt).
@@ -245,7 +257,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-calc reading time as per spec (100 words/minute).
-    const { words, minutes } = computeReadTimeFromHtml(String(content));
+    const { words, minutes } = computeReadTimeFromHtml(normalizedContent);
 
     // Soft SEO warnings (returned, but do not block save).
     const warnings: string[] = [];
@@ -258,7 +270,7 @@ export async function POST(request: NextRequest) {
     const tagCount = Array.isArray(tag_ids) ? tag_ids.length : 0;
     if (tagCount && (tagCount < 5 || tagCount > 10)) warnings.push('Tags recommended: 5–10 tags total per post.');
     if (words && words < 800) warnings.push('Word Count recommended minimum: 800+ words.');
-    warnings.push(...collectHeadingWordWarnings(String(content), 10));
+    warnings.push(...collectHeadingWordWarnings(normalizedContent, 10));
 
     // FAQ warning
     if (Array.isArray(faqs) && faqs.length && faqs.length < 5) warnings.push('FAQs recommended minimum: 5 (AI can generate).');
@@ -314,6 +326,8 @@ export async function POST(request: NextRequest) {
       console.warn('Local SEO enrichment failed (non-blocking):', e);
     }
 
+    finalSeoData = normalizeBlogSeoData(finalSeoData);
+
     // Create blog
     const { data: blog, error: blogError } = await supabase
       .from('blogs')
@@ -321,7 +335,7 @@ export async function POST(request: NextRequest) {
         title,
         slug,
         excerpt: normalizedExcerpt,
-        content,
+        content: normalizedContent,
         seo_data: finalSeoData,
         category_id: primaryCategoryId,
         author_id: userProfile.id,

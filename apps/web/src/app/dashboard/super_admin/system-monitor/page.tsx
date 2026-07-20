@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Activity,
   RefreshCw,
@@ -108,6 +109,7 @@ const statusConfig = {
 };
 
 export default function SystemMonitorPage() {
+  const router = useRouter();
   const [data, setData] = useState<MonitorData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -173,6 +175,11 @@ export default function SystemMonitorPage() {
 
     if (action === 'external-link' && actionPayload?.url) {
       window.open(actionPayload.url as string, '_blank');
+      return;
+    }
+
+    if (action === 'internal-link' && actionPayload?.url) {
+      router.push(actionPayload.url as string);
       return;
     }
 
@@ -575,6 +582,7 @@ export default function SystemMonitorPage() {
                               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                             >
                               {check.quickFix.action === 'external-link' && <ExternalLink className="w-3.5 h-3.5" />}
+                              {check.quickFix.action === 'internal-link' && <Brain className="w-3.5 h-3.5" />}
                               {check.quickFix.action === 'check-env' && <Key className="w-3.5 h-3.5" />}
                               {check.quickFix.action === 'wake-db' && <Zap className="w-3.5 h-3.5" />}
                               {fixingService === check.name ? 'Running...' : check.quickFix.label}

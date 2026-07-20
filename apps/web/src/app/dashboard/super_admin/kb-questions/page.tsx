@@ -18,6 +18,7 @@ import {
   Loader2,
   Clock,
 } from 'lucide-react';
+import { renderChatMessageLine } from '@/lib/chatbot_v2/renderChatMessage';
 
 // ── KB Inbox types (unchanged logic) ──
 
@@ -318,7 +319,9 @@ function ChatConversationsTab() {
                             {isUser ? 'Customer' : 'AI Bot'}
                           </span>
                         </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                          {msg.content.split('\n').map((line, lineIdx) => renderChatMessageLine(line, isUser, lineIdx))}
+                        </div>
                       </div>
                     </div>
                   );

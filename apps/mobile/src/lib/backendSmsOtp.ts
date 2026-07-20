@@ -1,8 +1,11 @@
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 import { ENV } from '../config/environment';
-import { isFirebaseTestPhone, sendFirebaseSmsOtp } from './firebasePhoneAuth';
+import { checkSmsOtpAllowed } from './mobileAuthConfig';
+import { sendFirebaseSmsOtp } from './firebasePhoneAuth';
 import type { AuthVerifyResponse } from './welcomeBonus';
+
+export { checkSmsOtpAllowed } from './mobileAuthConfig';
 
 export type SmsOtpSendResult = {
   mode: 'firebase';
@@ -43,6 +46,10 @@ async function parseJsonResponse(res: Response): Promise<Record<string, unknown>
 
 /** Firebase Phone Auth only — same as original app login (no server SMS / MSG91). */
 export async function sendSmsOtp(cleanPhone: string): Promise<SmsOtpSendResult> {
+  const smsCheck = await checkSmsOtpAllowed();
+  if (!smsCheck.allowed) {
+    throw new Error(smsCheck.message);
+  }
   const confirmation = await sendFirebaseSmsOtp(cleanPhone);
   return { mode: 'firebase', confirmation };
 }

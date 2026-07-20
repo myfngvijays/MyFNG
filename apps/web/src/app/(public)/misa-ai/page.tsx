@@ -39,6 +39,7 @@ import {
 } from './components/MisaBookingSummaryCard';
 import { MisaAiBackground } from './components/MisaAiBackground';
 import { getLeadTrackingMeta } from '@/lib/utm';
+import { renderChatMessageLine } from '@/lib/chatbot_v2/renderChatMessage';
 
 type ChatRole = 'user' | 'assistant';
 type UiSuggestion = {
@@ -1042,64 +1043,7 @@ function AIBookingPageInner() {
                             }`
                       }
                     >
-                      {displayText.split('\n').map((line, idx) => {
-                        const mdLinkMatch = line.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/i);
-                        if (mdLinkMatch?.[1] && mdLinkMatch?.[2]) {
-                          const full = mdLinkMatch[0];
-                          const label = mdLinkMatch[1];
-                          const url = mdLinkMatch[2];
-                          const start = line.indexOf(full);
-                          const before = start >= 0 ? line.slice(0, start) : '';
-                          const after = start >= 0 ? line.slice(start + full.length) : '';
-                          return (
-                            <span key={idx}>
-                              {before}
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={isUser ? 'underline text-white/90' : 'underline text-brand-primary'}
-                              >
-                                {label}
-                              </a>
-                              {after}
-                              <br />
-                            </span>
-                          );
-                        }
-
-                        const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
-                        if (urlMatch?.[1]) {
-                          // Chat text often contains markdown "(url)" and regex captures trailing ")".
-                          // Strip only trailing punctuation from href and keep it in visible text.
-                          const rawUrl = urlMatch[1];
-                          const cleanUrl = rawUrl.replace(/[)\],.]+$/g, '');
-                          const trailingJunk = rawUrl.slice(cleanUrl.length);
-                          const before = line.slice(0, urlMatch.index || 0);
-                          const after = (trailingJunk + line.slice((urlMatch.index || 0) + rawUrl.length)).replace(/^\)/, '');
-                          return (
-                            <span key={idx}>
-                              {before}
-                              <a
-                                href={cleanUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={isUser ? 'underline text-white/90' : 'underline text-brand-primary'}
-                              >
-                                {cleanUrl}
-                              </a>
-                              {after}
-                              <br />
-                            </span>
-                          );
-                        }
-                        return (
-                          <span key={idx}>
-                            {line}
-                            <br />
-                          </span>
-                        );
-                      })}
+                      {displayText.split('\n').map((line, idx) => renderChatMessageLine(line, isUser, idx))}
                     </div>
                     )}
                     {!isUser && showPricingPicker && (

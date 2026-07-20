@@ -8,6 +8,9 @@ import {
   syncHealthAlertTemplate,
   SYSTEM_HEALTH_ALERT_TEMPLATE,
 } from '@/lib/services/systemHealthAlertTemplate';
+import { probeOpenAiAdminBillingAccess } from '@/lib/chatbot_v2/openAiOrgUsage';
+import { getMisaAiUsdInrRate } from '@/lib/chatbot_v2/misaAiBilling';
+import { getOpenAiCreditBalanceStatus } from '@/lib/chatbot_v2/openAiCreditBalance';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -509,6 +512,147 @@ async function checkOpenAI(): Promise<HealthCheck> {
   }
 }
 
+async function checkMisaAiMonitoring(): Promise<HealthCheck> {
+  const start = Date.now();
+  const openAiApiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const openAiAdminKey = Boolean(
+    process.env.OPENAI_ADMIN_API_KEY?.trim() || process.env.OPENAI_ADMIN_KEY?.trim(),
+  );
+  const misaModel = process.env.OPENAI_MODEL || 'gpt-4o';
+
+  if (!openAiApiKey) {
+    return {
+      name: 'MISA AI Monitoring',
+      category: 'AI',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'OPENAI_API_KEY missing',
+      reason: 'MISA chat, booking AI, and WhatsApp brain need OPENAI_API_KEY. Billing dashboard also needs OPENAI_ADMIN_API_KEY.',
+      quickFix: {
+        label: 'Open MISA Dashboard',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/misa-ai' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { openai_api_key: false, openai_admin_key: openAiAdminKey, model: misaModel },
+    };
+  }
+
+  const { client } = getAdminClient();
+  let usageTableReady = false;
+  let usageLogs7d = 0;
+  let trackedSpend7dUsd = 0;
+
+  if (client) {
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: usageRows, error } = await client
+      .from('misa_ai_usage_logs')
+      .select('estimated_cost_usd')
+      .gte('created_at', since7d)
+      .limit(5000);
+
+    if (!error) {
+      usageTableReady = true;
+      usageLogs7d = (usageRows || []).length;
+      trackedSpend7dUsd = (usageRows || []).reduce(
+        (sum, row) => sum + Number((row as { estimated_cost_usd?: number }).estimated_cost_usd || 0),
+        0,
+      );
+    }
+  }
+
+  let adminBillingOk: boolean | null = null;
+  let adminBillingError: string | undefined;
+  if (openAiAdminKey) {
+    const probe = await probeOpenAiAdminBillingAccess();
+    adminBillingOk = probe.ok;
+    adminBillingError = probe.error;
+  }
+
+  const usdInr = getMisaAiUsdInrRate();
+  let status: ServiceStatus = 'healthy';
+  let message = 'MISA AI stack ready';
+  let reason = `Model ${misaModel}. Chat API key OK.`;
+
+  if (!openAiAdminKey) {
+    status = 'degraded';
+    message = 'Live OpenAI billing not configured';
+    reason =
+      'OPENAI_ADMIN_API_KEY missing — MISA Dashboard cannot show realtime org usage/billing from platform.openai.com. Add Admin key from OpenAI → Settings → Admin keys.';
+  } else if (adminBillingOk === false) {
+    status = 'degraded';
+    message = 'Admin billing API failed';
+    reason = adminBillingError || 'OPENAI_ADMIN_API_KEY is set but OpenAI org costs API rejected the request.';
+  } else if (!usageTableReady) {
+    status = 'degraded';
+    message = 'Usage logs table missing';
+    reason =
+      'Run database/278_misa_ai_usage_logs.sql on Supabase to enable per-request MISA token/cost logs in admin dashboard.';
+  } else {
+    const spendNote =
+      trackedSpend7dUsd > 0
+        ? ` Internal logs (7d): $${trackedSpend7dUsd.toFixed(2)} (≈₹${Math.round(trackedSpend7dUsd * usdInr)}), ${usageLogs7d} requests.`
+        : usageLogs7d > 0
+          ? ` ${usageLogs7d} MISA requests logged in last 7 days.`
+          : ' No MISA usage logs yet — chat activity will populate after migration + new chats.';
+    reason += spendNote;
+    if (adminBillingOk) {
+      reason += ' Live OpenAI org billing API connected.';
+    }
+  }
+
+  let balanceStatus: Awaited<ReturnType<typeof getOpenAiCreditBalanceStatus>> | null = null;
+  try {
+    balanceStatus = await getOpenAiCreditBalanceStatus();
+    if (balanceStatus.configured && balanceStatus.is_low) {
+      status = 'degraded';
+      message = 'OpenAI prepaid balance low';
+      const pending = balanceStatus.pending_milestones_usd || [];
+      reason =
+        `Estimated remaining credit $${(balanceStatus.estimated_remaining_usd ?? 0).toFixed(2)}. ` +
+        (pending.length > 0
+          ? `Pending milestone alerts: $${pending.join(', $')}.`
+          : `Milestones already alerted ($${balanceStatus.settings.alert_milestones_sent.join(', $') || 'none'}).`) +
+        ' Top up and update baseline in MISA AI dashboard.';
+    } else if (balanceStatus.configured && balanceStatus.estimated_remaining_usd !== null) {
+      reason += ` Estimated OpenAI credit left: $${balanceStatus.estimated_remaining_usd.toFixed(2)}.`;
+    } else if (!balanceStatus.configured && openAiAdminKey) {
+      reason += ' Set OpenAI credit baseline in MISA AI dashboard for low-balance WhatsApp alerts.';
+    }
+  } catch {
+    // non-blocking
+  }
+
+  return {
+    name: 'MISA AI Monitoring',
+    category: 'AI',
+    status,
+    responseTime: Date.now() - start,
+    message,
+    reason,
+    quickFix: {
+      label: 'Open MISA Dashboard',
+      action: 'internal-link',
+      actionPayload: { url: '/dashboard/super_admin/misa-ai' },
+    },
+    lastChecked: new Date().toISOString(),
+    details: {
+      openai_api_key: openAiApiKey,
+      openai_admin_key: openAiAdminKey,
+      admin_billing_api: adminBillingOk,
+      usage_logs_table: usageTableReady,
+      usage_logs_7d: usageLogs7d,
+      tracked_spend_7d_usd: Number(trackedSpend7dUsd.toFixed(4)),
+      tracked_spend_7d_inr: Math.round(trackedSpend7dUsd * usdInr),
+      model: misaModel,
+      dashboard_path: '/dashboard/super_admin/misa-ai',
+      openai_estimated_remaining_usd: balanceStatus?.estimated_remaining_usd ?? null,
+      openai_balance_low: balanceStatus?.is_low ?? false,
+      openai_balance_alert_enabled: balanceStatus?.settings.alert_enabled ?? false,
+    },
+  };
+}
+
 async function checkGoogleMaps(): Promise<HealthCheck> {
   const start = Date.now();
   const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -870,6 +1014,7 @@ export async function GET() {
       checkFirebase(),
       checkEmailService(),
       checkOpenAI(),
+      checkMisaAiMonitoring(),
       checkWhatsAppAgents(),
       checkGoogleMaps(),
       checkCronJobs(),
@@ -903,6 +1048,7 @@ export async function GET() {
       RAZORPAY_KEY_SECRET: !!process.env.RAZORPAY_KEY_SECRET,
       FIREBASE_PROJECT_ID: !!(process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
       OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      OPENAI_ADMIN_API_KEY: !!(process.env.OPENAI_ADMIN_API_KEY || process.env.OPENAI_ADMIN_KEY),
       GOOGLE_MAPS_API_KEY: !!(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
       SMTP_HOST: !!(process.env.SMTP_HOST || process.env.EMAIL_HOST),
       SYSTEM_ALERT_WHATSAPP_NUMBERS: ADMIN_WHATSAPP_NUMBERS.length > 0,

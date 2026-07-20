@@ -28,7 +28,11 @@ import {
   firebaseTestOtpHint,
   firebaseSmsUnavailableMessage,
 } from '../lib/firebasePhoneAuth';
-import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import {
+  checkSmsOtpAllowed,
+  sendSmsOtp,
+  verifySmsOtp,
+} from '../lib/backendSmsOtp';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import { ReferralCodeModal } from '../components/ReferralCodeModal';
 import { getPendingReferralCode, clearPendingReferralCode } from '../lib/referralDeepLink';
@@ -44,7 +48,7 @@ import {
 export default function LoginScreen({ navigation, onLoginSuccess }: any) {
   const insets = useSafeAreaInsets();
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
-  const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('sms');
+  const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('whatsapp');
   const [customerStep, setCustomerStep] = useState<'input' | 'otp'>('input');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerOtp, setCustomerOtp] = useState('');
@@ -186,6 +190,12 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
     const cleanPhone = customerPhone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       setErrorText('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    const smsCheck = await checkSmsOtpAllowed();
+    if (!smsCheck.allowed) {
+      setPhoneOtpChannel('sms');
+      setErrorText(smsCheck.message);
       return;
     }
 

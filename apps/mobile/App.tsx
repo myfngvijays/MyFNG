@@ -75,7 +75,8 @@ import {
 import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
 import { notifyAppSessionIncompleteOnServer } from './src/lib/whatsappAutomationClient';
 import { initializeClarity } from './src/lib/clarity';
-import { initializeFirebaseAnalytics } from './src/lib/firebaseAnalytics';
+import { preloadMobileAuthConfig } from './src/lib/mobileAuthConfig';
+import { initializeFirebaseAnalytics, refreshFirebaseAnalyticsEnabled } from './src/lib/firebaseAnalytics';
 import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
 
@@ -118,7 +119,15 @@ function AppContent() {
 
   useEffect(() => {
     initializeClarity();
-    void initializeFirebaseAnalytics();
+    void preloadMobileAuthConfig().then(() => initializeFirebaseAnalytics());
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      void preloadMobileAuthConfig().then(() => refreshFirebaseAnalyticsEnabled());
+    });
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {

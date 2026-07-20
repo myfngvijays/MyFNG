@@ -1,4 +1,9 @@
 import { NativeModules, Platform } from 'react-native';
+import {
+  fetchMobileAuthConfig,
+  isFirebaseAnalyticsEnabledSync,
+  preloadMobileAuthConfig,
+} from './mobileAuthConfig';
 
 type AnalyticsModule = typeof import('@react-native-firebase/analytics').default;
 
@@ -30,6 +35,18 @@ function getAnalyticsModule(): AnalyticsModule | null {
   }
 }
 
+async function applyAnalyticsCollectionEnabled(enabled: boolean): Promise<void> {
+  const analytics = getAnalyticsModule();
+  if (!analytics) return;
+  try {
+    await analytics().setAnalyticsCollectionEnabled(enabled);
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[Analytics] setAnalyticsCollectionEnabled failed:', error);
+    }
+  }
+}
+
 /** Google Analytics for Firebase — Android + iOS native builds only. */
 export async function initializeFirebaseAnalytics(): Promise<void> {
   if (initialized || Platform.OS === 'web') return;
@@ -38,7 +55,15 @@ export async function initializeFirebaseAnalytics(): Promise<void> {
   if (!analytics) return;
 
   try {
-    await analytics().setAnalyticsCollectionEnabled(true);
+    await preloadMobileAuthConfig();
+    const config = await fetchMobileAuthConfig(false);
+    const enabled = config.firebase_analytics_enabled;
+    await applyAnalyticsCollectionEnabled(enabled);
+    if (!enabled) {
+      initialized = true;
+      return;
+    }
+
     await analytics().logAppOpen();
     await analytics().setUserProperty('app_platform', Platform.OS);
     initialized = true;
@@ -49,8 +74,14 @@ export async function initializeFirebaseAnalytics(): Promise<void> {
   }
 }
 
+export async function refreshFirebaseAnalyticsEnabled(): Promise<boolean> {
+  const config = await fetchMobileAuthConfig(true);
+  await applyAnalyticsCollectionEnabled(config.firebase_analytics_enabled);
+  return config.firebase_analytics_enabled;
+}
+
 export async function logAnalyticsScreen(screenName: string): Promise<void> {
-  if (Platform.OS === 'web' || !screenName.trim()) return;
+  if (Platform.OS === 'web' || !screenName.trim() || !isFirebaseAnalyticsEnabledSync()) return;
 
   const analytics = getAnalyticsModule();
   if (!analytics) return;

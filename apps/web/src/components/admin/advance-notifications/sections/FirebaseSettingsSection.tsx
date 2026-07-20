@@ -13,6 +13,9 @@ import {
   Plug,
   Lock,
   Shield,
+  MessageSquare,
+  Bell,
+  BarChart3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { MYFNG_FIREBASE_DEFAULTS } from '@/lib/push/firebaseProjectDefaults';
@@ -44,12 +47,25 @@ type ConfigForm = {
   updated_at?: string | null;
 };
 
+type FirebaseFeatures = {
+  sms_otp_enabled: boolean;
+  firebase_analytics_android: boolean;
+  firebase_analytics_ios: boolean;
+};
+
 type ApiResponse = {
   config: ConfigForm;
+  features?: FirebaseFeatures;
   health: { ok: boolean; message: string | null; credentials_source: string };
   can_edit: boolean;
   protocol: string;
   version: string;
+};
+
+const DEFAULT_FEATURES: FirebaseFeatures = {
+  sms_otp_enabled: false,
+  firebase_analytics_android: true,
+  firebase_analytics_ios: true,
 };
 
 const EMPTY: ConfigForm = {
@@ -109,6 +125,7 @@ function Toggle({
 export default function PushFirebaseSettingsSection() {
   const [tab, setTab] = useState<Tab>('android');
   const [form, setForm] = useState<ConfigForm>(EMPTY);
+  const [features, setFeatures] = useState<FirebaseFeatures>(DEFAULT_FEATURES);
   const [health, setHealth] = useState<ApiResponse['health'] | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -128,6 +145,7 @@ export default function PushFirebaseSettingsSection() {
         return;
       }
       setForm({ ...EMPTY, ...json.config, private_key: '' });
+      setFeatures({ ...DEFAULT_FEATURES, ...(json.features || {}) });
       setHealth(json.health);
       setCanEdit(json.can_edit);
     } finally {
@@ -141,6 +159,10 @@ export default function PushFirebaseSettingsSection() {
 
   const update = <K extends keyof ConfigForm>(key: K, value: ConfigForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const updateFeature = <K extends keyof FirebaseFeatures>(key: K, value: FirebaseFeatures[K]) => {
+    setFeatures((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
@@ -162,14 +184,14 @@ export default function PushFirebaseSettingsSection() {
       const res = await fetch('/api/super_admin/notifications/firebase-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, use_db_credentials: true }),
+        body: JSON.stringify({ ...form, use_db_credentials: true, features }),
       });
       const json = await res.json();
       if (!res.ok) {
         toast.error(json.error || 'Failed to save');
         return;
       }
-      toast.success('Credentials saved');
+      toast.success('Firebase settings saved');
       await load();
     } catch {
       toast.error('Network error');
@@ -236,7 +258,6 @@ export default function PushFirebaseSettingsSection() {
   }
 
   const healthy = health?.ok;
-  const platformEnabled = tab === 'android' ? form.android_enabled : form.ios_enabled;
 
   return (
     <div className="w-full">
@@ -247,7 +268,7 @@ export default function PushFirebaseSettingsSection() {
             <span className="push-badge-amber">Super Admin only</span>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            Securely configure Firebase Cloud Messaging credentials for Android &amp; iOS.
+            Configure Firebase credentials and control live services: SMS OTP, FCM push, and Analytics.
           </p>
         </div>
       </div>
@@ -289,6 +310,115 @@ export default function PushFirebaseSettingsSection() {
         </div>
       ) : null}
 
+      <div className="push-card p-6 mb-5">
+        <div className="mb-4">
+          <h3 className="text-base font-bold text-gray-900">Firebase Services — On / Off</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Live controls for Firebase features running in the Android &amp; iOS app. Changes apply within ~30 seconds.
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-900 inline-flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-orange-600" />
+                SMS OTP Login
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">
+                Firebase Phone Auth on app login &amp; booking. Off = WhatsApp OTP only.
+              </p>
+            </div>
+            <Toggle
+              checked={features.sms_otp_enabled}
+              disabled={!canEdit}
+              onChange={(v) => updateFeature('sms_otp_enabled', v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-900 inline-flex items-center gap-2">
+                <Bell className="w-4 h-4 text-blue-600" />
+                FCM Push (Global)
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">Master switch — stops all push sends from server.</p>
+            </div>
+            <Toggle
+              checked={form.push_enabled}
+              disabled={!canEdit}
+              onChange={(v) => update('push_enabled', v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-green-100 bg-green-50/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-900 inline-flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-green-600" />
+                FCM Push — Android
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">Pause Android push delivery only.</p>
+            </div>
+            <Toggle
+              checked={form.android_enabled}
+              disabled={!canEdit}
+              onChange={(v) => update('android_enabled', v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-900 inline-flex items-center gap-2">
+                <Apple className="w-4 h-4 text-gray-700" />
+                FCM Push — iOS
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">Pause iOS push delivery only (via APNs).</p>
+            </div>
+            <Toggle
+              checked={form.ios_enabled}
+              disabled={!canEdit}
+              onChange={(v) => update('ios_enabled', v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-purple-100 bg-purple-50/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-900 inline-flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-purple-600" />
+                Firebase Analytics — Android
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">Google Analytics for Firebase events on Android.</p>
+            </div>
+            <Toggle
+              checked={features.firebase_analytics_android}
+              disabled={!canEdit}
+              onChange={(v) => updateFeature('firebase_analytics_android', v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-purple-100 bg-purple-50/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-900 inline-flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-purple-600" />
+                Firebase Analytics — iOS
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">Google Analytics for Firebase events on iOS.</p>
+            </div>
+            <Toggle
+              checked={features.firebase_analytics_ios}
+              disabled={!canEdit}
+              onChange={(v) => updateFeature('firebase_analytics_ios', v)}
+            />
+          </div>
+        </div>
+
+        {canEdit ? (
+          <p className="text-xs text-gray-500 mt-4">
+            Click <strong>Save Credentials</strong> below to apply service toggles and credential changes together.
+          </p>
+        ) : null}
+      </div>
+
       <div className="push-card overflow-hidden">
         <div className="flex border-b border-gray-200 px-4">
           <button
@@ -310,49 +440,19 @@ export default function PushFirebaseSettingsSection() {
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                  healthy ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
-                }`}
-              >
-                {healthy ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                {healthy ? 'Connected' : 'Pending'}
-              </span>
-              <span className="text-xs text-gray-500">
-                Source: {form.credentials_source || 'none'}
-                {healthy ? ` · ${health?.message || 'Credentials verified'}` : ' · Not tested yet'}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 min-w-[220px]">
-                <div className="flex-1">
-                  <p className="font-semibold text-sm text-gray-900">Push globally enabled</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Master switch for all sends</p>
-                </div>
-                <Toggle
-                  checked={form.push_enabled}
-                  disabled={!canEdit}
-                  onChange={(v) => update('push_enabled', v)}
-                />
-              </div>
-
-              <div className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 min-w-[280px]">
-              <div className="flex-1">
-                <p className="font-semibold text-sm text-gray-900">
-                  Enable {tab === 'android' ? 'Android' : 'iOS'} Notifications
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">Pause delivery without deleting credentials</p>
-              </div>
-              <Toggle
-                checked={platformEnabled}
-                disabled={!canEdit}
-                onChange={(v) => update(tab === 'android' ? 'android_enabled' : 'ios_enabled', v)}
-              />
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                healthy ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+              }`}
+            >
+              {healthy ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+              {healthy ? 'Connected' : 'Pending'}
+            </span>
+            <span className="text-xs text-gray-500">
+              Source: {form.credentials_source || 'none'}
+              {healthy ? ` · ${health?.message || 'Credentials verified'}` : ' · Not tested yet'}
+            </span>
           </div>
 
           <div className="grid xl:grid-cols-2 gap-8">
@@ -529,7 +629,7 @@ export default function PushFirebaseSettingsSection() {
               className="push-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save Credentials
+              Save Settings
             </button>
           </div>
         </div>

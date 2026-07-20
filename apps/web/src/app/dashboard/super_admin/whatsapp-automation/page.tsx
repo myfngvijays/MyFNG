@@ -29,11 +29,30 @@ type AutomationTrigger = {
   template_name: string;
   template_body: string;
   is_enabled: boolean;
+  cron_enabled: boolean;
   cooldown_hours: number;
   phase: string;
   templateStatus: TemplateStatus;
   exampleValues?: string[];
 };
+
+const CRON_TRIGGER_KEYS = new Set([
+  'booking_incomplete',
+  'admin_daily_summary',
+  'service_due_reminder',
+  'membership_expiring',
+]);
+
+const CRON_SCHEDULE_HINTS: Record<string, string> = {
+  booking_incomplete: 'Daily scan — inactive drafts 24h+',
+  admin_daily_summary: 'Daily 9 AM IST',
+  service_due_reminder: 'Mondays IST — 6 months since last service',
+  membership_expiring: 'Daily — memberships expiring within 7 days',
+};
+
+function isCronTrigger(triggerKey: string) {
+  return CRON_TRIGGER_KEYS.has(triggerKey);
+}
 
 function fillTemplatePreview(body: string, examples: string[] = []): string {
   return examples.reduce((text, value, index) => {
@@ -71,6 +90,8 @@ function TriggerCard({
   testPhone,
   onRunAction,
   onToggleEnabled,
+  onToggleCronEnabled,
+  cronMasterEnabled,
 }: {
   trigger: AutomationTrigger;
   expanded: boolean;
@@ -83,10 +104,15 @@ function TriggerCard({
     extra?: Record<string, unknown>
   ) => Promise<void>;
   onToggleEnabled: (triggerKey: string, isEnabled: boolean) => Promise<void>;
+  onToggleCronEnabled: (triggerKey: string, cronEnabled: boolean) => Promise<void>;
+  cronMasterEnabled: boolean;
 }) {
   const badge = statusBadge(trigger);
   const isBusy = actionKey?.startsWith(`${trigger.trigger_key}:`) ?? false;
   const toggleBusy = actionKey === `${trigger.trigger_key}:toggle-enabled`;
+  const cronToggleBusy = actionKey === `${trigger.trigger_key}:toggle-cron-enabled`;
+  const cronEligible = isCronTrigger(trigger.trigger_key);
+  const cronScheduleHint = CRON_SCHEDULE_HINTS[trigger.trigger_key];
 
   return (
     <div className={`border rounded-xl overflow-hidden ${expanded ? 'border-blue-300 shadow-sm' : 'border-gray-200'}`}>
@@ -115,10 +141,16 @@ function TriggerCard({
           <p className="text-sm text-gray-500 mt-1 truncate">
             <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{trigger.template_name}</code>
             {' · '}cooldown {trigger.cooldown_hours}h
+            {cronEligible && cronScheduleHint ? (
+              <>
+                {' · '}
+                <span className="text-violet-600">{cronScheduleHint}</span>
+              </>
+            ) : null}
           </p>
         </button>
 
-        <div className="flex items-center gap-3 shrink-0 pt-0.5">
+        <div className="flex items-center gap-4 shrink-0 pt-0.5">
           <div className="flex flex-col items-end gap-1">
             <span className={`text-xs font-semibold ${trigger.is_enabled ? 'text-emerald-600' : 'text-gray-400'}`}>
               {toggleBusy ? 'Saving...' : trigger.is_enabled ? 'Active' : 'Inactive'}
@@ -131,6 +163,40 @@ function TriggerCard({
               label={`Toggle ${trigger.display_name}`}
             />
           </div>
+
+          {cronEligible ? (
+            <div className="flex flex-col items-end gap-1 border-l border-gray-200 pl-4">
+              <span
+                className={`text-xs font-semibold ${
+                  !cronMasterEnabled
+                    ? 'text-gray-400'
+                    : trigger.cron_enabled
+                      ? 'text-violet-600'
+                      : 'text-gray-400'
+                }`}
+              >
+                {cronToggleBusy
+                  ? 'Saving...'
+                  : !cronMasterEnabled
+                    ? 'Cron off (master)'
+                    : trigger.cron_enabled
+                      ? 'Cron on'
+                      : 'Cron off'}
+              </span>
+              <ToggleSwitch
+                enabled={trigger.cron_enabled && cronMasterEnabled}
+                busy={cronToggleBusy}
+                disabled={!cronMasterEnabled || (actionKey !== null && !cronToggleBusy)}
+                onChange={(next) => onToggleCronEnabled(trigger.trigger_key, next)}
+                label={`Toggle cron for ${trigger.display_name}`}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-end gap-1 border-l border-gray-200 pl-4 min-w-[72px]">
+              <span className="text-xs font-semibold text-gray-400">Instant</span>
+              <span className="text-[10px] text-gray-400 text-right leading-tight">On event</span>
+            </div>
+          )}
           <button type="button" onClick={onToggle} className="p-1 text-gray-500 hover:text-gray-700">
             {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
           </button>
@@ -190,6 +256,7 @@ function TriggerCard({
 
 export default function WhatsAppAutomationPage() {
   const [triggers, setTriggers] = useState<AutomationTrigger[]>([]);
+  const [cronMasterEnabled, setCronMasterEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
@@ -206,6 +273,7 @@ export default function WhatsAppAutomationPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load automation triggers');
       setTriggers(Array.isArray(json.triggers) ? json.triggers : []);
+      setCronMasterEnabled(json.cronMasterEnabled !== false);
     } catch (error: any) {
       if (!silent) {
         setMessage(error.message || 'Failed to load triggers');
@@ -246,6 +314,59 @@ export default function WhatsAppAutomationPage() {
       setMessage(error.message || 'Action failed');
       setMessageIsError(true);
       await loadTriggers(true);
+    } finally {
+      setActionKey(null);
+    }
+  };
+
+  const handleToggleCronMaster = async (enabled: boolean) => {
+    setCronMasterEnabled(enabled);
+    setActionKey('cron-master');
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      const res = await fetch('/api/super_admin/whatsapp-automation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle-cron-master', cronMasterEnabled: enabled }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to update cron master switch');
+      setMessage(`Scheduled cron jobs ${enabled ? 'enabled' : 'disabled'} globally.`);
+    } catch (error: any) {
+      setMessage(error.message || 'Failed to update cron master switch');
+      setMessageIsError(true);
+      setCronMasterEnabled(!enabled);
+    } finally {
+      setActionKey(null);
+    }
+  };
+
+  const handleToggleCronEnabled = async (triggerKey: string, cronEnabled: boolean) => {
+    setTriggers((current) =>
+      current.map((row) => (row.trigger_key === triggerKey ? { ...row, cron_enabled: cronEnabled } : row))
+    );
+    setActionKey(`${triggerKey}:toggle-cron-enabled`);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      const res = await fetch('/api/super_admin/whatsapp-automation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle-cron-enabled', triggerKey, cronEnabled }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to update cron setting');
+      const row = triggers.find((item) => item.trigger_key === triggerKey);
+      setMessage(`${row?.display_name || triggerKey} cron ${cronEnabled ? 'enabled' : 'disabled'}.`);
+    } catch (error: any) {
+      setMessage(error.message || 'Failed to update cron setting');
+      setMessageIsError(true);
+      setTriggers((current) =>
+        current.map((row) =>
+          row.trigger_key === triggerKey ? { ...row, cron_enabled: !cronEnabled } : row
+        )
+      );
     } finally {
       setActionKey(null);
     }
@@ -302,9 +423,34 @@ export default function WhatsAppAutomationPage() {
             <h1 className="text-2xl font-bold text-gray-900">WhatsApp Automation</h1>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            All triggers use UTILITY templates in English. Use the toggle on each row — no page reload.
+            All triggers use UTILITY templates in English. Use Active for instant/event sends and Cron for scheduled jobs — no page reload.
             {refreshing ? ' · Updating...' : ''}
           </p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Scheduled cron jobs (master)</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Controls all cron-driven WhatsApp jobs: booking incomplete, admin daily summary, service due, membership expiring.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`text-xs font-semibold ${cronMasterEnabled ? 'text-violet-600' : 'text-gray-400'}`}>
+              {actionKey === 'cron-master'
+                ? 'Saving...'
+                : cronMasterEnabled
+                  ? 'Cron scheduler on'
+                  : 'Cron scheduler off'}
+            </span>
+            <ToggleSwitch
+              enabled={cronMasterEnabled}
+              busy={actionKey === 'cron-master'}
+              disabled={actionKey !== null && actionKey !== 'cron-master'}
+              onChange={handleToggleCronMaster}
+              label="Toggle WhatsApp automation cron master switch"
+            />
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center gap-3">
@@ -356,6 +502,8 @@ export default function WhatsAppAutomationPage() {
                     testPhone={testPhone}
                     onRunAction={runAction}
                     onToggleEnabled={handleToggleEnabled}
+                    onToggleCronEnabled={handleToggleCronEnabled}
+                    cronMasterEnabled={cronMasterEnabled}
                   />
                 ))}
               </div>

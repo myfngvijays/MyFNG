@@ -5,6 +5,12 @@ import {
   savePushFirebaseConfig,
 } from '@/lib/push/firebaseConfigStore';
 import { resetFirebaseAdminApp } from '@/lib/firebase/admin';
+import { getMobileAuthConfig, saveMobileSmsOtpEnabled, clearMobileAuthConfigCache } from '@/lib/mobile-auth-config';
+import {
+  loadProductAnalyticsConfig,
+  updateMobileFirebaseAnalyticsFlags,
+} from '@/lib/analytics/productAnalyticsConfig';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -17,11 +23,21 @@ export async function GET() {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const config = await loadPushFirebaseConfigView();
-    const health = await checkFcmCredentials();
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const [config, health, mobileAuth, analyticsConfig] = await Promise.all([
+      loadPushFirebaseConfigView(),
+      checkFcmCredentials(),
+      getMobileAuthConfig(supabaseAdmin),
+      loadProductAnalyticsConfig(supabaseAdmin),
+    ]);
 
     return NextResponse.json({
       config,
+      features: {
+        sms_otp_enabled: mobileAuth.sms_otp_enabled,
+        firebase_analytics_android: analyticsConfig.platforms.android.firebase_analytics_enabled,
+        firebase_analytics_ios: analyticsConfig.platforms.ios.firebase_analytics_enabled,
+      },
       health: {
         ok: health.ok,
         message: health.message || health.error || null,
@@ -56,7 +72,32 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
+    const features = body?.features;
+    if (features && typeof features === 'object') {
+      if (typeof features.sms_otp_enabled === 'boolean') {
+        const smsResult = await saveMobileSmsOtpEnabled(features.sms_otp_enabled, auth.userId);
+        if (!smsResult.ok) {
+          return NextResponse.json({ error: smsResult.error }, { status: 500 });
+        }
+      }
+
+      const analyticsPatch: { android?: boolean; ios?: boolean } = {};
+      if (typeof features.firebase_analytics_android === 'boolean') {
+        analyticsPatch.android = features.firebase_analytics_android;
+      }
+      if (typeof features.firebase_analytics_ios === 'boolean') {
+        analyticsPatch.ios = features.firebase_analytics_ios;
+      }
+      if (analyticsPatch.android !== undefined || analyticsPatch.ios !== undefined) {
+        const analyticsResult = await updateMobileFirebaseAnalyticsFlags(analyticsPatch, auth.userId);
+        if (!analyticsResult.ok) {
+          return NextResponse.json({ error: analyticsResult.error }, { status: 500 });
+        }
+      }
+    }
+
     await resetFirebaseAdminApp();
+    clearMobileAuthConfigCache();
     const health = await checkFcmCredentials();
 
     return NextResponse.json({

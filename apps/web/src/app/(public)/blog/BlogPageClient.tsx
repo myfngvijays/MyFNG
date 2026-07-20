@@ -8,6 +8,7 @@ import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import { ArrowRight, Calendar, Clock, Search } from 'lucide-react';
 import { formatDateDMY } from "@/lib/utils";
+import { normalizeBlogMediaUrl } from '@/lib/blog/normalizeBlogMedia';
 
 const BLOGS_PER_PAGE = 8;
 
@@ -262,7 +263,7 @@ export default function BlogPageClient() {
                         <div className="aspect-video relative overflow-hidden bg-gray-200">
                           {blog.featured_image ? (
                             <Image
-                              src={blog.featured_image}
+                              src={normalizeBlogMediaUrl(blog.featured_image) || blog.featured_image}
                               alt={blog.title}
                               fill
                               className="object-cover group-hover:scale-105 transition duration-500"

@@ -1,6 +1,10 @@
 import 'server-only';
 import { getFirebaseAdminAppAsync } from '@/lib/firebase/admin';
 import { loadPushFirebaseConfig } from '@/lib/push/firebaseConfigStore';
+import {
+  buildFcmDeliveryPolicy,
+  filterMessagesForFcmPolicy,
+} from '@/lib/push/fcmDeliveryPolicy';
 
 export type FcmDeviceOs = 'ios' | 'android' | 'unknown';
 
@@ -70,6 +74,21 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
   }
 
   const config = await loadPushFirebaseConfig();
+  const policy = buildFcmDeliveryPolicy(config);
+  const deliverable = filterMessagesForFcmPolicy(messages, policy);
+
+  if (!deliverable.length) {
+    return {
+      ok: true,
+      attempted: 0,
+      delivered: 0,
+      failed: 0,
+      errors: [],
+      invalidTokens: [],
+      platformStats: emptyPlatformStats(),
+    };
+  }
+
   const androidChannel = config.android_default_channel || 'default';
   const iosBundleId = config.ios_bundle_id || 'com.myfng.app';
   const messaging = (await getFirebaseAdminAppAsync()).messaging();
@@ -80,8 +99,8 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
   let failed = 0;
 
   const BATCH_SIZE = 500;
-  for (let i = 0; i < messages.length; i += BATCH_SIZE) {
-    const batch = messages.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < deliverable.length; i += BATCH_SIZE) {
+    const batch = deliverable.slice(i, i + BATCH_SIZE);
     const response = await messaging.sendEach(
       batch.map((msg) => {
         if (msg.dataOnly) {
@@ -164,7 +183,7 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
 
   return {
     ok: failed === 0,
-    attempted: messages.length,
+    attempted: deliverable.length,
     delivered,
     failed,
     errors: [...new Set(errors)],

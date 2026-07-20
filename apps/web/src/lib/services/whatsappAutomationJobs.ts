@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { notifyBookingIncompleteWhatsApp } from '@/lib/services/bookingIncompleteWhatsApp';
-import { sendAutomationWhatsApp } from '@/lib/services/whatsappAutomation';
+import {
+  assertAutomationCronJobAllowed,
+  sendAutomationWhatsApp,
+} from '@/lib/services/whatsappAutomation';
 import { getAutomationTemplateExamples } from '@/lib/services/whatsappAutomationMeta';
 import { notifyMembershipPaymentFailedWhatsApp } from '@/lib/services/membershipPaymentWhatsApp';
 
@@ -37,6 +40,11 @@ function formatIstDateFromIso(iso: string) {
 }
 
 export async function runBookingIncompleteReminderJob() {
+  const gate = await assertAutomationCronJobAllowed('booking_incomplete');
+  if (!gate.allowed) {
+    return { processed: 0, sent: 0, skipped: true, reason: gate.reason };
+  }
+
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { processed: 0, sent: 0, error: 'Admin client unavailable' };
 
@@ -73,6 +81,11 @@ export async function runBookingIncompleteReminderJob() {
 }
 
 export async function runAdminDailySummaryJob(force = false) {
+  const gate = await assertAutomationCronJobAllowed('admin_daily_summary');
+  if (!gate.allowed) {
+    return { sent: 0, skipped: true, reason: gate.reason };
+  }
+
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { sent: 0, error: 'Admin client unavailable' };
   if (ADMIN_WHATSAPP_NUMBERS.length === 0) {
@@ -169,6 +182,11 @@ export async function runAdminDailySummaryJob(force = false) {
 }
 
 export async function runServiceDueReminderJob() {
+  const gate = await assertAutomationCronJobAllowed('service_due_reminder');
+  if (!gate.allowed) {
+    return { processed: 0, sent: 0, skipped: true, reason: gate.reason };
+  }
+
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { processed: 0, sent: 0, error: 'Admin client unavailable' };
 
@@ -227,6 +245,11 @@ export async function runServiceDueReminderJob() {
 }
 
 export async function runMembershipExpiringReminderJob() {
+  const gate = await assertAutomationCronJobAllowed('membership_expiring');
+  if (!gate.allowed) {
+    return { processed: 0, sent: 0, skipped: true, reason: gate.reason };
+  }
+
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { processed: 0, sent: 0, error: 'Admin client unavailable' };
 

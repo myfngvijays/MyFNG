@@ -17,6 +17,31 @@ export const WHATSAPP_AUTOMATION_TRIGGER_KEYS = [
   'app_uninstalled',
 ] as const;
 
+/** Triggers picked up by /api/cron/whatsapp-automation */
+export const WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS = [
+  'booking_incomplete',
+  'admin_daily_summary',
+  'service_due_reminder',
+  'membership_expiring',
+] as const;
+
+export type WhatsAppAutomationCronTriggerKey = (typeof WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS)[number];
+
+export const WHATSAPP_AUTOMATION_CRON_MASTER_SETTING_KEY = 'whatsapp_automation_cron_master_enabled';
+
+export function isCronEligibleAutomationTrigger(
+  triggerKey: WhatsAppAutomationTriggerKey,
+): triggerKey is WhatsAppAutomationCronTriggerKey {
+  return (WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS as readonly string[]).includes(triggerKey);
+}
+
+export const WHATSAPP_AUTOMATION_CRON_SCHEDULE_HINTS: Record<WhatsAppAutomationCronTriggerKey, string> = {
+  booking_incomplete: 'Daily scan — inactive drafts 24h+',
+  admin_daily_summary: 'Daily 9 AM IST',
+  service_due_reminder: 'Mondays IST — 6 months since last service',
+  membership_expiring: 'Daily — memberships expiring within 7 days',
+};
+
 export type WhatsAppAutomationTriggerKey = (typeof WHATSAPP_AUTOMATION_TRIGGER_KEYS)[number];
 
 export type WhatsAppAutomationSetting = {
@@ -29,6 +54,7 @@ export type WhatsAppAutomationSetting = {
   template_body: string;
   variable_keys: string[];
   is_enabled: boolean;
+  cron_enabled: boolean;
   cooldown_hours: number;
   phase: string;
 };
@@ -74,7 +100,7 @@ export async function getAutomationSetting(
   const { data, error } = await supabaseAdmin
     .from('whatsapp_automation_settings')
     .select(
-      'trigger_key, display_name, description, template_name, template_language, template_category, template_body, variable_keys, is_enabled, cooldown_hours, phase'
+      'trigger_key, display_name, description, template_name, template_language, template_category, template_body, variable_keys, is_enabled, cron_enabled, cooldown_hours, phase'
     )
     .eq('trigger_key', triggerKey)
     .maybeSingle();
@@ -86,7 +112,69 @@ export async function getAutomationSetting(
     variable_keys: Array.isArray(data.variable_keys)
       ? data.variable_keys.map((value) => String(value))
       : [],
+    cron_enabled: Boolean((data as { cron_enabled?: boolean }).cron_enabled),
   } as WhatsAppAutomationSetting;
+}
+
+function toBool(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+export async function isWhatsAppAutomationCronMasterEnabled(): Promise<boolean> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return true;
+
+  const { data } = await supabaseAdmin
+    .from('system_settings')
+    .select('setting_value')
+    .eq('setting_key', WHATSAPP_AUTOMATION_CRON_MASTER_SETTING_KEY)
+    .maybeSingle();
+
+  return toBool(data?.setting_value, true);
+}
+
+export async function setWhatsAppAutomationCronMasterEnabled(
+  enabled: boolean,
+  updatedBy?: string | null,
+): Promise<{ ok: true; enabled: boolean } | { ok: false; error: string }> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { ok: false, error: 'Database admin client unavailable' };
+
+  const { error } = await supabaseAdmin.from('system_settings').upsert(
+    {
+      setting_key: WHATSAPP_AUTOMATION_CRON_MASTER_SETTING_KEY,
+      setting_value: enabled ? 'true' : 'false',
+      setting_type: 'BOOLEAN',
+      category: 'NOTIFICATIONS',
+      description: 'Master switch for WhatsApp automation cron scheduler.',
+      default_value: 'true',
+      is_editable: true,
+      updated_at: new Date().toISOString(),
+      ...(updatedBy ? { updated_by: updatedBy } : {}),
+    },
+    { onConflict: 'setting_key' },
+  );
+
+  if (error) return { ok: false, error: error.message || 'Failed to save cron master switch' };
+  return { ok: true, enabled };
+}
+
+export async function assertAutomationCronJobAllowed(
+  triggerKey: WhatsAppAutomationCronTriggerKey,
+): Promise<{ allowed: true } | { allowed: false; reason: string }> {
+  const master = await isWhatsAppAutomationCronMasterEnabled();
+  if (!master) return { allowed: false, reason: 'cron_master_disabled' };
+
+  const setting = await getAutomationSetting(triggerKey);
+  if (!setting) return { allowed: false, reason: 'trigger_not_found' };
+  if (!setting.is_enabled) return { allowed: false, reason: 'trigger_inactive' };
+  if (!setting.cron_enabled) return { allowed: false, reason: 'cron_disabled_for_trigger' };
+
+  return { allowed: true };
 }
 
 export async function isAutomationTemplateApproved(templateName: string): Promise<boolean> {
@@ -354,7 +442,7 @@ export async function listAutomationSettings(): Promise<WhatsAppAutomationSettin
   const { data, error } = await supabaseAdmin
     .from('whatsapp_automation_settings')
     .select(
-      'trigger_key, display_name, description, template_name, template_language, template_category, template_body, variable_keys, is_enabled, cooldown_hours, phase'
+      'trigger_key, display_name, description, template_name, template_language, template_category, template_body, variable_keys, is_enabled, cron_enabled, cooldown_hours, phase'
     )
     .order('phase', { ascending: true })
     .order('trigger_key', { ascending: true });
@@ -364,5 +452,6 @@ export async function listAutomationSettings(): Promise<WhatsAppAutomationSettin
   return data.map((row) => ({
     ...row,
     variable_keys: Array.isArray(row.variable_keys) ? row.variable_keys.map((value) => String(value)) : [],
+    cron_enabled: Boolean((row as { cron_enabled?: boolean }).cron_enabled),
   })) as WhatsAppAutomationSetting[];
 }

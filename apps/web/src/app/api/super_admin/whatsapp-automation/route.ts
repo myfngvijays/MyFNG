@@ -5,12 +5,15 @@ import {
   sendAutomationWhatsApp,
   type WhatsAppAutomationTriggerKey,
   WHATSAPP_AUTOMATION_TRIGGER_KEYS,
+  isWhatsAppAutomationCronMasterEnabled,
+  setWhatsAppAutomationCronMasterEnabled,
 } from '@/lib/services/whatsappAutomation';
 import {
   createAutomationTemplateFromSetting,
   getAutomationTemplateExamples,
   getAutomationTemplateStatus,
   setAutomationTriggerEnabled,
+  setAutomationTriggerCronEnabled,
   syncAutomationTemplateFromSetting,
 } from '@/lib/services/whatsappAutomationMeta';
 import { buildBookingConfirmedTemplateParams } from '@/lib/services/bookingConfirmedWhatsApp';
@@ -53,6 +56,7 @@ export async function GET() {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const settings = await listAutomationSettings();
+    const cronMasterEnabled = await isWhatsAppAutomationCronMasterEnabled();
     const triggers = await Promise.all(
       settings.map(async (setting) => ({
         ...setting,
@@ -61,7 +65,7 @@ export async function GET() {
       }))
     );
 
-    return NextResponse.json({ success: true, triggers });
+    return NextResponse.json({ success: true, cronMasterEnabled, triggers });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
@@ -75,6 +79,17 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || '').trim();
     const triggerKey = parseTriggerKey(body?.triggerKey);
+
+    if (action === 'toggle-cron-master') {
+      const result = await setWhatsAppAutomationCronMasterEnabled(
+        Boolean(body?.cronMasterEnabled),
+        auth.userProfile.id,
+      );
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, cronMasterEnabled: result.enabled });
+    }
 
     if (!triggerKey) {
       return NextResponse.json({ error: 'Valid triggerKey is required' }, { status: 400 });
@@ -92,6 +107,11 @@ export async function POST(request: Request) {
 
     if (action === 'toggle-enabled') {
       const result = await setAutomationTriggerEnabled(triggerKey, Boolean(body?.isEnabled));
+      return NextResponse.json({ success: true, trigger: result });
+    }
+
+    if (action === 'toggle-cron-enabled') {
+      const result = await setAutomationTriggerCronEnabled(triggerKey, Boolean(body?.cronEnabled));
       return NextResponse.json({ success: true, trigger: result });
     }
 

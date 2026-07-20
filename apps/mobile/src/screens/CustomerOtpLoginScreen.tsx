@@ -20,7 +20,7 @@ import {
   isFirebaseIosClientError,
   firebaseTestOtpHint,
 } from '../lib/firebasePhoneAuth';
-import { sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
+import { checkSmsOtpAllowed, sendSmsOtp, verifySmsOtp } from '../lib/backendSmsOtp';
 import { trackEvent } from '../lib/trackEvent';
 import { WelcomeBonusCreditedModal } from '../components/WelcomeBonusModal';
 import {
@@ -39,7 +39,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
   const [phone, setPhone] = useState(route?.params?.initialPhone || '');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [otpChannel, setOtpChannel] = useState<OtpChannel>('sms');
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>('whatsapp');
   const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [creditedWelcomeVisible, setCreditedWelcomeVisible] = useState(false);
   const [creditedWelcomeAmount, setCreditedWelcomeAmount] = useState(getWelcomeBonusAmount());
@@ -106,6 +106,11 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
+      return;
+    }
+    const smsCheck = await checkSmsOtpAllowed();
+    if (!smsCheck.allowed) {
+      Alert.alert('SMS OTP Unavailable', smsCheck.message);
       return;
     }
 

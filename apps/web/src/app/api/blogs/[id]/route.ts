@@ -13,6 +13,12 @@ import { notifyRoleCodesGlobal } from '@/lib/notifications';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
 import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
 import { revalidateBlogSeo } from '@/lib/seo/revalidate';
+import {
+  normalizeBlogHtmlMedia,
+  normalizeBlogMediaUrl,
+  normalizeBlogRecordForResponse,
+  normalizeBlogSeoData,
+} from '@/lib/blog/normalizeBlogMedia';
 
 export async function GET(
   request: NextRequest,
@@ -71,11 +77,11 @@ export async function GET(
     }
 
     // Transform tags structure
-    const transformedBlog = {
+    const transformedBlog = normalizeBlogRecordForResponse({
       ...blog,
       tags: blog.tags?.map((t: any) => t.tag) || [],
       categories: (blog as any)?.categories?.map((c: any) => c?.category).filter(Boolean) || [],
-    };
+    });
 
     return NextResponse.json({ blog: transformedBlog });
   } catch (error: any) {
@@ -183,7 +189,8 @@ export async function PUT(
 
     // Enforce ALT tags on all images inside the HTML body (if content is being updated).
     if (content !== undefined) {
-      const altCheck = validateAllImgHaveAlt(String(content), 125);
+      const normalizedContent = normalizeBlogHtmlMedia(String(content));
+      const altCheck = validateAllImgHaveAlt(normalizedContent, 125);
       if (!altCheck.ok) return NextResponse.json({ error: altCheck.error }, { status: 400 });
     }
 
@@ -230,14 +237,18 @@ export async function PUT(
     if (slug !== undefined) updateData.slug = slug;
     if (excerpt !== undefined) updateData.excerpt = excerpt;
     if (content !== undefined) {
-      updateData.content = content;
+      const normalizedContent = normalizeBlogHtmlMedia(String(content));
+      updateData.content = normalizedContent;
       // Auto-calc reading time as per spec (100 words/minute).
-      const { minutes } = computeReadTimeFromHtml(String(content));
+      const { minutes } = computeReadTimeFromHtml(normalizedContent);
       updateData.read_time = minutes;
     }
-    if (seo_data !== undefined) updateData.seo_data = seo_data;
+    if (seo_data !== undefined) updateData.seo_data = normalizeBlogSeoData(seo_data as Record<string, unknown>);
     if (category_id !== undefined) updateData.category_id = normalizedCategoryId;
-    if (featured_image !== undefined) updateData.featured_image = featured_image;
+    if (featured_image !== undefined) {
+      updateData.featured_image =
+        featured_image === null ? null : normalizeBlogMediaUrl(String(featured_image));
+    }
     if (status !== undefined) {
       // Only Digital Marketing and Super Admin can change status to published
       if (status === 'published' && roleCode !== 'DIGITAL_MARKETING' && roleCode !== 'SUPER_ADMIN') {

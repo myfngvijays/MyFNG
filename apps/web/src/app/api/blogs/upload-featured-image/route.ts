@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import sharp from 'sharp';
+import { mediaPathFromStorage } from '@/lib/media/public-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -89,9 +90,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to upload image', details: upErr.message }, { status: 500 });
     }
 
-    const { data: urlData } = supabaseAdmin.storage.from('service-media').getPublicUrl(filePath);
-    const url = urlData?.publicUrl || null;
-    if (!url) return NextResponse.json({ error: 'Failed to generate public URL' }, { status: 500 });
+    const url = mediaPathFromStorage('service-media', filePath);
 
     return NextResponse.json(
       {

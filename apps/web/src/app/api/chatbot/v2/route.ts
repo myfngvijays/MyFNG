@@ -7,6 +7,7 @@ import { buildSessionContextPatch, getVerifiedPhoneFromSession, applyTrustedCust
 import { getSession, saveSession } from '@/lib/chatbot_v2/session';
 import { getCustomerFromSession } from '@/lib/customer-session';
 import { isPhoneVerifiedInSession } from '@/lib/chatbot_v2/bookingOtp';
+import { buildLanguageStyleHint, detectUserLanguageStyle } from '@/lib/chatbot_v2/userLanguageStyle';
 import { normalizeUtmParams } from '@/lib/utm';
 
 export const dynamic = 'force-dynamic';
@@ -98,11 +99,12 @@ export async function POST(req: NextRequest) {
       );
     }
     const sessionHint = sessionHintParts.length ? `\n\n${sessionHintParts.join('\n')}` : '';
+    const languageHint = `\n\n${buildLanguageStyleHint(detectUserLanguageStyle(message))}`;
 
     const agent = await runMisaAgent({
       sessionId,
       message,
-      systemPrompt: SYSTEM_PROMPT + sessionHint,
+      systemPrompt: SYSTEM_PROMPT + sessionHint + languageHint,
       model: 'gpt-4o',
       bookingChannel: isMobileClient ? 'APP' : 'WEBSITE',
     });
