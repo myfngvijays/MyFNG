@@ -22,6 +22,15 @@ export type WalletSourceUsageLimits = {
   admin_credit: { service_percent: number; membership_percent: number };
 };
 
+export type WalletSourceCombinationRule = {
+  id: string;
+  label: string;
+  sources: Array<keyof WalletSourceUsageLimits>;
+  service_percent: number;
+  membership_percent: number;
+  active: boolean;
+};
+
 export type WalletRules = {
   wallet_enabled: boolean;
   service_usage_mode: WalletUsageMode;
@@ -42,6 +51,8 @@ export type WalletRules = {
   service_overrides: WalletServiceOverride[];
   per_source_limits_enabled: boolean;
   source_limits: WalletSourceUsageLimits | null;
+  source_combination_enabled: boolean;
+  source_combination_rules: WalletSourceCombinationRule[];
 };
 
 export type WalletServiceLine = {
@@ -69,6 +80,8 @@ const DEFAULT_WALLET_RULES: WalletRules = {
   service_overrides: [],
   per_source_limits_enabled: false,
   source_limits: null,
+  source_combination_enabled: false,
+  source_combination_rules: [],
 };
 
 let rulesCache: WalletRules = { ...DEFAULT_WALLET_RULES };
@@ -193,6 +206,17 @@ export async function loadWalletRules(apiUrl: string = ENV.API_URL): Promise<Wal
       max_absolute_deduction: numOrDefault(json.max_absolute_deduction, DEFAULT_WALLET_RULES.max_absolute_deduction),
       per_source_limits_enabled: Boolean(json.per_source_limits_enabled),
       source_limits: json.source_limits && typeof json.source_limits === 'object' ? json.source_limits : null,
+      source_combination_enabled: Boolean(json.source_combination_enabled),
+      source_combination_rules: Array.isArray(json.source_combination_rules)
+        ? json.source_combination_rules.map((row: any, index: number) => ({
+            id: String(row.id || `combo-${index}`),
+            label: String(row.label || 'Combined sources'),
+            sources: Array.isArray(row.sources) ? row.sources.map((s: unknown) => String(s)) : [],
+            service_percent: numOrDefault(row.service_percent, 15),
+            membership_percent: numOrDefault(row.membership_percent, 30),
+            active: row.active !== false,
+          }))
+        : [],
       advanced_enabled: Boolean(json.advanced_enabled),
       service_overrides: Array.isArray(json.service_overrides)
         ? json.service_overrides.map((row: any) => ({
@@ -243,6 +267,57 @@ export function calculateWalletUsage(
   }
 
   return deduction;
+}
+
+export function needsServerWalletQuote(rules: WalletRules = rulesCache): boolean {
+  return (
+    rules.per_source_limits_enabled ||
+    (rules.source_combination_enabled && (rules.source_combination_rules || []).some((rule) => rule.active && rule.sources.length >= 2))
+  );
+}
+
+export type WalletQuoteParams = {
+  payable_amount: number;
+  channel?: 'SERVICE' | 'MEMBERSHIP';
+  use_wallet?: boolean;
+  vehicle_number?: string | null;
+  service_lines?: WalletServiceLine[];
+};
+
+export type WalletQuoteResult = {
+  max_usable: number;
+  wallet_deduction: number;
+  spendable_balance: number;
+  wallet_blocked: boolean;
+  block_reason?: string | null;
+};
+
+export async function fetchWalletQuote(
+  apiFetchFn: (path: string, init?: RequestInit) => Promise<any>,
+  params: WalletQuoteParams,
+): Promise<WalletQuoteResult | null> {
+  try {
+    const data = await apiFetchFn('/api/customer/wallet/quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        payable_amount: params.payable_amount,
+        channel: params.channel || 'SERVICE',
+        use_wallet: params.use_wallet !== false,
+        vehicle_number: params.vehicle_number || null,
+        service_lines: params.service_lines,
+      }),
+    });
+    return {
+      max_usable: Number(data?.max_usable ?? data?.wallet_deduction ?? 0),
+      wallet_deduction: Number(data?.wallet_deduction ?? data?.max_usable ?? 0),
+      spendable_balance: Number(data?.spendable_balance ?? 0),
+      wallet_blocked: Boolean(data?.wallet_blocked),
+      block_reason: data?.block_reason || null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 type ServiceUsageRule = Pick<

@@ -9,6 +9,7 @@ import {
   type WalletPlatform,
   type WalletRuntimeConfig,
   type WalletSourceGroup,
+  type WalletSourceCombinationRule,
   type WalletSourceUsageLimits,
 } from './wallet-config';
 
@@ -343,6 +344,79 @@ export function calculateMaxWalletUsagePerSource(
   return totalDeduction;
 }
 
+function getActiveCombinationRules(rules: WalletSourceCombinationRule[]): WalletSourceCombinationRule[] {
+  return (rules || []).filter((rule) => rule.active && rule.sources.length >= 2);
+}
+
+function getSourcesClaimedByCombinations(rules: WalletSourceCombinationRule[]): Set<WalletSourceGroup> {
+  const claimed = new Set<WalletSourceGroup>();
+  for (const rule of getActiveCombinationRules(rules)) {
+    for (const source of rule.sources) claimed.add(source);
+  }
+  return claimed;
+}
+
+export function calculateMaxWalletUsageWithCombinations(
+  payableAmount: number,
+  balanceBySource: WalletBalanceBySource,
+  channel: WalletChannel,
+  settings: WalletLogicFullSettings,
+  config: WalletRuntimeConfig,
+): number {
+  if (!config.WALLET_ENABLED || payableAmount <= 0 || balanceBySource.total <= 0) return 0;
+  if (config.MIN_PAYABLE_FOR_WALLET > 0 && payableAmount < config.MIN_PAYABLE_FOR_WALLET) return 0;
+
+  const isMembership = channel === 'MEMBERSHIP';
+  const activeRules = getActiveCombinationRules(settings.source_combination_rules || []);
+  const claimedSources = getSourcesClaimedByCombinations(settings.source_combination_rules || []);
+  let totalDeduction = 0;
+
+  for (const rule of activeRules) {
+    const groupBalance = roundMoney(rule.sources.reduce((sum, source) => sum + balanceBySource[source], 0));
+    if (groupBalance <= 0) continue;
+    const pct = isMembership ? rule.membership_percent : rule.service_percent;
+    const cap = roundMoney(payableAmount * (pct / 100));
+    totalDeduction += roundMoney(Math.min(groupBalance, cap));
+  }
+
+  if (settings.per_source_limits_enabled) {
+    for (const group of WALLET_SOURCE_GROUPS) {
+      if (claimedSources.has(group)) continue;
+      const sourceBalance = balanceBySource[group];
+      if (sourceBalance <= 0) continue;
+      const pct = isMembership
+        ? settings.source_limits[group].membership_percent
+        : settings.source_limits[group].service_percent;
+      const cap = roundMoney(payableAmount * (pct / 100));
+      totalDeduction += roundMoney(Math.min(sourceBalance, cap));
+    }
+  } else {
+    const ungroupedBalance = roundMoney(
+      WALLET_SOURCE_GROUPS.filter((group) => !claimedSources.has(group)).reduce(
+        (sum, group) => sum + balanceBySource[group],
+        0,
+      ),
+    );
+    if (ungroupedBalance > 0) {
+      const globalCap = computeCapFromConfig(payableAmount, channel, config);
+      totalDeduction += roundMoney(Math.min(ungroupedBalance, globalCap));
+    }
+  }
+
+  if (balanceBySource.other > 0) {
+    const globalCap = computeCapFromConfig(payableAmount, channel, config);
+    totalDeduction += roundMoney(Math.min(balanceBySource.other, globalCap));
+  }
+
+  totalDeduction = roundMoney(Math.min(totalDeduction, balanceBySource.total));
+
+  if (config.MAX_ABSOLUTE_DEDUCTION > 0) {
+    totalDeduction = roundMoney(Math.min(totalDeduction, config.MAX_ABSOLUTE_DEDUCTION));
+  }
+
+  return totalDeduction;
+}
+
 export async function ensureWalletAccountFull(supabaseAdmin: any, customerId: string): Promise<WalletAccount> {
   const { data: existing } = await supabaseAdmin
     .from('wallet_accounts')
@@ -659,9 +733,20 @@ export async function resolveWalletDeduction(
   }
 
   let deduction = 0;
+  const balanceBySource = await getWalletBalanceBySource(supabaseAdmin, customerId);
+  const hasActiveCombinationRules =
+    settings.source_combination_enabled && getActiveCombinationRules(settings.source_combination_rules || []).length > 0;
 
-  if (settings.per_source_limits_enabled) {
-    const balanceBySource = await getWalletBalanceBySource(supabaseAdmin, customerId);
+  if (hasActiveCombinationRules) {
+    deduction = calculateMaxWalletUsageWithCombinations(
+      payableAmount,
+      balanceBySource,
+      channel,
+      settings,
+      config,
+    );
+    deduction = roundMoney(Math.min(deduction, summary.spendable_balance));
+  } else if (settings.per_source_limits_enabled) {
     deduction = calculateMaxWalletUsagePerSource(
       payableAmount,
       balanceBySource,

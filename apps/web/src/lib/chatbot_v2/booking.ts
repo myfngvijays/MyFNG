@@ -7,6 +7,7 @@ import {
   type MisaBookingChannel,
 } from './misaLeadSource';
 import { buildMinimalMisaTelecrmFields, buildTelecrmFieldSummaryNote } from '@/lib/telecrm/utmFields';
+import { getServicePlansByPincode } from './database-queries';
 
 
 export interface BookingData {
@@ -76,6 +77,45 @@ async function pushChatbotBookingToExternalApi(booking: BookingData, _channel: M
   }
 }
 
+function normalizeServiceName(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+async function resolveQuotedPriceForLead(bookingData: BookingData): Promise<number | null> {
+  const direct = Number(bookingData.quoted_price);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const pincode = String(bookingData.pincode || '').trim();
+  const carModel = String(bookingData.car_model || '').trim();
+  const category = String(bookingData.service_category || bookingData.service_name || '').trim();
+  const serviceName = String(bookingData.service_name || '').trim();
+  if (!pincode || !carModel || !category || !serviceName) return null;
+
+  try {
+    const plans = await getServicePlansByPincode({
+      category,
+      carModel,
+      pincode,
+    });
+    const validPlans = (plans || []).filter((plan: any) => !plan?.error);
+    const target = normalizeServiceName(serviceName);
+    const match =
+      validPlans.find((plan: any) => normalizeServiceName(plan.service_name) === target) ||
+      validPlans.find((plan: any) => {
+        const planName = normalizeServiceName(plan.service_name);
+        return planName.includes(target) || target.includes(planName);
+      });
+    const price = Number(match?.min_price ?? match?.max_price ?? 0);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (err) {
+    console.warn('[BOOKING] Could not resolve quoted price for service lead:', err);
+    return null;
+  }
+}
+
 async function createServiceLead(bookingData: BookingData, channel: MisaBookingChannel): Promise<string | null> {
   try {
     const { supabaseAdmin } = getSupabaseAdmin();
@@ -90,6 +130,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
     const leadNumber = `L-${Date.now().toString().slice(-8)}`;
     const nowIso = new Date().toISOString();
     const leadSource = getMisaLeadSource(channel);
+    const quotedPrice = await resolveQuotedPriceForLead(bookingData);
 
     const payload: Record<string, any> = {
       lead_number: leadNumber,
@@ -109,7 +150,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       pincode: bookingData.pincode || null,
       preferred_date: bookingData.preferred_date || null,
       preferred_time_slot: bookingData.preferred_time || null,
-      estimated_amount: bookingData.quoted_price || null,
+      estimated_amount: quotedPrice,
       created_at: nowIso,
     };
 
@@ -145,6 +186,7 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
 
     const channel = resolveBookingChannel(bookingData);
     const leadSource = getMisaLeadSource(channel);
+    const quotedPrice = await resolveQuotedPriceForLead(bookingData);
 
     const { data, error } = await supabase
       .from('chatbot_bookings')
@@ -162,7 +204,7 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
           pincode: bookingData.pincode,
           preferred_date: bookingData.preferred_date,
           preferred_time: bookingData.preferred_time,
-          quoted_price: bookingData.quoted_price,
+          quoted_price: quotedPrice,
           status: bookingData.status || 'pending',
           notes: bookingData.vehicle_number
             ? [bookingData.notes, `Vehicle: ${bookingData.vehicle_number}`].filter(Boolean).join(' | ')
@@ -181,7 +223,7 @@ export async function saveBooking(bookingData: BookingData): Promise<{ success: 
     console.log('[BOOKING] Successfully saved to database:', data);
 
     // Also create a service_leads entry so it appears in customer's order history
-    await createServiceLead(bookingData, channel);
+    await createServiceLead({ ...bookingData, quoted_price: quotedPrice ?? undefined }, channel);
 
     try {
       await pushChatbotBookingToExternalApi(bookingData, channel);

@@ -37,6 +37,13 @@ import {
   MisaBookingSummaryCard,
   parseBookingSummary,
 } from './components/MisaBookingSummaryCard';
+import { MisaWorkshopCards } from './components/MisaWorkshopCards';
+import {
+  collapseWorkshopListText,
+  extractWorkshopListTitle,
+  parseWorkshopsFromAssistantText,
+  type WorkshopCardItem,
+} from '@/lib/chatbot_v2/workshopUi';
 import { MisaAiBackground } from './components/MisaAiBackground';
 import { getLeadTrackingMeta } from '@/lib/utm';
 import { renderChatMessageLine } from '@/lib/chatbot_v2/renderChatMessage';
@@ -61,6 +68,10 @@ type UiPayload =
         id: string;
         name: string;
         subtitle?: string;
+        address?: string;
+        phone?: string;
+        city?: string;
+        workingTime?: string;
         km?: number | null;
         imageUrl?: string | null;
         mapLink?: string | null;
@@ -99,6 +110,21 @@ const QUICK_PROMPTS = [
   'AC cooling kam hai',
   'Nearest workshop dikhao',
 ];
+
+function workshopItemsFromMessage(m: ChatMsg): WorkshopCardItem[] {
+  if (m.ui?.kind === 'WORKSHOP_CAROUSEL' && m.ui.items.length) {
+    return m.ui.items.map((w) => ({
+      id: w.id,
+      name: w.name,
+      address: w.address || w.subtitle,
+      phone: w.phone,
+      mapLink: w.mapLink,
+      city: w.city,
+      workingTime: w.workingTime,
+    }));
+  }
+  return parseWorkshopsFromAssistantText(m.text);
+}
 
 function MisaAvatar({ size = 'md', glow = false }: { size?: 'sm' | 'md'; glow?: boolean }) {
   const dim = size === 'sm' ? 'h-7 w-7' : 'h-9 w-9';
@@ -511,9 +537,13 @@ function AIBookingPageInner() {
                 id: String(it?.id || ''),
                 name: String(it?.name || '').trim(),
                 subtitle: typeof it?.subtitle === 'string' ? it.subtitle : undefined,
+                address: typeof it?.address === 'string' ? it.address : undefined,
+                phone: typeof it?.phone === 'string' ? it.phone : undefined,
+                city: typeof it?.city === 'string' ? it.city : undefined,
+                workingTime: typeof it?.working_time === 'string' ? it.working_time : typeof it?.workingTime === 'string' ? it.workingTime : undefined,
                 km: typeof it?.km === 'number' ? it.km : null,
                 imageUrl: typeof it?.imageUrl === 'string' ? it.imageUrl : null,
-                mapLink: typeof it?.mapLink === 'string' ? it.mapLink : null,
+                mapLink: typeof it?.mapLink === 'string' ? it.mapLink : typeof it?.map_link === 'string' ? it.map_link : null,
                 rating: typeof it?.rating === 'number' ? it.rating : null,
                 usp: typeof it?.usp === 'string' ? it.usp : null,
               }))
@@ -522,6 +552,27 @@ function AIBookingPageInner() {
         }
         return undefined;
       })();
+
+      const workshopUiFromApi =
+        uiPayload?.kind === 'WORKSHOP_CAROUSEL'
+          ? uiPayload
+          : Array.isArray(data?.workshops) && data.workshops.length > 0
+            ? ({
+                kind: 'WORKSHOP_CAROUSEL' as const,
+                title: 'Nearest workshops',
+                items: data.workshops.map((it: any, index: number) => ({
+                  id: String(it?.id || `workshop-${index}`),
+                  name: String(it?.name || '').trim(),
+                  address: typeof it?.address === 'string' ? it.address : undefined,
+                  phone: typeof it?.phone === 'string' ? it.phone : undefined,
+                  city: typeof it?.city === 'string' ? it.city : undefined,
+                  workingTime: typeof it?.working_time === 'string' ? it.working_time : undefined,
+                  mapLink: typeof it?.map_link === 'string' ? it.map_link : typeof it?.mapLink === 'string' ? it.mapLink : null,
+                })),
+              } satisfies UiPayload)
+            : undefined;
+
+      const resolvedUi = workshopUiFromApi || uiPayload;
 
       const ctxPatch = (data?.contextPatch && typeof data.contextPatch === 'object'
         ? data.contextPatch
@@ -549,7 +600,7 @@ function AIBookingPageInner() {
           role: 'assistant',
           text: assistantText,
           suggestions: uiSuggestions,
-          ui: uiPayload,
+          ui: resolvedUi,
           pricingPlans: pricingPlansFromApi,
         },
       ]);
@@ -982,6 +1033,9 @@ function AIBookingPageInner() {
                 hasPricing && !userRepliedAfter && !dismissedPricingIds.has(m.id);
               const isStalePricing = hasPricing && !isActivePricing;
               const showPricingPicker = !isUser && isActivePricing;
+              const workshopItems = !isUser ? workshopItemsFromMessage(m) : [];
+              const hasWorkshops = workshopItems.length > 0;
+              const showWorkshopCards = hasWorkshops && !userRepliedAfter;
               const bookingSummary = !isUser ? parseBookingSummary(m.text) : null;
               const isActiveSummary =
                 Boolean(bookingSummary) &&
@@ -1009,6 +1063,8 @@ function AIBookingPageInner() {
                       ? extractPickupDatePrompt(m.text)
                       : showPricingPicker || isStalePricing
                 ? extractPricingTitle(m.text)
+                : showWorkshopCards
+                  ? collapseWorkshopListText(m.text)
                 : hideServiceListBody
                   ? m.text
                       .split('\n')
@@ -1126,44 +1182,21 @@ function AIBookingPageInner() {
                       </div>
                     )}
 
-                    {!isUser && m.ui?.kind === 'WORKSHOP_CAROUSEL' && (
-                      <div className="mt-3">
-                        {m.ui.title && <div className="mb-1.5 text-xs text-gray-400">{m.ui.title}</div>}
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {m.ui.items.map((w) => (
-                            <div
-                              key={w.id}
-                              className="min-w-[220px] flex-shrink-0 rounded-xl border border-brand-primary/15 bg-white p-3 shadow-sm"
-                            >
-                              <div className="text-sm font-medium text-gray-900">{w.name}</div>
-                              {w.subtitle && <div className="mt-0.5 text-xs text-gray-500">{w.subtitle}</div>}
-                              <div className="mt-2 text-xs text-gray-500">
-                                {typeof w.km === 'number' ? `${w.km.toFixed(1)} km away` : ''}
-                              </div>
-                              <div className="mt-2 flex gap-2">
-                                {w.mapLink ? (
-                                  <a
-                                    href={w.mapLink}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                                  >
-                                    Directions
-                                  </a>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => sendChatMessage(`workshop ${w.name}`)}
-                                    className="rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                                  >
-                                    Select
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                    {!isUser && showWorkshopCards && (
+                      <MisaWorkshopCards
+                        items={workshopItems}
+                        title={
+                          m.ui?.kind === 'WORKSHOP_CAROUSEL' && m.ui.title
+                            ? m.ui.title
+                            : extractWorkshopListTitle(m.text)
+                        }
+                        onBook={(workshop) =>
+                          sendChatMessage(
+                            `I want to book car service at ${workshop.name}`,
+                            `Book at ${workshop.name}`,
+                          )
+                        }
+                      />
                     )}
 
                     {!isUser && !m.ui && Array.isArray(m.suggestions) && m.suggestions.length > 0 && (

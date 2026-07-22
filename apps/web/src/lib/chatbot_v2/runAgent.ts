@@ -17,6 +17,7 @@ type ChatMessage = {
 };
 
 import type { MisaBookingChannel } from './misaLeadSource';
+import { buildWorkshopCarouselFromToolRows, type WorkshopCarouselPayload } from './workshopUi';
 
 export type RunAgentOptions = {
   sessionId: string;
@@ -42,6 +43,7 @@ export type RunAgentResult = {
     max_price: number;
     description?: string | null;
   }>;
+  workshops?: WorkshopCarouselPayload | null;
 };
 
 type CompletionUsage = {
@@ -142,6 +144,7 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
         description?: string | null;
       }>
     | undefined;
+  let workshops: WorkshopCarouselPayload | null = null;
 
   let iteration = 0;
   let promptTokens = 0;
@@ -190,6 +193,16 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
         toolResult.pricing.length > 0
       ) {
         pricing = toolResult.pricing;
+        sessionData.lastShownPlans = toolResult.pricing;
+      }
+      if (
+        toolName === 'search_workshops' &&
+        toolResult?.success &&
+        Array.isArray(toolResult.workshops) &&
+        toolResult.workshops.length > 0
+      ) {
+        workshops = buildWorkshopCarouselFromToolRows(toolResult.workshops);
+        sessionData.lastShownWorkshops = toolResult.workshops;
       }
       messages.push({
         role: 'tool',
@@ -236,5 +249,6 @@ export async function runMisaAgent(opts: RunAgentOptions): Promise<RunAgentResul
     sessionData,
     model,
     pricing,
+    workshops,
   };
 }

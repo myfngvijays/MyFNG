@@ -111,6 +111,15 @@ export const WALLET_SOURCE_LABELS: Record<WalletSourceGroup, string> = {
   admin_credit: 'Admin Credit',
 };
 
+export type WalletSourceCombinationRule = {
+  id: string;
+  label: string;
+  sources: WalletSourceGroup[];
+  service_percent: number;
+  membership_percent: number;
+  active: boolean;
+};
+
 export type WalletLogicFullSettings = {
   global: WalletCoreRules;
   android: WalletPlatformSettings;
@@ -126,6 +135,8 @@ export type WalletLogicFullSettings = {
   service_overrides: WalletServiceOverride[];
   per_source_limits_enabled: boolean;
   source_limits: WalletSourceUsageLimits;
+  source_combination_enabled: boolean;
+  source_combination_rules: WalletSourceCombinationRule[];
 };
 
 const GLOBAL_KEYS = {
@@ -187,6 +198,8 @@ const SERVICE_OVERRIDES_KEY = 'wallet_service_overrides';
 const ADVANCED_ENABLED_KEY = 'wallet_advanced_enabled';
 const PER_SOURCE_LIMITS_ENABLED_KEY = 'wallet_per_source_limits_enabled';
 const SOURCE_LIMITS_KEY = 'wallet_source_limits';
+const SOURCE_COMBINATION_ENABLED_KEY = 'wallet_source_combination_enabled';
+const SOURCE_COMBINATION_RULES_KEY = 'wallet_source_combination_rules';
 
 const DEFAULT_SOURCE_LIMITS: WalletSourceUsageLimits = {
   welcome_bonus: { service_percent: 10, membership_percent: 30 },
@@ -194,6 +207,17 @@ const DEFAULT_SOURCE_LIMITS: WalletSourceUsageLimits = {
   membership_cashback: { service_percent: 10, membership_percent: 30 },
   admin_credit: { service_percent: 10, membership_percent: 30 },
 };
+
+const DEFAULT_SOURCE_COMBINATION_RULES: WalletSourceCombinationRule[] = [
+  {
+    id: 'default-welcome-referral',
+    label: 'Welcome + Referral',
+    sources: ['welcome_bonus', 'referral'],
+    service_percent: 15,
+    membership_percent: 30,
+    active: true,
+  },
+];
 
 export const DEFAULT_WALLET_ROADMAP: WalletRoadmapIdea[] = [
   { id: 'default-1', title: 'Festival bonus campaigns', desc: 'Time-bound extra wallet credits (Diwali, New Year)', status: 'planned' },
@@ -218,6 +242,8 @@ const DEFAULT_FULL_SETTINGS: WalletLogicFullSettings = {
   service_overrides: [],
   per_source_limits_enabled: false,
   source_limits: JSON.parse(JSON.stringify(DEFAULT_SOURCE_LIMITS)),
+  source_combination_enabled: false,
+  source_combination_rules: JSON.parse(JSON.stringify(DEFAULT_SOURCE_COMBINATION_RULES)),
 };
 
 let cached: { config: WalletRuntimeConfig; at: number; platform: WalletPlatform } | null = null;
@@ -416,6 +442,8 @@ function allSettingKeys(): string[] {
     ADVANCED_ENABLED_KEY,
     PER_SOURCE_LIMITS_ENABLED_KEY,
     SOURCE_LIMITS_KEY,
+    SOURCE_COMBINATION_ENABLED_KEY,
+    SOURCE_COMBINATION_RULES_KEY,
   ];
 }
 
@@ -436,6 +464,39 @@ export function parseSourceLimits(raw: unknown): WalletSourceUsageLimits {
     }
   }
   return fallback;
+}
+
+export function parseSourceCombinationRules(raw: unknown): WalletSourceCombinationRule[] {
+  const fallback = JSON.parse(JSON.stringify(DEFAULT_SOURCE_COMBINATION_RULES)) as WalletSourceCombinationRule[];
+  let list: unknown = raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  }
+  if (!Array.isArray(list)) return fallback;
+
+  const validSources = new Set<string>(WALLET_SOURCE_GROUPS);
+  return list
+    .map((item, index) => {
+      const sources = Array.isArray((item as any)?.sources)
+        ? (item as any).sources
+            .map((s: unknown) => String(s || '').trim())
+            .filter((s: string) => validSources.has(s))
+        : [];
+      const uniqueSources = Array.from(new Set(sources)) as WalletSourceGroup[];
+      return {
+        id: String((item as any)?.id || `combo-${index}`),
+        label: String((item as any)?.label || 'Combined sources').trim() || 'Combined sources',
+        sources: uniqueSources,
+        service_percent: toNumber((item as any)?.service_percent, 15),
+        membership_percent: toNumber((item as any)?.membership_percent, 30),
+        active: (item as any)?.active !== false,
+      };
+    })
+    .filter((rule) => rule.sources.length >= 2);
 }
 
 export function parseServiceOverrides(raw: unknown): WalletServiceOverride[] {
@@ -547,6 +608,8 @@ export async function getWalletLogicSettings(supabaseAdmin?: any): Promise<Walle
     service_overrides: parseServiceOverrides(map.get(SERVICE_OVERRIDES_KEY)),
     per_source_limits_enabled: toBool(map.get(PER_SOURCE_LIMITS_ENABLED_KEY), false),
     source_limits: parseSourceLimits(map.get(SOURCE_LIMITS_KEY)),
+    source_combination_enabled: toBool(map.get(SOURCE_COMBINATION_ENABLED_KEY), false),
+    source_combination_rules: parseSourceCombinationRules(map.get(SOURCE_COMBINATION_RULES_KEY)),
   };
 }
 
@@ -659,6 +722,33 @@ export function validateWalletLogicFullSettings(input: Partial<WalletLogicFullSe
       }
       if (limits.membership_percent < 0 || limits.membership_percent > 100) {
         return `${WALLET_SOURCE_LABELS[group]}: membership % must be 0–100`;
+      }
+    }
+  }
+
+  if (input.source_combination_enabled) {
+    const activeRules = (input.source_combination_rules || []).filter((rule) => rule.active);
+    if (!activeRules.length) {
+      return 'Enable at least one active source combination rule';
+    }
+    const claimed = new Set<WalletSourceGroup>();
+    for (const rule of input.source_combination_rules || []) {
+      if (!String(rule.label || '').trim()) return 'Each combination rule needs a label';
+      if (rule.sources.length < 2) {
+        return `"${rule.label}": pick at least 2 sources`;
+      }
+      if (rule.service_percent < 0 || rule.service_percent > 100) {
+        return `"${rule.label}": service % must be 0–100`;
+      }
+      if (rule.membership_percent < 0 || rule.membership_percent > 100) {
+        return `"${rule.label}": membership % must be 0–100`;
+      }
+      if (!rule.active) continue;
+      for (const source of rule.sources) {
+        if (claimed.has(source)) {
+          return `${WALLET_SOURCE_LABELS[source]} cannot appear in more than one active combination`;
+        }
+        claimed.add(source);
       }
     }
   }
@@ -795,6 +885,22 @@ export async function saveWalletLogicSettings(
     updatedBy,
   );
 
+  await upsertSetting(
+    supabaseAdmin,
+    SOURCE_COMBINATION_ENABLED_KEY,
+    String(Boolean(payload.source_combination_enabled)),
+    'BOOLEAN',
+    updatedBy,
+  );
+
+  await upsertSetting(
+    supabaseAdmin,
+    SOURCE_COMBINATION_RULES_KEY,
+    JSON.stringify(payload.source_combination_rules || DEFAULT_SOURCE_COMBINATION_RULES),
+    'JSON',
+    updatedBy,
+  );
+
   clearWalletConfigCache();
   return payload;
 }
@@ -842,5 +948,9 @@ export function walletRulesToPublicPayload(
     source_limits: settings?.per_source_limits_enabled
       ? settings.source_limits || DEFAULT_SOURCE_LIMITS
       : null,
+    source_combination_enabled: Boolean(settings?.source_combination_enabled),
+    source_combination_rules: settings?.source_combination_enabled
+      ? (settings.source_combination_rules || DEFAULT_SOURCE_COMBINATION_RULES).filter((rule) => rule.active)
+      : [],
   };
 }

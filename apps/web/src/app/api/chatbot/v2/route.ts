@@ -139,6 +139,8 @@ export async function POST(req: NextRequest) {
       sources: [],
       intent: 'llm_managed',
       pricing: agent.pricing || [],
+      ui: agent.workshops || undefined,
+      workshops: agent.workshops?.items || [],
     });
   } catch (error) {
     return handleChatError(error, sessionId);

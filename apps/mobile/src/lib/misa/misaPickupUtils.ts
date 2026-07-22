@@ -40,8 +40,24 @@ export function getNextDateIST(): string {
   return addDaysToIsoDate(getCurrentDateIST(), 1);
 }
 
+export function getDefaultPickupDate(): string {
+  const today = getCurrentDateIST();
+  if (!isSameDayBookingAllowed()) return getNextDateIST();
+  if (getAvailableSlotsForDate(today).length === 0) return getNextDateIST();
+  return today;
+}
+
+export function normalizeIsoDate(value?: string | null): string {
+  const fallback = getDefaultPickupDate();
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return fallback;
+}
+
 export function formatDateForChat(isoDate: string): string {
-  const date = new Date(isoDate + 'T00:00:00+05:30');
+  const normalized = normalizeIsoDate(isoDate);
+  const date = new Date(normalized + 'T00:00:00+05:30');
+  if (Number.isNaN(date.getTime())) return normalized;
   const day = date.getDate();
   const suffix =
     day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th';
@@ -80,18 +96,13 @@ export function getAvailableSlotsForDate(isoDate: string): PickupTimeSlot[] {
   return buildPickupTimeSlots().filter((slot) => !isSlotPastForDate(isoDate, slot.hour));
 }
 
-export function getDefaultPickupDate(): string {
-  const today = getCurrentDateIST();
-  if (!isSameDayBookingAllowed()) return getNextDateIST();
-  if (getAvailableSlotsForDate(today).length === 0) return getNextDateIST();
-  return today;
-}
-
 export function formatDateForButton(isoDate: string): string {
-  const date = new Date(isoDate + 'T00:00:00+05:30');
+  const normalized = normalizeIsoDate(isoDate);
+  const date = new Date(normalized + 'T00:00:00+05:30');
+  if (Number.isNaN(date.getTime())) return normalized;
   const dayName = new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(date);
-  if (isoDate === getCurrentDateIST()) return `Today, ${dayName}`;
-  if (isoDate === getNextDateIST()) return `Tomorrow, ${dayName}`;
+  if (normalized === getCurrentDateIST()) return `Today, ${dayName}`;
+  if (normalized === getNextDateIST()) return `Tomorrow, ${dayName}`;
   return dayName;
 }
 

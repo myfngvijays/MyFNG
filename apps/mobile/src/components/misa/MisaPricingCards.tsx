@@ -252,6 +252,9 @@ function PointsModal({
               ))
             )}
           </ScrollView>
+          <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
+            <Text style={styles.modalCloseBtnText}>Close</Text>
+          </TouchableOpacity>
         </Pressable>
       </Pressable>
     </Modal>
@@ -569,4 +572,14 @@ const styles = StyleSheet.create({
   },
   checkItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
   checkText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#374151', lineHeight: 18 },
+  modalCloseBtn: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 4,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCloseBtnText: { color: '#fff', fontWeight: '800', fontSize: FONT_SIZES.sm },
 });

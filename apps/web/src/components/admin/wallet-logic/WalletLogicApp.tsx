@@ -30,8 +30,9 @@ import {
   Car,
   BadgeCheck,
   Info,
+  Link2,
 } from 'lucide-react';
-import type { WalletCoreRules, WalletLogicFullSettings, WalletPlatformSettings, WalletRoadmapIdea, WalletSourceGroup, WalletSourceUsageLimits, WalletUsageMode } from '@/lib/wallet-config';
+import type { WalletCoreRules, WalletLogicFullSettings, WalletPlatformSettings, WalletRoadmapIdea, WalletSourceCombinationRule, WalletSourceGroup, WalletSourceUsageLimits, WalletUsageMode } from '@/lib/wallet-config';
 import { computeUsageCapFromRules, createDefaultWalletLogicSettings, formatUsageLimitLabel, resolvePlatformCoreRules, WALLET_SOURCE_GROUPS, WALLET_SOURCE_LABELS } from '@/lib/wallet-config';
 import WalletLogicAdvancedSection from './WalletLogicAdvancedSection';
 
@@ -519,6 +520,203 @@ function PerSourceLimitsSection({
         <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
           Currently using global cap: <strong>{formatUsageLimitLabel(settings.global, 'SERVICE')}</strong> for service,{' '}
           <strong>{formatUsageLimitLabel(settings.global, 'MEMBERSHIP')}</strong> for membership — applied to <em>total</em> balance regardless of source.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceCombinationRulesSection({
+  settings,
+  onToggle,
+  onAddRule,
+  onUpdateRule,
+  onRemoveRule,
+}: {
+  settings: WalletLogicFullSettings;
+  onToggle: (enabled: boolean) => void;
+  onAddRule: () => void;
+  onUpdateRule: (id: string, patch: Partial<WalletSourceCombinationRule>) => void;
+  onRemoveRule: (id: string) => void;
+}) {
+  const rules = settings.source_combination_rules || [];
+
+  const toggleSourceInRule = (ruleId: string, source: WalletSourceGroup) => {
+    const rule = rules.find((row) => row.id === ruleId);
+    if (!rule) return;
+    const has = rule.sources.includes(source);
+    const nextSources = has
+      ? rule.sources.filter((s) => s !== source)
+      : [...rule.sources, source];
+    onUpdateRule(ruleId, { sources: nextSources });
+  };
+
+  return (
+    <div className="space-y-4">
+      <Toggle
+        label="Enable combined source groups"
+        hint="On = selected sources share ek hi usage cap (e.g. Welcome + Referral @ 15%). Off = per-source ya global rules apply honge"
+        checked={settings.source_combination_enabled}
+        onChange={onToggle}
+      />
+
+      {settings.source_combination_enabled ? (
+        <>
+          <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-indigo-800">Combined cap = order amount × group %</p>
+                <p className="text-[11px] text-indigo-700 mt-0.5">
+                  Example: ₹1,000 welcome + ₹500 referral, group cap 15% → ₹10,000 booking pe max ₹1,500; ₹5,000 pe max ₹750.
+                  Group balance se zyada nahi kat sakta.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {rules.map((rule) => (
+              <div key={rule.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                  <div className="flex-1 min-w-[200px] space-y-2">
+                    <input
+                      type="text"
+                      value={rule.label}
+                      onChange={(e) => onUpdateRule(rule.id, { label: e.target.value })}
+                      placeholder="Group name (e.g. Welcome + Referral)"
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold"
+                    />
+                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={rule.active}
+                        onChange={(e) => onUpdateRule(rule.id, { active: e.target.checked })}
+                        className="rounded border-gray-300"
+                      />
+                      Active
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveRule(rule.id)}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                </div>
+
+                <div className="mb-3">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">Sources in this group</p>
+                  <div className="flex flex-wrap gap-2">
+                    {WALLET_SOURCE_GROUPS.map((source) => {
+                      const selected = rule.sources.includes(source);
+                      return (
+                        <button
+                          key={source}
+                          type="button"
+                          onClick={() => toggleSourceInRule(rule.id, source)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-bold border transition ${
+                            selected
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-200'
+                          }`}
+                        >
+                          {WALLET_SOURCE_LABELS[source]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {rule.sources.length < 2 ? (
+                    <p className="text-[11px] text-amber-600 mt-2">Pick at least 2 sources</p>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Service booking %</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={rule.service_percent}
+                        onChange={(e) =>
+                          onUpdateRule(rule.id, {
+                            service_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)),
+                          })
+                        }
+                        className="w-24 rounded-xl border border-gray-200 px-3 py-2 text-center text-sm font-bold"
+                      />
+                      <span className="text-xs font-bold text-gray-400">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Membership %</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={rule.membership_percent}
+                        onChange={(e) =>
+                          onUpdateRule(rule.id, {
+                            membership_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)),
+                          })
+                        }
+                        className="w-24 rounded-xl border border-gray-200 px-3 py-2 text-center text-sm font-bold"
+                      />
+                      <span className="text-xs font-bold text-gray-400">%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={onAddRule}
+            className="inline-flex items-center gap-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 px-4 py-2.5 text-sm font-bold text-indigo-700 hover:bg-indigo-50"
+          >
+            <Plus className="h-4 w-4" />
+            Add combination group
+          </button>
+
+          {(() => {
+            const exampleRule = rules.find((row) => row.active && row.sources.includes('welcome_bonus') && row.sources.includes('referral'))
+              || rules.find((row) => row.active)
+              || rules[0];
+            if (!exampleRule || exampleRule.sources.length < 2) return null;
+            const exampleBooking = 10000;
+            const welcomeBal = 1000;
+            const referralBal = 500;
+            const groupBal = exampleRule.sources.reduce((sum, source) => {
+              if (source === 'welcome_bonus') return sum + welcomeBal;
+              if (source === 'referral') return sum + referralBal;
+              return sum + 500;
+            }, 0);
+            const cap = Math.round(exampleBooking * (exampleRule.service_percent / 100));
+            const ded = Math.min(groupBal, cap);
+            return (
+              <div className="rounded-2xl bg-gradient-to-b from-indigo-50 to-white border border-indigo-200 p-4">
+                <p className="text-xs font-bold text-indigo-800 mb-2">
+                  Example: {exampleRule.label} — balance ₹{groupBal.toLocaleString('en-IN')} → ₹{exampleBooking.toLocaleString('en-IN')} booking
+                </p>
+                <p className="text-lg font-black text-indigo-900">
+                  Max wallet: {inr(ded)}
+                  <span className="text-xs font-normal text-indigo-600 ml-2">
+                    ({exampleRule.service_percent}% = {inr(cap)} cap{ded < groupBal ? ', cap applies' : ', balance applies'})
+                  </span>
+                </p>
+              </div>
+            );
+          })()}
+        </>
+      ) : (
+        <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
+          Combined groups off. Use per-source limits (additive) ya global cap on total balance.
         </div>
       )}
     </div>
@@ -1187,6 +1385,47 @@ export default function WalletLogicApp() {
     setDirty(true);
   };
 
+  const toggleSourceCombination = (enabled: boolean) => {
+    setSettings((prev) => ({ ...prev, source_combination_enabled: enabled }));
+    setDirty(true);
+  };
+
+  const updateCombinationRule = (id: string, patch: Partial<WalletSourceCombinationRule>) => {
+    setSettings((prev) => ({
+      ...prev,
+      source_combination_rules: (prev.source_combination_rules || []).map((rule) =>
+        rule.id === id ? { ...rule, ...patch } : rule,
+      ),
+    }));
+    setDirty(true);
+  };
+
+  const addCombinationRule = () => {
+    setSettings((prev) => ({
+      ...prev,
+      source_combination_rules: [
+        ...(prev.source_combination_rules || []),
+        {
+          id: `combo-${Date.now()}`,
+          label: 'New combination',
+          sources: ['welcome_bonus', 'membership_cashback'],
+          service_percent: 15,
+          membership_percent: 30,
+          active: true,
+        },
+      ],
+    }));
+    setDirty(true);
+  };
+
+  const removeCombinationRule = (id: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      source_combination_rules: (prev.source_combination_rules || []).filter((rule) => rule.id !== id),
+    }));
+    setDirty(true);
+  };
+
   const copyFromDefault = () => {
     if (tab === 'global') return;
     setSettings((prev) => ({
@@ -1567,6 +1806,26 @@ export default function WalletLogicApp() {
                       settings={settings}
                       onToggle={togglePerSourceLimits}
                       onPatchSourceLimit={patchSourceLimit}
+                    />
+                  </section>
+
+                  {/* Combined Source Groups */}
+                  <section className="rounded-3xl border border-indigo-200 bg-gradient-to-b from-indigo-50/30 to-white p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                        <Link2 className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold !text-gray-900">Combined Source Groups</h2>
+                        <p className="text-xs text-gray-500">Multiple sources ko ek shared cap do — e.g. Welcome + Referral @ 15% of order</p>
+                      </div>
+                    </div>
+                    <SourceCombinationRulesSection
+                      settings={settings}
+                      onToggle={toggleSourceCombination}
+                      onAddRule={addCombinationRule}
+                      onUpdateRule={updateCombinationRule}
+                      onRemoveRule={removeCombinationRule}
                     />
                   </section>
 

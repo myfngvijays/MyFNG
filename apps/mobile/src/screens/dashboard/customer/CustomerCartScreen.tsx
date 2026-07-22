@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch
 import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
-import { calculateWalletUsage, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules } from '../../../lib/wallet';
+import { calculateWalletUsage, fetchWalletQuote, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules, needsServerWalletQuote } from '../../../lib/wallet';
 import { COLORS, SIZES, SPACING } from '../../../constants/theme';
 
 export default function CustomerCartScreen({ navigation }: any) {
@@ -16,6 +16,7 @@ export default function CustomerCartScreen({ navigation }: any) {
   const [walletBalance, setWalletBalance] = useState(0);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
   const [walletBlockReason, setWalletBlockReason] = useState<string | null>(null);
+  const [serverWalletUsed, setServerWalletUsed] = useState<number | null>(null);
 
   useEffect(() => {
     if (!vehicleNumber.trim()) {
@@ -48,10 +49,32 @@ export default function CustomerCartScreen({ navigation }: any) {
   }, []);
 
   const subtotal = useMemo(() => items.reduce((s, x) => s + Number(x.total_price || 0), 0), [items]);
-  const walletUsed = useMemo(
+  const localWalletUsed = useMemo(
     () => (useWallet && !walletVehicleBlocked ? calculateWalletUsage(subtotal, walletBalance, 'SERVICE', walletVehicleBlocked) : 0),
     [useWallet, subtotal, walletBalance, walletVehicleBlocked],
   );
+
+  useEffect(() => {
+    if (!useWallet || walletVehicleBlocked || subtotal <= 0 || !needsServerWalletQuote(getWalletRules())) {
+      setServerWalletUsed(null);
+      return;
+    }
+    let cancelled = false;
+    fetchWalletQuote(apiFetch, {
+      payable_amount: subtotal,
+      channel: 'SERVICE',
+      vehicle_number: vehicleNumber.trim() || null,
+    }).then((quote) => {
+      if (!cancelled) setServerWalletUsed(quote ? quote.max_usable : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [useWallet, walletVehicleBlocked, subtotal, vehicleNumber]);
+
+  const walletUsed = useWallet && !walletVehicleBlocked
+    ? (serverWalletUsed != null ? serverWalletUsed : localWalletUsed)
+    : 0;
   const finalAmount = useMemo(() => Math.max(0, subtotal - walletUsed), [subtotal, walletUsed]);
 
   const addItem = async () => {

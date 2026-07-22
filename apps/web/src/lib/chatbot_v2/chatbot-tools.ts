@@ -24,6 +24,94 @@ import {
   setVehicleNumberInSession,
 } from './verificationSession';
 
+function normalizeServiceName(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function pickPlanPrice(plan: Record<string, unknown> | null | undefined): number | undefined {
+  if (!plan) return undefined;
+  for (const key of ['min_price', 'max_price', 'price', 'custom_price']) {
+    const amount = Number(plan[key]);
+    if (Number.isFinite(amount) && amount > 0) return amount;
+  }
+  return undefined;
+}
+
+function findQuotedPriceInPlans(plans: Array<Record<string, unknown>>, serviceName: string): number | undefined {
+  const target = normalizeServiceName(serviceName);
+  if (!target || !plans.length) return undefined;
+
+  const exact = plans.find((plan) => normalizeServiceName(String(plan.service_name || '')) === target);
+  const exactPrice = pickPlanPrice(exact);
+  if (exactPrice) return exactPrice;
+
+  const partial = plans.find((plan) => {
+    const planName = normalizeServiceName(String(plan.service_name || ''));
+    return planName.includes(target) || target.includes(planName);
+  });
+  return pickPlanPrice(partial);
+}
+
+async function resolveQuotedPriceForBooking(
+  args: Record<string, unknown>,
+  session?: SessionData,
+): Promise<number | undefined> {
+  const direct = Number(args.quoted_price);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const serviceName = String(args.service_name || '').trim();
+  const sessionPlans = Array.isArray(session?.lastShownPlans) ? session!.lastShownPlans : [];
+  const fromSession = findQuotedPriceInPlans(sessionPlans, serviceName);
+  if (fromSession) return fromSession;
+
+  const selectedPlan = session?.bookingState?.selectedServicePlan;
+  if (selectedPlan) {
+    const selectedName = normalizeServiceName(selectedPlan.service_name);
+    const targetName = normalizeServiceName(serviceName);
+    if (selectedName && targetName && (selectedName === targetName || selectedName.includes(targetName) || targetName.includes(selectedName))) {
+      const selectedPrice = pickPlanPrice(selectedPlan as unknown as Record<string, unknown>);
+      if (selectedPrice) return selectedPrice;
+    }
+  }
+
+  const pincode = String(args.pincode || session?.bookingState?.pincode || '').trim();
+  const carModel = String(args.car_model || session?.bookingState?.carModel || '').trim();
+  const category = String(args.service_category || session?.bookingState?.category || '').trim();
+  if (!pincode || !carModel || !category) return undefined;
+
+  try {
+    const plans = await getServicePlansByPincode({
+      category,
+      carModel,
+      pincode,
+    });
+    const validPlans = (plans || []).filter((plan: any) => !plan?.error);
+    return findQuotedPriceInPlans(validPlans, serviceName);
+  } catch (err) {
+    console.warn('[TOOL] resolveQuotedPriceForBooking fallback failed:', err);
+    return undefined;
+  }
+}
+
+function rememberPricingInSession(session: SessionData | undefined, plans: Array<Record<string, unknown>>, context: {
+  service_category?: string;
+  car_model?: string;
+  pincode?: string;
+  city?: string;
+}) {
+  if (!session || !plans.length) return;
+  session.lastShownPlans = plans;
+  session.bookingState = session.bookingState || {};
+  session.bookingState.pricingShown = true;
+  if (context.service_category) session.bookingState.category = context.service_category;
+  if (context.car_model) session.bookingState.carModel = context.car_model;
+  if (context.pincode) session.bookingState.pincode = context.pincode;
+  if (context.city) session.bookingState.city = context.city;
+}
+
 /**
  * OpenAI Function/Tool Schemas
  */
@@ -235,6 +323,10 @@ export const CHATBOT_TOOLS = [
             type: 'string',
             description: "Preferred pickup time (e.g., '10 AM', '2 PM')",
           },
+          quoted_price: {
+            type: 'number',
+            description: 'Quoted service price in INR from get_service_pricing for the selected plan',
+          },
           workshop_name: {
             type: 'string',
             description: 'Selected workshop name (optional)',
@@ -321,18 +413,25 @@ export async function executeToolCall(
           if (plans.length > 0 && !(plans[0] as any).error) {
             // Sort by price
             const sorted = plans.sort((a: any, b: any) => a.min_price - b.min_price);
+            const pricing = sorted.map((p: any) => ({
+              service_name: p.service_name,
+              min_price: p.min_price,
+              max_price: p.max_price,
+              description: p.description,
+              service_type_id: p.service_type_id || null,
+              points: typeof p.points === 'number' ? p.points : null,
+              checklist_count: Array.isArray(p.checklist_items) ? p.checklist_items.length : 0,
+              checklist_items: Array.isArray(p.checklist_items) ? p.checklist_items : [],
+            }));
+            rememberPricingInSession(session, pricing, {
+              service_category,
+              car_model,
+              pincode,
+              city,
+            });
             return {
               success: true,
-              pricing: sorted.map((p: any) => ({
-                service_name: p.service_name,
-                min_price: p.min_price,
-                max_price: p.max_price,
-                description: p.description,
-                service_type_id: p.service_type_id || null,
-                points: typeof p.points === 'number' ? p.points : null,
-                checklist_count: Array.isArray(p.checklist_items) ? p.checklist_items.length : 0,
-                checklist_items: Array.isArray(p.checklist_items) ? p.checklist_items : [],
-              })),
+              pricing,
               plan_count: sorted.length,
               instruction: `List ALL ${sorted.length} service plans returned. Do not show only 3.`,
               location: `PIN ${pincode}`,
@@ -356,14 +455,23 @@ export async function executeToolCall(
           });
 
           if (pricing.length > 0) {
+            const mappedPricing = pricing.map((p: any) => ({
+              workshop_name: p.workshop_name,
+              service_name: p.service_name,
+              min_price: p.custom_price || p.price,
+              max_price: p.custom_price || p.price,
+              price: p.custom_price || p.price,
+              city: p.workshop_city,
+            }));
+            rememberPricingInSession(session, mappedPricing, {
+              service_category,
+              car_model,
+              pincode,
+              city,
+            });
             return {
               success: true,
-              pricing: pricing.map((p: any) => ({
-                workshop_name: p.workshop_name,
-                service_name: p.service_name,
-                price: p.custom_price || p.price,
-                city: p.workshop_city,
-              })),
+              pricing: mappedPricing,
               location: city,
             };
           }
@@ -387,13 +495,14 @@ export async function executeToolCall(
           return {
             success: true,
             workshops: workshops.map((w: any) => ({
+              id: String(w.id || ''),
               name: w.workshop_name || w.name,
               address: w.short_address || w.address,
               city: w.city,
               pincode: w.pincode,
               phone: '9152307030',
               working_time: w.working_time,
-              map_link: w.near_area_google_map,
+              map_link: w.near_area_google_map || w.map_link || null,
             })),
           };
         } else {
@@ -548,6 +657,16 @@ export async function executeToolCall(
         }
 
         const trackingUtm = opts?.sessionData?.bookingState?.trackingUtm;
+        const quotedPrice = await resolveQuotedPriceForBooking(args, opts?.sessionData);
+        if (quotedPrice && opts?.sessionData) {
+          opts.sessionData.bookingState = opts.sessionData.bookingState || {};
+          opts.sessionData.bookingState.selectedServicePlan = {
+            service_name: args.service_name,
+            min_price: quotedPrice,
+            max_price: quotedPrice,
+          };
+        }
+
         const bookingData = {
           session_id: args.session_id,
           service_name: args.service_name,
@@ -561,6 +680,7 @@ export async function executeToolCall(
           pincode: args.pincode,
           preferred_date: args.preferred_date,
           preferred_time: args.preferred_time,
+          quoted_price: quotedPrice,
           status: 'pending',
           channel: opts?.bookingChannel,
           tracking_utm: trackingUtm && typeof trackingUtm === 'object' ? (trackingUtm as Record<string, string>) : undefined,

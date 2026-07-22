@@ -36,9 +36,11 @@ import { submitServiceBooking } from '../lib/serviceBooking';
 import {
   calculateWalletUsage,
   calculateWalletUsageForServiceLines,
+  fetchWalletQuote,
   fetchWalletVehicleBlocked,
   getEffectiveServiceWalletLimit,
   getWalletRules,
+  needsServerWalletQuote,
 } from '../lib/wallet';
 import {
   bookingMembershipExtraDiscountLabel,
@@ -369,6 +371,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [useWalletForBooking, setUseWalletForBooking] = useState(true);
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
   const [walletBlockReason, setWalletBlockReason] = useState<string | null>(null);
+  const [serverWalletMaxUsable, setServerWalletMaxUsable] = useState<number | null>(null);
   const [savedVehicles, setSavedVehicles] = useState<any[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(null);
@@ -635,7 +638,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     }));
   }, [serviceItemsForCoupon, membershipBundleDiscount, couponDiscount, totalPrice]);
 
-  const walletMaxUsable = useMemo(() => {
+  const localWalletMaxUsable = useMemo(() => {
     if (walletServiceLines.length > 0) {
       return calculateWalletUsageForServiceLines(
         walletServiceLines,
@@ -650,6 +653,29 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       walletVehicleBlocked,
     );
   }, [walletServiceLines, payableBeforeWallet, walletBalance, walletVehicleBlocked]);
+
+  useEffect(() => {
+    if (!isLoggedIn || walletVehicleBlocked || payableBeforeWallet <= 0 || !needsServerWalletQuote(getWalletRules())) {
+      setServerWalletMaxUsable(null);
+      return;
+    }
+    let active = true;
+    (async () => {
+      const quote = await fetchWalletQuote(apiFetch, {
+        payable_amount: payableBeforeWallet,
+        channel: 'SERVICE',
+        vehicle_number: form.vehicleNumber.trim() || null,
+        service_lines: walletServiceLines.length ? walletServiceLines : undefined,
+      });
+      if (!active) return;
+      setServerWalletMaxUsable(quote ? quote.max_usable : null);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn, walletVehicleBlocked, payableBeforeWallet, form.vehicleNumber, walletServiceLines]);
+
+  const walletMaxUsable = serverWalletMaxUsable != null ? serverWalletMaxUsable : localWalletMaxUsable;
 
   const walletHintLabel = useMemo(() => {
     const rules = getWalletRules();

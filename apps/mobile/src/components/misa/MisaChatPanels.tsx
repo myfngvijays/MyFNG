@@ -1,5 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  Image,
+  ImageSourcePropType,
+} from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../../constants/theme';
@@ -16,6 +27,7 @@ import {
   getNextDateIST,
   isSameDayBookingAllowed,
   isoFromDatePickerValue,
+  normalizeIsoDate,
 } from '../../lib/misa/misaPickupUtils';
 import { isValidVehicleNumber, normalizeVehicleNumber } from '../../lib/misa/misaVehicleNumber';
 import { ENV } from '../../config/environment';
@@ -24,18 +36,20 @@ import { PRIME_VALUE_BENEFITS, PRIME_VALUE_PRICE } from '../../constants/primeMe
 import { fetchPrimeMembershipConfig } from '../../lib/membershipPlan';
 import { setCustomerSessionToken } from '../../lib/customerSession';
 
-const OTHER_SERVICES = [
-  { name: 'AC Service', message: 'Car AC Service chahiye' },
-  { name: 'Battery', message: 'Car Battery Service chahiye' },
-  { name: 'Brake', message: 'Car Brake Service chahiye' },
-  { name: 'Engine', message: 'Car Engine Service chahiye' },
-  { name: 'Clutch', message: 'Car Clutch Service chahiye' },
-  { name: 'Tyre & Wheel', message: 'Car Tyre & Wheel Care chahiye' },
-  { name: 'Detailing', message: 'Car Detailing Service chahiye' },
-  { name: 'Denting', message: 'Car Denting & Painting chahiye' },
-  { name: 'Electrical', message: 'Electrical & Battery Service chahiye' },
-  { name: 'Suspension', message: 'Suspension & Steering Service chahiye' },
-] as const;
+const OTHER_SERVICES: Array<{ name: string; message: string; icon: ImageSourcePropType }> = [
+  { name: 'AC Service', message: 'Car AC Service chahiye', icon: require('../../../assets/icon-ac-service.png') },
+  { name: 'Battery', message: 'Car Battery Service chahiye', icon: require('../../../assets/icon-battery-service.png') },
+  { name: 'Brake', message: 'Car Brake Service chahiye', icon: require('../../../assets/icon-brake-service.png') },
+  { name: 'Engine', message: 'Car Engine Service chahiye', icon: require('../../../assets/icon-engine-service.png') },
+  { name: 'Clutch', message: 'Car Clutch Service chahiye', icon: require('../../../assets/icon-clutch-service.png') },
+  { name: 'Tyre & Wheel', message: 'Car Tyre & Wheel Care chahiye', icon: require('../../../assets/icon-tyre-service.png') },
+  { name: 'Detailing', message: 'Car Detailing Service chahiye', icon: require('../../../assets/icon-detailing-service.png') },
+  { name: 'Denting', message: 'Car Denting & Painting chahiye', icon: require('../../../assets/icon-denting-service.png') },
+  { name: 'Electrical', message: 'Electrical & Battery Service chahiye', icon: require('../../../assets/icon-electrical-service.png') },
+  { name: 'Suspension', message: 'Suspension & Steering Service chahiye', icon: require('../../../assets/icon-suspension-service.png') },
+];
+
+const PIN_LENGTH = 6;
 
 export function MisaServiceCategories({
   onPrime,
@@ -47,8 +61,11 @@ export function MisaServiceCategories({
   onOther: () => void;
 }) {
   return (
-    <View style={panelStyles.wrap}>
-      <Text style={panelStyles.label}>Choose a category</Text>
+    <View style={panelStyles.categoryWrap}>
+      <View style={panelStyles.categoryLabelRow}>
+        <View style={panelStyles.categoryDot} />
+        <Text style={panelStyles.categoryLabel}>Choose a category</Text>
+      </View>
       <View style={panelStyles.row3}>
         <TouchableOpacity
           style={[panelStyles.catCard, panelStyles.catCardPrime]}
@@ -153,7 +170,7 @@ export function MisaOtherServicesGrid({
   return (
     <View style={panelStyles.wrap}>
       <View style={panelStyles.gridHeader}>
-        <Text style={panelStyles.label}>Select a service</Text>
+        <Text style={panelStyles.gridTitle}>Select a service</Text>
         {onBack ? (
           <TouchableOpacity onPress={onBack} style={panelStyles.backBtn}>
             <Ionicons name="chevron-back" size={16} color={COLORS.gray[600]} />
@@ -164,6 +181,7 @@ export function MisaOtherServicesGrid({
       <View style={panelStyles.grid}>
         {OTHER_SERVICES.map((s) => (
           <TouchableOpacity key={s.name} style={panelStyles.serviceChip} onPress={() => onSelect(s.message, s.name)}>
+            <Image source={s.icon} style={panelStyles.serviceIcon} resizeMode="contain" />
             <Text style={panelStyles.serviceChipText}>{s.name}</Text>
           </TouchableOpacity>
         ))}
@@ -215,13 +233,17 @@ export function MisaCarPicker({ onSelect }: { onSelect: (message: string, label:
         <Ionicons name="car-sport" size={18} color={COLORS.primary} />
         <Text style={panelStyles.carPickerTitle}>Select your car</Text>
       </View>
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search model (Swift, City, WagonR…)"
-        style={panelStyles.input}
-        autoCapitalize="words"
-      />
+      <View style={panelStyles.searchWrap}>
+        <Ionicons name="search" size={16} color="#9CA3AF" style={panelStyles.searchIcon} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search model (Swift, City, WagonR…)"
+          placeholderTextColor="#9CA3AF"
+          style={panelStyles.searchInput}
+          autoCapitalize="words"
+        />
+      </View>
       {loading ? <Text style={panelStyles.metaHint}>Searching…</Text> : null}
       {suggestions.length > 0 ? (
         <View style={panelStyles.suggestList}>
@@ -317,23 +339,80 @@ export function MisaAddressPicker({
 }
 
 export function MisaPincodePanel({ onSubmit }: { onSubmit: (pin: string) => void }) {
-  const [pin, setPin] = useState('');
+  const [digits, setDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
+  const [error, setError] = useState<string | null>(null);
+  const inputRefs = useRef<Array<TextInput | null>>([]);
+
+  const value = digits.join('');
+  const isValid = /^\d{6}$/.test(value);
+
+  function updateDigit(index: number, raw: string) {
+    const digit = raw.replace(/\D/g, '').slice(-1);
+    const next = [...digits];
+    next[index] = digit;
+    setDigits(next);
+    setError(null);
+    if (digit && index < PIN_LENGTH - 1) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleKeyPress(index: number, key: string) {
+    if (key === 'Backspace' && !digits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  }
+
+  function handleSubmit() {
+    if (!isValid) {
+      setError('Valid 6-digit PIN code daalein');
+      return;
+    }
+    onSubmit(value);
+  }
+
   return (
     <View style={panelStyles.wrap}>
-      <Text style={panelStyles.label}>Enter 6-digit PIN code</Text>
-      <TextInput
-        value={pin}
-        onChangeText={(t) => setPin(t.replace(/\D/g, '').slice(0, 6))}
-        keyboardType="number-pad"
-        style={panelStyles.input}
-        placeholder="400604"
-      />
+      <View style={panelStyles.panelHeaderRow}>
+        <View style={[panelStyles.panelIcon, panelStyles.panelIconBlue]}>
+          <Ionicons name="location" size={16} color="#fff" />
+        </View>
+        <Text style={panelStyles.panelTitleDark}>Enter your PIN code</Text>
+      </View>
+
+      <View style={panelStyles.pinRow}>
+        {digits.map((digit, index) => (
+          <TextInput
+            key={`pin-${index}`}
+            ref={(el) => void (inputRefs.current[index] = el)}
+            value={digit}
+            onChangeText={(t) => updateDigit(index, t)}
+            onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
+            keyboardType="number-pad"
+            maxLength={1}
+            style={[panelStyles.pinBox, isValid && panelStyles.pinBoxValid]}
+            selectTextOnFocus
+          />
+        ))}
+      </View>
+
+      {error ? <Text style={panelStyles.errorCenter}>{error}</Text> : null}
+
+      {isValid ? (
+        <View style={panelStyles.selectedHintRow}>
+          <Ionicons name="checkmark-circle" size={14} color={COLORS.primary} />
+          <Text style={panelStyles.selectedHint}>PIN: {value}</Text>
+        </View>
+      ) : null}
+
       <TouchableOpacity
-        style={[panelStyles.primaryBtn, pin.length !== 6 && panelStyles.primaryBtnDisabled]}
-        disabled={pin.length !== 6}
-        onPress={() => onSubmit(pin)}
+        style={[panelStyles.primaryBtn, !isValid && panelStyles.primaryBtnDisabled]}
+        disabled={!isValid}
+        onPress={handleSubmit}
       >
-        <Text style={panelStyles.primaryBtnText}>Continue</Text>
+        <Text style={panelStyles.primaryBtnText}>
+          {isValid ? `Continue · ${value}` : 'Enter PIN code to continue'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -341,16 +420,32 @@ export function MisaPincodePanel({ onSubmit }: { onSubmit: (pin: string) => void
 
 export function MisaNamePanel({ onSubmit }: { onSubmit: (name: string) => void }) {
   const [name, setName] = useState('');
+  const trimmed = name.trim();
+  const isValid = trimmed.length >= 2;
+
   return (
     <View style={panelStyles.wrap}>
-      <Text style={panelStyles.label}>Your name</Text>
-      <TextInput value={name} onChangeText={setName} style={panelStyles.input} placeholder="Full name" />
+      <View style={panelStyles.panelHeaderRow}>
+        <View style={[panelStyles.panelIcon, panelStyles.panelIconBlue]}>
+          <Ionicons name="person" size={16} color="#fff" />
+        </View>
+        <Text style={panelStyles.panelTitleDark}>Your name</Text>
+      </View>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        style={panelStyles.inputLg}
+        placeholder="Full name"
+        placeholderTextColor="#9CA3AF"
+      />
       <TouchableOpacity
-        style={[panelStyles.primaryBtn, !name.trim() && panelStyles.primaryBtnDisabled]}
-        disabled={!name.trim()}
-        onPress={() => onSubmit(name.trim())}
+        style={[panelStyles.primaryBtn, !isValid && panelStyles.primaryBtnDisabled]}
+        disabled={!isValid}
+        onPress={() => onSubmit(trimmed)}
       >
-        <Text style={panelStyles.primaryBtnText}>Continue</Text>
+        <Text style={panelStyles.primaryBtnText}>
+          {isValid ? `Continue · ${trimmed}` : 'Enter your name'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -368,13 +463,42 @@ export function MisaGuestOtpPanel({
   }) => void;
 }) {
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
   const [otpSent, setOtpSent] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const otpRefs = useRef<Array<TextInput | null>>([]);
+
+  const otp = otpDigits.join('');
+  const phoneValid = /^[6-9]\d{9}$/.test(phone);
+  const otpValid = /^\d{6}$/.test(otp);
+
+  useEffect(() => {
+    if (!otpSent || otpTimer <= 0) return;
+    const t = setTimeout(() => setOtpTimer((prev) => prev - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpSent, otpTimer]);
+
+  function updateOtpDigit(index: number, raw: string) {
+    const digit = raw.replace(/\D/g, '').slice(-1);
+    const next = [...otpDigits];
+    next[index] = digit;
+    setOtpDigits(next);
+    setError(null);
+    if (digit && index < PIN_LENGTH - 1) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpKeyPress(index: number, key: string) {
+    if (key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  }
 
   async function sendOtp() {
-    if (!/^[6-9]\d{9}$/.test(phone)) {
+    if (!phoneValid) {
       setError('Valid 10-digit mobile number daalein');
       return;
     }
@@ -389,6 +513,9 @@ export function MisaGuestOtpPanel({
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) throw new Error(json?.error || 'OTP send failed');
       setOtpSent(true);
+      setOtpDigits(Array(PIN_LENGTH).fill(''));
+      setOtpTimer(30);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (e: any) {
       setError(e?.message || 'OTP send failed');
     } finally {
@@ -397,7 +524,7 @@ export function MisaGuestOtpPanel({
   }
 
   async function verifyOtp() {
-    if (!/^\d{6}$/.test(otp)) {
+    if (!otpValid) {
       setError('6-digit OTP daalein');
       return;
     }
@@ -449,36 +576,85 @@ export function MisaGuestOtpPanel({
 
   return (
     <View style={panelStyles.wrap}>
-      <Text style={panelStyles.label}>Verify mobile (guest)</Text>
-      <TextInput
-        value={phone}
-        onChangeText={(t) => setPhone(t.replace(/\D/g, '').slice(0, 10))}
-        keyboardType="phone-pad"
-        style={panelStyles.input}
-        placeholder="10-digit mobile"
-        editable={!otpSent}
-      />
-      {otpSent ? (
+      <View style={panelStyles.panelHeaderRow}>
+        <Ionicons name="shield-checkmark" size={18} color={COLORS.primary} />
+        <Text style={panelStyles.panelTitle}>Mobile verification for pricing</Text>
+      </View>
+
+      <Text style={panelStyles.fieldLabel}>Mobile number (WhatsApp OTP)</Text>
+      <View style={panelStyles.phoneRow}>
         <TextInput
-          value={otp}
-          onChangeText={(t) => setOtp(t.replace(/\D/g, '').slice(0, 6))}
-          keyboardType="number-pad"
-          style={panelStyles.input}
-          placeholder="6-digit OTP"
+          value={phone}
+          onChangeText={(t) => {
+            setPhone(t.replace(/\D/g, '').slice(0, 10));
+            setError(null);
+            if (otpSent) {
+              setOtpSent(false);
+              setOtpDigits(Array(PIN_LENGTH).fill(''));
+            }
+          }}
+          keyboardType="phone-pad"
+          style={panelStyles.phoneInput}
+          placeholder="10-digit mobile"
+          placeholderTextColor="#9CA3AF"
+          editable={!loading}
         />
-      ) : null}
-      {error ? <Text style={panelStyles.error}>{error}</Text> : null}
-      <TouchableOpacity
-        style={panelStyles.primaryBtn}
-        disabled={loading}
-        onPress={() => (otpSent ? verifyOtp() : sendOtp())}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
+        {!otpSent ? (
+          <TouchableOpacity
+            style={[panelStyles.otpSendBtn, (!phoneValid || loading) && panelStyles.primaryBtnDisabled]}
+            disabled={!phoneValid || loading}
+            onPress={() => void sendOtp()}
+          >
+            {loading && !otpSent ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={panelStyles.otpSendBtnText}>Send OTP</Text>
+            )}
+          </TouchableOpacity>
         ) : (
-          <Text style={panelStyles.primaryBtnText}>{otpSent ? 'Verify OTP' : 'Send OTP on WhatsApp'}</Text>
+          <TouchableOpacity
+            style={[panelStyles.otpResendBtn, (loading || otpTimer > 0) && panelStyles.primaryBtnDisabled]}
+            disabled={loading || otpTimer > 0}
+            onPress={() => void sendOtp()}
+          >
+            <Text style={panelStyles.otpResendBtnText}>{otpTimer > 0 ? `Resend (${otpTimer}s)` : 'Resend'}</Text>
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
+      </View>
+
+      {otpSent ? (
+        <>
+          <Text style={[panelStyles.fieldLabel, { marginTop: 12 }]}>Enter 6-digit OTP from WhatsApp</Text>
+          <View style={panelStyles.pinRow}>
+            {otpDigits.map((digit, index) => (
+              <TextInput
+                key={`otp-${index}`}
+                ref={(el) => void (otpRefs.current[index] = el)}
+                value={digit}
+                onChangeText={(t) => updateOtpDigit(index, t)}
+                onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
+                keyboardType="number-pad"
+                maxLength={1}
+                style={panelStyles.otpBox}
+                selectTextOnFocus
+              />
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[panelStyles.secondaryBtn, (!otpValid || loading) && panelStyles.primaryBtnDisabled]}
+            disabled={!otpValid || loading}
+            onPress={() => void verifyOtp()}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={panelStyles.primaryBtnText}>Verify OTP</Text>
+            )}
+          </TouchableOpacity>
+        </>
+      ) : null}
+
+      {error ? <Text style={panelStyles.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -497,15 +673,15 @@ export function MisaDateTimePanel({
   const sameDayAllowed = isSameDayBookingAllowed() && getAvailableSlotsForDate(today).length > 0;
   const minDate = sameDayAllowed ? today : tomorrow;
   const quickDates = useMemo(() => buildQuickDates(minDate, 7), [minDate]);
-  const dateIso = preferredDate || getDefaultPickupDate();
+  const dateIso = normalizeIsoDate(preferredDate);
 
-  const [selectedDate, setSelectedDate] = useState(preferredDate || getDefaultPickupDate());
+  const [selectedDate, setSelectedDate] = useState(normalizeIsoDate(preferredDate));
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode === 'date') {
-      setSelectedDate(preferredDate || getDefaultPickupDate());
+      setSelectedDate(normalizeIsoDate(preferredDate));
     }
   }, [mode, preferredDate]);
 
@@ -640,7 +816,7 @@ export function MisaDateTimePanel({
           return (
             <TouchableOpacity
               key={slot.value}
-              style={[panelStyles.chip, isSelected && panelStyles.chipActive]}
+              style={[panelStyles.chip, isSelected && panelStyles.chipPurpleActive]}
               onPress={() => setSelectedTime(slot.value)}
             >
               <Text style={[panelStyles.chipText, isSelected && panelStyles.chipTextActive]}>{slot.label}</Text>
@@ -747,8 +923,9 @@ export function MisaVehicleNumberPanel({
           setError(null);
         }}
         autoCapitalize="characters"
-        placeholder="DL01AB1234"
-        style={panelStyles.input}
+        placeholder="ENTER VEHICLE NUMBER"
+        placeholderTextColor="#9CA3AF"
+        style={[panelStyles.input, panelStyles.vehicleInput]}
       />
       {error ? <Text style={panelStyles.error}>{error}</Text> : null}
       <TouchableOpacity
@@ -759,7 +936,7 @@ export function MisaVehicleNumberPanel({
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={panelStyles.primaryBtnText}>Save & continue</Text>
+          <Text style={panelStyles.primaryBtnText}>Save</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -775,34 +952,72 @@ export function MisaBookingSummaryPanel({
   onConfirm: () => void;
   onReject: () => void;
 }) {
-  const rows = [
+  const grid1 = [
     ['Service', summary.service],
     ['Price', summary.price],
     ['Car', summary.car],
     ['Vehicle', summary.vehicleNo],
     ['PIN', summary.pinCode],
+    ['Time', summary.time],
+  ].filter(([, v]) => Boolean(v)) as Array<[string, string]>;
+
+  const grid2 = [
     ['Name', summary.name],
     ['Phone', summary.phone],
-    ['Address', summary.address],
     ['Date', summary.date],
-    ['Time', summary.time],
-  ].filter(([, v]) => Boolean(v));
+  ].filter(([, v]) => Boolean(v)) as Array<[string, string]>;
 
   return (
-    <View style={panelStyles.wrap}>
-      <Text style={panelStyles.label}>Booking summary</Text>
-      {rows.map(([k, v]) => (
-        <View key={k} style={panelStyles.summaryRow}>
-          <Text style={panelStyles.summaryKey}>{k}</Text>
-          <Text style={panelStyles.summaryVal}>{v}</Text>
-        </View>
-      ))}
-      <View style={panelStyles.row2}>
-        <TouchableOpacity style={[panelStyles.primaryBtn, { flex: 1 }]} onPress={onConfirm}>
-          <Text style={panelStyles.primaryBtnText}>Yes, confirm</Text>
+    <View style={panelStyles.summaryCard}>
+      <View style={panelStyles.summaryHeader}>
+        <Ionicons name="clipboard" size={16} color="#fff" />
+        <Text style={panelStyles.summaryHeaderText}>Booking Summary</Text>
+      </View>
+
+      <View style={panelStyles.summaryBody}>
+        {grid1.length > 0 ? (
+          <View style={panelStyles.summaryGrid}>
+            {grid1.map(([k, v]) => (
+              <View key={k} style={panelStyles.summaryCell}>
+                <Text style={panelStyles.summaryCellLabel}>{k}</Text>
+                <Text style={panelStyles.summaryCellVal} numberOfLines={2}>
+                  {v}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {(grid2.length > 0 || summary.address) && (
+          <View style={[panelStyles.summaryGrid, { marginTop: 8 }]}>
+            {grid2.map(([k, v]) => (
+              <View key={k} style={panelStyles.summaryCell}>
+                <Text style={panelStyles.summaryCellLabel}>{k}</Text>
+                <Text style={panelStyles.summaryCellVal} numberOfLines={2}>
+                  {v}
+                </Text>
+              </View>
+            ))}
+            {summary.address ? (
+              <View style={panelStyles.summaryCellFull}>
+                <Text style={panelStyles.summaryCellLabel}>Address</Text>
+                <Text style={panelStyles.summaryCellVal} numberOfLines={3}>
+                  {summary.address}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+
+      <View style={panelStyles.summaryActions}>
+        <TouchableOpacity style={panelStyles.summaryConfirmBtn} onPress={onConfirm}>
+          <Ionicons name="checkmark" size={14} color="#fff" />
+          <Text style={panelStyles.summaryConfirmText}>Yes, confirm</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[panelStyles.ghostBtn, { flex: 1 }]} onPress={onReject}>
-          <Text style={panelStyles.ghostBtnText}>Edit</Text>
+        <TouchableOpacity style={panelStyles.summaryRejectBtn} onPress={onReject}>
+          <Ionicons name="close" size={14} color="#374151" />
+          <Text style={panelStyles.summaryRejectText}>No, edit</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1055,26 +1270,203 @@ const panelStyles = StyleSheet.create({
   },
   primeBackText: { fontSize: 12, fontWeight: '700', color: COLORS.gray[600] },
   label: { fontSize: 12, fontWeight: '900', color: COLORS.gray[600], marginBottom: 8 },
+  categoryWrap: { marginTop: 8 },
+  categoryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  categoryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary },
+  categoryLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  gridTitle: { fontSize: FONT_SIZES.sm, fontWeight: '800', color: COLORS.secondary },
+  panelTitleDark: { fontSize: FONT_SIZES.sm, fontWeight: '800', color: '#1F2937' },
+  fieldLabel: { fontSize: 11, fontWeight: '600', color: COLORS.gray[600], marginBottom: 6 },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  phoneInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: '#111827',
+    backgroundColor: '#fff',
+  },
+  otpSendBtn: {
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  otpSendBtnText: { color: '#fff', fontWeight: '800', fontSize: 11 },
+  otpResendBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,136,232,0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  otpResendBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 11 },
+  secondaryBtn: {
+    marginTop: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.secondary,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  pinRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 12, marginBottom: 4 },
+  pinBox: {
+    width: 40,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    backgroundColor: '#fff',
+  },
+  pinBoxValid: { borderColor: COLORS.primary, backgroundColor: 'rgba(0,136,232,0.05)' },
+  otpBox: {
+    width: 42,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    backgroundColor: '#fff',
+  },
+  errorCenter: { color: '#DC2626', fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 6 },
+  inputLg: {
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 8,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: '#111827',
+    backgroundColor: '#fff',
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+  },
+  searchIcon: { marginRight: 4 },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  vehicleInput: { textAlign: 'center', letterSpacing: 1, fontWeight: '800' },
+  serviceIcon: { width: 44, height: 44, marginBottom: 6 },
+  summaryCard: {
+    marginTop: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0,136,232,0.2)',
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  summaryHeaderText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.3 },
+  summaryBody: { padding: 10 },
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    padding: 10,
+  },
+  summaryCell: { width: '47%', minWidth: 120 },
+  summaryCellFull: { width: '100%' },
+  summaryCellLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  summaryCellVal: { marginTop: 2, fontSize: 13, fontWeight: '700', color: '#111827' },
+  summaryActions: {
+    flexDirection: 'row',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    backgroundColor: 'rgba(249,250,251,0.8)',
+    padding: 10,
+  },
+  summaryConfirmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+  },
+  summaryConfirmText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  summaryRejectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+  },
+  summaryRejectText: { color: '#374151', fontWeight: '800', fontSize: 12 },
+  chipPurpleActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
   row3: { flexDirection: 'row', gap: 8 },
   row2: { flexDirection: 'row', gap: 10, marginTop: 8 },
   catCard: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 6,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
     gap: 4,
   },
-  catCardPrime: { borderColor: '#BFDBFE', backgroundColor: '#F0F9FF' },
-  catCardPeriodic: { borderColor: '#BAE6FD', backgroundColor: '#ECFEFF' },
+  catCardPrime: { borderColor: 'rgba(2,61,149,0.2)', backgroundColor: '#F0F9FF' },
+  catCardPeriodic: { borderColor: 'rgba(0,136,232,0.25)', backgroundColor: '#ECFEFF' },
   catCardOther: { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' },
   catIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1116,8 +1508,9 @@ const panelStyles = StyleSheet.create({
     paddingHorizontal: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F3F4F6',
     alignItems: 'center',
+    backgroundColor: '#fff',
   },
   serviceChipText: { fontSize: 10, fontWeight: '800', color: '#111827', textAlign: 'center' },
   listItem: {

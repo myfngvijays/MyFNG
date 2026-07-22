@@ -38,6 +38,15 @@
   animation: misa-shimmer 4s linear infinite;
 }
 
+.misa-workshop-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.misa-workshop-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(14, 116, 144, 0.12);
+}
+
 .misa-ai-input-bar {
   background: linear-gradient(90deg, #0088e8 0%, #0066cc 55%, #023d95 100%) !important;
 }
