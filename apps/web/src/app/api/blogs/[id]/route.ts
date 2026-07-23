@@ -13,8 +13,9 @@ import { notifyRoleCodesGlobal } from '@/lib/notifications';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
 import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
 import { revalidateBlogSeo } from '@/lib/seo/revalidate';
+import { normalizeBlogContent } from '@/lib/blog/normalizeBlogContent';
+import { isBlogOwnedByUser, resolveBlogAuthorId } from '@/lib/blog/ownership';
 import {
-  normalizeBlogHtmlMedia,
   normalizeBlogMediaUrl,
   normalizeBlogRecordForResponse,
   normalizeBlogSeoData,
@@ -71,7 +72,7 @@ export async function GET(
 
     // Digital Author can only view their own blogs (unless published)
     if (roleCode === 'DIGITAL_AUTHOR' && blog.status !== 'published') {
-      if (blog.author_id !== userProfile?.id) {
+      if (!isBlogOwnedByUser(blog, userProfile?.id || '')) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
@@ -135,8 +136,7 @@ export async function PUT(
 
     // Check permissions
     if (roleCode === 'DIGITAL_AUTHOR') {
-      // Digital Author can only edit their own blogs
-      if (existingBlog.author_id !== userProfile.id) {
+      if (!isBlogOwnedByUser(existingBlog, userProfile.id)) {
         return NextResponse.json({ error: 'Forbidden: You can only edit your own blogs' }, { status: 403 });
       }
       // Digital Author cannot publish blogs - only save as draft
@@ -164,7 +164,8 @@ export async function PUT(
       is_featured,
       is_premium,
       tag_ids,
-      image_urls
+      image_urls,
+      author_id: requestedAuthorId,
     } = body;
 
     const faqs = Array.isArray(body?.faqs) ? body.faqs : (Array.isArray((seo_data || {})?.faqs) ? (seo_data as any).faqs : undefined);
@@ -189,7 +190,7 @@ export async function PUT(
 
     // Enforce ALT tags on all images inside the HTML body (if content is being updated).
     if (content !== undefined) {
-      const normalizedContent = normalizeBlogHtmlMedia(String(content));
+      const normalizedContent = normalizeBlogContent(String(content));
       const altCheck = validateAllImgHaveAlt(normalizedContent, 125);
       if (!altCheck.ok) return NextResponse.json({ error: altCheck.error }, { status: 400 });
     }
@@ -237,7 +238,7 @@ export async function PUT(
     if (slug !== undefined) updateData.slug = slug;
     if (excerpt !== undefined) updateData.excerpt = excerpt;
     if (content !== undefined) {
-      const normalizedContent = normalizeBlogHtmlMedia(String(content));
+      const normalizedContent = normalizeBlogContent(String(content));
       updateData.content = normalizedContent;
       // Auto-calc reading time as per spec (100 words/minute).
       const { minutes } = computeReadTimeFromHtml(normalizedContent);
@@ -266,6 +267,14 @@ export async function PUT(
     }
     if (is_featured !== undefined) updateData.is_featured = is_featured;
     if (is_premium !== undefined) updateData.is_premium = is_premium;
+    if (requestedAuthorId !== undefined && (roleCode === 'DIGITAL_MARKETING' || roleCode === 'SUPER_ADMIN')) {
+      updateData.author_id = await resolveBlogAuthorId(
+        supabase,
+        roleCode,
+        userProfile.id,
+        requestedAuthorId,
+      );
+    }
 
     // If we're transitioning to published, run publish-time Local SEO enrichment (best-effort)
     try {
@@ -474,8 +483,7 @@ export async function PUT(
       console.warn('Failed to notify Digital Marketing (non-blocking):', e);
     }
 
-    const effectiveSlug = String(transformedBlog?.slug || updatedBlog?.slug || existingBlog.slug || '').trim();
-    if (effectiveSlug) revalidateBlogSeo(effectiveSlug);
+    if (String(effectiveSlug).trim()) revalidateBlogSeo(String(effectiveSlug).trim());
 
     return NextResponse.json({ blog: transformedBlog, warnings });
   } catch (error: any) {

@@ -1,24 +1,32 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
-import { Users, Search, UserPlus, Shield, UserX, UserCheck } from 'lucide-react';
-import { formatDateDMY } from "@/lib/utils";
+import { Users, Search, UserPlus, UserX, UserCheck, Filter, X, ArrowUpDown } from 'lucide-react';
+import { formatDateDMY } from '@/lib/utils';
 
-const AVAILABLE_ROLES = [
-  { code: 'SUPER_ADMIN', name: 'Super Admin', color: 'red' },
-  { code: 'SUB_ADMIN', name: 'Sub Admin', color: 'purple' },
-  { code: 'LEAD_MANAGER', name: 'Lead Manager', color: 'purple' },
-  { code: 'TELECALLER', name: 'Telecaller', color: 'blue' },
-  { code: 'WORKSHOP_ADMIN', name: 'Workshop Owner', color: 'orange' },
-  { code: 'WORKSHOP_SUPERVISOR', name: 'Workshop Adviser', color: 'indigo' },
-  { code: 'WORKSHOP_MECHANIC', name: 'Workshop Mechanic', color: 'teal' },
-  { code: 'PICKUP_BOY', name: 'Pickupboy/Driver', color: 'green' },
-  { code: 'RSA_MANAGER', name: 'RSA Manager', color: 'red' },
-  { code: 'AUDITOR', name: 'Quality Auditor', color: 'indigo' },
-  { code: 'DIGITAL_MARKETING', name: 'Digital Marketing', color: 'pink' },
-  { code: 'CUSTOMER', name: 'Customer', color: 'gray' },
-];
+const ROLE_STYLES: Record<string, { badge: string; avatar: string }> = {
+  SUPER_ADMIN: { badge: 'bg-red-100 text-red-800', avatar: 'bg-red-100 text-red-600' },
+  SUB_ADMIN: { badge: 'bg-purple-100 text-purple-800', avatar: 'bg-purple-100 text-purple-600' },
+  LEAD_MANAGER: { badge: 'bg-purple-100 text-purple-800', avatar: 'bg-purple-100 text-purple-600' },
+  TELECALLER: { badge: 'bg-blue-100 text-blue-800', avatar: 'bg-blue-100 text-blue-600' },
+  WORKSHOP_ADMIN: { badge: 'bg-orange-100 text-orange-800', avatar: 'bg-orange-100 text-orange-600' },
+  WORKSHOP_SUPERVISOR: { badge: 'bg-indigo-100 text-indigo-800', avatar: 'bg-indigo-100 text-indigo-600' },
+  WORKSHOP_MECHANIC: { badge: 'bg-teal-100 text-teal-800', avatar: 'bg-teal-100 text-teal-600' },
+  PICKUP_BOY: { badge: 'bg-green-100 text-green-800', avatar: 'bg-green-100 text-green-600' },
+  RSA_MANAGER: { badge: 'bg-rose-100 text-rose-800', avatar: 'bg-rose-100 text-rose-600' },
+  AUDITOR: { badge: 'bg-indigo-100 text-indigo-800', avatar: 'bg-indigo-100 text-indigo-600' },
+  DIGITAL_MARKETING: { badge: 'bg-pink-100 text-pink-800', avatar: 'bg-pink-100 text-pink-600' },
+  DIGITAL_AUTHOR: { badge: 'bg-violet-100 text-violet-800', avatar: 'bg-violet-100 text-violet-600' },
+  CUSTOMER: { badge: 'bg-gray-100 text-gray-800', avatar: 'bg-gray-100 text-gray-600' },
+  CSE: { badge: 'bg-cyan-100 text-cyan-800', avatar: 'bg-cyan-100 text-cyan-600' },
+};
+
+const DEFAULT_ROLE_STYLE = { badge: 'bg-slate-100 text-slate-800', avatar: 'bg-slate-100 text-slate-600' };
+
+function getRoleStyle(roleCode?: string) {
+  return ROLE_STYLES[String(roleCode || '').toUpperCase()] || DEFAULT_ROLE_STYLE;
+}
 
 export default function UserManagementPage() {
   const supabase = getBrowserClient();
@@ -26,6 +34,8 @@ export default function UserManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name'>('newest');
   const [showAddModal, setShowAddModal] = useState(false);
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
@@ -58,21 +68,16 @@ export default function UserManagementPage() {
     fetchWorkshops();
     fetchRoles();
     fetchManagers();
-  }, [filterRole]);
+  }, []);
 
   const fetchUsers = async () => {
     try {
-      let query = supabase
+      setLoading(true);
+      const { data, error } = await supabase
         .from('users_login')
         .select('*, role:roles!role_id(role_name, role_code)')
         .order('created_at', { ascending: false });
 
-      if (filterRole !== 'all') {
-        // users_login doesn't have role_code; filter via joined roles table.
-        query = query.eq('role.role_code', filterRole);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       setUsers(data || []);
     } catch (error) {
@@ -337,16 +342,57 @@ export default function UserManagementPage() {
     }
   };
 
-  const filteredUsers = users.filter((u) =>
-    searchTerm === '' ||
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.phone?.includes(searchTerm)
-  );
+  const roleStats = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; count: number; active: number }>();
+    for (const u of users) {
+      const code = u.role?.role_code || 'UNKNOWN';
+      const name = u.role?.role_name || 'Unknown';
+      const cur = map.get(code) || { code, name, count: 0, active: 0 };
+      cur.count += 1;
+      if (u.is_active) cur.active += 1;
+      map.set(code, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [users]);
 
-  const getRoleColor = (roleCode: string) => {
-    const role = AVAILABLE_ROLES.find((r) => r.code === roleCode);
-    return role?.color || 'gray';
+  const summary = useMemo(() => {
+    const active = users.filter((u) => u.is_active).length;
+    return { total: users.length, active, inactive: users.length - active };
+  }, [users]);
+
+  const filteredUsers = useMemo(() => {
+    let list = [...users];
+    if (filterRole !== 'all') {
+      list = list.filter((u) => u.role?.role_code === filterRole);
+    }
+    if (filterStatus === 'active') list = list.filter((u) => u.is_active);
+    if (filterStatus === 'inactive') list = list.filter((u) => !u.is_active);
+    if (searchTerm.trim()) {
+      const q = searchTerm.trim().toLowerCase();
+      list = list.filter(
+        (u) =>
+          u.full_name?.toLowerCase().includes(q) ||
+          u.email?.toLowerCase().includes(q) ||
+          String(u.phone || '').includes(searchTerm.trim()) ||
+          u.role?.role_name?.toLowerCase().includes(q),
+      );
+    }
+    list.sort((a, b) => {
+      if (sortBy === 'name') return String(a.full_name || '').localeCompare(String(b.full_name || ''));
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      return sortBy === 'oldest' ? ta - tb : tb - ta;
+    });
+    return list;
+  }, [users, filterRole, filterStatus, searchTerm, sortBy]);
+
+  const hasActiveFilters = filterRole !== 'all' || filterStatus !== 'all' || searchTerm.trim() !== '';
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterRole('all');
+    setFilterStatus('all');
+    setSortBy('newest');
   };
 
   if (loading) {
@@ -388,40 +434,146 @@ export default function UserManagementPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-5 md:py-6 space-y-4 sm:space-y-5 md:space-y-6">
+        {/* Summary */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+            <p className="text-xs text-gray-500">Total Users</p>
+            <p className="text-2xl font-bold text-gray-900">{summary.total}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+            <p className="text-xs text-gray-500">Active</p>
+            <p className="text-2xl font-bold text-green-600">{summary.active}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+            <p className="text-xs text-gray-500">Inactive</p>
+            <p className="text-2xl font-bold text-red-600">{summary.inactive}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+            <p className="text-xs text-gray-500">Roles Used</p>
+            <p className="text-2xl font-bold text-purple-600">{roleStats.length}</p>
+          </div>
+        </div>
+
+        {/* Role breakdown */}
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900">Users by Role</h2>
+            <span className="text-xs text-gray-500">Click a role to filter</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setFilterRole('all')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                filterRole === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              All ({summary.total})
+            </button>
+            {roleStats.map((r) => {
+              const style = getRoleStyle(r.code);
+              const selected = filterRole === r.code;
+              return (
+                <button
+                  key={r.code}
+                  type="button"
+                  onClick={() => setFilterRole(selected ? 'all' : r.code)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                    selected ? 'bg-blue-600 text-white border-blue-600' : `${style.badge} border-transparent hover:opacity-90`
+                  }`}
+                >
+                  {r.name} · {r.count}
+                  {!selected ? <span className="opacity-70"> ({r.active} active)</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Search */}
-            <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <h2 className="text-sm font-semibold text-gray-900">Filters</h2>
+            {hasActiveFilters ? (
+              <button type="button" onClick={clearFilters} className="ml-auto text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                <X className="w-3 h-3" /> Clear all
+              </button>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Search</label>
               <div className="relative">
-                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
                   type="text"
-                  placeholder="Search by name, email, or phone..."
+                  placeholder="Name, email, phone, role..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
-
-            {/* Role Filter */}
-            <select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto"
-            >
-              <option value="all">All Roles</option>
-              {AVAILABLE_ROLES.map((role) => (
-                <option key={role.code} value={role.code}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Role</label>
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Roles ({summary.total})</option>
+                {roles.map((role) => {
+                  const stat = roleStats.find((r) => r.code === role.role_code);
+                  return (
+                    <option key={role.id} value={role.role_code}>
+                      {role.role_name} {stat ? `(${stat.count})` : '(0)'}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'inactive')}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active only ({summary.active})</option>
+                <option value="inactive">Inactive only ({summary.inactive})</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1 inline-flex items-center gap-1">
+                <ArrowUpDown className="w-3 h-3" /> Sort
+              </label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest' | 'name')}
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="name">Name A–Z</option>
+              </select>
+            </div>
           </div>
 
-          <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
-            Showing {filteredUsers.length} user(s)
+          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-gray-600">
+            <span>
+              Showing <strong className="text-gray-900">{filteredUsers.length}</strong> of {summary.total} users
+            </span>
+            {filterRole !== 'all' ? (
+              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">Role: {roles.find((r) => r.role_code === filterRole)?.role_name || filterRole}</span>
+            ) : null}
+            {filterStatus !== 'all' ? (
+              <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full">Status: {filterStatus}</span>
+            ) : null}
+            {searchTerm.trim() ? (
+              <span className="px-2 py-0.5 bg-amber-50 text-amber-800 rounded-full">Search: &quot;{searchTerm.trim()}&quot;</span>
+            ) : null}
           </div>
         </div>
 
@@ -453,13 +605,13 @@ export default function UserManagementPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredUsers.map((user) => {
-                  const roleColor = getRoleColor(user.role?.role_code || user.role_code);
+                  const roleStyle = getRoleStyle(user.role?.role_code || user.role_code);
                   return (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-4 md:px-6 py-3 md:py-4">
                         <div className="flex items-center">
-                          <div className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-${roleColor}-100 flex items-center justify-center flex-shrink-0`}>
-                            <span className={`text-${roleColor}-600 font-bold text-sm sm:text-base md:text-lg`}>
+                          <div className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${roleStyle.avatar}`}>
+                            <span className="font-bold text-sm sm:text-base md:text-lg">
                               {user.full_name?.charAt(0).toUpperCase() || '?'}
                             </span>
                           </div>
@@ -476,7 +628,7 @@ export default function UserManagementPage() {
                         </div>
                       </td>
                       <td className="px-4 md:px-6 py-3 md:py-4">
-                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
+                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${roleStyle.badge}`}>
                           {user.role?.role_name || user.role?.role_code || user.role_code}
                         </span>
                       </td>
@@ -546,13 +698,13 @@ export default function UserManagementPage() {
         {/* Users Cards - Mobile/Tablet */}
         <div className="lg:hidden space-y-3 sm:space-y-4">
           {filteredUsers.map((user) => {
-            const roleColor = getRoleColor(user.role?.role_code || user.role_code);
+            const roleStyle = getRoleStyle(user.role?.role_code || user.role_code);
             return (
               <div key={user.id} className="bg-white rounded-lg shadow p-3 sm:p-4 border border-gray-100">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                    <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-${roleColor}-100 flex items-center justify-center flex-shrink-0`}>
-                      <span className={`text-${roleColor}-600 font-bold text-base sm:text-lg`}>
+                    <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0 ${roleStyle.avatar}`}>
+                      <span className="font-bold text-base sm:text-lg">
                         {user.full_name?.charAt(0).toUpperCase() || '?'}
                       </span>
                     </div>
@@ -579,7 +731,7 @@ export default function UserManagementPage() {
                   </div>
                   <div className="flex items-center justify-between text-xs sm:text-sm">
                     <span className="text-gray-500">Role:</span>
-                    <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full bg-${roleColor}-100 text-${roleColor}-800`}>
+                    <span className={`px-2 py-0.5 inline-flex text-xs font-semibold rounded-full ${roleStyle.badge}`}>
                       {user.role?.role_name || user.role?.role_code || user.role_code}
                     </span>
                   </div>

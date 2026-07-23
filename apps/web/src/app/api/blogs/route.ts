@@ -11,12 +11,13 @@ import { collectHeadingWordWarnings, computeReadTimeFromHtml, countWords, valida
 import { autoFillSeoFromSummary } from '@/lib/blog/seo';
 import { isPuneOrPcmcCity, resolveLocalAreas } from '@/lib/blog/localSeo';
 import { resolveCityGeoAndLocalities } from '@/lib/blog/googlePlaces';
+import { normalizeBlogContent } from '@/lib/blog/normalizeBlogContent';
 import {
-  normalizeBlogHtmlMedia,
   normalizeBlogMediaUrl,
   normalizeBlogRecordForResponse,
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
+import { authorBlogOrFilter, resolveBlogAuthorId } from '@/lib/blog/ownership';
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,9 +88,9 @@ export async function GET(request: NextRequest) {
       query = query.or(`title.ilike.%${search}%,excerpt.ilike.%${search}%,content.ilike.%${search}%`);
     }
 
-    // Digital Author can only see their own blogs
+    // Digital Author can only see their own blogs (author or creator)
     if (roleCode === 'DIGITAL_AUTHOR') {
-      query = query.eq('author_id', userProfile.id);
+      query = query.or(authorBlogOrFilter(userProfile.id));
     }
 
     // Ordering
@@ -185,7 +186,8 @@ export async function POST(request: NextRequest) {
       is_featured: requestedIsFeatured = false,
       is_premium: requestedIsPremium = false,
       tag_ids = [],
-      image_urls = []
+      image_urls = [],
+      author_id: requestedAuthorId,
     } = body;
 
     const faqs = Array.isArray(body?.faqs) ? body.faqs : (Array.isArray((seo_data || {})?.faqs) ? (seo_data as any).faqs : []);
@@ -200,7 +202,7 @@ export async function POST(request: NextRequest) {
           ? normalizeBlogMediaUrl(String(featured_image))
           : null;
     const normalizedExcerpt = typeof excerpt === 'string' ? (excerpt.trim() ? excerpt.trim() : null) : (excerpt ?? null);
-    const normalizedContent = normalizeBlogHtmlMedia(String(content || ''));
+    const normalizedContent = normalizeBlogContent(String(content || ''));
 
     // Digital Author restrictions
     let finalStatus = requestedStatus;
@@ -328,6 +330,13 @@ export async function POST(request: NextRequest) {
 
     finalSeoData = normalizeBlogSeoData(finalSeoData);
 
+    const resolvedAuthorId = await resolveBlogAuthorId(
+      supabase,
+      roleCode,
+      userProfile.id,
+      requestedAuthorId,
+    );
+
     // Create blog
     const { data: blog, error: blogError } = await supabase
       .from('blogs')
@@ -338,7 +347,7 @@ export async function POST(request: NextRequest) {
         content: normalizedContent,
         seo_data: finalSeoData,
         category_id: primaryCategoryId,
-        author_id: userProfile.id,
+        author_id: resolvedAuthorId,
         created_by: userProfile.id,
         updated_by: userProfile.id,
         read_time: minutes,

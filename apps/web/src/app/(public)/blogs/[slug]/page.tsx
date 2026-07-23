@@ -14,11 +14,11 @@ import HtmlStyleEffects from '@/components/blog/HtmlStyleEffects';
 import { isPuneOrPcmcCity, resolveLocalAreas, PUNE_PCMC_AREAS, normalizeCity } from '@/lib/blog/localSeo';
 import { serviceImagePath } from '@/lib/media/public-url';
 import {
-  normalizeBlogHtmlMedia,
   normalizeBlogMediaAbsoluteUrl,
   normalizeBlogMediaUrl,
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
+import { normalizeBlogContentForDisplay } from '@/lib/blog/normalizeBlogContent';
 import { DEFAULT_APP_STORE_URL, DEFAULT_PLAY_STORE_URL } from '@/lib/mobile-app-version-config';
 
 export const dynamic = 'force-dynamic';
@@ -318,7 +318,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const transformed: Blog = {
     ...blog,
     featured_image: blog.featured_image ? normalizeBlogMediaUrl(String(blog.featured_image)) : blog.featured_image,
-    content: normalizeBlogHtmlMedia(String(blog.content || '')),
+    content: normalizeBlogContentForDisplay(String(blog.content || '')),
     seo_data: normalizeBlogSeoData(blog.seo_data as Record<string, unknown> | null | undefined),
     tags: (blog as any)?.tags?.map((t: any) => t?.tag).filter(Boolean) || [],
     categories: (blog as any)?.categories?.map((c: any) => c?.category).filter(Boolean) || [],
@@ -422,9 +422,20 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .main-content h3{margin:16px 0 8px;font-size:18px;font-weight:600;color:#111827;}
           .blog-html-wrap .main-content p{margin-bottom:12px;font-size:15px;}
           .blog-html-wrap .main-content img{width:100%;border-radius:10px;margin:15px 0;}
-          .blog-html-wrap .main-content ul{padding-left:20px;}
-          .blog-html-wrap .main-content li{margin:6px 0;font-size:15px;}
+          .blog-html-wrap .main-content ul{list-style:disc;padding-left:1.5rem;margin:14px 0;}
+          .blog-html-wrap .main-content ol{list-style:decimal;padding-left:1.5rem;margin:14px 0;}
+          .blog-html-wrap .main-content li{display:list-item;margin:8px 0;font-size:15px;line-height:1.6;}
+          .blog-html-wrap .main-content ul ul,.blog-html-wrap .main-content ol ol{margin:6px 0;}
+          .blog-html-wrap .main-content a{color:#0a4ea3;text-decoration:underline;}
           .blog-html-wrap .main-content strong{font-weight:600;}
+          .blog-html-wrap .main-content h2:not(:first-child){margin-top:28px;}
+          .blog-html-wrap .blog-post-cta{margin-top:28px;padding:22px 24px;border-radius:14px;background:linear-gradient(135deg,#eef4ff 0%,#f8fbff 100%);border:1px solid #cfe0ff;}
+          .blog-html-wrap .blog-post-cta h3{margin:0 0 8px;font-size:18px;font-weight:700;color:#0a4ea3;}
+          .blog-html-wrap .blog-post-cta p{margin:0 0 14px;font-size:14px;color:#475569;line-height:1.6;}
+          .blog-html-wrap .blog-post-cta-actions{display:flex;flex-wrap:wrap;gap:10px;}
+          .blog-html-wrap .blog-post-cta .book-btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;width:auto;margin:0;}
+          .blog-html-wrap .blog-post-cta-phone{display:inline-flex;align-items:center;padding:10px 16px;border-radius:8px;border:1px solid #0a4ea3;color:#0a4ea3;text-decoration:none;font-size:14px;font-weight:600;background:#fff;}
+          .blog-html-wrap .side-box .categories{max-height:220px;overflow:auto;}
           .blog-html-wrap .tags{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
           .blog-html-wrap .tags span{background:#eef2f7;padding:8px 14px;border-radius:20px;font-size:13px;}
           .blog-html-wrap .faq{margin-top:34px;padding-top:6px;}
@@ -588,6 +599,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <div dangerouslySetInnerHTML={{ __html: transformed.content }} />
                 </div>
 
+                <div className="blog-post-cta">
+                  <h3>Need trusted car service in your city?</h3>
+                  <p>
+                    Book multi-brand car servicing with MyFNG — expert technicians, genuine parts, and convenient pickup &amp; drop.
+                  </p>
+                  <div className="blog-post-cta-actions">
+                    <a href="/book-service" className="book-btn">
+                      Book Service Now
+                    </a>
+                    <a href="tel:+919152307030" className="blog-post-cta-phone">
+                      Call +91-9152307030
+                    </a>
+                  </div>
+                </div>
+
                 {transformed.faqs && transformed.faqs.length ? (
                   <div className="faq">
                     <h2>FAQs</h2>
@@ -703,7 +729,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                   <div className="side-box">
                     <h3>Tags</h3>
                     <div className="categories">
-                      {(transformed.tags || []).map((tag) =>
+                      {(transformed.tags || []).slice(0, 15).map((tag) =>
                         tag ? (
                           <Link key={tag.slug || tag.name} href={`/blogs?q=${encodeURIComponent(tag.name)}`}>
                             {tag.name}
@@ -711,6 +737,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                         ) : null
                       )}
                     </div>
+                    {(transformed.tags || []).length > 15 ? (
+                      <p className="text-xs text-gray-500 mt-2">+{(transformed.tags || []).length - 15} more tags</p>
+                    ) : null}
                   </div>
                 ) : null}
               </aside>

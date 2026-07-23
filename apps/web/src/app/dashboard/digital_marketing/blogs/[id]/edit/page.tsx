@@ -7,7 +7,8 @@ import toast from 'react-hot-toast';
 import DashboardLayout from '@/components/DashboardLayout';
 import RichTextEditor from '@/components/blog/RichTextEditor';
 import LimitHint from '@/components/blog/LimitHint';
-import { ArrowLeft, Eye, RotateCcw, Save, Sparkles, UploadCloud } from 'lucide-react';
+import { BLOG_INPUT, BLOG_TEXTAREA, BlogChecklistItem, BlogSectionCard } from '@/components/blog/BlogEditorUi';
+import { ArrowLeft, Eye, FileText, Globe, Image as ImageIcon, RotateCcw, Save, Sparkles, Tag, UploadCloud } from 'lucide-react';
 import { extractKeywordsFromSummary } from '@/lib/blog/seo';
 import { collectHeadingWordWarnings, stripHtmlToText } from '@/lib/blog/text';
 
@@ -38,6 +39,7 @@ export default function DigitalMarketingEditBlogPage() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [authors, setAuthors] = useState<Array<{ id: string; full_name: string }>>([]);
   const [versions, setVersions] = useState<Version[]>([]);
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [customLocalArea, setCustomLocalArea] = useState('');
@@ -54,6 +56,7 @@ export default function DigitalMarketingEditBlogPage() {
     is_featured: false,
     is_premium: false,
     tag_ids: [] as string[],
+    author_id: '',
     seo_data: {
       meta_title: '',
       meta_description: '',
@@ -81,6 +84,7 @@ export default function DigitalMarketingEditBlogPage() {
   }, [formData.title, formData.content]);
 
   const wordText = useMemo(() => stripHtmlToText(String(formData.content || '')), [formData.content]);
+  const wordCount = useMemo(() => wordText.split(/\s+/).filter(Boolean).length, [wordText]);
   const headingWarnings = useMemo(() => collectHeadingWordWarnings(String(formData.content || ''), 10), [formData.content]);
   const selectedTagWordViolations = useMemo(() => {
     const selected = new Set<string>((formData.tag_ids || []) as string[]);
@@ -88,6 +92,21 @@ export default function DigitalMarketingEditBlogPage() {
     const bad = chosen.filter((name) => String(name || '').trim().split(/\s+/).filter(Boolean).length > 3);
     return bad;
   }, [formData.tag_ids, tags]);
+
+  const checklist = useMemo(
+    () => ({
+      title: Boolean(String(formData.title || '').trim()),
+      slug: Boolean(String(formData.slug || '').trim()),
+      content: wordCount >= 50,
+      excerpt: Boolean(String(formData.excerpt || '').trim()),
+      category: Boolean(formData.category_id || (formData.category_ids || []).length),
+      featured: Boolean(String(formData.featured_image || '').trim()),
+      featuredAlt: Boolean(String(formData.seo_data?.featured_image_alt || '').trim()),
+      metaDesc: Boolean(String(formData.seo_data?.meta_description || '').trim()),
+      tags: (formData.tag_ids || []).length >= 3,
+    }),
+    [formData, wordCount],
+  );
 
   // Auto-fill meta description + keywords from AI Summary if empty (real-time)
   useEffect(() => {
@@ -109,9 +128,21 @@ export default function DigitalMarketingEditBlogPage() {
     fetchBlog();
     fetchCategories();
     fetchTags();
+    fetchAuthors();
     fetchVersions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blogId]);
+
+  async function fetchAuthors() {
+    try {
+      const res = await fetch('/api/blogs/authors');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setAuthors((data?.authors || []) as Array<{ id: string; full_name: string }>);
+    } catch {
+      // ignore
+    }
+  }
 
   async function fetchBlog() {
     setLoading(true);
@@ -144,6 +175,7 @@ export default function DigitalMarketingEditBlogPage() {
         is_featured: Boolean(b?.is_featured),
         is_premium: Boolean(b?.is_premium),
         tag_ids: (Array.isArray(b?.tags) ? b.tags : []).map((t: any) => t?.id).filter(Boolean),
+        author_id: String(b?.author_id || b?.author?.id || ''),
         seo_data: {
           ...(b?.seo_data || {}),
           featured_image_alt: String(b?.seo_data?.featured_image_alt || ''),
@@ -381,43 +413,45 @@ export default function DigitalMarketingEditBlogPage() {
 
   return (
     <DashboardLayout role="digital_marketing">
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard/digital_marketing/blogs">
-              <button type="button" className="btn btn-outline btn-sm">
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            </Link>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-text-heading">Edit Blog</h1>
-              <p className="text-text-body mt-1">Doc-compliant editor (TinyMCE + SEO + AI)</p>
+      <div className="space-y-5 pb-10">
+        <div className="sticky top-0 z-20 -mx-1 px-1 py-3 bg-[#F5F7FA]/95 backdrop-blur border-b border-gray-200/80">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link href="/dashboard/digital_marketing/blogs">
+                <button type="button" className="btn btn-outline btn-sm shrink-0">
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              </Link>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-text-heading truncate">Edit Blog</h1>
+                <p className="text-xs sm:text-sm text-text-body mt-0.5 truncate">{formData.title || 'Untitled'}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-outline btn-sm inline-flex items-center gap-2" onClick={() => save()} disabled={saving}>
-              <Save className="w-4 h-4" /> Save
-            </button>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => save('pending_review')} disabled={saving}>
-              Pending Review
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => save('published')} disabled={saving}>
-              Publish
-            </button>
-            <Link href={`/dashboard/digital_marketing/blogs/${blogId}`}>
-              <button type="button" className="btn btn-outline btn-sm inline-flex items-center gap-2">
-                <Eye className="w-4 h-4" /> View
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Link href={`/dashboard/digital_marketing/blogs/${blogId}`}>
+                <button type="button" className="btn btn-outline btn-sm inline-flex items-center gap-1.5">
+                  <Eye className="w-4 h-4" /> View
+                </button>
+              </Link>
+              <button type="button" className="btn btn-outline btn-sm inline-flex items-center gap-1.5" onClick={() => save()} disabled={saving}>
+                <Save className="w-4 h-4" /> Save
               </button>
-            </Link>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => save('pending_review')} disabled={saving}>
+                Send for Review
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => save('published')} disabled={saving}>
+                Publish
+              </button>
+            </div>
           </div>
         </div>
 
         {versions.length ? (
-          <div className="card bg-yellow-50 border-yellow-200">
-            <div className="flex items-center justify-between gap-3">
+          <div className="card bg-amber-50 border-amber-200 !p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <div className="font-semibold text-text-heading">Version History</div>
-                <div className="text-xs text-gray-600">Restore previous versions</div>
+                <div className="font-semibold text-text-heading text-sm">Version history</div>
+                <div className="text-xs text-gray-600">Restore a previous saved version</div>
               </div>
               <div className="flex flex-wrap gap-2">
                 {versions.slice(0, 4).map((v) => (
@@ -430,342 +464,254 @@ export default function DigitalMarketingEditBlogPage() {
           </div>
         ) : null}
 
-        <div className="card space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-text-heading mb-1">
-                Title <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData((p: any) => ({ ...p, title: e.target.value }))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-              <LimitHint value={formData.title} mode="chars" recommended={{ min: 50, max: 60 }} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-heading mb-1">
-                Slug <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.slug}
-                onChange={(e) => setFormData((p: any) => ({ ...p, slug: e.target.value }))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-heading mb-1">AI Summary (Takeaways)</label>
-            <textarea
-              value={formData.excerpt}
-              onChange={(e) => setFormData((p: any) => ({ ...p, excerpt: e.target.value }))}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-              rows={3}
-              placeholder="Max 60 words recommended"
-            />
-            <LimitHint value={formData.excerpt} mode="words" recommended={{ max: 60 }} />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <label className="block text-sm font-medium text-text-heading">
-                Content <span className="text-red-500">*</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline btn-sm" onClick={generateFaqsWithAi} disabled={generatingFaqs || !canGenerateAi}>
-                  <Sparkles className="w-4 h-4" /> {generatingFaqs ? 'Generating...' : 'AI FAQs'}
-                </button>
-                <button type="button" className="btn btn-outline btn-sm" onClick={autoTagWithAi} disabled={autoTagging || !canGenerateAi}>
-                  <Sparkles className="w-4 h-4" /> {autoTagging ? 'Auto-tagging...' : 'Auto-Tag'}
-                </button>
-              </div>
-            </div>
-            <div className="bg-white border border-gray-300 rounded-lg overflow-hidden">
-              <RichTextEditor
-                slug={String(formData.slug || '').trim() || 'draft'}
-                value={formData.content}
-                onChange={(html) => setFormData((p: any) => ({ ...p, content: html }))}
-                disabled={saving}
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Every inserted image must have ALT text (save/publish blocked if missing).</p>
-            <LimitHint value={wordText} mode="words" label="Word count" recommended={{ min: 800 }} />
-            {headingWarnings.length ? (
-              <div className="text-[11px] text-amber-700 mt-1">
-                {headingWarnings.slice(0, 3).map((w, idx) => (
-                  <div key={`${w}-${idx}`}>• {w}</div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">SEO Settings</h2>
-              <label className="block text-sm font-medium text-text-heading mb-1">Meta Title</label>
-              <input
-                type="text"
-                value={String(formData.seo_data?.meta_title || '')}
-                onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, meta_title: e.target.value } }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-
-              <label className="block text-sm font-medium text-text-heading mt-3 mb-1">Meta Description</label>
-              <textarea
-                value={String(formData.seo_data?.meta_description || '')}
-                onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, meta_description: e.target.value } }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                rows={3}
-              />
-              <LimitHint value={String(formData.seo_data?.meta_description || '')} mode="chars" recommended={{ min: 120, max: 155 }} />
-
-              <label className="block text-sm font-medium text-text-heading mt-3 mb-1">Meta Keywords</label>
-              <input
-                type="text"
-                value={String(formData.seo_data?.keywords || '')}
-                onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, keywords: e.target.value } }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-            <div className="card">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold text-text-heading">FAQs (Editable)</h2>
-                <button type="button" className="btn btn-outline btn-sm" onClick={generateFaqsWithAi} disabled={generatingFaqs || !canGenerateAi}>
-                  <Sparkles className="w-4 h-4" /> {generatingFaqs ? 'Generating...' : 'Generate'}
-                </button>
-              </div>
-              <div className="space-y-3 mt-3">
-                {faqs.map((f) => (
-                  <div key={f.id} className="border border-gray-200 rounded-lg p-3">
-                    <input
-                      type="text"
-                      value={f.question}
-                      onChange={(e) => setFaqs((prev) => prev.map((x) => (x.id === f.id ? { ...x, question: e.target.value } : x)))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg"
-                      placeholder="Question"
-                    />
-                    <textarea
-                      value={f.answer}
-                      onChange={(e) => setFaqs((prev) => prev.map((x) => (x.id === f.id ? { ...x, answer: e.target.value } : x)))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg mt-2"
-                      rows={3}
-                      placeholder="Answer"
-                    />
-                    <div className="mt-2">
-                      <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setFaqs((prev) => prev.filter((x) => x.id !== f.id))}>
-                        Remove
-                      </button>
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+          <div className="space-y-5 min-w-0">
+            <BlogSectionCard title="Basic details" description="Title, URL slug, and short summary." icon={<FileText className="w-4 h-4" />}>
+              <div className="space-y-4">
+                <div>
+                  <label className="label">Title <span className="text-red-500">*</span></label>
+                  <input type="text" value={formData.title} onChange={(e) => setFormData((p: any) => ({ ...p, title: e.target.value }))} className={BLOG_INPUT} />
+                  <LimitHint value={formData.title} mode="chars" recommended={{ min: 50, max: 60 }} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Slug <span className="text-red-500">*</span></label>
+                    <input type="text" value={formData.slug} onChange={(e) => setFormData((p: any) => ({ ...p, slug: e.target.value }))} className={BLOG_INPUT} />
+                  </div>
+                  <div>
+                    <label className="label">Public URL preview</label>
+                    <div className="px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-600 break-all">
+                      {formData.slug ? (
+                        <>
+                          <Globe className="w-3.5 h-3.5 inline mr-1 text-brand-primary" />
+                          myfng.in/blogs/{formData.slug}
+                        </>
+                      ) : (
+                        'Slug will appear here'
+                      )}
                     </div>
                   </div>
-                ))}
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => setFaqs((p) => [...p, { id: uid(), question: '', answer: '' }])}>
-                  Add FAQ
+                </div>
+                <div>
+                  <label className="label">AI Summary (Takeaways)</label>
+                  <textarea value={formData.excerpt} onChange={(e) => setFormData((p: any) => ({ ...p, excerpt: e.target.value }))} className={BLOG_TEXTAREA} rows={3} placeholder="Short summary for cards & meta description" />
+                  <LimitHint value={formData.excerpt} mode="words" recommended={{ max: 60 }} />
+                </div>
+              </div>
+            </BlogSectionCard>
+
+            <BlogSectionCard title="Blog content" description="Use headings, lists, and images with ALT text." icon={<FileText className="w-4 h-4" />}>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <p className="text-xs text-gray-500">Required · min ~800 words recommended</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn btn-outline btn-sm" onClick={generateFaqsWithAi} disabled={generatingFaqs || !canGenerateAi}>
+                    <Sparkles className="w-4 h-4" /> {generatingFaqs ? 'Generating…' : 'AI FAQs'}
+                  </button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={autoTagWithAi} disabled={autoTagging || !canGenerateAi}>
+                    <Sparkles className="w-4 h-4" /> {autoTagging ? 'Tagging…' : 'Auto-Tag'}
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white border border-gray-300 rounded-lg overflow-hidden min-h-[420px]">
+                <RichTextEditor slug={String(formData.slug || '').trim() || 'draft'} value={formData.content} onChange={(html) => setFormData((p: any) => ({ ...p, content: html }))} disabled={saving} />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Every image must have ALT text before publish.</p>
+              <LimitHint value={wordText} mode="words" label="Word count" recommended={{ min: 800 }} />
+              {headingWarnings.length ? (
+                <div className="text-[11px] text-amber-700 mt-1 space-y-0.5">
+                  {headingWarnings.slice(0, 3).map((w, idx) => (
+                    <div key={`${w}-${idx}`}>• {w}</div>
+                  ))}
+                </div>
+              ) : null}
+            </BlogSectionCard>
+
+            <BlogSectionCard title="SEO settings" description="Meta tags for search & social sharing." icon={<Globe className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="label">Meta Title</label>
+                  <input type="text" value={String(formData.seo_data?.meta_title || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, meta_title: e.target.value } }))} className={BLOG_INPUT} />
+                  <LimitHint value={String(formData.seo_data?.meta_title || '')} mode="chars" recommended={{ min: 50, max: 60 }} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">Meta Description</label>
+                  <textarea value={String(formData.seo_data?.meta_description || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, meta_description: e.target.value } }))} className={BLOG_TEXTAREA} rows={3} />
+                  <LimitHint value={String(formData.seo_data?.meta_description || '')} mode="chars" recommended={{ min: 120, max: 155 }} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">Meta Keywords</label>
+                  <input type="text" value={String(formData.seo_data?.keywords || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, keywords: e.target.value } }))} className={BLOG_INPUT} placeholder="comma, separated, keywords" />
+                </div>
+                <div>
+                  <label className="label">OG Title</label>
+                  <input type="text" value={String(formData.seo_data?.og_title || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, og_title: e.target.value } }))} className={BLOG_INPUT} />
+                </div>
+                <div>
+                  <label className="label">Search Intent</label>
+                  <select value={String(formData.seo_data?.search_intent || 'Informational')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, search_intent: e.target.value } }))} className={BLOG_INPUT}>
+                    <option value="Informational">Informational</option>
+                    <option value="Commercial">Commercial</option>
+                    <option value="Transactional">Transactional</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">OG Description</label>
+                  <textarea value={String(formData.seo_data?.og_description || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, og_description: e.target.value } }))} className={BLOG_TEXTAREA} rows={2} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">Canonical URL (optional)</label>
+                  <input type="url" value={String(formData.seo_data?.canonical_url || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, canonical_url: e.target.value } }))} className={BLOG_INPUT} placeholder="https://myfng.in/blogs/your-slug" />
+                </div>
+              </div>
+            </BlogSectionCard>
+
+            <BlogSectionCard title="FAQs" description="Optional — improves FAQ schema on public page.">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-xs text-gray-500">{faqs.length} FAQ(s)</p>
+                <button type="button" className="btn btn-outline btn-sm" onClick={generateFaqsWithAi} disabled={generatingFaqs || !canGenerateAi}>
+                  <Sparkles className="w-4 h-4" /> Generate with AI
                 </button>
               </div>
-            </div>
+              <div className="space-y-3">
+                {faqs.map((f) => (
+                  <div key={f.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+                    <input type="text" value={f.question} onChange={(e) => setFaqs((prev) => prev.map((x) => (x.id === f.id ? { ...x, question: e.target.value } : x)))} className={BLOG_INPUT} placeholder="Question" />
+                    <textarea value={f.answer} onChange={(e) => setFaqs((prev) => prev.map((x) => (x.id === f.id ? { ...x, answer: e.target.value } : x)))} className={`${BLOG_TEXTAREA} mt-2`} rows={3} placeholder="Answer" />
+                    <button type="button" className="text-xs text-red-600 hover:underline mt-2" onClick={() => setFaqs((prev) => prev.filter((x) => x.id !== f.id))}>Remove</button>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setFaqs((p) => [...p, { id: uid(), question: '', answer: '' }])}>+ Add FAQ</button>
+              </div>
+            </BlogSectionCard>
           </div>
 
-          <div className="space-y-4">
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">Featured Image (1980×1080, .webp, ≤200KB)</h2>
-              <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center relative">
-                <UploadCloud className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-                <div className="text-sm text-gray-600">{uploadingFeatured ? 'Uploading...' : 'Upload featured image'}</div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  disabled={uploadingFeatured || saving}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    uploadFeaturedImage(f);
-                    e.currentTarget.value = '';
-                  }}
-                />
+          <aside className="space-y-4 xl:sticky xl:top-[88px]">
+            <BlogSectionCard title="Publish checklist" className="!p-4">
+              <div className="space-y-2">
+                <BlogChecklistItem done={checklist.title} label="Title added" />
+                <BlogChecklistItem done={checklist.slug} label="Slug set" />
+                <BlogChecklistItem done={checklist.content} label="Content (50+ words)" />
+                <BlogChecklistItem done={checklist.excerpt} label="Summary / excerpt" />
+                <BlogChecklistItem done={checklist.category} label="Category selected" />
+                <BlogChecklistItem done={checklist.featured} label="Featured image" />
+                <BlogChecklistItem done={checklist.featuredAlt} label="Featured image ALT" />
+                <BlogChecklistItem done={checklist.metaDesc} label="Meta description" />
+                <BlogChecklistItem done={checklist.tags} label="At least 3 tags" />
               </div>
+            </BlogSectionCard>
 
-              <label className="block text-sm font-medium text-text-heading mt-3 mb-1">Featured Image URL</label>
-              <input
-                type="url"
-                value={formData.featured_image}
-                onChange={(e) => setFormData((p: any) => ({ ...p, featured_image: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-
-              <label className="block text-sm font-medium text-text-heading mt-3 mb-1">
-                Featured Image ALT <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                value={String(formData.seo_data?.featured_image_alt || '')}
-                onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, featured_image_alt: e.target.value } }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                maxLength={125}
-              />
+            <BlogSectionCard title="Featured image" icon={<ImageIcon className="w-4 h-4" />} className="!p-4">
+              <p className="text-[11px] text-gray-500 mb-3">1980×1080 · .webp · ≤200KB</p>
+              {formData.featured_image ? (
+                <div className="mb-3 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={formData.featured_image} alt="Featured preview" className="w-full h-36 object-cover" />
+                </div>
+              ) : null}
+              <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center relative hover:border-brand-primary/40 transition-colors">
+                <UploadCloud className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+                <div className="text-xs text-gray-600">{uploadingFeatured ? 'Uploading…' : 'Click to upload'}</div>
+                <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={uploadingFeatured || saving} onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; uploadFeaturedImage(f); e.currentTarget.value = ''; }} />
+              </div>
+              <label className="label mt-3">Image URL</label>
+              <input type="url" value={formData.featured_image} onChange={(e) => setFormData((p: any) => ({ ...p, featured_image: e.target.value }))} className={BLOG_INPUT} />
+              <label className="label mt-3">Featured Image ALT <span className="text-red-600">*</span></label>
+              <input type="text" value={String(formData.seo_data?.featured_image_alt || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, featured_image_alt: e.target.value } }))} className={BLOG_INPUT} maxLength={125} />
               <LimitHint value={String(formData.seo_data?.featured_image_alt || '')} mode="chars" recommended={{ max: 125 }} hardMax={125} />
-            </div>
+            </BlogSectionCard>
 
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">Categories (Multi)</h2>
-              <label className="block text-sm font-medium text-text-heading mb-1">Primary Category</label>
-              <select
-                value={formData.category_ids?.[0] || formData.category_id || ''}
-                onChange={(e) => {
-                  const primary = e.target.value;
-                  setFormData((p: any) => {
-                    const rest = (p.category_ids || []).filter((id: string) => id !== primary);
-                    const nextIds = primary ? [primary, ...rest] : rest;
-                    return { ...p, category_id: primary, category_ids: nextIds };
-                  });
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
-              >
+            <BlogSectionCard title="Categories" className="!p-4">
+              <label className="label">Primary category</label>
+              <select value={formData.category_ids?.[0] || formData.category_id || ''} onChange={(e) => { const primary = e.target.value; setFormData((p: any) => { const rest = (p.category_ids || []).filter((id: string) => id !== primary); const nextIds = primary ? [primary, ...rest] : rest; return { ...p, category_id: primary, category_ids: nextIds }; }); }} className={BLOG_INPUT}>
                 <option value="">Select category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
               </select>
-
-              <div className="mt-3 grid grid-cols-1 gap-2 max-h-44 overflow-auto pr-1">
+              <div className="mt-3 max-h-40 overflow-auto space-y-1.5 pr-1">
                 {categories.map((c) => (
                   <label key={c.id} className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={(formData.category_ids || []).includes(c.id)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setFormData((p: any) => {
-                          const current = p.category_ids || [];
-                          if (checked) {
-                            const next = Array.from(new Set([...(current.length ? current : p.category_id ? [p.category_id] : []), c.id]));
-                            return { ...p, category_id: next[0] || '', category_ids: next };
-                          }
-                          const next = current.filter((id: string) => id !== c.id);
-                          return { ...p, category_id: next[0] || '', category_ids: next };
-                        });
-                      }}
-                    />
+                    <input type="checkbox" checked={(formData.category_ids || []).includes(c.id)} onChange={(e) => { const checked = e.target.checked; setFormData((p: any) => { const current = p.category_ids || []; if (checked) { const next = Array.from(new Set([...(current.length ? current : p.category_id ? [p.category_id] : []), c.id])); return { ...p, category_id: next[0] || '', category_ids: next }; } const next = current.filter((id: string) => id !== c.id); return { ...p, category_id: next[0] || '', category_ids: next }; }); }} />
                     <span className="truncate">{c.name}</span>
                   </label>
                 ))}
               </div>
-            </div>
+            </BlogSectionCard>
 
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">Tags</h2>
-              <button type="button" className="btn btn-outline btn-sm w-full mb-3" onClick={autoTagWithAi} disabled={autoTagging || !canGenerateAi}>
-                <Sparkles className="w-4 h-4" /> {autoTagging ? 'Auto-tagging...' : 'Auto-Tag (AI)'}
+            <BlogSectionCard title="Tags" icon={<Tag className="w-4 h-4" />} className="!p-4">
+              <button type="button" className="btn btn-outline btn-sm w-full mb-2" onClick={autoTagWithAi} disabled={autoTagging || !canGenerateAi}>
+                <Sparkles className="w-4 h-4" /> {autoTagging ? 'Auto-tagging…' : 'Auto-Tag (AI)'}
               </button>
-              <LimitHint
-                value=""
-                mode="chars"
-                label="Tags selected"
-                countOverride={(formData.tag_ids || []).length}
-                unitOverride="tags"
-                recommended={{ min: 5, max: 10 }}
-              />
-              <div className="text-[11px] text-slate-500 -mt-0.5">
-                Each tag should be 1–3 words.
-                {selectedTagWordViolations.length ? (
-                  <span className="text-amber-700"> ({selectedTagWordViolations.slice(0, 2).join(', ')}{selectedTagWordViolations.length > 2 ? '…' : ''} too long)</span>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-1 gap-2 max-h-56 overflow-auto pr-1">
+              <LimitHint value="" mode="chars" label="Tags selected" countOverride={(formData.tag_ids || []).length} unitOverride="tags" recommended={{ min: 5, max: 10 }} />
+              {selectedTagWordViolations.length ? (
+                <p className="text-[11px] text-amber-700 mt-1">Long tags: {selectedTagWordViolations.slice(0, 2).join(', ')}{selectedTagWordViolations.length > 2 ? '…' : ''}</p>
+              ) : null}
+              <div className="mt-2 max-h-48 overflow-auto space-y-1.5 pr-1">
                 {tags.map((t) => (
                   <label key={t.id} className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={(formData.tag_ids || []).includes(t.id)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setFormData((p: any) => ({
-                          ...p,
-                          tag_ids: checked ? [...(p.tag_ids || []), t.id] : (p.tag_ids || []).filter((id: string) => id !== t.id),
-                        }));
-                      }}
-                    />
+                    <input type="checkbox" checked={(formData.tag_ids || []).includes(t.id)} onChange={(e) => { const checked = e.target.checked; setFormData((p: any) => ({ ...p, tag_ids: checked ? [...(p.tag_ids || []), t.id] : (p.tag_ids || []).filter((id: string) => id !== t.id) })); }} />
                     <span className="truncate">{t.name}</span>
                   </label>
                 ))}
               </div>
-            </div>
+            </BlogSectionCard>
 
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">Local SEO</h2>
-              <div className="flex flex-col gap-2">
-                <input
-                  type="text"
-                  value={customLocalArea}
-                  onChange={(e) => setCustomLocalArea(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder='e.g. "Vartak Nagar, Thane West"'
-                />
-                <button type="button" className="btn btn-outline btn-sm" onClick={generateLocalSeoKeywords} disabled={generatingLocalKeywords}>
-                  {generatingLocalKeywords ? 'Generating...' : 'Generate local keywords'}
-                </button>
-              </div>
-            </div>
+            <BlogSectionCard title="Local SEO" className="!p-4">
+              <label className="label">Target city</label>
+              <input type="text" value={String(formData.seo_data?.local_city || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, local_city: e.target.value } }))} className={`${BLOG_INPUT} mb-3`} placeholder="e.g. Navi Mumbai" />
+              <label className="label">Local area (for AI keywords)</label>
+              <input type="text" value={customLocalArea} onChange={(e) => setCustomLocalArea(e.target.value)} className={BLOG_INPUT} placeholder='e.g. "Vartak Nagar, Thane West"' />
+              <button type="button" className="btn btn-outline btn-sm w-full mt-2" onClick={generateLocalSeoKeywords} disabled={generatingLocalKeywords}>
+                {generatingLocalKeywords ? 'Generating…' : 'Generate local keywords'}
+              </button>
+            </BlogSectionCard>
 
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">AI & Schema Toggles</h2>
+            <BlogSectionCard title="Schema & indexing" className="!p-4">
               {[
-                { key: 'schema_blogposting', label: 'Enable BlogPosting Schema' },
-                { key: 'schema_faq', label: 'Enable FAQ Schema' },
-                { key: 'eligible_ai_overview', label: 'Eligible for AI Overview (SGE)' },
+                { key: 'schema_blogposting', label: 'BlogPosting schema' },
+                { key: 'schema_faq', label: 'FAQ schema' },
+                { key: 'eligible_ai_overview', label: 'AI Overview (SGE)' },
+                { key: 'robots_index', label: 'Allow search indexing' },
+                { key: 'robots_follow', label: 'Allow follow links' },
               ].map((x) => (
-                <label key={x.key} className="flex items-center gap-2 text-sm text-gray-700 mb-2">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(formData.seo_data?.[x.key])}
-                    onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, [x.key]: e.target.checked } }))}
-                  />
+                <label key={x.key} className="flex items-center gap-2 text-sm text-gray-700 mb-2 last:mb-0">
+                  <input type="checkbox" checked={Boolean(formData.seo_data?.[x.key] ?? true)} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, [x.key]: e.target.checked } }))} />
                   {x.label}
                 </label>
               ))}
-            </div>
+            </BlogSectionCard>
 
-            <div className="card">
-              <h2 className="text-base font-semibold text-text-heading mb-3">Publishing</h2>
-              <label className="block text-sm font-medium text-text-heading mb-1">Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData((p: any) => ({ ...p, status: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
-              >
+            <BlogSectionCard title="Publishing" className="!p-4">
+              <label className="label">Assign to Author</label>
+              <select value={formData.author_id || ''} onChange={(e) => setFormData((p: any) => ({ ...p, author_id: e.target.value }))} className={`${BLOG_INPUT} mb-3`}>
+                <option value="">Select author</option>
+                {authors.map((a) => (
+                  <option key={a.id} value={a.id}>{a.full_name}</option>
+                ))}
+              </select>
+              <label className="label">Status</label>
+              <select value={formData.status} onChange={(e) => setFormData((p: any) => ({ ...p, status: e.target.value }))} className={`${BLOG_INPUT} mb-3`}>
                 <option value="draft">Draft</option>
                 <option value="pending_review">Pending Review</option>
                 <option value="published">Published</option>
                 <option value="archived">Archived</option>
               </select>
-
-              <div className="flex items-center gap-6 mt-4">
+              <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(formData.is_featured)}
-                    onChange={(e) => setFormData((p: any) => ({ ...p, is_featured: e.target.checked }))}
-                  />
-                  Featured
+                  <input type="checkbox" checked={Boolean(formData.is_featured)} onChange={(e) => setFormData((p: any) => ({ ...p, is_featured: e.target.checked }))} />
+                  Featured on blog listing
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(formData.is_premium)}
-                    onChange={(e) => setFormData((p: any) => ({ ...p, is_premium: e.target.checked }))}
-                  />
-                  Premium
+                  <input type="checkbox" checked={Boolean(formData.is_premium)} onChange={(e) => setFormData((p: any) => ({ ...p, is_premium: e.target.checked }))} />
+                  Premium content
                 </label>
               </div>
-            </div>
-          </div>
+              <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
+                <label className="label">Author name</label>
+                <input type="text" value={String(formData.seo_data?.author_name || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, author_name: e.target.value } }))} className={BLOG_INPUT} />
+                <label className="label">Author role</label>
+                <input type="text" value={String(formData.seo_data?.author_role || '')} onChange={(e) => setFormData((p: any) => ({ ...p, seo_data: { ...p.seo_data, author_role: e.target.value } }))} className={BLOG_INPUT} />
+              </div>
+            </BlogSectionCard>
+          </aside>
         </div>
       </div>
     </DashboardLayout>

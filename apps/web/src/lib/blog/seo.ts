@@ -37,6 +37,56 @@ export function parseBlogSeoData(raw: unknown): BlogSeoData {
   return raw as BlogSeoData;
 }
 
+const STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'have', 'how', 'i', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 'the', 'this', 'to', 'was', 'were', 'what', 'when', 'where', 'which', 'who', 'why', 'with',
+  'your', 'you', 'we', 'our', 'myfng', 'car', 'cars', 'service', 'services', 'best', 'near', 'nearby', 'at',
+]);
+
+function normalizeKeywordWord(w: string) {
+  return String(w || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+export function extractKeywordsFromSummary(summary: string, max = 10): string {
+  const text = String(summary || '').trim();
+  if (!text) return '';
+
+  const words = text
+    .split(/\s+/)
+    .map((w) => normalizeKeywordWord(w))
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+
+  const freq = new Map<string, number>();
+  for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+
+  return Array.from(freq.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w)
+    .slice(0, max)
+    .join(', ');
+}
+
+export function autoFillSeoFromSummary(
+  excerpt: string | null | undefined,
+  seoData: BlogSeoData | Record<string, unknown> | null | undefined,
+): BlogSeoData {
+  const seo: BlogSeoData = { ...parseBlogSeoData(seoData) };
+  const summary = String(excerpt || '').trim();
+  if (!summary) return seo;
+
+  if (!String(seo.meta_description || '').trim()) {
+    seo.meta_description = summary.slice(0, 155);
+  }
+
+  if (!String(seo.keywords || '').trim()) {
+    seo.keywords = extractKeywordsFromSummary(summary, 10);
+  }
+
+  return seo;
+}
+
 export function isBlogIndexable(seoData: unknown): boolean {
   const seo = parseBlogSeoData(seoData);
   return seo.robots_index !== false;
