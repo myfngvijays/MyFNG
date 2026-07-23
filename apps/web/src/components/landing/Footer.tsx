@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import TrackedLink from '@/components/tracking/TrackedLink';
-import { appendUtmToHref } from '@/lib/utm';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 
 const ctaTitles = [
@@ -346,8 +345,8 @@ export default function Footer() {
                   <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Contact Us</h4>
                   <div className="text-[11px] leading-[2] font-semibold text-gray-700">
                     <div><span className="text-blue-800 font-bold">Email:</span> support@myfng.in</div>
-                    <div><span className="text-blue-800 font-bold">Car Service:</span> +91-9772215095</div>
-                    <div><span className="text-blue-800 font-bold">Roadside Assistance:</span> +91-9610448949</div>
+                    <div><span className="text-blue-800 font-bold">Car Service:</span> +91-9152307030</div>
+                    <div><span className="text-blue-800 font-bold">Roadside Assistance:</span> +91-9152307030</div>
                     <div><span className="text-blue-800 font-bold">Working Days:</span> Monday – Saturday</div>
                     <div><span className="text-blue-800 font-bold">Hours:</span> 09:30 AM - 06:30 PM</div>
                   </div>
@@ -388,7 +387,7 @@ export default function Footer() {
                       onChange={(e) => setFooterPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && footerPhone.length === 10) {
-                          window.location.href = appendUtmToHref(`/book-service?prefill_phone=${footerPhone}`);
+                          window.location.href = `/book-service?prefill_phone=${footerPhone}`;
                         }
                       }}
                       className="py-3 px-3.5 rounded-[10px] border border-gray-300 bg-white text-gray-900 text-[13px] outline-none placeholder:text-gray-500"
@@ -396,11 +395,10 @@ export default function Footer() {
                     <button
                       type="button"
                       onClick={() => {
-                        window.location.href = appendUtmToHref(
+                        window.location.href =
                           footerPhone.length >= 10
                             ? `/book-service?prefill_phone=${footerPhone}`
-                            : '/book-service'
-                        );
+                            : '/book-service';
                       }}
                       className="py-3 rounded-[10px] border-none text-white font-semibold cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_6px_15px_rgba(37,99,235,0.4)] transition-all duration-300"
                       style={{ background: 'linear-gradient(135deg, #1e40af, #2563eb)' }}

@@ -15,6 +15,7 @@ import {
   X, Droplets, Home, Briefcase, MoreHorizontal, Shield, Award,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { isPremiumLuxuryClass, PREMIUM_LUXURY_PRICING_MESSAGE } from '@/lib/vehicleClassPricing';
 
 interface BookingFormData {
   city: any | null;
@@ -110,10 +111,7 @@ export default function BookServicePage() {
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
   
-  // Workshop State (for self come option)
-  const [workshops, setWorkshops] = useState<any[]>([]);
-  const [loadingWorkshops, setLoadingWorkshops] = useState(false);
-
+  
   // Step 2 OTP State
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -163,16 +161,6 @@ export default function BookServicePage() {
     };
     loadData();
   }, []);
-
-  // Fetch workshops when city is selected and pickup is not required (self come)
-  useEffect(() => {
-    if (formData.city && !formData.pickupRequired) {
-      fetchWorkshops();
-    } else {
-      setWorkshops([]);
-      setFormData(prev => ({ ...prev, selectedWorkshop: null }));
-    }
-  }, [formData.city?.id, formData.pickupRequired]);
 
   // Load Razorpay script when component mounts
   useEffect(() => {
@@ -353,88 +341,6 @@ export default function BookServicePage() {
     }
   }
 
-  async function fetchWorkshops() {
-    if (!formData.city) return;
-    
-    setLoadingWorkshops(true);
-    try {
-      const supabase = createClient();
-      const cityName = String(formData.city?.name || '').trim();
-      const stateName = String(formData.city?.state || '').trim();
-      const selectedCityLower = cityName.toLowerCase();
-
-      const escapeForOrFilter = (value: string) => value.replace(/[\(\),]/g, ' ').trim();
-      const cityTerm = escapeForOrFilter(cityName);
-      const stateTerm = escapeForOrFilter(stateName);
-
-      const cityOrClause = [
-        cityTerm ? `city.ilike.*${cityTerm}*` : '',
-        cityTerm ? `address.ilike.*${cityTerm}*` : '',
-        stateTerm ? `state.ilike.*${stateTerm}*` : '',
-      ]
-        .filter(Boolean)
-        .join(',');
-
-      const runWorkshopQuery = async (verifiedOnly: boolean) => {
-        let query = supabase
-          .from('workshops')
-          .select('id, name, workshop_name, near_area_google_map, address, city, state, pincode, phone, email, contact_person')
-          .order('name')
-          .limit(5);
-
-        if (verifiedOnly) {
-          query = query.eq('is_verified', true);
-        }
-        if (cityOrClause) {
-          query = query.or(cityOrClause);
-        }
-        return query;
-      };
-
-      const filterToSelectedCity = (rows: any[] = []) => {
-        if (!selectedCityLower) return rows;
-        return rows.filter((w: any) => String(w?.city || '').toLowerCase().includes(selectedCityLower));
-      };
-
-      // Primary: same area/city + verified (top 5)
-      let { data: primaryData, error: primaryError } = await runWorkshopQuery(true);
-
-      // If schema doesn't have is_verified, retry without that filter.
-      if (primaryError && primaryError.code === '42703') {
-        const retry = await runWorkshopQuery(false);
-        primaryData = retry.data;
-        primaryError = retry.error;
-      }
-
-      if (primaryError) {
-        console.error('Error fetching workshops:', primaryError);
-        setWorkshops([]);
-        return;
-      }
-
-      // Fallback: same area/city without verified-only restriction
-      const strictPrimary = filterToSelectedCity(primaryData || []);
-      if (strictPrimary.length === 0) {
-        const { data: fallbackData, error: fallbackError } = await runWorkshopQuery(false);
-        if (fallbackError) {
-          console.error('Error fetching fallback workshops:', fallbackError);
-          setWorkshops([]);
-          return;
-        }
-        const strictFallback = filterToSelectedCity(fallbackData || []);
-        setWorkshops(strictFallback.slice(0, 5));
-        return;
-      }
-
-      setWorkshops(strictPrimary.slice(0, 5));
-    } catch (error) {
-      console.error('Error fetching workshops:', error);
-      setWorkshops([]);
-    } finally {
-      setLoadingWorkshops(false);
-    }
-  }
-
   async function fetchCarModels() {
     try {
       console.log('🚗 Fetching car models from database...');
@@ -605,7 +511,7 @@ export default function BookServicePage() {
       const supabase = createClient();
       const cityId = formData.city.id;
       const vehicleClass = formData.carModel.class || null;
-      
+      const premiumLuxury = isPremiumLuxuryClass(vehicleClass);
       // Get city's zone_id if available
       const { data: cityData, error: cityError } = await supabase
         .from('cities')
@@ -640,8 +546,8 @@ export default function BookServicePage() {
             }
           }
 
-          // Priority 2: City only
-          if (!price) {
+          // Priority 2: City only (skip for premium luxury — no generic fallback prices)
+          if (!price && !premiumLuxury) {
             const { data, error } = await supabase
               .from('workshop_service_pricing')
               .select('custom_price')
@@ -674,8 +580,8 @@ export default function BookServicePage() {
             }
           }
 
-          // Priority 4: Zone only
-          if (!price && zoneId) {
+          // Priority 4: Zone only (skip for premium luxury)
+          if (!price && !premiumLuxury && zoneId) {
             const { data, error } = await supabase
               .from('workshop_service_pricing')
               .select('custom_price')
@@ -709,8 +615,8 @@ export default function BookServicePage() {
             }
           }
 
-          // Priority 6: Any pricing for this service (no city/zone/class filter)
-          if (!price) {
+          // Priority 6: Any pricing for this service (skip for premium luxury)
+          if (!price && !premiumLuxury) {
             const { data, error } = await supabase
               .from('workshop_service_pricing')
               .select('custom_price')
@@ -1188,9 +1094,8 @@ export default function BookServicePage() {
           return;
         }
       } else {
-        // Self come - validate workshop selection
-        if (!formData.selectedWorkshop) {
-          toast.error('Please select a workshop');
+        if (!formData.vehicleNumber.trim()) {
+          toast.error('Please enter your car number');
           return;
         }
       }
@@ -1310,9 +1215,9 @@ export default function BookServicePage() {
         vehicle_variant: formData.carModel.variant || null,
         service_type_ids: formData.selectedServices.length > 0 ? formData.selectedServices : null,
         pickup_required: formData.pickupRequired,
-        workshop_id: formData.pickupRequired ? null : formData.selectedWorkshop?.id || null,
-        address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
-        customer_address: formData.pickupRequired ? completeAddress : (formData.selectedWorkshop?.address || completeAddress),
+        workshop_id: null,
+        address: formData.pickupRequired ? completeAddress : null,
+        customer_address: formData.pickupRequired ? completeAddress : null,
         pickup_address: formData.pickupRequired ? completeAddress : null,
         preferred_slot_start: formData.pickupRequired && formData.pickupDate && formData.pickupTime
           ? `${formData.pickupDate}T${formData.pickupTime}:00`
@@ -1510,8 +1415,8 @@ export default function BookServicePage() {
         return;
       }
     } else {
-      if (!formData.selectedWorkshop || !formData.vehicleNumber.trim()) {
-        toast.error('Please select a workshop and enter car number');
+      if (!formData.vehicleNumber.trim()) {
+        toast.error('Please enter your car number');
         return;
       }
     }
@@ -1687,7 +1592,7 @@ export default function BookServicePage() {
     : currentStep === 3
     ? formData.pickupRequired
       ? formData.pickupDate !== '' && formData.pickupTime !== '' && formData.vehicleNumber.trim() !== '' && formData.pickupAddress.trim() !== '' && formData.landmark.trim() !== ''
-      : formData.selectedWorkshop !== null && formData.vehicleNumber.trim() !== ''
+      : formData.vehicleNumber.trim() !== ''
     : formData.paymentStatus !== '';
 
   const totalPrice = formData.selectedServices.reduce((sum, serviceId) => {
@@ -1717,6 +1622,7 @@ export default function BookServicePage() {
   }, [formData.selectedServices, couponMeta]);
 
   const activeCategoryId = selectedCategory || serviceCategories[0]?.id || null;
+  const isPremiumLuxuryVehicle = isPremiumLuxuryClass(formData.carModel?.class);
   const isPeriodicCategory = String(activeCategoryId || '').toUpperCase().includes('PERIODIC');
   const showReferencePlanUi = true;
   const activeCategoryServices = activeCategoryId ? serviceTypes.filter((s: any) => s.category === activeCategoryId) : [];
@@ -2401,6 +2307,20 @@ export default function BookServicePage() {
                       </div>
                     ) : (
                       <>
+                        {isPremiumLuxuryVehicle ? (
+                          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                            <div className="flex items-start gap-3">
+                              <Sparkles className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-bold text-amber-900">Premium luxury vehicle</p>
+                                <p className="text-xs sm:text-sm text-amber-800 mt-1 leading-relaxed">
+                                  {PREMIUM_LUXURY_PRICING_MESSAGE}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
                         {showReferencePlanUi && (
                           <div className="mb-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
                             {/* Row 1: title + step */}
@@ -3351,118 +3271,35 @@ export default function BookServicePage() {
                       </>
                     )}
 
-                    {/* Workshop Selection - Only show when self come is selected */}
+                    {/* Visit — car number only (workshop assigned by team later) */}
                     {!formData.pickupRequired && (
-                      <div className="space-y-5 sm:space-y-6">
-                        {/* Car Number - Compulsory */}
-                        <div className="relative group">
-                          <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
-                            <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
-                              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
-                                <Car className="w-4 h-4 text-white" />
-                              </div>
-                              Car Number
-                              <span className="text-red-500 text-lg">*</span>
-                            </label>
-                            <input
-                              id="vehicle-number-selfcome"
-                              name="vehicleNumber"
-                              type="text"
-                              value={formData.vehicleNumber}
-                              onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
-                              placeholder="e.g., MH12AB1234"
-                              className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
-                                formData.vehicleNumber
-                                  ? 'border-green-500 bg-green-50/50 ring-2 ring-green-200'
-                                  : 'border-gray-200 focus:border-green-500 focus:ring-green-200'
-                              }`}
-                            />
-                            {formData.vehicleNumber && (
-                              <p className="mt-3 text-sm font-semibold text-green-600 flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4" />
-                                Vehicle: {formData.vehicleNumber}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm">
+                      <div className="relative group">
+                        <div className="bg-gradient-to-br from-white to-gray-50/50 rounded-2xl border-2 border-gray-100 p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md transition-all duration-300">
                           <label className="block text-sm sm:text-base font-bold text-gray-800 mb-4 flex items-center gap-2.5">
                             <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
-                              <MapPin className="w-4 h-4 text-white" />
+                              <Car className="w-4 h-4 text-white" />
                             </div>
-                            Select Workshop
+                            Car Number
                             <span className="text-red-500 text-lg">*</span>
                           </label>
-
-                          {loadingWorkshops ? (
-                            <div className="text-center py-8">
-                              <Loader2 className="w-8 h-8 animate-spin text-brand-primary mx-auto mb-3" />
-                              <p className="text-sm text-gray-600">Loading workshops...</p>
-                            </div>
-                          ) : workshops.length === 0 ? (
-                            <div className="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                              <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                              <p className="text-sm font-semibold text-gray-700 mb-1">No workshops available</p>
-                              <p className="text-xs text-gray-500">No active workshops found in {formData.city?.name || 'selected city'}</p>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="mb-3 text-xs font-semibold text-gray-500">
-                                Showing up to 5 workshops near {formData.city?.name || 'your selected area'}
-                              </p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                              {workshops.map((workshop) => {
-                                const isSelected = formData.selectedWorkshop?.id === workshop.id;
-                                return (
-                                  <button
-                                    key={workshop.id}
-                                    type="button"
-                                    onClick={() => setFormData(prev => ({ ...prev, selectedWorkshop: workshop }))}
-                                    className={`p-4 sm:p-5 rounded-xl border-2 transition-all text-left ${
-                                      isSelected
-                                        ? 'border-green-500 bg-gradient-to-br from-green-50 to-green-100/50 shadow-md ring-2 ring-green-200'
-                                        : 'border-gray-200 bg-white hover:border-green-300 hover:shadow-sm'
-                                    }`}
-                                  >
-                                    <div className="flex items-start justify-between gap-3 mb-2">
-                                      <div className="flex-1 min-w-0">
-                                        <h4 className={`font-bold text-base sm:text-lg mb-1 ${
-                                          isSelected ? 'text-green-700' : 'text-gray-800'
-                                        }`}>
-                                          {workshop.workshop_name || workshop.name}
-                                        </h4>
-                                        <div className="space-y-1 text-xs sm:text-sm">
-                                          {(workshop.city || workshop.state || workshop.pincode) && (
-                                            <p className={isSelected ? 'text-green-600' : 'text-gray-500'}>
-                                              {[workshop.city, workshop.state, workshop.pincode].filter(Boolean).join(', ')}
-                                            </p>
-                                          )}
-                                          {workshop.near_area_google_map && (
-                                            <a
-                                              href={workshop.near_area_google_map}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className={`flex items-center gap-2 underline underline-offset-2 ${
-                                                isSelected ? 'text-green-700' : 'text-gray-600'
-                                              }`}
-                                              onClick={(e) => e.stopPropagation()}
-                                            >
-                                              <MapPin className="w-4 h-4" />
-                                              <span className="cursor-pointer">View map</span>
-                                            </a>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {isSelected && (
-                                        <CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0" />
-                                      )}
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                              </div>
-                            </div>
+                          <input
+                            id="vehicle-number-selfcome"
+                            name="vehicleNumber"
+                            type="text"
+                            value={formData.vehicleNumber}
+                            onChange={(e) => handleInputChange('vehicleNumber', e.target.value.toUpperCase())}
+                            placeholder="e.g., MH12AB1234"
+                            className={`w-full px-4 py-4 sm:py-5 text-lg sm:text-xl border-2 rounded-xl focus:ring-2 outline-none transition-all uppercase font-semibold tracking-wider ${
+                              formData.vehicleNumber
+                                ? 'border-green-500 bg-green-50/50 ring-2 ring-green-200'
+                                : 'border-gray-200 focus:border-green-500 focus:ring-green-200'
+                            }`}
+                          />
+                          {formData.vehicleNumber && (
+                            <p className="mt-3 text-sm font-semibold text-green-600 flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4" />
+                              Vehicle: {formData.vehicleNumber}
+                            </p>
                           )}
                         </div>
                       </div>
@@ -3511,12 +3348,10 @@ export default function BookServicePage() {
                           </span>
                         </div>
                       )}
-                      {!formData.pickupRequired && formData.selectedWorkshop && (
+                      {!formData.pickupRequired && (
                         <div className="flex items-start justify-between gap-3">
-                          <span className="text-gray-600 shrink-0">Workshop:</span>
-                          <span className="font-semibold text-right break-words">
-                            {formData.selectedWorkshop.workshop_name || formData.selectedWorkshop.name}
-                          </span>
+                          <span className="text-gray-600 shrink-0">Service mode:</span>
+                          <span className="font-semibold text-right break-words">Visit</span>
                         </div>
                       )}
                     </div>

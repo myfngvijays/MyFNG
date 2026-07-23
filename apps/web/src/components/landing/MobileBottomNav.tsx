@@ -128,7 +128,7 @@ export default function MobileBottomNav() {
         <div className="fixed inset-x-0 bottom-0 z-40 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           <div className="grid grid-cols-2" style={{ height: 56 }}>
             <a
-              href="tel:+919610448949"
+              href="tel:+919152307030"
               className="flex items-center justify-center gap-2 text-white font-bold text-[15px] no-underline"
               style={{ background: '#cc2900' }}
             >

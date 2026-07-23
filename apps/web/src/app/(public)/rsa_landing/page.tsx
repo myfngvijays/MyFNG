@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import Footer from '@/components/landing/Footer';
 import RSAMembershipPlansCarousel from '@/components/membership/RSAMembershipPlansCarousel';
 import MembershipTermsSection from '@/components/membership/MembershipTermsSection';
 import { getCurrentOrStoredUtmParams } from '@/lib/utm';
 
 const RSA_WHATSAPP = '919594996161';
+const RSA_PHONE = '+919152307030';
 
 const RSA_FAQS_FALLBACK = [
   {
@@ -145,7 +147,7 @@ export default function RsaLandingPage() {
     .rsa-landing .container{max-width:1180px;margin:auto;padding:0 12px}
     .rsa-landing header{position:sticky;top:0;z-index:50;background: rgba(255,255,255,.96);backdrop-filter: blur(14px);border-bottom:1px solid rgba(12,24,52,.12)}
     .rsa-landing .nav{display:flex;align-items:center;justify-content:space-between;padding:8px 0;gap:10px}
-    .rsa-landing .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.3px}
+    .rsa-landing .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.3px;text-decoration:none;color:inherit}
     .rsa-landing .brand-logo{height:28px;width:auto;display:block}
     .rsa-landing .nav-links{display:flex;gap:18px;align-items:center;font-size:14px;color:rgba(12,24,52,.72)}
     .rsa-landing .nav-links a:hover{color:#0a3f95}
@@ -259,9 +261,9 @@ export default function RsaLandingPage() {
         <header>
           <div className="container">
             <div className="nav">
-              <span className="brand">
+              <Link href="/" className="brand" aria-label="Go to MyFNG home">
                 <img src="/logo.png" alt="MY FNG" className="brand-logo" />
-              </span>
+              </Link>
               <nav className="nav-links">
                 <a href="#services" onClick={(e) => scrollToSection(e, 'services')}>Services</a>
                 <a href="#pricing" onClick={(e) => scrollToSection(e, 'pricing')}>Pricing</a>
@@ -271,7 +273,7 @@ export default function RsaLandingPage() {
                 <a href="#contact" onClick={(e) => scrollToSection(e, 'contact')}>Contact</a>
               </nav>
               <div className="nav-cta">
-                <a className="btn small" href={`tel:+919610448949`} rel="noopener noreferrer">CALL NOW</a>
+                <a className="btn small" href={`tel:${RSA_PHONE}`} rel="noopener noreferrer">CALL NOW</a>
               </div>
             </div>
           </div>
@@ -410,7 +412,7 @@ export default function RsaLandingPage() {
                 <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
                   <a
                     className="btn"
-                    href="tel:+919610448949"
+                    href={`tel:${RSA_PHONE}`}
                     style={{ flex: 1, background: '#cc2900', border: 'none', color: '#ffffff', justifyContent: 'center' }}
                   >
                     📞 Call Now
@@ -449,7 +451,7 @@ export default function RsaLandingPage() {
                 <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
                   <a
                     className="btn"
-                    href="tel:+919610448949"
+                    href={`tel:${RSA_PHONE}`}
                     style={{ flex: 1, background: '#cc2900', border: 'none', color: '#ffffff', justifyContent: 'center' }}
                   >
                     📞 Call Now

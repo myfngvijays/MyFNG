@@ -1,11 +1,13 @@
 import { supabase } from './supabase';
 import type { BookingDraft } from './bookingDraft';
 import { getDraftDisplayPrices } from './bookingDraft';
+import { isPremiumLuxuryClass } from './vehicleClassPricing';
 
 /**
  * Resolve customer-facing service price from workshop_service_pricing.
  * Only returns a price when city / zone / class tier matches — never falls back
  * to unrelated workshop rows (avoids showing placeholder values like 101, 102…).
+ * Premium luxury: exact class tier only — no generic fallbacks.
  */
 export async function fetchServicePriceForBooking(
   serviceTypeId: string,
@@ -33,7 +35,7 @@ export async function fetchServicePriceForBooking(
     const p = await tryPrice({ city_id: cityId, class: vehicleClass });
     if (p) return p;
   }
-  if (cityId) {
+  if (!isPremiumLuxuryClass(vehicleClass) && cityId) {
     const p = await tryPrice({ city_id: cityId, class: null });
     if (p) return p;
   }
@@ -41,7 +43,7 @@ export async function fetchServicePriceForBooking(
     const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
     if (p) return p;
   }
-  if (zoneId) {
+  if (!isPremiumLuxuryClass(vehicleClass) && zoneId) {
     const p = await tryPrice({ zone_id: zoneId, class: null });
     if (p) return p;
   }

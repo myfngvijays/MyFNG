@@ -8,7 +8,7 @@ import {
   Wrench, DollarSign, Sparkles
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { appendUtmToHref, getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
+import { getCurrentOrStoredUtmParams, getLeadSourceFromUtm } from '@/lib/utm';
 
 interface BookingFormData {
   city: any | null;
@@ -645,7 +645,7 @@ export default function TraditionalBookingModal({ onClose }: { onClose: () => vo
         setTimeout(() => {
           toast.success('🎉 Booking confirmed! We\'ll contact you shortly.');
           onClose();
-          window.location.href = appendUtmToHref(`/booking-success?lead=${lead.lead_number}`);
+          window.location.href = `/booking-success?lead=${lead.lead_number}`;
         }, 1500);
       }, 1000);
     } catch (error: any) {

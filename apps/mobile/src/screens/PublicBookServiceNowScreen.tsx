@@ -87,6 +87,7 @@ import { countLiveBookingCart, notifyCartBadgeCountChanged } from '../lib/cartBa
 import { BookingDraft, saveBookingDraft, removeBookingDraft } from '../lib/bookingDraft';
 import { completeBookingDraftOnServer, syncBookingDraftToServer } from '../lib/bookingDraftSync';
 import { fetchServicePriceForBooking } from '../lib/servicePricing';
+import { isPremiumLuxuryClass, PREMIUM_LUXURY_PRICING_MESSAGE } from '../lib/vehicleClassPricing';
 import { getUpsellSuggestions, getUpsellHeading } from '../lib/serviceUpsells';
 import VehicleImage from '../components/VehicleImage';
 import { trackEvent } from '../lib/trackEvent';
@@ -2552,6 +2553,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   };
 
   const showHeaderCart = cartServiceCount > 0 && step >= 2;
+  const isPremiumLuxuryVehicle = isPremiumLuxuryClass(form.carModel?.class);
 
   const renderDateQuickRow = () => (
     <View style={styles.dateQuickRow}>
@@ -2969,6 +2971,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   />
                   {pricingLoading ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
                 </View>
+
+                {isPremiumLuxuryVehicle ? (
+                  <View style={styles.premiumLuxuryBanner}>
+                    <Ionicons name="sparkles" size={18} color="#92400E" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.premiumLuxuryBannerTitle}>Premium luxury vehicle</Text>
+                      <Text style={styles.premiumLuxuryBannerText}>{PREMIUM_LUXURY_PRICING_MESSAGE}</Text>
+                    </View>
+                  </View>
+                ) : null}
 
                 {isPeriodicCategory ? (
                   <View style={styles.oilTypeRow}>
@@ -4896,6 +4908,19 @@ const styles = StyleSheet.create({
   },
   membershipClaimBannerTitle: { fontSize: 11, fontWeight: '800', color: '#92400E' },
   membershipClaimBannerText: { fontSize: 11, fontWeight: '600', color: '#78350F', marginTop: 2, lineHeight: 15 },
+  premiumLuxuryBanner: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 12,
+    padding: 12,
+  },
+  premiumLuxuryBannerTitle: { fontSize: 12, fontWeight: '800', color: '#92400E' },
+  premiumLuxuryBannerText: { fontSize: 11, fontWeight: '600', color: '#78350F', marginTop: 2, lineHeight: 16 },
   stepper: { marginTop: 12, flexDirection: 'row', gap: 8 },
   stepDot: {
     width: 10,

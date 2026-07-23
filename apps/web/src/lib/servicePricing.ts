@@ -3,6 +3,8 @@
  * Same tier order as book-service page and mobile app.
  */
 
+import { isPremiumLuxuryClass } from './vehicleClassPricing';
+
 function toPrice(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -40,21 +42,29 @@ export async function fetchServicePriceForBooking(
     const p = await tryPrice({ city_id: cityId, class: vehicleClass });
     if (p) return p;
   }
-  if (cityId) {
-    const p = await tryPrice({ city_id: cityId, class: null });
-    if (p) return p;
+  if (!isPremiumLuxuryClass(vehicleClass)) {
+    if (cityId) {
+      const p = await tryPrice({ city_id: cityId, class: null });
+      if (p) return p;
+    }
   }
   if (zoneId && vehicleClass) {
     const p = await tryPrice({ zone_id: zoneId, class: vehicleClass });
     if (p) return p;
   }
-  if (zoneId) {
-    const p = await tryPrice({ zone_id: zoneId, class: null });
-    if (p) return p;
+  if (!isPremiumLuxuryClass(vehicleClass)) {
+    if (zoneId) {
+      const p = await tryPrice({ zone_id: zoneId, class: null });
+      if (p) return p;
+    }
   }
   if (vehicleClass) {
     const p = await tryPrice({ class: vehicleClass, city_id: null, zone_id: null });
     if (p) return p;
+  }
+
+  if (isPremiumLuxuryClass(vehicleClass)) {
+    return 0;
   }
 
   // Last resort — any active row (matches book-service step 6)

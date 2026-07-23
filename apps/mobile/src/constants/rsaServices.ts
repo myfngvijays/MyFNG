@@ -1,4 +1,4 @@
-export const RSA_PHONE = '+919610448949';
+export const RSA_PHONE = '+919152307030';
 
 export type RsaServiceDef = {
   name: string;

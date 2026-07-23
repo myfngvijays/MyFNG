@@ -3,7 +3,7 @@
  * These are the functions the LLM can call to interact with the system
  */
 
-import { getPricing, getWorkshops, getCityByPincode, getServicePlansByPincode } from './database-queries';
+import { getPricing, getWorkshops, getCityByPincode, getServicePlansByPincode, resolveVehicleClassFromModelName } from './database-queries';
 import { saveBooking } from './booking';
 import {
   isPhoneVerifiedInSession,
@@ -23,6 +23,10 @@ import {
   isPricingAllowedInSession,
   setVehicleNumberInSession,
 } from './verificationSession';
+import {
+  isPremiumLuxuryClass,
+  PREMIUM_LUXURY_PRICING_MESSAGE,
+} from '../vehicleClassPricing';
 
 function normalizeServiceName(value?: string | null) {
   return String(value || '')
@@ -437,16 +441,37 @@ export async function executeToolCall(
               location: `PIN ${pincode}`,
             };
           } else if (plans.length > 0 && (plans[0] as any).error) {
+            const planError = plans[0] as any;
             return {
               success: false,
-              error: (plans[0] as any).error,
-              message: (plans[0] as any).message,
+              error: planError.error,
+              message: planError.message,
             };
+          } else if (plans.length === 0 && car_model) {
+            const vehicleClass = await resolveVehicleClassFromModelName(car_model);
+            if (isPremiumLuxuryClass(vehicleClass)) {
+              return {
+                success: false,
+                error: 'PREMIUM_LUXURY_NO_PRICING',
+                message: PREMIUM_LUXURY_PRICING_MESSAGE,
+              };
+            }
           }
         }
 
         // Fallback to city-based pricing
         if (city) {
+          if (car_model) {
+            const vehicleClass = await resolveVehicleClassFromModelName(car_model);
+            if (isPremiumLuxuryClass(vehicleClass)) {
+              return {
+                success: false,
+                error: 'PREMIUM_LUXURY_NO_PRICING',
+                message: PREMIUM_LUXURY_PRICING_MESSAGE,
+              };
+            }
+          }
+
           const pricing = await getPricing({
             service: service_category,
             city: city,

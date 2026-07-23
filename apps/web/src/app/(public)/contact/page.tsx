@@ -69,7 +69,7 @@ export default function ContactPage() {
                     <div className="info-icon"><Phone className="w-5 h-5" /></div>
                     <div>
                       <h3>Customer Support</h3>
-                      <p><a href="tel:+919772215095">+91-9772215095</a></p>
+                      <p><a href="tel:+919152307030">+91-9152307030</a></p>
                       <p><a href="mailto:support@myfng.in">support@myfng.in</a></p>
                     </div>
                   </div>
@@ -78,8 +78,8 @@ export default function ContactPage() {
                     <div className="info-icon"><Mail className="w-5 h-5" /></div>
                     <div>
                       <h3>Support / Inquiry</h3>
-                      <p>Service - <a href="tel:+919772215095">+91-9772215095</a></p>
-                      <p>RSA - <a href="tel:+919610448949">+91-9610448949</a></p>
+                      <p>Service - <a href="tel:+919152307030">+91-9152307030</a></p>
+                      <p>RSA - <a href="tel:+919152307030">+91-9152307030</a></p>
                       <p><a href="mailto:info@myfng.in">info@myfng.in</a></p>
                     </div>
                   </div>
@@ -119,7 +119,7 @@ export default function ContactPage() {
 
                   <div className="emergency-box">
                     <h3><Truck className="w-5 h-5 inline" /> 24/7 Roadside</h3>
-                    <p>Stranded? Call our emergency dispatch: <strong><br /><a href="tel:+919610448949">+91-9610448949</a></strong></p>
+                    <p>Stranded? Call our emergency dispatch: <strong><br /><a href="tel:+919152307030">+91-9152307030</a></strong></p>
                   </div>
                 </div>
               </aside>
@@ -177,7 +177,7 @@ export default function ContactPage() {
 
             <div className="rsa-banner">
               <Truck className="w-6 h-6 flex-shrink-0" />
-              RSA Helpline: <a href="tel:+919610448949">+91-9610448949</a>
+              RSA Helpline: <a href="tel:+919152307030">+91-9152307030</a>
             </div>
 
             <div className="map-container">

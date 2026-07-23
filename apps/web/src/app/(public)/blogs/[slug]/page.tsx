@@ -19,6 +19,7 @@ import {
   normalizeBlogMediaUrl,
   normalizeBlogSeoData,
 } from '@/lib/blog/normalizeBlogMedia';
+import { DEFAULT_APP_STORE_URL, DEFAULT_PLAY_STORE_URL } from '@/lib/mobile-app-version-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -392,7 +393,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const followYoutube = 'https://youtube.com/channel/UCil_RltFnCtXeAha5TrNtew/';
   const followLinkedin = 'https://linkedin.com/company/myfngcarservices';
   const followX = 'https://x.com/myfngcarservice';
-  const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || '';
+  const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || DEFAULT_PLAY_STORE_URL;
+  const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL || DEFAULT_APP_STORE_URL;
   const htmlStyleQuote = highlightQuote || 'Ignoring early engine warning signs can lead to expensive repairs later.';
 
   return (
@@ -440,8 +442,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           .blog-html-wrap .search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;}
           .blog-html-wrap .search input{min-width:0;width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;}
           .blog-html-wrap .search button{background:#0a4ea3;color:#fff;border:none;padding:10px 16px;border-radius:8px;}
-          .blog-html-wrap .playstore-badge{display:inline-block;margin-top:10px;max-width:160px;}
-          .blog-html-wrap .playstore-badge img{display:block;width:100%;height:auto;}
+          .blog-html-wrap .store-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center;}
+          .blog-html-wrap .store-badge{display:inline-block;max-width:118px;flex:1 1 calc(50% - 4px);min-width:96px;}
+          .blog-html-wrap .store-badge img{display:block;width:100%;height:auto;}
           .blog-html-wrap .service-slider{position:relative;height:240px;overflow:hidden;border-radius:12px;}
           .blog-html-wrap .service-slide{background:#fff;padding:15px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.08);text-align:center;margin-top:12px;}
           .blog-html-wrap .service-slider .service-slide{
@@ -616,18 +619,32 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
                 <div className="side-box">
                   <h3>Download MyFNG App - Book Car Service Faster</h3>
-                  <a
-                    href={playStoreUrl || '#'}
-                    className="playstore-badge"
-                    target={playStoreUrl ? '_blank' : undefined}
-                    rel="noreferrer"
-                    aria-label="Get it on Google Play"
-                  >
-                    <img
-                      src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
-                      alt="Get it on Google Play"
-                    />
-                  </a>
+                  <div className="store-badges">
+                    <a
+                      href={playStoreUrl}
+                      className="store-badge"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Get it on Google Play"
+                    >
+                      <img
+                        src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                        alt="Get it on Google Play"
+                      />
+                    </a>
+                    <a
+                      href={appStoreUrl}
+                      className="store-badge"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Download on the App Store"
+                    >
+                      <img
+                        src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg"
+                        alt="Download on the App Store"
+                      />
+                    </a>
+                  </div>
                 </div>
 
                 <div className="side-box">

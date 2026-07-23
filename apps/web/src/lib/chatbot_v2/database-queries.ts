@@ -4,6 +4,10 @@ import {
   fetchServicePriceForBooking,
   matchCategoryRow,
 } from '../servicePricing';
+import {
+  isPremiumLuxuryClass,
+  PREMIUM_LUXURY_PRICING_MESSAGE,
+} from '../vehicleClassPricing';
 
 interface PricingParams {
   service: string;
@@ -290,6 +294,15 @@ export async function getServicePlans({ category, carModel, city }: ServicePlanP
     }
 
     if (!pricingData || pricingData.length === 0) {
+      if (isPremiumLuxuryClass(targetClass)) {
+        return [
+          {
+            error: 'PREMIUM_LUXURY_NO_PRICING',
+            message: PREMIUM_LUXURY_PRICING_MESSAGE,
+            vehicle_class: targetClass,
+          },
+        ] as any;
+      }
       console.warn(`[DB] No pricing data found for ${carModel} in ${targetCity}`);
       return [];
     }
@@ -562,6 +575,15 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
     }
 
     if (plans.length === 0) {
+      if (isPremiumLuxuryClass(targetClass)) {
+        return [
+          {
+            error: 'PREMIUM_LUXURY_NO_PRICING',
+            message: PREMIUM_LUXURY_PRICING_MESSAGE,
+            vehicle_class: targetClass,
+          },
+        ] as any;
+      }
       console.warn(
         `[DB] No pricing for category ${categoryData.category}, class ${targetClass}, PIN ${pincode}, city ${cityId || cityData?.name || 'unknown'}`,
       );
@@ -664,4 +686,46 @@ export async function getCityByName(cityName: string) {
     console.error('Unexpected error in getCityByName:', err);
     return null;
   }
+}
+
+export async function resolveVehicleClassFromModelName(carModel: string): Promise<string | null> {
+  if (!supabase || !String(carModel || '').trim()) return null;
+
+  const modelOnly = carModel
+    .replace(
+      /^(maruti|honda|hyundai|tata|mahindra|ford|toyota|nissan|renault|volkswagen|skoda|kia|mg|chevrolet|fiat|jeep|bmw|audi|mercedes|volvo|jaguar)\s+/i,
+      '',
+    )
+    .trim();
+  const modelNoSpaces = modelOnly.replace(/\s+/g, '');
+
+  const { data: allCars, error } = await supabase.from('car_models').select('class, make, model_name');
+  if (error || !allCars?.length) return null;
+
+  const carMatches =
+    allCars.filter((car: any) => {
+      const makeMatch =
+        String(car.make || '')
+          .toLowerCase()
+          .includes(modelOnly.toLowerCase()) ||
+        String(car.make || '')
+          .replace(/\s+/g, '')
+          .toLowerCase()
+          .includes(modelNoSpaces.toLowerCase());
+      const modelMatch =
+        String(car.model_name || '')
+          .toLowerCase()
+          .includes(modelOnly.toLowerCase()) ||
+        String(car.model_name || '')
+          .replace(/\s+/g, '')
+          .toLowerCase()
+          .includes(modelNoSpaces.toLowerCase());
+      const fullMatch = `${car.make || ''} ${car.model_name || ''}`.toLowerCase().includes(carModel.toLowerCase());
+      return makeMatch || modelMatch || fullMatch;
+    }) || [];
+
+  if (carMatches.length === 0) return null;
+  const uniqueClasses = Array.from(new Set(carMatches.map((c: any) => c.class).filter(Boolean)));
+  if (uniqueClasses.length === 1) return String(uniqueClasses[0]);
+  return String(carMatches[0]?.class || '') || null;
 }
