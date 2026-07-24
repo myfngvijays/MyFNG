@@ -13,13 +13,10 @@ type ContentConfig = {
 
 const DEFAULT_TNC: string[] = [
   'Each successful referral unlocks a milestone reward.',
-  'You choose ONE reward from 4 categories at each milestone.',
-  'Your referral reward unlocks when your friend books their first service.',
-  'Your friend gets ₹1,500 wallet balance instantly on signup.',
-  'Wallet balance expires in 90 days.',
-  'Maximum wallet usage: 10% of service booking amount.',
-  'Rewards cannot be converted to cash.',
-  'Self-referral and fraudulent referrals will be rejected.',
+  'You choose ONE reward from 4 tracks (MYFNG Save, Care, Elite, Express) at each milestone.',
+  'MYFNG Save service vouchers cannot be combined with wallet balance on the same booking.',
+  'If you use wallet balance on a booking, referral service vouchers cannot be applied on that booking.',
+  'Rewards cannot be converted to cash. Self-referral and fraudulent referrals will be rejected.',
 ];
 
 type RemoteConfig = {

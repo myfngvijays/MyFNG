@@ -30,8 +30,27 @@ export async function resolveServiceBookingWallet(
 ): Promise<ServiceBookingWalletResult> {
   const couponDiscount = Number(opts.couponDiscount || 0);
   const membershipBundleDiscount = Number(opts.membershipBundleDiscount || 0);
-  const payableBeforeWallet = Math.max(0, opts.subtotal - couponDiscount - membershipBundleDiscount);
+  const referralVoucherDiscount = Number(body?.referral_voucher_discount || 0);
+  const payableBeforeWallet = Math.max(
+    0,
+    opts.subtotal - couponDiscount - membershipBundleDiscount - referralVoucherDiscount,
+  );
   const vehicleNumber = String(opts.vehicleNumber || body?.lead?.vehicle_number || '').trim() || null;
+
+  const referralRewardClaimId = String(body?.referral_reward_claim_id || '').trim();
+  const referralVoucherApplied = Boolean(body?.referral_voucher_applied || referralRewardClaimId);
+
+  if (referralVoucherApplied && opts.useWallet) {
+    return {
+      walletDeduction: 0,
+      payableBeforeWallet,
+      finalAmount: payableBeforeWallet,
+      spendableBalance: 0,
+      blocked: true,
+      reason:
+        'Wallet balance cannot be used when a referral service voucher is applied. Remove the voucher or turn off wallet usage.',
+    };
+  }
 
   if (!opts.useWallet || payableBeforeWallet <= 0) {
     return {

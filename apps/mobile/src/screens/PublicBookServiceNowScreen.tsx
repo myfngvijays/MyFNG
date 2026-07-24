@@ -33,6 +33,12 @@ import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottom
 import { getCustomerSessionToken, setCustomerSessionToken } from '../lib/customerSession';
 import { apiFetch } from '../lib/api';
 import { submitServiceBooking } from '../lib/serviceBooking';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  computeReferralVoucherDiscount,
+  loadActiveReferralVouchers,
+  PENDING_REFERRAL_VOUCHER_KEY,
+} from '../lib/referralVoucher';
 import {
   calculateWalletUsage,
   calculateWalletUsageForServiceLines,
@@ -373,6 +379,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
   const [walletBlockReason, setWalletBlockReason] = useState<string | null>(null);
   const [serverWalletMaxUsable, setServerWalletMaxUsable] = useState<number | null>(null);
+  const [referralVouchers, setReferralVouchers] = useState<any[]>([]);
+  const [selectedReferralVoucherId, setSelectedReferralVoucherId] = useState<string | null>(null);
   const [savedVehicles, setSavedVehicles] = useState<any[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(null);
@@ -621,7 +629,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     bookingCartSubtotal - membershipBundleDiscount - (couponDiscount || 0),
     0,
   );
-  const payableBeforeWallet = couponAdjustedTotal;
+
+  const selectedReferralVoucher = useMemo(
+    () => referralVouchers.find((v) => v.id === selectedReferralVoucherId) || null,
+    [referralVouchers, selectedReferralVoucherId],
+  );
+
+  const referralVoucherDiscount = useMemo(() => {
+    if (!selectedReferralVoucher) return 0;
+    return computeReferralVoucherDiscount(
+      String(selectedReferralVoucher.reward_text || ''),
+      selectedReferralVoucher.voucher_amount,
+      couponAdjustedTotal,
+    );
+  }, [selectedReferralVoucher, couponAdjustedTotal]);
+
+  const payableBeforeWallet = Math.max(0, couponAdjustedTotal - referralVoucherDiscount);
 
   const walletServiceLines = useMemo(() => {
     const lines = serviceItemsForCoupon.map((item) => ({
@@ -692,9 +715,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }, [walletServiceLines]);
 
   const walletUsed = useMemo(() => {
-    if (!useWalletForBooking || !isLoggedIn || walletVehicleBlocked) return 0;
+    if (selectedReferralVoucherId || !useWalletForBooking || !isLoggedIn || walletVehicleBlocked) return 0;
     return walletMaxUsable;
-  }, [useWalletForBooking, isLoggedIn, walletVehicleBlocked, walletMaxUsable]);
+  }, [selectedReferralVoucherId, useWalletForBooking, isLoggedIn, walletVehicleBlocked, walletMaxUsable]);
 
   const finalPayableAmount = Math.max(0, payableBeforeWallet - walletUsed);
 
@@ -924,7 +947,20 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
+      (async () => {
+        try {
+          const pendingId = await AsyncStorage.getItem(PENDING_REFERRAL_VOUCHER_KEY);
+          if (!active || !pendingId) return;
+          setSelectedReferralVoucherId(pendingId);
+          setUseWalletForBooking(false);
+          await AsyncStorage.removeItem(PENDING_REFERRAL_VOUCHER_KEY);
+        } catch {
+          // ignore
+        }
+      })();
       return () => {
+        active = false;
         persistBookingSession();
       };
     }, [persistBookingSession]),
@@ -1502,6 +1538,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }
 
       try {
+        const vouchers = await loadActiveReferralVouchers(apiFetch);
+        setReferralVouchers(vouchers);
+      } catch {
+        setReferralVouchers([]);
+      }
+
+      try {
         const memRes = await apiFetch<any>('/api/customer/membership');
         setCurrentMembership(memRes?.membership || null);
       } catch {
@@ -1577,7 +1620,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }
 
       const shouldUseWallet =
-        isLoggedIn && useWalletForBooking && !walletVehicleBlocked && freshWalletBalance > 0;
+        isLoggedIn && useWalletForBooking && !walletVehicleBlocked && !selectedReferralVoucherId && freshWalletBalance > 0;
 
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
       const addressParts = [form.pickupAddress.trim()];
@@ -1639,6 +1682,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           includeBookingMembership && !hasActiveMembership && Boolean(primeMembershipPlan),
         membership_line_price: membershipLinePrice,
         use_wallet: shouldUseWallet,
+        referral_voucher_applied: Boolean(selectedReferralVoucherId),
+        referral_reward_claim_id: selectedReferralVoucherId,
+        referral_voucher_discount: referralVoucherDiscount,
         service_lines: walletServiceLines,
         service_items: serviceItemsForCoupon,
         lead: leadPayload,
@@ -1654,6 +1700,16 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       };
 
       const createdLead = await submitServiceBooking(bookingPayload);
+
+      if (selectedReferralVoucherId && referralVoucherDiscount > 0) {
+        setSelectedReferralVoucherId(null);
+        try {
+          const vouchers = await loadActiveReferralVouchers(apiFetch);
+          setReferralVouchers(vouchers);
+        } catch {
+          setReferralVouchers([]);
+        }
+      }
 
       if (isLoggedIn && useWalletForBooking && walletUsed > 0) {
         const serverWallet = Number(createdLead.wallet_deduction ?? 0);
@@ -4010,17 +4066,22 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       </View>
                       <View style={styles.walletHeaderText}>
                         <Text style={styles.walletTitle}>Wallet Balance</Text>
-                        <Text style={styles.walletHint}>Up to {walletHintLabel} on this order</Text>
+                        <Text style={styles.walletHint}>
+                          {selectedReferralVoucherId
+                            ? 'Turn off referral voucher to use wallet'
+                            : `Up to ${walletHintLabel} on this order`}
+                        </Text>
                       </View>
                       <View style={styles.walletToggleWrap}>
                         <Switch
                           style={Platform.OS === 'ios' ? styles.walletSwitch : undefined}
-                          value={useWalletForBooking && !walletVehicleBlocked}
+                          value={useWalletForBooking && !walletVehicleBlocked && !selectedReferralVoucherId}
                           onValueChange={(val) => {
                             setUseWalletForBooking(val);
+                            if (val) setSelectedReferralVoucherId(null);
                             trackEvent('booking_wallet_toggle', { enabled: val });
                           }}
-                          disabled={walletVehicleBlocked}
+                          disabled={walletVehicleBlocked || Boolean(selectedReferralVoucherId)}
                           trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
                           thumbColor="#FFFFFF"
                           ios_backgroundColor="#CBD5E1"
@@ -4275,6 +4336,55 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   <View style={styles.reviewDivider} />
 
                   <Text style={styles.billSummaryTitle}>Bill Summary</Text>
+
+                  {isLoggedIn && referralVouchers.length > 0 ? (
+                    <View style={styles.referralVoucherBox}>
+                      <Text style={styles.referralVoucherTitle}>Referral Reward</Text>
+                      <Text style={styles.referralVoucherHint}>
+                        Apply your MYFNG Save voucher here. Cannot combine with wallet on same booking.
+                      </Text>
+                      {referralVouchers.map((v) => {
+                        const selected = selectedReferralVoucherId === v.id;
+                        const discount = computeReferralVoucherDiscount(
+                          String(v.reward_text || ''),
+                          v.voucher_amount,
+                          couponAdjustedTotal,
+                        );
+                        return (
+                          <TouchableOpacity
+                            key={v.id}
+                            style={[styles.referralVoucherRow, selected && styles.referralVoucherRowActive]}
+                            onPress={() => {
+                              if (selected) {
+                                setSelectedReferralVoucherId(null);
+                              } else {
+                                setSelectedReferralVoucherId(v.id);
+                                setUseWalletForBooking(false);
+                              }
+                            }}
+                            activeOpacity={0.85}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.referralVoucherReward}>{v.reward_text}</Text>
+                              <Text style={styles.referralVoucherMeta}>
+                                {selected ? `Applying -${inr(discount)}` : `Tap to apply · save up to ${inr(discount)}`}
+                              </Text>
+                            </View>
+                            {selected ? (
+                              <View style={styles.referralVoucherUseBadge}>
+                                <Text style={styles.referralVoucherUseText}>Applied</Text>
+                              </View>
+                            ) : (
+                              <View style={styles.referralVoucherUseBadgeOutline}>
+                                <Text style={styles.referralVoucherUseTextOutline}>Use</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+
                   <View style={styles.reviewRow}>
                     <Text style={styles.reviewRowLabel}>Item Total (Incl. taxes)</Text>
                     <Text style={styles.reviewRowValue}>{bookingCartSubtotal ? inr(bookingCartSubtotal) : '—'}</Text>
@@ -4292,6 +4402,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <Text style={styles.reviewRowLabel}>Coupon Discount</Text>
                       <Text style={[styles.reviewRowValue, styles.reviewRowValueDiscount]}>
                         -{inr(couponDiscount || 0)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {referralVoucherDiscount > 0 ? (
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewRowLabel}>Referral Voucher</Text>
+                      <Text style={[styles.reviewRowValue, styles.reviewRowValueDiscount]}>
+                        -{inr(referralVoucherDiscount)}
                       </Text>
                     </View>
                   ) : null}
@@ -5721,6 +5839,45 @@ const styles = StyleSheet.create({
   couponAppliedTitle: { fontSize: 13, fontWeight: '800', color: '#047857' },
   couponAppliedSub: { fontSize: 11, fontWeight: '700', color: '#059669', marginTop: 1 },
   couponAppliedRemove: { fontSize: 11, fontWeight: '900', color: '#DC2626', letterSpacing: 0.5 },
+  referralVoucherBox: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  referralVoucherTitle: { fontSize: 13, fontWeight: '800', color: '#92400E' },
+  referralVoucherHint: { fontSize: 11, fontWeight: '600', color: '#B45309', marginTop: 4, marginBottom: 8, lineHeight: 16 },
+  referralVoucherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginTop: 8,
+  },
+  referralVoucherRowActive: { borderColor: '#059669', backgroundColor: '#ECFDF5' },
+  referralVoucherReward: { fontSize: 13, fontWeight: '800', color: '#111827' },
+  referralVoucherMeta: { fontSize: 11, fontWeight: '600', color: '#6B7280', marginTop: 2 },
+  referralVoucherUseBadge: {
+    backgroundColor: '#059669',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  referralVoucherUseText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  referralVoucherUseBadgeOutline: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  referralVoucherUseTextOutline: { color: COLORS.primary, fontSize: 11, fontWeight: '800' },
   payableBar: {
     marginTop: 6,
     flexDirection: 'row',

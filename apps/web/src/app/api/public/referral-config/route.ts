@@ -1,35 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getWalletConfig } from '@/lib/wallet-config';
+import { DEFAULT_REFER_AND_RISE_CONFIG, normalizeReferAndRiseConfig } from '@/lib/refer-and-rise';
 
 export const dynamic = 'force-dynamic';
-
-const DEFAULT_TNC = [
-  'First successful referral gives you \u20b9500 reward.',
-  'Every next referral gives you \u20b9250 reward.',
-  'Your referral reward unlocks when your friend books their first service.',
-  'Your friend gets \u20b91,500 wallet balance (\u20b91,000 welcome + \u20b9500 referral bonus) instantly on signup.',
-  'Wallet balance expires in 90 days.',
-  'Maximum wallet usage: 10% of service booking amount.',
-  'Rewards cannot be converted to cash.',
-  'Self-referral and fraudulent referrals will be rejected.',
-];
 
 export async function GET() {
   try {
     const { supabaseAdmin } = getSupabaseAdmin();
     const config = await getWalletConfig(supabaseAdmin);
-
-    const { data: tncRow } = await supabaseAdmin
-      .from('system_settings')
-      .select('setting_value')
-      .eq('setting_key', 'referral_tnc')
-      .maybeSingle();
-
-    let tnc = DEFAULT_TNC;
-    if (tncRow?.setting_value) {
-      try { tnc = JSON.parse(tncRow.setting_value); } catch {}
-    }
 
     const { data: riseRow } = await supabaseAdmin
       .from('system_settings')
@@ -37,10 +16,18 @@ export async function GET() {
       .eq('setting_key', 'refer_and_rise_config')
       .maybeSingle();
 
-    let referAndRiseConfig = null;
+    let referAndRiseConfig = DEFAULT_REFER_AND_RISE_CONFIG;
     if (riseRow?.setting_value) {
-      try { referAndRiseConfig = JSON.parse(riseRow.setting_value); } catch {}
+      try {
+        referAndRiseConfig = normalizeReferAndRiseConfig(JSON.parse(riseRow.setting_value));
+      } catch {
+        referAndRiseConfig = DEFAULT_REFER_AND_RISE_CONFIG;
+      }
     }
+
+    const tnc = referAndRiseConfig.content?.tnc?.length
+      ? referAndRiseConfig.content.tnc
+      : DEFAULT_REFER_AND_RISE_CONFIG.content.tnc;
 
     return NextResponse.json({
       success: true,

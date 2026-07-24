@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getWalletLogicSettings, saveWalletLogicSettings } from '@/lib/wallet-config';
+import { DEFAULT_REFER_AND_RISE_CONFIG, normalizeReferAndRiseConfig, isLegacyReferAndRiseConfig } from '@/lib/refer-and-rise';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -101,9 +102,31 @@ export async function GET() {
       .eq('setting_key', 'refer_and_rise_config')
       .maybeSingle();
 
-    const referAndRiseConfig = riseRow?.setting_value
-      ? (() => { try { return JSON.parse(riseRow.setting_value); } catch { return null; } })()
-      : null;
+    let rawRiseConfig: unknown = null;
+    if (riseRow?.setting_value) {
+      try {
+        rawRiseConfig = JSON.parse(riseRow.setting_value);
+      } catch {
+        rawRiseConfig = null;
+      }
+    }
+
+    const legacyRise = isLegacyReferAndRiseConfig(rawRiseConfig);
+    const referAndRiseConfig = normalizeReferAndRiseConfig(rawRiseConfig);
+
+    if (legacyRise) {
+      await supabaseAdmin.from('system_settings').upsert(
+        {
+          setting_key: 'refer_and_rise_config',
+          setting_value: JSON.stringify(referAndRiseConfig),
+          setting_type: 'JSON',
+          category: 'REFERRAL',
+          is_editable: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'setting_key' },
+      );
+    }
 
     // Leaderboard: top referrers
     const { data: referralCodes } = await supabaseAdmin
@@ -247,7 +270,8 @@ export async function PATCH(request: NextRequest) {
 
     // Save Refer & Rise config
     if (body.refer_and_rise_config) {
-      const riseJson = JSON.stringify(body.refer_and_rise_config);
+      const normalized = normalizeReferAndRiseConfig(body.refer_and_rise_config);
+      const riseJson = JSON.stringify(normalized);
       await supabaseAdmin.from('system_settings').upsert(
         {
           setting_key: 'refer_and_rise_config',

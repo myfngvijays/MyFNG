@@ -12,6 +12,9 @@ export type ServiceBookingPayload = {
   membership_bundle_discount?: number;
   include_booking_membership?: boolean;
   use_wallet?: boolean;
+  referral_voucher_applied?: boolean;
+  referral_reward_claim_id?: string | null;
+  referral_voucher_discount?: number;
   service_lines?: unknown;
   service_items?: unknown;
   membership_claim?: Record<string, unknown>;

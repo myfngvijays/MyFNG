@@ -22,6 +22,10 @@ import {
   resolveBookingServiceLabel,
   resolveServiceBookingWallet,
 } from '@/lib/booking-wallet-apply';
+import {
+  redeemReferralVoucherClaim,
+  resolveReferralVoucherForBooking,
+} from '@/lib/referral-voucher-apply';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
@@ -136,11 +140,44 @@ export async function createAuthenticatedServiceBooking(
       ? buildPostBookingMembershipOffer(subtotal, pbConfig)
       : null;
 
-  const totalDiscount = couponDiscount + membershipBundleDiscount;
+  const totalDiscountBeforeReferral = couponDiscount + membershipBundleDiscount;
+  const payableBeforeReferral = Math.max(0, subtotal - totalDiscountBeforeReferral);
+
+  let referralVoucherDiscount = 0;
+  let referralClaimId = String(body.referral_reward_claim_id || '').trim();
+  let referralClaimMeta: Record<string, unknown> | null = null;
+
+  if (referralClaimId) {
+    const voucherResult = await resolveReferralVoucherForBooking(
+      supabaseAdmin,
+      customer.id,
+      referralClaimId,
+      payableBeforeReferral,
+    );
+    if (voucherResult.error) {
+      return NextResponse.json({ error: voucherResult.error }, { status: 400 });
+    }
+    referralVoucherDiscount = voucherResult.discount;
+    referralClaimMeta = voucherResult.claim;
+    if (voucherResult.blocksWallet && useWallet) {
+      return NextResponse.json(
+        {
+          error:
+            'Wallet balance cannot be used when a referral service voucher is applied. Turn off wallet or remove the voucher.',
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  const totalDiscount = totalDiscountBeforeReferral + referralVoucherDiscount;
   const payableBeforeWallet = Math.max(0, subtotal - totalDiscount);
   const vehicleNumber = String(lead.vehicle_number || body.vehicle_number || '').trim();
 
-  const walletResult = await resolveServiceBookingWallet(supabaseAdmin, customer.id, request, body, {
+  const walletResult = await resolveServiceBookingWallet(supabaseAdmin, customer.id, request, {
+    ...body,
+    referral_voucher_discount: referralVoucherDiscount,
+  }, {
     subtotal,
     couponDiscount,
     membershipBundleDiscount,
@@ -228,6 +265,14 @@ export async function createAuthenticatedServiceBooking(
         nextMeta.wallet_deduction = walletDeduction;
         nextMeta.wallet_applied = true;
       }
+      if (referralClaimMeta && referralClaimId) {
+        nextMeta.referral_reward = {
+          claim_id: referralClaimId,
+          reward_text: referralClaimMeta.reward_text || null,
+          discount_amount: referralVoucherDiscount,
+          chosen_family: referralClaimMeta.chosen_family || null,
+        };
+      }
       if (postBookingMembershipOffer) {
         nextMeta.post_booking_membership_offer = postBookingMembershipOffer;
       }
@@ -247,6 +292,14 @@ export async function createAuthenticatedServiceBooking(
 
   if (leadError || !serviceLead) {
     return NextResponse.json({ error: leadError?.message || 'Booking failed' }, { status: 500 });
+  }
+
+  if (referralClaimId && referralVoucherDiscount > 0) {
+    try {
+      await redeemReferralVoucherClaim(supabaseAdmin, referralClaimId, serviceLead.id);
+    } catch (redeemErr) {
+      console.error('[service-booking-create] referral voucher redeem failed:', redeemErr);
+    }
   }
 
   if (validatedMembershipClaim?.valid && membershipClaimMeta) {

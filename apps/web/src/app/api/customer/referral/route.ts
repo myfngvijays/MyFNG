@@ -66,7 +66,9 @@ export async function GET() {
     .eq('customer_id', customer.id);
 
   if (claimsData && claimsData.length > 0) {
-    picks = Object.fromEntries(claimsData.map((c: any) => [c.milestone_count, c.chosen_family]));
+    picks = Object.fromEntries(
+      claimsData.map((c: any) => [c.milestone_count, c.chosen_family]),
+    );
   } else {
     // Fallback: check referral_rewards with milestone metadata
     const { data: fallbackClaims } = await supabaseAdmin

@@ -22,26 +22,12 @@ import {
   ChevronUp,
   Pencil,
 } from 'lucide-react';
-
-type RewardCategory = {
-  key: string;
-  name: string;
-  tag: string;
-  color: string;
-};
-
-type Milestone = {
-  referralCount: number;
-  rewards: Record<string, string>;
-};
-
-type ReferAndRiseConfig = {
-  milestones: Milestone[];
-  categories: Record<string, RewardCategory>;
-  friendBonus: number;
-  expiryDays: number;
-  content: ContentConfig;
-};
+import {
+  DEFAULT_REFER_AND_RISE_CONFIG,
+  normalizeReferAndRiseConfig,
+  type ReferAndRiseConfig,
+} from '@/lib/refer-and-rise';
+import { FAMILY_ORDER, type FamilyKey } from '@/shared/constants/referAndRise';
 
 type ContentConfig = {
   heroTitle: string;
@@ -81,47 +67,24 @@ type LeaderboardEntry = {
   referees: { event_id: string; full_name: string; phone: string; status: string; created_at: string }[];
 };
 
-const DEFAULT_CATEGORIES: Record<string, RewardCategory> = {
-  saveMoney: { key: 'saveMoney', name: 'Save Money', tag: 'SAVE MONEY', color: '#F5B942' },
-  premiumExp: { key: 'premiumExp', name: 'Premium Exp.', tag: 'PREMIUM EXPERIENCE', color: '#F97316' },
-  qualityTrust: { key: 'qualityTrust', name: 'Quality & Trust', tag: 'QUALITY & TRUST', color: '#EF4444' },
-  speedConvenience: { key: 'speedConvenience', name: 'Speed & Conv.', tag: 'SPEED & CONVENIENCE', color: '#22D3EE' },
-};
+type ContentConfig = ReferAndRiseConfig['content'];
 
-const DEFAULT_MILESTONES: Milestone[] = [
-  { referralCount: 1, rewards: { saveMoney: '₹200 Wallet Credit', premiumExp: 'Priority Booking (30 Days)', qualityTrust: 'Car Health Scan', speedConvenience: 'Express Pickup Slot' } },
-  { referralCount: 2, rewards: { saveMoney: 'Free Interior Cleaning', premiumExp: 'Dedicated Service Advisor (1 Booking)', qualityTrust: 'General Check-up', speedConvenience: 'Priority Queue Access' } },
-  { referralCount: 3, rewards: { saveMoney: 'Wheel Alignment', premiumExp: 'MYFNG Priority Support', qualityTrust: 'Fluid Top-up Package', speedConvenience: 'Express Pickup & Delivery' } },
-  { referralCount: 5, rewards: { saveMoney: '₹500 Wallet Credit', premiumExp: 'MYFNG Prime (1 Month)', qualityTrust: 'AC Inspection', speedConvenience: 'Same-Day Service Priority' } },
-  { referralCount: 7, rewards: { saveMoney: 'Free Car Wash + Vacuum', premiumExp: 'Premium Booking Window', qualityTrust: 'Brake & Battery Health Check', speedConvenience: 'Emergency Pickup (1 Use)' } },
-  { referralCount: 10, rewards: { saveMoney: '₹1,000 Wallet Credit', premiumExp: 'MYFNG Prime (3 Months)', qualityTrust: 'Basic Service', speedConvenience: 'Free Roadside Assistance (3 Months)' } },
-  { referralCount: 15, rewards: { saveMoney: 'Service Upgrade Voucher', premiumExp: 'VIP Concierge Support', qualityTrust: 'General Service', speedConvenience: 'Guaranteed Express Service' } },
-  { referralCount: 20, rewards: { saveMoney: '₹2,000 Wallet Credit', premiumExp: 'MYFNG Prime (12 Months)', qualityTrust: 'Premium Service Upgrade', speedConvenience: 'Free Roadside Assistance (12 Months)' } },
-];
+type Milestone = ReferAndRiseConfig['milestones'][number];
+type RewardCategory = ReferAndRiseConfig['categories'][FamilyKey];
+
+const DEFAULT_CATEGORIES = DEFAULT_REFER_AND_RISE_CONFIG.categories;
+const DEFAULT_MILESTONES = DEFAULT_REFER_AND_RISE_CONFIG.milestones;
+const DEFAULT_CONTENT = DEFAULT_REFER_AND_RISE_CONFIG.content;
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  myfngSave: <Wallet className="h-4 w-4" />,
+  myfngCare: <Shield className="h-4 w-4" />,
+  myfngElite: <Diamond className="h-4 w-4" />,
+  myfngExpress: <Zap className="h-4 w-4" />,
   saveMoney: <Wallet className="h-4 w-4" />,
   premiumExp: <Diamond className="h-4 w-4" />,
   qualityTrust: <Shield className="h-4 w-4" />,
   speedConvenience: <Zap className="h-4 w-4" />,
-};
-
-const DEFAULT_CONTENT: ContentConfig = {
-  heroTitle: 'Refer & Rise',
-  heroSubtitle: 'Invite friends, unlock milestones, and choose your rewards',
-  shareMessage: '🚗 Great cars deserve great care!\n\nJoin MyFNG and let\'s keep your car always performing at its best.\n\nUse my referral code *{{CODE}}* to get ₹1,500 wallet bonus instantly.\n\n👉 {{LINK}}\n\nApply code after signup & get instant wallet bonus!',
-  bannerTitle: 'Refer & Rise',
-  bannerSubtitle: 'Invite friends & earn rewards',
-  tnc: [
-    'Each successful referral unlocks a milestone reward.',
-    'You choose ONE reward from 4 categories at each milestone.',
-    'Your referral reward unlocks when your friend books their first service.',
-    'Your friend gets ₹1,500 wallet balance instantly on signup.',
-    'Wallet balance expires in 90 days.',
-    'Maximum wallet usage: 10% of service booking amount.',
-    'Rewards cannot be converted to cash.',
-    'Self-referral and fraudulent referrals will be rejected.',
-  ],
 };
 
 function StatCard({ label, value, icon, accent }: { label: string; value: string | number; icon: React.ReactNode; accent: string }) {
@@ -215,13 +178,13 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
       const res = await fetch('/api/super_admin/referral');
       const json = await res.json();
       if (json.success) {
-        const riseConfig: ReferAndRiseConfig = json.refer_and_rise_config || {
-          milestones: DEFAULT_MILESTONES,
-          categories: DEFAULT_CATEGORIES,
-          friendBonus: json.config?.referral_friend_bonus || 1500,
-          expiryDays: json.config?.referral_expiry_days || 90,
-          content: DEFAULT_CONTENT,
-        };
+        const riseConfig: ReferAndRiseConfig = json.refer_and_rise_config
+          ? normalizeReferAndRiseConfig(json.refer_and_rise_config)
+          : {
+              ...DEFAULT_REFER_AND_RISE_CONFIG,
+              friendBonus: json.config?.referral_friend_bonus || 500,
+              expiryDays: json.config?.referral_expiry_days || 90,
+            };
         if (!riseConfig.content) riseConfig.content = DEFAULT_CONTENT;
         setConfig(riseConfig);
         setStats(json.stats);
@@ -297,7 +260,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
     const lastCount = config.milestones.length > 0 ? config.milestones[config.milestones.length - 1].referralCount : 0;
     const newMilestone: Milestone = {
       referralCount: lastCount + 5,
-      rewards: Object.fromEntries(Object.keys(config.categories).map((k) => [k, ''])),
+      rewards: Object.fromEntries(FAMILY_ORDER.map((k) => [k, ''])) as Milestone['rewards'],
     };
     setConfig({ ...config, milestones: [...config.milestones, newMilestone] });
     setExpandedMilestone(config.milestones.length);
@@ -384,7 +347,24 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                   : 'Manage milestones, rewards categories, and track referral activity. Changes reflect instantly in the app.'}
               </p>
             </div>
-            <div className="flex gap-2 shrink-0">
+            <div className="flex gap-2 shrink-0 flex-wrap">
+              {!analyticsOnly && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm('Reset to MYFNG Save / Care / Elite / Express defaults?')) return;
+                    setConfig({
+                      ...DEFAULT_REFER_AND_RISE_CONFIG,
+                      friendBonus: config?.friendBonus ?? 500,
+                      expiryDays: config?.expiryDays ?? 90,
+                    });
+                    setDirty(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2.5 text-sm font-bold transition"
+                >
+                  Reset Defaults
+                </button>
+              )}
               {!analyticsOnly && (
                 <button onClick={runBackfill} disabled={backfilling} className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2.5 text-sm font-bold transition disabled:opacity-50">
                   <CheckCircle2 className="h-4 w-4" /> {backfilling ? 'Processing...' : 'Sync Rewards'}
@@ -484,7 +464,10 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
               </h2>
               <p className="text-xs text-gray-500 mb-4">These are the 4 reward families users can choose from at each milestone.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {Object.entries(config.categories).map(([key, cat]) => (
+                {FAMILY_ORDER.map((key) => {
+                  const cat = config.categories[key];
+                  if (!cat) return null;
+                  return (
                   <div key={key} className="rounded-xl border border-gray-200 p-4 space-y-3" style={{ borderTopColor: cat.color, borderTopWidth: 3 }}>
                     <div className="flex items-center gap-2">
                       <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: cat.color + '20' }}>
@@ -513,7 +496,8 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                       <span className="text-xs font-mono text-gray-400">{cat.color}</span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -549,11 +533,15 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                           <span className="text-xs text-gray-500 ml-2">— {milestone.referralCount} referrals</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {Object.entries(config.categories).map(([key, cat]) => (
+                          {FAMILY_ORDER.map((key) => {
+                            const cat = config.categories[key];
+                            if (!cat) return null;
+                            return (
                             <div key={key} className="h-5 w-5 rounded flex items-center justify-center" style={{ backgroundColor: cat.color + '20' }}>
                               <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                       </div>
@@ -578,7 +566,10 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {Object.entries(config.categories).map(([key, cat]) => (
+                            {FAMILY_ORDER.map((key) => {
+                              const cat = config.categories[key];
+                              if (!cat) return null;
+                              return (
                               <div key={key} className="rounded-lg border border-gray-100 p-3" style={{ borderLeftColor: cat.color, borderLeftWidth: 3 }}>
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className="h-5 w-5 rounded flex items-center justify-center" style={{ backgroundColor: cat.color + '20' }}>
@@ -588,13 +579,14 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                                 </div>
                                 <input
                                   type="text"
-                                  value={milestone.rewards[key] || ''}
+                                  value={milestone.rewards[key as FamilyKey] || ''}
                                   onChange={(e) => updateMilestoneReward(idx, key, e.target.value)}
                                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400"
                                   placeholder={`Reward for ${cat.name}...`}
                                 />
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}

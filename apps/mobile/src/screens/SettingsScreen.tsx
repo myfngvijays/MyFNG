@@ -37,6 +37,7 @@ import {
 import { COLORS } from '../constants/theme';
 import ReferAndFooter from '../components/ReferAndFooter';
 import ReferAndRiseInline from '../components/ReferAndRiseInline';
+import ReferralRewardsInline from '../components/ReferralRewardsInline';
 import type { ReferAndRiseHandle } from '../components/ReferAndRiseInline';
 import WalletScreenContent from '../components/WalletScreenContent';
 import { calculateWalletUsage, fetchWalletVehicleBlocked, formatWalletUsageLimit, getWalletRules } from '../lib/wallet';
@@ -141,6 +142,7 @@ const MAIN_MENU: MenuItem[] = [
   { id: 'cart', label: 'Cart', icon: 'cart' },
   { id: 'coupons', label: 'Offers & Coupons', icon: 'pricetag' },
   { id: 'referral', label: 'Refer & Rise', icon: 'trophy' },
+  { id: 'referral_rewards', label: 'Referral Rewards', icon: 'gift-outline' },
   { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
 
@@ -273,6 +275,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   const [walletVehicleBlocked, setWalletVehicleBlocked] = useState(false);
   const [walletBlockReason, setWalletBlockReason] = useState<string | null>(null);
   const [referralCode, setReferralCode] = useState('');
+  const [referralVouchers, setReferralVouchers] = useState<any[]>([]);
+  const [selectedReferralVoucherId, setSelectedReferralVoucherId] = useState<string | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
@@ -484,9 +488,9 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     [subtotal, couponDiscount],
   );
   const walletUsed = useMemo(() => {
-    if (!useWalletForCart || !isLoggedIn || walletVehicleBlocked) return 0;
+    if (selectedReferralVoucherId || !useWalletForCart || !isLoggedIn || walletVehicleBlocked) return 0;
     return calculateWalletUsage(payableBeforeWallet, Number(walletBalance || 0), walletChannel, walletVehicleBlocked);
-  }, [useWalletForCart, isLoggedIn, payableBeforeWallet, walletBalance, walletChannel, walletVehicleBlocked]);
+  }, [selectedReferralVoucherId, useWalletForCart, isLoggedIn, payableBeforeWallet, walletBalance, walletChannel, walletVehicleBlocked]);
   const walletMaxUsable = useMemo(() => {
     if (!isLoggedIn || walletVehicleBlocked || payableBeforeWallet <= 0) return 0;
     return calculateWalletUsage(payableBeforeWallet, Number(walletBalance || 0), walletChannel, walletVehicleBlocked);
@@ -910,6 +914,12 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       setWalletReferralRewards(Number(walletRes?.totals?.referral_rewards || 0));
       setWalletRewardPoints(Number(walletRes?.totals?.reward_points || 0));
       setReferralCode(String(referralRes?.code?.code || ''));
+      try {
+        const rewardsRes = await apiFetch<any>('/api/customer/referral/rewards');
+        setReferralVouchers(Array.isArray(rewardsRes?.active_vouchers) ? rewardsRes.active_vouchers : []);
+      } catch {
+        setReferralVouchers([]);
+      }
       if (membershipRes?.membership) {
         setCurrentMembership(membershipRes.membership);
       } else {
@@ -2863,7 +2873,9 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
       const payload = {
         subtotal: Number(subtotal || bookingAmount),
         discount_amount: Number(cartCouponResult?.discount_amount || 0),
-        use_wallet: useWalletForCart && !walletVehicleBlocked,
+        use_wallet: useWalletForCart && !walletVehicleBlocked && !selectedReferralVoucherId,
+        referral_voucher_applied: Boolean(selectedReferralVoucherId),
+        referral_reward_claim_id: selectedReferralVoucherId,
         lead: {
           lead_number: leadNumber,
           created_from: 'MOBILE_APP',
@@ -3495,11 +3507,8 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           >
             <View style={styles.gridCardIconWrap}>
               {item.id === 'referral' ? (
-                <View style={{ position: 'relative' }}>
+                <View style={styles.referralMenuIcon}>
                   <Ionicons name="trophy" size={18} color={COLORS.primary} />
-                  <Ionicons name="star" size={7} color="#F5B942" style={{ position: 'absolute', top: -3, right: -4 }} />
-                  <Ionicons name="star" size={5} color="#EF4444" style={{ position: 'absolute', bottom: 0, right: -5 }} />
-                  <Ionicons name="star" size={5} color="#22D3EE" style={{ position: 'absolute', top: -2, left: -3 }} />
                 </View>
               ) : (
                 <Ionicons name={item.icon} size={18} color={COLORS.primary} />
@@ -4420,6 +4429,18 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             onViewChange={setReferAndRiseTitle}
           />
         );
+      case 'Referral Rewards':
+        return (
+          <ReferralRewardsInline
+            isLoggedIn={isLoggedIn}
+            onLogin={() => navigation.navigate('Login')}
+            onOpenReferAndRise={() => setActiveSubPage('Refer & Rise')}
+            onUseVoucher={() => {
+              setActiveSubPage(null);
+              navigation.navigate('PublicBookServiceNow');
+            }}
+          />
+        );
       case 'Order History': {
         trackEvent('order_history_viewed');
         if (!isLoggedIn) {
@@ -5324,6 +5345,38 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             </>
             ) : null}
 
+            {isLoggedIn && referralVouchers.length > 0 && !isMembershipOnlyCart ? (
+              <View style={cstyles.sectionCard}>
+                <Text style={cstyles.walletTitle}>Referral Service Voucher</Text>
+                <Text style={cstyles.walletHint}>
+                  Cannot be combined with wallet balance on the same booking.
+                </Text>
+                {referralVouchers.map((v) => {
+                  const selected = selectedReferralVoucherId === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      style={[cstyles.voucherRow, selected && cstyles.voucherRowActive]}
+                      onPress={() => {
+                        if (selected) {
+                          setSelectedReferralVoucherId(null);
+                        } else {
+                          setSelectedReferralVoucherId(v.id);
+                          setUseWalletForCart(false);
+                        }
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={cstyles.voucherTitle}>{v.reward_text}</Text>
+                        <Text style={cstyles.walletHint}>{v.milestone_count} referrals milestone</Text>
+                      </View>
+                      {selected ? <Ionicons name="checkmark-circle" size={20} color="#059669" /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
+
             {isLoggedIn && payableBeforeWallet > 0 ? (
               <View style={[cstyles.sectionCard, isMembershipOnlyCart ? cstyles.checkoutCardCompact : null]}>
                 <View style={cstyles.walletCardHeader}>
@@ -5333,17 +5386,22 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
                   <View style={cstyles.walletHeaderText}>
                     <Text style={cstyles.walletTitle}>Wallet Balance</Text>
                     <Text style={cstyles.walletHint}>
-                      {isMembershipOnlyCart
-                        ? `Up to ${formatWalletUsageLimit('MEMBERSHIP')} on membership`
-                        : `Up to ${formatWalletUsageLimit('SERVICE')} on this order`}
+                      {selectedReferralVoucherId
+                        ? 'Turn off referral voucher to use wallet'
+                        : isMembershipOnlyCart
+                          ? `Up to ${formatWalletUsageLimit('MEMBERSHIP')} on membership`
+                          : `Up to ${formatWalletUsageLimit('SERVICE')} on this order`}
                     </Text>
                   </View>
                   <View style={cstyles.walletToggleWrap}>
                     <Switch
                       style={Platform.OS === 'ios' ? cstyles.walletSwitch : undefined}
-                      value={useWalletForCart && !walletVehicleBlocked}
-                      onValueChange={setUseWalletForCart}
-                      disabled={walletVehicleBlocked}
+                      value={useWalletForCart && !walletVehicleBlocked && !selectedReferralVoucherId}
+                      onValueChange={(val) => {
+                        setUseWalletForCart(val);
+                        if (val) setSelectedReferralVoucherId(null);
+                      }}
+                      disabled={walletVehicleBlocked || Boolean(selectedReferralVoucherId)}
                       trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
                       thumbColor="#FFFFFF"
                       ios_backgroundColor="#CBD5E1"
@@ -6300,7 +6358,13 @@ const styles = StyleSheet.create({
   sectionHeading: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
   gridCard: { width: (Dimensions.get('window').width - 32 - 8) / 2, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  gridCardIconWrap: { position: 'relative' },
+  gridCardIconWrap: { position: 'relative', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  referralMenuIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   menuOfferDot: {
     position: 'absolute',
     top: -4,
@@ -6856,6 +6920,19 @@ const cstyles = StyleSheet.create({
     borderColor: '#BBF7D0',
   },
   walletAppliedText: { flex: 1, fontSize: 11, fontWeight: '700', color: '#047857', lineHeight: 15 },
+  voucherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  voucherRowActive: { borderColor: '#059669', backgroundColor: '#ECFDF5' },
+  voucherTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
   walletRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   walletSub: { fontSize: 12, fontWeight: '500', color: '#64748B', marginTop: 3 },
   walletBlocked: { fontSize: 11, fontWeight: '600', color: '#DC2626', marginTop: 8, lineHeight: 15 },

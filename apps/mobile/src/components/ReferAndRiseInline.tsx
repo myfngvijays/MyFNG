@@ -21,6 +21,7 @@ import { ENV } from '../config/environment';
 import {
   FAMILY_ORDER,
   MAX_REFERRALS,
+  normalizeFamilyKey,
   type FamilyKey,
   type Milestone,
 } from '../constants/referAndRise';
@@ -104,10 +105,27 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     apiFetch<any>('/api/customer/referral')
       .then((res) => {
         if (res?.stats?.total_rewarded) setReferrals(res.stats.total_rewarded);
-        if (res?.refer_and_rise?.picks) setPicks(res.refer_and_rise.picks);
+        if (res?.refer_and_rise?.picks) {
+          const normalized: Record<number, FamilyKey> = {};
+          for (const [k, v] of Object.entries(res.refer_and_rise.picks)) {
+            const fam = normalizeFamilyKey(String(v));
+            if (fam) normalized[Number(k)] = fam;
+          }
+          setPicks(normalized);
+        }
       })
       .catch(() => {});
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || referrals <= 0) return;
+    const unclaimed = MILESTONES.find(
+      (m) => referrals >= m.referralCount && !picks[m.referralCount],
+    );
+    if (unclaimed && !pendingMilestone) {
+      setPendingMilestone(unclaimed);
+    }
+  }, [isLoggedIn, referrals, picks, MILESTONES, pendingMilestone]);
 
   const currentIdx = (() => { for (let i = MILESTONES.length - 1; i >= 0; i--) { if (referrals >= MILESTONES[i].referralCount) return i; } return -1; })();
   const nextMilestone = MILESTONES.find((m) => m.referralCount > referrals) || null;
@@ -240,14 +258,14 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     <View>
       {/* Header */}
       <View style={s.header}>
-        <View>
+        <View style={s.headerTextWrap}>
           <Text style={s.headerLabel}>MYFNG</Text>
           <Text style={s.headerTitle}>{remoteConfig.content.heroTitle || 'Refer & Rise'}</Text>
           {remoteConfig.content.heroSubtitle ? <Text style={s.headerSub}>{remoteConfig.content.heroSubtitle}</Text> : null}
         </View>
         <View style={s.headerBadge}>
           <Ionicons name="sparkles" size={12} color={BRAND} />
-          <Text style={s.headerBadgeText}>
+          <Text style={s.headerBadgeText} numberOfLines={1}>
             {currentIdx >= 0 ? `${MILESTONES[currentIdx].referralCount} Referrals` : 'Get Started'}
           </Text>
         </View>
@@ -280,7 +298,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       </View>
 
       {/* Invite Button */}
-      <TouchableOpacity style={s.inviteBtn} onPress={simulateReferral} activeOpacity={0.85} disabled={!!pendingMilestone || referrals >= activeMaxReferrals}>
+      <TouchableOpacity style={s.inviteBtn} onPress={inviteFromContacts} activeOpacity={0.85} disabled={!!pendingMilestone || referrals >= activeMaxReferrals}>
         <Ionicons name="people" size={16} color="#FFFFFF" />
         <Text style={s.inviteBtnText}>Invite Friends</Text>
       </TouchableOpacity>
@@ -326,18 +344,41 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       {nextMilestone && (
         <View style={s.upcomingCard}>
           <Text style={s.upcomingTitle}>Upcoming Milestones</Text>
-          {MILESTONES.filter((m) => m.referralCount > referrals).slice(0, 3).map((m) => (
-            <View key={m.referralCount} style={s.upcomingRow}>
-              <View style={s.upcomingDot}>
-                <Text style={s.upcomingDotText}>{m.referralCount}</Text>
+          {MILESTONES.filter((m) => m.referralCount > referrals).slice(0, 3).map((m, idx) => (
+            <View key={m.referralCount} style={[s.upcomingRow, idx === 0 && s.upcomingRowFeatured]}>
+              <View style={s.upcomingRowHeader}>
+                <View style={s.upcomingDot}>
+                  <Text style={s.upcomingDotText}>{m.referralCount}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.upcomingRowTitle}>{m.referralCount} Referrals</Text>
+                  <Text style={s.upcomingRowDesc}>
+                    {idx === 0
+                      ? `Only ${m.referralCount - referrals} more · pick one of 4 tracks`
+                      : `${m.referralCount - referrals} more referrals needed`}
+                  </Text>
+                </View>
+                <Ionicons name="lock-closed-outline" size={14} color="#B8D4F0" />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.upcomingRowTitle}>{m.referralCount} Referrals</Text>
-                <Text style={s.upcomingRowDesc}>
-                  {m.referralCount - referrals <= 2 ? 'Unlock exciting rewards' : 'Bigger rewards await'}
+              {idx <= 1 ? (
+                <View style={s.upcomingRewardsList}>
+                  {FAMILY_ORDER.map((key) => (
+                    <View key={key} style={s.upcomingRewardLine}>
+                      <View style={[s.upcomingRewardIcon, { backgroundColor: FAMILIES[key].color + '18' }]}>
+                        <Ionicons name={FAMILIES[key].icon} size={11} color={FAMILIES[key].color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.upcomingRewardTrack, { color: FAMILIES[key].color }]}>{FAMILIES[key].name}</Text>
+                        <Text style={s.upcomingRewardText}>{m.rewards[key]}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={s.upcomingRewardSummary} numberOfLines={2}>
+                  {FAMILY_ORDER.map((key) => `${FAMILIES[key].tag}: ${m.rewards[key]}`).join(' · ')}
                 </Text>
-              </View>
-              <Ionicons name="lock-closed-outline" size={14} color="#B8D4F0" />
+              )}
             </View>
           ))}
           <TouchableOpacity onPress={() => changeView('milestones')} style={s.viewAllLink} activeOpacity={0.8}>
@@ -416,8 +457,14 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[ms.rowTitle, unlocked && ms.rowTitleUnlocked]}>{m.referralCount} Referrals</Text>
-              <Text style={ms.rowDesc} numberOfLines={1}>
-                {picked ? `${FAMILIES[picked].name} claimed` : unlocked ? 'Tap to claim reward' : isNext ? 'Unlock exciting rewards' : `${m.referralCount - referrals} more to unlock`}
+              <Text style={ms.rowDesc} numberOfLines={isNext && !unlocked ? 2 : 1}>
+                {picked
+                  ? `${FAMILIES[picked].name} claimed`
+                  : unlocked
+                    ? 'Tap to claim reward'
+                    : isNext
+                      ? FAMILY_ORDER.map((key) => `${FAMILIES[key].tag}: ${m.rewards[key]}`).join(' · ')
+                      : `${m.referralCount - referrals} more to unlock`}
               </Text>
               {/* Expanded reward details - only for unlocked/next milestone */}
               {isExpanded && !isLocked && (
@@ -444,7 +491,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                     </View>
                   ))}
                   <Text style={ms.rewardPreviewText} numberOfLines={1}>
-                    {m.rewards.saveMoney}
+                    {m.rewards.myfngSave}
                   </Text>
                 </View>
               )}
@@ -466,6 +513,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
         <TouchableOpacity style={rp.scrim} activeOpacity={1} onPress={() => setPendingMilestone(null)} />
         <View style={rp.sheet}>
           <View style={rp.handle} />
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={rp.sheetScroll}>
           {pendingMilestone && (
             <>
               <View style={rp.headerRow}>
@@ -473,8 +521,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
               </View>
               <Text style={rp.desc}>Pick <Text style={{ fontWeight: '700', color: '#FFFFFF' }}>one</Text> reward — it tells us what you care about.</Text>
 
-              {/* 2x2 Grid */}
-              <View style={rp.grid}>
+              <View style={rp.list}>
                 {FAMILY_ORDER.map((key) => {
                   const f = FAMILIES[key];
                   const reward = pendingMilestone.rewards[key];
@@ -483,31 +530,31 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                     <TouchableOpacity
                       key={key}
                       style={[
-                        rp.card,
-                        { borderColor: f.color + '40', borderWidth: 1.5 },
-                        isSelected && { borderColor: f.color, borderWidth: 2, backgroundColor: `${f.color}12` },
-                        Platform.select({
-                          ios: { shadowColor: f.color, shadowOffset: { width: 0, height: 0 }, shadowOpacity: isSelected ? 0.7 : 0.2, shadowRadius: isSelected ? 14 : 5 },
-                          android: { elevation: isSelected ? 10 : 3 },
-                        }),
+                        rp.listCard,
+                        { borderColor: f.color + '55' },
+                        isSelected && { borderColor: f.color, backgroundColor: `${f.color}18` },
                       ]}
                       onPress={() => setSelectedReward(key)}
                       activeOpacity={0.85}
                     >
-                      <View style={rp.cardTop}>
+                      <View style={rp.listCardTop}>
                         <View style={[rp.cardIcon, { backgroundColor: f.color + '1A' }]}>
                           <Ionicons name={f.icon} size={18} color={f.color} />
                         </View>
-                        <Text style={[rp.cardTag, { color: f.color }]} numberOfLines={1}>{f.tag}</Text>
+                        <View style={{ flex: 1 }}>
+                          <View style={rp.listCardTitleRow}>
+                            <Text style={rp.cardName}>{f.name}</Text>
+                            <Text style={[rp.cardTag, { color: f.color }]}>{f.tag}</Text>
+                          </View>
+                          <Text style={rp.listCardReward}>{reward}</Text>
+                        </View>
+                        {isSelected ? <Ionicons name="checkmark-circle" size={22} color={f.color} /> : null}
                       </View>
-                      <Text style={rp.cardName} numberOfLines={1}>{f.name}</Text>
-                      <Text style={rp.cardReward} numberOfLines={2}>{reward}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              {/* Confirm */}
               <TouchableOpacity
                 style={[rp.confirmBtn, !selectedReward && { opacity: 0.4 }]}
                 onPress={handleConfirmReward}
@@ -517,20 +564,19 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                 <Text style={rp.confirmText}>Confirm Selection</Text>
               </TouchableOpacity>
 
-              {/* Claim Later */}
               <TouchableOpacity style={rp.laterBtn} onPress={() => setPendingMilestone(null)} activeOpacity={0.8}>
                 <Text style={rp.laterText}>I'll choose later</Text>
               </TouchableOpacity>
 
-              {/* Friend reward note */}
               <View style={rp.friendNote}>
                 <Ionicons name="checkmark-circle" size={14} color="#34D399" />
                 <Text style={rp.friendNoteText}>
-                  Your friend just got a <Text style={{ fontWeight: '700', color: '#FFFFFF' }}>free in-app health check</Text> — claimed the moment they installed.
+                  Your friend gets wallet bonus on signup when they use your referral code.
                 </Text>
               </View>
             </>
           )}
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -585,7 +631,10 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     }));
     const unclaimed = MILESTONES.filter((m) => referrals >= m.referralCount && !picks[m.referralCount]);
     const locked = MILESTONES.filter((m) => referrals < m.referralCount);
-    const totalValue = earned.filter((e) => e.fam === 'saveMoney').length * 500;
+    const totalValue = earned.filter((e) => e.fam === 'myfngSave').reduce((sum, e) => {
+      const match = String(e.reward || '').match(/₹([\d,]+)/);
+      return sum + (match ? Number(match[1].replace(/,/g, '')) : 0);
+    }, 0);
 
     return (
       <View>
@@ -874,13 +923,14 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
 // ═══════════════════════════════════════════
 
 const s = StyleSheet.create({
-  root: { backgroundColor: '#EDF4FF', borderRadius: 16, padding: 16 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  root: { backgroundColor: '#EDF4FF', borderRadius: 16, padding: 16, overflow: 'hidden' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 10 },
+  headerTextWrap: { flex: 1, minWidth: 0, paddingRight: 4 },
   headerLabel: { fontSize: 10, letterSpacing: 2, color: '#4A6FA5', fontWeight: '600' },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#0A1A3A' },
   headerSub: { fontSize: 11, color: '#4A6FA5', marginTop: 2 },
-  headerBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1, borderColor: '#D6E8FA' },
-  headerBadgeText: { fontSize: 11, fontWeight: '600', color: BRAND },
+  headerBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, borderWidth: 1, borderColor: '#D6E8FA', flexShrink: 0, maxWidth: 130 },
+  headerBadgeText: { fontSize: 11, fontWeight: '600', color: BRAND, flexShrink: 1 },
 
   progressCard: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: '#D6E8FA', ...Platform.select({ ios: { shadowColor: '#004AAD', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12 }, android: { elevation: 3 } }) },
   progressTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
@@ -918,11 +968,19 @@ const s = StyleSheet.create({
 
   upcomingCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#D6E8FA', ...Platform.select({ ios: { shadowColor: '#004AAD', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 }, android: { elevation: 2 } }) },
   upcomingTitle: { fontSize: 14, fontWeight: '700', color: '#0A1A3A', marginBottom: 10 },
-  upcomingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#E8F1FD' },
+  upcomingRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E8F1FD' },
+  upcomingRowFeatured: { backgroundColor: '#F8FBFF', borderRadius: 12, paddingHorizontal: 10, marginBottom: 4, borderBottomWidth: 0 },
+  upcomingRowHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   upcomingDot: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#EDF4FF', alignItems: 'center', justifyContent: 'center' },
   upcomingDotText: { fontSize: 11, fontWeight: '700', color: BRAND },
   upcomingRowTitle: { fontSize: 13, fontWeight: '600', color: '#0A1A3A' },
   upcomingRowDesc: { fontSize: 11, color: '#4A6FA5', marginTop: 1 },
+  upcomingRewardsList: { marginTop: 10, gap: 8 },
+  upcomingRewardLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  upcomingRewardIcon: { width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  upcomingRewardTrack: { fontSize: 11, fontWeight: '800' },
+  upcomingRewardText: { fontSize: 11, color: '#4A6FA5', marginTop: 2, lineHeight: 16 },
+  upcomingRewardSummary: { fontSize: 10, color: '#6B7280', marginTop: 8, lineHeight: 15, paddingLeft: 42 },
   viewAllLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 12 },
   viewAllText: { fontSize: 12, fontWeight: '600', color: BRAND },
 
@@ -965,26 +1023,31 @@ const ms = StyleSheet.create({
 const rp = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,15,40,0.65)' },
-  sheet: { backgroundColor: '#001840', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 34, borderTopWidth: 1, borderColor: '#1A3A6B' },
-  handle: { width: 40, height: 4, borderRadius: 4, backgroundColor: '#1A3A6B', alignSelf: 'center', marginBottom: 16 },
+  sheet: { backgroundColor: '#001840', borderTopLeftRadius: 26, borderTopRightRadius: 26, maxHeight: '88%', borderTopWidth: 1, borderColor: '#1A3A6B' },
+  sheetScroll: { paddingHorizontal: 20, paddingBottom: 34 },
+  handle: { width: 40, height: 4, borderRadius: 4, backgroundColor: '#1A3A6B', alignSelf: 'center', marginTop: 12, marginBottom: 16 },
   headerRow: { marginBottom: 4 },
   title: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
-  desc: { fontSize: 13, color: '#93B4E0', marginBottom: 16 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  card: {
-    width: '47%', backgroundColor: '#002060', borderWidth: 1.5, borderColor: '#1A3A6B',
-    borderRadius: 16, padding: 14, minHeight: 130, overflow: 'hidden',
+  desc: { fontSize: 13, color: '#93B4E0', marginBottom: 14 },
+  list: { gap: 10 },
+  listCard: {
+    backgroundColor: '#002060',
+    borderWidth: 1.5,
+    borderColor: '#1A3A6B',
+    borderRadius: 14,
+    padding: 14,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  listCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  listCardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
+  listCardReward: { fontSize: 12, color: '#C7D9F5', lineHeight: 18 },
   cardIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cardTag: { fontSize: 7, fontWeight: '800', letterSpacing: 0.3, flexShrink: 1 },
-  cardName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 4 },
-  cardReward: { fontSize: 10.5, color: '#93B4E0', lineHeight: 14 },
+  cardTag: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  cardName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', flex: 1 },
   confirmBtn: { backgroundColor: '#0066FF', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 14 },
   confirmText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   laterBtn: { alignItems: 'center', paddingVertical: 12 },
   laterText: { fontSize: 13, fontWeight: '600', color: '#93B4E0' },
-  friendNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#001030', borderWidth: 1, borderColor: '#1A3A6B', borderRadius: 12, padding: 12 },
+  friendNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#001030', borderWidth: 1, borderColor: '#1A3A6B', borderRadius: 12, padding: 12, marginTop: 4 },
   friendNoteText: { flex: 1, fontSize: 11, color: '#93B4E0', lineHeight: 16 },
 });
 
