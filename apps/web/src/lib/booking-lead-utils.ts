@@ -1,4 +1,41 @@
 import { extractUtmFromUnknown, UTM_KEYS, type UtmParams } from '@/lib/utm';
+import { FAMILIES, normalizeFamilyKey } from '@/lib/refer-and-rise';
+
+export type LeadReferralRewardInfo = {
+  claim_id: string | null;
+  discount_amount: number;
+  family_name: string | null;
+  reward_text: string | null;
+  display_label: string;
+};
+
+export function parseLeadReferralReward(meta: Record<string, unknown>): LeadReferralRewardInfo | null {
+  const raw = meta.referral_reward;
+  if (!raw || typeof raw !== 'object') return null;
+
+  const rr = raw as Record<string, unknown>;
+  const discount = Number(rr.discount_amount || 0);
+  const claimId = String(rr.claim_id || '').trim() || null;
+  const familyKey = normalizeFamilyKey(String(rr.chosen_family || ''));
+  const familyName = familyKey ? FAMILIES[familyKey]?.name || null : null;
+  const rewardText = String(rr.reward_text || '').trim() || null;
+
+  if (!claimId && discount <= 0 && !rewardText) return null;
+
+  const displayLabel = familyName
+    ? rewardText
+      ? `${familyName} · ${rewardText}`
+      : familyName
+    : rewardText || 'Refer & Rise Reward';
+
+  return {
+    claim_id: claimId,
+    discount_amount: discount > 0 ? discount : 0,
+    family_name: familyName,
+    reward_text: rewardText,
+    display_label: displayLabel,
+  };
+}
 
 export type BookingSource = 'APP' | 'WEBSITE' | 'MISA' | 'OTHER';
 
@@ -25,12 +62,29 @@ export function resolveBookingSource(lead: Record<string, any>): {
   has_coupon_applied: boolean;
   coupon_display_code: string | null;
   coupon_display_discount: number | null;
+  referral_reward_applied: boolean;
+  referral_reward_discount: number | null;
+  referral_reward_label: string | null;
+  referral_reward_family: string | null;
+  referral_reward_text: string | null;
+  coupon_only_discount: number | null;
 } {
   const rawSource = String(lead.lead_source || '').trim();
   const createdFrom = String(lead.created_from || '').trim().toUpperCase();
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
 
   const couponCode = String(lead.coupon_code || lead.coupon_meta?.code || '').trim();
-  const discountAmount = Number(lead.discount_amount || lead.coupon_meta?.discount_amount || 0);
+  const totalDiscount = Number(lead.discount_amount || lead.coupon_meta?.discount_amount || 0);
+  const referralReward = parseLeadReferralReward(meta);
+  const referralDiscount = referralReward?.discount_amount || 0;
+  const couponOnlyDiscount =
+    couponCode && totalDiscount > 0
+      ? Math.max(0, totalDiscount - referralDiscount)
+      : referralDiscount > 0
+        ? 0
+        : totalDiscount > 0
+          ? totalDiscount
+          : 0;
 
   let booking_source: BookingSource;
   let booking_source_label: string;
@@ -78,9 +132,15 @@ export function resolveBookingSource(lead: Record<string, any>): {
   return {
     booking_source,
     booking_source_label,
-    has_coupon_applied: Boolean(couponCode || discountAmount > 0),
+    has_coupon_applied: Boolean(couponCode || totalDiscount > 0 || referralReward),
     coupon_display_code: couponCode || null,
-    coupon_display_discount: discountAmount > 0 ? discountAmount : null,
+    coupon_display_discount: totalDiscount > 0 ? totalDiscount : null,
+    referral_reward_applied: Boolean(referralReward),
+    referral_reward_discount: referralDiscount > 0 ? referralDiscount : null,
+    referral_reward_label: referralReward?.display_label || null,
+    referral_reward_family: referralReward?.family_name || null,
+    referral_reward_text: referralReward?.reward_text || null,
+    coupon_only_discount: couponOnlyDiscount > 0 ? couponOnlyDiscount : null,
   };
 }
 
@@ -279,13 +339,22 @@ export function getLeadPricingBreakdown(
   }
 
   const couponDiscount = Number(
-    lead.coupon_display_discount ?? lead.discount_amount ?? meta.coupon_discount ?? 0,
+    lead.coupon_only_discount ??
+      (lead.referral_reward_applied
+        ? 0
+        : lead.coupon_display_discount ?? lead.discount_amount ?? meta.coupon_discount ?? 0),
   );
+  const referralDiscount = Number(
+    lead.referral_reward_discount ??
+      parseLeadReferralReward(meta)?.discount_amount ??
+      0,
+  );
+  const totalDiscount = couponDiscount + referralDiscount;
 
   let original = Number(meta.service_subtotal || 0);
   if (original <= 0) {
     const estimated = Number(lead.estimated_amount || lead.actual_amount || 0);
-    original = estimated + walletUsed + couponDiscount;
+    original = estimated + walletUsed + totalDiscount;
   }
   if (original <= 0) {
     original = Number(lead.estimated_amount || lead.actual_amount || 0);
@@ -295,12 +364,12 @@ export function getLeadPricingBreakdown(
     opts?.payableOverride ??
     Number(lead.amount_display ?? lead.payment_amount ?? getLeadDisplayAmount(lead) ?? 0);
 
-  if (walletUsed <= 0 && original > payable + couponDiscount + 0.01) {
-    walletUsed = Math.round((original - payable - couponDiscount) * 100) / 100;
+  if (walletUsed <= 0 && original > payable + totalDiscount + 0.01) {
+    walletUsed = Math.round((original - payable - totalDiscount) * 100) / 100;
   }
 
   if (walletUsed > 0 && original > 0 && Math.abs(payable - original) < 0.02) {
-    payable = Math.max(0, Math.round((original - walletUsed - couponDiscount) * 100) / 100);
+    payable = Math.max(0, Math.round((original - walletUsed - totalDiscount) * 100) / 100);
   }
 
   const walletUsagePercent =
@@ -314,6 +383,8 @@ export function getLeadPricingBreakdown(
     original: Number.isFinite(original) ? original : 0,
     walletUsed: Number.isFinite(walletUsed) ? walletUsed : 0,
     couponDiscount: Number.isFinite(couponDiscount) ? couponDiscount : 0,
+    referralDiscount: Number.isFinite(referralDiscount) ? referralDiscount : 0,
+    totalDiscount: Number.isFinite(totalDiscount) ? totalDiscount : 0,
     payable: Number.isFinite(payable) ? payable : 0,
     walletUsagePercent,
   };
@@ -327,6 +398,8 @@ export type ServiceLeadOverview = {
   googleAds: number;
   metaAds: number;
   withCoupon: number;
+  withPromoCoupon: number;
+  withReferralReward: number;
   newLeads: number;
 };
 
@@ -337,6 +410,13 @@ export type ChatbotBookingOverview = {
   withQuote: number;
 };
 
+export function leadHasPromoCoupon(lead: Record<string, any>): boolean {
+  const enriched = lead.booking_source ? lead : enrichBookingLead(lead);
+  const code = String(enriched.coupon_display_code || enriched.coupon_code || '').trim();
+  const promoDiscount = Number(enriched.coupon_only_discount || 0);
+  return Boolean(code) || promoDiscount > 0;
+}
+
 export function computeServiceLeadOverview(leads: Record<string, any>[]): ServiceLeadOverview {
   const stats: ServiceLeadOverview = {
     total: leads.length,
@@ -346,12 +426,16 @@ export function computeServiceLeadOverview(leads: Record<string, any>[]): Servic
     googleAds: 0,
     metaAds: 0,
     withCoupon: 0,
+    withPromoCoupon: 0,
+    withReferralReward: 0,
     newLeads: 0,
   };
 
   for (const row of leads) {
     const lead = row.source_badge_kind ? row : enrichBookingLead(row);
     if (lead.has_coupon_applied) stats.withCoupon++;
+    if (lead.referral_reward_applied) stats.withReferralReward++;
+    if (leadHasPromoCoupon(lead)) stats.withPromoCoupon++;
     if (String(lead.status || 'NEW').toUpperCase() === 'NEW') stats.newLeads++;
 
     const kind = lead.source_badge_kind;
@@ -433,6 +517,8 @@ export function filterBookingLeads(
 
     if (hasCoupon === 'YES' && !enriched.has_coupon_applied) return false;
     if (hasCoupon === 'NO' && enriched.has_coupon_applied) return false;
+    if (hasCoupon === 'REFERRAL' && !enriched.referral_reward_applied) return false;
+    if (hasCoupon === 'PROMO' && !leadHasPromoCoupon(enriched)) return false;
 
     if (search) {
       const haystack = [
@@ -444,6 +530,8 @@ export function filterBookingLeads(
         enriched.service_type,
         enriched.service_display,
         enriched.coupon_display_code,
+        enriched.referral_reward_label,
+        enriched.referral_reward_family,
         enriched.lead_source,
         enriched.booking_source_label,
       ]

@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { apiFetch } from '../lib/api';
 import { ENV } from '../config/environment';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PENDING_REFERRAL_VOUCHER_KEY } from '../lib/referralVoucher';
 import {
   FAMILY_ORDER,
   MAX_REFERRALS,
@@ -26,6 +28,7 @@ import {
   type Milestone,
 } from '../constants/referAndRise';
 import { useReferAndRiseConfig } from '../hooks/useReferAndRiseConfig';
+import MembershipTermsCard from './MembershipTermsCard';
 
 const BRAND = '#004AAD';
 const BRAND_LIGHT = '#E8F1FD';
@@ -217,18 +220,31 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     if (!pendingMilestone || !selectedReward) return;
     const ms = pendingMilestone;
     const family = selectedReward;
-    setPicks((p) => ({ ...p, [ms.referralCount]: family }));
     setPendingMilestone(null);
     setSelectedReward(null);
     setCongratsData({ milestone: ms, family });
     setShowCongrats(true);
     try {
-      await apiFetch('/api/customer/referral/claim-reward', {
+      const res = await apiFetch<any>('/api/customer/referral/claim-reward', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referralCount: ms.referralCount, family }),
       });
-    } catch {}
+      setPicks((p) => ({ ...p, [ms.referralCount]: family }));
+      if (res?.claim?.id) {
+        try {
+          await AsyncStorage.setItem(PENDING_REFERRAL_VOUCHER_KEY, String(res.claim.id));
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      setPicks((p) => {
+        const next = { ...p };
+        delete next[ms.referralCount];
+        return next;
+      });
+    }
   };
 
   const closeCongrats = () => { setShowCongrats(false); setCongratsData(null); };
@@ -340,47 +356,37 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
         ))}
       </View>
 
-      {/* Upcoming Milestones Preview */}
+      {/* Next Milestone Preview */}
       {nextMilestone && (
         <View style={s.upcomingCard}>
-          <Text style={s.upcomingTitle}>Upcoming Milestones</Text>
-          {MILESTONES.filter((m) => m.referralCount > referrals).slice(0, 3).map((m, idx) => (
-            <View key={m.referralCount} style={[s.upcomingRow, idx === 0 && s.upcomingRowFeatured]}>
-              <View style={s.upcomingRowHeader}>
-                <View style={s.upcomingDot}>
-                  <Text style={s.upcomingDotText}>{m.referralCount}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.upcomingRowTitle}>{m.referralCount} Referrals</Text>
-                  <Text style={s.upcomingRowDesc}>
-                    {idx === 0
-                      ? `Only ${m.referralCount - referrals} more · pick one of 4 tracks`
-                      : `${m.referralCount - referrals} more referrals needed`}
-                  </Text>
-                </View>
-                <Ionicons name="lock-closed-outline" size={14} color="#B8D4F0" />
+          <Text style={s.upcomingTitle}>Next Milestone</Text>
+          <View style={[s.upcomingRow, s.upcomingRowFeatured]}>
+            <View style={s.upcomingRowHeader}>
+              <View style={s.upcomingDot}>
+                <Text style={s.upcomingDotText}>{nextMilestone.referralCount}</Text>
               </View>
-              {idx <= 1 ? (
-                <View style={s.upcomingRewardsList}>
-                  {FAMILY_ORDER.map((key) => (
-                    <View key={key} style={s.upcomingRewardLine}>
-                      <View style={[s.upcomingRewardIcon, { backgroundColor: FAMILIES[key].color + '18' }]}>
-                        <Ionicons name={FAMILIES[key].icon} size={11} color={FAMILIES[key].color} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[s.upcomingRewardTrack, { color: FAMILIES[key].color }]}>{FAMILIES[key].name}</Text>
-                        <Text style={s.upcomingRewardText}>{m.rewards[key]}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={s.upcomingRewardSummary} numberOfLines={2}>
-                  {FAMILY_ORDER.map((key) => `${FAMILIES[key].tag}: ${m.rewards[key]}`).join(' · ')}
+              <View style={{ flex: 1 }}>
+                <Text style={s.upcomingRowTitle}>{nextMilestone.referralCount} Referrals</Text>
+                <Text style={s.upcomingRowDesc}>
+                  Only {referralsToNext} more · pick one of 4 tracks
                 </Text>
-              )}
+              </View>
+              <Ionicons name="lock-closed-outline" size={14} color="#B8D4F0" />
             </View>
-          ))}
+            <View style={s.upcomingRewardsList}>
+              {FAMILY_ORDER.map((key) => (
+                <View key={key} style={s.upcomingRewardLine}>
+                  <View style={[s.upcomingRewardIcon, { backgroundColor: FAMILIES[key].color + '18' }]}>
+                    <Ionicons name={FAMILIES[key].icon} size={11} color={FAMILIES[key].color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.upcomingRewardTrack, { color: FAMILIES[key].color }]}>{FAMILIES[key].name}</Text>
+                    <Text style={s.upcomingRewardText}>{nextMilestone.rewards[key]}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
           <TouchableOpacity onPress={() => changeView('milestones')} style={s.viewAllLink} activeOpacity={0.8}>
             <Text style={s.viewAllText}>View all milestones</Text>
             <Ionicons name="chevron-forward" size={14} color={BRAND} />
@@ -389,15 +395,9 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       )}
 
       {/* Terms & Conditions */}
-      <View style={s.tncCard}>
-        <Text style={s.tncTitle}>Terms & Conditions</Text>
-        {remoteConfig.content.tnc.map((item, idx) => (
-          <View key={idx} style={s.tncRow}>
-            <Text style={s.tncBullet}>•</Text>
-            <Text style={s.tncText}>{item}</Text>
-          </View>
-        ))}
-      </View>
+      {remoteConfig.content.tnc.length > 0 ? (
+        <MembershipTermsCard terms={remoteConfig.content.tnc} style={s.tncCardWrap} />
+      ) : null}
     </View>
   );
 
@@ -984,11 +984,7 @@ const s = StyleSheet.create({
   viewAllLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 12 },
   viewAllText: { fontSize: 12, fontWeight: '600', color: BRAND },
 
-  tncCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: '#D6E8FA' },
-  tncTitle: { fontSize: 12, fontWeight: '700', color: '#0A1A3A', marginBottom: 8 },
-  tncRow: { flexDirection: 'row', gap: 6, marginBottom: 4 },
-  tncBullet: { fontSize: 11, color: '#4A6FA5', lineHeight: 17 },
-  tncText: { fontSize: 11, color: '#4A6FA5', lineHeight: 17, flex: 1 },
+  tncCardWrap: { marginTop: 14 },
 });
 
 const ms = StyleSheet.create({

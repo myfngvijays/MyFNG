@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
-import { EXPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
+import { EXPORT_DATE_PRESETS, istYmd, type ReportDatePreset } from '@/lib/report-date-range';
 
 export type ExportDateRangeValue = {
   preset: ReportDatePreset;
@@ -41,10 +41,21 @@ export default function ExportDateRangeMenu({
   const customEnd = controlledCustomEnd ?? internalCustomEnd;
 
   const updateRange = (next: Partial<ExportDateRangeValue>) => {
+    const nextPreset = next.preset ?? preset;
+    let nextStart = next.customStart ?? customStart;
+    let nextEnd = next.customEnd ?? customEnd;
+
+    // Switching to Custom with empty dates → default both to today so filter applies immediately.
+    if (nextPreset === 'custom' && (!nextStart || !nextEnd)) {
+      const today = istYmd();
+      nextStart = nextStart || today;
+      nextEnd = nextEnd || today;
+    }
+
     const value: ExportDateRangeValue = {
-      preset: next.preset ?? preset,
-      customStart: next.customStart ?? customStart,
-      customEnd: next.customEnd ?? customEnd,
+      preset: nextPreset,
+      customStart: nextStart,
+      customEnd: nextEnd,
     };
     if (controlledPreset === undefined) setInternalPreset(value.preset);
     if (controlledCustomStart === undefined) setInternalCustomStart(value.customStart);

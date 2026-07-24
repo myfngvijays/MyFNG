@@ -164,6 +164,77 @@ export function isLegacyReferAndRiseConfig(raw: unknown): boolean {
   return false;
 }
 
+export type ReferPushTrigger = 'milestone_unlocked';
+
+export type ReferPushNotificationTemplate = {
+  id: string;
+  label: string;
+  trigger: ReferPushTrigger;
+  title: string;
+  body: string;
+  enabled: boolean;
+};
+
+export const DEFAULT_PUSH_NOTIFICATIONS: ReferPushNotificationTemplate[] = [
+  {
+    id: 'milestone_unlocked',
+    label: 'Referral Milestone Unlocked',
+    trigger: 'milestone_unlocked',
+    title: 'MyFNG Referral Unlocked',
+    body: '{{WALLET_PART}}Milestone #{{MILESTONE}} unlocked — claim your Refer & Rise reward now.',
+    enabled: true,
+  },
+];
+
+export const REFER_PUSH_TRIGGER_LABELS: Record<ReferPushTrigger, string> = {
+  milestone_unlocked: 'Friend booking complete → milestone unlocks',
+};
+
+export function migratePushNotifications(content: unknown): ReferPushNotificationTemplate[] {
+  const obj = content && typeof content === 'object' ? (content as Record<string, unknown>) : null;
+
+  if (Array.isArray(obj?.pushNotifications) && obj.pushNotifications.length > 0) {
+    return obj.pushNotifications.map((item: any, idx: number) => ({
+      id: String(item?.id || `push_${idx + 1}`).trim() || `push_${idx + 1}`,
+      label: String(item?.label || 'Push Notification').trim() || 'Push Notification',
+      trigger: item?.trigger === 'milestone_unlocked' ? 'milestone_unlocked' : 'milestone_unlocked',
+      title: String(item?.title || DEFAULT_PUSH_NOTIFICATIONS[0].title).trim() || DEFAULT_PUSH_NOTIFICATIONS[0].title,
+      body: String(item?.body || DEFAULT_PUSH_NOTIFICATIONS[0].body).trim() || DEFAULT_PUSH_NOTIFICATIONS[0].body,
+      enabled: item?.enabled !== false,
+    }));
+  }
+
+  const legacyTitle = String((obj as any)?.pushMilestoneTitle || '').trim();
+  const legacyBody = String((obj as any)?.pushMilestoneBody || '').trim();
+  if (legacyTitle || legacyBody) {
+    return [{
+      ...DEFAULT_PUSH_NOTIFICATIONS[0],
+      title: legacyTitle || DEFAULT_PUSH_NOTIFICATIONS[0].title,
+      body: legacyBody || DEFAULT_PUSH_NOTIFICATIONS[0].body,
+    }];
+  }
+
+  return DEFAULT_PUSH_NOTIFICATIONS.map((item) => ({ ...item }));
+}
+
+export function getReferPushTemplate(
+  content: { pushNotifications?: ReferPushNotificationTemplate[] } | null | undefined,
+  trigger: ReferPushTrigger,
+): ReferPushNotificationTemplate {
+  const list = migratePushNotifications(content);
+  const match = list.find((item) => item.enabled && item.trigger === trigger);
+  if (match) return match;
+  const fallback = list.find((item) => item.id === 'milestone_unlocked') || DEFAULT_PUSH_NOTIFICATIONS[0];
+  return fallback;
+}
+
+export function previewReferPushBody(body: string): string {
+  return String(body || '')
+    .replace(/\{\{WALLET_PART\}\}/g, '₹500 wallet bonus credited. ')
+    .replace(/\{\{WALLET_AMOUNT\}\}/g, '₹500')
+    .replace(/\{\{MILESTONE\}\}/g, '1');
+}
+
 export const DEFAULT_RISE_CONTENT = {
   heroTitle: 'Refer & Rise',
   heroSubtitle: 'Invite friends, unlock milestones, and choose your rewards',
@@ -180,6 +251,7 @@ export const DEFAULT_RISE_CONTENT = {
     'MYFNG Care: General Service at 15 referrals and Premium Service at 20 referrals upgrade automatically if earlier Care rewards were not redeemed.',
     'Rewards cannot be converted to cash. Self-referral and fraudulent referrals will be rejected.',
   ],
+  pushNotifications: DEFAULT_PUSH_NOTIFICATIONS,
 };
 
 export function getMilestoneRewardText(milestone: Milestone, family: FamilyKey): string {

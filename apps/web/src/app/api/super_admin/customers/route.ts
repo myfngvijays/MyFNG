@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     const fetchLimit = filteredMode ? 500 : limit;
     const offset = filteredMode ? 0 : (page - 1) * limit;
 
-    const overview = await fetchCustomerOverview(supabaseAdmin);
+    const overview = await fetchCustomerOverview(supabaseAdmin, { preset, start, end });
 
     let query = supabaseAdmin
       .from('customers')

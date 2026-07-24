@@ -5,6 +5,7 @@ import {
   normalizeReferAndRiseConfig,
   normalizeFamilyKey,
 } from '@/lib/refer-and-rise';
+import { ensureReferralRewardCouponForClaim } from '@/lib/referral-reward-coupon';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,12 +66,31 @@ export async function GET() {
         categories: config.categories,
       }));
 
-    const claimed = claims.map((c: any) => {
+    const claimed = await Promise.all(
+      claims.map(async (c: any) => {
       const family = normalizeFamilyKey(c.chosen_family) || c.chosen_family;
       const cat = family ? config.categories[family as keyof typeof config.categories] : null;
       const rewardText = c.reward_text || (family && config.milestones.find((m) => m.referralCount === c.milestone_count)?.rewards[family as keyof typeof config.categories['myfngSave']]) || '';
       const blocksWallet = Boolean(c.blocks_wallet) || (family === 'myfngSave' && /voucher|discount/i.test(String(rewardText)));
       const rewardType = c.reward_type || (blocksWallet ? 'voucher' : 'service');
+      const rewardExpiryDays = Math.max(1, Number(config.rewardExpiryDays) || 365);
+      const nowIso = new Date().toISOString();
+      const expired = Boolean(c.expires_at && String(c.expires_at) < nowIso);
+      const canRedeem = (c.status || 'CLAIMED') === 'CLAIMED' && !c.redeemed_at && !expired;
+
+      let couponCode = null as string | null;
+      if (canRedeem && !c.coupon_id) {
+        const ensured = await ensureReferralRewardCouponForClaim(supabaseAdmin, c, rewardExpiryDays);
+        couponCode = ensured?.code || null;
+      } else if (c.coupon_id) {
+        const { data: couponRow } = await supabaseAdmin
+          .from('coupons')
+          .select('code')
+          .eq('id', c.coupon_id)
+          .maybeSingle();
+        couponCode = couponRow?.code ? String(couponRow.code) : null;
+      }
+
       return {
         id: c.id,
         milestone_count: c.milestone_count,
@@ -82,10 +102,14 @@ export async function GET() {
         blocks_wallet: blocksWallet,
         status: c.status || 'CLAIMED',
         claimed_at: c.claimed_at,
+        expires_at: c.expires_at ?? null,
         redeemed_at: c.redeemed_at ?? null,
-        can_redeem: (c.status || 'CLAIMED') === 'CLAIMED' && !c.redeemed_at,
+        coupon_code: couponCode,
+        can_redeem: canRedeem,
+        expired,
       };
-    });
+    }),
+    );
 
     const locked = config.milestones
       .filter((m) => rewardedCount < m.referralCount)
@@ -95,9 +119,7 @@ export async function GET() {
         rewards: m.rewards,
       }));
 
-    const activeVouchers = claimed.filter(
-      (c) => c.blocks_wallet && c.can_redeem && (c.reward_type === 'voucher' || c.reward_type === 'discount'),
-    );
+    const activeVouchers = claimed.filter((c) => c.can_redeem);
 
     return NextResponse.json({
       success: true,
@@ -110,6 +132,7 @@ export async function GET() {
       active_vouchers: activeVouchers,
       wallet_voucher_rule:
         'Service vouchers from MYFNG Save cannot be combined with wallet balance on the same booking.',
+      reward_expiry_days: Math.max(1, Number(config.rewardExpiryDays) || 365),
     });
   } catch (e: any) {
     console.error('[referral/rewards]', e);

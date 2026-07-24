@@ -11,20 +11,23 @@ type CustomerPushPayload = {
   notificationType?: string;
 };
 
+type CustomerPushPrefField = 'wallet_credits' | 'referral_updates' | 'offers' | 'order_updates';
+
 async function isCustomerPushAllowed(
   supabaseAdmin: NonNullable<ReturnType<typeof getSupabaseAdmin>['supabaseAdmin']>,
   customerId: string,
-  prefField: 'wallet_credits' | 'offers' | 'order_updates' = 'wallet_credits',
+  prefField: CustomerPushPrefField = 'wallet_credits',
 ): Promise<boolean> {
   const { data } = await supabaseAdmin
     .from('customer_notification_preferences')
-    .select('push_enabled, wallet_credits, offers, order_updates')
+    .select('push_enabled, wallet_credits, referral_updates, offers, order_updates')
     .eq('customer_id', customerId)
     .maybeSingle();
 
   if (!data) return true;
   if (data.push_enabled === false) return false;
   if (prefField === 'wallet_credits' && data.wallet_credits === false) return false;
+  if (prefField === 'referral_updates' && data.referral_updates === false) return false;
   if (prefField === 'offers' && data.offers === false) return false;
   if (prefField === 'order_updates' && data.order_updates === false) return false;
   return true;
@@ -40,11 +43,12 @@ function inferDeviceOs(deviceName: string | null | undefined): 'ios' | 'android'
 export async function dispatchPushToCustomer(
   customerId: string,
   payload: CustomerPushPayload,
+  prefField: CustomerPushPrefField = 'wallet_credits',
 ): Promise<{ attempted: number; delivered: number }> {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { attempted: 0, delivered: 0 };
 
-  const allowed = await isCustomerPushAllowed(supabaseAdmin, customerId, 'wallet_credits');
+  const allowed = await isCustomerPushAllowed(supabaseAdmin, customerId, prefField);
   if (!allowed) return { attempted: 0, delivered: 0 };
 
   const { data: devices } = await supabaseAdmin

@@ -77,6 +77,7 @@ export async function createAuthenticatedServiceBooking(
   let couponCode: string | null = lead.coupon_code || null;
   let couponMeta: Record<string, unknown> | null = lead.coupon_meta || null;
   let membershipBundleDiscount = 0;
+  let referralClaimId = String(body.referral_reward_claim_id || '').trim();
 
   if (body?.coupon?.code) {
     const channel = String(body?.coupon?.lead_context?.channel || 'MOBILE').toUpperCase();
@@ -94,6 +95,7 @@ export async function createAuthenticatedServiceBooking(
         ...(body.coupon.lead_context || {}),
         subtotal,
         city_id: cityId,
+        customer_id: customer.id,
         customer_phone: body?.coupon?.lead_context?.customer_phone || customer.phone,
         channel,
       },
@@ -107,6 +109,10 @@ export async function createAuthenticatedServiceBooking(
     couponCode = String(couponResult.coupon.code || '');
     couponDiscount = couponResult.discountAmount;
     couponMeta = couponResult.couponMeta;
+  }
+
+  if (!referralClaimId && couponMeta?.referral_claim_id) {
+    referralClaimId = String(couponMeta.referral_claim_id).trim();
   }
 
   const includeBookingMembership = Boolean(body.include_booking_membership);
@@ -144,7 +150,6 @@ export async function createAuthenticatedServiceBooking(
   const payableBeforeReferral = Math.max(0, subtotal - totalDiscountBeforeReferral);
 
   let referralVoucherDiscount = 0;
-  let referralClaimId = String(body.referral_reward_claim_id || '').trim();
   let referralClaimMeta: Record<string, unknown> | null = null;
 
   if (referralClaimId) {
@@ -157,9 +162,10 @@ export async function createAuthenticatedServiceBooking(
     if (voucherResult.error) {
       return NextResponse.json({ error: voucherResult.error }, { status: 400 });
     }
-    referralVoucherDiscount = voucherResult.discount;
+    referralVoucherDiscount = couponMeta?.referral_reward ? 0 : voucherResult.discount;
     referralClaimMeta = voucherResult.claim;
-    if (voucherResult.blocksWallet && useWallet) {
+    const blocksWallet = voucherResult.blocksWallet || Boolean(couponMeta?.blocks_wallet);
+    if (blocksWallet && useWallet) {
       return NextResponse.json(
         {
           error:
@@ -294,7 +300,7 @@ export async function createAuthenticatedServiceBooking(
     return NextResponse.json({ error: leadError?.message || 'Booking failed' }, { status: 500 });
   }
 
-  if (referralClaimId && referralVoucherDiscount > 0) {
+  if (referralClaimId && referralClaimMeta) {
     try {
       await redeemReferralVoucherClaim(supabaseAdmin, referralClaimId, serviceLead.id);
     } catch (redeemErr) {

@@ -128,4 +128,13 @@ export async function maybeRewardReferrer(
     reward_amount: rewardAmount,
     status: 'CREDITED',
   });
+
+  try {
+    const { notifyReferralMilestoneUnlocked } = await import('@/lib/referral-push-notify');
+    await notifyReferralMilestoneUnlocked(supabaseAdmin, referralEvent.referrer_customer_id, {
+      walletCreditAmount: rewardAmount,
+    });
+  } catch (pushErr) {
+    console.warn('[referral-reward] milestone push failed:', pushErr);
+  }
 }

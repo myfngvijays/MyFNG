@@ -57,6 +57,10 @@ export async function resolveReferralVoucherForBooking(
     return { discount: 0, claim: null, blocksWallet: false, rewardText: '', error: 'This referral reward is no longer valid' };
   }
 
+  if (claim.expires_at && String(claim.expires_at) < new Date().toISOString()) {
+    return { discount: 0, claim: null, blocksWallet: false, rewardText: '', error: 'This referral reward has expired' };
+  }
+
   const family = normalizeFamilyKey(claim.chosen_family);
   const rewardText = String(claim.reward_text || '');
   const blocksWallet =
@@ -76,6 +80,11 @@ export async function resolveReferralVoucherForBooking(
       rewardText,
       error: 'This referral reward cannot be applied to the current payable amount',
     };
+  }
+
+  // Service / membership / benefit rewards — no auto discount, but still attachable on booking
+  if (discount <= 0) {
+    return { discount: 0, claim, blocksWallet, rewardText };
   }
 
   return { discount, claim, blocksWallet, rewardText };

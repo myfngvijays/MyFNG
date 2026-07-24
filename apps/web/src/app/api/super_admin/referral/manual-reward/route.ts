@@ -70,6 +70,12 @@ export async function POST(request: NextRequest) {
         status: 'REWARDED',
         updated_at: new Date().toISOString(),
       }).eq('id', eventId);
+      try {
+        const { notifyReferralMilestoneUnlocked } = await import('@/lib/referral-push-notify');
+        await notifyReferralMilestoneUnlocked(supabaseAdmin, referralEvent.referrer_customer_id);
+      } catch (pushErr) {
+        console.warn('[manual-reward] milestone push failed:', pushErr);
+      }
       return NextResponse.json({ success: true, rewarded: true, amount: 0, message: 'Marked as rewarded (reward amount is 0)' });
     }
 
@@ -153,6 +159,15 @@ export async function POST(request: NextRequest) {
       reward_amount: rewardAmount,
       status: 'CREDITED',
     });
+
+    try {
+      const { notifyReferralMilestoneUnlocked } = await import('@/lib/referral-push-notify');
+      await notifyReferralMilestoneUnlocked(supabaseAdmin, referralEvent.referrer_customer_id, {
+        walletCreditAmount: rewardAmount,
+      });
+    } catch (pushErr) {
+      console.warn('[manual-reward] milestone push failed:', pushErr);
+    }
 
     return NextResponse.json({
       success: true,

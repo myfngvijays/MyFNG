@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
 import {
@@ -27,7 +27,7 @@ type ActiveTab = 'service_leads' | 'chatbot_bookings' | 'upload_crm';
 const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'MISA', 'OTHER'] as const;
-const COUPON_OPTIONS = ['ALL', 'YES', 'NO'] as const;
+const COUPON_OPTIONS = ['ALL', 'YES', 'PROMO', 'REFERRAL', 'NO'] as const;
 
 function leadStatusSelectClass(status?: string | null) {
   const s = String(status || 'NEW').toUpperCase();
@@ -174,20 +174,66 @@ function UtmCampaignCell({ lead }: { lead: Record<string, any> }) {
   );
 }
 
-function CouponBadge({ code, discount }: { code?: string | null; discount?: number | null }) {
-  if (!code && !discount) return <span className="text-gray-400 text-xs">—</span>;
+function LeadDiscountBadge({ lead }: { lead: Record<string, any> }) {
+  const referralApplied = Boolean(lead.referral_reward_applied);
+  const referralLabel = lead.referral_reward_label as string | null;
+  const referralDiscount = Number(lead.referral_reward_discount || 0);
+  const couponCode = lead.coupon_display_code || lead.coupon_code;
+  const couponDiscount = Number(lead.coupon_only_discount || 0);
+  const fallbackDiscount = Number(lead.coupon_display_discount || lead.discount_amount || 0);
+
+  if (!referralApplied && !couponCode && !fallbackDiscount) {
+    return <span className="text-gray-400 text-xs">—</span>;
+  }
+
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
-      {code ? (
-        <span className="inline-flex items-center gap-1 font-semibold text-orange-700">
-          <Ticket className="w-3 h-3 shrink-0" />
-          {code}
+    <span className="inline-flex flex-col gap-1 text-xs max-w-[220px]">
+      {referralApplied ? (
+        <span className="inline-flex flex-wrap items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-900 ring-1 ring-amber-200">
+          <Gift className="w-3 h-3 shrink-0 text-amber-700" />
+          <span className="font-semibold">Refer & Rise</span>
+          {referralLabel ? <span className="text-amber-800/90">{referralLabel}</span> : null}
+          {referralDiscount > 0 ? (
+            <span className="font-medium text-emerald-700">-Rs {referralDiscount.toLocaleString('en-IN')}</span>
+          ) : null}
         </span>
       ) : null}
-      {discount ? (
-        <span className="text-emerald-700 font-medium">-Rs {Number(discount).toLocaleString('en-IN')}</span>
+      {couponCode ? (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 font-semibold text-orange-700">
+            <Ticket className="w-3 h-3 shrink-0" />
+            {couponCode}
+          </span>
+          {couponDiscount > 0 ? (
+            <span className="text-emerald-700 font-medium">-Rs {couponDiscount.toLocaleString('en-IN')}</span>
+          ) : null}
+        </span>
+      ) : !referralApplied && fallbackDiscount > 0 ? (
+        <span className="text-emerald-700 font-medium">-Rs {fallbackDiscount.toLocaleString('en-IN')}</span>
       ) : null}
     </span>
+  );
+}
+
+/** Backward-compatible wrapper — some call sites may still use code/discount props. */
+function CouponBadge({
+  code,
+  discount,
+  lead,
+}: {
+  code?: string | null;
+  discount?: number | null;
+  lead?: Record<string, any>;
+}) {
+  if (lead) return <LeadDiscountBadge lead={lead} />;
+  return (
+    <LeadDiscountBadge
+      lead={{
+        coupon_display_code: code,
+        coupon_only_discount: discount,
+        coupon_display_discount: discount,
+      }}
+    />
   );
 }
 
@@ -250,10 +296,35 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
   if (meta.wallet_applied && Number(meta.wallet_deduction || 0) > 0) {
     paymentExtras.push({ label: 'Wallet Used', value: formatCurrency(Number(meta.wallet_deduction)) });
   }
+  if (item.referral_reward_applied) {
+    paymentExtras.push({
+      label: 'Referral Reward',
+      value: (
+        <div className="space-y-1">
+          <p className="font-semibold text-amber-900">Refer & Rise · {item.referral_reward_family || 'Reward'}</p>
+          {item.referral_reward_text ? <p className="text-sm text-gray-700">{item.referral_reward_text}</p> : null}
+          {Number(item.referral_reward_discount || 0) > 0 ? (
+            <p className="text-sm font-medium text-emerald-700">
+              Discount applied: {formatCurrency(Number(item.referral_reward_discount))}
+            </p>
+          ) : null}
+        </div>
+      ),
+    });
+  }
   if (item.coupon_display_code || item.coupon_code) {
     paymentExtras.push({
       label: 'Coupon',
-      value: <CouponBadge code={item.coupon_display_code || item.coupon_code} discount={item.coupon_display_discount || item.discount_amount} />,
+      value: (
+        <LeadDiscountBadge
+          lead={{
+            ...item,
+            referral_reward_applied: false,
+            coupon_display_code: item.coupon_display_code || item.coupon_code,
+            coupon_only_discount: item.coupon_only_discount ?? item.coupon_display_discount ?? item.discount_amount,
+          }}
+        />
+      ),
     });
   }
 
@@ -310,6 +381,12 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
         <DetailFieldCard label="Payment Mode" value={item.payment_mode} />
         <DetailFieldCard label="Payment Status" value={item.payment_status} />
         <DetailFieldCard label="Discount" value={formatCurrency(item.discount_amount)} />
+        {item.referral_reward_applied ? (
+          <DetailFieldCard
+            label="Referral Source"
+            value={`Refer & Rise${item.referral_reward_family ? ` · ${item.referral_reward_family}` : ''}`}
+          />
+        ) : null}
         {paymentExtras.map((field) => (
           <DetailFieldCard key={field.label} label={field.label} value={field.value} />
         ))}
@@ -318,7 +395,18 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
       {Object.keys(meta).length > 0 ? (
         <DetailSection title="Additional Info" icon={ClipboardList} className="border-gray-200 bg-gray-50/80">
           {Object.entries(meta)
-            .filter(([key]) => !['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'tracking', 'customer_id'].includes(key))
+            .filter(([key]) =>
+              ![
+                'utm_source',
+                'utm_medium',
+                'utm_campaign',
+                'utm_term',
+                'utm_content',
+                'tracking',
+                'customer_id',
+                'referral_reward',
+              ].includes(key),
+            )
             .map(([key, value]) => (
               <DetailFieldCard key={key} label={prettifyKey(key)} value={formatDetailScalar(value)} />
             ))}
@@ -412,23 +500,36 @@ function StatCard({
   value,
   sub,
   icon,
+  onClick,
+  active,
+  accentClassName,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: React.ReactNode;
+  onClick?: () => void;
+  active?: boolean;
+  accentClassName?: string;
 }) {
+  const Wrapper = onClick ? 'button' : 'div';
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <Wrapper
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`rounded-2xl border bg-white p-4 shadow-sm text-left transition ${
+        active ? 'border-brand-primary ring-2 ring-brand-primary/20' : 'border-gray-200'
+      } ${onClick ? 'hover:border-brand-primary/40 hover:shadow-md cursor-pointer' : ''}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
           <p className="mt-1 text-2xl font-extrabold text-gray-900">{value}</p>
           {sub ? <p className="mt-1 text-xs text-gray-500">{sub}</p> : null}
         </div>
-        <div className="rounded-xl bg-blue-50 p-2 text-blue-600 shrink-0">{icon}</div>
+        <div className={`rounded-xl p-2 shrink-0 ${accentClassName || 'bg-blue-50 text-blue-600'}`}>{icon}</div>
       </div>
-    </div>
+    </Wrapper>
   );
 }
 
@@ -651,8 +752,14 @@ export default function SuperAdminBookingsPage() {
     return leads;
   }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter]);
 
-  const serviceLeadOverview = useMemo(() => computeServiceLeadOverview(serviceLeads), [serviceLeads]);
-  const chatbotOverview = useMemo(() => computeChatbotBookingOverview(chatbotBookings), [chatbotBookings]);
+  const serviceLeadOverview = useMemo(() => computeServiceLeadOverview(displayedServiceLeads), [displayedServiceLeads]);
+  const chatbotOverview = useMemo(() => computeChatbotBookingOverview(displayedChatbotBookings), [displayedChatbotBookings]);
+
+  const hasActiveLeadFilters =
+    sourceFilter !== 'ALL' ||
+    couponFilter !== 'ALL' ||
+    statusFilter !== 'ALL' ||
+    Boolean(searchTerm.trim());
 
   const activeData = useMemo(
     () => (activeTab === 'service_leads' ? displayedServiceLeads : displayedChatbotBookings),
@@ -1064,16 +1171,31 @@ export default function SuperAdminBookingsPage() {
                     <div className="hidden xl:block h-8 w-px bg-gray-200 shrink-0" />
 
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0 mr-0.5">Coupon</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0 mr-0.5">Discount</span>
                       {COUPON_OPTIONS.map((coupon) => (
                         <FilterChip
                           key={coupon}
                           active={couponFilter === coupon}
                           onClick={() => setCouponFilter(coupon)}
-                          activeClassName="border-orange-500 bg-orange-500 text-white"
+                          activeClassName={
+                            coupon === 'REFERRAL'
+                              ? 'border-amber-600 bg-amber-600 text-white'
+                              : coupon === 'PROMO'
+                                ? 'border-orange-500 bg-orange-500 text-white'
+                                : 'border-orange-500 bg-orange-500 text-white'
+                          }
                         >
-                          {coupon === 'YES' ? <Ticket className="h-3 w-3" /> : null}
-                          {coupon === 'ALL' ? 'All' : coupon === 'YES' ? 'With Coupon' : 'No Coupon'}
+                          {coupon === 'YES' || coupon === 'PROMO' ? <Ticket className="h-3 w-3" /> : null}
+                          {coupon === 'REFERRAL' ? <Gift className="h-3 w-3" /> : null}
+                          {coupon === 'ALL'
+                            ? 'All'
+                            : coupon === 'YES'
+                              ? 'Any Discount'
+                              : coupon === 'PROMO'
+                                ? 'Promo Coupon'
+                                : coupon === 'REFERRAL'
+                                  ? 'Refer & Rise'
+                                  : 'No Discount'}
                         </FilterChip>
                       ))}
                     </div>
@@ -1143,24 +1265,79 @@ export default function SuperAdminBookingsPage() {
       <div className="px-4 sm:px-6 lg:px-8 py-5">
         {activeTab !== 'upload_crm' && !loading ? (
           <div className="mb-5">
-            {datePreset !== 'all_time' ? (
+            {hasActiveLeadFilters && activeTab === 'service_leads' ? (
+              <p className="mb-3 text-xs font-medium text-amber-700">
+                Overview for filtered results · {displayedServiceLeads.length} of {serviceLeads.length} leads
+              </p>
+            ) : datePreset !== 'all_time' ? (
               <p className="mb-3 text-xs font-medium text-gray-500">Overview for {dateRangeLabel}</p>
             ) : null}
             {activeTab === 'service_leads' ? (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
-              <StatCard label="Total Leads" value={serviceLeadOverview.total} icon={<ClipboardList className="h-5 w-5" />} />
-              <StatCard label="App Booking" value={serviceLeadOverview.app} icon={<Smartphone className="h-5 w-5" />} />
-              <StatCard label="Website" value={serviceLeadOverview.website} icon={<Globe className="h-5 w-5" />} />
-              <StatCard label="MISA AI" value={serviceLeadOverview.misa} icon={<Bot className="h-5 w-5" />} />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-9">
+              <StatCard
+                label={hasActiveLeadFilters ? 'Filtered Leads' : 'Total Leads'}
+                value={serviceLeadOverview.total}
+                icon={<ClipboardList className="h-5 w-5" />}
+                onClick={() => {
+                  setSourceFilter('ALL');
+                  setCouponFilter('ALL');
+                  setStatusFilter('ALL');
+                  setSearchTerm('');
+                }}
+                active={hasActiveLeadFilters}
+              />
+              <StatCard
+                label="App Booking"
+                value={serviceLeadOverview.app}
+                icon={<Smartphone className="h-5 w-5" />}
+                onClick={() => setSourceFilter(sourceFilter === 'APP' ? 'ALL' : 'APP')}
+                active={sourceFilter === 'APP'}
+              />
+              <StatCard
+                label="Website"
+                value={serviceLeadOverview.website}
+                icon={<Globe className="h-5 w-5" />}
+                onClick={() => setSourceFilter(sourceFilter === 'WEBSITE' ? 'ALL' : 'WEBSITE')}
+                active={sourceFilter === 'WEBSITE'}
+              />
+              <StatCard
+                label="MISA AI"
+                value={serviceLeadOverview.misa}
+                icon={<Bot className="h-5 w-5" />}
+                onClick={() => setSourceFilter(sourceFilter === 'MISA' ? 'ALL' : 'MISA')}
+                active={sourceFilter === 'MISA'}
+              />
               <StatCard label="Google Ads" value={serviceLeadOverview.googleAds} icon={<Megaphone className="h-5 w-5" />} />
               <StatCard label="Meta / Insta Ads" value={serviceLeadOverview.metaAds} icon={<Megaphone className="h-5 w-5" />} />
               <StatCard
-                label="With Coupon"
-                value={serviceLeadOverview.withCoupon}
-                sub={`${serviceLeadOverview.total > 0 ? Math.round((serviceLeadOverview.withCoupon / serviceLeadOverview.total) * 100) : 0}% of leads`}
+                label="Promo Coupon"
+                value={serviceLeadOverview.withPromoCoupon}
+                sub={`${serviceLeadOverview.total > 0 ? Math.round((serviceLeadOverview.withPromoCoupon / serviceLeadOverview.total) * 100) : 0}% of leads`}
                 icon={<Ticket className="h-5 w-5" />}
+                accentClassName="bg-orange-50 text-orange-600"
+                onClick={() => setCouponFilter(couponFilter === 'PROMO' ? 'ALL' : 'PROMO')}
+                active={couponFilter === 'PROMO'}
               />
-              <StatCard label="New Leads" value={serviceLeadOverview.newLeads} icon={<UserRound className="h-5 w-5" />} />
+              <StatCard
+                label="Refer & Rise"
+                value={serviceLeadOverview.withReferralReward}
+                sub={
+                  serviceLeadOverview.withReferralReward > 0
+                    ? `${serviceLeadOverview.total > 0 ? Math.round((serviceLeadOverview.withReferralReward / serviceLeadOverview.total) * 100) : 0}% used referral voucher`
+                    : 'No referral vouchers used yet'
+                }
+                icon={<Gift className="h-5 w-5" />}
+                accentClassName="bg-amber-50 text-amber-700"
+                onClick={() => setCouponFilter(couponFilter === 'REFERRAL' ? 'ALL' : 'REFERRAL')}
+                active={couponFilter === 'REFERRAL'}
+              />
+              <StatCard
+                label="New Leads"
+                value={serviceLeadOverview.newLeads}
+                icon={<UserRound className="h-5 w-5" />}
+                onClick={() => setStatusFilter(statusFilter === 'NEW' ? 'ALL' : 'NEW')}
+                active={statusFilter === 'NEW'}
+              />
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -1311,7 +1488,7 @@ export default function SuperAdminBookingsPage() {
                       <th className="px-4 py-3 whitespace-nowrap">City</th>
                       <th className="px-4 py-3 min-w-[180px]">Service</th>
                       <th className="px-4 py-3 whitespace-nowrap min-w-[120px]">UTM Campaign</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Coupon</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Discount</th>
                       <th className="px-4 py-3 whitespace-nowrap">Status</th>
                       <th className="px-4 py-3 whitespace-nowrap">Amount</th>
                       <th className="px-4 py-3 whitespace-nowrap">Date</th>
@@ -1363,7 +1540,7 @@ export default function SuperAdminBookingsPage() {
                           <UtmCampaignCell lead={lead} />
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <CouponBadge code={lead.coupon_display_code} discount={lead.coupon_display_discount} />
+                          <LeadDiscountBadge lead={lead} />
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           <LeadStatusSelect
@@ -1492,7 +1669,7 @@ export default function SuperAdminBookingsPage() {
                         <div className="mt-2 flex flex-wrap gap-2">
                           <SourceBadge lead={item} />
                           {item.has_coupon_applied ? (
-                            <CouponBadge code={item.coupon_display_code} discount={item.coupon_display_discount} />
+                            <LeadDiscountBadge lead={item} />
                           ) : null}
                         </div>
                       ) : null}

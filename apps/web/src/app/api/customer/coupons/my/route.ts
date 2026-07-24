@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { couponAppliesToChannel } from '@/lib/coupon-rules';
+import { parseReferralAssignmentNotes } from '@/lib/referral-reward-coupon';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,10 +56,23 @@ export async function GET() {
   );
 
   const assignedCoupons = [...(assignments || []), ...pendingAssignments]
-    .map((row: any) => row.coupon)
-    .filter(Boolean)
-    .filter((coupon: any) => coupon.is_active !== false)
-    .map((coupon: any) => ({ ...coupon, assigned: true }));
+    .filter((row: any) => {
+      if (row.redeemed_at) return false;
+      if (row.expires_at && String(row.expires_at) < nowIso) return false;
+      return Boolean(row.coupon);
+    })
+    .map((row: any) => {
+      const notes = parseReferralAssignmentNotes(row.notes);
+      return {
+        ...row.coupon,
+        assigned: true,
+        assignment_expires_at: row.expires_at || null,
+        is_referral_reward: Boolean(notes?.referral_claim_id),
+        referral_claim_id: notes?.referral_claim_id || null,
+        referral_reward_label: row.coupon?.description || null,
+      };
+    })
+    .filter((coupon: any) => coupon.is_active !== false);
 
   const openPublic = (publicCoupons || []).filter((coupon: any) => {
     if (coupon.is_public === false) return false;

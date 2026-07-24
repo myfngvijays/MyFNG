@@ -5,6 +5,10 @@ import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmo
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
 import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
+import {
+  applyReportDateRangeFilter,
+  shouldApplyDateRangeFilter,
+} from './report-date-range';
 
 async function fetchCustomerSessions(
   supabaseAdmin: any,
@@ -65,40 +69,106 @@ export function phoneChatbotFilter(phone: string | null | undefined) {
   return `phone_number.ilike.%${digits}`;
 }
 
-export async function fetchCustomerOverview(supabaseAdmin: any) {
+export async function fetchCustomerOverview(
+  supabaseAdmin: any,
+  options?: {
+    preset?: string | null;
+    start?: string | null;
+    end?: string | null;
+  },
+) {
   const nowIso = new Date().toISOString();
+  const preset = options?.preset || 'all_time';
+  const dateFiltered = shouldApplyDateRangeFilter(preset);
+
+  let customersQuery = supabaseAdmin.from('customers').select('id, phone, app_platform');
+  customersQuery = applyReportDateRangeFilter(
+    customersQuery,
+    'created_at',
+    preset,
+    options?.start,
+    options?.end,
+  );
+
+  const { data: customersData } = await customersQuery;
+  const customers = customersData || [];
+  const customerIds = customers.map((c: any) => String(c.id));
+  const digitsList = [
+    ...new Set(customers.map((c: any) => phoneDigits(c.phone)).filter(Boolean)),
+  ] as string[];
+
+  // Empty date cohort → zeroed overview (avoid falling back to all-time totals).
+  if (dateFiltered && customerIds.length === 0) {
+    return {
+      total_customers: 0,
+      android_users: 0,
+      ios_users: 0,
+      unknown_platform_users: 0,
+      customers_with_wallet_balance: 0,
+      total_wallet_balance: 0,
+      active_memberships: 0,
+      total_service_bookings: 0,
+      bookings_with_coupon: 0,
+      coupon_redemptions: 0,
+      open_coupon_assignments: 0,
+    };
+  }
+
+  const phoneOrFilter = digitsList.map((d) => `customer_phone.ilike.%${d}`).join(',');
+
+  let membershipQuery = supabaseAdmin
+    .from('customer_memberships')
+    .select('customer_id', { count: 'exact', head: true })
+    .eq('status', 'ACTIVE')
+    .gt('ends_at', nowIso);
+  if (dateFiltered) membershipQuery = membershipQuery.in('customer_id', customerIds);
 
   const [
-    customersRes,
     walletRes,
     membershipRes,
-    leadsCountRes,
-    leadsCouponCountRes,
+    leadsRes,
     redemptionRes,
     assignmentRes,
     sessions,
   ] = await Promise.all([
-    supabaseAdmin.from('customers').select('id, app_platform'),
-    supabaseAdmin.from('wallet_accounts').select('current_balance').gt('current_balance', 0),
-    supabaseAdmin
-      .from('customer_memberships')
-      .select('customer_id', { count: 'exact', head: true })
-      .eq('status', 'ACTIVE')
-      .gt('ends_at', nowIso),
-    supabaseAdmin.from('service_leads').select('id', { count: 'exact', head: true }),
-    supabaseAdmin
-      .from('service_leads')
-      .select('id', { count: 'exact', head: true })
-      .or('coupon_code.not.is.null,discount_amount.gt.0'),
-    supabaseAdmin.from('coupon_redemptions').select('id', { count: 'exact', head: true }),
-    supabaseAdmin
-      .from('customer_coupon_assignments')
-      .select('id', { count: 'exact', head: true })
-      .is('redeemed_at', null),
-    fetchCustomerSessions(supabaseAdmin),
+    dateFiltered
+      ? supabaseAdmin
+          .from('wallet_accounts')
+          .select('current_balance')
+          .in('customer_id', customerIds)
+          .gt('current_balance', 0)
+      : supabaseAdmin.from('wallet_accounts').select('current_balance').gt('current_balance', 0),
+    membershipQuery,
+    dateFiltered
+      ? phoneOrFilter
+        ? supabaseAdmin
+            .from('service_leads')
+            .select('id, coupon_code, discount_amount')
+            .or(phoneOrFilter)
+            .limit(5000)
+        : Promise.resolve({ data: [] })
+      : Promise.all([
+          supabaseAdmin.from('service_leads').select('id', { count: 'exact', head: true }),
+          supabaseAdmin
+            .from('service_leads')
+            .select('id', { count: 'exact', head: true })
+            .or('coupon_code.not.is.null,discount_amount.gt.0'),
+        ]),
+    dateFiltered
+      ? Promise.resolve({ count: 0 })
+      : supabaseAdmin.from('coupon_redemptions').select('id', { count: 'exact', head: true }),
+    dateFiltered
+      ? supabaseAdmin
+          .from('customer_coupon_assignments')
+          .select('id, redeemed_at')
+          .in('customer_id', customerIds)
+      : supabaseAdmin
+          .from('customer_coupon_assignments')
+          .select('id', { count: 'exact', head: true })
+          .is('redeemed_at', null),
+    fetchCustomerSessions(supabaseAdmin, dateFiltered ? customerIds : undefined),
   ]);
 
-  const customers = customersRes.data || [];
   const latestSessionByCustomer = indexLatestSessions(sessions);
 
   let androidUsers = 0;
@@ -116,6 +186,30 @@ export async function fetchCustomerOverview(supabaseAdmin: any) {
 
   const wallets = walletRes.data || [];
 
+  let totalServiceBookings = 0;
+  let bookingsWithCoupon = 0;
+  if (dateFiltered) {
+    const leads = (leadsRes as { data?: any[] }).data || [];
+    totalServiceBookings = leads.length;
+    bookingsWithCoupon = leads.filter(
+      (lead: any) => String(lead.coupon_code || '').trim() || Number(lead.discount_amount || 0) > 0,
+    ).length;
+  } else {
+    const [allLeads, couponLeads] = leadsRes as [{ count: number | null }, { count: number | null }];
+    totalServiceBookings = allLeads.count || 0;
+    bookingsWithCoupon = couponLeads.count || 0;
+  }
+
+  let couponRedemptions = redemptionRes.count || 0;
+  let openCouponAssignments = 0;
+  if (dateFiltered) {
+    const assignments = assignmentRes.data || [];
+    openCouponAssignments = assignments.filter((a: any) => !a.redeemed_at).length;
+    couponRedemptions = assignments.filter((a: any) => a.redeemed_at).length;
+  } else {
+    openCouponAssignments = assignmentRes.count || 0;
+  }
+
   return {
     total_customers: customers.length,
     android_users: androidUsers,
@@ -127,10 +221,10 @@ export async function fetchCustomerOverview(supabaseAdmin: any) {
       0,
     ),
     active_memberships: membershipRes.count || 0,
-    total_service_bookings: leadsCountRes.count || 0,
-    bookings_with_coupon: leadsCouponCountRes.count || 0,
-    coupon_redemptions: redemptionRes.count || 0,
-    open_coupon_assignments: assignmentRes.count || 0,
+    total_service_bookings: totalServiceBookings,
+    bookings_with_coupon: bookingsWithCoupon,
+    coupon_redemptions: couponRedemptions,
+    open_coupon_assignments: openCouponAssignments,
   };
 }
 

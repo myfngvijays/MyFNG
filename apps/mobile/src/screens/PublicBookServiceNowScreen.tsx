@@ -38,6 +38,7 @@ import {
   computeReferralVoucherDiscount,
   loadActiveReferralVouchers,
   PENDING_REFERRAL_VOUCHER_KEY,
+  formatRewardExpiryLabel,
 } from '../lib/referralVoucher';
 import {
   calculateWalletUsage,
@@ -196,6 +197,24 @@ function formatCar(m: CarModelRow) {
 
 function inr(n: number) {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
+}
+
+const UPSELL_PREVIEW_COUNT = 2;
+
+function dedupeAddressSegments(...sources: Array<string | null | undefined>): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const source of sources) {
+    const text = String(source || '').trim();
+    if (!text) continue;
+    for (const segment of text.split(',').map((s) => s.trim()).filter(Boolean)) {
+      const key = segment.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(segment);
+    }
+  }
+  return out.join(', ');
 }
 
 function getIndiaDate(): Date {
@@ -368,6 +387,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   const [workshops, setWorkshops] = useState<WorkshopRow[]>([]);
   const [workshopLoading, setWorkshopLoading] = useState(false);
   const [workshopModal, setWorkshopModal] = useState(false);
+  const [upsellModalVisible, setUpsellModalVisible] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentMembership, setCurrentMembership] = useState<any>(null);
@@ -503,13 +523,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       .filter(Boolean) as string[];
   }, [form.selectedServices, serviceTypes, selectedOilType]);
 
-  const summaryPickupAddress = useMemo(() => {
-    const parts: string[] = [];
-    if (form.flatNumber.trim()) parts.push(form.flatNumber.trim());
-    if (form.pickupAddress.trim()) parts.push(form.pickupAddress.trim());
-    if (form.landmark.trim()) parts.push(form.landmark.trim());
-    return parts.join(', ');
-  }, [form.flatNumber, form.pickupAddress, form.landmark]);
+  const summaryPickupAddress = useMemo(
+    () => dedupeAddressSegments(form.flatNumber, form.pickupAddress, form.landmark),
+    [form.flatNumber, form.pickupAddress, form.landmark],
+  );
 
   const isPeriodicCategory = useMemo(
     () => String(selectedCategory || '').toUpperCase().includes('PERIODIC'),
@@ -548,6 +565,57 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     () => getUpsellSuggestions(form.selectedServices, serviceTypes, pricing),
     [form.selectedServices, serviceTypes, pricing],
   );
+
+  const referralCoupons = useMemo(
+    () => availableCoupons.filter((c) => c.is_referral_reward),
+    [availableCoupons],
+  );
+  const promoCoupons = useMemo(
+    () => availableCoupons.filter((c) => !c.is_referral_reward),
+    [availableCoupons],
+  );
+
+  const renderCouponCard = (c: any) => {
+    const isApplied = couponMeta?.code && String(couponMeta.code).toUpperCase() === String(c.code).toUpperCase();
+    const isReferral = Boolean(c.is_referral_reward);
+    const expiryLabel = isReferral
+      ? formatRewardExpiryLabel({ expiresAt: c.assignment_expires_at || c.end_at, defaultDays: 365 })
+      : '';
+    return (
+      <TouchableOpacity
+        key={c.id}
+        style={{
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderRadius: 12,
+          borderWidth: 1.5,
+          borderColor: isApplied ? '#047857' : isReferral ? '#F59E0B' : '#E2E8F0',
+          backgroundColor: isApplied ? '#ECFDF5' : isReferral ? '#FFFBEB' : '#F8FAFC',
+          minWidth: 140,
+          maxWidth: 220,
+        }}
+        activeOpacity={0.85}
+        onPress={() => (isApplied ? clearCoupon() : applyCoupon(c.code))}
+        disabled={couponApplying}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name={isReferral ? 'gift' : 'pricetag'} size={14} color={isApplied ? '#047857' : isReferral ? '#D97706' : COLORS.primary} />
+          <Text style={{ fontSize: 13, fontWeight: '800', color: isApplied ? '#047857' : '#1E293B' }}>
+            {isReferral ? 'Refer & Rise' : c.code}
+          </Text>
+        </View>
+        <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }} numberOfLines={2}>
+          {describeCoupon(c)}
+        </Text>
+        {expiryLabel ? (
+          <Text style={{ fontSize: 10, color: '#D97706', fontWeight: '700', marginTop: 3 }}>{expiryLabel}</Text>
+        ) : null}
+        <Text style={{ fontSize: 10, fontWeight: '700', color: isApplied ? '#047857' : COLORS.primary, marginTop: 4 }}>
+          {isApplied ? '✓ APPLIED' : 'TAP TO APPLY'}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   const upsellHeading = useMemo(
     () => getUpsellHeading(selectedCategories),
@@ -635,14 +703,20 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     [referralVouchers, selectedReferralVoucherId],
   );
 
+  const effectiveReferralClaimId = useMemo(() => {
+    if (couponMeta?.referral_claim_id) return String(couponMeta.referral_claim_id);
+    return selectedReferralVoucherId;
+  }, [couponMeta, selectedReferralVoucherId]);
+
   const referralVoucherDiscount = useMemo(() => {
+    if (couponMeta?.referral_reward) return 0;
     if (!selectedReferralVoucher) return 0;
     return computeReferralVoucherDiscount(
       String(selectedReferralVoucher.reward_text || ''),
       selectedReferralVoucher.voucher_amount,
       couponAdjustedTotal,
     );
-  }, [selectedReferralVoucher, couponAdjustedTotal]);
+  }, [couponMeta, selectedReferralVoucher, couponAdjustedTotal]);
 
   const payableBeforeWallet = Math.max(0, couponAdjustedTotal - referralVoucherDiscount);
 
@@ -714,10 +788,15 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     return getEffectiveServiceWalletLimit(walletServiceLines[0]?.service_type_id, rules);
   }, [walletServiceLines]);
 
+  const referralBlocksWallet = Boolean(
+    couponMeta?.blocks_wallet || selectedReferralVoucher?.blocks_wallet,
+  );
+
   const walletUsed = useMemo(() => {
-    if (selectedReferralVoucherId || !useWalletForBooking || !isLoggedIn || walletVehicleBlocked) return 0;
+    if (referralBlocksWallet && effectiveReferralClaimId) return 0;
+    if (!useWalletForBooking || !isLoggedIn || walletVehicleBlocked) return 0;
     return walletMaxUsable;
-  }, [selectedReferralVoucherId, useWalletForBooking, isLoggedIn, walletVehicleBlocked, walletMaxUsable]);
+  }, [referralBlocksWallet, effectiveReferralClaimId, useWalletForBooking, isLoggedIn, walletVehicleBlocked, walletMaxUsable]);
 
   const finalPayableAmount = Math.max(0, payableBeforeWallet - walletUsed);
 
@@ -1337,12 +1416,26 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }
 
   async function fetchAvailableCoupons() {
-    // Public, unauthenticated fetch (booking flow works for logged-out users too).
-    // The coupons table has RLS so a direct anon Supabase query won't work — must go via the API.
     try {
-      const res = await fetch(`${ENV.API_URL}/api/coupons/active?channel=${Platform.OS === 'ios' ? 'IOS' : 'ANDROID'}`);
+      const channel = Platform.OS === 'ios' ? 'IOS' : 'ANDROID';
+      const res = await fetch(`${ENV.API_URL}/api/coupons/active?channel=${channel}`);
       const json = await res.json().catch(() => ({}));
-      const list = Array.isArray(json?.coupons) ? json.coupons : [];
+      let list = Array.isArray(json?.coupons) ? json.coupons : [];
+
+      if (isLoggedIn) {
+        try {
+          const myRes = await apiFetch<any>('/api/customer/coupons/my');
+          const mine = Array.isArray(myRes?.coupons) ? myRes.coupons : [];
+          const merged = new Map<string, any>();
+          for (const coupon of [...mine, ...list]) {
+            if (coupon?.id) merged.set(String(coupon.id), coupon);
+          }
+          list = Array.from(merged.values());
+        } catch {
+          // keep public list only
+        }
+      }
+
       setAvailableCoupons(list);
     } catch {
       setAvailableCoupons([]);
@@ -1350,6 +1443,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   }
 
   function describeCoupon(c: any): string {
+    if (c?.is_referral_reward) {
+      return String(c.referral_reward_label || c.description || 'Refer & Rise Reward');
+    }
     const mode = String(c?.discount_mode || '').toUpperCase();
     const val = Number(c?.discount_value || 0);
     if (c?.coupon_kind === 'FREE_SERVICE') return 'Free service';
@@ -1391,6 +1487,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       setCouponMeta(json.coupon_meta || null);
       setCouponDiscount(Number(json.discount_amount || 0));
       setCouponError(null);
+      if (json?.coupon_meta?.referral_claim_id) {
+        setSelectedReferralVoucherId(String(json.coupon_meta.referral_claim_id));
+      } else {
+        setSelectedReferralVoucherId(null);
+      }
       trackEvent('booking_coupon_applied');
       Alert.alert('Coupon applied', `Code: ${json?.coupon?.code || code}`);
     } catch (error: any) {
@@ -1408,6 +1509,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
     setCouponMeta(null);
     setCouponDiscount(0);
     setCouponError(null);
+    setSelectedReferralVoucherId(null);
   }
 
   async function fetchProfileIfLoggedIn() {
@@ -1620,13 +1722,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
       }
 
       const shouldUseWallet =
-        isLoggedIn && useWalletForBooking && !walletVehicleBlocked && !selectedReferralVoucherId && freshWalletBalance > 0;
+        isLoggedIn && useWalletForBooking && !walletVehicleBlocked && !effectiveReferralClaimId && !referralBlocksWallet && freshWalletBalance > 0;
 
       const leadNumber = `L-${Date.now().toString().slice(-8)}`;
-      const addressParts = [form.pickupAddress.trim()];
-      if (form.flatNumber.trim()) addressParts.unshift(form.flatNumber.trim());
-      if (form.landmark.trim()) addressParts.push(form.landmark.trim());
-      const completeAddress = addressParts.filter((p) => p.length > 0).join(', ');
+      const completeAddress = dedupeAddressSegments(form.flatNumber, form.pickupAddress, form.landmark);
 
       const leadPayload = {
         lead_number: leadNumber,
@@ -1682,8 +1781,8 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
           includeBookingMembership && !hasActiveMembership && Boolean(primeMembershipPlan),
         membership_line_price: membershipLinePrice,
         use_wallet: shouldUseWallet,
-        referral_voucher_applied: Boolean(selectedReferralVoucherId),
-        referral_reward_claim_id: selectedReferralVoucherId,
+        referral_voucher_applied: Boolean(effectiveReferralClaimId),
+        referral_reward_claim_id: effectiveReferralClaimId,
         referral_voucher_discount: referralVoucherDiscount,
         service_lines: walletServiceLines,
         service_items: serviceItemsForCoupon,
@@ -1701,11 +1800,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
       const createdLead = await submitServiceBooking(bookingPayload);
 
-      if (selectedReferralVoucherId && referralVoucherDiscount > 0) {
+      if (effectiveReferralClaimId) {
         setSelectedReferralVoucherId(null);
+        clearCoupon();
         try {
           const vouchers = await loadActiveReferralVouchers(apiFetch);
           setReferralVouchers(vouchers);
+          await fetchAvailableCoupons();
         } catch {
           setReferralVouchers([]);
         }
@@ -2018,9 +2119,9 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
   // ── Effects ─────────────────────────────────────────────────────
 
   useEffect(() => {
-    fetchAvailableCoupons();
+    void fetchAvailableCoupons();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isLoggedIn, referralVouchers.length]);
 
   useEffect(() => {
     if (!isLoggedIn || step !== 4) return;
@@ -2498,15 +2599,15 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
   const selectSavedAddress = (addr: SavedAddress) => {
     setSelectedSavedAddressId(addr.id);
-    const pickupAddress = [addr.address_line1, addr.address_line2, addr.city, addr.pincode]
-      .filter(Boolean)
-      .join(', ');
+    const line1 = String(addr.address_line1 || '').trim();
+    const line2 = String(addr.address_line2 || addr.landmark || '').trim();
+    const pickupAddress = dedupeAddressSegments(line1, line2, addr.city, addr.pincode);
 
     setForm((p) => ({
       ...p,
       pickupAddress,
-      flatNumber: String(addr.address_line1 || '').trim(),
-      landmark: String(addr.address_line2 || addr.landmark || '').trim(),
+      flatNumber: line1,
+      landmark: line2,
     }));
   };
 
@@ -3891,52 +3992,38 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </View>
                 </TouchableOpacity>
 
-                {/* Coupon */}
+                {/* Coupon + Referral Vouchers */}
                 <View style={styles.couponBox}>
-                  <Text style={styles.label}>Apply Coupon</Text>
+                  {referralCoupons.length > 0 ? (
+                    <>
+                      <Text style={styles.label}>Your Vouchers</Text>
+                      <View style={{ marginBottom: 10 }}>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                        >
+                          {referralCoupons.map((c) => renderCouponCard(c))}
+                        </ScrollView>
+                      </View>
+                    </>
+                  ) : null}
 
-                  {/* Available coupon cards - like saved addresses */}
-                  {availableCoupons.length > 0 ? (
+                  <Text style={styles.label}>{referralCoupons.length > 0 ? 'Promo Coupons' : 'Apply Coupon'}</Text>
+
+                  {promoCoupons.length > 0 ? (
                     <View style={{ marginBottom: 10 }}>
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
                       >
-                        {availableCoupons.map((c) => {
-                          const isApplied = couponMeta?.code && String(couponMeta.code).toUpperCase() === String(c.code).toUpperCase();
-                          return (
-                            <TouchableOpacity
-                              key={c.id}
-                              style={{
-                                paddingHorizontal: 14,
-                                paddingVertical: 10,
-                                borderRadius: 12,
-                                borderWidth: 1.5,
-                                borderColor: isApplied ? '#047857' : '#E2E8F0',
-                                backgroundColor: isApplied ? '#ECFDF5' : '#F8FAFC',
-                                minWidth: 120,
-                              }}
-                              activeOpacity={0.85}
-                              onPress={() => isApplied ? clearCoupon() : applyCoupon(c.code)}
-                              disabled={couponApplying}
-                            >
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Ionicons name="pricetag" size={14} color={isApplied ? '#047857' : COLORS.primary} />
-                                <Text style={{ fontSize: 13, fontWeight: '800', color: isApplied ? '#047857' : '#1E293B' }}>{c.code}</Text>
-                              </View>
-                              <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 3 }} numberOfLines={1}>
-                                {describeCoupon(c)}
-                              </Text>
-                              <Text style={{ fontSize: 10, fontWeight: '700', color: isApplied ? '#047857' : COLORS.primary, marginTop: 4 }}>
-                                {isApplied ? '✓ APPLIED' : 'TAP TO APPLY'}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
+                        {promoCoupons.map((c) => renderCouponCard(c))}
                       </ScrollView>
                     </View>
-                  ) : null}
+                  ) : referralCoupons.length === 0 ? null : (
+                    <Text style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 8 }}>No promo coupons available</Text>
+                  )}
 
                   <View style={styles.couponRow}>
                     <TextInput
@@ -4067,7 +4154,7 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <View style={styles.walletHeaderText}>
                         <Text style={styles.walletTitle}>Wallet Balance</Text>
                         <Text style={styles.walletHint}>
-                          {selectedReferralVoucherId
+                          {effectiveReferralClaimId && referralBlocksWallet
                             ? 'Turn off referral voucher to use wallet'
                             : `Up to ${walletHintLabel} on this order`}
                         </Text>
@@ -4075,13 +4162,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                       <View style={styles.walletToggleWrap}>
                         <Switch
                           style={Platform.OS === 'ios' ? styles.walletSwitch : undefined}
-                          value={useWalletForBooking && !walletVehicleBlocked && !selectedReferralVoucherId}
+                          value={useWalletForBooking && !walletVehicleBlocked && !effectiveReferralClaimId && !referralBlocksWallet}
                           onValueChange={(val) => {
                             setUseWalletForBooking(val);
                             if (val) setSelectedReferralVoucherId(null);
                             trackEvent('booking_wallet_toggle', { enabled: val });
                           }}
-                          disabled={walletVehicleBlocked || Boolean(selectedReferralVoucherId)}
+                          disabled={walletVehicleBlocked || Boolean(effectiveReferralClaimId && referralBlocksWallet)}
                           trackColor={{ false: '#CBD5E1', true: '#86EFAC' }}
                           thumbColor="#FFFFFF"
                           ios_backgroundColor="#CBD5E1"
@@ -4124,14 +4211,14 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                   </View>
                 ) : null}
 
-                {/* ── Upsell: Add before you pay ── */}
+                {/* ── Upsell: Add-On Services ── */}
                 {upsellSuggestions.length > 0 ? (
                   <View style={styles.upsellStep4Section}>
                     <View style={styles.upsellStep4Header}>
                       <Ionicons name="bulb" size={16} color="#F59E0B" />
-                      <Text style={styles.upsellStep4Title}>Add before you pay</Text>
+                      <Text style={styles.upsellStep4Title}>Add-On Services</Text>
                     </View>
-                    {upsellSuggestions.map((s) => {
+                    {upsellSuggestions.slice(0, UPSELL_PREVIEW_COUNT).map((s) => {
                       const price = pricing[s.id] || 0;
                       const catLabel = String(s.category || '')
                         .split(' ')
@@ -4157,8 +4244,72 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                         </View>
                       );
                     })}
+                    {upsellSuggestions.length > UPSELL_PREVIEW_COUNT ? (
+                      <TouchableOpacity
+                        style={styles.upsellStep4ViewMoreBtn}
+                        onPress={() => setUpsellModalVisible(true)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.upsellStep4ViewMoreText}>
+                          View More ({upsellSuggestions.length - UPSELL_PREVIEW_COUNT} more)
+                        </Text>
+                        <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : null}
+
+                <Modal
+                  visible={upsellModalVisible}
+                  transparent
+                  animationType="slide"
+                  onRequestClose={() => setUpsellModalVisible(false)}
+                >
+                  <Pressable style={styles.upsellModalOverlay} onPress={() => setUpsellModalVisible(false)}>
+                    <Pressable style={styles.upsellModalSheet} onPress={(e) => e.stopPropagation()}>
+                      <View style={styles.upsellModalHeader}>
+                        <Text style={styles.upsellModalTitle}>Add-On Services</Text>
+                        <TouchableOpacity
+                          onPress={() => setUpsellModalVisible(false)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="close" size={22} color="#64748B" />
+                        </TouchableOpacity>
+                      </View>
+                      <ScrollView style={styles.upsellModalList} showsVerticalScrollIndicator={false}>
+                        {upsellSuggestions.map((s) => {
+                          const price = pricing[s.id] || 0;
+                          const catLabel = String(s.category || '')
+                            .split(' ')
+                            .map((w: string) => w.charAt(0) + w.slice(1).toLowerCase())
+                            .join(' ');
+                          return (
+                            <View key={`modal-${s.id}`} style={styles.upsellStep4Row}>
+                              <View style={styles.upsellStep4Info}>
+                                <Text style={styles.upsellStep4Name} numberOfLines={2}>{s.name}</Text>
+                                <Text style={styles.upsellStep4Cat}>{catLabel}</Text>
+                              </View>
+                              {price > 0 ? (
+                                <Text style={styles.upsellStep4Price}>{inr(price)}</Text>
+                              ) : null}
+                              <TouchableOpacity
+                                style={styles.upsellStep4AddBtn}
+                                onPress={() => {
+                                  handleUpsellAdd(s.id, 'step4');
+                                  setUpsellModalVisible(false);
+                                }}
+                                activeOpacity={0.85}
+                              >
+                                <Ionicons name="add" size={14} color={COLORS.primary} />
+                                <Text style={styles.upsellStep4AddText}>Add</Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </ScrollView>
+                    </Pressable>
+                  </Pressable>
+                </Modal>
 
                 {/* Summary / My Cart */}
                 <View
@@ -4337,13 +4488,13 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
 
                   <Text style={styles.billSummaryTitle}>Bill Summary</Text>
 
-                  {isLoggedIn && referralVouchers.length > 0 ? (
+                  {isLoggedIn && referralVouchers.filter((v) => !v.coupon_code).length > 0 ? (
                     <View style={styles.referralVoucherBox}>
                       <Text style={styles.referralVoucherTitle}>Referral Reward</Text>
                       <Text style={styles.referralVoucherHint}>
-                        Apply your MYFNG Save voucher here. Cannot combine with wallet on same booking.
+                        Claimed rewards also appear under Apply Coupon above.
                       </Text>
-                      {referralVouchers.map((v) => {
+                      {referralVouchers.filter((v) => !v.coupon_code).map((v) => {
                         const selected = selectedReferralVoucherId === v.id;
                         const discount = computeReferralVoucherDiscount(
                           String(v.reward_text || ''),
@@ -7021,5 +7172,54 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.primary,
+  },
+  upsellStep4ViewMoreBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  upsellStep4ViewMoreText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  upsellModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  upsellModalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '72%',
+    paddingBottom: 24,
+  },
+  upsellModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  upsellModalTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  upsellModalList: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
 });

@@ -6,17 +6,22 @@ import { getMembershipTerms, loadMembershipTerms, type MembershipTermType } from
 
 type Props = {
   membershipType?: MembershipTermType;
+  terms?: string[];
   style?: object;
 };
 
-export default function MembershipTermsCard({ membershipType = 'RSA', style }: Props) {
+export default function MembershipTermsCard({ membershipType = 'RSA', terms: termsOverride, style }: Props) {
   const [termsExpanded, setTermsExpanded] = useState(false);
-  const [terms, setTerms] = useState<string[]>(() => getMembershipTerms(membershipType));
+  const [terms, setTerms] = useState<string[]>(() => termsOverride?.length ? termsOverride : getMembershipTerms(membershipType));
 
   useEffect(() => {
+    if (termsOverride?.length) {
+      setTerms(termsOverride);
+      return;
+    }
     setTerms(getMembershipTerms(membershipType));
     void loadMembershipTerms(membershipType).then(setTerms);
-  }, [membershipType]);
+  }, [membershipType, termsOverride]);
 
   if (!terms.length) return null;
 

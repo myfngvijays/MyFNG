@@ -131,7 +131,22 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    const unsubscribeHandlers = setupFcmNotificationHandlers();
+    const handlePushNotificationOpen = (remoteMessage: { data?: Record<string, string> }) => {
+      const data = remoteMessage?.data || {};
+      const type = String(data.type || '');
+      const nav = navigationRef.current;
+      if (!nav?.isReady?.()) return;
+
+      if (type === 'REFERRAL_MILESTONE' || type === 'REFERRAL_UPDATE') {
+        nav.navigate('Settings', { subPage: 'Refer & Rise' });
+        return;
+      }
+      if (type === 'WALLET_CREDIT' || type === 'WALLET_UPDATE') {
+        nav.navigate('Settings', { subPage: 'FNG Wallet' });
+      }
+    };
+
+    const unsubscribeHandlers = setupFcmNotificationHandlers(handlePushNotificationOpen);
     const unsubscribeTokenRefresh = subscribeToFcmTokenRefresh(() => {
       void syncCustomerPushToken();
     });

@@ -27,16 +27,7 @@ import {
   normalizeReferAndRiseConfig,
   type ReferAndRiseConfig,
 } from '@/lib/refer-and-rise';
-import { FAMILY_ORDER, type FamilyKey } from '@/shared/constants/referAndRise';
-
-type ContentConfig = {
-  heroTitle: string;
-  heroSubtitle: string;
-  shareMessage: string;
-  bannerTitle: string;
-  bannerSubtitle: string;
-  tnc: string[];
-};
+import { FAMILY_ORDER, type FamilyKey, type ReferPushNotificationTemplate, REFER_PUSH_TRIGGER_LABELS, previewReferPushBody } from '@/shared/constants/referAndRise';
 
 type ReferralStats = {
   total_referrals: number;
@@ -284,7 +275,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
     setDirty(true);
   };
 
-  const updateGlobalSetting = (key: 'friendBonus' | 'expiryDays', value: number) => {
+  const updateGlobalSetting = (key: 'friendBonus' | 'expiryDays' | 'rewardExpiryDays', value: number) => {
     if (!config) return;
     setConfig({ ...config, [key]: value });
     setDirty(true);
@@ -311,6 +302,42 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
   const removeTncItem = (idx: number) => {
     if (!config) return;
     updateContent('tnc', config.content.tnc.filter((_, i) => i !== idx));
+  };
+
+  const pushNotifications = config?.content.pushNotifications || DEFAULT_CONTENT.pushNotifications;
+
+  const updatePushNotifications = (next: ReferPushNotificationTemplate[]) => {
+    if (!config) return;
+    setConfig({ ...config, content: { ...config.content, pushNotifications: next } });
+    setDirty(true);
+  };
+
+  const addPushNotification = () => {
+    updatePushNotifications([
+      ...pushNotifications,
+      {
+        id: `push_${Date.now()}`,
+        label: 'New Push Notification',
+        trigger: 'milestone_unlocked',
+        title: 'MyFNG Referral Unlocked',
+        body: '{{WALLET_PART}}Milestone #{{MILESTONE}} unlocked — claim your Refer & Rise reward now.',
+        enabled: true,
+      },
+    ]);
+  };
+
+  const updatePushNotification = (
+    idx: number,
+    field: keyof ReferPushNotificationTemplate,
+    value: string | boolean,
+  ) => {
+    const next = pushNotifications.map((item, i) => (i === idx ? { ...item, [field]: value } : item));
+    updatePushNotifications(next);
+  };
+
+  const removePushNotification = (idx: number) => {
+    if (pushNotifications.length <= 1) return;
+    updatePushNotifications(pushNotifications.filter((_, i) => i !== idx));
   };
 
   if (loading) {
@@ -424,7 +451,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                 <Gift className="h-5 w-5 text-blue-600" />
                 Global Settings
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <label className="block">
                   <span className="text-sm font-semibold text-gray-800">Friend Bonus (on signup)</span>
                   <span className="mt-1 block text-xs text-gray-500">New user gets this instantly when they use a referral code</span>
@@ -439,8 +466,8 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                   </div>
                 </label>
                 <label className="block">
-                  <span className="text-sm font-semibold text-gray-800">Credit Expiry</span>
-                  <span className="mt-1 block text-xs text-gray-500">Wallet credits expire after this many days</span>
+                  <span className="text-sm font-semibold text-gray-800">Wallet Credit Expiry</span>
+                  <span className="mt-1 block text-xs text-gray-500">Referral wallet credits expire after this many days</span>
                   <div className="mt-2 flex items-center gap-2">
                     <Clock className="h-4 w-4 text-gray-400" />
                     <input
@@ -448,6 +475,21 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                       min={1}
                       value={config.expiryDays}
                       onChange={(e) => updateGlobalSetting('expiryDays', Number(e.target.value) || 90)}
+                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold"
+                    />
+                    <span className="text-xs font-bold text-gray-400">days</span>
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-gray-800">Claimed Reward Voucher Expiry</span>
+                  <span className="mt-1 block text-xs text-gray-500">Refer &amp; Rise claimed rewards become booking coupons for this long</span>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Gift className="h-4 w-4 text-gray-400" />
+                    <input
+                      type="number"
+                      min={1}
+                      value={config.rewardExpiryDays ?? 365}
+                      onChange={(e) => updateGlobalSetting('rewardExpiryDays', Number(e.target.value) || 365)}
                       className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold"
                     />
                     <span className="text-xs font-bold text-gray-400">days</span>
@@ -661,6 +703,113 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                   className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-mono resize-y"
                 />
               </label>
+            </div>
+
+            {/* Push Notifications */}
+            <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm space-y-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-violet-600" />
+                    Push Notifications
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Edit anytime — saved to Refer &amp; Rise config. Tap on notification opens Refer &amp; Rise in app.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addPushNotification}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-violet-700 hover:text-violet-800 transition shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Notification
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Placeholders:{' '}
+                <code className="bg-gray-100 px-1 rounded">{'{{WALLET_PART}}'}</code>,{' '}
+                <code className="bg-gray-100 px-1 rounded">{'{{WALLET_AMOUNT}}'}</code>,{' '}
+                <code className="bg-gray-100 px-1 rounded">{'{{MILESTONE}}'}</code>
+              </p>
+
+              <div className="space-y-4">
+                {pushNotifications.map((item, idx) => (
+                  <div key={item.id || idx} className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Label (admin only)</span>
+                          <input
+                            type="text"
+                            value={item.label}
+                            onChange={(e) => updatePushNotification(idx, 'label', e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-wide text-gray-500">When to send</span>
+                          <select
+                            value={item.trigger}
+                            onChange={(e) => updatePushNotification(idx, 'trigger', e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                          >
+                            {Object.entries(REFER_PUSH_TRIGGER_LABELS).map(([key, label]) => (
+                              <option key={key} value={key}>{label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 pt-6">
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={item.enabled}
+                            onChange={(e) => updatePushNotification(idx, 'enabled', e.target.checked)}
+                            className="rounded border-gray-300"
+                          />
+                          Enabled
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removePushNotification(idx)}
+                          disabled={pushNotifications.length <= 1}
+                          className="text-gray-400 hover:text-red-500 transition disabled:opacity-30"
+                          title={pushNotifications.length <= 1 ? 'At least one notification required' : 'Remove'}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <label className="block">
+                      <span className="text-sm font-semibold text-gray-800">Title</span>
+                      <input
+                        type="text"
+                        value={item.title}
+                        onChange={(e) => updatePushNotification(idx, 'title', e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-semibold text-gray-800">Body</span>
+                      <textarea
+                        value={item.body}
+                        onChange={(e) => updatePushNotification(idx, 'body', e.target.value)}
+                        rows={3}
+                        className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm resize-y"
+                      />
+                    </label>
+
+                    <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3 text-xs text-violet-900">
+                      <p className="font-bold mb-1">Preview (1st referral, ₹500 wallet credit)</p>
+                      <p className="font-semibold">{item.title || '—'}</p>
+                      <p className="mt-1 text-violet-800">{previewReferPushBody(item.body)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* T&C Editor */}

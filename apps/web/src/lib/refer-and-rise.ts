@@ -22,6 +22,13 @@ export {
   getCurrentMilestoneIndex,
   getNextMilestone,
   getMilestoneByCount,
+  type ReferPushNotificationTemplate,
+  type ReferPushTrigger,
+  DEFAULT_PUSH_NOTIFICATIONS,
+  REFER_PUSH_TRIGGER_LABELS,
+  migratePushNotifications,
+  getReferPushTemplate,
+  previewReferPushBody,
 } from '@/shared/constants/referAndRise';
 
 import {
@@ -31,6 +38,7 @@ import {
   migrateRemoteCategories,
   migrateRemoteMilestones,
   isLegacyReferAndRiseConfig,
+  migratePushNotifications,
   normalizeFamilyKey,
   inferRewardType,
   rewardBlocksWallet,
@@ -45,6 +53,7 @@ export type ReferAndRiseConfig = {
   categories: Record<FamilyKey, RewardFamily>;
   friendBonus?: number;
   expiryDays?: number;
+  rewardExpiryDays?: number;
   content: typeof DEFAULT_RISE_CONTENT;
 };
 
@@ -52,6 +61,7 @@ export const DEFAULT_REFER_AND_RISE_CONFIG: ReferAndRiseConfig = {
   milestones: MILESTONES,
   categories: FAMILIES,
   content: DEFAULT_RISE_CONTENT,
+  rewardExpiryDays: 365,
 };
 
 export function normalizeReferAndRiseConfig(raw: unknown): ReferAndRiseConfig {
@@ -70,10 +80,12 @@ export function normalizeReferAndRiseConfig(raw: unknown): ReferAndRiseConfig {
     categories: migrateRemoteCategories(obj.categories as any),
     friendBonus: Number(obj.friendBonus) || undefined,
     expiryDays: Number(obj.expiryDays) || undefined,
+    rewardExpiryDays: Number(obj.rewardExpiryDays) || 365,
     content: {
       ...DEFAULT_RISE_CONTENT,
       ...(obj.content as typeof DEFAULT_RISE_CONTENT),
       tnc: Array.isArray((obj.content as any)?.tnc) ? (obj.content as any).tnc : DEFAULT_RISE_CONTENT.tnc,
+      pushNotifications: migratePushNotifications(obj.content),
     },
   };
 }

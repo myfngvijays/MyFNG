@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PENDING_REFERRAL_VOUCHER_KEY } from '../lib/referralVoucher';
+import { PENDING_REFERRAL_VOUCHER_KEY, formatRewardExpiryLabel } from '../lib/referralVoucher';
 import {
   FAMILY_ORDER,
   type FamilyKey,
@@ -38,8 +38,17 @@ type ClaimedItem = {
   blocks_wallet: boolean;
   status: string;
   claimed_at: string;
+  expires_at?: string | null;
+  coupon_code?: string | null;
   redeemed_at: string | null;
   can_redeem: boolean;
+  expired?: boolean;
+};
+
+type LockedItem = {
+  milestone_count: number;
+  referrals_needed: number;
+  rewards?: Record<FamilyKey, string>;
 };
 
 function buildRewardsFromReferralApi(
@@ -75,11 +84,12 @@ function buildRewardsFromReferralApi(
     };
   });
 
-  const locked = milestones
+  const locked: LockedItem[] = milestones
     .filter((m) => rewardedCount < m.referralCount)
     .map((m) => ({
       milestone_count: m.referralCount,
       referrals_needed: m.referralCount - rewardedCount,
+      rewards: m.rewards,
     }));
 
   return { rewardedCount, claimable, claimed, locked };
@@ -98,10 +108,11 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
   const [totalRewarded, setTotalRewarded] = useState(0);
   const [claimable, setClaimable] = useState<ClaimableItem[]>([]);
   const [claimed, setClaimed] = useState<ClaimedItem[]>([]);
-  const [locked, setLocked] = useState<{ milestone_count: number; referrals_needed: number }[]>([]);
+  const [locked, setLocked] = useState<LockedItem[]>([]);
   const [pendingMilestone, setPendingMilestone] = useState<ClaimableItem | null>(null);
   const [selectedFamily, setSelectedFamily] = useState<FamilyKey | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [rewardExpiryDays, setRewardExpiryDays] = useState(365);
 
   const load = useCallback(async () => {
     if (!isLoggedIn) {
@@ -112,6 +123,7 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
     try {
       const res = await apiFetch<any>('/api/customer/referral/rewards');
       setTotalRewarded(Number(res?.stats?.total_rewarded || 0));
+      setRewardExpiryDays(Number(res?.reward_expiry_days) || 365);
       setClaimable(Array.isArray(res?.claimable) ? res.claimable : []);
       setClaimed(Array.isArray(res?.claimed) ? res.claimed : []);
       setLocked(Array.isArray(res?.locked) ? res.locked : []);
@@ -150,7 +162,7 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
       setPendingMilestone(null);
       setSelectedFamily(null);
       await load();
-      Alert.alert('Reward Claimed', 'Your referral reward has been saved to My Rewards.');
+      Alert.alert('Reward Claimed', 'Your reward is saved. Use it from My Rewards or at booking checkout.');
     } catch (e: any) {
       Alert.alert('Claim Failed', e?.message || 'Please try again.');
     } finally {
@@ -180,6 +192,63 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
   }
 
   const families = remote.families;
+  const nextLocked = locked[0] || null;
+  const activeVouchers = claimed.filter((item) => item.can_redeem && !item.redeemed_at && !item.expired);
+  const redeemedOrExpired = claimed.filter((item) => item.redeemed_at || item.expired || !item.can_redeem);
+
+  const renderClaimedCard = (item: ClaimedItem, showUseBtn: boolean) => {
+    const fam = families[item.chosen_family as FamilyKey];
+    const expiryLabel = formatRewardExpiryLabel({
+      expiresAt: item.expires_at,
+      claimedAt: item.claimed_at,
+      defaultDays: rewardExpiryDays,
+    });
+    return (
+      <View key={item.id} style={s.card}>
+        <View style={s.cardTop}>
+          <View style={[s.badge, { backgroundColor: (fam?.color || BRAND) + '18' }]}>
+            <Text style={[s.badgeText, { color: fam?.color || BRAND }]}>{item.category_name}</Text>
+          </View>
+          <Text style={s.milestoneTag}>Milestone #{item.milestone_count}</Text>
+        </View>
+        <Text style={s.rewardText}>{item.reward_text}</Text>
+        {item.coupon_code ? (
+          <Text style={s.couponCode}>Voucher: {item.coupon_code}</Text>
+        ) : null}
+        <View style={s.metaRow}>
+          <Text style={[s.meta, item.expired ? s.metaExpired : null]}>
+            {item.redeemed_at ? 'Used on booking' : item.expired ? 'Expired' : 'Ready to use'}
+          </Text>
+          {expiryLabel ? (
+            <Text style={[s.expiryText, item.expired ? s.metaExpired : null]}>{expiryLabel}</Text>
+          ) : null}
+        </View>
+        {item.blocks_wallet ? (
+          <Text style={s.walletNote}>Cannot combine with wallet on same booking</Text>
+        ) : null}
+        {showUseBtn && item.can_redeem && !item.redeemed_at && !item.expired ? (
+          <TouchableOpacity
+            style={s.useBtn}
+            onPress={async () => {
+              try {
+                await AsyncStorage.setItem(PENDING_REFERRAL_VOUCHER_KEY, item.id);
+              } catch {
+                // ignore
+              }
+              onUseVoucher?.(item.id);
+            }}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="cart-outline" size={16} color="#FFFFFF" />
+            <Text style={s.useBtnText}>Use on Booking</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
+  const nextLockedRewards =
+    nextLocked?.rewards ||
+    remote.milestones.find((m) => m.referralCount === nextLocked?.milestone_count)?.rewards;
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={s.content}>
@@ -194,7 +263,7 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
       <View style={s.noteBox}>
         <Ionicons name="information-circle-outline" size={18} color="#B45309" />
         <Text style={s.noteText}>
-          MYFNG Save service vouchers cannot be used with wallet balance on the same booking. Use either voucher or wallet — not both.
+          MYFNG Save service vouchers cannot be used with wallet balance on the same booking. Use either voucher or wallet - not both.
         </Text>
       </View>
 
@@ -216,70 +285,55 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
                 </View>
                 <Ionicons name="gift" size={20} color={BRAND} />
               </View>
-              <Text style={s.cardTitle}>Milestone unlocked — pick your reward</Text>
+              <Text style={s.cardTitle}>Milestone unlocked - pick your reward</Text>
               <Text style={s.cardHint}>Tap to choose MYFNG Save, Care, Elite or Express</Text>
             </TouchableOpacity>
           ))}
         </View>
       )}
 
-      {claimed.length > 0 && (
+      {activeVouchers.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Claimed Rewards</Text>
-          {claimed.map((item) => {
-            const fam = families[item.chosen_family as FamilyKey];
-            return (
-              <View key={item.id} style={s.card}>
-                <View style={s.cardTop}>
-                  <View style={[s.badge, { backgroundColor: (fam?.color || BRAND) + '18' }]}>
-                    <Text style={[s.badgeText, { color: fam?.color || BRAND }]}>{item.category_name}</Text>
-                  </View>
-                  <Text style={s.milestoneTag}>{item.milestone_count} refs</Text>
-                </View>
-                <Text style={s.rewardText}>{item.reward_text}</Text>
-                <View style={s.metaRow}>
-                  <Text style={s.meta}>
-                    {item.redeemed_at ? 'Redeemed' : item.can_redeem ? 'Available to use' : item.status}
-                  </Text>
-                  {item.blocks_wallet ? (
-                    <Text style={s.walletNote}>No wallet on same booking</Text>
-                  ) : null}
-                </View>
-                {item.can_redeem && !item.redeemed_at && (item.blocks_wallet || /voucher|discount/i.test(item.reward_text)) ? (
-                  <TouchableOpacity
-                    style={s.useBtn}
-                    onPress={async () => {
-                      try {
-                        await AsyncStorage.setItem(PENDING_REFERRAL_VOUCHER_KEY, item.id);
-                      } catch {
-                        // ignore
-                      }
-                      onUseVoucher?.(item.id);
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons name="cart-outline" size={16} color="#FFFFFF" />
-                    <Text style={s.useBtnText}>Use on Booking</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            );
-          })}
+          <Text style={s.sectionTitle}>Your Vouchers ({activeVouchers.length})</Text>
+          <Text style={s.sectionHint}>Use these at booking checkout · Valid for {rewardExpiryDays} days from claim</Text>
+          {activeVouchers.map((item) => renderClaimedCard(item, true))}
         </View>
       )}
 
-      {locked.length > 0 && (
+      {redeemedOrExpired.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Upcoming Milestones</Text>
-          {locked.slice(0, 4).map((item) => (
-            <View key={item.milestone_count} style={[s.card, s.cardLocked]}>
-              <View style={s.cardTop}>
-                <Text style={s.lockedTitle}>{item.milestone_count} Referrals</Text>
-                <Ionicons name="lock-closed" size={16} color="#9CA3AF" />
-              </View>
-              <Text style={s.cardHint}>{item.referrals_needed} more referral{item.referrals_needed === 1 ? '' : 's'} needed</Text>
+          <Text style={s.sectionTitle}>Past Rewards</Text>
+          {redeemedOrExpired.map((item) => renderClaimedCard(item, false))}
+        </View>
+      )}
+
+      {nextLocked && (
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Next Milestone</Text>
+          <View style={[s.card, s.cardLocked]}>
+            <View style={s.cardTop}>
+              <Text style={s.lockedTitle}>{nextLocked.milestone_count} Referrals</Text>
+              <Ionicons name="lock-closed" size={16} color="#9CA3AF" />
             </View>
-          ))}
+            <Text style={s.cardHint}>
+              {nextLocked.referrals_needed} more referral{nextLocked.referrals_needed === 1 ? '' : 's'} needed · pick one of 4 tracks
+            </Text>
+            {nextLockedRewards ? (
+              <View style={s.upcomingRewardsList}>
+                {FAMILY_ORDER.map((key) => (
+                  <View key={key} style={s.upcomingRewardLine}>
+                    <View style={[s.upcomingRewardIcon, { backgroundColor: families[key].color + '18' }]}>
+                      <Ionicons name={families[key].icon} size={11} color={families[key].color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.upcomingRewardTrack, { color: families[key].color }]}>{families[key].name}</Text>
+                      <Text style={s.upcomingRewardText}>{nextLockedRewards[key]}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
         </View>
       )}
 
@@ -293,7 +347,7 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
         <View style={s.modalOverlay}>
           <View style={s.modalSheet}>
             <Text style={s.modalTitle}>
-              Milestone {pendingMilestone?.milestone_count} — Pick One Reward
+              Milestone {pendingMilestone?.milestone_count} - Pick One Reward
             </Text>
             {pendingMilestone &&
               FAMILY_ORDER.map((key) => {
@@ -356,6 +410,7 @@ const s = StyleSheet.create({
   noteText: { flex: 1, fontSize: 12, color: '#92400E', lineHeight: 18 },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: '#111827', marginBottom: 10 },
+  sectionHint: { fontSize: 12, color: '#6B7280', marginTop: -6, marginBottom: 10, lineHeight: 18 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
@@ -372,8 +427,11 @@ const s = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
   cardHint: { fontSize: 12, color: '#6B7280', marginTop: 4 },
   rewardText: { fontSize: 14, fontWeight: '600', color: '#374151', marginTop: 4 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  couponCode: { fontSize: 11, fontWeight: '700', color: BRAND, marginTop: 6 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', gap: 4 },
   meta: { fontSize: 11, color: '#10B981', fontWeight: '600' },
+  metaExpired: { color: '#9CA3AF' },
+  expiryText: { fontSize: 11, color: '#D97706', fontWeight: '700' },
   walletNote: { fontSize: 10, color: '#B45309', fontWeight: '600' },
   useBtn: {
     marginTop: 12,
@@ -388,6 +446,11 @@ const s = StyleSheet.create({
   useBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
   milestoneTag: { fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
   lockedTitle: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
+  upcomingRewardsList: { marginTop: 12, gap: 8 },
+  upcomingRewardLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  upcomingRewardIcon: { width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  upcomingRewardTrack: { fontSize: 11, fontWeight: '800' },
+  upcomingRewardText: { fontSize: 11, color: '#6B7280', marginTop: 2, lineHeight: 16 },
   primaryBtn: {
     backgroundColor: BRAND,
     borderRadius: 12,

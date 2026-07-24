@@ -261,6 +261,15 @@ export async function PATCH(request: NextRequest) {
   });
   await logCustomerEvent(supabaseAdmin, customer.id, 'referral_reward_credited', 'referral', { rewardAmount, isFirst });
 
+  try {
+    const { notifyReferralMilestoneUnlocked } = await import('@/lib/referral-push-notify');
+    await notifyReferralMilestoneUnlocked(supabaseAdmin, customer.id, {
+      walletCreditAmount: rewardAmount,
+    });
+  } catch (pushErr) {
+    console.warn('[referral PATCH] milestone push failed:', pushErr);
+  }
+
   return NextResponse.json({ success: true, balance: nextBalance, reward_amount: rewardAmount });
 }
 

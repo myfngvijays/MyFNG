@@ -6,6 +6,8 @@ import {
   validateCouponScope,
   type CouponScopeContext,
 } from './coupon-rules';
+import { computeReferralVoucherDiscount } from '@/lib/referral-voucher-apply';
+import { parseReferralAssignmentNotes } from '@/lib/referral-reward-coupon';
 
 export type CouponLeadContext = CouponScopeContext & {
   subtotal?: number;
@@ -116,6 +118,7 @@ async function customerHasAssignment(
   if (!anyAssignment || anyAssignment === 0) return true;
 
   const phone = normalizePhone(customerPhone || null);
+  const nowIso = new Date().toISOString();
 
   let resolvedId = customerId || null;
   if (!resolvedId && phone) {
@@ -127,29 +130,84 @@ async function customerHasAssignment(
     resolvedId = customer?.id ? String(customer.id) : null;
   }
 
+  const isOpenAssignment = (row: { redeemed_at?: string | null; expires_at?: string | null }) => {
+    if (row.redeemed_at) return false;
+    if (row.expires_at && String(row.expires_at) < nowIso) return false;
+    return true;
+  };
+
   if (resolvedId) {
-    const { count } = await supabaseAdmin
+    const { data: rows } = await supabaseAdmin
       .from('customer_coupon_assignments')
-      .select('id', { count: 'exact', head: true })
+      .select('id, redeemed_at, expires_at')
       .eq('coupon_id', couponId)
       .eq('customer_id', resolvedId)
       .is('redeemed_at', null);
-    if ((count || 0) > 0) return true;
+    if ((rows || []).some(isOpenAssignment)) return true;
   }
 
   // Also check pending (pre-registration) phone-based assignments
   if (phone) {
-    const { count: pendingCount } = await supabaseAdmin
+    const { data: pendingRows } = await supabaseAdmin
       .from('customer_coupon_assignments')
-      .select('id', { count: 'exact', head: true })
+      .select('id, redeemed_at, expires_at')
       .eq('coupon_id', couponId)
       .eq('pending_phone', phone)
       .is('customer_id', null)
       .is('redeemed_at', null);
-    if ((pendingCount || 0) > 0) return true;
+    if ((pendingRows || []).some(isOpenAssignment)) return true;
   }
 
   return false;
+}
+
+async function resolveReferralCouponAssignment(
+  supabaseAdmin: SupabaseClient,
+  couponId: string,
+  customerId?: string | null,
+  customerPhone?: string | null,
+) {
+  const phone = normalizePhone(customerPhone || null);
+  let resolvedId = customerId || null;
+  if (!resolvedId && phone) {
+    const { data: customer } = await supabaseAdmin
+      .from('customers')
+      .select('id')
+      .ilike('phone', `%${phone}`)
+      .maybeSingle();
+    resolvedId = customer?.id ? String(customer.id) : null;
+  }
+  if (!resolvedId) return null;
+
+  const nowIso = new Date().toISOString();
+  const { data: rows } = await supabaseAdmin
+    .from('customer_coupon_assignments')
+    .select('id, notes, expires_at, redeemed_at')
+    .eq('coupon_id', couponId)
+    .eq('customer_id', resolvedId)
+    .is('redeemed_at', null)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const assignment = (rows || []).find((row: any) => {
+    if (row.redeemed_at) return false;
+    if (row.expires_at && String(row.expires_at) < nowIso) return false;
+    const notes = parseReferralAssignmentNotes(row.notes);
+    return Boolean(notes?.referral_claim_id);
+  });
+  if (!assignment) return null;
+
+  const notes = parseReferralAssignmentNotes(assignment.notes);
+  if (!notes?.referral_claim_id) return null;
+
+  const { data: claim } = await supabaseAdmin
+    .from('referral_milestone_claims')
+    .select('*')
+    .eq('id', notes.referral_claim_id)
+    .eq('customer_id', resolvedId)
+    .maybeSingle();
+
+  return { assignment, claim, notes };
 }
 
 export async function validateCouponForCheckout(
@@ -183,17 +241,71 @@ export async function validateCouponForCheckout(
     return { valid: false, error: 'Coupon is not valid on this platform.' };
   }
 
+  const assignedOk = await customerHasAssignment(
+    supabaseAdmin,
+    coupon.id,
+    leadContext.customer_id,
+    leadContext.customer_phone,
+  );
+  if (!assignedOk) {
+    return { valid: false, error: 'This coupon is not assigned to your account.' };
+  }
+
+  if (String(coupon.coupon_type_slug || '') === 'referral') {
+    const referral = await resolveReferralCouponAssignment(
+      supabaseAdmin,
+      coupon.id,
+      leadContext.customer_id,
+      leadContext.customer_phone,
+    );
+    if (!referral?.claim) {
+      return { valid: false, error: 'Referral reward not found or expired.' };
+    }
+    const claim = referral.claim as Record<string, any>;
+    if (claim.redeemed_at || claim.status === 'DELIVERED') {
+      return { valid: false, error: 'This referral reward was already used.' };
+    }
+    if (claim.expires_at && String(claim.expires_at) < nowIso) {
+      return { valid: false, error: 'This referral reward has expired.' };
+    }
+
+    const subtotal = Number(leadContext?.subtotal || 0);
+    const discountAmount = computeReferralVoucherDiscount(
+      String(claim.reward_text || coupon.description || ''),
+      claim.voucher_amount != null ? Number(claim.voucher_amount) : null,
+      subtotal,
+    );
+
+    return {
+      valid: true,
+      discountAmount,
+      coupon,
+      couponMeta: {
+        coupon_id: coupon.id,
+        code: coupon.code,
+        campaign_name: coupon.campaign_name || null,
+        coupon_kind: coupon.coupon_kind,
+        coupon_type_slug: 'referral',
+        discount_mode: coupon.discount_mode ?? null,
+        discount_value: coupon.discount_value ?? null,
+        discount_amount: discountAmount,
+        computed_on_subtotal: subtotal,
+        referral_reward: true,
+        referral_claim_id: String(claim.id),
+        referral_reward_text: claim.reward_text || coupon.description || null,
+        blocks_wallet: Boolean(claim.blocks_wallet),
+        channel,
+        validated_at: nowIso,
+      },
+    };
+  }
+
   const scope = await validateCouponScope(supabaseAdmin, coupon, {
     ...leadContext,
     channel,
     service_type_ids: leadContext.service_type_ids || [],
   });
   if (!scope.ok) return { valid: false, error: scope.error };
-
-  const assignedOk = await customerHasAssignment(supabaseAdmin, coupon.id, leadContext.customer_id, leadContext.customer_phone);
-  if (!assignedOk) {
-    return { valid: false, error: 'This coupon is not assigned to your account.' };
-  }
 
   const subtotal = Number(leadContext?.subtotal || 0);
   const reserveOnly = Boolean(options?.reserveOnly);

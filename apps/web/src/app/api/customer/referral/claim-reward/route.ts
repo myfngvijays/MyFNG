@@ -4,10 +4,11 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   DEFAULT_REFER_AND_RISE_CONFIG,
   normalizeReferAndRiseConfig,
-  normalizeFamilyKey,
   buildRewardMeta,
   resolveCareRewardText,
+  normalizeFamilyKey,
 } from '@/lib/refer-and-rise';
+import { createReferralRewardCoupon, computeReferralRewardExpiresAt } from '@/lib/referral-reward-coupon';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,8 @@ export async function POST(request: NextRequest) {
   }
 
   const meta = buildRewardMeta(family, rewardText);
+  const rewardExpiryDays = Math.max(1, Number(config.rewardExpiryDays) || 365);
+  const expiresAt = computeReferralRewardExpiresAt(rewardExpiryDays);
 
   const { data: claim, error: claimError } = await supabaseAdmin
     .from('referral_milestone_claims')
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
       blocks_wallet: meta.blocks_wallet,
       status: 'CLAIMED',
       claimed_at: new Date().toISOString(),
+      expires_at: expiresAt,
     })
     .select('*')
     .single();
@@ -99,6 +103,17 @@ export async function POST(request: NextRequest) {
   if (claimError) {
     return NextResponse.json({ error: 'Failed to record claim' }, { status: 500 });
   }
+
+  const couponResult = await createReferralRewardCoupon(supabaseAdmin, {
+    customerId: customer.id,
+    claimId: String(claim.id),
+    milestoneCount: referralCount,
+    rewardText,
+    rewardType: meta.reward_type,
+    voucherAmount: meta.voucher_amount,
+    blocksWallet: meta.blocks_wallet,
+    expiryDays: rewardExpiryDays,
+  });
 
   await logCustomerEvent(supabaseAdmin, customer.id, 'milestone_reward_claimed', 'referral', {
     milestone_count: referralCount,
@@ -114,6 +129,8 @@ export async function POST(request: NextRequest) {
     blocks_wallet: meta.blocks_wallet,
     voucher_amount: meta.voucher_amount,
     reward_text: rewardText,
+    expires_at: expiresAt,
+    coupon_code: couponResult?.code || null,
     claim,
   });
 }
