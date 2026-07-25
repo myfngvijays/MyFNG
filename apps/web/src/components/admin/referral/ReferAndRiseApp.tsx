@@ -118,6 +118,9 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
   const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity'>(analyticsOnly ? 'users' : 'milestones');
   const [backfilling, setBackfilling] = useState(false);
   const [rewardingId, setRewardingId] = useState<string | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+
+  const editable = !analyticsOnly && canEdit;
 
   const runBackfill = async () => {
     setBackfilling(true);
@@ -176,8 +179,11 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
               friendBonus: json.config?.referral_friend_bonus || 500,
               expiryDays: json.config?.referral_expiry_days || 90,
             };
+        riseConfig.friendBonus = json.config?.referral_friend_bonus ?? riseConfig.friendBonus ?? 500;
+        riseConfig.expiryDays = json.config?.referral_expiry_days ?? riseConfig.expiryDays ?? 90;
         if (!riseConfig.content) riseConfig.content = DEFAULT_CONTENT;
         setConfig(riseConfig);
+        setCanEdit(json.can_edit === true);
         setStats(json.stats);
         setEvents(json.recent_events || []);
         setLeaderboard(json.leaderboard || []);
@@ -201,7 +207,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
   }, [message, error]);
 
   const handleSave = async () => {
-    if (!config) return;
+    if (!config || !editable) return;
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -209,12 +215,19 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
       const res = await fetch('/api/super_admin/referral', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refer_and_rise_config: config }),
+        body: JSON.stringify({
+          refer_and_rise_config: config,
+          referral_friend_bonus: config.friendBonus,
+          referral_expiry_days: config.expiryDays,
+        }),
       });
       const json = await res.json();
       if (json.success) {
         setMessage('Refer & Rise config saved!');
         setDirty(false);
+        if (json.refer_and_rise_config) {
+          setConfig(normalizeReferAndRiseConfig(json.refer_and_rise_config));
+        }
       } else {
         setError(json.error || 'Save failed');
       }
@@ -371,11 +384,13 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
               <p className="text-sm sm:text-base text-blue-100 mt-2 max-w-2xl">
                 {analyticsOnly
                   ? 'View referral performance, leaderboard, and user analytics.'
-                  : 'Manage milestones, rewards categories, and track referral activity. Changes reflect instantly in the app.'}
+                  : editable
+                    ? 'Manage milestones, rewards categories, and track referral activity. Changes reflect instantly in the app.'
+                    : 'View referral configuration and analytics. Only Super Admin can edit settings.'}
               </p>
             </div>
             <div className="flex gap-2 shrink-0 flex-wrap">
-              {!analyticsOnly && (
+              {editable && (
                 <button
                   type="button"
                   onClick={() => {
@@ -400,7 +415,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
               <button onClick={fetchData} className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur px-4 py-2.5 text-sm font-bold transition">
                 <RefreshCw className="h-4 w-4" /> Refresh
               </button>
-              {!analyticsOnly && dirty && (
+              {editable && dirty && (
                 <button onClick={handleSave} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-white text-blue-700 px-5 py-2.5 text-sm font-black shadow-lg hover:shadow-xl transition disabled:opacity-50">
                   <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -443,7 +458,14 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
         </div>
         )}
 
+        {!analyticsOnly && !canEdit && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 font-semibold">
+            View-only mode — configuration changes require Super Admin access.
+          </div>
+        )}
+
         {!analyticsOnly && activeTab === 'milestones' && config && (
+          <div className={editable ? undefined : 'pointer-events-none opacity-80'}>
           <>
             {/* Global Settings */}
             <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
@@ -550,7 +572,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                   <Trophy className="h-5 w-5 text-blue-600" />
                   Milestones ({config.milestones.length})
                 </h2>
-                <button onClick={addMilestone} className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition">
+                <button onClick={addMilestone} disabled={!editable} className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> Add Milestone
                 </button>
               </div>
@@ -638,10 +660,12 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
               </div>
             </div>
           </>
+          </div>
         )}
 
         {/* Content Tab */}
         {!analyticsOnly && activeTab === 'content' && config && (
+          <div className={editable ? undefined : 'pointer-events-none opacity-80'}>
           <>
             {/* UI Text */}
             <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm space-y-5">
@@ -840,6 +864,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
               </div>
             </div>
           </>
+          </div>
         )}
 
         {/* Users & Analytics Tab */}

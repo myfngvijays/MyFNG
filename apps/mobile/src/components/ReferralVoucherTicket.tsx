@@ -157,53 +157,143 @@ const styles = StyleSheet.create({
 
 type VoucherListProps = {
   children: React.ReactNode[];
+  title?: string;
+  subtitle?: string;
   viewAllLabel?: string;
+  notchColor?: string;
 };
 
-/** Shows the first voucher; tap View All to expand the rest vertically. */
-export function ReferralVoucherList({ children, viewAllLabel = 'View All' }: VoucherListProps) {
+function cloneWithOnPress(
+  node: React.ReactNode,
+  onPress: () => void,
+  intercept: boolean,
+): React.ReactNode {
+  if (!intercept || !React.isValidElement(node)) return node;
+  return React.cloneElement(node as React.ReactElement<any>, { onPress });
+}
+
+/** Stacked ticket list — one card visible, peeks below, VIEW ALL top-right, tap card to expand. */
+export function ReferralVoucherList({
+  children,
+  title,
+  subtitle,
+  viewAllLabel = 'VIEW ALL',
+  notchColor = '#F8FAFC',
+}: VoucherListProps) {
   const [expanded, setExpanded] = useState(false);
   const items = React.Children.toArray(children).filter(Boolean);
   if (items.length === 0) return null;
 
-  const visible = expanded ? items : items.slice(0, 1);
+  const peekCount = Math.min(Math.max(items.length - 1, 0), 2);
+  const stackInset = peekCount * 5;
+  const toggle = () => setExpanded((v) => !v);
 
   return (
     <View style={listStyles.wrap}>
-      {visible.map((child, index) => (
-        <View key={index} style={listStyles.item}>
-          {child}
+      {(title || items.length > 1) ? (
+        <View style={listStyles.headerRow}>
+          {title ? (
+            <View style={listStyles.headerLeft}>
+              <View style={listStyles.headerAccent} />
+              <View style={listStyles.headerTextCol}>
+                <Text style={listStyles.headerTitle}>{title}</Text>
+                {subtitle ? <Text style={listStyles.headerSub}>{subtitle}</Text> : null}
+              </View>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+          {items.length > 1 ? (
+            <TouchableOpacity style={listStyles.viewAllChip} onPress={toggle} activeOpacity={0.85}>
+              <Text style={listStyles.viewAllChipText}>{expanded ? 'LESS' : viewAllLabel}</Text>
+              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={11} color="#2563EB" />
+            </TouchableOpacity>
+          ) : null}
         </View>
-      ))}
-      {items.length > 1 ? (
-        <TouchableOpacity
-          style={listStyles.viewAllBtn}
-          onPress={() => setExpanded((v) => !v)}
-          activeOpacity={0.85}
-        >
-          <Text style={listStyles.viewAllText}>
-            {expanded ? 'Show Less' : `${viewAllLabel} (${items.length})`}
-          </Text>
-          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#2563EB" />
-        </TouchableOpacity>
       ) : null}
+
+      {expanded ? (
+        <View style={listStyles.expandedList}>
+          {items.map((child, index) => (
+            <View key={index} style={listStyles.item}>
+              {child}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={[listStyles.stackWrap, { paddingBottom: stackInset }]}>
+          {peekCount >= 2 ? (
+            <View
+              style={[
+                listStyles.stackPeek,
+                { bottom: 0, marginHorizontal: 14, backgroundColor: notchColor, opacity: 0.45 },
+              ]}
+            />
+          ) : null}
+          {peekCount >= 1 ? (
+            <View
+              style={[
+                listStyles.stackPeek,
+                { bottom: 5, marginHorizontal: 7, backgroundColor: notchColor, opacity: 0.7 },
+              ]}
+            />
+          ) : null}
+          <View style={listStyles.stackFront}>
+            {items.length > 1
+              ? cloneWithOnPress(items[0], () => setExpanded(true), true)
+              : items[0]}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const listStyles = StyleSheet.create({
   wrap: { width: '100%' },
-  item: { width: '100%', marginBottom: 10 },
-  viewAllBtn: {
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  headerLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  headerAccent: {
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: '#2563EB',
+    marginTop: 2,
+  },
+  headerTextCol: { flex: 1, minWidth: 0 },
+  headerTitle: { fontSize: 14, fontWeight: '900', color: '#0F172A', letterSpacing: 0.4 },
+  headerSub: { fontSize: 11, color: '#64748B', marginTop: 3, lineHeight: 16 },
+  viewAllChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#93C5FD',
-    backgroundColor: '#F8FAFC',
+    borderColor: '#2563EB',
+    backgroundColor: '#FFFFFF',
+    marginTop: 1,
   },
-  viewAllText: { fontSize: 12, fontWeight: '800', color: '#2563EB', letterSpacing: 0.3 },
+  viewAllChipText: { fontSize: 9, fontWeight: '800', color: '#2563EB', letterSpacing: 0.6 },
+  stackWrap: { position: 'relative', width: '100%' },
+  stackPeek: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#93C5FD',
+  },
+  stackFront: { position: 'relative', zIndex: 3, width: '100%' },
+  expandedList: { width: '100%', gap: 10 },
+  item: { width: '100%' },
 });

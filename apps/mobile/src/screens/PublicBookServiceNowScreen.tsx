@@ -4016,8 +4016,11 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
                 <View style={styles.couponBox}>
                   {referralCoupons.length > 0 ? (
                     <>
-                      <Text style={styles.label}>Your Vouchers</Text>
-                      <ReferralVoucherList viewAllLabel="View All">
+                      <ReferralVoucherList
+                        title="YOUR VOUCHERS"
+                        viewAllLabel="VIEW ALL"
+                        notchColor="#FFFFFF"
+                      >
                         {referralCoupons.map((c) => renderCouponCard(c))}
                       </ReferralVoucherList>
                       <View style={{ height: 10 }} />

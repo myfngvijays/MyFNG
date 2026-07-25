@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getWalletLogicSettings, saveWalletLogicSettings } from '@/lib/wallet-config';
-import { DEFAULT_REFER_AND_RISE_CONFIG, normalizeReferAndRiseConfig, isLegacyReferAndRiseConfig } from '@/lib/refer-and-rise';
+import { DEFAULT_REFER_AND_RISE_CONFIG, normalizeReferAndRiseConfig, isLegacyReferAndRiseConfig, configHasStaleRewardText } from '@/lib/refer-and-rise';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -112,13 +112,19 @@ export async function GET() {
     }
 
     const legacyRise = isLegacyReferAndRiseConfig(rawRiseConfig);
+    const staleRewardText = configHasStaleRewardText(rawRiseConfig);
     const referAndRiseConfig = normalizeReferAndRiseConfig(rawRiseConfig);
+    const referAndRiseConfigForAdmin = {
+      ...referAndRiseConfig,
+      friendBonus: settings.referral_friend_bonus,
+      expiryDays: settings.referral_expiry_days,
+    };
 
-    if (legacyRise) {
+    if (legacyRise || staleRewardText) {
       await supabaseAdmin.from('system_settings').upsert(
         {
           setting_key: 'refer_and_rise_config',
-          setting_value: JSON.stringify(referAndRiseConfig),
+          setting_value: JSON.stringify(referAndRiseConfigForAdmin),
           setting_type: 'JSON',
           category: 'REFERRAL',
           is_editable: true,
@@ -202,6 +208,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      can_edit: auth.roleCode === 'SUPER_ADMIN',
       config: {
         referral_first_reward: settings.referral_first_reward,
         referral_repeat_reward: settings.referral_repeat_reward,
@@ -209,7 +216,7 @@ export async function GET() {
         referral_expiry_days: settings.referral_expiry_days,
         referral_tnc: referralTnc,
       },
-      refer_and_rise_config: referAndRiseConfig,
+      refer_and_rise_config: referAndRiseConfigForAdmin,
       leaderboard,
       recent_claims: [] as any[],
       stats: {
@@ -271,7 +278,28 @@ export async function PATCH(request: NextRequest) {
     // Save Refer & Rise config
     if (body.refer_and_rise_config) {
       const normalized = normalizeReferAndRiseConfig(body.refer_and_rise_config);
-      const riseJson = JSON.stringify(normalized);
+
+      if (normalized.friendBonus !== undefined) {
+        settings.referral_friend_bonus = Number(normalized.friendBonus);
+      }
+      if (normalized.expiryDays !== undefined) {
+        settings.referral_expiry_days = Number(normalized.expiryDays);
+      }
+      if (body.referral_friend_bonus !== undefined) {
+        settings.referral_friend_bonus = Number(body.referral_friend_bonus);
+      }
+      if (body.referral_expiry_days !== undefined) {
+        settings.referral_expiry_days = Number(body.referral_expiry_days);
+      }
+
+      await saveWalletLogicSettings(supabaseAdmin, settings, auth.user?.id || null);
+
+      const configToSave = {
+        ...normalized,
+        friendBonus: settings.referral_friend_bonus,
+        expiryDays: settings.referral_expiry_days,
+      };
+      const riseJson = JSON.stringify(configToSave);
       await supabaseAdmin.from('system_settings').upsert(
         {
           setting_key: 'refer_and_rise_config',
@@ -285,7 +313,36 @@ export async function PATCH(request: NextRequest) {
         { onConflict: 'setting_key' },
       );
 
-      return NextResponse.json({ success: true });
+      const tncItems = Array.isArray(configToSave.content?.tnc)
+        ? configToSave.content.tnc.filter((t: unknown) => String(t || '').trim())
+        : null;
+      if (tncItems) {
+        await supabaseAdmin.from('system_settings').upsert(
+          {
+            setting_key: 'referral_tnc',
+            setting_value: JSON.stringify(tncItems),
+            setting_type: 'JSON',
+            category: 'REFERRAL',
+            is_editable: true,
+            updated_by: auth.user?.id || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'setting_key' },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        can_edit: true,
+        refer_and_rise_config: configToSave,
+        config: {
+          referral_first_reward: settings.referral_first_reward,
+          referral_repeat_reward: settings.referral_repeat_reward,
+          referral_friend_bonus: settings.referral_friend_bonus,
+          referral_expiry_days: settings.referral_expiry_days,
+          referral_tnc: tncItems,
+        },
+      });
     }
 
     const savedTnc = Array.isArray(body.referral_tnc) ? body.referral_tnc.filter((t: any) => String(t || '').trim()) : null;

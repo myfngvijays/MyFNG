@@ -41,6 +41,9 @@ export {
   formatRewardUsesLabel,
   parseMembershipMonthsFromReward,
   isReferralMembershipReward,
+  applyRewardTextRenames,
+  configHasStaleRewardText,
+  REWARD_TEXT_RENAMES,
   type RewardComponent,
 } from '@/shared/constants/referAndRise';
 

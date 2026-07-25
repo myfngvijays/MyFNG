@@ -103,7 +103,7 @@ export const MILESTONES: Milestone[] = [
   {
     referralCount: 12,
     rewards: {
-      myfngSave: 'Car AC Performance Package (Free)',
+      myfngSave: 'Car AC Performance Package',
       myfngCare: 'Headlight Restoration + Free Battery Health Test',
       myfngElite: 'Warranty Extension + VIP Customer Helpline',
       myfngExpress: '3 Express Bookings',
@@ -291,13 +291,45 @@ export function migrateMilestoneRewards(rewards: Record<string, string>): Record
   return out;
 }
 
+/** Old admin/DB reward labels → current product names. */
+export const REWARD_TEXT_RENAMES: Record<string, string> = {
+  'Free Basic AC Service': 'Car AC Performance Package',
+  'Car AC Performance Package (Free)': 'Car AC Performance Package',
+};
+
+export function applyRewardTextRenames(rewards: Record<FamilyKey, string>): Record<FamilyKey, string> {
+  const out = { ...rewards };
+  for (const key of FAMILY_ORDER) {
+    const text = out[key];
+    if (text && REWARD_TEXT_RENAMES[text]) {
+      out[key] = REWARD_TEXT_RENAMES[text];
+    }
+  }
+  return out;
+}
+
+export function configHasStaleRewardText(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const milestones = (raw as { milestones?: { rewards?: Record<string, string> }[] }).milestones;
+  if (!Array.isArray(milestones)) return false;
+  for (const m of milestones) {
+    for (const text of Object.values(m.rewards || {})) {
+      if (REWARD_TEXT_RENAMES[String(text)]) return true;
+    }
+  }
+  return false;
+}
+
 export function migrateRemoteMilestones(
   raw: { referralCount: number; rewards: Record<string, string> }[] | undefined,
 ): Milestone[] {
   if (!raw?.length) return MILESTONES;
   return raw.map((m) => ({
     referralCount: m.referralCount,
-    rewards: { ...MILESTONES.find((x) => x.referralCount === m.referralCount)?.rewards, ...migrateMilestoneRewards(m.rewards) },
+    rewards: applyRewardTextRenames({
+      ...MILESTONES.find((x) => x.referralCount === m.referralCount)?.rewards,
+      ...migrateMilestoneRewards(m.rewards),
+    }),
   }));
 }
 

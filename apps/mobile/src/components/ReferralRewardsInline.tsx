@@ -325,9 +325,11 @@ export default function ReferralRewardsInline({ isLoggedIn, onLogin, onOpenRefer
 
       {activeVouchers.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Your Vouchers ({activeVouchers.length})</Text>
-          <Text style={s.sectionHint}>Use these at booking checkout · Valid for {rewardExpiryDays} days from claim</Text>
-          <ReferralVoucherList viewAllLabel="View All">
+          <ReferralVoucherList
+            title={`YOUR VOUCHERS (${activeVouchers.length})`}
+            subtitle={`Use these at booking checkout · Valid for ${rewardExpiryDays} days from claim`}
+            notchColor="#F8FAFC"
+          >
             {activeVouchers.map((item) => renderClaimedCard(item, true))}
           </ReferralVoucherList>
         </View>
