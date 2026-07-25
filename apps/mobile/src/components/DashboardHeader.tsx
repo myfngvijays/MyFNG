@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,
-    paddingTop: SPACING.lg,
+    paddingTop: 50,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',

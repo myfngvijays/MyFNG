@@ -13,6 +13,11 @@ export interface SessionData {
   };
   bookingState?: {
     selectedService?: string;
+    selectedServices?: Array<{
+      name: string;
+      price?: number;
+      service_type_id?: string | null;
+    }>;
     selectedServicePlan?: {
       service_name: string;
       min_price: number;

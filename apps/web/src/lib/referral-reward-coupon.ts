@@ -1,5 +1,5 @@
 import 'server-only';
-import { parseVoucherAmount } from '@/lib/refer-and-rise';
+import { parseVoucherAmount, parseRewardComponents, totalRewardUses } from '@/lib/refer-and-rise';
 
 const DEFAULT_REWARD_EXPIRY_DAYS = 365;
 
@@ -51,6 +51,8 @@ export async function createReferralRewardCoupon(
     voucherAmount?: number | null;
     blocksWallet?: boolean;
     expiryDays?: number;
+    totalUses?: number;
+    rewardComponents?: import('@/lib/refer-and-rise').RewardComponent[];
   },
 ): Promise<{ couponId: string; assignmentId: string; code: string; expiresAt: string } | null> {
   const customerId = String(params.customerId || '').trim();
@@ -60,6 +62,7 @@ export async function createReferralRewardCoupon(
   const expiresAt = computeReferralRewardExpiresAt(params.expiryDays);
   const nowIso = new Date().toISOString();
   const discount = resolveCouponDiscount(params.rewardText, params.rewardType, params.voucherAmount ?? null);
+  const totalUses = Math.max(1, Number(params.totalUses) || 1);
 
   let code = buildReferralCouponCode(params.milestoneCount);
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -85,8 +88,8 @@ export async function createReferralRewardCoupon(
       coupon_type_slug: 'referral',
       is_public: false,
       is_active: true,
-      usage_limit_total: 1,
-      usage_limit_per_customer: 1,
+      usage_limit_total: totalUses,
+      usage_limit_per_customer: totalUses,
       applicable_channels: ['ANDROID', 'IOS', 'WEB', 'MOBILE'],
       start_at: nowIso,
       end_at: expiresAt,
@@ -103,8 +106,10 @@ export async function createReferralRewardCoupon(
     source: 'refer_and_rise',
     referral_claim_id: claimId,
     milestone_count: params.milestoneCount,
-    blocks_wallet: Boolean(params.blocksWallet),
+    blocks_wallet: true,
     reward_type: params.rewardType,
+    total_uses: totalUses,
+    reward_components: params.rewardComponents || [],
   });
 
   const { data: assignment, error: assignmentError } = await supabaseAdmin
@@ -182,6 +187,8 @@ export async function ensureReferralRewardCouponForClaim(
   }
 
   const expiresAt = claim.expires_at || computeReferralRewardExpiresAt(expiryDays);
+  const components = parseRewardComponents(String(claim.reward_text || ''));
+  const totalUses = totalRewardUses(components);
   const created = await createReferralRewardCoupon(supabaseAdmin, {
     customerId: String(claim.customer_id),
     claimId: String(claim.id),
@@ -189,8 +196,10 @@ export async function ensureReferralRewardCouponForClaim(
     rewardText: String(claim.reward_text || ''),
     rewardType: String(claim.reward_type || 'service'),
     voucherAmount: claim.voucher_amount != null ? Number(claim.voucher_amount) : null,
-    blocksWallet: Boolean(claim.blocks_wallet),
+    blocksWallet: true,
     expiryDays,
+    totalUses,
+    rewardComponents: components,
   });
 
   if (!created) {

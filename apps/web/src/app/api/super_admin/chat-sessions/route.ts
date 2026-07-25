@@ -76,8 +76,17 @@ export async function GET(request: NextRequest) {
       const hasBooking = !!(
         bookingState.customerName ||
         bookingState.phoneNumber ||
-        bookingState.selectedService
+        bookingState.selectedService ||
+        (Array.isArray(bookingState.selectedServices) && bookingState.selectedServices.length > 0)
       );
+
+      const selectedServices = Array.isArray(bookingState.selectedServices)
+        ? bookingState.selectedServices
+        : [];
+      const serviceLabel =
+        selectedServices.length > 0
+          ? selectedServices.map((service: any) => String(service?.name || '').trim()).filter(Boolean).join(', ')
+          : bookingState.selectedService || null;
 
       return {
         session_id: row.session_id,
@@ -91,7 +100,8 @@ export async function GET(request: NextRequest) {
         phone_number: bookingState.phoneNumber || null,
         car_model: bookingState.carModel || null,
         city: bookingState.city || null,
-        service: bookingState.selectedService || null,
+        service: serviceLabel,
+        services: selectedServices,
         history,
       };
     });

@@ -292,6 +292,8 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
 
       <ScrollView
         style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
@@ -302,8 +304,8 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
           <Text style={styles.headerTitle}>{lead.customer_name}</Text>
           <Text style={styles.headerSubtitle}>Lead #{lead.lead_number}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(lead.status) }]}>
-          <Text style={styles.statusText}>{lead.status}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusBg(lead.status) }]}>
+          <Text style={[styles.statusText, { color: getStatusFg(lead.status) }]}>{lead.status}</Text>
         </View>
       </View>
 
@@ -326,31 +328,39 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonSecondary]}
+          style={[styles.actionButton, styles.actionButtonEdit]}
           onPress={() => navigation.navigate('TelecallerEditLead', { leadId })}
         >
-          <Icon name="pencil" size={20} color={COLORS.primary} />
-          <Text style={styles.actionButtonTextSecondary}>Edit</Text>
+          <Icon name="pencil" size={18} color={COLORS.primary} />
+          <Text style={styles.actionButtonTextEdit}>Edit</Text>
         </TouchableOpacity>
       </View>
 
       {/* Quick Stats */}
       <View style={styles.statsCard}>
         <View style={styles.statItem}>
-          <Icon name="phone" size={24} color={COLORS.primary} />
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.primary + '15' }]}>
+            <Icon name="phone" size={18} color={COLORS.primary} />
+          </View>
           <Text style={styles.statValue}>{lead.total_calls || 0}</Text>
           <Text style={styles.statLabel}>Total Calls</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Icon name="priority-high" size={24} color={COLORS.orange} />
-          <Text style={styles.statValue}>{lead.lead_priority || 'NORMAL'}</Text>
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.orange + '15' }]}>
+            <Icon name="priority-high" size={18} color={COLORS.orange} />
+          </View>
+          <Text style={styles.statValue} numberOfLines={1}>{lead.lead_priority || 'NORMAL'}</Text>
           <Text style={styles.statLabel}>Priority</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Icon name="source-branch" size={24} color={COLORS.blue} />
-          <Text style={styles.statValue}>{lead.created_from || 'N/A'}</Text>
+          <View style={[styles.statIconWrap, { backgroundColor: COLORS.blue + '15' }]}>
+            <Icon name="source-branch" size={18} color={COLORS.blue} />
+          </View>
+          <Text style={styles.statValue} numberOfLines={1}>
+            {String(lead.created_from || 'N/A').replace(/_/g, ' ')}
+          </Text>
           <Text style={styles.statLabel}>Source</Text>
         </View>
       </View>
@@ -491,8 +501,12 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Call History ({callLogs.length})</Text>
-          <TouchableOpacity onPress={() => setShowCallLogForm(!showCallLogForm)}>
-            <Icon name="plus-circle" size={24} color={COLORS.primary} />
+          <TouchableOpacity
+            style={styles.addIconBtn}
+            onPress={() => setShowCallLogForm(!showCallLogForm)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="plus-circle" size={26} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
@@ -608,8 +622,12 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Follow-ups ({followUps.length})</Text>
-          <TouchableOpacity onPress={() => setShowFollowUpForm(!showFollowUpForm)}>
-            <Icon name="plus-circle" size={24} color={COLORS.primary} />
+          <TouchableOpacity
+            style={styles.addIconBtn}
+            onPress={() => setShowFollowUpForm(!showFollowUpForm)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="plus-circle" size={26} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
@@ -751,14 +769,30 @@ function InfoRow({ icon, label, value }: InfoRowProps) {
   );
 }
 
-function getStatusColor(status: string): string {
+function getStatusBg(status: string): string {
   switch (status) {
-    case 'NEW': return COLORS.blue + '30';
-    case 'ASSIGNED': return COLORS.indigo + '30';
-    case 'ACCEPTED': return COLORS.green + '30';
-    case 'REJECTED': return COLORS.red + '30';
-    default: return COLORS.gray[500] + '30';
+    case 'NEW': return '#DBEAFE';
+    case 'ASSIGNED': return '#E0E7FF';
+    case 'ACCEPTED': return '#D1FAE5';
+    case 'REJECTED': return '#FEE2E2';
+    case 'COMPLETED': return '#D1FAE5';
+    default: return 'rgba(255,255,255,0.25)';
   }
+}
+
+function getStatusFg(status: string): string {
+  switch (status) {
+    case 'NEW': return COLORS.primary;
+    case 'ASSIGNED': return COLORS.indigo;
+    case 'ACCEPTED': return COLORS.green;
+    case 'REJECTED': return COLORS.red;
+    case 'COMPLETED': return COLORS.green;
+    default: return '#fff';
+  }
+}
+
+function getStatusColor(status: string): string {
+  return getStatusBg(status);
 }
 
 function getCallStatusColor(status: string): string {
@@ -787,10 +821,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: COLORS.primary,
-    paddingTop: 44,
-    paddingBottom: 12,
+    paddingTop: 50,
+    paddingBottom: 14,
     paddingHorizontal: SPACING.md,
-    elevation: 4,
   },
   backButton: {
     width: 40,
@@ -801,13 +834,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   headerBarTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#fff',
   },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    paddingBottom: 28,
   },
   loadingContainer: {
     flex: 1,
@@ -837,92 +873,125 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: COLORS.primary,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    paddingTop: SPACING.sm,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
   headerTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#fff',
     opacity: 0.9,
     marginTop: 4,
   },
   statusBadge: {
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
   },
   statusText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   quickActions: {
     flexDirection: 'row',
-    padding: SPACING.md,
-    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    gap: 8,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    borderRadius: 8,
-    gap: SPACING.xs,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
   },
   actionButtonPrimary: {
     backgroundColor: COLORS.primary,
   },
   actionButtonSecondary: {
     backgroundColor: '#fff',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.green,
+  },
+  actionButtonEdit: {
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
   },
   actionButtonTextPrimary: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontWeight: '700',
+    fontSize: 13,
   },
   actionButtonTextSecondary: {
     color: COLORS.green,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  actionButtonTextEdit: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   statsCard: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    margin: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.md,
     borderRadius: 12,
-    padding: SPACING.md,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
     elevation: 2,
   },
   statItem: {
     flex: 1,
     alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  statIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
   statDivider: {
     width: 1,
-    backgroundColor: COLORS.gray[500] + '30',
+    height: 48,
+    alignSelf: 'center',
+    backgroundColor: COLORS.gray[200],
   },
   statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.textPrimary,
-    marginTop: SPACING.xs,
+    textAlign: 'center',
   },
   statLabel: {
     fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 2,
+    textAlign: 'center',
   },
   section: {
     marginHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
+    marginTop: SPACING.md,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -930,24 +999,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.sm,
   },
+  addIconBtn: {
+    padding: 2,
+  },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    fontWeight: '700',
+    color: COLORS.textHeading,
   },
   sectionContent: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: SPACING.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
     elevation: 2,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
+    marginBottom: 12,
   },
   infoContent: {
-    marginLeft: SPACING.sm,
+    marginLeft: 10,
     flex: 1,
   },
   infoItem: {
@@ -956,11 +1032,13 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    fontWeight: '500',
   },
   infoValue: {
     fontSize: 14,
     color: COLORS.textPrimary,
     marginTop: 2,
+    lineHeight: 20,
   },
   couponBanner: {
     backgroundColor: COLORS.yellow + '20',

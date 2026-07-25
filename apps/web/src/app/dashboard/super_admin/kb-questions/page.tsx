@@ -55,6 +55,7 @@ type ChatSession = {
   car_model: string | null;
   city: string | null;
   service: string | null;
+  services: Array<{ name: string; price?: number; service_type_id?: string | null }>;
   history: ChatMessage[];
 };
 
@@ -208,8 +209,13 @@ function ChatConversationsTab() {
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">
-                        {s.first_user_message || '(empty)'}
+                        {s.service || s.first_user_message || '(empty)'}
                       </p>
+                      {s.services?.length > 1 ? (
+                        <p className="text-[10px] text-violet-700 mt-0.5 font-medium">
+                          {s.services.length} services booked
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-col items-end shrink-0">
                       <span className="text-[10px] text-gray-400">{sessionLastActiveAgo(s.expires_at)}</span>
@@ -274,12 +280,19 @@ function ChatConversationsTab() {
                       {selected.city}
                     </span>
                   )}
-                  {selected.service && (
+                  {selected.services?.length > 0 ? (
+                    <span className="flex items-start gap-1 max-w-full">
+                      <Wrench className="w-3 h-3 shrink-0 mt-0.5" />
+                      <span className="line-clamp-2">
+                        {selected.services.map((service) => service.name).join(', ')}
+                      </span>
+                    </span>
+                  ) : selected.service ? (
                     <span className="flex items-center gap-1">
                       <Wrench className="w-3 h-3" />
                       {selected.service}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
               <div className="text-right shrink-0">

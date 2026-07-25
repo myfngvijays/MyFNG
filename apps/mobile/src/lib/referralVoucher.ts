@@ -2,6 +2,11 @@ export const PENDING_REFERRAL_VOUCHER_KEY = '@myfng/pending_referral_voucher_id'
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Local copy — avoids Metro re-export issues from shared/constants. */
+export function isLabourPercentReferralReward(rewardText?: string | null): boolean {
+  return /10%.*labour/i.test(String(rewardText || ''));
+}
+
 export function formatRewardExpiryLabel(opts: {
   expiresAt?: string | null;
   claimedAt?: string | null;
@@ -41,7 +46,7 @@ export function computeReferralVoucherDiscount(
   if (base <= 0) return 0;
   const amount = voucherAmount ?? parseVoucherAmount(rewardText);
   if (amount && amount > 0) return Math.min(Number(amount), base);
-  if (/10%.*labour/i.test(rewardText)) return Math.min(Math.round(base * 0.1), base);
+  if (isLabourPercentReferralReward(rewardText)) return 0;
   return 0;
 }
 

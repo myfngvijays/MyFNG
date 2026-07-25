@@ -7,7 +7,10 @@ import {
   type MisaBookingChannel,
 } from './misaLeadSource';
 import { buildMinimalMisaTelecrmFields, buildTelecrmFieldSummaryNote } from '@/lib/telecrm/utmFields';
-import { getServicePlansByPincode } from './database-queries';
+import {
+  resolveMisaServicesPricing,
+  type MisaResolvedService,
+} from './misa-service-pricing';
 
 
 export interface BookingData {
@@ -25,6 +28,8 @@ export interface BookingData {
   preferred_date?: string;
   preferred_time?: string;
   quoted_price?: number;
+  misa_services?: MisaResolvedService[];
+  service_type_ids?: string[];
   status?: string;
   notes?: string;
   channel?: MisaBookingChannel;
@@ -77,16 +82,14 @@ async function pushChatbotBookingToExternalApi(booking: BookingData, _channel: M
   }
 }
 
-function normalizeServiceName(value?: string | null) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
 async function resolveQuotedPriceForLead(bookingData: BookingData): Promise<number | null> {
   const direct = Number(bookingData.quoted_price);
   if (Number.isFinite(direct) && direct > 0) return direct;
+
+  if (Array.isArray(bookingData.misa_services) && bookingData.misa_services.length > 0) {
+    const total = bookingData.misa_services.reduce((sum, service) => sum + Number(service.price || 0), 0);
+    if (total > 0) return total;
+  }
 
   const pincode = String(bookingData.pincode || '').trim();
   const carModel = String(bookingData.car_model || '').trim();
@@ -95,21 +98,13 @@ async function resolveQuotedPriceForLead(bookingData: BookingData): Promise<numb
   if (!pincode || !carModel || !category || !serviceName) return null;
 
   try {
-    const plans = await getServicePlansByPincode({
-      category,
-      carModel,
+    const resolved = await resolveMisaServicesPricing({
+      serviceNameRaw: serviceName,
       pincode,
+      carModel,
+      category,
     });
-    const validPlans = (plans || []).filter((plan: any) => !plan?.error);
-    const target = normalizeServiceName(serviceName);
-    const match =
-      validPlans.find((plan: any) => normalizeServiceName(plan.service_name) === target) ||
-      validPlans.find((plan: any) => {
-        const planName = normalizeServiceName(plan.service_name);
-        return planName.includes(target) || target.includes(planName);
-      });
-    const price = Number(match?.min_price ?? match?.max_price ?? 0);
-    return Number.isFinite(price) && price > 0 ? price : null;
+    return resolved.totalPrice > 0 ? resolved.totalPrice : null;
   } catch (err) {
     console.warn('[BOOKING] Could not resolve quoted price for service lead:', err);
     return null;
@@ -131,6 +126,11 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
     const nowIso = new Date().toISOString();
     const leadSource = getMisaLeadSource(channel);
     const quotedPrice = await resolveQuotedPriceForLead(bookingData);
+    const misaServices = Array.isArray(bookingData.misa_services) ? bookingData.misa_services : [];
+    const serviceTypeIds =
+      Array.isArray(bookingData.service_type_ids) && bookingData.service_type_ids.length > 0
+        ? bookingData.service_type_ids
+        : misaServices.map((service) => service.service_type_id).filter(Boolean);
 
     const payload: Record<string, any> = {
       lead_number: leadNumber,
@@ -143,6 +143,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       vehicle_number: bookingData.vehicle_number || 'NA',
       vehicle_model: bookingData.car_model || null,
       service_type: bookingData.service_name || bookingData.service_category || 'CAR_SERVICE',
+      service_type_ids: serviceTypeIds.length > 0 ? serviceTypeIds : null,
       description: `${bookingData.service_name || ''} - ${bookingData.service_category || ''}`.trim().replace(/^-\s*|-\s*$/g, '') || null,
       city: bookingData.city || null,
       address: bookingData.address || null,
@@ -154,8 +155,18 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       created_at: nowIso,
     };
 
+    const meta: Record<string, unknown> = {};
     if (bookingData.tracking_utm && Object.keys(bookingData.tracking_utm).length > 0) {
-      payload.meta = bookingData.tracking_utm;
+      Object.assign(meta, bookingData.tracking_utm);
+    }
+    if (misaServices.length > 0) {
+      meta.misa_services = misaServices;
+      if (quotedPrice && quotedPrice > 0) {
+        meta.service_subtotal = quotedPrice;
+      }
+    }
+    if (Object.keys(meta).length > 0) {
+      payload.meta = meta;
     }
 
     const { data, error } = await supabaseAdmin

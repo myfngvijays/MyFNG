@@ -4,6 +4,11 @@ import {
   DEFAULT_REFER_AND_RISE_CONFIG,
   normalizeReferAndRiseConfig,
   normalizeFamilyKey,
+  parseStoredRewardComponents,
+  rewardHasRemainingUses,
+  formatRewardUsesLabel,
+  remainingRewardUses,
+  parseRewardComponents,
 } from '@/lib/refer-and-rise';
 import { ensureReferralRewardCouponForClaim } from '@/lib/referral-reward-coupon';
 
@@ -71,12 +76,18 @@ export async function GET() {
       const family = normalizeFamilyKey(c.chosen_family) || c.chosen_family;
       const cat = family ? config.categories[family as keyof typeof config.categories] : null;
       const rewardText = c.reward_text || (family && config.milestones.find((m) => m.referralCount === c.milestone_count)?.rewards[family as keyof typeof config.categories['myfngSave']]) || '';
-      const blocksWallet = Boolean(c.blocks_wallet) || (family === 'myfngSave' && /voucher|discount/i.test(String(rewardText)));
+      const blocksWallet = true;
       const rewardType = c.reward_type || (blocksWallet ? 'voucher' : 'service');
       const rewardExpiryDays = Math.max(1, Number(config.rewardExpiryDays) || 365);
       const nowIso = new Date().toISOString();
       const expired = Boolean(c.expires_at && String(c.expires_at) < nowIso);
-      const canRedeem = (c.status || 'CLAIMED') === 'CLAIMED' && !c.redeemed_at && !expired;
+      const componentsRaw = parseStoredRewardComponents(c.reward_components);
+      const components = componentsRaw.length > 0 ? componentsRaw : parseRewardComponents(String(rewardText));
+      const usesRemaining = remainingRewardUses(components, c.uses_remaining);
+      const hasUses = rewardHasRemainingUses(components, c.uses_remaining, c.redeemed_at, c.status);
+      const isMembershipDelivered = rewardType === 'membership' && Boolean(c.membership_id);
+      const canRedeem = !expired && hasUses && !isMembershipDelivered && c.status !== 'CANCELLED';
+      const usesLabel = formatRewardUsesLabel(components, usesRemaining);
 
       let couponCode = null as string | null;
       if (canRedeem && !c.coupon_id) {
@@ -107,6 +118,12 @@ export async function GET() {
         coupon_code: couponCode,
         can_redeem: canRedeem,
         expired,
+        uses_total: c.uses_total ?? null,
+        uses_remaining: usesRemaining,
+        uses_label: usesLabel,
+        reward_components: components,
+        membership_id: c.membership_id ?? null,
+        membership_activated: isMembershipDelivered,
       };
     }),
     );
@@ -131,7 +148,7 @@ export async function GET() {
       locked,
       active_vouchers: activeVouchers,
       wallet_voucher_rule:
-        'Service vouchers from MYFNG Save cannot be combined with wallet balance on the same booking.',
+        'When any referral reward voucher is applied on a booking, wallet balance cannot be used on that booking.',
       reward_expiry_days: Math.max(1, Number(config.rewardExpiryDays) || 365),
     });
   } catch (e: any) {

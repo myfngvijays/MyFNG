@@ -26,6 +26,7 @@ import {
   normalizeFamilyKey,
   type FamilyKey,
   type Milestone,
+  isReferralTestReferrerPhone,
 } from '../constants/referAndRise';
 import { useReferAndRiseConfig } from '../hooks/useReferAndRiseConfig';
 import MembershipTermsCard from './MembershipTermsCard';
@@ -36,6 +37,7 @@ const BRAND_BG = '#F0F7FF';
 
 type Props = {
   referralCode: string;
+  customerPhone?: string;
   isLoggedIn: boolean;
   onLogin: () => void;
   onViewChange?: (title: string) => void;
@@ -66,7 +68,7 @@ type HistoryItem = {
   statusLabel?: string;
 };
 
-const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode, isLoggedIn, onLogin, onViewChange }: Props, ref: React.Ref<ReferAndRiseHandle>) {
+const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode, customerPhone, isLoggedIn, onLogin, onViewChange }: Props, ref: React.Ref<ReferAndRiseHandle>) {
   const [currentView, setCurrentView] = useState<ViewName>('home');
   const remoteConfig = useReferAndRiseConfig();
   const activeMilestones = remoteConfig.milestones;
@@ -91,6 +93,56 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   const [contactsList, setContactsList] = useState<{ id: string; name: string; phone: string; initials: string }[]>([]);
   const [contactsSearch, setContactsSearch] = useState('');
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [dismissedMilestones, setDismissedMilestones] = useState<Set<number>>(new Set());
+  const isTestReferrer = isReferralTestReferrerPhone(customerPhone || '');
+
+  const dismissMilestonePicker = (milestoneCount?: number) => {
+    if (milestoneCount != null) {
+      setDismissedMilestones((prev) => new Set(prev).add(milestoneCount));
+    }
+    setPendingMilestone(null);
+    setSelectedReward(null);
+  };
+
+  const refreshReferralStats = async () => {
+    try {
+      const res = await apiFetch<any>('/api/customer/referral');
+      if (res?.stats?.total_rewarded != null) setReferrals(Number(res.stats.total_rewarded) || 0);
+      if (res?.refer_and_rise?.picks) {
+        const normalized: Record<number, FamilyKey> = {};
+        for (const [k, v] of Object.entries(res.refer_and_rise.picks)) {
+          const fam = normalizeFamilyKey(String(v));
+          if (fam) normalized[Number(k)] = fam;
+        }
+        setPicks(normalized);
+      }
+      return res;
+    } catch {
+      return null;
+    }
+  };
+
+  const simulateTestInvite = async (friendName?: string, friendPhone?: string) => {
+    if (!isTestReferrer || pendingMilestone || referrals >= activeMaxReferrals) return;
+    try {
+      const res = await apiFetch<any>('/api/customer/referral/simulate-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          friend_name: friendName,
+          friend_phone: friendPhone,
+          referral_code: referralCode,
+        }),
+      });
+      if (res?.stats?.total_rewarded != null) {
+        setReferrals(Number(res.stats.total_rewarded) || 0);
+      } else {
+        await refreshReferralStats();
+      }
+    } catch {
+      // Non-blocking — invite message still goes out
+    }
+  };
 
   useImperativeHandle(ref, () => ({
     handleBack: () => {
@@ -105,30 +157,21 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    apiFetch<any>('/api/customer/referral')
-      .then((res) => {
-        if (res?.stats?.total_rewarded) setReferrals(res.stats.total_rewarded);
-        if (res?.refer_and_rise?.picks) {
-          const normalized: Record<number, FamilyKey> = {};
-          for (const [k, v] of Object.entries(res.refer_and_rise.picks)) {
-            const fam = normalizeFamilyKey(String(v));
-            if (fam) normalized[Number(k)] = fam;
-          }
-          setPicks(normalized);
-        }
-      })
-      .catch(() => {});
+    refreshReferralStats();
   }, [isLoggedIn]);
 
   useEffect(() => {
     if (!isLoggedIn || referrals <= 0) return;
     const unclaimed = MILESTONES.find(
-      (m) => referrals >= m.referralCount && !picks[m.referralCount],
+      (m) =>
+        referrals >= m.referralCount &&
+        !picks[m.referralCount] &&
+        !dismissedMilestones.has(m.referralCount),
     );
     if (unclaimed && !pendingMilestone) {
       setPendingMilestone(unclaimed);
     }
-  }, [isLoggedIn, referrals, picks, MILESTONES, pendingMilestone]);
+  }, [isLoggedIn, referrals, picks, MILESTONES, pendingMilestone, dismissedMilestones]);
 
   const currentIdx = (() => { for (let i = MILESTONES.length - 1; i >= 0; i--) { if (referrals >= MILESTONES[i].referralCount) return i; } return -1; })();
   const nextMilestone = MILESTONES.find((m) => m.referralCount > referrals) || null;
@@ -156,6 +199,11 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   const shareOnWhatsApp = () => Share.share({ message: shareMessage });
 
   const inviteFromContacts = async () => {
+    if (isTestReferrer) {
+      await simulateTestInvite('Test Friend');
+      return;
+    }
+
     // Check if ExpoContacts native module is available in this build
     const { NativeModules } = require('react-native');
     if (!NativeModules.ExpoContacts && !(global as any).expo?.modules?.ExpoContacts) {
@@ -196,7 +244,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     setContactsLoading(false);
   };
 
-  const inviteContact = (phone: string) => {
+  const inviteContact = (phone: string, _name?: string) => {
     const cleanPhone = phone.replace(/[\s\-()]/g, '');
     const whatsappUrl = `whatsapp://send?phone=91${cleanPhone.slice(-10)}&text=${encodeURIComponent(shareMessage)}`;
     Linking.openURL(whatsappUrl).catch(() => {
@@ -220,6 +268,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     if (!pendingMilestone || !selectedReward) return;
     const ms = pendingMilestone;
     const family = selectedReward;
+    const milestoneCount = ms.referralCount;
     setPendingMilestone(null);
     setSelectedReward(null);
     setCongratsData({ milestone: ms, family });
@@ -228,10 +277,18 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       const res = await apiFetch<any>('/api/customer/referral/claim-reward', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referralCount: ms.referralCount, family }),
+        body: JSON.stringify({ referralCount: milestoneCount, family }),
       });
-      setPicks((p) => ({ ...p, [ms.referralCount]: family }));
-      if (res?.claim?.id) {
+      setPicks((p) => ({ ...p, [milestoneCount]: family }));
+      setDismissedMilestones((prev) => {
+        const next = new Set(prev);
+        next.delete(milestoneCount);
+        return next;
+      });
+      await refreshReferralStats();
+      if (res?.membership_activated) {
+        // Membership rewards activate immediately — no booking voucher to attach.
+      } else if (res?.claim?.id) {
         try {
           await AsyncStorage.setItem(PENDING_REFERRAL_VOUCHER_KEY, String(res.claim.id));
         } catch {
@@ -239,11 +296,14 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
         }
       }
     } catch {
+      setCongratsData(null);
+      setShowCongrats(false);
       setPicks((p) => {
         const next = { ...p };
-        delete next[ms.referralCount];
+        delete next[milestoneCount];
         return next;
       });
+      setPendingMilestone(ms);
     }
   };
 
@@ -314,6 +374,12 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       </View>
 
       {/* Invite Button */}
+      {isTestReferrer ? (
+        <View style={s.testBanner}>
+          <Ionicons name="flask-outline" size={14} color="#7C3AED" />
+          <Text style={s.testBannerText}>Test mode: invite counts instantly as referred</Text>
+        </View>
+      ) : null}
       <TouchableOpacity style={s.inviteBtn} onPress={inviteFromContacts} activeOpacity={0.85} disabled={!!pendingMilestone || referrals >= activeMaxReferrals}>
         <Ionicons name="people" size={16} color="#FFFFFF" />
         <Text style={s.inviteBtnText}>Invite Friends</Text>
@@ -508,9 +574,18 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
 
   // ═══════════════ REWARD PICKER (Bottom Sheet Style) ═══════════════
   const renderRewardPicker = () => (
-    <Modal visible={!!pendingMilestone} transparent animationType="slide" onRequestClose={() => setPendingMilestone(null)}>
+    <Modal
+      visible={!!pendingMilestone}
+      transparent
+      animationType="slide"
+      onRequestClose={() => dismissMilestonePicker(pendingMilestone?.referralCount)}
+    >
       <View style={rp.overlay}>
-        <TouchableOpacity style={rp.scrim} activeOpacity={1} onPress={() => setPendingMilestone(null)} />
+        <TouchableOpacity
+          style={rp.scrim}
+          activeOpacity={1}
+          onPress={() => dismissMilestonePicker(pendingMilestone?.referralCount)}
+        />
         <View style={rp.sheet}>
           <View style={rp.handle} />
           <ScrollView showsVerticalScrollIndicator={false} bounces={false} style={rp.sheetScroll}>
@@ -532,7 +607,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                       style={[
                         rp.listCard,
                         { borderColor: f.color + '55' },
-                        isSelected && { borderColor: f.color, backgroundColor: `${f.color}18` },
+                        isSelected && { borderColor: '#4DA6FF', backgroundColor: '#004AAD55', borderWidth: 2.5 },
                       ]}
                       onPress={() => setSelectedReward(key)}
                       activeOpacity={0.85}
@@ -548,7 +623,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                           </View>
                           <Text style={rp.listCardReward}>{reward}</Text>
                         </View>
-                        {isSelected ? <Ionicons name="checkmark-circle" size={22} color={f.color} /> : null}
+                        {isSelected ? <Ionicons name="checkmark-circle" size={22} color={BRAND} /> : null}
                       </View>
                     </TouchableOpacity>
                   );
@@ -564,7 +639,11 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                 <Text style={rp.confirmText}>Confirm Selection</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={rp.laterBtn} onPress={() => setPendingMilestone(null)} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={rp.laterBtn}
+                onPress={() => dismissMilestonePicker(pendingMilestone.referralCount)}
+                activeOpacity={0.8}
+              >
                 <Text style={rp.laterText}>I'll choose later</Text>
               </TouchableOpacity>
 
@@ -888,7 +967,7 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
               </View>
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#25D366', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, gap: 4 }}
-                onPress={() => inviteContact(item.phone)}
+                onPress={() => inviteContact(item.phone, item.name)}
                 activeOpacity={0.8}
               >
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Invite</Text>
@@ -947,6 +1026,8 @@ const s = StyleSheet.create({
   dotText: { fontSize: 9, fontWeight: '700', color: '#4A6FA5' },
   dotTextFilled: { color: '#FFFFFF' },
 
+  testBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F3E8FF', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10 },
+  testBannerText: { flex: 1, fontSize: 11, fontWeight: '600', color: '#7C3AED' },
   inviteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 14, padding: 14, marginBottom: 14, ...Platform.select({ ios: { shadowColor: '#004AAD', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10 }, android: { elevation: 5 } }) },
   inviteBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 

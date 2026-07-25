@@ -284,6 +284,29 @@ export function prettifyServiceType(value?: string | null) {
     .join(' ');
 }
 
+export function getMisaServicesFromLead(lead: Record<string, any>): Array<{ name: string; price: number }> {
+  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  const misaServices = Array.isArray(meta.misa_services) ? meta.misa_services : [];
+  return misaServices
+    .map((service: any) => ({
+      name: String(service?.name || '').trim(),
+      price: Number(service?.price || 0),
+    }))
+    .filter((service) => service.name);
+}
+
+export function getLeadServiceLabel(lead: Record<string, any>) {
+  if (lead.service_display) return String(lead.service_display);
+
+  const misaServices = getMisaServicesFromLead(lead);
+  if (misaServices.length > 0) {
+    return misaServices.map((service) => service.name).join(', ');
+  }
+
+  if (lead.service_type) return prettifyServiceType(lead.service_type);
+  return 'Service';
+}
+
 export function getLeadDisplayAmount(lead: Record<string, any>) {
   const display = lead.amount_display;
   const estimated = Number(lead.estimated_amount || lead.actual_amount || 0);
@@ -307,12 +330,6 @@ export function getLeadDisplayAmount(lead: Record<string, any>) {
 
   const fallback = Number(lead.payment_amount ?? lead.estimated_amount ?? lead.actual_amount ?? 0);
   return Number.isFinite(fallback) ? fallback : 0;
-}
-
-export function getLeadServiceLabel(lead: Record<string, any>) {
-  if (lead.service_display) return String(lead.service_display);
-  if (lead.service_type) return prettifyServiceType(lead.service_type);
-  return 'Service';
 }
 
 export function getLeadVehicleLabel(lead: Record<string, any>) {
@@ -487,6 +504,16 @@ export async function enrichLeadsServiceDisplay(supabaseAdmin: any, leads: Recor
   }
 
   for (const lead of leads) {
+    const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+    const misaServices = Array.isArray(meta.misa_services) ? meta.misa_services : [];
+    if (misaServices.length > 0) {
+      lead.service_display = misaServices
+        .map((service: any) => String(service?.name || '').trim())
+        .filter(Boolean)
+        .join(', ');
+      continue;
+    }
+
     if (Array.isArray(lead.service_type_ids) && lead.service_type_ids.length > 0) {
       const names = lead.service_type_ids.map((id: string) => serviceNameMap[id]).filter(Boolean);
       if (names.length > 0) {

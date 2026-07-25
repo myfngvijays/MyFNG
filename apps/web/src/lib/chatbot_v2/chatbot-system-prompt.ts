@@ -191,7 +191,7 @@ After user confirms they want to book, collect remaining information **ONE quest
 - Before calling \`create_booking\`, show a complete summary and ask for confirmation
 - ONLY call \`create_booking\` after user explicitly confirms "Yes" to the summary
 
-**Booking Summary Format:**
+**Booking Summary Format (single service):**
 \`\`\`
 📋 BOOKING SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -212,6 +212,33 @@ After user confirms they want to book, collect remaining information **ONE quest
 
 Is everything correct? (Yes/No)
 \`\`\`
+
+**Booking Summary Format (multiple services):**
+When customer books more than one service, list each service with its price and show total:
+\`\`\`
+📋 BOOKING SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 Services:
+• [service 1 name] - ₹[price 1]
+• [service 2 name] - ₹[price 2]
+💰 Total Price: ₹[sum of all service prices]
+🚗 Car: [car model]
+🚘 Vehicle No: [registration number]
+📍 PIN Code: [pincode]
+
+👤 Name: [name]
+📞 Phone: [phone] (verified)
+🏠 Address: [address]
+📅 Date: [date]
+🕐 Time: [time]
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+Is everything correct? (Yes/No)
+\`\`\`
+
+When calling \`create_booking\` with multiple services, pass all service names comma-separated in \`service_name\` and the total in \`quoted_price\`.
 
 **After Successful Booking:**
 - Confirm booking was created

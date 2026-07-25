@@ -164,12 +164,11 @@ export async function createAuthenticatedServiceBooking(
     }
     referralVoucherDiscount = couponMeta?.referral_reward ? 0 : voucherResult.discount;
     referralClaimMeta = voucherResult.claim;
-    const blocksWallet = voucherResult.blocksWallet || Boolean(couponMeta?.blocks_wallet);
-    if (blocksWallet && useWallet) {
+    if (referralClaimId && useWallet) {
       return NextResponse.json(
         {
           error:
-            'Wallet balance cannot be used when a referral service voucher is applied. Turn off wallet or remove the voucher.',
+            'Wallet balance cannot be used when a referral reward voucher is applied. Turn off wallet or remove the voucher.',
         },
         { status: 400 },
       );
@@ -302,7 +301,12 @@ export async function createAuthenticatedServiceBooking(
 
   if (referralClaimId && referralClaimMeta) {
     try {
-      await redeemReferralVoucherClaim(supabaseAdmin, referralClaimId, serviceLead.id);
+      const pickupRequired = Boolean(
+        lead.pickup_required ?? body?.lead?.pickup_required ?? body?.pickup_required,
+      );
+      await redeemReferralVoucherClaim(supabaseAdmin, referralClaimId, serviceLead.id, {
+        pickupRequired,
+      });
     } catch (redeemErr) {
       console.error('[service-booking-create] referral voucher redeem failed:', redeemErr);
     }

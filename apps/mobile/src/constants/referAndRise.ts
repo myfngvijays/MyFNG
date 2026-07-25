@@ -15,6 +15,8 @@ import {
   getNextMilestone,
   getMilestoneByCount,
   normalizeFamilyKey,
+  isReferralTestReferrerPhone,
+  isLabourPercentReferralReward,
 } from '../../../../shared/constants/referAndRise';
 
 export type { FamilyKey, Milestone, RewardFamily };
@@ -28,6 +30,8 @@ export {
   getNextMilestone,
   getMilestoneByCount,
   normalizeFamilyKey,
+  isReferralTestReferrerPhone,
+  isLabourPercentReferralReward,
 };
 
 const ICON_MAP: Record<FamilyKey, keyof typeof Ionicons.glyphMap> = {

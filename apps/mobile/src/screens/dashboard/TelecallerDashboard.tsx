@@ -9,11 +9,10 @@ import {
   RefreshControl,
   ActivityIndicator,
   Linking,
-  Dimensions
+  Dimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
-import { Icon } from '../../components/Icon';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
@@ -23,9 +22,12 @@ import TelecallerLeadDetailScreen from './telecaller/TelecallerLeadDetailScreen'
 import TelecallerFollowUpsScreen from './telecaller/TelecallerFollowUpsScreen';
 import TelecallerScriptsScreen from './telecaller/TelecallerScriptsScreen';
 import TelecallerProfileScreen from './telecaller/TelecallerProfileScreen';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const H_PAD = SPACING.md;
+const GAP = 10;
+const KPI_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP) / 2;
 
 export default function TelecallerDashboard() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -242,9 +244,23 @@ export default function TelecallerDashboard() {
   };
 
   const getTabForScreen = (screen: string) => {
-    if (screen === 'leads' || screen === 'TelecallerLeadDetail') return 'leads';
+    if (
+      screen === 'leads' ||
+      screen === 'TelecallerLeadDetail' ||
+      screen === 'createLead' ||
+      screen === 'followups' ||
+      screen === 'scripts'
+    ) {
+      return 'leads';
+    }
     if (screen === 'enquiryLeads') return 'enquiryLeads';
-    if (screen === 'telecallerRsa') return 'telecallerRsa';
+    if (
+      screen === 'telecallerRsa' ||
+      screen === 'TelecallerRSACreateComplaint' ||
+      screen === 'TelecallerRSAComplaintDetail'
+    ) {
+      return 'telecallerRsa';
+    }
     if (screen === 'profile') return 'profile';
     return 'dashboard';
   };
@@ -291,49 +307,76 @@ export default function TelecallerDashboard() {
     }
   };
 
+  const bottomTabs = [
+    { id: 'dashboard', label: 'Home', icon: 'home' },
+    { id: 'leads', label: 'Leads', icon: 'clipboard' },
+    { id: 'enquiryLeads', label: 'Enquiry', icon: 'file' },
+    { id: 'telecallerRsa', label: 'RSA', icon: 'alert-circle' },
+    { id: 'profile', label: 'Profile', icon: 'account' },
+  ];
+
+  const wrapWithBottomNav = (screen: React.ReactNode) => (
+    <View style={styles.container}>
+      <View style={styles.content}>{screen}</View>
+      <BottomNav
+        activeTab={getTabForScreen(currentScreen)}
+        onTabChange={handleTabChange}
+        tabs={bottomTabs}
+      />
+    </View>
+  );
+
   // Render different screens based on currentScreen state
   if (currentScreen === 'leads') {
-    return <TelecallerLeadsScreen navigation={navigation} route={{ params: {} }} />;
+    return wrapWithBottomNav(
+      <TelecallerLeadsScreen navigation={navigation} route={{ params: screenParams || {} }} />
+    );
   }
 
   if (currentScreen === 'createLead') {
-    return <TelecallerCreateLeadScreen navigation={navigation} route={{ params: {} }} />;
+    return wrapWithBottomNav(
+      <TelecallerCreateLeadScreen navigation={navigation} route={{ params: screenParams || {} }} />
+    );
   }
 
   if (currentScreen === 'TelecallerLeadDetail' && selectedLeadId) {
-    return <TelecallerLeadDetailScreen navigation={navigation} route={{ params: { leadId: selectedLeadId } }} />;
+    return wrapWithBottomNav(
+      <TelecallerLeadDetailScreen navigation={navigation} route={{ params: { leadId: selectedLeadId } }} />
+    );
   }
 
   if (currentScreen === 'followups') {
-    return <TelecallerFollowUpsScreen navigation={navigation} route={{ params: {} }} />;
+    return wrapWithBottomNav(
+      <TelecallerFollowUpsScreen navigation={navigation} route={{ params: screenParams || {} }} />
+    );
   }
 
   if (currentScreen === 'scripts') {
-    return <TelecallerScriptsScreen navigation={navigation} />;
+    return wrapWithBottomNav(<TelecallerScriptsScreen navigation={navigation} />);
   }
 
   if (currentScreen === 'profile') {
-    return <TelecallerProfileScreen navigation={navigation} />;
+    return wrapWithBottomNav(<TelecallerProfileScreen navigation={navigation} />);
   }
 
   if (currentScreen === 'enquiryLeads') {
     const Screen = require('./telecaller/TelecallerEnquiryLeadsScreen').default;
-    return <Screen navigation={navigation} route={{ params: {} }} />;
+    return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
   if (currentScreen === 'telecallerRsa') {
     const Screen = require('./telecaller/TelecallerRSAScreen').default;
-    return <Screen navigation={navigation} route={{ params: {} }} />;
+    return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
   if (currentScreen === 'TelecallerRSACreateComplaint') {
     const Screen = require('./telecaller/TelecallerRSACreateComplaintScreen').default;
-    return <Screen navigation={navigation} route={{ params: screenParams || {} }} />;
+    return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
   if (currentScreen === 'TelecallerRSAComplaintDetail') {
     const Screen = require('./telecaller/TelecallerRSAComplaintDetailScreen').default;
-    return <Screen navigation={navigation} route={{ params: screenParams || {} }} />;
+    return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
   // Main Dashboard Screen
@@ -346,9 +389,76 @@ export default function TelecallerDashboard() {
     );
   }
 
+  const kpiItems = [
+    {
+      key: 'new',
+      label: 'New Leads',
+      value: stats.newLeads,
+      icon: 'call-outline' as const,
+      color: COLORS.primary,
+      bg: '#E8F1FF',
+      onPress: () => navigation.navigate('leads', { filter: 'new' }),
+    },
+    {
+      key: 'callback',
+      label: 'Callbacks',
+      value: stats.pendingCallbacks,
+      icon: 'phone-portrait-outline' as const,
+      color: COLORS.orange,
+      bg: '#FFF4E5',
+      urgent: stats.pendingCallbacks > 0,
+      onPress: () => navigation.navigate('leads', { filter: 'callback' }),
+    },
+    {
+      key: 'followups',
+      label: "Today's Follow-ups",
+      value: stats.followUpToday,
+      icon: 'calendar-outline' as const,
+      color: COLORS.indigo,
+      bg: '#EEF0FF',
+      onPress: () => navigation.navigate('followups', { filter: 'today' }),
+    },
+    {
+      key: 'booked',
+      label: 'Booked Leads',
+      value: stats.bookedLeads,
+      icon: 'checkmark-circle-outline' as const,
+      color: COLORS.green,
+      bg: '#E8F8F0',
+      onPress: () => navigation.navigate('leads', { filter: 'completed' }),
+    },
+    {
+      key: 'incomplete',
+      label: 'Incomplete Leads',
+      value: stats.incompleteLeads,
+      icon: 'warning-outline' as const,
+      color: COLORS.warning,
+      bg: '#FFF8E6',
+      onPress: () => navigation.navigate('leads', { filter: 'incomplete' }),
+    },
+    {
+      key: 'rejected',
+      label: 'Rejected Leads',
+      value: stats.rejectedLeads,
+      icon: 'close-circle-outline' as const,
+      color: COLORS.red,
+      bg: '#FEECEC',
+      onPress: () => navigation.navigate('leads', { filter: 'rejected' }),
+    },
+  ];
+
+  const quickActions = [
+    { key: 'queue', label: 'View Queue', icon: 'list-outline' as const, color: COLORS.primary, onPress: () => navigation.navigate('leads', { filter: 'new' }) },
+    { key: 'create', label: 'Create Lead', icon: 'add-circle-outline' as const, color: COLORS.green, onPress: () => navigation.navigate('createLead') },
+    { key: 'enquiry', label: 'Enquiry', icon: 'document-text-outline' as const, color: COLORS.indigo, onPress: () => navigation.navigate('enquiryLeads') },
+    { key: 'followups', label: 'Follow-ups', icon: 'calendar-outline' as const, color: COLORS.orange, onPress: () => navigation.navigate('followups') },
+    { key: 'scripts', label: 'Call Scripts', icon: 'reader-outline' as const, color: COLORS.purple, onPress: () => navigation.navigate('scripts') },
+    { key: 'rsa', label: 'RSA Module', icon: 'alert-circle-outline' as const, color: COLORS.red, onPress: () => navigation.navigate('telecallerRsa') },
+  ];
+
   return (
     <View style={styles.container}>
-      <DashboardHeader 
+      <DashboardHeader
         title="Telecaller Dashboard"
         userProfile={userProfile}
         onLogout={handleLogout}
@@ -356,73 +466,53 @@ export default function TelecallerDashboard() {
 
       <ScrollView
         style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
       >
-        {/* KPI Cards */}
-        <View style={styles.kpiContainer}>
-          <View style={styles.kpiRow}>
-            <View style={[styles.kpiCard, { backgroundColor: COLORS.blue + '15' }]}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>📞</Text>
-              <Text style={styles.kpiValue}>{stats.newLeads}</Text>
-              <Text style={styles.kpiLabel}>New Leads</Text>
-            </View>
-            <View style={[styles.kpiCard, { backgroundColor: COLORS.orange + '15' }]}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>📱</Text>
-              <Text style={styles.kpiValue}>{stats.pendingCallbacks}</Text>
-              <Text style={styles.kpiLabel}>Callbacks</Text>
-            </View>
-          </View>
-
-          <View style={styles.kpiRow}>
-            <View style={[styles.kpiCard, { backgroundColor: COLORS.purple + '15' }]}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>📅</Text>
-              <Text style={styles.kpiValue}>{stats.followUpToday}</Text>
-              <Text style={styles.kpiLabel}>Today's Follow-ups</Text>
-            </View>
-            <View style={[styles.kpiCard, { backgroundColor: COLORS.green + '15' }]}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>✅</Text>
-              <Text style={styles.kpiValue}>{stats.bookedLeads}</Text>
-              <Text style={styles.kpiLabel}>Booked Leads</Text>
-            </View>
-          </View>
-
-          <View style={styles.kpiRow}>
-            <View style={[styles.kpiCard, { backgroundColor: COLORS.yellow + '15' }]}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>⚠️</Text>
-              <Text style={styles.kpiValue}>{stats.incompleteLeads}</Text>
-              <Text style={styles.kpiLabel}>Incomplete Leads</Text>
-            </View>
-            <View style={[styles.kpiCard, { backgroundColor: COLORS.red + '15' }]}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>❌</Text>
-              <Text style={styles.kpiValue}>{stats.rejectedLeads}</Text>
-              <Text style={styles.kpiLabel}>Rejected Leads</Text>
-            </View>
-          </View>
+        {/* KPI Grid */}
+        <View style={styles.kpiGrid}>
+          {kpiItems.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[
+                styles.kpiCard,
+                { backgroundColor: item.bg },
+                item.urgent && styles.kpiUrgent,
+              ]}
+              onPress={item.onPress}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.kpiIconWrap, { backgroundColor: item.color + '18' }]}>
+                <Ionicons name={item.icon} size={20} color={item.color} />
+              </View>
+              <Text style={[styles.kpiValue, { color: item.color }]}>{item.value}</Text>
+              <Text style={styles.kpiLabel} numberOfLines={2}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Call Stats */}
+        {/* Today's Performance */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today's Performance</Text>
           <View style={styles.performanceCard}>
-            <View style={styles.performanceRow}>
-              <View style={styles.performanceItem}>
-                <Text style={styles.performanceValue}>{stats.todayCalls}</Text>
-                <Text style={styles.performanceLabel}>Total Calls</Text>
-              </View>
-              <View style={styles.performanceDivider} />
-              <View style={styles.performanceItem}>
-                <Text style={styles.performanceValue}>{stats.answeredCalls}</Text>
-                <Text style={styles.performanceLabel}>Answered</Text>
-              </View>
-              <View style={styles.performanceDivider} />
-              <View style={styles.performanceItem}>
-                <Text style={[styles.performanceValue, { color: COLORS.green }]}>
-                  {stats.answerRate}%
-                </Text>
-                <Text style={styles.performanceLabel}>Answer Rate</Text>
-              </View>
+            <View style={styles.performanceItem}>
+              <Text style={styles.performanceValue}>{stats.todayCalls}</Text>
+              <Text style={styles.performanceLabel}>Total Calls</Text>
+            </View>
+            <View style={styles.performanceDivider} />
+            <View style={styles.performanceItem}>
+              <Text style={styles.performanceValue}>{stats.answeredCalls}</Text>
+              <Text style={styles.performanceLabel}>Answered</Text>
+            </View>
+            <View style={styles.performanceDivider} />
+            <View style={styles.performanceItem}>
+              <Text style={[styles.performanceValue, { color: COLORS.green }]}>
+                {stats.answerRate}%
+              </Text>
+              <Text style={styles.performanceLabel}>Answer Rate</Text>
             </View>
           </View>
         </View>
@@ -431,69 +521,34 @@ export default function TelecallerDashboard() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionsGrid}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.primary }]}
-              onPress={() => navigation.navigate('leads')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📞</Text>
-              <Text style={styles.actionButtonText}>View Queue</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.indigo }]}
-              onPress={() => navigation.navigate('enquiryLeads')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>🧾</Text>
-              <Text style={styles.actionButtonText}>Enquiry Leads</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.green }]}
-              onPress={() => navigation.navigate('createLead')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>➕</Text>
-              <Text style={styles.actionButtonText}>Create Lead</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.orange }]}
-              onPress={() => navigation.navigate('followups')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📅</Text>
-              <Text style={styles.actionButtonText}>Follow-ups</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.purple }]}
-              onPress={() => navigation.navigate('scripts')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>📋</Text>
-              <Text style={styles.actionButtonText}>Call Scripts</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.gray[700] }]}
-              onPress={() => navigation.navigate('profile')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>👤</Text>
-              <Text style={styles.actionButtonText}>My Profile</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: COLORS.red }]}
-              onPress={() => navigation.navigate('telecallerRsa')}
-            >
-              <Text style={{ fontSize: 32, color: '#fff', marginBottom: 8 }}>🚨</Text>
-              <Text style={styles.actionButtonText}>RSA Module</Text>
-            </TouchableOpacity>
+            {quickActions.map((action) => (
+              <TouchableOpacity
+                key={action.key}
+                style={styles.actionButton}
+                onPress={action.onPress}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.actionIconWrap, { backgroundColor: action.color + '15' }]}>
+                  <Ionicons name={action.icon} size={22} color={action.color} />
+                </View>
+                <Text style={styles.actionButtonText} numberOfLines={1}>{action.label}</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.gray[400]} />
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
         {/* Recent Leads */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Leads</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Leads</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('leads', { filter: 'all' })}>
+              <Text style={styles.viewAll}>View All →</Text>
+            </TouchableOpacity>
+          </View>
           {recentLeads.length === 0 ? (
             <View style={styles.emptyCard}>
+              <Ionicons name="clipboard-outline" size={28} color={COLORS.gray[300]} />
               <Text style={styles.emptyText}>No leads yet</Text>
             </View>
           ) : (
@@ -502,15 +557,30 @@ export default function TelecallerDashboard() {
                 key={lead.id}
                 style={styles.leadCard}
                 onPress={() => navigation.navigate('TelecallerLeadDetail', { leadId: lead.id })}
+                activeOpacity={0.75}
               >
                 <View style={styles.leadInfo}>
-                  <Text style={styles.leadName}>{lead.customer_name}</Text>
+                  <View style={styles.leadTopRow}>
+                    <Text style={styles.leadName} numberOfLines={1}>{lead.customer_name}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusBg(lead.status) }]}>
+                      <Text style={[styles.statusText, { color: getStatusFg(lead.status) }]}>
+                        {lead.status}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={styles.leadNumber}>#{lead.lead_number}</Text>
-                  <Text style={styles.leadPhone}>{lead.customer_phone}</Text>
+                  <View style={styles.leadMetaRow}>
+                    <Ionicons name="call-outline" size={13} color={COLORS.textSecondary} />
+                    <Text style={styles.leadPhone}>{lead.customer_phone}</Text>
+                  </View>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(lead.status) }]}>
-                  <Text style={styles.statusText}>{lead.status}</Text>
-                </View>
+                <TouchableOpacity
+                  style={styles.leadCallBtn}
+                  onPress={() => handleCallNow(lead.customer_phone)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="call" size={18} color={COLORS.white} />
+                </TouchableOpacity>
               </TouchableOpacity>
             ))
           )}
@@ -518,38 +588,52 @@ export default function TelecallerDashboard() {
 
         {/* Upcoming Follow-ups */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Upcoming Follow-ups</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Upcoming Follow-ups</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('followups')}>
+              <Text style={styles.viewAll}>View All →</Text>
+            </TouchableOpacity>
+          </View>
           {upcomingFollowUps.length === 0 ? (
             <View style={styles.emptyCard}>
+              <Ionicons name="calendar-outline" size={28} color={COLORS.gray[300]} />
               <Text style={styles.emptyText}>No upcoming follow-ups</Text>
             </View>
           ) : (
             upcomingFollowUps.map((followUp) => (
               <View key={followUp.id} style={styles.followUpCard}>
                 <View style={styles.followUpHeader}>
-                  <Text style={{ fontSize: 20, marginRight: 8 }}>👤</Text>
-                  <Text style={styles.followUpName}>{followUp.lead?.customer_name}</Text>
+                  <View style={styles.followUpAvatar}>
+                    <Ionicons name="person" size={16} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.followUpInfo}>
+                    <Text style={styles.followUpName} numberOfLines={1}>
+                      {followUp.lead?.customer_name}
+                    </Text>
+                    <Text style={styles.followUpTime}>
+                      {formatDateTime(followUp.scheduled_time)}
+                    </Text>
+                  </View>
                   {followUp.priority === 'URGENT' && (
                     <View style={styles.urgentBadge}>
                       <Text style={styles.urgentText}>URGENT</Text>
                     </View>
                   )}
                 </View>
-                <Text style={styles.followUpTime}>
-                  {formatDateTime(followUp.scheduled_time)}
-                </Text>
                 <Text style={styles.followUpType}>{followUp.follow_up_type}</Text>
                 <View style={styles.followUpActions}>
                   <TouchableOpacity
                     style={[styles.followUpActionButton, styles.followUpPrimary]}
                     onPress={() => handleCallNow(followUp.lead?.customer_phone)}
                   >
+                    <Ionicons name="call" size={14} color={COLORS.white} />
                     <Text style={styles.followUpActionText}>Call Now</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.followUpActionButton, styles.followUpSecondary]}
                     onPress={() => handleReschedule(followUp)}
                   >
+                    <Ionicons name="time-outline" size={14} color={COLORS.textPrimary} />
                     <Text style={styles.followUpSecondaryText}>Reschedule</Text>
                   </TouchableOpacity>
                 </View>
@@ -568,29 +652,34 @@ export default function TelecallerDashboard() {
         />
       )}
 
-      <BottomNav 
+      <BottomNav
         activeTab={getTabForScreen(currentScreen)}
         onTabChange={handleTabChange}
-        tabs={[
-          { id: 'dashboard', label: 'Home', icon: 'home' },
-          { id: 'leads', label: 'Leads', icon: 'clipboard' },
-          { id: 'enquiryLeads', label: 'Enquiry', icon: 'file' },
-          { id: 'telecallerRsa', label: 'RSA', icon: 'alert-circle' },
-          { id: 'profile', label: 'Profile', icon: 'account' },
-        ]}
+        tabs={bottomTabs}
       />
     </View>
   );
 }
 
-function getStatusColor(status: string): string {
+function getStatusBg(status: string): string {
   switch (status) {
-    case 'NEW': return COLORS.blue + '30';
-    case 'ASSIGNED': return COLORS.indigo + '30';
-    case 'ACCEPTED': return COLORS.green + '30';
-    case 'REJECTED': return COLORS.red + '30';
-    case 'BOOKED': return COLORS.purple + '30';
-    default: return COLORS.gray + '30';
+    case 'NEW': return '#DBEAFE';
+    case 'ASSIGNED': return '#E0E7FF';
+    case 'ACCEPTED': return '#D1FAE5';
+    case 'REJECTED': return '#FEE2E2';
+    case 'BOOKED': return '#EDE9FE';
+    default: return COLORS.gray[100];
+  }
+}
+
+function getStatusFg(status: string): string {
+  switch (status) {
+    case 'NEW': return COLORS.primary;
+    case 'ASSIGNED': return COLORS.indigo;
+    case 'ACCEPTED': return COLORS.green;
+    case 'REJECTED': return COLORS.red;
+    case 'BOOKED': return COLORS.purple;
+    default: return COLORS.textSecondary;
   }
 }
 
@@ -608,113 +697,155 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     color: COLORS.textSecondary,
+    fontSize: 14,
   },
   content: {
     flex: 1,
   },
-  kpiContainer: {
-    padding: SPACING.md,
+  scrollContent: {
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl + 8,
   },
-  kpiRow: {
+  kpiGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.md,
+    flexWrap: 'wrap',
+    paddingHorizontal: H_PAD,
+    gap: GAP,
+    marginBottom: SPACING.lg,
   },
   kpiCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginHorizontal: SPACING.xs,
+    width: KPI_WIDTH,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    elevation: 2,
+    ...SHADOWS.small,
+  },
+  kpiUrgent: {
+    borderWidth: 1.5,
+    borderColor: COLORS.orange,
+  },
+  kpiIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   kpiValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginTop: SPACING.xs,
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 30,
   },
   kpiLabel: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 4,
     textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 16,
   },
   section: {
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: H_PAD,
     marginBottom: SPACING.lg,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.textHeading,
+    marginBottom: SPACING.sm,
+  },
+  viewAll: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
     marginBottom: SPACING.sm,
   },
   performanceCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    elevation: 2,
-  },
-  performanceRow: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: 18,
+    paddingHorizontal: 8,
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
+    ...SHADOWS.small,
   },
   performanceItem: {
+    flex: 1,
     alignItems: 'center',
   },
   performanceDivider: {
     width: 1,
-    backgroundColor: COLORS.gray + '30',
+    height: 36,
+    backgroundColor: COLORS.gray[200],
   },
   performanceValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '700',
     color: COLORS.primary,
   },
   performanceLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 4,
+    fontWeight: '500',
   },
   actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
+    gap: 8,
   },
   actionButton: {
-    width: (width - SPACING.md * 3) / 2,
-    aspectRatio: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    ...SHADOWS.small,
+  },
+  actionIconWrap: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
-    padding: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 3,
+    marginRight: 12,
   },
   actionButtonText: {
-    color: '#fff',
+    flex: 1,
     fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: SPACING.sm,
-    textAlign: 'center',
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
   leadCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: 14,
+    marginBottom: 8,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    elevation: 2,
+    ...SHADOWS.small,
   },
   leadInfo: {
     flex: 1,
+    marginRight: 10,
+  },
+  leadTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   leadName: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
   leadNumber: {
@@ -722,77 +853,104 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 2,
   },
+  leadMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
   leadPhone: {
     fontSize: 13,
-    color: COLORS.textPrimary,
-    marginTop: 4,
+    color: COLORS.textSecondary,
+  },
+  leadCallBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   followUpCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    elevation: 2,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: 14,
+    marginBottom: 8,
+    ...SHADOWS.small,
   },
   followUpHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.xs,
+    marginBottom: 8,
   },
-  followUpName: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+  followUpAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  followUpInfo: {
     flex: 1,
   },
+  followUpName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
   urgentBadge: {
-    backgroundColor: COLORS.red + '20',
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
+    backgroundColor: COLORS.red + '18',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 8,
+    marginLeft: 8,
   },
   urgentText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: COLORS.red,
   },
   followUpTime: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginTop: 2,
   },
   followUpType: {
     fontSize: 12,
     color: COLORS.primary,
     fontWeight: '600',
+    marginBottom: 10,
   },
   followUpActions: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
+    gap: 8,
   },
   followUpActionButton: {
     flex: 1,
-    paddingVertical: SPACING.xs,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: BORDER_RADIUS.md,
   },
   followUpPrimary: {
     backgroundColor: COLORS.primary,
   },
   followUpSecondary: {
-    backgroundColor: COLORS.gray[200],
+    backgroundColor: COLORS.gray[100],
   },
   followUpActionText: {
     color: COLORS.white,
@@ -805,13 +963,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   emptyCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.xl,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: 28,
+    paddingHorizontal: SPACING.lg,
     alignItems: 'center',
-    elevation: 2,
+    gap: 8,
+    ...SHADOWS.small,
   },
   emptyText: {
     color: COLORS.textSecondary,
+    fontSize: 13,
   },
 });

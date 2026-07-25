@@ -8,6 +8,7 @@ import {
 } from './coupon-rules';
 import { computeReferralVoucherDiscount } from '@/lib/referral-voucher-apply';
 import { parseReferralAssignmentNotes } from '@/lib/referral-reward-coupon';
+import { isLabourPercentReferralReward, parseStoredRewardComponents, rewardHasRemainingUses, parseRewardComponents } from '@/lib/refer-and-rise';
 
 export type CouponLeadContext = CouponScopeContext & {
   subtotal?: number;
@@ -262,7 +263,24 @@ export async function validateCouponForCheckout(
       return { valid: false, error: 'Referral reward not found or expired.' };
     }
     const claim = referral.claim as Record<string, any>;
-    if (claim.redeemed_at || claim.status === 'DELIVERED') {
+    const componentsRaw = parseStoredRewardComponents(claim.reward_components);
+    const components = componentsRaw.length > 0 ? componentsRaw : parseRewardComponents(String(claim.reward_text || coupon.description || ''));
+    const hasUses = rewardHasRemainingUses(
+      components,
+      claim.uses_remaining,
+      claim.redeemed_at,
+      claim.status,
+    );
+    if (!hasUses) {
+      return { valid: false, error: 'This referral reward was already used.' };
+    }
+    if (claim.reward_type === 'membership' && claim.membership_id) {
+      return { valid: false, error: 'This membership reward was already activated.' };
+    }
+    if (claim.redeemed_at && components.length === 0) {
+      return { valid: false, error: 'This referral reward was already used.' };
+    }
+    if (claim.status === 'DELIVERED' && components.length === 0) {
       return { valid: false, error: 'This referral reward was already used.' };
     }
     if (claim.expires_at && String(claim.expires_at) < nowIso) {
@@ -274,6 +292,9 @@ export async function validateCouponForCheckout(
       String(claim.reward_text || coupon.description || ''),
       claim.voucher_amount != null ? Number(claim.voucher_amount) : null,
       subtotal,
+    );
+    const labourDiscountAtBilling = isLabourPercentReferralReward(
+      String(claim.reward_text || coupon.description || ''),
     );
 
     return {
@@ -293,7 +314,8 @@ export async function validateCouponForCheckout(
         referral_reward: true,
         referral_claim_id: String(claim.id),
         referral_reward_text: claim.reward_text || coupon.description || null,
-        blocks_wallet: Boolean(claim.blocks_wallet),
+        labour_discount_at_billing: labourDiscountAtBilling,
+        blocks_wallet: true,
         channel,
         validated_at: nowIso,
       },

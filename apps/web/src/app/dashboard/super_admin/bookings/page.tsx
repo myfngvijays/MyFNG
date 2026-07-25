@@ -9,6 +9,7 @@ import {
   enrichBookingLead,
   getLeadServiceLabel,
   getLeadDisplayAmount,
+  getMisaServicesFromLead,
   getLeadUtmParams,
   resolveLeadSourceBadgeTheme,
   computeServiceLeadOverview,
@@ -287,6 +288,7 @@ function formatDetailScalar(value: unknown): React.ReactNode {
 function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
   const meta = item.meta && typeof item.meta === 'object' ? (item.meta as Record<string, unknown>) : {};
   const serviceLabel = getLeadServiceLabel(item);
+  const misaServices = getMisaServicesFromLead(item);
   const payable = getLeadDisplayAmount(item);
 
   const paymentExtras: Array<{ label: string; value: React.ReactNode }> = [];
@@ -365,7 +367,23 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
       </DetailSection>
 
       <DetailSection title="Service & Schedule" icon={Wrench} className="border-violet-200 bg-violet-50/50">
-        <DetailFieldCard label="Service" value={serviceLabel} />
+        {misaServices.length > 0 ? (
+          <div className="md:col-span-2 rounded-lg border border-gray-200/80 bg-white p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Services</p>
+            <ul className="mt-2 space-y-2">
+              {misaServices.map((service, index) => (
+                <li key={`${service.name}-${index}`} className="flex items-start justify-between gap-3 text-sm">
+                  <span className="text-gray-900">{service.name}</span>
+                  {service.price > 0 ? (
+                    <span className="shrink-0 font-semibold text-gray-900">{formatCurrency(service.price)}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <DetailFieldCard label="Service" value={serviceLabel} />
+        )}
         <DetailFieldCard label="Service Type" value={item.service_type} />
         <DetailFieldCard label="Preferred Slot" value={formatDateTime(item.preferred_slot_start)} />
         <DetailFieldCard label="Preferred Date" value={item.preferred_date} />
@@ -1498,6 +1516,7 @@ export default function SuperAdminBookingsPage() {
                   <tbody>
                     {displayedServiceLeads.map((lead) => {
                       const serviceLabel = getServiceLabel(lead);
+                      const misaServices = getMisaServicesFromLead(lead);
                       const leadId = String(lead.id || '');
                       const isSelected = leadId ? selectedIds.has(leadId) : false;
                       return (
@@ -1533,8 +1552,18 @@ export default function SuperAdminBookingsPage() {
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
-                          <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
+                          {misaServices.length > 1 ? (
+                            <div className="space-y-0.5" title={serviceLabel}>
+                              {misaServices.map((service, index) => (
+                                <div key={`${service.name}-${index}`} className="truncate text-xs leading-4">
+                                  {service.name}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           <UtmCampaignCell lead={lead} />

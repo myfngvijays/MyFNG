@@ -11,13 +11,13 @@ import {
   TextInput,
   Linking,
   Modal,
-  BackHandler
+  BackHandler,
+  ScrollView,
 } from 'react-native';
-// import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
-import { COLORS, SPACING } from '../../../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
 
 export default function TelecallerLeadsScreen({ navigation, route }: any) {
   const { user } = useAuth();
@@ -29,6 +29,12 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState(filterParam);
   const [showPhone, setShowPhone] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (filterParam && filterParam !== activeFilter) {
+      setActiveFilter(filterParam);
+    }
+  }, [filterParam]);
 
   useEffect(() => {
     fetchLeads();
@@ -326,11 +332,11 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
     <View style={styles.container}>
       {/* Header with Back Button */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={() => navigation?.goBack()}
         >
-          <Icon name="arrow-left" size={24} color="#fff" />
+          <Icon name="arrow-left" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Leads Queue</Text>
         <View style={{ width: 40 }} />
@@ -338,7 +344,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Icon name="magnify" size={20} color={COLORS.textSecondary} />
+        <Icon name="magnify" size={18} color={COLORS.textSecondary} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name, phone, lead number..."
@@ -346,10 +352,20 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           onChangeText={setSearchTerm}
           placeholderTextColor={COLORS.textSecondary}
         />
+        {!!searchTerm && (
+          <TouchableOpacity onPress={() => setSearchTerm('')}>
+            <Icon name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Filter Chips */}
-      <View style={styles.filtersContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filtersScroll}
+        contentContainerStyle={styles.filtersContainer}
+      >
         <FilterChip
           label="All"
           active={activeFilter === 'all'}
@@ -397,7 +413,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           onPress={() => setActiveFilter('rejected')}
           color={COLORS.red}
         />
-      </View>
+      </ScrollView>
 
       {/* Leads List */}
       <FlatList
@@ -405,12 +421,13 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         renderItem={renderLeadCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Icon name="phone-off" size={64} color={COLORS.textSecondary} />
+            <Icon name="phone-off" size={48} color={COLORS.gray[300]} />
             <Text style={styles.emptyText}>No leads found</Text>
           </View>
         }
@@ -420,8 +437,9 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('TelecallerCreateLead')}
+        activeOpacity={0.85}
       >
-        <Icon name="plus" size={28} color="#fff" />
+        <Icon name="plus" size={26} color="#fff" />
       </TouchableOpacity>
     </View>
   );
@@ -473,10 +491,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: COLORS.primary,
-    paddingTop: 44,
-    paddingBottom: 12,
+    paddingTop: 50,
+    paddingBottom: 14,
     paddingHorizontal: SPACING.md,
-    elevation: 4,
   },
   backButton: {
     width: 40,
@@ -487,8 +504,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#fff',
   },
   loadingContainer: {
@@ -504,29 +521,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    margin: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 12,
-    elevation: 2,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.lg,
+    gap: 8,
+    ...SHADOWS.small,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: 10,
     fontSize: 14,
     color: COLORS.textPrimary,
   },
+  filtersScroll: {
+    flexGrow: 0,
+  },
   filtersContainer: {
-    flexDirection: 'row',
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.sm,
+    gap: 8,
   },
   filterChip: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: COLORS.gray[500] + '30',
-    marginRight: SPACING.xs,
+    backgroundColor: COLORS.gray[100],
+    marginRight: 0,
   },
   filterChipText: {
     fontSize: 13,
@@ -537,14 +560,15 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   listContent: {
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: 88,
   },
   leadCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    elevation: 2,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: 14,
+    marginBottom: 10,
+    ...SHADOWS.small,
   },
   leadHeader: {
     flexDirection: 'row',
@@ -554,10 +578,11 @@ const styles = StyleSheet.create({
   },
   leadHeaderLeft: {
     flex: 1,
+    marginRight: 8,
   },
   leadName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
   leadNumber: {
@@ -566,41 +591,44 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   statusBadge: {
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
   },
   statusText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
   badgesRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: SPACING.sm,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginRight: SPACING.xs,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
   },
   badgeText: {
     fontSize: 11,
     fontWeight: '600',
-    marginLeft: 4,
+    marginLeft: 0,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.xs,
+    marginBottom: 6,
+    gap: 6,
   },
   infoText: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    marginLeft: SPACING.xs,
+    marginLeft: 0,
     flex: 1,
   },
   showHideText: {
@@ -609,10 +637,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   timeInfo: {
-    marginTop: SPACING.xs,
-    paddingTop: SPACING.xs,
+    marginTop: 6,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray[500] + '30',
+    borderTopColor: COLORS.gray[100],
   },
   timeText: {
     fontSize: 11,
@@ -621,16 +649,17 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    marginTop: SPACING.sm,
-    gap: SPACING.xs,
+    marginTop: 10,
+    gap: 8,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.sm,
+    paddingVertical: 10,
     borderRadius: 8,
+    gap: 4,
   },
   primaryButton: {
     backgroundColor: COLORS.primary,
@@ -638,25 +667,25 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#fff',
     fontWeight: '600',
-    marginLeft: SPACING.xs,
-    fontSize: 14,
+    marginLeft: 0,
+    fontSize: 13,
   },
   secondaryButton: {
-    backgroundColor: COLORS.primary + '20',
+    backgroundColor: COLORS.primary + '12',
   },
   secondaryButtonText: {
     color: COLORS.primary,
     fontWeight: '600',
-    marginLeft: SPACING.xs,
-    fontSize: 14,
+    marginLeft: 0,
+    fontSize: 13,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
+    marginTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray[500] + '30',
+    borderTopColor: COLORS.gray[100],
   },
   footerText: {
     fontSize: 11,
@@ -666,27 +695,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.xl * 2,
+    gap: 8,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.textSecondary,
-    marginTop: SPACING.md,
+    marginTop: 0,
   },
   fab: {
     position: 'absolute',
     right: SPACING.lg,
-    bottom: SPACING.lg,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: 24,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...SHADOWS.large,
   },
 });
 

@@ -27,78 +27,10 @@ import {
   isPremiumLuxuryClass,
   PREMIUM_LUXURY_PRICING_MESSAGE,
 } from '../vehicleClassPricing';
-
-function normalizeServiceName(value?: string | null) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function pickPlanPrice(plan: Record<string, unknown> | null | undefined): number | undefined {
-  if (!plan) return undefined;
-  for (const key of ['min_price', 'max_price', 'price', 'custom_price']) {
-    const amount = Number(plan[key]);
-    if (Number.isFinite(amount) && amount > 0) return amount;
-  }
-  return undefined;
-}
-
-function findQuotedPriceInPlans(plans: Array<Record<string, unknown>>, serviceName: string): number | undefined {
-  const target = normalizeServiceName(serviceName);
-  if (!target || !plans.length) return undefined;
-
-  const exact = plans.find((plan) => normalizeServiceName(String(plan.service_name || '')) === target);
-  const exactPrice = pickPlanPrice(exact);
-  if (exactPrice) return exactPrice;
-
-  const partial = plans.find((plan) => {
-    const planName = normalizeServiceName(String(plan.service_name || ''));
-    return planName.includes(target) || target.includes(planName);
-  });
-  return pickPlanPrice(partial);
-}
-
-async function resolveQuotedPriceForBooking(
-  args: Record<string, unknown>,
-  session?: SessionData,
-): Promise<number | undefined> {
-  const direct = Number(args.quoted_price);
-  if (Number.isFinite(direct) && direct > 0) return direct;
-
-  const serviceName = String(args.service_name || '').trim();
-  const sessionPlans = Array.isArray(session?.lastShownPlans) ? session!.lastShownPlans : [];
-  const fromSession = findQuotedPriceInPlans(sessionPlans, serviceName);
-  if (fromSession) return fromSession;
-
-  const selectedPlan = session?.bookingState?.selectedServicePlan;
-  if (selectedPlan) {
-    const selectedName = normalizeServiceName(selectedPlan.service_name);
-    const targetName = normalizeServiceName(serviceName);
-    if (selectedName && targetName && (selectedName === targetName || selectedName.includes(targetName) || targetName.includes(selectedName))) {
-      const selectedPrice = pickPlanPrice(selectedPlan as unknown as Record<string, unknown>);
-      if (selectedPrice) return selectedPrice;
-    }
-  }
-
-  const pincode = String(args.pincode || session?.bookingState?.pincode || '').trim();
-  const carModel = String(args.car_model || session?.bookingState?.carModel || '').trim();
-  const category = String(args.service_category || session?.bookingState?.category || '').trim();
-  if (!pincode || !carModel || !category) return undefined;
-
-  try {
-    const plans = await getServicePlansByPincode({
-      category,
-      carModel,
-      pincode,
-    });
-    const validPlans = (plans || []).filter((plan: any) => !plan?.error);
-    return findQuotedPriceInPlans(validPlans, serviceName);
-  } catch (err) {
-    console.warn('[TOOL] resolveQuotedPriceForBooking fallback failed:', err);
-    return undefined;
-  }
-}
+import {
+  mergePricingPlans,
+  resolveMisaServicesPricing,
+} from './misa-service-pricing';
 
 function rememberPricingInSession(session: SessionData | undefined, plans: Array<Record<string, unknown>>, context: {
   service_category?: string;
@@ -107,7 +39,8 @@ function rememberPricingInSession(session: SessionData | undefined, plans: Array
   city?: string;
 }) {
   if (!session || !plans.length) return;
-  session.lastShownPlans = plans;
+  const existing = Array.isArray(session.lastShownPlans) ? session.lastShownPlans : [];
+  session.lastShownPlans = mergePricingPlans(existing, plans);
   session.bookingState = session.bookingState || {};
   session.bookingState.pricingShown = true;
   if (context.service_category) session.bookingState.category = context.service_category;
@@ -329,7 +262,8 @@ export const CHATBOT_TOOLS = [
           },
           quoted_price: {
             type: 'number',
-            description: 'Quoted service price in INR from get_service_pricing for the selected plan',
+            description:
+              'Total quoted price in INR. For multiple services, pass the sum of all selected service prices.',
           },
           workshop_name: {
             type: 'string',
@@ -682,19 +616,36 @@ export async function executeToolCall(
         }
 
         const trackingUtm = opts?.sessionData?.bookingState?.trackingUtm;
-        const quotedPrice = await resolveQuotedPriceForBooking(args, opts?.sessionData);
-        if (quotedPrice && opts?.sessionData) {
+        const sessionPlans = Array.isArray(opts?.sessionData?.lastShownPlans)
+          ? opts.sessionData.lastShownPlans
+          : [];
+        const directQuoted = Number(args.quoted_price);
+        const resolvedServices = await resolveMisaServicesPricing({
+          serviceNameRaw: String(args.service_name || ''),
+          sessionPlans,
+          pincode: String(args.pincode || opts?.sessionData?.bookingState?.pincode || '').trim(),
+          carModel: String(args.car_model || opts?.sessionData?.bookingState?.carModel || '').trim(),
+          category: String(args.service_category || opts?.sessionData?.bookingState?.category || '').trim(),
+          directQuotedPrice: Number.isFinite(directQuoted) && directQuoted > 0 ? directQuoted : undefined,
+        });
+        const quotedPrice = resolvedServices.totalPrice > 0 ? resolvedServices.totalPrice : undefined;
+
+        if (opts?.sessionData) {
           opts.sessionData.bookingState = opts.sessionData.bookingState || {};
-          opts.sessionData.bookingState.selectedServicePlan = {
-            service_name: args.service_name,
-            min_price: quotedPrice,
-            max_price: quotedPrice,
-          };
+          opts.sessionData.bookingState.selectedService = resolvedServices.displayLabel;
+          opts.sessionData.bookingState.selectedServices = resolvedServices.services;
+          if (quotedPrice) {
+            opts.sessionData.bookingState.selectedServicePlan = {
+              service_name: resolvedServices.displayLabel,
+              min_price: quotedPrice,
+              max_price: quotedPrice,
+            };
+          }
         }
 
         const bookingData = {
           session_id: args.session_id,
-          service_name: args.service_name,
+          service_name: resolvedServices.displayLabel,
           service_category: args.service_category,
           customer_name: customerName,
           phone_number: phone,
@@ -706,6 +657,8 @@ export async function executeToolCall(
           preferred_date: args.preferred_date,
           preferred_time: args.preferred_time,
           quoted_price: quotedPrice,
+          misa_services: resolvedServices.services,
+          service_type_ids: resolvedServices.serviceTypeIds,
           status: 'pending',
           channel: opts?.bookingChannel,
           tracking_utm: trackingUtm && typeof trackingUtm === 'object' ? (trackingUtm as Record<string, string>) : undefined,

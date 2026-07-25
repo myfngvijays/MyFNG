@@ -4424,6 +4424,7 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           <ReferAndRiseInline
             ref={referAndRiseRef}
             referralCode={referralCode}
+            customerPhone={profileForm.phone}
             isLoggedIn={isLoggedIn}
             onLogin={() => navigation.navigate('Login')}
             onViewChange={setReferAndRiseTitle}

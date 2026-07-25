@@ -29,6 +29,19 @@ export {
   migratePushNotifications,
   getReferPushTemplate,
   previewReferPushBody,
+  REFERRAL_TEST_REFERRER_PHONES,
+  normalizePhoneLast10,
+  isReferralTestReferrerPhone,
+  isLabourPercentReferralReward,
+  parseRewardComponents,
+  parseStoredRewardComponents,
+  rewardHasRemainingUses,
+  totalRewardUses,
+  remainingRewardUses,
+  formatRewardUsesLabel,
+  parseMembershipMonthsFromReward,
+  isReferralMembershipReward,
+  type RewardComponent,
 } from '@/shared/constants/referAndRise';
 
 import {

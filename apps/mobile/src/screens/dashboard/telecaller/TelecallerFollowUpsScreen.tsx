@@ -21,19 +21,31 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
 
-export default function TelecallerFollowUpsScreen({ navigation }: any) {
+export default function TelecallerFollowUpsScreen({ navigation, route }: any) {
   const { user } = useAuth();
+  const initialFilter = route?.params?.filter;
 
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'pending' | 'today' | 'overdue' | 'completed'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'today' | 'overdue' | 'completed'>(
+    initialFilter === 'today' || initialFilter === 'overdue' || initialFilter === 'completed' || initialFilter === 'pending'
+      ? initialFilter
+      : 'pending'
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
   const [showReschedulePicker, setShowReschedulePicker] = useState(false);
   const [completionTarget, setCompletionTarget] = useState<any | null>(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [showCompletion, setShowCompletion] = useState(false);
+
+  useEffect(() => {
+    const next = route?.params?.filter;
+    if (next === 'today' || next === 'overdue' || next === 'completed' || next === 'pending') {
+      setFilter(next);
+    }
+  }, [route?.params?.filter]);
 
   useEffect(() => {
     fetchFollowUps();
@@ -456,6 +468,8 @@ export default function TelecallerFollowUpsScreen({ navigation }: any) {
       {/* Follow-ups List */}
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
@@ -538,8 +552,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: COLORS.primary,
-    paddingTop: 44,
-    paddingBottom: 12,
+    paddingTop: 50,
+    paddingBottom: 14,
     paddingHorizontal: SPACING.md,
     elevation: 4,
   },

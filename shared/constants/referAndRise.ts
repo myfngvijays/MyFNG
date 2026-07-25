@@ -103,7 +103,7 @@ export const MILESTONES: Milestone[] = [
   {
     referralCount: 12,
     rewards: {
-      myfngSave: 'Free Basic AC Service',
+      myfngSave: 'Car AC Performance Package (Free)',
       myfngCare: 'Headlight Restoration + Free Battery Health Test',
       myfngElite: 'Warranty Extension + VIP Customer Helpline',
       myfngExpress: '3 Express Bookings',
@@ -247,7 +247,7 @@ export const DEFAULT_RISE_CONTENT = {
     'You choose ONE reward from 4 tracks (MYFNG Save, Care, Elite, Express) at each milestone.',
     'Your referral reward unlocks when your friend completes their first paid service.',
     'MYFNG Save service vouchers cannot be combined with wallet balance on the same booking.',
-    'If you use wallet balance on a booking, referral service vouchers cannot be applied on that booking.',
+    'When any referral reward voucher is applied on a booking, wallet balance cannot be used on that booking.',
     'MYFNG Care: General Service at 15 referrals and Premium Service at 20 referrals upgrade automatically if earlier Care rewards were not redeemed.',
     'Rewards cannot be converted to cash. Self-referral and fraudulent referrals will be rejected.',
   ],
@@ -333,4 +333,151 @@ export function getNextMilestone(referrals: number, milestones: Milestone[] = MI
 
 export function getMilestoneByCount(count: number, milestones: Milestone[] = MILESTONES): Milestone | undefined {
   return milestones.find((m) => m.referralCount === count);
+}
+
+/** Phones allowed to simulate referral invites instantly (QA / demo). */
+export const REFERRAL_TEST_REFERRER_PHONES = ['8652710389'];
+
+export function normalizePhoneLast10(phone: string): string {
+  return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+export function isReferralTestReferrerPhone(phone: string): boolean {
+  const last10 = normalizePhoneLast10(phone);
+  return REFERRAL_TEST_REFERRER_PHONES.includes(last10);
+}
+
+export function isLabourPercentReferralReward(rewardText?: string | null): boolean {
+  return /10%.*labour/i.test(String(rewardText || ''));
+}
+
+export type RewardComponent = {
+  key: string;
+  label: string;
+  uses_total: number;
+  uses_remaining: number;
+};
+
+function slugifyRewardKey(label: string, index: number): string {
+  const slug = String(label || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+  return slug ? `${slug}_${index}` : `benefit_${index}`;
+}
+
+/** Parse composite / multi-use rewards, e.g. "Free Pickup & Drop (3) + Free Brake Service". */
+export function parseRewardComponents(rewardText: string): RewardComponent[] {
+  const text = String(rewardText || '').trim();
+  if (!text) return [];
+
+  if (/membership/i.test(text)) return [];
+
+  const parts = text.split(/\s+\+\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) parts.push(text);
+
+  return parts.map((part, index) => {
+    let label = part;
+    let uses = 1;
+
+    const parenMatch = part.match(/\((\d+)\)\s*$/);
+    if (parenMatch?.[1]) {
+      uses = Math.max(1, Number(parenMatch[1]));
+      label = part.replace(/\s*\(\d+\)\s*$/, '').trim();
+    } else {
+      const leadingCount = part.match(/^(\d+)\s+(.+)$/i);
+      if (leadingCount?.[1] && leadingCount[2]) {
+        uses = Math.max(1, Number(leadingCount[1]));
+        label = leadingCount[2].trim();
+      }
+    }
+
+    return {
+      key: slugifyRewardKey(label, index),
+      label: label || part,
+      uses_total: uses,
+      uses_remaining: uses,
+    };
+  });
+}
+
+export function parseStoredRewardComponents(raw: unknown): RewardComponent[] {
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    try {
+      return parseStoredRewardComponents(JSON.parse(raw));
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      const label = String(item?.label || '').trim();
+      if (!label) return null;
+      const usesTotal = Math.max(1, Number(item?.uses_total ?? item?.usesTotal ?? 1));
+      const usesRemaining = Math.max(0, Number(item?.uses_remaining ?? item?.usesRemaining ?? usesTotal));
+      return {
+        key: String(item?.key || slugifyRewardKey(label, index)),
+        label,
+        uses_total: usesTotal,
+        uses_remaining: Math.min(usesRemaining, usesTotal),
+      };
+    })
+    .filter(Boolean) as RewardComponent[];
+}
+
+export function rewardHasRemainingUses(
+  components: RewardComponent[],
+  usesRemaining: number | null | undefined,
+  redeemedAt?: string | null,
+  status?: string | null,
+): boolean {
+  if (components.length > 0) {
+    return components.some((c) => c.uses_remaining > 0);
+  }
+  if (usesRemaining != null) return usesRemaining > 0;
+  if (redeemedAt || status === 'DELIVERED') return false;
+  return true;
+}
+
+export function totalRewardUses(components: RewardComponent[]): number {
+  if (components.length === 0) return 1;
+  return components.reduce((sum, c) => sum + Math.max(1, c.uses_total), 0);
+}
+
+export function remainingRewardUses(components: RewardComponent[], fallback?: number | null): number {
+  if (components.length > 0) {
+    return components.reduce((sum, c) => sum + Math.max(0, c.uses_remaining), 0);
+  }
+  return fallback != null ? Math.max(0, fallback) : 1;
+}
+
+export function formatRewardUsesLabel(components: RewardComponent[], fallbackRemaining?: number | null): string | null {
+  if (components.length > 1) {
+    return components
+      .filter((c) => c.uses_remaining > 0)
+      .map((c) => `${c.label} (${c.uses_remaining}/${c.uses_total})`)
+      .join(' · ');
+  }
+  if (components.length === 1 && components[0].uses_total > 1) {
+    const c = components[0];
+    return `${c.uses_remaining} of ${c.uses_total} uses left`;
+  }
+  if (fallbackRemaining != null && fallbackRemaining > 1) {
+    return `${fallbackRemaining} uses left`;
+  }
+  return null;
+}
+
+export function parseMembershipMonthsFromReward(rewardText: string): number | null {
+  const match = String(rewardText || '').match(/(\d+)\s*Months?/i);
+  if (match?.[1]) return Math.max(1, Number(match[1]));
+  if (/lifetime|black membership/i.test(String(rewardText || ''))) return null;
+  return null;
+}
+
+export function isReferralMembershipReward(rewardText: string): boolean {
+  return /membership/i.test(String(rewardText || ''));
 }

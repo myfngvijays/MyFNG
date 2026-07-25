@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCustomer, logCustomerEvent } from '@/lib/customer-api';
-import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   DEFAULT_REFER_AND_RISE_CONFIG,
   normalizeReferAndRiseConfig,
   buildRewardMeta,
   resolveCareRewardText,
   normalizeFamilyKey,
+  parseRewardComponents,
+  totalRewardUses,
+  remainingRewardUses,
+  isReferralMembershipReward,
 } from '@/lib/refer-and-rise';
 import { createReferralRewardCoupon, computeReferralRewardExpiresAt } from '@/lib/referral-reward-coupon';
+import { grantReferralMembershipReward } from '@/lib/referral-membership-grant';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,8 +84,12 @@ export async function POST(request: NextRequest) {
   }
 
   const meta = buildRewardMeta(family, rewardText);
+  const rewardComponents = parseRewardComponents(rewardText);
+  const usesTotal = totalRewardUses(rewardComponents);
+  const usesRemaining = remainingRewardUses(rewardComponents, usesTotal);
   const rewardExpiryDays = Math.max(1, Number(config.rewardExpiryDays) || 365);
   const expiresAt = computeReferralRewardExpiresAt(rewardExpiryDays);
+  const isMembershipReward = meta.reward_type === 'membership' || isReferralMembershipReward(rewardText);
 
   const { data: claim, error: claimError } = await supabaseAdmin
     .from('referral_milestone_claims')
@@ -92,10 +100,13 @@ export async function POST(request: NextRequest) {
       reward_text: rewardText,
       reward_type: meta.reward_type,
       voucher_amount: meta.voucher_amount,
-      blocks_wallet: meta.blocks_wallet,
+      blocks_wallet: true,
       status: 'CLAIMED',
       claimed_at: new Date().toISOString(),
       expires_at: expiresAt,
+      reward_components: rewardComponents,
+      uses_total: usesTotal,
+      uses_remaining: usesRemaining,
     })
     .select('*')
     .single();
@@ -104,33 +115,70 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to record claim' }, { status: 500 });
   }
 
-  const couponResult = await createReferralRewardCoupon(supabaseAdmin, {
-    customerId: customer.id,
-    claimId: String(claim.id),
-    milestoneCount: referralCount,
-    rewardText,
-    rewardType: meta.reward_type,
-    voucherAmount: meta.voucher_amount,
-    blocksWallet: meta.blocks_wallet,
-    expiryDays: rewardExpiryDays,
-  });
+  let couponResult: { code: string } | null = null;
+  let membershipActivated = false;
+  let membershipPlanName: string | null = null;
+
+  if (isMembershipReward) {
+    const grant = await grantReferralMembershipReward(
+      supabaseAdmin,
+      customer.id,
+      rewardText,
+      String(claim.id),
+    );
+    if (grant.ok) {
+      membershipActivated = true;
+      membershipPlanName = grant.planName || null;
+      await supabaseAdmin
+        .from('referral_milestone_claims')
+        .update({
+          membership_id: grant.membershipId || null,
+          status: 'DELIVERED',
+          delivered_at: new Date().toISOString(),
+          redeemed_at: new Date().toISOString(),
+          uses_remaining: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', claim.id);
+    }
+  } else {
+    couponResult = await createReferralRewardCoupon(supabaseAdmin, {
+      customerId: customer.id,
+      claimId: String(claim.id),
+      milestoneCount: referralCount,
+      rewardText,
+      rewardType: meta.reward_type,
+      voucherAmount: meta.voucher_amount,
+      blocksWallet: true,
+      expiryDays: rewardExpiryDays,
+      totalUses: usesTotal,
+      rewardComponents,
+    });
+  }
 
   await logCustomerEvent(supabaseAdmin, customer.id, 'milestone_reward_claimed', 'referral', {
     milestone_count: referralCount,
     family,
     reward_text: rewardText,
     reward_type: meta.reward_type,
-    blocks_wallet: meta.blocks_wallet,
+    blocks_wallet: true,
+    membership_activated: membershipActivated,
+    uses_total: usesTotal,
   });
 
   return NextResponse.json({
     success: true,
     reward_type: meta.reward_type,
-    blocks_wallet: meta.blocks_wallet,
+    blocks_wallet: true,
     voucher_amount: meta.voucher_amount,
     reward_text: rewardText,
     expires_at: expiresAt,
     coupon_code: couponResult?.code || null,
+    membership_activated: membershipActivated,
+    membership_plan_name: membershipPlanName,
+    uses_total: usesTotal,
+    uses_remaining: membershipActivated ? 0 : usesRemaining,
+    reward_components: rewardComponents,
     claim,
   });
 }
