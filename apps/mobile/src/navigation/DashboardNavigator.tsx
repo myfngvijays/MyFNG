@@ -5,6 +5,7 @@ import { COLORS } from '../constants/theme';
 
 // Import all dashboard screens
 import TelecallerDashboard from '../screens/dashboard/TelecallerDashboard';
+import TelecallerAdvancedCRM from '../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM';
 import LeadManagerDashboard from '../screens/dashboard/LeadManagerDashboard';
 import RSAManagerDashboard from '../screens/dashboard/RSAManagerDashboard';
 import SuperAdminDashboard from '../screens/dashboard/SuperAdminDashboard';
@@ -181,13 +182,18 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
   if (roleCode === 'TELECALLER') {
     return (
       <Stack.Navigator screenOptions={screenOptions}>
-        <Stack.Screen 
-          name="TelecallerDashboard" 
-          component={TelecallerDashboard}
-          options={{ title: 'Telecaller Dashboard' }}
+        <Stack.Screen
+          name="TelecallerDashboard"
+          component={TelecallerAdvancedCRM}
+          options={{ title: 'Advanced CRM', headerShown: false }}
         />
-        <Stack.Screen 
-          name="TelecallerLeads" 
+        <Stack.Screen
+          name="TelecallerLegacyDashboard"
+          component={TelecallerDashboard}
+          options={{ title: 'Classic Dashboard' }}
+        />
+        <Stack.Screen
+          name="TelecallerLeads"
           component={TelecallerLeadsScreen}
           options={{ title: 'My Leads' }}
         />

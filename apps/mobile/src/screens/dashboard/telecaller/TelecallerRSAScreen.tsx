@@ -7,7 +7,7 @@ import * as Clipboard from 'expo-clipboard';
 
 type TabKey = 'overview' | 'create' | 'registered' | 'car_service' | 'collect_payment' | 'call_report';
 
-export default function TelecallerRSAScreen({ navigation }: any) {
+export default function TelecallerRSAScreen({ navigation, embedded = false }: any) {
   const [tab, setTab] = useState<TabKey>('overview');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -21,6 +21,7 @@ export default function TelecallerRSAScreen({ navigation }: any) {
   const [kpis, setKpis] = useState<any>(null);
   const [performanceOverview, setPerformanceOverview] = useState<any>(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [perfRange, setPerfRange] = useState<'today' | '7d' | '30d'>('today');
   const [callPage, setCallPage] = useState(1);
   const [callTotal, setCallTotal] = useState(0);
   const [callHasRecording, setCallHasRecording] = useState<'all' | 'yes' | 'no'>('all');
@@ -49,7 +50,7 @@ export default function TelecallerRSAScreen({ navigation }: any) {
     notes: '',
   });
 
-  const fetchTabData = async (tabKey: TabKey) => {
+  const fetchTabData = async (tabKey: TabKey, rangeOverride?: 'today' | '7d' | '30d') => {
     setLoading(true);
     try {
       if (tabKey === 'overview' || tabKey === 'registered') {
@@ -79,7 +80,20 @@ export default function TelecallerRSAScreen({ navigation }: any) {
       if (tabKey === 'overview') {
         setPerformanceLoading(true);
         try {
-          const p = await apiFetch<any>('/api/telecaller/performance-overview');
+          const range = rangeOverride || perfRange;
+          const now = new Date();
+          const to = now.toISOString();
+          const fromDate = new Date(now);
+          if (range === 'today') {
+            fromDate.setHours(0, 0, 0, 0);
+          } else if (range === '7d') {
+            fromDate.setDate(fromDate.getDate() - 7);
+          } else {
+            fromDate.setDate(fromDate.getDate() - 30);
+          }
+          const p = await apiFetch<any>(
+            `/api/telecaller/performance-overview?from=${encodeURIComponent(fromDate.toISOString())}&to=${encodeURIComponent(to)}`
+          );
           setPerformanceOverview(p || null);
         } catch (e) {
           console.error('performance overview load failed', e);
@@ -96,7 +110,7 @@ export default function TelecallerRSAScreen({ navigation }: any) {
 
       if (tabKey === 'collect_payment') {
         const data = await apiFetch<any>('/api/telecaller/direct-pay-links?limit=200');
-        setPayLinks(Array.isArray(data?.links) ? data.links : []);
+        setPayLinks(Array.isArray(data?.rows) ? data.rows : Array.isArray(data?.links) ? data.links : []);
       }
 
       if (tabKey === 'call_report') {
@@ -177,20 +191,50 @@ export default function TelecallerRSAScreen({ navigation }: any) {
 
   const generatePayLink = async () => {
     try {
+      const amount = Number(paymentForm.amount || 0);
+      const customerName = String(paymentForm.customer_name || '').trim();
+      const customerPhone = String(paymentForm.customer_phone || '').trim();
+      if (!Number.isFinite(amount) || amount <= 0) {
+        Alert.alert('Error', 'Please enter a valid amount');
+        return;
+      }
+      if (!customerName || !customerPhone) {
+        Alert.alert('Error', 'Customer name and phone are required');
+        return;
+      }
+
+      const ref =
+        (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+          ? (crypto as any).randomUUID()
+          : `ref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+
+      const params = new URLSearchParams();
+      params.set('amount', String(amount));
+      params.set('name', customerName);
+      params.set('phone', customerPhone);
+      params.set('ref', ref);
+
+      // Always use production pay-now URL so customers can open the link
+      const baseUrl = 'https://myfng.in';
+      const link = `${baseUrl}/pay-now?${params.toString()}`;
+
       await apiFetch('/api/telecaller/direct-pay-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer_name: paymentForm.customer_name,
-          customer_phone: paymentForm.customer_phone,
-          amount: Number(paymentForm.amount || 0),
-          notes: paymentForm.notes || null,
+          ref,
+          link,
+          amount,
+          customer_name: customerName,
+          customer_phone: customerPhone,
         }),
       });
       setPaymentForm({ customer_name: '', customer_phone: '', amount: '', notes: '' });
+      Alert.alert('Success', 'Payment link generated');
       fetchTabData('collect_payment');
-    } catch (e) {
+    } catch (e: any) {
       console.error('generate payment link failed', e);
+      Alert.alert('Error', e?.message || 'Failed to generate payment link');
     }
   };
 
@@ -283,7 +327,9 @@ export default function TelecallerRSAScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <DashboardHeader title="Telecaller RSA" onBack={handleBack} />
+      {!embedded ? (
+        <DashboardHeader title="Telecaller RSA" onBack={handleBack} embedded={false} />
+      ) : null}
 
       <View style={styles.tabsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -323,6 +369,7 @@ export default function TelecallerRSAScreen({ navigation }: any) {
       ) : (
         <ScrollView
           style={styles.content}
+          contentContainerStyle={{ paddingBottom: embedded ? 100 : 32 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           {tab === 'overview' && (
@@ -335,6 +382,24 @@ export default function TelecallerRSAScreen({ navigation }: any) {
               </View>
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Actionable Performance</Text>
+                <View style={styles.rangeRow}>
+                  {([
+                    ['today', 'Today'],
+                    ['7d', '7 Days'],
+                    ['30d', '30 Days'],
+                  ] as const).map(([id, label]) => (
+                    <TouchableOpacity
+                      key={id}
+                      style={[styles.rangeChip, perfRange === id && styles.rangeChipActive]}
+                      onPress={() => {
+                        setPerfRange(id);
+                        fetchTabData('overview', id);
+                      }}
+                    >
+                      <Text style={[styles.rangeText, perfRange === id && styles.rangeTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
                 {performanceLoading ? (
                   <Text style={styles.subtle}>Loading performance...</Text>
                 ) : performanceOverview ? (
@@ -624,6 +689,16 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   section: { padding: SPACING.md, gap: SPACING.sm },
   sectionTitle: { fontSize: SIZES.md, fontWeight: '700', color: COLORS.textHeading, marginTop: SPACING.sm },
+  rangeRow: { flexDirection: 'row', gap: 8, marginVertical: 8 },
+  rangeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: COLORS.gray[100],
+  },
+  rangeChipActive: { backgroundColor: COLORS.primary },
+  rangeText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
+  rangeTextActive: { color: COLORS.white },
   kpiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
   kpi: { flexGrow: 1, minWidth: '22%', backgroundColor: COLORS.white, borderRadius: 10, padding: SPACING.sm, alignItems: 'center' },
   kpiValue: { fontSize: SIZES.lg, fontWeight: '700', color: COLORS.primary },

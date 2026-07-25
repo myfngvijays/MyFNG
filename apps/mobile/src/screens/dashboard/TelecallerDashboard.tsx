@@ -22,6 +22,8 @@ import TelecallerLeadDetailScreen from './telecaller/TelecallerLeadDetailScreen'
 import TelecallerFollowUpsScreen from './telecaller/TelecallerFollowUpsScreen';
 import TelecallerScriptsScreen from './telecaller/TelecallerScriptsScreen';
 import TelecallerProfileScreen from './telecaller/TelecallerProfileScreen';
+import TelecallerAanshBar from '../../components/telecaller/TelecallerAanshBar';
+import TelecallerWhatsAppInbox, { TelecallerWhatsAppFab } from '../../components/telecaller/TelecallerWhatsAppInbox';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -53,6 +55,7 @@ export default function TelecallerDashboard() {
   const [upcomingFollowUps, setUpcomingFollowUps] = useState<any[]>([]);
   const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
   const [showReschedulePicker, setShowReschedulePicker] = useState(false);
+  const [whatsAppOpen, setWhatsAppOpen] = useState(false);
 
   useEffect(() => {
     fetchUserProfile();
@@ -246,22 +249,30 @@ export default function TelecallerDashboard() {
   const getTabForScreen = (screen: string) => {
     if (
       screen === 'leads' ||
+      screen === 'TelecallerLeads' ||
       screen === 'TelecallerLeadDetail' ||
+      screen === 'TelecallerEditLead' ||
       screen === 'createLead' ||
+      screen === 'TelecallerCreateLead' ||
       screen === 'followups' ||
-      screen === 'scripts'
+      screen === 'TelecallerFollowUps' ||
+      screen === 'scripts' ||
+      screen === 'TelecallerScripts'
     ) {
       return 'leads';
     }
-    if (screen === 'enquiryLeads') return 'enquiryLeads';
+    if (screen === 'enquiryLeads' || screen === 'TelecallerEnquiryLeads' || screen === 'TelecallerEnquiryLeadDetail') {
+      return 'enquiryLeads';
+    }
     if (
       screen === 'telecallerRsa' ||
+      screen === 'TelecallerRSA' ||
       screen === 'TelecallerRSACreateComplaint' ||
       screen === 'TelecallerRSAComplaintDetail'
     ) {
       return 'telecallerRsa';
     }
-    if (screen === 'profile') return 'profile';
+    if (screen === 'profile' || screen === 'TelecallerProfile') return 'profile';
     return 'dashboard';
   };
 
@@ -326,55 +337,82 @@ export default function TelecallerDashboard() {
     </View>
   );
 
+  // Normalize stack-style names used by child screens into custom-nav screen keys
+  const resolvedScreen = (() => {
+    if (currentScreen === 'TelecallerCreateLead') return 'createLead';
+    if (currentScreen === 'TelecallerLeads') return 'leads';
+    if (currentScreen === 'TelecallerFollowUps') return 'followups';
+    if (currentScreen === 'TelecallerScripts') return 'scripts';
+    if (currentScreen === 'TelecallerProfile') return 'profile';
+    if (currentScreen === 'TelecallerEnquiryLeads') return 'enquiryLeads';
+    if (currentScreen === 'TelecallerRSA') return 'telecallerRsa';
+    return currentScreen;
+  })();
+
   // Render different screens based on currentScreen state
-  if (currentScreen === 'leads') {
+  if (resolvedScreen === 'leads') {
     return wrapWithBottomNav(
       <TelecallerLeadsScreen navigation={navigation} route={{ params: screenParams || {} }} />
     );
   }
 
-  if (currentScreen === 'createLead') {
+  if (resolvedScreen === 'createLead') {
     return wrapWithBottomNav(
       <TelecallerCreateLeadScreen navigation={navigation} route={{ params: screenParams || {} }} />
     );
   }
 
-  if (currentScreen === 'TelecallerLeadDetail' && selectedLeadId) {
+  if (resolvedScreen === 'TelecallerLeadDetail' && (selectedLeadId || screenParams?.leadId)) {
+    const id = selectedLeadId || screenParams?.leadId;
     return wrapWithBottomNav(
-      <TelecallerLeadDetailScreen navigation={navigation} route={{ params: { leadId: selectedLeadId } }} />
+      <TelecallerLeadDetailScreen navigation={navigation} route={{ params: { leadId: id } }} />
     );
   }
 
-  if (currentScreen === 'followups') {
+  if (resolvedScreen === 'TelecallerEditLead') {
+    const EditScreen = require('./telecaller/TelecallerEditLeadScreen').default;
+    return wrapWithBottomNav(
+      <EditScreen navigation={navigation} route={{ params: screenParams || { leadId: selectedLeadId } }} />
+    );
+  }
+
+  if (resolvedScreen === 'TelecallerEnquiryLeadDetail') {
+    const Screen = require('./telecaller/TelecallerEnquiryLeadDetailScreen').default;
+    return wrapWithBottomNav(
+      <Screen navigation={navigation} route={{ params: screenParams || {} }} />
+    );
+  }
+
+  if (resolvedScreen === 'followups') {
     return wrapWithBottomNav(
       <TelecallerFollowUpsScreen navigation={navigation} route={{ params: screenParams || {} }} />
     );
   }
 
-  if (currentScreen === 'scripts') {
+  if (resolvedScreen === 'scripts') {
     return wrapWithBottomNav(<TelecallerScriptsScreen navigation={navigation} />);
   }
 
-  if (currentScreen === 'profile') {
+  if (resolvedScreen === 'profile') {
     return wrapWithBottomNav(<TelecallerProfileScreen navigation={navigation} />);
   }
 
-  if (currentScreen === 'enquiryLeads') {
+  if (resolvedScreen === 'enquiryLeads') {
     const Screen = require('./telecaller/TelecallerEnquiryLeadsScreen').default;
     return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
-  if (currentScreen === 'telecallerRsa') {
+  if (resolvedScreen === 'telecallerRsa') {
     const Screen = require('./telecaller/TelecallerRSAScreen').default;
     return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
-  if (currentScreen === 'TelecallerRSACreateComplaint') {
+  if (resolvedScreen === 'TelecallerRSACreateComplaint') {
     const Screen = require('./telecaller/TelecallerRSACreateComplaintScreen').default;
     return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
 
-  if (currentScreen === 'TelecallerRSAComplaintDetail') {
+  if (resolvedScreen === 'TelecallerRSAComplaintDetail') {
     const Screen = require('./telecaller/TelecallerRSAComplaintDetailScreen').default;
     return wrapWithBottomNav(<Screen navigation={navigation} route={{ params: screenParams || {} }} />);
   }
@@ -463,6 +501,8 @@ export default function TelecallerDashboard() {
         userProfile={userProfile}
         onLogout={handleLogout}
       />
+
+      <TelecallerAanshBar />
 
       <ScrollView
         style={styles.content}
@@ -651,6 +691,9 @@ export default function TelecallerDashboard() {
           onChange={handleRescheduleChange}
         />
       )}
+
+      <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} />
+      <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
 
       <BottomNav
         activeTab={getTabForScreen(currentScreen)}

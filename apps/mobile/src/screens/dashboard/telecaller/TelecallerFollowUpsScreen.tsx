@@ -21,7 +21,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
 
-export default function TelecallerFollowUpsScreen({ navigation, route }: any) {
+export default function TelecallerFollowUpsScreen({ navigation, route, embedded = false }: any) {
   const { user } = useAuth();
   const initialFilter = route?.params?.filter;
 
@@ -244,121 +244,114 @@ export default function TelecallerFollowUpsScreen({ navigation, route }: any) {
     const scheduledTime = new Date(item.scheduled_time);
     const isOverdue = scheduledTime < new Date() && item.status === 'PENDING';
     const isToday = scheduledTime.toDateString() === new Date().toDateString();
+    const whenLabel = formatDateTime(item.scheduled_time) || scheduledTime.toLocaleString();
 
     return (
-      <View key={item.id} style={[
-        styles.followUpCard,
-        isOverdue && styles.overdueCard
-      ]}>
-        {/* Header */}
+      <View
+        key={item.id}
+        style={[styles.followUpCard, isOverdue && styles.overdueCard]}
+      >
         <View style={styles.cardHeader}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
             <View style={styles.customerInfo}>
               <Icon name="account" size={16} color={COLORS.primary} />
-              <Text style={styles.customerName}>{item.lead?.customer_name}</Text>
+              <Text style={styles.customerName} numberOfLines={1}>
+                {item.lead?.customer_name || 'Customer'}
+              </Text>
             </View>
-            <Text style={styles.leadNumber}>#{item.lead?.lead_number}</Text>
+            <Text style={styles.leadNumber}>#{item.lead?.lead_number || '—'}</Text>
           </View>
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) }
-          ]}>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
             <Text style={styles.statusText}>{item.status}</Text>
           </View>
         </View>
 
-        {/* Follow-up Details */}
         <View style={styles.detailsContainer}>
           <View style={styles.detailRow}>
-            <Icon name="calendar-clock" size={16} color={COLORS.textSecondary} />
-            <Text style={[
-              styles.detailText,
-              isOverdue && styles.overdueText
-            ]}>
-              {scheduledTime.toLocaleString()}
-              {isOverdue && ' (OVERDUE)'}
-              {isToday && ' (Today)'}
+            <Icon name="calendar-clock" size={16} color={isOverdue ? COLORS.red : COLORS.textSecondary} />
+            <Text style={[styles.detailText, isOverdue && styles.overdueText]}>
+              {whenLabel}
+              {isOverdue ? ' · Overdue' : isToday ? ' · Today' : ''}
             </Text>
           </View>
 
           <View style={styles.detailRow}>
             <Icon name="phone-forward" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.detailText}>{item.follow_up_type}</Text>
+            <Text style={styles.detailText}>{String(item.follow_up_type || 'FOLLOW_UP').replace(/_/g, ' ')}</Text>
           </View>
 
-          {item.reason && (
+          {item.reason ? (
             <View style={styles.detailRow}>
               <Icon name="text" size={16} color={COLORS.textSecondary} />
-              <Text style={styles.detailText}>{item.reason}</Text>
+              <Text style={styles.detailText} numberOfLines={2}>{item.reason}</Text>
             </View>
-          )}
+          ) : null}
 
-          {item.priority && item.priority !== 'NORMAL' && (
-            <View style={[
-              styles.priorityBadge,
-              { backgroundColor: getPriorityColor(item.priority) }
-            ]}>
+          {item.priority && item.priority !== 'NORMAL' ? (
+            <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) }]}>
               <Icon name="alert-circle" size={14} color={COLORS.red} />
               <Text style={styles.priorityText}>{item.priority}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {/* Actions */}
-        {item.status === 'PENDING' && (
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.viewButton]}
-              onPress={() => Linking.openURL(`tel:${item.lead?.customer_phone}`)}
-            >
-              <Icon name="phone" size={18} color={COLORS.primary} />
-              <Text style={styles.actionButtonText}>Call Now</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.viewButton]}
-              onPress={() => handleViewLead(item.lead_id)}
-            >
-              <Icon name="eye" size={18} color={COLORS.primary} />
-              <Text style={styles.actionButtonText}>View Lead</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.completeButton]}
-              onPress={() => handleMarkCompleted(item.id)}
-            >
-              <Icon name="check-circle" size={18} color={COLORS.green} />
-              <Text style={styles.actionButtonText}>Complete</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.missedButton]}
-              onPress={() => handleMarkMissed(item.id)}
-            >
-              <Icon name="close-circle" size={18} color={COLORS.red} />
-              <Text style={styles.actionButtonText}>Cancel</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.viewButton]}
-              onPress={() => handleReschedule(item.id)}
-            >
-              <Icon name="calendar-clock" size={18} color={COLORS.primary} />
-              <Text style={styles.actionButtonText}>Reschedule</Text>
-            </TouchableOpacity>
+        {item.status === 'PENDING' ? (
+          <View style={styles.actionsWrap}>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionPrimary]}
+                onPress={() => Linking.openURL(`tel:${item.lead?.customer_phone}`)}
+              >
+                <Icon name="phone" size={16} color="#fff" />
+                <Text style={styles.actionBtnTextOn}>Call</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionSecondary]}
+                onPress={() => handleViewLead(item.lead_id)}
+              >
+                <Icon name="eye" size={16} color={COLORS.primary} />
+                <Text style={styles.actionBtnText}>View</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionSuccess]}
+                onPress={() => handleMarkCompleted(item.id)}
+              >
+                <Icon name="check-circle" size={15} color={COLORS.green} />
+                <Text style={[styles.actionBtnText, { color: COLORS.green }]}>Done</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionDanger]}
+                onPress={() => handleMarkMissed(item.id)}
+              >
+                <Icon name="close-circle" size={15} color={COLORS.red} />
+                <Text style={[styles.actionBtnText, { color: COLORS.red }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionSecondary]}
+                onPress={() => handleReschedule(item.id)}
+              >
+                <Icon name="calendar-clock" size={15} color={COLORS.primary} />
+                <Text style={styles.actionBtnText}>Reschedule</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
+        ) : null}
 
-        {item.status === 'COMPLETED' && item.completed_at && (
+        {item.status === 'COMPLETED' && item.completed_at ? (
           <View style={styles.completedInfo}>
             <Icon name="check" size={14} color={COLORS.green} />
-            <Text style={styles.completedText}>
-              Completed on {formatDateTime(item.completed_at)}
-            </Text>
-            {item.completion_notes ? (
-              <Text style={styles.completedNotes}>{item.completion_notes}</Text>
-            ) : null}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.completedText}>
+                Completed on {formatDateTime(item.completed_at)}
+              </Text>
+              {item.completion_notes ? (
+                <Text style={styles.completedNotes}>{item.completion_notes}</Text>
+              ) : null}
+            </View>
           </View>
-        )}
+        ) : null}
       </View>
     );
   };
@@ -374,17 +367,19 @@ export default function TelecallerFollowUpsScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      {/* Header with Back Button */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation?.goBack()}
-        >
-          <Icon name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Follow-ups</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      {/* Header with Back Button — skipped when embedded in CRM Engage tab */}
+      {!embedded ? (
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation?.goBack()}
+          >
+            <Icon name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Follow-ups</Text>
+          <View style={{ width: 40 }} />
+        </View>
+      ) : null}
 
       <View style={styles.searchContainer}>
         <Icon name="magnify" size={20} color={COLORS.textSecondary} />
@@ -468,7 +463,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route }: any) {
       {/* Follow-ups List */}
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: embedded ? 110 : 32 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
@@ -574,7 +569,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    margin: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
     borderRadius: 10,
     paddingHorizontal: SPACING.sm,
     borderWidth: 1,
@@ -596,38 +593,37 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   filterContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[500] + '30',
   },
   filterTab: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 20,
-    marginRight: SPACING.sm,
-    backgroundColor: COLORS.background,
+    marginRight: 8,
+    backgroundColor: COLORS.gray[100],
   },
   filterTabActive: {
     backgroundColor: COLORS.primary,
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   filterTextActive: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   statsCard: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    margin: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
     borderRadius: 12,
-    padding: SPACING.md,
-    elevation: 2,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.md,
+    elevation: 1,
   },
   statItem: {
     flex: 1,
@@ -635,17 +631,18 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    backgroundColor: COLORS.gray[500] + '30',
+    backgroundColor: COLORS.gray[200],
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: COLORS.primary,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
@@ -653,10 +650,11 @@ const styles = StyleSheet.create({
   followUpCard: {
     backgroundColor: '#fff',
     marginHorizontal: SPACING.md,
-    marginBottom: SPACING.md,
-    borderRadius: 12,
-    padding: SPACING.md,
-    elevation: 2,
+    marginBottom: 10,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
   },
   overdueCard: {
     borderLeftWidth: 4,
@@ -666,77 +664,125 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
+    marginBottom: 8,
   },
   customerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: 6,
   },
   customerName: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '800',
     color: COLORS.textPrimary,
+    flexShrink: 1,
   },
   leadNumber: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+    fontWeight: '600',
   },
   statusBadge: {
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '800',
     color: COLORS.textPrimary,
   },
   detailsContainer: {
-    marginBottom: SPACING.sm,
+    marginBottom: 4,
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-    gap: SPACING.xs,
+    alignItems: 'flex-start',
+    marginBottom: 6,
+    gap: 8,
   },
   detailText: {
     fontSize: 13,
     color: COLORS.textPrimary,
     flex: 1,
+    lineHeight: 18,
   },
   overdueText: {
     color: COLORS.red,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   priorityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 10,
     gap: 4,
-    marginTop: SPACING.xs,
+    marginTop: 2,
+    marginBottom: 4,
   },
   priorityText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.red,
   },
-  actionsContainer: {
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
+  actionsWrap: {
+    marginTop: 10,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+    paddingTop: 10,
   },
-  actionButton: {
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.sm,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 5,
+  },
+  actionPrimary: {
+    backgroundColor: COLORS.primary,
+  },
+  actionSecondary: {
+    backgroundColor: COLORS.primary + '12',
+  },
+  actionSuccess: {
+    backgroundColor: COLORS.green + '14',
+  },
+  actionDanger: {
+    backgroundColor: COLORS.red + '12',
+  },
+  actionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  actionBtnTextOn: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  // legacy unused kept for safety
+  actionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: 8,
     gap: 4,
   },
@@ -756,21 +802,22 @@ const styles = StyleSheet.create({
   },
   completedInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: COLORS.gray[500] + '20',
+    borderTopColor: COLORS.gray[100],
   },
   completedText: {
     fontSize: 12,
     color: COLORS.green,
+    fontWeight: '600',
   },
   completedNotes: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
+    marginTop: 4,
   },
   emptyContainer: {
     alignItems: 'center',

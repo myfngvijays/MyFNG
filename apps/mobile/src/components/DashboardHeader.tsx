@@ -14,6 +14,8 @@ interface DashboardHeaderProps {
   // Simple header mode (used by some role sub-screens)
   title?: string;
   onBack?: () => void;
+  /** When true, skip status-bar padding (parent already has SafeArea). */
+  embedded?: boolean;
 
   // Legacy aliases used by some dashboards
   userName?: string;
@@ -29,6 +31,7 @@ export default function DashboardHeader({
   onNotificationPress,
   title,
   onBack,
+  embedded = false,
   userName,
   userRole,
   userProfile,
@@ -37,14 +40,14 @@ export default function DashboardHeader({
   // Simple header: back + title (no welcome, no logout)
   if (title) {
     return (
-      <View style={styles.simpleHeader}>
+      <View style={[styles.simpleHeader, embedded && styles.simpleHeaderEmbedded]}>
         <View style={styles.leftSection}>
           <View style={styles.simpleRow}>
-            {onBack && (
+            {onBack && !embedded ? (
               <TouchableOpacity onPress={onBack} style={styles.backButton}>
                 <Ionicons name="arrow-back" size={20} color={COLORS.white} />
               </TouchableOpacity>
-            )}
+            ) : null}
             <Text style={styles.simpleTitle}>{title}</Text>
           </View>
         </View>
@@ -115,6 +118,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
+  },
+  simpleHeaderEmbedded: {
+    paddingTop: SPACING.sm,
   },
   leftSection: {
     flex: 1,

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { Icon } from './Icon';
 
@@ -16,11 +17,12 @@ interface BottomNavProps {
 }
 
 export default function BottomNav({ activeTab, onTabChange, onTabPress, tabs }: BottomNavProps) {
+  const insets = useSafeAreaInsets();
   const handlePress = (tabId: string) => {
     (onTabChange || onTabPress)?.(tabId);
   };
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       {tabs.map((tab) => (
         <TouchableOpacity
           key={tab.id}
@@ -50,13 +52,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.gray[200],
-    paddingBottom: SPACING.md + 4,
     paddingTop: SPACING.sm,
     shadowColor: COLORS.black,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 16,
+    zIndex: 30,
   },
   tab: {
     flex: 1,

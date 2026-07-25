@@ -9,10 +9,15 @@ type Props = {
   displayValue: string;
   selectedMake?: string;
   selectedModel?: string;
-  onSelect: (make: string, model: string, display: string) => void;
+  onSelect: (
+    make: string,
+    model: string,
+    display: string,
+    meta?: { id?: string; variant?: string; class?: string },
+  ) => void;
   onClear: () => void;
   placeholder?: string;
-  variant?: 'default' | 'premium';
+  variant?: 'default' | 'premium' | 'website';
 };
 
 export default function CarModelSearchField({
@@ -22,10 +27,11 @@ export default function CarModelSearchField({
   selectedModel,
   onSelect,
   onClear,
-  placeholder = 'Search make or model (e.g. Tata Nexon)',
+  placeholder = 'Enter Model (e.g. Swift, City, Creta)',
   variant = 'default',
 }: Props) {
   const premium = variant === 'premium';
+  const website = variant === 'website';
   const [query, setQuery] = useState(displayValue);
   const [focused, setFocused] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -63,16 +69,43 @@ export default function CarModelSearchField({
   }, [query, selectedMake, selectedModel, displayValue]);
 
   const hasSelection = Boolean(selectedMake && selectedModel);
+  const showSuggestions =
+    focused &&
+    suggestions.length > 0 &&
+    (!hasSelection || query !== `${selectedMake} ${selectedModel}`.trim());
 
   return (
     <View style={styles.wrap}>
-      {label ? <Text style={[styles.label, premium ? styles.labelPremium : null]}>{label}</Text> : null}
-      <View style={[styles.row, premium ? styles.rowPremium : null, hasSelection && premium ? styles.rowPremiumSelected : null]}>
-        <View style={[styles.iconWrap, premium ? styles.iconWrapPremium : null]}>
-          <Ionicons name="car-sport" size={premium ? 18 : 16} color={COLORS.primary} />
+      {label ? (
+        <View style={website ? styles.websiteLabelRow : undefined}>
+          {website ? (
+            <View style={styles.websiteIcon}>
+              <Ionicons name="car-sport" size={18} color="#fff" />
+            </View>
+          ) : null}
+          <Text style={[styles.label, premium ? styles.labelPremium : null, website ? styles.websiteLabel : null]}>
+            {label}
+          </Text>
         </View>
+      ) : null}
+      <View
+        style={[
+          styles.row,
+          premium ? styles.rowPremium : null,
+          website ? styles.rowWebsite : null,
+          hasSelection && premium ? styles.rowPremiumSelected : null,
+          hasSelection && website ? styles.rowWebsiteSelected : null,
+        ]}
+      >
+        {website ? (
+          <Ionicons name="search" size={20} color="#94A3B8" />
+        ) : (
+          <View style={[styles.iconWrap, premium ? styles.iconWrapPremium : null]}>
+            <Ionicons name="car-sport" size={premium ? 18 : 16} color={COLORS.primary} />
+          </View>
+        )}
         <TextInput
-          style={[styles.input, premium ? styles.inputPremium : null]}
+          style={[styles.input, premium ? styles.inputPremium : null, website ? styles.inputWebsite : null]}
           value={hasSelection ? `${selectedMake} ${selectedModel}`.trim() : query}
           onChangeText={(t) => {
             if (hasSelection) onClear();
@@ -87,7 +120,9 @@ export default function CarModelSearchField({
           spellCheck={false}
           autoComplete="off"
         />
-        {hasSelection || query ? (
+        {hasSelection ? (
+          <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+        ) : query ? (
           <TouchableOpacity
             onPress={() => {
               onClear();
@@ -100,10 +135,12 @@ export default function CarModelSearchField({
           </TouchableOpacity>
         ) : null}
       </View>
-      {hasSelection && premium ? (
+      {hasSelection && (premium || website) ? (
         <View style={styles.selectedPill}>
           <Ionicons name="checkmark-circle" size={14} color="#059669" />
-          <Text style={styles.selectedPillText}>Car selected from MyFNG database</Text>
+          <Text style={styles.selectedPillText}>
+            Selected: {selectedMake} {selectedModel}
+          </Text>
         </View>
       ) : null}
       {loading ? (
@@ -112,9 +149,9 @@ export default function CarModelSearchField({
           <Text style={styles.loadingText}>Searching cars…</Text>
         </View>
       ) : null}
-      {focused && suggestions.length > 0 ? (
-        <View style={[styles.suggestionBox, premium ? styles.suggestionBoxPremium : null]}>
-          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ maxHeight: premium ? 220 : 200 }}>
+      {showSuggestions ? (
+        <View style={[styles.suggestionBox, premium ? styles.suggestionBoxPremium : null, website ? styles.suggestionBoxWebsite : null]}>
+          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ maxHeight: website ? 280 : premium ? 220 : 200 }}>
             {suggestions.slice(0, 20).map((item, idx) => {
               const make = String(item?.make || '').trim();
               const model = String(item?.model_name || item?.model || '').trim();
@@ -122,16 +159,41 @@ export default function CarModelSearchField({
               return (
                 <TouchableOpacity
                   key={String(item?.id || `${make}-${model}-${idx}`)}
-                  style={[styles.suggestionItem, premium ? styles.suggestionItemPremium : null]}
+                  style={[
+                    styles.suggestionItem,
+                    premium ? styles.suggestionItemPremium : null,
+                    website ? styles.suggestionItemWebsite : null,
+                  ]}
                   onPress={() => {
-                    onSelect(make, model, display);
+                    onSelect(make, model, display, {
+                      id: item?.id ? String(item.id) : undefined,
+                      variant: item?.variant ? String(item.variant) : undefined,
+                      class: item?.vehicleClass || item?.class
+                        ? String(item.vehicleClass || item.class)
+                        : undefined,
+                    });
                     setQuery(display);
                     setSuggestions([]);
                     setFocused(false);
                   }}
                 >
-                  <Text style={[styles.suggestionTitle, premium ? styles.suggestionTitlePremium : null]}>{display}</Text>
-                  {item?.variant ? <Text style={styles.suggestionMeta}>{String(item.variant)}</Text> : null}
+                  {website ? (
+                    <View style={styles.websiteSuggestionInner}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.websiteMake}>{make}</Text>
+                        <Text style={styles.websiteModel}>
+                          {model}
+                          {item?.variant ? ` (${item.variant})` : ''}
+                        </Text>
+                      </View>
+                      <Ionicons name="arrow-forward" size={18} color="rgba(255,255,255,0.8)" />
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={[styles.suggestionTitle, premium ? styles.suggestionTitlePremium : null]}>{display}</Text>
+                      {item?.variant ? <Text style={styles.suggestionMeta}>{String(item.variant)}</Text> : null}
+                    </>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -222,4 +284,42 @@ const styles = StyleSheet.create({
   suggestionTitle: { fontSize: 13, fontWeight: '700', color: '#1A1A1A' },
   suggestionTitlePremium: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
   suggestionMeta: { fontSize: 11, color: '#64748B', marginTop: 2, fontWeight: '600' },
+  websiteLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  websiteIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  websiteLabel: { fontSize: 17, fontWeight: '800', color: '#111827', marginBottom: 0 },
+  rowWebsite: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 54,
+  },
+  rowWebsiteSelected: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '08',
+  },
+  inputWebsite: { fontSize: 16, fontWeight: '600', color: '#111827' },
+  suggestionBoxWebsite: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#0A2540',
+    backgroundColor: '#0A2540',
+    marginTop: 8,
+  },
+  suggestionItemWebsite: {
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  websiteSuggestionInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  websiteMake: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  websiteModel: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 });

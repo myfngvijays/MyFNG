@@ -739,12 +739,13 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/company_van_driver/profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
       ],
       'TELECALLER': [
-        { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+        { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Home' },
+        { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/telecaller/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { href: '/dashboard/telecaller/engage', icon: <Calendar className="w-5 h-5" />, label: 'Engage' },
         { href: '/dashboard/telecaller/enquiry-leads', icon: <FileText className="w-5 h-5" />, label: 'Enquiry' },
-        { href: '/dashboard/telecaller/leads', icon: <FileText className="w-5 h-5" />, label: 'My Leads' },
-        { href: '/dashboard/telecaller/leads/create', icon: <ClipboardList className="w-5 h-5" />, label: 'Create Lead' },
         { href: '/dashboard/telecaller/rsa', icon: <AlertTriangle className="w-5 h-5" />, label: 'RSA' },
-        { href: '/dashboard/telecaller/profile', icon: <Users className="w-5 h-5" />, label: 'My Profile' },
+        { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'Me' },
       ],
       'SUB_ADMIN': [
         { href: '/dashboard/sub_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },

@@ -31,7 +31,7 @@ interface UserProfile {
   };
 }
 
-export default function TelecallerProfileScreen({ navigation }: any) {
+export default function TelecallerProfileScreen({ navigation, embedded = false }: any) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -164,13 +164,17 @@ export default function TelecallerProfileScreen({ navigation }: any) {
   return (
     <ScrollView style={styles.container}>
       {/* Header with Back Button */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation?.goBack()}
-        >
-          <Icon name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
+      <View style={[styles.header, embedded && styles.headerEmbedded]}>
+        {!embedded ? (
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => navigation?.goBack()}
+          >
+            <Icon name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 12 }} />
+        )}
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>My Profile</Text>
           <Text style={styles.headerSubtitle}>Manage your personal information</Text>
@@ -390,6 +394,9 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerEmbedded: {
+    paddingTop: 14,
   },
   backButton: {
     width: 40,

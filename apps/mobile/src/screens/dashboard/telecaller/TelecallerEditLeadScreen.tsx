@@ -15,6 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { parseIds } from '@/lib/parseIds';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
@@ -40,10 +41,12 @@ interface FormData {
   preferred_slot_start: string;
 }
 
-export default function TelecallerEditLeadScreen() {
+export default function TelecallerEditLeadScreen({ navigation: navProp, route: routeProp }: any) {
   const route = useRoute();
-  const navigation = useNavigation();
-  const { leadId } = route.params as { leadId: string };
+  const navigationHook = useNavigation();
+  const navigation = navProp || navigationHook;
+  const params = (routeProp?.params || (route as any)?.params || {}) as { leadId: string };
+  const { leadId } = params;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,31 +115,9 @@ export default function TelecallerEditLeadScreen() {
       return;
     }
 
-    // Parse service_type_ids and subservice_ids from JSONB strings
-    let serviceTypeIds: string[] = [];
-    let subserviceIds: string[] = [];
-
-    try {
-      if (data.service_type_ids) {
-        const parsed = typeof data.service_type_ids === 'string' 
-          ? JSON.parse(data.service_type_ids)
-          : data.service_type_ids;
-        serviceTypeIds = Array.isArray(parsed) ? parsed.map(String) : [];
-      }
-    } catch (e) {
-      console.error('Error parsing service_type_ids:', e);
-    }
-
-    try {
-      if (data.subservice_ids) {
-        const parsed = typeof data.subservice_ids === 'string'
-          ? JSON.parse(data.subservice_ids)
-          : data.subservice_ids;
-        subserviceIds = Array.isArray(parsed) ? parsed.map(String) : [];
-      }
-    } catch (e) {
-      console.error('Error parsing subservice_ids:', e);
-    }
+    // Parse service_type_ids and subservice_ids from JSONB / string / array
+    const serviceTypeIds = parseIds(data.service_type_ids);
+    const subserviceIds = parseIds(data.subservice_ids);
 
     setFormData({
       customer_name: data.customer_name || '',

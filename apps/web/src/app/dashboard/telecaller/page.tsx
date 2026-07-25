@@ -1,428 +1,220 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import DashboardLayout from '@/components/DashboardLayout';
-import { formatDateTime } from '@/lib/utils';
-import {
-  Phone, PhoneCall, PhoneMissed, Clock, CheckCircle, XCircle,
-  AlertCircle, TrendingUp, Calendar, Users
-} from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
-import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import DashboardLayout from '@/components/DashboardLayout';
+import {
+  CRM_DATE_PRESETS,
+  resolveCrmDateRange,
+  type CrmDatePreset,
+  istYmd,
+} from '@/lib/telecaller/crmDateRange';
+import {
+  Phone,
+  Calendar,
+  ClipboardList,
+  MessageCircle,
+  ChevronRight,
+  Loader2,
+} from 'lucide-react';
 
-export default function TelecallerDashboard() {
-  const [stats, setStats] = useState({
-    newLeads: 0,
-    pendingCallbacks: 0,
-    followUpToday: 0,
-    incompleteLeads: 0,
-    bookedLeads: 0,
-    rejectedLeads: 0,
-    todayCalls: 0,
-    answeredCalls: 0,
-    loading: true
-  });
+type Kpis = {
+  new_leads?: number;
+  callbacks?: number;
+  followups_today?: number;
+  booked?: number;
+  incomplete?: number;
+  rejected?: number;
+  today_calls?: number;
+  answered_calls?: number;
+  answer_rate?: number;
+};
 
-  const [recentLeads, setRecentLeads] = useState<any[]>([]);
-  const [upcomingFollowUps, setUpcomingFollowUps] = useState<any[]>([]);
+export default function TelecallerCrmHomePage() {
+  const [loading, setLoading] = useState(true);
+  const [kpis, setKpis] = useState<Kpis>({});
+  const [trend, setTrend] = useState<any[]>([]);
+  const [profileName, setProfileName] = useState('Telecaller');
+  const [punchedIn, setPunchedIn] = useState(false);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+      const res = await fetch(
+        `/api/telecaller/crm/dashboard?from=${encodeURIComponent(range.startYmd)}&to=${encodeURIComponent(range.endYmd)}`,
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed');
+      setKpis(json.kpis || {});
+      setTrend(Array.isArray(json.trend) ? json.trend : []);
+      setProfileName(json?.profile?.name || 'Telecaller');
+      setPunchedIn(Boolean(json?.attendance?.is_punched_in));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [datePreset, customStart, customEnd]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    load();
+  }, [load]);
 
-  async function fetchDashboardData() {
-    const supabase = createClient();
+  const kpiCards = [
+    { label: 'New', value: kpis.new_leads, color: 'text-blue-700', filter: 'new' },
+    { label: 'Callbacks', value: kpis.callbacks, color: 'text-orange-600', filter: 'callback' },
+    { label: 'Follow-ups', value: kpis.followups_today, color: 'text-indigo-600', filter: 'follow_up' },
+    { label: 'Booked', value: kpis.booked, color: 'text-emerald-600', filter: 'booked' },
+    { label: 'Incomplete', value: kpis.incomplete, color: 'text-amber-600', filter: 'incomplete' },
+    { label: 'Rejected', value: kpis.rejected, color: 'text-red-600', filter: 'rejected' },
+  ];
 
-    try {
-      // Get current telecaller
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setStats(prev => ({ ...prev, loading: false }));
-        return;
-      }
-
-      const userProfile = await resolveUserProfile(supabase as any, {
-        id: String(user.id || ''),
-        email: user.email,
-        phone: user.phone,
-      });
-
-      const teleCallerId = String((userProfile as any)?.id || '').trim();
-      if (!teleCallerId) {
-        // Prevent malformed queries like eq.undefined when profile mapping is missing.
-        setRecentLeads([]);
-        setUpcomingFollowUps([]);
-        setStats(prev => ({ ...prev, loading: false }));
-        return;
-      }
-
-      // Fetch stats
-      const today = new Date().toISOString().split('T')[0];
-
-      // New leads (not contacted yet)
-      const { count: newCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-        .eq('status', 'NEW')
-        .is('last_call_at', null);
-
-      // Pending callbacks
-      const { count: callbackCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_telecaller_id', teleCallerId)
-        .eq('follow_up_required', true)
-        .lte('next_follow_up_at', new Date().toISOString());
-
-      // Follow-ups today
-      const { count: followUpCount } = await supabase
-        .from('telecaller_follow_ups')
-        .select('*', { count: 'exact', head: true })
-        .eq('telecaller_id', teleCallerId)
-        .eq('status', 'PENDING')
-        .gte('scheduled_time', `${today}T00:00:00`)
-        .lte('scheduled_time', `${today}T23:59:59`);
-
-      // Incomplete leads
-      const { count: incompleteCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-        .eq('is_incomplete', true);
-
-      // Booked leads
-      const { count: bookedCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('created_by_id', teleCallerId)
-        .in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS']);
-
-      // Rejected leads
-      const { count: rejectedCount } = await supabase
-        .from('service_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_telecaller_id', teleCallerId)
-        .eq('status', 'REJECTED');
-
-      // Today's call stats
-      const { data: callStats } = await supabase
-        .from('telecaller_call_logs')
-        .select('call_status')
-        .eq('telecaller_id', teleCallerId)
-        .gte('created_at', `${today}T00:00:00`)
-        .lte('created_at', `${today}T23:59:59`);
-
-      const todayCalls = callStats?.length || 0;
-      const answeredCalls = callStats?.filter(c => c.call_status === 'ANSWERED').length || 0;
-
-      setStats({
-        newLeads: newCount || 0,
-        pendingCallbacks: callbackCount || 0,
-        followUpToday: followUpCount || 0,
-        incompleteLeads: incompleteCount || 0,
-        bookedLeads: bookedCount || 0,
-        rejectedLeads: rejectedCount || 0,
-        todayCalls,
-        answeredCalls,
-        loading: false
-      });
-
-      // Fetch recent leads
-      const { data: leads } = await supabase
-        .from('service_leads')
-        .select('*')
-        .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-        .in('status', ['NEW', 'ASSIGNED'])
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      setRecentLeads(leads || []);
-
-      // Fetch upcoming follow-ups
-      const { data: followUps } = await supabase
-        .from('telecaller_follow_ups')
-        .select('*, lead:service_leads(lead_number, customer_name, customer_phone)')
-        .eq('telecaller_id', teleCallerId)
-        .eq('status', 'PENDING')
-        .order('scheduled_time', { ascending: true })
-        .limit(5);
-
-      setUpcomingFollowUps(followUps || []);
-
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      setStats(prev => ({ ...prev, loading: false }));
-    }
-  }
-
-  if (stats.loading) {
-    return (
-      <DashboardLayout role="telecaller">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const maxCalls = Math.max(1, ...trend.map((t) => Number(t.calls || 0)));
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-secondary to-brand-primary text-white p-4 sm:p-5 md:p-6 rounded-lg shadow-lg -mx-3 sm:-mx-4 md:-mx-6 -mt-3 sm:-mt-4 md:-mt-6 mb-4 sm:mb-5 md:mb-6">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-yellow-300 drop-shadow-lg">📞 Telecaller Dashboard</h1>
-          <p className="text-white font-medium mt-0.5 sm:mt-1 text-sm sm:text-base">Manage customer calls and lead bookings</p>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
-          <Link href="/dashboard/telecaller/leads?filter=new">
-            <StatCard
-              title="New Leads"
-              value={stats.newLeads.toString()}
-              icon={<Phone className="w-8 h-8 text-brand-primary" />}
-              bgColor="bg-blue-50"
-              textColor="text-brand-primary"
-            />
-          </Link>
-          
-          <Link href="/dashboard/telecaller/leads?filter=callback">
-            <StatCard
-              title="Pending Callbacks"
-              value={stats.pendingCallbacks.toString()}
-              icon={<PhoneMissed className="w-8 h-8 text-orange-600" />}
-              bgColor="bg-orange-50"
-              textColor="text-orange-600"
-              urgent={stats.pendingCallbacks > 0}
-            />
-          </Link>
-
-          <Link href="/dashboard/telecaller/followups">
-            <StatCard
-              title="Follow-ups Today"
-              value={stats.followUpToday.toString()}
-              icon={<Calendar className="w-8 h-8 text-brand-secondary" />}
-              bgColor="bg-blue-50"
-              textColor="text-brand-secondary"
-            />
-          </Link>
-
-          <Link href="/dashboard/telecaller/leads?filter=incomplete">
-            <StatCard
-              title="Incomplete Leads"
-              value={stats.incompleteLeads.toString()}
-              icon={<AlertCircle className="w-8 h-8 text-yellow-600" />}
-              bgColor="bg-yellow-50"
-              textColor="text-yellow-600"
-            />
-          </Link>
-
-          <StatCard
-            title="Booked Leads"
-            value={stats.bookedLeads.toString()}
-            icon={<CheckCircle className="w-8 h-8 text-green-600" />}
-            bgColor="bg-green-50"
-            textColor="text-green-600"
-          />
-
-          <StatCard
-            title="Rejected Leads"
-            value={stats.rejectedLeads.toString()}
-            icon={<XCircle className="w-8 h-8 text-red-600" />}
-            bgColor="bg-red-50"
-            textColor="text-red-600"
-          />
-
-          <StatCard
-            title="Today's Calls"
-            value={stats.todayCalls.toString()}
-            icon={<PhoneCall className="w-8 h-8 text-brand-primary" />}
-            bgColor="bg-blue-50"
-            textColor="text-brand-primary"
-            subtitle={`${stats.answeredCalls} answered`}
-          />
-
-          <StatCard
-            title="Call Answer Rate"
-            value={stats.todayCalls > 0 ? `${Math.round((stats.answeredCalls / stats.todayCalls) * 100)}%` : '0%'}
-            icon={<TrendingUp className="w-8 h-8 text-brand-secondary" />}
-            bgColor="bg-blue-50"
-            textColor="text-brand-secondary"
-          />
-        </div>
-
-        {/* Quick Actions */}
-        <div className="card">
-          <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <Link href="/dashboard/telecaller/leads/create">
-              <button className="btn btn-primary w-full text-xs sm:text-sm py-2 sm:py-2.5">
-                <Phone className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-                Create Lead
-              </button>
-            </Link>
-            <Link href="/dashboard/telecaller/leads?filter=new">
-              <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5">
-                <Users className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-                View Queue
-              </button>
-            </Link>
-            <Link href="/dashboard/telecaller/followups">
-              <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5">
-                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-                Follow-ups
-              </button>
-            </Link>
-            <Link href="/dashboard/telecaller/scripts">
-              <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5">
-                <Clock className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-                Call Scripts
-              </button>
-            </Link>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
+            <h1 className="text-2xl font-extrabold text-[#023D95]">{profileName}</h1>
           </div>
+          <span
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${
+              punchedIn ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${punchedIn ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {punchedIn ? 'On Floor' : 'Off Duty'}
+          </span>
         </div>
 
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-          {/* Recent Leads */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-text-heading">Recent Leads</h2>
-              <Link href="/dashboard/telecaller/leads" className="text-brand-primary hover:underline text-xs sm:text-sm">
-                View All →
-              </Link>
-            </div>
-            
-            {recentLeads.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No recent leads</p>
-            ) : (
-              <div className="space-y-2 sm:space-y-3">
-                {recentLeads.map((lead) => (
-                  <Link 
-                    key={lead.id} 
-                    href={`/dashboard/telecaller/leads/${lead.id}`}
-                    className="block p-3 sm:p-4 border border-gray-200 rounded-lg hover:border-brand-primary hover:shadow-md transition"
-                  >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
-                          <span className="font-semibold text-sm sm:text-base truncate">{lead.customer_name}</span>
-                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded whitespace-nowrap">
-                            {lead.lead_number}
-                          </span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
-                          {lead.vehicle_make} {lead.vehicle_model} • {lead.customer_phone}
-                        </p>
-                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
-                          {formatDateTime(lead.created_at)}
-                        </p>
-                      </div>
-                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
-                        lead.status === 'NEW' ? 'bg-blue-100 text-blue-700' :
-                        lead.status === 'ASSIGNED' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {lead.status}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
+        <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="min-w-[180px]">
+            <label className="mb-1 block text-xs font-bold text-slate-500">Date filter</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as CrmDatePreset)}
+            >
+              {CRM_DATE_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {datePreset === 'custom' ? (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-500">From</label>
+                <input
+                  type="date"
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                />
               </div>
-            )}
-          </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-500">To</label>
+                <input
+                  type="date"
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                />
+              </div>
+            </>
+          ) : null}
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
+          >
+            Refresh
+          </button>
+        </div>
 
-          {/* Upcoming Follow-ups */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-3 sm:mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-text-heading">Upcoming Follow-ups</h2>
-              <Link href="/dashboard/telecaller/followups" className="text-brand-primary hover:underline text-xs sm:text-sm">
-                View All →
-              </Link>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading CRM…
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {kpiCards.map((k) => (
+                <Link
+                  key={k.label}
+                  href={`/dashboard/telecaller/leads?filter=${k.filter}`}
+                  className="rounded-2xl border border-slate-100 bg-white p-4 text-center shadow-sm transition hover:border-blue-200 hover:shadow"
+                >
+                  <div className={`text-2xl font-extrabold ${k.color}`}>{k.value ?? 0}</div>
+                  <div className="mt-1 text-xs font-semibold text-slate-500">{k.label}</div>
+                </Link>
+              ))}
             </div>
-            
-            {upcomingFollowUps.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 sm:py-8 text-sm sm:text-base">No follow-ups scheduled</p>
-            ) : (
-              <div className="space-y-2 sm:space-y-3">
-                {upcomingFollowUps.map((followUp) => (
-                  <div 
-                    key={followUp.id}
-                    className="p-3 sm:p-4 border border-gray-200 rounded-lg"
-                  >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
-                          <span className="font-semibold text-sm sm:text-base truncate">{followUp.lead?.customer_name}</span>
-                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded whitespace-nowrap">
-                            {followUp.lead?.lead_number}
-                          </span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 line-clamp-2">{followUp.reason}</p>
-                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 flex items-center gap-1">
-                          <Clock className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{formatDateTime(followUp.scheduled_time)}</span>
-                        </p>
-                      </div>
-                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 ${
-                        followUp.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
-                        followUp.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {followUp.priority}
-                      </span>
-                    </div>
-                    <div className="mt-2 sm:mt-3 flex flex-col sm:flex-row gap-2">
-                      <button className="btn btn-primary btn-sm flex-1 text-xs sm:text-sm py-1.5 sm:py-2">
-                        <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
-                        Call Now
-                      </button>
-                      <button className="btn btn-outline btn-sm text-xs sm:text-sm py-1.5 sm:py-2">
-                        Reschedule
-                      </button>
-                    </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 text-center shadow-sm">
+                <div className="text-2xl font-extrabold text-[#004AAD]">{kpis.today_calls ?? 0}</div>
+                <div className="text-xs font-semibold text-slate-500">Calls in range</div>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 text-center shadow-sm">
+                <div className="text-2xl font-extrabold text-[#004AAD]">{kpis.answered_calls ?? 0}</div>
+                <div className="text-xs font-semibold text-slate-500">Answered</div>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 text-center shadow-sm">
+                <div className="text-2xl font-extrabold text-emerald-600">{kpis.answer_rate ?? 0}%</div>
+                <div className="text-xs font-semibold text-slate-500">Answer rate</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-sm font-bold text-[#023D95]">7-Day Call Trend</h2>
+              <div className="flex h-36 items-end gap-2">
+                {trend.map((t) => (
+                  <div key={t.date || t.label} className="flex flex-1 flex-col items-center gap-1">
+                    <div
+                      className="w-full rounded-t-md bg-[#004AAD]"
+                      style={{ height: `${(Number(t.calls || 0) / maxCalls) * 100}%`, minHeight: 4 }}
+                      title={`${t.calls || 0} calls`}
+                    />
+                    <span className="text-[10px] font-semibold text-slate-500">{t.label}</span>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+
+            <div>
+              <h2 className="mb-3 text-sm font-bold text-[#023D95]">Quick Actions</h2>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  { href: '/dashboard/telecaller/book', label: 'New Booking', icon: Phone, color: 'text-emerald-600 bg-emerald-50' },
+                  { href: '/dashboard/telecaller/leads', label: 'Open Leads', icon: ClipboardList, color: 'text-blue-700 bg-blue-50' },
+                  { href: '/dashboard/telecaller/engage', label: 'Follow-ups', icon: Calendar, color: 'text-orange-600 bg-orange-50' },
+                  { href: '/dashboard/telecaller/engage?tab=rsa', label: 'RSA / Pay', icon: MessageCircle, color: 'text-green-600 bg-green-50' },
+                ].map((a) => (
+                  <Link
+                    key={a.href}
+                    href={a.href}
+                    className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:border-blue-200"
+                  >
+                    <span className={`rounded-xl p-2.5 ${a.color}`}>
+                      <a.icon className="h-5 w-5" />
+                    </span>
+                    <span className="flex-1 text-sm font-bold text-slate-800">{a.label}</span>
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );
 }
-
-interface StatCardProps {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  bgColor?: string;
-  textColor?: string;
-  subtitle?: string;
-  urgent?: boolean;
-}
-
-function StatCard({ title, value, icon, bgColor = 'bg-gray-50', textColor = 'text-text-body', subtitle, urgent }: StatCardProps) {
-  return (
-    <div className={`card hover:shadow-lg transition ${urgent ? 'ring-2 ring-orange-500 animate-pulse' : ''}`}>
-      <div className="flex items-start justify-between gap-2 sm:gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs sm:text-sm text-text-body mb-0.5 sm:mb-1">{title}</p>
-          <p className={`text-2xl sm:text-3xl font-bold ${textColor}`}>{value}</p>
-          {subtitle && (
-            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">{subtitle}</p>
-          )}
-        </div>
-        <div className={`p-2 sm:p-3 rounded-lg ${bgColor} flex-shrink-0`}>
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-

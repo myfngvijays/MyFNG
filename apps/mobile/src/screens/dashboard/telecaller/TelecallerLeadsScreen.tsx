@@ -17,6 +17,7 @@ import {
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
+import { parseIds } from '../../../lib/parseIds';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
 
 export default function TelecallerLeadsScreen({ navigation, route }: any) {
@@ -122,17 +123,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
 
       const serviceTypeIds = new Set<string>();
       leadsData.forEach((lead: any) => {
-        if (!lead.service_type_ids) return;
-        try {
-          const parsed = typeof lead.service_type_ids === 'string'
-            ? JSON.parse(lead.service_type_ids)
-            : lead.service_type_ids;
-          if (Array.isArray(parsed)) {
-            parsed.forEach((id) => serviceTypeIds.add(String(id)));
-          }
-        } catch (e) {
-          console.error('Error parsing service_type_ids:', e);
-        }
+        parseIds(lead.service_type_ids).forEach((id) => serviceTypeIds.add(id));
       });
 
       let map: Record<string, string> = {};
@@ -148,17 +139,9 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       }
 
       const leadsWithNames = leadsData.map((lead: any) => {
-        let names: string[] = [];
-        try {
-          const parsed = typeof lead.service_type_ids === 'string'
-            ? JSON.parse(lead.service_type_ids)
-            : lead.service_type_ids;
-          if (Array.isArray(parsed)) {
-            names = parsed.map((id) => map[String(id)]).filter(Boolean);
-          }
-        } catch {
-          // ignore parsing issues
-        }
+        const names = parseIds(lead.service_type_ids)
+          .map((id) => map[String(id)])
+          .filter(Boolean);
         return {
           ...lead,
           service_type_names: names.length > 0 ? names.join(', ') : lead.service_type,

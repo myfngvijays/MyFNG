@@ -7,9 +7,11 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
+  Linking,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import DashboardHeader from '../../../components/DashboardHeader';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING, SIZES } from '../../../constants/theme';
@@ -23,9 +25,10 @@ const DISPOSITIONS = [
 ];
 const CALL_STATUSES = ['ANSWERED', 'NO_ANSWER', 'BUSY', 'SWITCHED_OFF', 'WRONG_NUMBER'];
 
-export default function TelecallerEnquiryLeadDetailScreen({ navigation }: any) {
-  const route = useRoute<any>();
-  const leadId = route?.params?.leadId as string;
+export default function TelecallerEnquiryLeadDetailScreen({ navigation: navProp, route: routeProp }: any) {
+  const rnRoute = useRoute<any>();
+  const leadId = (routeProp?.params?.leadId || rnRoute?.params?.leadId) as string;
+  const navigation = navProp;
 
   const [loading, setLoading] = useState(true);
   const [lead, setLead] = useState<any>(null);
@@ -170,6 +173,29 @@ export default function TelecallerEnquiryLeadDetailScreen({ navigation }: any) {
         <Text style={styles.meta}>{lead.customer_name || 'Customer'} • {lead.customer_phone || ''}</Text>
         <Text style={styles.meta}>Status: {lead.lead_status}</Text>
 
+        <View style={styles.quickRow}>
+          <TouchableOpacity
+            style={[styles.quickBtn, { backgroundColor: COLORS.primary }]}
+            onPress={() => {
+              if (lead.customer_phone) Linking.openURL(`tel:${lead.customer_phone}`);
+            }}
+          >
+            <Ionicons name="call" size={16} color="#fff" />
+            <Text style={styles.quickBtnText}>Call</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickBtn, { backgroundColor: '#25D366' }]}
+            onPress={() => {
+              const digits = String(lead.customer_phone || '').replace(/\D/g, '');
+              const phone = digits.length === 10 ? `91${digits}` : digits;
+              Linking.openURL(`whatsapp://send?phone=${phone}`);
+            }}
+          >
+            <Ionicons name="logo-whatsapp" size={16} color="#fff" />
+            <Text style={styles.quickBtnText}>WhatsApp</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.sectionTitle}>Add Note</Text>
         <TextInput style={styles.input} value={noteText} onChangeText={setNoteText} placeholder="Note" />
         <TouchableOpacity style={styles.primaryBtn} onPress={addNote}>
@@ -288,6 +314,17 @@ const styles = StyleSheet.create({
   body: { padding: SPACING.md },
   title: { fontSize: SIZES.lg, fontWeight: '700', color: COLORS.textHeading },
   meta: { color: COLORS.textSecondary, marginTop: 4 },
+  quickRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  quickBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+  },
+  quickBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   sectionTitle: { marginTop: SPACING.md, fontSize: SIZES.md, fontWeight: '700', color: COLORS.textHeading },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.xs },
   chip: { backgroundColor: COLORS.gray[100], paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: 12, marginRight: SPACING.xs, marginTop: SPACING.sm },

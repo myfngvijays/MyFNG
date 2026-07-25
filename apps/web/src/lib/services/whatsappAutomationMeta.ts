@@ -14,9 +14,9 @@ export const WHATSAPP_AUTOMATION_TEMPLATE_EXAMPLES: Record<WhatsAppAutomationTri
   booking_confirmed: [
     'Rahul Sharma',
     'L-12345678',
-    'Honda City',
-    'Periodic Service',
-    '15 Jul 2026, 10:00 AM',
+    'Honda City (MH01AB1234)',
+    'Periodic Service | ₹2,499',
+    '15 Jul 2026, 10:00 AM | Doorstep pickup | Flat 201, Kapur Bawadi, Near ABC Mall, Thane 400601',
   ],
   booking_incomplete: ['Rahul Sharma', 'Honda City', 'Periodic Service'],
   membership_payment_success: ['Rahul Sharma', '699', 'MyFNG Prime', 'pay_ABC123'],

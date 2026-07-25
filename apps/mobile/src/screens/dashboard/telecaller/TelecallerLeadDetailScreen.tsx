@@ -19,6 +19,7 @@ import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
+import { parseIds } from '../../../lib/parseIds';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 const CALL_STATUSES = ['ANSWERED', 'NO_ANSWER', 'BUSY', 'SWITCHED_OFF', 'WRONG_NUMBER'];
@@ -26,7 +27,7 @@ const CALL_OUTCOMES = ['INFO_COLLECTED', 'FOLLOW_UP_SCHEDULED', 'NOT_INTERESTED'
 const FOLLOW_UP_TYPES = ['CALLBACK', 'REMINDER', 'FOLLOW_UP'];
 const FOLLOW_UP_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
-export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
+export default function TelecallerLeadDetailScreen({ route, navigation, embedded = false }: any) {
   const { user } = useAuth();
   const { leadId } = route.params;
 
@@ -40,6 +41,10 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
   const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
+  const [couponInput, setCouponInput] = useState('');
+  const [statusUpdating, setStatusUpdating] = useState(false);
+
+  const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INCOMPLETE', 'REJECTED'];
 
   const [callLogData, setCallLogData] = useState({
     call_status: 'ANSWERED',
@@ -92,8 +97,8 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
       // Fetch service type names if service_type_ids exists
       if (leadData.service_type_ids) {
         try {
-          const serviceIds = JSON.parse(leadData.service_type_ids);
-          if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+          const serviceIds = parseIds(leadData.service_type_ids);
+          if (serviceIds.length > 0) {
             const { data: serviceTypesData } = await supabase
               .from('service_types')
               .select('id, name')
@@ -104,15 +109,15 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
             }
           }
         } catch (e) {
-          console.error('Error parsing service_type_ids:', e);
+          console.error('Error resolving service_type_ids:', e);
         }
       }
 
       // Fetch subservice names if subservice_ids exists
       if (leadData.subservice_ids) {
         try {
-          const subserviceIds = JSON.parse(leadData.subservice_ids);
-          if (Array.isArray(subserviceIds) && subserviceIds.length > 0) {
+          const subserviceIds = parseIds(leadData.subservice_ids);
+          if (subserviceIds.length > 0) {
             const { data: subservicesData } = await supabase
               .from('service_addons')
               .select('id, name')
@@ -123,7 +128,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
             }
           }
         } catch (e) {
-          console.error('Error parsing subservice_ids:', e);
+          console.error('Error resolving subservice_ids:', e);
         }
       }
 
@@ -255,6 +260,125 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
     }
   };
 
+  const handleUpdateStatus = async (status: string) => {
+    if (!lead || status === lead.status) return;
+    setStatusUpdating(true);
+    try {
+      const updates: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+      if (status === 'INCOMPLETE') updates.is_incomplete = true;
+      if (status === 'CONTACTED' || status === 'NEW') updates.is_incomplete = false;
+      if (status === 'REJECTED') {
+        updates.follow_up_required = false;
+      }
+
+      const { error } = await supabase
+        .from('service_leads')
+        .update(updates)
+        .eq('id', leadId);
+
+      if (error) throw error;
+      await fetchLeadDetails();
+      Alert.alert('Updated', `Lead marked as ${status}`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to update status');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) {
+      Alert.alert('Coupon', 'Enter a coupon code');
+      return;
+    }
+    try {
+      await apiFetch(`/api/telecaller/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: lead.customer_name,
+          customer_phone: lead.customer_phone,
+          customer_alternate_phone: lead.customer_alternate_phone,
+          customer_email: lead.customer_email,
+          customer_address: lead.customer_address,
+          city_id: lead.city_id,
+          city: lead.city,
+          pincode: lead.pincode,
+          vehicle_number: lead.vehicle_number,
+          vehicle_make: lead.vehicle_make,
+          model_id: lead.model_id,
+          vehicle_model: lead.vehicle_model,
+          vehicle_variant: lead.vehicle_variant,
+          vehicle_year: lead.vehicle_year,
+          vehicle_fuel_type: lead.vehicle_fuel_type,
+          odometer_km: lead.odometer_km,
+          service_types: parseIds(lead.service_type_ids),
+          service_addons: parseIds(lead.subservice_ids),
+          service_type: lead.service_type,
+          problem_description: lead.problem_description,
+          description: lead.description,
+          pickup_required: lead.pickup_required,
+          pickup_address: lead.pickup_address,
+          notes: lead.notes,
+          lead_priority: lead.lead_priority,
+          coupon_codes: [code],
+          applied_coupon: code,
+        }),
+      });
+      setCouponInput('');
+      await fetchLeadDetails();
+      Alert.alert('Success', 'Coupon applied');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to apply coupon');
+    }
+  };
+
+  const handleRemoveCoupon = async () => {
+    try {
+      await apiFetch(`/api/telecaller/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: lead.customer_name,
+          customer_phone: lead.customer_phone,
+          customer_alternate_phone: lead.customer_alternate_phone,
+          customer_email: lead.customer_email,
+          customer_address: lead.customer_address,
+          city_id: lead.city_id,
+          city: lead.city,
+          pincode: lead.pincode,
+          vehicle_number: lead.vehicle_number,
+          vehicle_make: lead.vehicle_make,
+          model_id: lead.model_id,
+          vehicle_model: lead.vehicle_model,
+          vehicle_variant: lead.vehicle_variant,
+          vehicle_year: lead.vehicle_year,
+          vehicle_fuel_type: lead.vehicle_fuel_type,
+          odometer_km: lead.odometer_km,
+          service_types: parseIds(lead.service_type_ids),
+          service_addons: parseIds(lead.subservice_ids),
+          service_type: lead.service_type,
+          problem_description: lead.problem_description,
+          description: lead.description,
+          pickup_required: lead.pickup_required,
+          pickup_address: lead.pickup_address,
+          notes: lead.notes,
+          lead_priority: lead.lead_priority,
+          coupon_codes: [],
+          applied_coupon: '',
+        }),
+      });
+      await fetchLeadDetails();
+      Alert.alert('Removed', 'Coupon removed');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to remove coupon');
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -279,7 +403,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
   return (
     <View style={styles.mainContainer}>
       {/* Header with Back Button */}
-      <View style={styles.headerBar}>
+      <View style={[styles.headerBar, embedded && styles.headerBarEmbedded]}>
         <TouchableOpacity 
           style={styles.backButton} 
           onPress={() => navigation?.goBack()}
@@ -358,10 +482,85 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
           <View style={[styles.statIconWrap, { backgroundColor: COLORS.blue + '15' }]}>
             <Icon name="source-branch" size={18} color={COLORS.blue} />
           </View>
-          <Text style={styles.statValue} numberOfLines={1}>
-            {String(lead.created_from || 'N/A').replace(/_/g, ' ')}
+          <Text style={styles.statValue} numberOfLines={2}>
+            {formatLeadSource(lead.created_from || lead.lead_source)}
           </Text>
           <Text style={styles.statLabel}>Source</Text>
+        </View>
+      </View>
+
+      {/* CRM Status Pipeline */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Lead Status</Text>
+        <View style={styles.sectionContent}>
+          <View style={styles.chipRow}>
+            {LEAD_STATUSES.map((status) => (
+              <TouchableOpacity
+                key={status}
+                style={[
+                  styles.chip,
+                  lead.status === status && styles.chipActive,
+                  statusUpdating && { opacity: 0.6 },
+                ]}
+                disabled={statusUpdating}
+                onPress={() => handleUpdateStatus(status)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    lead.status === status && styles.chipTextActive,
+                  ]}
+                >
+                  {status}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* Coupon CRM */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Coupon</Text>
+        <View style={styles.sectionContent}>
+          {(() => {
+            const code = String(
+              lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? ''
+            ).trim();
+            if (code) {
+              return (
+                <View style={styles.couponBanner}>
+                  <View style={styles.couponHeader}>
+                    <Text style={styles.couponTitle}>Applied</Text>
+                    <Text style={styles.couponCode}>{code}</Text>
+                  </View>
+                  <TouchableOpacity onPress={handleRemoveCoupon}>
+                    <Text style={{ color: COLORS.red, fontWeight: '600', fontSize: 12, marginTop: 6 }}>
+                      Remove coupon
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            }
+            return (
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TextInput
+                  style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                  placeholder="Enter coupon code"
+                  value={couponInput}
+                  onChangeText={setCouponInput}
+                  autoCapitalize="characters"
+                  placeholderTextColor={COLORS.textSecondary}
+                />
+                <TouchableOpacity
+                  style={[styles.formButton, styles.formButtonPrimary, { flex: 0, paddingHorizontal: 16 }]}
+                  onPress={handleApplyCoupon}
+                >
+                  <Text style={styles.formButtonTextPrimary}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
         </View>
       </View>
 
@@ -377,9 +576,14 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
           {lead.customer_email && (
             <InfoRow icon="email" label="Email" value={lead.customer_email} />
           )}
-          {lead.customer_address && (
-            <InfoRow icon="map-marker" label="Address" value={lead.customer_address} />
+          {(lead.pickup_address || lead.customer_address) && (
+            <InfoRow
+              icon="map-marker"
+              label="Address"
+              value={formatLeadAddress(lead.pickup_address || lead.customer_address, lead.city, lead.pincode)}
+            />
           )}
+          {lead.pincode ? <InfoRow icon="map-marker-radius" label="Pincode" value={String(lead.pincode)} /> : null}
           <InfoRow icon="city" label="City" value={lead.city || 'N/A'} />
         </View>
       </View>
@@ -407,7 +611,6 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Service Details</Text>
         <View style={styles.sectionContent}>
-          {/* Service Types - Show names instead of UUIDs */}
           <View style={styles.infoItem}>
             <Text style={styles.infoLabel}>Service Types:</Text>
             {serviceTypeNames.length > 0 ? (
@@ -423,7 +626,6 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
             )}
           </View>
 
-          {/* Subservices / Add-ons */}
           {subserviceNames.length > 0 && (
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Add-ons / Sub-services:</Text>
@@ -437,24 +639,35 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
             </View>
           )}
 
-          {lead.description && (
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Description:</Text>
-              <Text style={styles.infoValue}>{lead.description}</Text>
-            </View>
-          )}
-          {lead.problem_description && (
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Problem:</Text>
-              <Text style={[styles.infoValue, styles.italic]}>"{lead.problem_description}"</Text>
-            </View>
-          )}
-          {lead.payment_mode && (
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Payment Mode:</Text>
-              <Text style={[styles.infoValue, { fontWeight: '600' }]}>{lead.payment_mode}</Text>
-            </View>
-          )}
+          {(() => {
+            const schedule = formatLeadSchedule(lead);
+            if (!schedule) return null;
+            return <InfoRow icon="calendar-clock" label="Schedule" value={schedule} />;
+          })()}
+
+          <InfoRow
+            icon="car-pickup"
+            label="Service mode"
+            value={lead.pickup_required ? 'Doorstep pickup' : 'Workshop visit'}
+          />
+
+          {lead.payment_mode ? (
+            <InfoRow icon="cash" label="Payment" value={formatPaymentMode(lead.payment_mode)} />
+          ) : null}
+
+          {(() => {
+            const notes = String(lead.problem_description || '').trim();
+            if (!notes) return null;
+            // Hide noisy auto-generated schedule strings
+            if (/^(pickup|visit)\s*:/i.test(notes) && notes.length < 40) return null;
+            return (
+              <View style={styles.infoItem}>
+                <Text style={styles.infoLabel}>Notes:</Text>
+                <Text style={styles.infoValue}>{notes}</Text>
+              </View>
+            );
+          })()}
+
           {(() => {
             const code = String(
               lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? ''
@@ -476,12 +689,6 @@ export default function TelecallerLeadDetailScreen({ route, navigation }: any) {
               </View>
             );
           })()}
-          {lead.pickup_required && (
-            <View style={styles.pickupBadge}>
-              <Icon name="car-pickup" size={16} color={COLORS.blue} />
-              <Text style={styles.pickupText}>Pickup Required</Text>
-            </View>
-          )}
         </View>
       </View>
 
@@ -769,6 +976,67 @@ function InfoRow({ icon, label, value }: InfoRowProps) {
   );
 }
 
+function formatLeadSource(raw: string | null | undefined): string {
+  const v = String(raw || 'N/A').trim();
+  if (/telecaller_crm/i.test(v)) return 'CRM Book';
+  if (/telecaller/i.test(v)) return 'Telecaller';
+  if (/mobile_app|app booking/i.test(v)) return 'App';
+  if (/^web$/i.test(v) || /website/i.test(v)) return 'Website';
+  return v.replace(/_/g, ' ');
+}
+
+function formatPaymentMode(raw: string | null | undefined): string {
+  const v = String(raw || '').toUpperCase();
+  if (v === 'PAY_LATER') return 'Pay Later';
+  if (v === 'PAY_NOW') return 'Pay Now';
+  if (v === 'CASH') return 'Cash';
+  if (v === 'UPI') return 'UPI';
+  if (v === 'ONLINE') return 'Online';
+  return String(raw || '').replace(/_/g, ' ');
+}
+
+function formatLeadAddress(
+  address: string | null | undefined,
+  city?: string | null,
+  pincode?: string | null,
+): string {
+  let cleaned = String(address || '')
+    .replace(/\s*\((home|work|other)\)/gi, '')
+    .replace(/,?\s*Landmark:\s*/gi, ', Near ')
+    .replace(/,?\s*PIN\s*(\d{6})/gi, ', $1')
+    .replace(/,\s*,+/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  const c = String(city || '').trim();
+  const p = String(pincode || '').trim();
+  if (c && !cleaned.toLowerCase().includes(c.toLowerCase())) cleaned = cleaned ? `${cleaned}, ${c}` : c;
+  if (p && !cleaned.includes(p)) cleaned = cleaned ? `${cleaned} ${p}` : p;
+  return cleaned || '—';
+}
+
+function formatLeadSchedule(lead: any): string {
+  if (lead?.preferred_slot_start) {
+    const formatted = formatDateTime(lead.preferred_slot_start);
+    if (formatted) return formatted;
+  }
+  const meta = lead?.coupon_meta || {};
+  const date = String(meta.pickup_date || lead?.preferred_date || '').trim();
+  const time = String(meta.pickup_time || lead?.preferred_time_slot || '').trim();
+  if (date && time) {
+    try {
+      return formatDateTime(`${date}T${time}:00+05:30`) || `${date} ${time}`;
+    } catch {
+      return `${date} ${time}`;
+    }
+  }
+  const problem = String(lead?.problem_description || '');
+  const m = problem.match(/(pickup|visit)\s*:\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})/i);
+  if (m) {
+    return formatDateTime(`${m[2]}T${m[3]}:00+05:30`) || `${m[2]} ${m[3]}`;
+  }
+  return '';
+}
+
 function getStatusBg(status: string): string {
   switch (status) {
     case 'NEW': return '#DBEAFE';
@@ -824,6 +1092,9 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: SPACING.md,
+  },
+  headerBarEmbedded: {
+    paddingTop: 12,
   },
   backButton: {
     width: 40,

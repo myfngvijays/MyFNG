@@ -1,478 +1,455 @@
 'use client';
-import { formatDateTime } from "@/lib/utils";
-export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  Phone, Search, Filter, Clock, AlertCircle, CheckCircle, 
-  XCircle, MessageSquare, Calendar, Eye, Edit, PhoneCall 
-} from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { useCallback, useEffect, useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import DashboardLayout from '@/components/DashboardLayout';
+import {
+  CRM_DATE_PRESETS,
+  resolveCrmDateRange,
+  type CrmDatePreset,
+  istYmd,
+} from '@/lib/telecaller/crmDateRange';
+import { createClient } from '@/lib/supabase/client';
+import {
+  Phone,
+  Search,
+  Filter,
+  Eye,
+  Share2,
+  Loader2,
+  X,
+} from 'lucide-react';
 
-function TelecallerLeadsContent() {
+const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'new', label: 'New' },
+  { id: 'callback', label: 'Callback' },
+  { id: 'follow_up', label: 'Follow-up' },
+  { id: 'incomplete', label: 'Incomplete' },
+  { id: 'booked', label: 'Booked' },
+  { id: 'rejected', label: 'Rejected' },
+];
+
+const SOURCE_OPTIONS = [
+  { value: '', label: 'All sources' },
+  { value: 'MOBILE_APP', label: 'MOBILE_APP' },
+  { value: 'WEB', label: 'WEB' },
+  { value: 'TELECALLER_CRM', label: 'TELECALLER_CRM' },
+  { value: 'TELECALLER', label: 'TELECALLER' },
+  { value: 'WHATSAPP', label: 'WHATSAPP' },
+  { value: 'ENQUIRY', label: 'ENQUIRY' },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: '', label: 'All priorities' },
+  { value: 'NORMAL', label: 'NORMAL' },
+  { value: 'HIGH', label: 'HIGH' },
+  { value: 'URGENT', label: 'URGENT' },
+];
+
+function TelecallerCrmLeadsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const filterParam = searchParams?.get('filter') || 'all';
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState(filterParam);
-  const [showPhoneNumber, setShowPhoneNumber] = useState<Record<string, boolean>>({});
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState(filterParam);
+  const [showFilters, setShowFilters] = useState(false);
+  const [city, setCity] = useState('');
+  const [source, setSource] = useState('');
+  const [priority, setPriority] = useState('');
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [cities, setCities] = useState<string[]>([]);
+  const [shareLead, setShareLead] = useState<any>(null);
+  const [peers, setPeers] = useState<any[]>([]);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
-    fetchLeads();
-  }, [activeFilter]);
+    setFilter(filterParam);
+  }, [filterParam]);
 
-  async function fetchLeads() {
-    const supabase = createClient();
-    setLoading(true);
-
-    try {
-      // Get current telecaller
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userProfile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user.email)
-        .single();
-
-      const teleCallerId = userProfile?.id;
-
-      let query = supabase
-        .from('service_leads')
-        .select('*, workshop:workshops(name)');
-
-      // Apply filters
-      switch (activeFilter) {
-        case 'new':
-          query = query
-            .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-            .eq('status', 'NEW')
-            .is('last_call_at', null);
-          break;
-        case 'callback':
-          query = query
-            .eq('assigned_telecaller_id', teleCallerId)
-            .eq('follow_up_required', true)
-            .lte('next_follow_up_at', new Date().toISOString());
-          break;
-        case 'incomplete':
-          query = query
-            .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-            .eq('is_incomplete', true);
-          break;
-        case 'follow_up':
-          query = query
-            .eq('assigned_telecaller_id', teleCallerId)
-            .eq('follow_up_required', true);
-          break;
-        case 'in_progress':
-          query = query
-            .eq('assigned_telecaller_id', teleCallerId)
-            .in('status', ['NEW', 'ASSIGNED']);
-          break;
-        case 'completed':
-          query = query
-            .eq('created_by_id', teleCallerId)
-            .in('status', ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED']);
-          break;
-        case 'rejected':
-          query = query
-            .eq('assigned_telecaller_id', teleCallerId)
-            .eq('status', 'REJECTED');
-          break;
-        default:
-          // All leads
-          query = query.or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId},created_by_id.eq.${teleCallerId}`);
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('cities')
+          .select('name')
+          .eq('is_active', true)
+          .order('name');
+        setCities(
+          Array.from(
+            new Set((data || []).map((c: any) => String(c.name || '').trim()).filter(Boolean)),
+          ),
+        );
+      } catch {
+        setCities([]);
       }
+    })();
+  }, []);
 
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (error) throw error;
-
-      // Fetch service type names for all leads
-      const leadsWithServiceNames = await Promise.all(
-        (data || []).map(async (lead) => {
-          let serviceTypeNames = [];
-          
-          if (lead.service_type_ids) {
-            try {
-              const serviceIds = typeof lead.service_type_ids === 'string' 
-                ? JSON.parse(lead.service_type_ids) 
-                : lead.service_type_ids;
-              
-              if (Array.isArray(serviceIds) && serviceIds.length > 0) {
-                const { data: serviceTypesData } = await supabase
-                  .from('service_types')
-                  .select('id, name')
-                  .in('id', serviceIds);
-                
-                if (serviceTypesData) {
-                  serviceTypeNames = serviceTypesData.map(st => st.name);
-                }
-              }
-            } catch (e) {
-              console.error('Error parsing service_type_ids:', e);
-            }
-          }
-          
-          return {
-            ...lead,
-            service_type_names: serviceTypeNames.join(', ') || lead.service_type || 'Not specified'
-          };
-        })
-      );
-
-      setLeads(leadsWithServiceNames);
-    } catch (error) {
-      console.error('Error fetching leads:', error);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const range = resolveCrmDateRange(datePreset, customStart, customEnd);
+      const params = new URLSearchParams({ limit: '80' });
+      if (filter && filter !== 'all') params.set('filter', filter);
+      if (q.trim()) params.set('q', q.trim());
+      if (city.trim()) params.set('city', city.trim());
+      if (source.trim()) params.set('source', source.trim());
+      if (priority.trim()) params.set('priority', priority.trim());
+      params.set('from', range.start);
+      params.set('to', range.end);
+      const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed');
+      setLeads(Array.isArray(data?.leads) ? data.leads : []);
+    } catch (e) {
+      console.error(e);
+      setLeads([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [filter, q, city, source, priority, datePreset, customStart, customEnd]);
 
-  const filteredLeads = leads.filter(lead => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    return (
-      lead.customer_name?.toLowerCase().includes(search) ||
-      lead.customer_phone?.includes(search) ||
-      lead.lead_number?.toLowerCase().includes(search) ||
-      lead.vehicle_number?.toLowerCase().includes(search) ||
-      lead.city?.toLowerCase().includes(search)
-    );
-  });
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const togglePhoneVisibility = (leadId: string) => {
-    setShowPhoneNumber(prev => ({
-      ...prev,
-      [leadId]: !prev[leadId]
-    }));
+  const openShare = async (lead: any) => {
+    setShareLead(lead);
+    try {
+      const res = await fetch('/api/telecaller/crm/transfer?peers=1');
+      const data = await res.json();
+      setPeers(Array.isArray(data?.peers) ? data.peers : []);
+    } catch {
+      setPeers([]);
+    }
   };
 
-  const maskPhone = (phone: string) => {
-    if (!phone) return 'N/A';
-    if (phone.length <= 4) return phone;
-    return phone.slice(0, 2) + '****' + phone.slice(-2);
+  const doTransfer = async (toId: string, type: 'TRANSFER' | 'SHARE') => {
+    if (!shareLead) return;
+    setSharing(true);
+    try {
+      const res = await fetch('/api/telecaller/crm/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: shareLead.id,
+          to_telecaller_id: toId,
+          transfer_type: type,
+          reason: type === 'SHARE' ? 'Shared from Advanced CRM' : 'Transferred from Advanced CRM',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed');
+      setShareLead(null);
+      load();
+    } catch (e: any) {
+      alert(e?.message || 'Failed');
+    } finally {
+      setSharing(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <DashboardLayout role="telecaller">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading leads...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const setFilterAndUrl = (id: string) => {
+    setFilter(id);
+    const next = new URLSearchParams(searchParams?.toString() || '');
+    if (id === 'all') next.delete('filter');
+    else next.set('filter', id);
+    router.replace(`/dashboard/telecaller/leads${next.toString() ? `?${next}` : ''}`);
+  };
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Calling Queue</h1>
-            <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Manage and call customer leads</p>
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
+            <h1 className="text-2xl font-extrabold text-[#023D95]">Leads</h1>
           </div>
-          <Link href="/dashboard/telecaller/leads/create">
-            <button className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto">
-              <Phone className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-              <span className="hidden sm:inline">Create Lead</span>
-              <span className="sm:hidden">Create</span>
-            </button>
+          <Link
+            href="/dashboard/telecaller/book"
+            className="rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
+          >
+            + New Booking
           </Link>
         </div>
 
-        {/* Filters */}
-        <div className="card">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Search */}
-            <div className="flex-1 min-w-0 relative">
-              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-              <input
-                type="text"
-                placeholder="Search by name, phone, lead number, vehicle..."
-                className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-
-            {/* Filter Buttons */}
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              <FilterButton
-                label="All"
-                count={leads.length}
-                active={activeFilter === 'all'}
-                onClick={() => setActiveFilter('all')}
-              />
-              <FilterButton
-                label="New"
-                count={leads.filter(l => l.status === 'NEW' && !l.last_call_at).length}
-                active={activeFilter === 'new'}
-                onClick={() => setActiveFilter('new')}
-                color="blue"
-              />
-              <FilterButton
-                label="Callback"
-                count={leads.filter(l => l.follow_up_required).length}
-                active={activeFilter === 'callback'}
-                onClick={() => setActiveFilter('callback')}
-                color="orange"
-              />
-              <FilterButton
-                label="Incomplete"
-                count={leads.filter(l => l.is_incomplete).length}
-                active={activeFilter === 'incomplete'}
-                onClick={() => setActiveFilter('incomplete')}
-                color="yellow"
-              />
-              <FilterButton
-                label="Follow-up"
-                count={leads.filter(l => l.follow_up_required).length}
-                active={activeFilter === 'follow_up'}
-                onClick={() => setActiveFilter('follow_up')}
-                color="purple"
-              />
-              <FilterButton
-                label="In Progress"
-                count={leads.filter(l => ['NEW', 'ASSIGNED'].includes(l.status)).length}
-                active={activeFilter === 'in_progress'}
-                onClick={() => setActiveFilter('in_progress')}
-                color="indigo"
-              />
-              <FilterButton
-                label="Completed"
-                count={leads.filter(l => ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(l.status)).length}
-                active={activeFilter === 'completed'}
-                onClick={() => setActiveFilter('completed')}
-                color="green"
-              />
-              <FilterButton
-                label="Rejected"
-                count={leads.filter(l => l.status === 'REJECTED').length}
-                active={activeFilter === 'rejected'}
-                onClick={() => setActiveFilter('rejected')}
-                color="red"
-              />
-            </div>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilterAndUrl(f.id)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+                filter === f.id
+                  ? 'bg-[#004AAD] text-white'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
 
-        {/* Leads List */}
-        <div className="space-y-3 sm:space-y-4">
-          {filteredLeads.length === 0 ? (
-            <div className="card text-center py-8 sm:py-10 md:py-12">
-              <Phone className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-              <p className="text-gray-500 text-sm sm:text-base">No leads found</p>
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+              placeholder="Search name, phone, lead #"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && load()}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            <Filter className="h-4 w-4" /> Filters
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
+          >
+            Search
+          </button>
+        </div>
+
+        {showFilters ? (
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-bold text-slate-500">Date</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                value={datePreset}
+                onChange={(e) => setDatePreset(e.target.value as CrmDatePreset)}
+              >
+                {CRM_DATE_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            filteredLeads.map((lead) => (
-              <div key={lead.id} className="card hover:shadow-lg transition">
-                <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
-                  {/* Lead Info */}
-                  <div className="flex-1 space-y-2 sm:space-y-3 min-w-0">
-                    {/* Row 1: Name & Status */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                          <h3 className="text-base sm:text-lg font-semibold truncate">{lead.customer_name || 'Unknown'}</h3>
-                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded font-mono flex-shrink-0">
-                            {lead.lead_number}
-                          </span>
-                          {lead.is_incomplete && (
-                            <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-yellow-100 text-yellow-700 rounded flex items-center gap-1 flex-shrink-0">
-                              <AlertCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                              Incomplete
-                            </span>
-                          )}
-                          {lead.follow_up_required && (
-                            <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-purple-100 text-purple-700 rounded flex items-center gap-1 flex-shrink-0">
-                              <Calendar className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                              Follow-up
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
-                          Created {formatDateTime(lead.created_at)}
-                        </p>
-                      </div>
-                      <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
-                        lead.status === 'NEW' ? 'bg-blue-100 text-blue-700' :
-                        lead.status === 'ASSIGNED' ? 'bg-indigo-100 text-indigo-700' :
-                        lead.status === 'ACCEPTED' ? 'bg-green-100 text-green-700' :
-                        lead.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {lead.status}
+            {datePreset === 'custom' ? (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-500">From</label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-500">To</label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : null}
+            <div>
+              <label className="mb-1 block text-xs font-bold text-slate-500">City</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              >
+                <option value="">All cities</option>
+                {cities.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold text-slate-500">Source</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                {SOURCE_OPTIONS.map((o) => (
+                  <option key={o.value || 'all'} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold text-slate-500">Priority</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                {PRIORITY_OPTIONS.map((o) => (
+                  <option key={o.value || 'all'} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading leads…
+          </div>
+        ) : leads.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-sm text-slate-500">
+            No leads in this filter / date range
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {leads.map((lead) => (
+              <div
+                key={lead.id}
+                className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:border-blue-100"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-extrabold text-[#023D95]">
+                        {lead.lead_number || lead.id?.slice(0, 8)}
                       </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                        {lead.status || '—'}
+                      </span>
+                      {lead.lead_priority ? (
+                        <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                          {lead.lead_priority}
+                        </span>
+                      ) : null}
                     </div>
-
-                    {/* Row 2: Contact Info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm">
-                      <div>
-                        <span className="text-gray-500">Phone:</span>
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                          <span className="font-semibold truncate">
-                            {showPhoneNumber[lead.id] ? lead.customer_phone : maskPhone(lead.customer_phone)}
-                          </span>
-                          <button
-                            onClick={() => togglePhoneVisibility(lead.id)}
-                            className="text-brand-primary hover:underline text-[10px] sm:text-xs flex-shrink-0"
-                          >
-                            {showPhoneNumber[lead.id] ? 'Hide' : 'Show'}
-                          </button>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Vehicle:</span>
-                        <p className="font-semibold truncate">
-                          {lead.vehicle_make || 'N/A'} {lead.vehicle_model || ''} {lead.vehicle_number ? `(${lead.vehicle_number})` : ''}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">City:</span>
-                        <p className="font-semibold truncate">{lead.city || 'N/A'}</p>
-                      </div>
-                    </div>
-
-                    {/* Row 3: Service Type & Workshop */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
-                      <div>
-                        <span className="text-gray-500">Service Type:</span>
-                        <p className="font-semibold truncate">{lead.service_type_names}</p>
-                      </div>
-                      {lead.workshop && (
-                        <div>
-                          <span className="text-gray-500">Workshop:</span>
-                          <p className="font-semibold truncate">{lead.workshop.name}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Row 4: Last Call & Follow-up Info */}
-                    {(lead.last_call_at || lead.next_follow_up_at) && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
-                        {lead.last_call_at && (
-                          <div className="flex items-center gap-1.5 sm:gap-2 text-gray-600">
-                            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="truncate">Last call: {formatDateTime(lead.last_call_at)}</span>
-                          </div>
-                        )}
-                        {lead.next_follow_up_at && (
-                          <div className="flex items-center gap-1.5 sm:gap-2 text-purple-600">
-                            <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                            <span className="truncate">Next follow-up: {formatDateTime(lead.next_follow_up_at)}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Notes */}
-                    {lead.notes && (
-                      <div className="text-xs sm:text-sm">
-                        <span className="text-gray-500">Notes:</span>
-                        <p className="text-gray-700 italic truncate">{lead.notes}</p>
-                      </div>
-                    )}
+                    <p className="mt-1 text-base font-bold text-slate-900">
+                      {lead.customer_name || 'Unknown'}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {[lead.vehicle_make, lead.vehicle_model, lead.city]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {lead.created_from || lead.lead_source || '—'}
+                      {lead.created_at
+                        ? ` · ${new Date(lead.created_at).toLocaleString('en-IN')}`
+                        : ''}
+                    </p>
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-row sm:flex-col gap-2 lg:w-48">
-                    <a href={`tel:${lead.customer_phone}`} className="btn btn-primary w-full text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2">
-                      <PhoneCall className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden sm:inline">Call Now</span>
-                      <span className="sm:hidden">Call</span>
-                    </a>
-                    <Link href={`/dashboard/telecaller/leads/${lead.id}`} className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2">
-                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden sm:inline">View Details</span>
-                      <span className="sm:hidden">View</span>
+                  <div className="flex flex-wrap gap-2">
+                    {lead.customer_phone ? (
+                      <a
+                        href={`tel:${lead.customer_phone}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
+                      >
+                        <Phone className="h-3.5 w-3.5" /> Call
+                      </a>
+                    ) : null}
+                    <Link
+                      href={`/dashboard/telecaller/leads/${lead.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-[#004AAD]"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> View
                     </Link>
-                    {lead.is_incomplete && (
-                      <Link href={`/dashboard/telecaller/leads/${lead.id}/edit`} className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2">
-                        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        <span className="hidden sm:inline">Complete Info</span>
-                        <span className="sm:hidden">Complete</span>
-                      </Link>
-                    )}
-                    <button className="btn btn-outline w-full text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2">
-                      <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden sm:inline">WhatsApp</span>
-                      <span className="sm:hidden">WA</span>
+                    <button
+                      type="button"
+                      onClick={() => openShare(lead)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600"
+                    >
+                      <Share2 className="h-3.5 w-3.5" /> Share
                     </button>
                   </div>
                 </div>
-
-                {/* Call Stats Footer */}
-                {lead.total_calls > 0 && (
-                  <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t flex flex-wrap items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-gray-500">
-                    <span>Total Calls: {lead.total_calls}</span>
-                    <span>Source: {lead.created_from || 'Unknown'}</span>
-                  </div>
-                )}
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {shareLead ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[80vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-extrabold text-[#023D95]">Share / Transfer</h3>
+              <button type="button" onClick={() => setShareLead(null)}>
+                <X className="h-5 w-5 text-slate-400" />
+              </button>
+            </div>
+            <p className="mb-3 text-sm text-slate-600">
+              {shareLead.customer_name} · {shareLead.lead_number}
+            </p>
+            {peers.length === 0 ? (
+              <p className="text-sm text-slate-500">No peer telecallers found</p>
+            ) : (
+              <div className="space-y-2">
+                {peers.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{p.name || p.email}</p>
+                      <p className="text-xs text-slate-500">{p.email}</p>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        disabled={sharing}
+                        onClick={() => doTransfer(p.id, 'SHARE')}
+                        className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-[#004AAD]"
+                      >
+                        Share
+                      </button>
+                      <button
+                        type="button"
+                        disabled={sharing}
+                        onClick={() => doTransfer(p.id, 'TRANSFER')}
+                        className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-[11px] font-bold text-orange-700"
+                      >
+                        Transfer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </DashboardLayout>
   );
 }
 
-export default function TelecallerLeadsPage() {
+export default function TelecallerCrmLeadsPage() {
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading leads...</p>
-        </div>
-      </div>
-    }>
-      <TelecallerLeadsContent />
+    <Suspense
+      fallback={
+        <DashboardLayout role="telecaller">
+          <div className="flex items-center justify-center gap-2 py-20 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading…
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <TelecallerCrmLeadsContent />
     </Suspense>
   );
 }
-
-interface FilterButtonProps {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-  color?: string;
-}
-
-function FilterButton({ label, count, active, onClick, color = 'gray' }: FilterButtonProps) {
-  const colors = {
-    gray: active ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
-    blue: active ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200',
-    orange: active ? 'bg-orange-600 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200',
-    yellow: active ? 'bg-yellow-600 text-white' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200',
-    purple: active ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200',
-    indigo: active ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200',
-    green: active ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200',
-    red: active ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200',
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm transition whitespace-nowrap flex-shrink-0 ${colors[color as keyof typeof colors]}`}
-    >
-      {label} ({count})
-    </button>
-  );
-}
-

@@ -17,7 +17,7 @@ import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING } from '../../../constants/theme';
 
-export default function TelecallerScriptsScreen({ navigation }: any) {
+export default function TelecallerScriptsScreen({ navigation, embedded = false }: any) {
   const [scripts, setScripts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -200,17 +200,19 @@ export default function TelecallerScriptsScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* Header with Back Button */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation?.goBack()}
-        >
-          <Icon name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Call Scripts</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      {/* Header with Back Button — skipped when embedded in CRM Engage tab */}
+      {!embedded ? (
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation?.goBack()}
+          >
+            <Icon name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Call Scripts</Text>
+          <View style={{ width: 40 }} />
+        </View>
+      ) : null}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -270,6 +272,7 @@ export default function TelecallerScriptsScreen({ navigation }: any) {
       {/* Scripts List */}
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: embedded ? 100 : 32 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }

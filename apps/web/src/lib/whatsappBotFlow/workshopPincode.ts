@@ -36,10 +36,13 @@ export function workshopCoversPincode(workshop: WorkshopPinRow, pincode: string)
   const target = String(pincode || '').trim();
   if (!/^\d{6}$/.test(target)) return false;
 
+  if (String(workshop.pincode || '').trim() === target) return true;
+
   const servicePin = String(workshop.service_pincode || '').trim();
   if (servicePin === target) return true;
-  if (servicePin.includes('|')) {
-    if (normalizePincodeList(servicePin.replace(/\|/g, ',')).includes(target)) return true;
+  // service_pincode often stores pipe/space-separated lists: "400601 | 400607 | 400603"
+  if (servicePin && normalizePincodeList(servicePin.replace(/\|/g, ',')).includes(target)) {
+    return true;
   }
 
   const mapped = normalizePincodeList(workshop.mapping_pincodes);
