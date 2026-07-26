@@ -27,13 +27,27 @@ import {
 
 const SOURCE_OPTIONS = [
   { value: '', label: 'All sources' },
-  { value: 'MOBILE_APP', label: 'MOBILE_APP' },
-  { value: 'WEB', label: 'WEB' },
-  { value: 'TELECALLER_CRM', label: 'TELECALLER_CRM' },
-  { value: 'TELECALLER', label: 'TELECALLER' },
-  { value: 'WHATSAPP', label: 'WHATSAPP' },
-  { value: 'ENQUIRY', label: 'ENQUIRY' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'WHATSAPP_META', label: 'Meta Ads (WA)' },
+  { value: 'MOBILE_APP', label: 'App' },
+  { value: 'WEB', label: 'Website' },
+  { value: 'TELECALLER_CRM', label: 'CRM Book' },
+  { value: 'TELECALLER', label: 'Telecaller' },
+  { value: 'ENQUIRY', label: 'Enquiry' },
 ];
+
+function formatCrmSource(lead: any): string {
+  const from = String(lead?.created_from || '').toUpperCase();
+  const src = String(lead?.lead_source || '').trim();
+  if (from.includes('META') || /instagram|facebook|meta ads/i.test(src)) {
+    return src || 'Meta Ads';
+  }
+  if (from.includes('WHATSAPP') || /whatsapp/i.test(src)) return src || 'WhatsApp';
+  if (from.includes('TELECALLER_CRM')) return 'CRM Book';
+  if (from.includes('MOBILE') || from.includes('APP')) return 'App';
+  if (from === 'WEB' || from.includes('WEBSITE')) return 'Website';
+  return src || lead?.created_from || '—';
+}
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -45,11 +59,12 @@ const PRIORITY_OPTIONS = [
 type Props = {
   initialFilter?: string;
   onOpenLead: (leadId: string) => void;
+  onEditLead?: (leadId: string) => void;
 };
 
 type DropdownKey = 'date' | 'city' | 'source' | 'priority' | null;
 
-export default function CrmQueueTab({ initialFilter = 'all', onOpenLead }: Props) {
+export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditLead }: Props) {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -321,7 +336,7 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead }: Props
                 </View>
                 <Text style={styles.meta}>#{item.lead_number} · {item.customer_phone}</Text>
                 <Text style={styles.meta}>
-                  {item.city || '—'} · {item.workshop?.name || 'No workshop'} · {item.created_from || '—'}
+                  {item.city || '—'} · {item.workshop?.name || 'No workshop'} · {formatCrmSource(item)}
                 </Text>
                 {item.coupon_code ? (
                   <Text style={styles.coupon}>Coupon: {item.coupon_code}</Text>
@@ -337,6 +352,13 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead }: Props
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.act, styles.actOutline]} onPress={() => onOpenLead(item.id)}>
                   <Text style={styles.actOutlineText}>View</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.act, styles.actIcon]}
+                  onPress={() => (onEditLead ? onEditLead(item.id) : onOpenLead(item.id))}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Ionicons name="pencil" size={15} color={COLORS.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.act, styles.actOutline]} onPress={() => openShare(item)}>
                   <Ionicons name="share-outline" size={14} color={COLORS.primary} />
@@ -603,6 +625,12 @@ const styles = StyleSheet.create({
   actText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   actOutline: { backgroundColor: COLORS.primary + '12' },
   actOutlineText: { color: COLORS.primary, fontWeight: '700', fontSize: 12 },
+  actIcon: {
+    flex: 0,
+    width: 40,
+    paddingHorizontal: 0,
+    backgroundColor: COLORS.primary + '12',
+  },
   empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
   emptyText: { color: COLORS.textSecondary },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },

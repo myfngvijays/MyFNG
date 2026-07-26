@@ -39,20 +39,39 @@ export async function openPhoneCall(phone: string): Promise<void> {
   }
 }
 
+/** Normalize to WhatsApp-friendly digits (India 10-digit → 91…). */
+export function normalizeWhatsAppPhone(phone: string): string {
+  let digits = String(phone || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) digits = `91${digits}`;
+  if (digits.startsWith('0') && digits.length === 11) digits = `91${digits.slice(1)}`;
+  return digits;
+}
+
 /**
  * Open WhatsApp chat with the given phone (digits only, country code prefix).
  * Works on both Android (intent) and iOS (URL scheme — `whatsapp` must be
  * declared in Info.plist `LSApplicationQueriesSchemes`).
+ * Falls back to https://wa.me/ when the app scheme is unavailable.
  */
 export async function openWhatsApp(phone: string, message?: string): Promise<boolean> {
-  const digits = String(phone || '').replace(/[^0-9]/g, '');
+  const digits = normalizeWhatsAppPhone(phone);
   if (!digits) return false;
-  const text = message ? `&text=${encodeURIComponent(message)}` : '';
-  const url = `whatsapp://send?phone=${digits}${text}`;
+  const textParam = message ? `?text=${encodeURIComponent(message)}` : '';
+  const appText = message ? `&text=${encodeURIComponent(message)}` : '';
+  const appUrl = `whatsapp://send?phone=${digits}${appText}`;
+  const webUrl = `https://wa.me/${digits}${textParam}`;
   try {
-    const supported = await Linking.canOpenURL(url);
-    if (!supported) return false;
-    await Linking.openURL(url);
+    const supported = await Linking.canOpenURL(appUrl);
+    if (supported) {
+      await Linking.openURL(appUrl);
+      return true;
+    }
+  } catch {
+    // fall through to web
+  }
+  try {
+    await Linking.openURL(webUrl);
     return true;
   } catch {
     return false;

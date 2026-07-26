@@ -179,10 +179,23 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
 }
 
 /** Floating action button for telecaller WhatsApp inbox */
-export function TelecallerWhatsAppFab({ onPress, badge }: { onPress: () => void; badge?: number }) {
+export function TelecallerWhatsAppFab({
+  onPress,
+  badge,
+  bottomOffset = 108,
+}: {
+  onPress: () => void;
+  badge?: number;
+  /** Clearance above bottom nav (CRM pill is taller) */
+  bottomOffset?: number;
+}) {
   return (
-    <TouchableOpacity style={styles.fab} onPress={onPress} activeOpacity={0.85}>
-      <Ionicons name="logo-whatsapp" size={26} color={COLORS.white} />
+    <TouchableOpacity
+      style={[styles.fab, { bottom: bottomOffset }]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <Ionicons name="logo-whatsapp" size={24} color={COLORS.white} />
       {badge && badge > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -318,16 +331,16 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: 88,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    right: 18,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#25D366',
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.large,
-    zIndex: 20,
+    zIndex: 50,
+    elevation: 18,
   },
   badge: {
     position: 'absolute',

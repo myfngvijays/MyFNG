@@ -10,20 +10,44 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase';
 import TelecallerProfileScreen from '../telecaller/TelecallerProfileScreen';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 
+const AANSH_SESSION_KEY = 'myfng:aansh_session';
+
 type Props = {
   navigation: any;
+  /** When true, refresh attendance + Aansh (parent CRM tab active) */
+  active?: boolean;
 };
 
-export default function CrmMeTab({ navigation }: Props) {
+export default function CrmMeTab({ navigation, active = true }: Props) {
   const [segment, setSegment] = useState<'attendance' | 'profile'>('attendance');
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [data, setData] = useState<any>(null);
+  const [aansh, setAansh] = useState<{ aansh_id: number; expires_at?: string } | null>(null);
+
+  const loadAansh = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(AANSH_SESSION_KEY);
+      if (!raw) {
+        setAansh(null);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed?.session_token && parsed?.aansh_id != null) {
+        setAansh({ aansh_id: Number(parsed.aansh_id), expires_at: parsed.expires_at });
+      } else {
+        setAansh(null);
+      }
+    } catch {
+      setAansh(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -40,9 +64,24 @@ export default function CrmMeTab({ navigation }: Props) {
     }
   }, []);
 
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([load(), loadAansh()]);
+  }, [load, loadAansh]);
+
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!active) return;
+    refreshAll();
+  }, [active, refreshAll]);
+
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => {
+      load();
+      loadAansh();
+    }, 10000);
+    return () => clearInterval(t);
+  }, [active, load, loadAansh]);
 
   const punch = async (action: 'punch_in' | 'punch_out') => {
     setPunching(true);
@@ -55,11 +94,12 @@ export default function CrmMeTab({ navigation }: Props) {
       Alert.alert('Done', action === 'punch_in' ? 'Punched in' : 'Punched out');
       await load();
     } catch (e: any) {
+      const msg = String(e?.message || '');
       Alert.alert(
         'Attendance',
-        e?.message?.includes('telecaller_attendance') || e?.message?.includes('relation')
-          ? 'Run database migration 282_telecaller_crm_advanced.sql first'
-          : e?.message || 'Failed'
+        msg.includes('282_telecaller') || msg.includes('telecaller_attendance') || msg.includes('relation')
+          ? 'Attendance table missing. Run database/282_telecaller_crm_advanced.sql on Supabase, then try again.'
+          : msg || 'Failed',
       );
     } finally {
       setPunching(false);
@@ -94,62 +134,101 @@ export default function CrmMeTab({ navigation }: Props) {
   }
 
   const history = Array.isArray(data?.history) ? data.history : [];
+  const punchedIn = Boolean(data?.is_punched_in);
+  const onFloor = punchedIn;
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={refreshAll} colors={[COLORS.primary]} />
+      }
     >
       <Text style={styles.title}>Workforce Timings</Text>
       <Text style={styles.sub}>Punch in when you start calling. Punch out when you leave.</Text>
 
-      <View style={[styles.statusCard, data?.is_punched_in ? styles.on : styles.off]}>
+      {data?.warning ? (
+        <View style={styles.warnBox}>
+          <Ionicons name="warning-outline" size={18} color={COLORS.orange} />
+          <Text style={styles.warnText}>{data.warning}</Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.statusCard, onFloor ? styles.on : styles.off]}>
         <Ionicons
-          name={data?.is_punched_in ? 'checkmark-circle' : 'time-outline'}
+          name={onFloor ? 'checkmark-circle' : 'time-outline'}
           size={28}
-          color={data?.is_punched_in ? COLORS.green : COLORS.orange}
+          color={onFloor ? COLORS.green : COLORS.orange}
         />
         <View style={{ flex: 1 }}>
           <Text style={styles.statusTitle}>
-            {data?.is_punched_in ? 'Currently On Floor' : 'Currently Off Duty'}
+            {onFloor ? 'Currently On Floor' : 'Currently Off Duty'}
           </Text>
-          {data?.open_session?.punch_in_at ? (
+          {punchedIn && data?.open_session?.punch_in_at ? (
             <Text style={styles.statusMeta}>
-              In since {new Date(data.open_session.punch_in_at).toLocaleString('en-IN')}
+              Punched in since {new Date(data.open_session.punch_in_at).toLocaleString('en-IN')}
             </Text>
           ) : (
-            <Text style={styles.statusMeta}>No open session</Text>
+            <Text style={styles.statusMeta}>No open punch session</Text>
           )}
         </View>
       </View>
 
+      {aansh ? (
+        <View style={styles.aanshCard}>
+          <Ionicons name="headset-outline" size={18} color={COLORS.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.aanshTitle}>SARV Aansh {aansh.aansh_id}</Text>
+            <Text style={styles.aanshMeta}>Dialer claimed (independent of punch)</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.aanshIdle}>
+          <Text style={styles.aanshMeta}>No Aansh dialer selected — claim from Home</Text>
+        </View>
+      )}
+
       <TouchableOpacity
-        style={[styles.punchBtn, data?.is_punched_in ? styles.punchOut : styles.punchIn]}
+        style={[styles.punchBtn, punchedIn ? styles.punchOut : styles.punchIn]}
         disabled={punching}
-        onPress={() => punch(data?.is_punched_in ? 'punch_out' : 'punch_in')}
+        onPress={() => punch(punchedIn ? 'punch_out' : 'punch_in')}
       >
         {punching ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.punchText}>
-            {data?.is_punched_in ? 'Punch Out' : 'Punch In'}
-          </Text>
+          <Text style={styles.punchText}>{punchedIn ? 'Punch Out' : 'Punch In'}</Text>
         )}
       </TouchableOpacity>
 
       <Text style={styles.section}>Recent Timings</Text>
       {history.length === 0 ? (
-        <Text style={styles.empty}>No attendance records yet</Text>
+        <Text style={styles.empty}>
+          {data?.warning
+            ? 'Attendance records unavailable until migration is applied.'
+            : 'No attendance records yet. Tap Punch In to start.'}
+        </Text>
       ) : (
         history.map((row: any) => (
           <View key={row.id} style={styles.row}>
             <Text style={styles.rowDate}>{row.work_date}</Text>
             <Text style={styles.rowTime}>
-              In: {row.punch_in_at ? new Date(row.punch_in_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+              In:{' '}
+              {row.punch_in_at
+                ? new Date(row.punch_in_at).toLocaleTimeString('en-IN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '—'}
             </Text>
             <Text style={styles.rowTime}>
-              Out: {row.punch_out_at ? new Date(row.punch_out_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+              Out:{' '}
+              {row.punch_out_at
+                ? new Date(row.punch_out_at).toLocaleTimeString('en-IN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '—'}
             </Text>
           </View>
         ))
@@ -173,6 +252,18 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: SPACING.md, paddingTop: 4, paddingBottom: 40 },
   title: { fontSize: 20, fontWeight: '800', color: COLORS.textHeading },
   sub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4, marginBottom: 14 },
+  warnBox: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  warnText: { flex: 1, fontSize: 12, color: '#9A3412', fontWeight: '600', lineHeight: 17 },
   statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -186,6 +277,27 @@ const styles = StyleSheet.create({
   off: { borderWidth: 1, borderColor: COLORS.orange + '40' },
   statusTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
   statusMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  aanshCard: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#EAF2FF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+  },
+  aanshIdle: {
+    marginTop: 10,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  aanshTitle: { fontSize: 14, fontWeight: '800', color: COLORS.primary },
+  aanshMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   punchBtn: {
     marginTop: 14,
     paddingVertical: 14,
@@ -195,8 +307,14 @@ const styles = StyleSheet.create({
   punchIn: { backgroundColor: COLORS.green },
   punchOut: { backgroundColor: COLORS.red },
   punchText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  syncBtn: {
+    marginTop: 8,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  syncText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
   section: { marginTop: 22, marginBottom: 8, fontSize: 15, fontWeight: '700', color: COLORS.textHeading },
-  empty: { color: COLORS.textSecondary, fontSize: 13 },
+  empty: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   row: {
     backgroundColor: COLORS.white,
     borderRadius: 10,

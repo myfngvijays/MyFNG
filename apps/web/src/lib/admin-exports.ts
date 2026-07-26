@@ -76,6 +76,7 @@ export async function exportServiceLeadsCsv(
   let query = supabaseAdmin
     .from('service_leads')
     .select('*')
+    .is('deleted_at', null)
     .gte('created_at', range.start)
     .lte('created_at', range.end)
     .order('created_at', { ascending: false })

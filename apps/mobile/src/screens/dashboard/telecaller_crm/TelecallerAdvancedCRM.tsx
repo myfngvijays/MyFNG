@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNav from '../../../components/BottomNav';
-import TelecallerWhatsAppInbox, { TelecallerWhatsAppFab } from '../../../components/telecaller/TelecallerWhatsAppInbox';
+import TelecallerWhatsAppInbox from '../../../components/telecaller/TelecallerWhatsAppInbox';
 import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen';
+import TelecallerEditLeadScreen from '../telecaller/TelecallerEditLeadScreen';
 import CrmHomeTab from './CrmHomeTab';
 import CrmQueueTab from './CrmQueueTab';
 import CrmBookWizard from './CrmBookWizard';
@@ -13,23 +14,25 @@ import { COLORS } from '../../../constants/theme';
 
 /**
  * Advanced Telecaller CRM — new interconnected agent workspace.
- * Tabs: Home | Queue | Book | Engage | Me
+ * Tabs: Home | Leads | Book | Engage | Me
  */
 export default function TelecallerAdvancedCRM() {
   const [tab, setTab] = useState('home');
   const [queueFilter, setQueueFilter] = useState('all');
   const [engageSegment, setEngageSegment] = useState('followups');
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
+  const [editLeadId, setEditLeadId] = useState<string | null>(null);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
 
   const navigation = {
     navigate: (screen: string, params?: any) => {
       if (screen === 'TelecallerLeadDetail' && params?.leadId) {
+        setEditLeadId(null);
         setDetailLeadId(params.leadId);
         return;
       }
       if (screen === 'TelecallerEditLead' && params?.leadId) {
-        setDetailLeadId(params.leadId);
+        setEditLeadId(params.leadId);
         return;
       }
       if (
@@ -68,9 +71,14 @@ export default function TelecallerAdvancedCRM() {
       if (screen === 'home' || screen === 'dashboard' || screen === 'TelecallerDashboard') {
         setTab('home');
         setDetailLeadId(null);
+        setEditLeadId(null);
       }
     },
     goBack: () => {
+      if (editLeadId) {
+        setEditLeadId(null);
+        return;
+      }
       if (detailLeadId) {
         setDetailLeadId(null);
         return;
@@ -81,11 +89,25 @@ export default function TelecallerAdvancedCRM() {
 
   const handleTabChange = (id: string) => {
     setDetailLeadId(null);
+    setEditLeadId(null);
     setTab(id);
     if (id === 'queue') setQueueFilter('all');
   };
 
-  const showFab = tab !== 'book' && tab !== 'engage' && !detailLeadId;
+  if (editLeadId) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.body}>
+          <TelecallerEditLeadScreen
+            navigation={navigation}
+            route={{ params: { leadId: editLeadId } }}
+          />
+        </View>
+        <BottomNav activeTab="queue" onTabChange={handleTabChange} tabs={tabs} />
+      </SafeAreaView>
+    );
+  }
 
   if (detailLeadId) {
     return (
@@ -98,11 +120,7 @@ export default function TelecallerAdvancedCRM() {
             embedded
           />
         </View>
-        <BottomNav
-          activeTab="queue"
-          onTabChange={handleTabChange}
-          tabs={tabs}
-        />
+        <BottomNav activeTab="queue" onTabChange={handleTabChange} tabs={tabs} />
       </SafeAreaView>
     );
   }
@@ -137,6 +155,7 @@ export default function TelecallerAdvancedCRM() {
           <CrmQueueTab
             initialFilter={queueFilter}
             onOpenLead={(id) => setDetailLeadId(id)}
+            onEditLead={(id) => setEditLeadId(id)}
           />
         )}
         {tab === 'book' && (
@@ -150,10 +169,9 @@ export default function TelecallerAdvancedCRM() {
         {tab === 'engage' && (
           <CrmEngageTab navigation={navigation} initialSegment={engageSegment} />
         )}
-        {tab === 'me' && <CrmMeTab navigation={navigation} />}
+        {tab === 'me' && <CrmMeTab navigation={navigation} active />}
       </View>
 
-      {showFab ? <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} /> : null}
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
 
       <BottomNav activeTab={tab} onTabChange={handleTabChange} tabs={tabs} />

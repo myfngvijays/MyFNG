@@ -33,6 +33,7 @@ export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
   const [dateOpen, setDateOpen] = useState(false);
+  const [aanshActive, setAanshActive] = useState(false);
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
@@ -71,6 +72,7 @@ export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
   const kpis = data?.kpis || {};
   const trend = Array.isArray(data?.trend) ? data.trend : [];
   const punchedIn = Boolean(data?.attendance?.is_punched_in);
+  const onFloor = punchedIn;
 
   const quickActions = [
     { label: 'New Booking', icon: 'add-circle' as const, color: COLORS.green, go: () => onNavigate('book') },
@@ -92,9 +94,9 @@ export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
           <Text style={styles.hello}>Advanced CRM</Text>
           <Text style={styles.name}>{data?.profile?.name || 'Telecaller'}</Text>
         </View>
-        <View style={[styles.badge, punchedIn ? styles.badgeOn : styles.badgeOff]}>
-          <View style={[styles.dot, { backgroundColor: punchedIn ? COLORS.green : COLORS.orange }]} />
-          <Text style={styles.badgeText}>{punchedIn ? 'On Floor' : 'Off Duty'}</Text>
+        <View style={[styles.badge, onFloor ? styles.badgeOn : styles.badgeOff]}>
+          <View style={[styles.dot, { backgroundColor: onFloor ? COLORS.green : COLORS.orange }]} />
+          <Text style={styles.badgeText}>{onFloor ? 'On Floor' : 'Off Duty'}</Text>
         </View>
       </View>
 
@@ -159,7 +161,13 @@ export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
         ) : null}
       </View>
 
-      <TelecallerAanshBar />
+      <TelecallerAanshBar
+        onSessionChange={(s) => setAanshActive(Boolean(s?.session_token))}
+        onClaimed={() => {
+          setRefreshing(true);
+          load();
+        }}
+      />
 
       <View style={styles.kpiGrid}>
         {[

@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Linking,
   Alert,
   TextInput,
   BackHandler
@@ -20,10 +19,12 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { parseIds } from '../../../lib/parseIds';
+import { openPhoneCall, openWhatsApp } from '../../../lib/phone';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 const CALL_STATUSES = ['ANSWERED', 'NO_ANSWER', 'BUSY', 'SWITCHED_OFF', 'WRONG_NUMBER'];
 const CALL_OUTCOMES = ['INFO_COLLECTED', 'FOLLOW_UP_SCHEDULED', 'NOT_INTERESTED', 'LEAD_CREATED', 'OTHER'];
+const NO_OUTCOME_STATUSES = new Set(['SWITCHED_OFF', 'WRONG_NUMBER']);
 const FOLLOW_UP_TYPES = ['CALLBACK', 'REMINDER', 'FOLLOW_UP'];
 const FOLLOW_UP_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 
@@ -41,10 +42,8 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
   const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
+  const [pricingItems, setPricingItems] = useState<Array<{ name: string; price: number }>>([]);
   const [couponInput, setCouponInput] = useState('');
-  const [statusUpdating, setStatusUpdating] = useState(false);
-
-  const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INCOMPLETE', 'REJECTED'];
 
   const [callLogData, setCallLogData] = useState({
     call_status: 'ANSWERED',
@@ -52,6 +51,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
     outcome: 'INFO_COLLECTED',
     notes: ''
   });
+  const needsOutcome = !NO_OUTCOME_STATUSES.has(callLogData.call_status);
 
   const [followUpData, setFollowUpData] = useState({
     follow_up_type: 'CALLBACK',
@@ -94,6 +94,23 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
       if (leadError) throw leadError;
       setLead(leadData);
 
+      // Pricing snapshot (line items) for display
+      try {
+        const { data: priceRows } = await supabase
+          .from('lead_pricing_items')
+          .select('item_name, total_price, unit_price')
+          .eq('lead_id', leadId)
+          .order('created_at', { ascending: true });
+        setPricingItems(
+          (priceRows || []).map((r: any) => ({
+            name: String(r.item_name || '').trim(),
+            price: Number(r.total_price ?? r.unit_price ?? 0) || 0,
+          })).filter((r: any) => r.name),
+        );
+      } catch {
+        setPricingItems([]);
+      }
+
       // Fetch service type names if service_type_ids exists
       if (leadData.service_type_ids) {
         try {
@@ -104,13 +121,43 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
               .select('id, name')
               .in('id', serviceIds);
             
-            if (serviceTypesData) {
-              setServiceTypeNames(serviceTypesData.map(st => st.name));
+            if (serviceTypesData?.length) {
+              const byId = new Map(serviceTypesData.map((st: any) => [String(st.id), String(st.name || '')]));
+              setServiceTypeNames(serviceIds.map((id) => byId.get(id) || '').filter(Boolean));
+            } else if (leadData.service_type) {
+              setServiceTypeNames(
+                String(leadData.service_type)
+                  .split(',')
+                  .map((s: string) => s.trim())
+                  .filter(Boolean),
+              );
             }
+          } else if (leadData.service_type) {
+            setServiceTypeNames(
+              String(leadData.service_type)
+                .split(',')
+                .map((s: string) => s.trim())
+                .filter(Boolean),
+            );
           }
         } catch (e) {
           console.error('Error resolving service_type_ids:', e);
+          if (leadData.service_type) {
+            setServiceTypeNames(
+              String(leadData.service_type)
+                .split(',')
+                .map((s: string) => s.trim())
+                .filter(Boolean),
+            );
+          }
         }
+      } else if (leadData.service_type) {
+        setServiceTypeNames(
+          String(leadData.service_type)
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+        );
       }
 
       // Fetch subservice names if subservice_ids exists
@@ -174,25 +221,35 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
 
   const handleAddCallLog = async () => {
     try {
+      const status = callLogData.call_status;
+      const skipOutcome = NO_OUTCOME_STATUSES.has(status);
       await apiFetch('/api/telecaller/calls/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_id: leadId,
           call_type: 'OUTBOUND',
-          call_status: callLogData.call_status,
+          call_status: status,
           call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
-          outcome: callLogData.outcome,
+          outcome: skipOutcome ? null : callLogData.outcome,
           notes: callLogData.notes,
           phone_number: lead?.customer_phone,
         }),
       });
 
+      // Keep booking pipeline status intact; show call attempt on header from call logs
+      const nextMeta = {
+        ...(lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {}),
+        last_call_status: status,
+        last_call_at: new Date().toISOString(),
+      };
       await supabase
         .from('service_leads')
         .update({
           last_call_at: new Date().toISOString(),
           total_calls: (lead?.total_calls || 0) + 1,
+          coupon_meta: nextMeta,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', leadId);
 
@@ -204,7 +261,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
       });
       setShowCallLogForm(false);
       fetchLeadDetails();
-      Alert.alert('Success', 'Call log added successfully!');
+      Alert.alert('Saved', `Status updated to ${formatStatusLabel(status)}`);
     } catch (error) {
       console.error('Error adding call log:', error);
       Alert.alert('Error', 'Failed to add call log');
@@ -260,32 +317,10 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
     }
   };
 
-  const handleUpdateStatus = async (status: string) => {
-    if (!lead || status === lead.status) return;
-    setStatusUpdating(true);
-    try {
-      const updates: any = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
-      if (status === 'INCOMPLETE') updates.is_incomplete = true;
-      if (status === 'CONTACTED' || status === 'NEW') updates.is_incomplete = false;
-      if (status === 'REJECTED') {
-        updates.follow_up_required = false;
-      }
-
-      const { error } = await supabase
-        .from('service_leads')
-        .update(updates)
-        .eq('id', leadId);
-
-      if (error) throw error;
-      await fetchLeadDetails();
-      Alert.alert('Updated', `Lead marked as ${status}`);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to update status');
-    } finally {
-      setStatusUpdating(false);
+  const handleOpenWhatsApp = async () => {
+    const ok = await openWhatsApp(lead?.customer_phone);
+    if (!ok) {
+      Alert.alert('WhatsApp', 'Could not open WhatsApp. Check the phone number.');
     }
   };
 
@@ -422,32 +457,42 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>{lead.customer_name}</Text>
-          <Text style={styles.headerSubtitle}>Lead #{lead.lead_number}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusBg(lead.status) }]}>
-          <Text style={[styles.statusText, { color: getStatusFg(lead.status) }]}>{lead.status}</Text>
-        </View>
-      </View>
+        {(() => {
+          const headerStatus =
+            callLogs[0]?.call_status ||
+            lead?.coupon_meta?.last_call_status ||
+            lead.status;
+          const badge = getCallStatusBadge(headerStatus);
+          return (
+            <View style={styles.header}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.headerTitle}>{lead.customer_name}</Text>
+                <Text style={styles.headerSubtitle}>Lead #{lead.lead_number}</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+                <Text style={[styles.statusText, { color: badge.fg }]}>
+                  {formatStatusLabel(headerStatus)}
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
 
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionButtonPrimary]}
-          onPress={() => Linking.openURL(`tel:${lead.customer_phone}`)}
+          onPress={() => openPhoneCall(lead.customer_phone)}
         >
-          <Icon name="phone" size={20} color="#fff" />
+          <Icon name="phone" size={18} color="#fff" />
           <Text style={styles.actionButtonTextPrimary}>Call</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.actionButton, styles.actionButtonSecondary]}
-          onPress={() => Linking.openURL(`whatsapp://send?phone=${lead.customer_phone}`)}
+          onPress={handleOpenWhatsApp}
         >
-          <Icon name="whatsapp" size={20} color={COLORS.green} />
+          <Icon name="whatsapp" size={18} color={COLORS.green} />
           <Text style={styles.actionButtonTextSecondary}>WhatsApp</Text>
         </TouchableOpacity>
 
@@ -455,7 +500,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           style={[styles.actionButton, styles.actionButtonEdit]}
           onPress={() => navigation.navigate('TelecallerEditLead', { leadId })}
         >
-          <Icon name="pencil" size={18} color={COLORS.primary} />
+          <Icon name="pencil" size={16} color={COLORS.primary} />
           <Text style={styles.actionButtonTextEdit}>Edit</Text>
         </TouchableOpacity>
       </View>
@@ -483,39 +528,9 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
             <Icon name="source-branch" size={18} color={COLORS.blue} />
           </View>
           <Text style={styles.statValue} numberOfLines={2}>
-            {formatLeadSource(lead.created_from || lead.lead_source)}
+            {formatLeadSource(lead.lead_source || lead.created_from)}
           </Text>
           <Text style={styles.statLabel}>Source</Text>
-        </View>
-      </View>
-
-      {/* CRM Status Pipeline */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Lead Status</Text>
-        <View style={styles.sectionContent}>
-          <View style={styles.chipRow}>
-            {LEAD_STATUSES.map((status) => (
-              <TouchableOpacity
-                key={status}
-                style={[
-                  styles.chip,
-                  lead.status === status && styles.chipActive,
-                  statusUpdating && { opacity: 0.6 },
-                ]}
-                disabled={statusUpdating}
-                onPress={() => handleUpdateStatus(status)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    lead.status === status && styles.chipTextActive,
-                  ]}
-                >
-                  {status}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
       </View>
 
@@ -566,106 +581,175 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
 
       {/* Customer Information */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Customer Information</Text>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: '#DBEAFE' }]}>
+            <Icon name="account" size={16} color={COLORS.primary} />
+          </View>
+          <Text style={styles.sectionTitle}>Customer</Text>
+        </View>
         <View style={styles.sectionContent}>
-          <InfoRow icon="account" label="Name" value={lead.customer_name} />
-          <InfoRow icon="phone" label="Phone" value={lead.customer_phone} />
-          {lead.customer_alternate_phone && (
-            <InfoRow icon="phone-plus" label="Alt Phone" value={lead.customer_alternate_phone} />
-          )}
-          {lead.customer_email && (
-            <InfoRow icon="email" label="Email" value={lead.customer_email} />
-          )}
-          {(lead.pickup_address || lead.customer_address) && (
-            <InfoRow
+          <DetailRow icon="account" label="Name" value={lead.customer_name} />
+          <View style={styles.detailGrid}>
+            <DetailRow icon="phone" label="Phone" value={lead.customer_phone} compact />
+            {lead.customer_alternate_phone ? (
+              <DetailRow icon="phone-plus" label="Alternate" value={lead.customer_alternate_phone} compact />
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
+          </View>
+          {lead.customer_email ? (
+            <DetailRow icon="email" label="Email" value={lead.customer_email} />
+          ) : null}
+          {(lead.pickup_address || lead.customer_address) ? (
+            <DetailRow
               icon="map-marker"
               label="Address"
               value={formatLeadAddress(lead.pickup_address || lead.customer_address, lead.city, lead.pincode)}
             />
-          )}
-          {lead.pincode ? <InfoRow icon="map-marker-radius" label="Pincode" value={String(lead.pincode)} /> : null}
-          <InfoRow icon="city" label="City" value={lead.city || 'N/A'} />
+          ) : null}
+          <View style={styles.detailGrid}>
+            <DetailRow icon="city" label="City" value={lead.city || '—'} compact />
+            <DetailRow icon="map-marker-radius" label="Pincode" value={lead.pincode ? String(lead.pincode) : '—'} compact />
+          </View>
         </View>
       </View>
 
       {/* Vehicle Information */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Vehicle Information</Text>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: '#E0E7FF' }]}>
+            <Icon name="car" size={16} color={COLORS.indigo} />
+          </View>
+          <Text style={styles.sectionTitle}>Vehicle</Text>
+        </View>
         <View style={styles.sectionContent}>
-          <InfoRow icon="car" label="Registration" value={lead.vehicle_number || 'Not provided'} />
-          <InfoRow icon="car-side" label="Make" value={lead.vehicle_make || 'N/A'} />
-          <InfoRow icon="car-info" label="Model" value={lead.vehicle_model || 'N/A'} />
-          {lead.vehicle_variant && (
-            <InfoRow icon="tag" label="Variant" value={lead.vehicle_variant} />
-          )}
-          {lead.vehicle_year && (
-            <InfoRow icon="calendar" label="Year" value={lead.vehicle_year.toString()} />
-          )}
-          {lead.vehicle_fuel_type && (
-            <InfoRow icon="gas-station" label="Fuel" value={lead.vehicle_fuel_type} />
-          )}
+          <DetailRow icon="car" label="Registration" value={lead.vehicle_number || 'Not provided'} />
+          <View style={styles.detailGrid}>
+            <DetailRow icon="car-side" label="Make" value={lead.vehicle_make || '—'} compact />
+            <DetailRow icon="car-info" label="Model" value={lead.vehicle_model || '—'} compact />
+          </View>
+          <View style={styles.detailGrid}>
+            <DetailRow icon="gas-station" label="Fuel" value={lead.vehicle_fuel_type || '—'} compact />
+            <DetailRow
+              icon="calendar"
+              label="Year"
+              value={lead.vehicle_year ? String(lead.vehicle_year) : '—'}
+              compact
+            />
+          </View>
+          {lead.vehicle_variant ? (
+            <DetailRow icon="tag" label="Variant" value={lead.vehicle_variant} />
+          ) : null}
         </View>
       </View>
 
       {/* Service Details */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Service Details</Text>
-        <View style={styles.sectionContent}>
-          <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Service Types:</Text>
-            {serviceTypeNames.length > 0 ? (
-              <View style={styles.tagsContainer}>
-                {serviceTypeNames.map((name, idx) => (
-                  <View key={idx} style={[styles.tag, styles.tagBlue]}>
-                    <Text style={styles.tagText}>{name}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.infoValue}>Not specified</Text>
-            )}
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: '#D1FAE5' }]}>
+            <Icon name="wrench" size={16} color={COLORS.green} />
           </View>
+          <Text style={styles.sectionTitle}>Service & Price</Text>
+        </View>
+        <View style={styles.sectionContent}>
+          {(() => {
+            const estimated = Number(lead.estimated_amount || 0) || 0;
+            const discount = Number(lead.discount_amount || 0) || 0;
+            const payable = Math.max(0, estimated);
+            const lineSum = pricingItems.reduce((s, i) => s + (Number(i.price) || 0), 0);
+            const showAmount = estimated > 0 || lineSum > 0;
+            if (!showAmount) {
+              return (
+                <View style={styles.priceEmpty}>
+                  <Text style={styles.priceEmptyText}>Price not set yet — edit lead to refresh quote</Text>
+                </View>
+              );
+            }
+            return (
+              <View style={styles.priceCard}>
+                <View style={styles.priceCardTop}>
+                  <Text style={styles.priceCardLabel}>Booking amount</Text>
+                  <Text style={styles.priceCardValue}>
+                    ₹{(estimated > 0 ? estimated : lineSum).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+                {discount > 0 ? (
+                  <View style={styles.priceMetaRow}>
+                    <Text style={styles.priceMetaLabel}>Discount</Text>
+                    <Text style={[styles.priceMetaValue, { color: COLORS.green }]}>
+                      −₹{discount.toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.priceMetaRow}>
+                  <Text style={styles.priceMetaLabel}>Payable</Text>
+                  <Text style={styles.pricePayable}>
+                    ₹{(estimated > 0 ? payable : Math.max(0, lineSum - discount)).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+                {lead.payment_mode ? (
+                  <Text style={styles.priceMode}>{formatPaymentMode(lead.payment_mode)}</Text>
+                ) : null}
+              </View>
+            );
+          })()}
 
-          {subserviceNames.length > 0 && (
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Add-ons / Sub-services:</Text>
+          <Text style={styles.fieldCaption}>Packages</Text>
+          {serviceTypeNames.length > 0 ? (
+            <View style={styles.tagsContainer}>
+              {serviceTypeNames.map((name, idx) => (
+                <View key={`${name}-${idx}`} style={[styles.tag, styles.tagBlue]}>
+                  <Text style={styles.tagText}>{name}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.mutedValue}>Not specified</Text>
+          )}
+
+          {pricingItems.length > 0 ? (
+            <View style={styles.lineItemsBox}>
+              {pricingItems.map((item, idx) => (
+                <View key={`${item.name}-${idx}`} style={styles.lineItemRow}>
+                  <Text style={styles.lineItemName} numberOfLines={2}>{item.name}</Text>
+                  <Text style={styles.lineItemPrice}>
+                    {item.price > 0 ? `₹${item.price.toLocaleString('en-IN')}` : '—'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {subserviceNames.length > 0 ? (
+            <>
+              <Text style={[styles.fieldCaption, { marginTop: 12 }]}>Add-ons</Text>
               <View style={styles.tagsContainer}>
                 {subserviceNames.map((name, idx) => (
-                  <View key={idx} style={[styles.tag, styles.tagGreen]}>
+                  <View key={`${name}-${idx}`} style={[styles.tag, styles.tagGreen]}>
                     <Text style={styles.tagText}>{name}</Text>
                   </View>
                 ))}
               </View>
-            </View>
-          )}
+            </>
+          ) : null}
 
           {(() => {
             const schedule = formatLeadSchedule(lead);
             if (!schedule) return null;
-            return <InfoRow icon="calendar-clock" label="Schedule" value={schedule} />;
+            return <DetailRow icon="calendar-clock" label="Schedule" value={schedule} />;
           })()}
 
-          <InfoRow
+          <DetailRow
             icon="car-pickup"
             label="Service mode"
             value={lead.pickup_required ? 'Doorstep pickup' : 'Workshop visit'}
           />
 
-          {lead.payment_mode ? (
-            <InfoRow icon="cash" label="Payment" value={formatPaymentMode(lead.payment_mode)} />
-          ) : null}
-
           {(() => {
             const notes = String(lead.problem_description || '').trim();
             if (!notes) return null;
-            // Hide noisy auto-generated schedule strings
             if (/^(pickup|visit)\s*:/i.test(notes) && notes.length < 40) return null;
-            return (
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Notes:</Text>
-                <Text style={styles.infoValue}>{notes}</Text>
-              </View>
-            );
+            return <DetailRow icon="message-text" label="Notes" value={notes} />;
           })()}
 
           {(() => {
@@ -683,7 +767,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
                 </View>
                 <Text style={styles.couponText}>
                   {discountAmount > 0
-                    ? `Discount: ₹${discountAmount.toFixed(2)}`
+                    ? `Discount: ₹${discountAmount.toLocaleString('en-IN')}`
                     : 'Note: Discount will reflect at billing time.'}
                 </Text>
               </View>
@@ -729,7 +813,13 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
                     styles.chip,
                     callLogData.call_status === status && styles.chipActive,
                   ]}
-                  onPress={() => setCallLogData({ ...callLogData, call_status: status })}
+                  onPress={() =>
+                    setCallLogData({
+                      ...callLogData,
+                      call_status: status,
+                      outcome: NO_OUTCOME_STATUSES.has(status) ? '' : callLogData.outcome || 'INFO_COLLECTED',
+                    })
+                  }
                 >
                   <Text
                     style={[
@@ -737,34 +827,42 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
                       callLogData.call_status === status && styles.chipTextActive,
                     ]}
                   >
-                    {status.replace('_', ' ')}
+                    {formatStatusLabel(status)}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.formLabel}>Outcome</Text>
-            <View style={styles.chipRow}>
-              {CALL_OUTCOMES.map((outcome) => (
-                <TouchableOpacity
-                  key={outcome}
-                  style={[
-                    styles.chip,
-                    callLogData.outcome === outcome && styles.chipActive,
-                  ]}
-                  onPress={() => setCallLogData({ ...callLogData, outcome })}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      callLogData.outcome === outcome && styles.chipTextActive,
-                    ]}
-                  >
-                    {outcome.replace('_', ' ')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {needsOutcome ? (
+              <>
+                <Text style={styles.formLabel}>Outcome</Text>
+                <View style={styles.chipRow}>
+                  {CALL_OUTCOMES.map((outcome) => (
+                    <TouchableOpacity
+                      key={outcome}
+                      style={[
+                        styles.chip,
+                        callLogData.outcome === outcome && styles.chipActive,
+                      ]}
+                      onPress={() => setCallLogData({ ...callLogData, outcome })}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          callLogData.outcome === outcome && styles.chipTextActive,
+                        ]}
+                      >
+                        {formatStatusLabel(outcome)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            ) : (
+              <Text style={styles.outcomeHint}>
+                Outcome not needed for {formatStatusLabel(callLogData.call_status)}.
+              </Text>
+            )}
             <TextInput
               style={styles.input}
               placeholder="Call duration (seconds)"
@@ -807,7 +905,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
               <View key={log.id} style={styles.logCard}>
                 <View style={styles.logHeader}>
                   <View style={[styles.logBadge, { backgroundColor: getCallStatusColor(log.call_status) }]}>
-                    <Text style={styles.logBadgeText}>{log.call_status}</Text>
+                    <Text style={styles.logBadgeText}>{formatStatusLabel(log.call_status)}</Text>
                   </View>
                   {log.call_duration && (
                     <Text style={styles.logDuration}>
@@ -958,26 +1056,42 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
   );
 }
 
-interface InfoRowProps {
+interface DetailRowProps {
   icon: string;
   label: string;
   value: string;
+  compact?: boolean;
 }
 
-function InfoRow({ icon, label, value }: InfoRowProps) {
+function DetailRow({ icon, label, value, compact }: DetailRowProps) {
   return (
-    <View style={styles.infoRow}>
-      <Icon name={icon as any} size={16} color={COLORS.textSecondary} />
-      <View style={styles.infoContent}>
-        <Text style={styles.infoLabel}>{label}:</Text>
-        <Text style={styles.infoValue}>{value}</Text>
+    <View style={[styles.detailRow, compact && styles.detailRowCompact]}>
+      <View style={styles.detailIcon}>
+        <Icon name={icon as any} size={14} color={COLORS.primary} />
+      </View>
+      <View style={styles.detailBody}>
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={styles.detailValue}>{value || '—'}</Text>
       </View>
     </View>
   );
 }
 
+function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return <DetailRow icon={icon} label={label} value={value} />;
+}
+
+function formatStatusLabel(raw: string | null | undefined): string {
+  return String(raw || '—')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function formatLeadSource(raw: string | null | undefined): string {
   const v = String(raw || 'N/A').trim();
+  if (/whatsapp_meta|instagram ads|facebook ads|meta ads/i.test(v)) return v.replace(/_/g, ' ');
+  if (/whatsapp/i.test(v)) return 'WhatsApp';
   if (/telecaller_crm/i.test(v)) return 'CRM Book';
   if (/telecaller/i.test(v)) return 'Telecaller';
   if (/mobile_app|app booking/i.test(v)) return 'App';
@@ -1004,8 +1118,10 @@ function formatLeadAddress(
     .replace(/\s*\((home|work|other)\)/gi, '')
     .replace(/,?\s*Landmark:\s*/gi, ', Near ')
     .replace(/,?\s*PIN\s*(\d{6})/gi, ', $1')
+    .replace(/,{2,}/g, ',')
     .replace(/,\s*,+/g, ',')
     .replace(/\s{2,}/g, ' ')
+    .replace(/^,\s*|,\s*$/g, '')
     .trim();
   const c = String(city || '').trim();
   const p = String(pincode || '').trim();
@@ -1059,6 +1175,25 @@ function getStatusFg(status: string): string {
   }
 }
 
+function getCallStatusBadge(status: string): { bg: string; fg: string } {
+  switch (String(status || '').toUpperCase()) {
+    case 'ANSWERED':
+      return { bg: '#D1FAE5', fg: '#047857' };
+    case 'NO_ANSWER':
+    case 'BUSY':
+      return { bg: '#FEF3C7', fg: '#B45309' };
+    case 'SWITCHED_OFF':
+      return { bg: '#E5E7EB', fg: '#374151' };
+    case 'WRONG_NUMBER':
+    case 'REJECTED':
+      return { bg: '#FEE2E2', fg: '#B91C1C' };
+    case 'NEW':
+      return { bg: '#DBEAFE', fg: COLORS.primary };
+    default:
+      return { bg: 'rgba(255,255,255,0.22)', fg: '#fff' };
+  }
+}
+
 function getStatusColor(status: string): string {
   return getStatusBg(status);
 }
@@ -1067,6 +1202,9 @@ function getCallStatusColor(status: string): string {
   switch (status) {
     case 'ANSWERED': return COLORS.green + '30';
     case 'NO_ANSWER': return COLORS.orange + '30';
+    case 'BUSY': return COLORS.orange + '30';
+    case 'SWITCHED_OFF': return COLORS.gray[500] + '30';
+    case 'WRONG_NUMBER': return COLORS.red + '30';
     default: return COLORS.gray[500] + '30';
   }
 }
@@ -1183,22 +1321,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 13,
+    borderRadius: 14,
     gap: 6,
   },
   actionButtonPrimary: {
     backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   actionButtonSecondary: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ECFDF5',
     borderWidth: 1.5,
-    borderColor: COLORS.green,
+    borderColor: '#34D399',
   },
   actionButtonEdit: {
-    backgroundColor: '#fff',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1.5,
-    borderColor: COLORS.primary,
+    borderColor: '#93C5FD',
   },
   actionButtonTextPrimary: {
     color: '#fff',
@@ -1206,7 +1349,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   actionButtonTextSecondary: {
-    color: COLORS.green,
+    color: '#059669',
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1220,13 +1363,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginHorizontal: SPACING.md,
     marginTop: SPACING.md,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
+    shadowColor: '#023D95',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowRadius: 10,
     elevation: 2,
   },
   statItem: {
@@ -1270,23 +1415,192 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.sm,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  sectionIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   addIconBtn: {
     padding: 2,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: COLORS.textHeading,
   },
   sectionContent: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
+    shadowColor: '#023D95',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowRadius: 10,
     elevation: 2,
+    gap: 8,
+  },
+  detailGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  detailRowCompact: {
+    flex: 1,
+  },
+  detailIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  detailBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  detailLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  fieldCaption: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  mutedValue: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  priceCard: {
+    backgroundColor: '#F0F7FF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginBottom: 6,
+  },
+  priceCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  priceCardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  priceCardValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  priceMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  priceMetaLabel: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  priceMetaValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  pricePayable: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.textHeading,
+  },
+  priceMode: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  priceEmpty: {
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    marginBottom: 4,
+  },
+  priceEmptyText: {
+    fontSize: 12,
+    color: '#9A3412',
+    fontWeight: '600',
+  },
+  lineItemsBox: {
+    marginTop: 6,
+    backgroundColor: '#FAFCFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  lineItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+    gap: 10,
+  },
+  lineItemName: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
+  },
+  lineItemPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textHeading,
+  },
+  outcomeHint: {
+    marginTop: 4,
+    marginBottom: 10,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
   },
   infoRow: {
     flexDirection: 'row',
@@ -1359,36 +1673,40 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.xs,
   },
   formCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
+    backgroundColor: '#F8FBFF',
+    borderRadius: 14,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#DCE8F8',
   },
   formTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.textHeading,
     marginBottom: SPACING.sm,
   },
   formLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: COLORS.textSecondary,
     marginTop: SPACING.xs,
     marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.xs,
+    gap: 8,
     marginBottom: SPACING.sm,
   },
   chip: {
     borderWidth: 1,
     borderColor: COLORS.gray[200],
-    borderRadius: 16,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: COLORS.white,
   },
   chipActive: {
@@ -1398,7 +1716,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   chipTextActive: {
     color: COLORS.white,

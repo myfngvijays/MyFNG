@@ -44,3 +44,30 @@ CREATE INDEX IF NOT EXISTS idx_telecaller_lead_transfers_to
 
 COMMENT ON TABLE telecaller_attendance IS 'Telecaller punch in/out for workforce timings';
 COMMENT ON TABLE telecaller_lead_transfers IS 'Peer lead transfer/share history between telecallers';
+
+-- RLS: telecallers can read/write their own attendance rows
+ALTER TABLE telecaller_attendance ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS telecaller_attendance_select_own ON telecaller_attendance;
+CREATE POLICY telecaller_attendance_select_own ON telecaller_attendance
+  FOR SELECT USING (
+    telecaller_id IN (
+      SELECT id FROM users_login WHERE email = auth.jwt() ->> 'email'
+    )
+  );
+
+DROP POLICY IF EXISTS telecaller_attendance_insert_own ON telecaller_attendance;
+CREATE POLICY telecaller_attendance_insert_own ON telecaller_attendance
+  FOR INSERT WITH CHECK (
+    telecaller_id IN (
+      SELECT id FROM users_login WHERE email = auth.jwt() ->> 'email'
+    )
+  );
+
+DROP POLICY IF EXISTS telecaller_attendance_update_own ON telecaller_attendance;
+CREATE POLICY telecaller_attendance_update_own ON telecaller_attendance
+  FOR UPDATE USING (
+    telecaller_id IN (
+      SELECT id FROM users_login WHERE email = auth.jwt() ->> 'email'
+    )
+  );

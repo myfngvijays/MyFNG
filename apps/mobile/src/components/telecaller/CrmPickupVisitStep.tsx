@@ -432,7 +432,7 @@ export default function CrmPickupVisitStep({
             ]}
             value={value.pickup_address}
             onChangeText={(t) => onChange({ pickup_address: t })}
-            placeholder="Area, City, State, Pincode"
+            placeholder="Street / area only (no flat, landmark, city)"
             placeholderTextColor={COLORS.textSecondary}
             multiline
           />
@@ -457,7 +457,7 @@ export default function CrmPickupVisitStep({
                 style={[styles.input, value.flat_number.trim() ? styles.inputFilled : null]}
                 value={value.flat_number}
                 onChangeText={(t) => onChange({ flat_number: t })}
-                placeholder="e.g., Flat 201, House No. 123"
+                placeholder="e.g. 21 / B-302"
                 placeholderTextColor={COLORS.textSecondary}
               />
 
@@ -472,9 +472,9 @@ export default function CrmPickupVisitStep({
               </View>
               <TextInput
                 style={[styles.input, value.landmark.trim() ? styles.inputFilled : null]}
-                value={value.landmark}
-                onChangeText={(t) => onChange({ landmark: t })}
-                placeholder="e.g., Near ABC Mall, Behind XYZ Bank"
+                value={String(value.landmark || '').replace(/^Near\s+/i, '')}
+                onChangeText={(t) => onChange({ landmark: t.replace(/^Near\s+/i, '') })}
+                placeholder="e.g. AB Mall"
                 placeholderTextColor={COLORS.textSecondary}
               />
             </>

@@ -8,6 +8,10 @@ import {
   isBrainEligibleInboundType,
 } from '@/lib/whatsappBotFlow/inboundMessage';
 import { tryHandleMembershipClaimWhatsAppReply, extractMembershipClaimButtonId } from '@/lib/membership-claim-approval';
+import {
+  ensureWhatsAppInboundServiceLead,
+  extractWhatsAppReferral,
+} from '@/lib/whatsappAgents/inboundServiceLead';
 
 const WHATSAPP_WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
@@ -31,6 +35,7 @@ type WhatsAppInboundMessage = {
   video?: { id?: string; mime_type?: string; caption?: string };
   interactive?: unknown;
   button?: unknown;
+  referral?: unknown;
 };
 
 type WhatsAppCallEvent = {
@@ -352,6 +357,24 @@ export async function POST(request: NextRequest) {
         }
 
         inboundCount += 1;
+
+        // Create / enrich telecaller booking lead for WhatsApp (+ Meta CTWA ads)
+        if (senderPhone) {
+          const referral = extractWhatsAppReferral(inbound);
+          void ensureWhatsAppInboundServiceLead({
+            phone: senderPhone,
+            profileName,
+            messageText: brainText || textBody,
+            referral,
+            providerMessageId,
+            inboundReceivedAt: statusAt || now,
+          }).catch((leadErr) => {
+            console.error('[whatsapp-webhook] inbound service lead failed:', {
+              senderPhone,
+              error: leadErr?.message || leadErr,
+            });
+          });
+        }
 
         if (senderPhone && brainText && isBrainEligibleInboundType(messageType)) {
           void processInboundWhatsAppMessage({

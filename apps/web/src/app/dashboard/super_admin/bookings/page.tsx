@@ -897,6 +897,7 @@ export default function SuperAdminBookingsPage() {
       const res = await fetch(`/api/super_admin/leads/${lead.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ status: newStatus }),
       });
       const json = await res.json();
@@ -930,6 +931,7 @@ export default function SuperAdminBookingsPage() {
       const res = await fetch(`/api/super_admin/leads/${editLead.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           ...editForm,
           estimated_amount: editForm.estimated_amount === '' ? null : Number(editForm.estimated_amount),
@@ -955,8 +957,11 @@ export default function SuperAdminBookingsPage() {
     if (!window.confirm(`Delete lead ${lead.lead_number || lead.id}? This cannot be undone.`)) return;
     setDeletingId(String(lead.id));
     try {
-      const res = await fetch(`/api/super_admin/leads/${lead.id}`, { method: 'DELETE' });
-      const json = await res.json();
+      const res = await fetch(`/api/super_admin/leads/${lead.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Delete failed');
       toast.success('Lead deleted');
       setServiceLeads((prev) => prev.filter((row) => row.id !== lead.id));
@@ -997,7 +1002,7 @@ export default function SuperAdminBookingsPage() {
     for (let i = 0; i < ids.length; i += BATCH) {
       const batch = ids.slice(i, i + BATCH);
       const results = await Promise.allSettled(
-        batch.map((id) => fetch(`/api/super_admin/leads/${id}`, { method: 'DELETE' }).then((r) => {
+        batch.map((id) => fetch(`/api/super_admin/leads/${id}`, { method: 'DELETE', credentials: 'include' }).then((r) => {
           if (!r.ok) throw new Error('fail');
           return id;
         })),

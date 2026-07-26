@@ -33,12 +33,13 @@ const FILTERS = [
 
 const SOURCE_OPTIONS = [
   { value: '', label: 'All sources' },
-  { value: 'MOBILE_APP', label: 'MOBILE_APP' },
-  { value: 'WEB', label: 'WEB' },
-  { value: 'TELECALLER_CRM', label: 'TELECALLER_CRM' },
-  { value: 'TELECALLER', label: 'TELECALLER' },
-  { value: 'WHATSAPP', label: 'WHATSAPP' },
-  { value: 'ENQUIRY', label: 'ENQUIRY' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'WHATSAPP_META', label: 'Meta Ads (WA)' },
+  { value: 'MOBILE_APP', label: 'App' },
+  { value: 'WEB', label: 'Website' },
+  { value: 'TELECALLER_CRM', label: 'CRM Book' },
+  { value: 'TELECALLER', label: 'Telecaller' },
+  { value: 'ENQUIRY', label: 'Enquiry' },
 ];
 
 const PRIORITY_OPTIONS = [

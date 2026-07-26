@@ -40,7 +40,13 @@ async function setStoredSession(session: AanshSession | null) {
   await AsyncStorage.setItem(AANSH_SESSION_KEY, JSON.stringify(session));
 }
 
-export default function TelecallerAanshBar() {
+export default function TelecallerAanshBar({
+  onSessionChange,
+  onClaimed,
+}: {
+  onSessionChange?: (session: AanshSession | null) => void;
+  onClaimed?: () => void;
+} = {}) {
   const [session, setSession] = useState<AanshSession | null>(null);
   const [available, setAvailable] = useState<AanshItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -59,6 +65,7 @@ export default function TelecallerAanshBar() {
       if (data.currentSession?.session_token) {
         setSession(data.currentSession);
         await setStoredSession(data.currentSession);
+        onSessionChange?.(data.currentSession);
       }
     } catch (e) {
       console.error('Aansh available failed', e);
@@ -70,7 +77,10 @@ export default function TelecallerAanshBar() {
   useEffect(() => {
     (async () => {
       const stored = await getStoredSession();
-      if (stored) setSession(stored);
+      if (stored) {
+        setSession(stored);
+        onSessionChange?.(stored);
+      }
       const skipped = await AsyncStorage.getItem(AANSH_SKIP_KEY);
       await refreshAvailable();
       if (!stored && !skipped) {
@@ -120,6 +130,24 @@ export default function TelecallerAanshBar() {
       setSession(next);
       await setStoredSession(next);
       await AsyncStorage.removeItem(AANSH_SKIP_KEY);
+      onSessionChange?.(next);
+      // Claiming dialer means telecaller is on floor — punch in if needed
+      try {
+        await apiFetch('/api/telecaller/crm/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'punch_in', notes: `Aansh ${aanshId}` }),
+        });
+      } catch (punchErr: any) {
+        const msg = String(punchErr?.message || '');
+        if (msg.includes('282_telecaller') || msg.includes('telecaller_attendance') || msg.includes('relation')) {
+          Alert.alert(
+            'Attendance',
+            'Dialer claimed, but attendance table is missing. Run database/282_telecaller_crm_advanced.sql on Supabase so Me → Punch In works.',
+          );
+        }
+      }
+      onClaimed?.();
       setModalOpen(false);
       setAvailable((prev) => prev.filter((i) => i.aansh_id !== aanshId));
     } catch (e: any) {
@@ -142,6 +170,7 @@ export default function TelecallerAanshBar() {
     }
     setSession(null);
     await setStoredSession(null);
+    onSessionChange?.(null);
     await refreshAvailable();
   };
 

@@ -1,38 +1,42 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
+import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-async function assertSuperAdmin() {
-  const supabase = await createClient();
+async function assertBookingsAdmin(request: NextRequest) {
+  const supabase = await createClientFromRequest(request);
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  let authUser = user;
+  if (userError || !authUser) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    authUser = session?.user ?? null;
+  }
+
+  if (!authUser) {
     return { ok: false as const, status: 401, error: 'Unauthorized' };
   }
 
-  const { data: userData, error: roleError } = await supabase
-    .from('users_login')
-    .select('id, roles!inner(role_code)')
-    .eq('id', user.id)
-    .single();
+  const { supabaseAdmin } = getSupabaseAdmin();
+  const db = supabaseAdmin || supabase;
+  const profile = await resolveUserProfile(db as any, authUser);
+  const roleCode = String((profile as any)?.roles?.role_code || '');
 
-  if (roleError || !userData) {
-    return { ok: false as const, status: 403, error: 'Forbidden - Role check failed' };
-  }
-
-  const roleCode = (userData as any).roles?.role_code;
-  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'APP_OPERATIONS'].includes(roleCode)) {
+  if (!PANEL_ACCESS_ROLES.bookings.includes(roleCode as any)) {
     return { ok: false as const, status: 403, error: 'Forbidden - Not super admin' };
   }
 
-  return { ok: true as const };
+  return { ok: true as const, userId: authUser.id, roleCode };
 }
 
 const EDITABLE_FIELDS = [
@@ -56,7 +60,7 @@ export async function PATCH(
   { params: paramsPromise }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await assertSuperAdmin();
+    const auth = await assertBookingsAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const { id } = await paramsPromise;
@@ -117,11 +121,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params: paramsPromise }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await assertSuperAdmin();
+    const auth = await assertBookingsAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const { id } = await paramsPromise;
@@ -130,16 +134,46 @@ export async function DELETE(
       return NextResponse.json({ error: adminError || 'Admin client not configured' }, { status: 500 });
     }
 
-    const { error } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
+    const now = new Date().toISOString();
 
-    if (error) {
-      return NextResponse.json(
-        { error: error.message || 'Delete failed. Lead may be linked to jobs or invoices.' },
-        { status: 500 },
-      );
+    // Soft-delete first (FK-safe). Hard-delete when nothing references the lead.
+    const { data: softDeleted, error: softError } = await supabaseAdmin
+      .from('service_leads')
+      .update({ deleted_at: now, updated_at: now })
+      .eq('id', id)
+      .is('deleted_at', null)
+      .select('id')
+      .maybeSingle();
+
+    if (softError) {
+      // Column may not exist on older DBs — fall back to hard delete.
+      const { error: hardError } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
+      if (hardError) {
+        return NextResponse.json(
+          { error: hardError.message || softError.message || 'Delete failed. Lead may be linked to jobs or invoices.' },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({ success: true, mode: 'hard' });
     }
 
-    return NextResponse.json({ success: true });
+    if (!softDeleted?.id) {
+      // Already deleted, or missing — try hard delete once.
+      const { error: hardError } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
+      if (hardError) {
+        return NextResponse.json({ error: 'Lead not found or already deleted' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, mode: 'hard' });
+    }
+
+    // Best-effort hard delete so the row is gone when there are no FK blockers.
+    const { error: hardError } = await supabaseAdmin.from('service_leads').delete().eq('id', id);
+    if (!hardError) {
+      return NextResponse.json({ success: true, mode: 'hard' });
+    }
+
+    // Soft-deleted; hide from lists even if hard delete is blocked by FKs.
+    return NextResponse.json({ success: true, mode: 'soft' });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }

@@ -124,13 +124,13 @@ export async function POST(request: Request) {
       const templateParams =
         Array.isArray(body?.templateParams) && body.templateParams.length > 0
           ? body.templateParams.map((value: unknown) => String(value ?? '').trim())
-          : triggerKey === 'booking_confirmed'
+          : triggerKey === 'booking_confirmed' || triggerKey === 'booking_updated'
             ? buildBookingConfirmedTemplateParams({
                 customer_name: 'Test Customer',
                 lead_number: 'L-TEST1234',
                 vehicle_make: 'Honda',
                 vehicle_model: 'City',
-                service_type: 'Periodic Service',
+                service_type: triggerKey === 'booking_updated' ? 'General Service' : 'Periodic Service',
                 preferred_slot_start: new Date().toISOString(),
               })
             : await getAutomationTemplateExamples(triggerKey);

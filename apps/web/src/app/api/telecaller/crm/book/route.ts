@@ -4,6 +4,11 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { toServiceLeadType } from '@/lib/customer-service-leads';
+import {
+  buildTelecallerCrmQuote,
+  resolveServiceTypeNames,
+  serviceLabelFromQuote,
+} from '@/lib/telecaller/crmQuote';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +54,49 @@ export async function POST(request: NextRequest) {
     const leadNumber = `L-${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`;
     const now = new Date().toISOString();
 
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = (supabaseAdmin ?? supabase) as any;
+
+    // Prefer client quote; otherwise build server-side so amount/package are never blank
+    let resolvedQuote = quote;
+    if (
+      (!resolvedQuote || !Number(resolvedQuote.total || resolvedQuote.subtotal || 0)) &&
+      (serviceTypeIds.length > 0 || addonIds.length > 0)
+    ) {
+      try {
+        resolvedQuote = await buildTelecallerCrmQuote(db, {
+          serviceTypeIds,
+          addonIds,
+          workshopId,
+          cityId: body?.city_id || null,
+          vehicleClass: body?.vehicle_class || body?.coupon_meta?.vehicle_class || null,
+          couponCode,
+        });
+      } catch (e) {
+        console.warn('[telecaller/crm/book] server quote failed', e);
+      }
+    }
+
+    let serviceLabel = serviceLabelFromQuote(resolvedQuote);
+    if (!serviceLabel && serviceTypeIds.length > 0) {
+      serviceLabel = await resolveServiceTypeNames(db, serviceTypeIds);
+    }
+    if (!serviceLabel) {
+      const meta = body?.coupon_meta || {};
+      serviceLabel = String(
+        meta.package_label || meta.membership_plan_name || meta.rsa_service || '',
+      ).trim();
+    }
+    const genericType = new Set(['CAR_SERVICE', 'HOME_SERVICE', 'RSA', 'NORMAL', 'SERVICE', 'CAR SERVICE']);
+    const bodyServiceType = String(body?.service_type || '').trim();
+    const bodyIsGeneric = !bodyServiceType || genericType.has(bodyServiceType.toUpperCase());
+    const labelIsGeneric = !serviceLabel || genericType.has(serviceLabel.toUpperCase());
+    const finalServiceType = !labelIsGeneric
+      ? serviceLabel
+      : !bodyIsGeneric
+        ? bodyServiceType
+        : bookingType.replace(/_/g, ' ');
+
     const insert: any = {
       lead_number: leadNumber,
       lead_type: leadType,
@@ -71,7 +119,7 @@ export async function POST(request: NextRequest) {
       odometer_km: body?.odometer_km || null,
       service_type_ids: JSON.stringify(serviceTypeIds),
       subservice_ids: JSON.stringify(addonIds),
-      service_type: body?.service_type || bookingType,
+      service_type: finalServiceType,
       problem_description: body?.problem_description || null,
       description: body?.description || `Telecaller booking (${bookingType})`,
       pickup_required: pickupRequired,
@@ -80,11 +128,12 @@ export async function POST(request: NextRequest) {
       preferred_slot_end: body?.preferred_slot_end || null,
       payment_mode: paymentMode,
       coupon_code: couponCode,
-      discount_amount: Number(quote?.discount || 0) || 0,
-      estimated_amount: Number(quote?.total || quote?.subtotal || 0) || 0,
+      discount_amount: Number(resolvedQuote?.discount || 0) || 0,
+      estimated_amount: Number(resolvedQuote?.total || resolvedQuote?.subtotal || 0) || 0,
       coupon_meta: {
         ...(typeof body?.coupon_meta === 'object' && body.coupon_meta ? body.coupon_meta : {}),
         booking_type: bookingType,
+        package_label: finalServiceType,
         ...(couponCode ? { selected_codes: [couponCode], applied_code: couponCode } : {}),
       },
       workshop_id: workshopId,
@@ -98,9 +147,6 @@ export async function POST(request: NextRequest) {
       updated_at: now,
     };
 
-    const { supabaseAdmin } = getSupabaseAdmin();
-    const db = (supabaseAdmin ?? supabase) as any;
-
     const { data: lead, error } = await db
       .from('service_leads')
       .insert([insert])
@@ -113,9 +159,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error?.message || 'Failed to create booking' }, { status: 400 });
     }
 
-    if (quote?.line_items && Array.isArray(quote.line_items) && quote.line_items.length > 0) {
+    if (resolvedQuote?.line_items && Array.isArray(resolvedQuote.line_items) && resolvedQuote.line_items.length > 0) {
       try {
-        const rows = quote.line_items.map((item: any) => ({
+        const rows = resolvedQuote.line_items.map((item: any) => ({
           lead_id: lead.id,
           item_type: item.kind === 'addon' ? 'ADDON' : 'SERVICE',
           item_id: item.id,
@@ -131,28 +177,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let serviceLabel = '';
-    try {
-      if (Array.isArray(quote?.line_items) && quote.line_items.length > 0) {
-        serviceLabel = quote.line_items
-          .map((i: any) => String(i?.name || '').trim())
-          .filter(Boolean)
-          .join(', ');
-      } else if (serviceTypeIds.length > 0) {
-        const { data: types } = await db.from('service_types').select('name').in('id', serviceTypeIds);
-        serviceLabel = (types || []).map((t: any) => t.name).filter(Boolean).join(', ');
-      }
-      if (!serviceLabel) {
-        const meta = body?.coupon_meta || {};
-        serviceLabel =
-          meta.membership_plan_name ||
-          meta.rsa_service ||
-          meta.package_label ||
-          String(body?.service_type || bookingType).replace(/_/g, ' ');
-      }
-    } catch {
-      serviceLabel = String(body?.service_type || bookingType).replace(/_/g, ' ');
-    }
+    // Keep serviceLabel for WhatsApp (already resolved)
+    serviceLabel = finalServiceType;
 
     let workshopName = String(body?.workshop_name || '').trim();
     if (!workshopName && workshopId) {
@@ -186,7 +212,7 @@ export async function POST(request: NextRequest) {
         {
           lead_id: lead.id,
           event_type: 'CREATED',
-          event_data: { source: 'TELECALLER_CRM', booking_type: bookingType, quote },
+          event_data: { source: 'TELECALLER_CRM', booking_type: bookingType, quote: resolvedQuote },
           created_by_id: profile?.id,
           created_at: now,
         },
@@ -209,14 +235,14 @@ export async function POST(request: NextRequest) {
           flat_number: body?.flat_number || body?.coupon_meta?.flat_number || null,
           landmark: body?.landmark || body?.coupon_meta?.landmark || null,
           address_type: body?.address_type || body?.coupon_meta?.address_type || null,
-          estimated_amount: Number(quote?.total || lead.estimated_amount || 0) || 0,
+          estimated_amount: Number(resolvedQuote?.total || lead.estimated_amount || 0) || 0,
           payment_mode: paymentMode,
         },
         serviceLabel: serviceLabel || null,
-        amount: Number(quote?.total || 0) || null,
+        amount: Number(resolvedQuote?.total || 0) || null,
         body: {
           ...body,
-          quote,
+          quote: resolvedQuote,
           service_type_ids: serviceTypeIds,
         },
       });

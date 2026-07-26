@@ -3,6 +3,7 @@ import { normalizePhoneNumber, sendTemplateMessage, type WhatsAppSendResult } fr
 
 export const WHATSAPP_AUTOMATION_TRIGGER_KEYS = [
   'booking_confirmed',
+  'booking_updated',
   'booking_incomplete',
   'membership_payment_success',
   'membership_payment_failed',

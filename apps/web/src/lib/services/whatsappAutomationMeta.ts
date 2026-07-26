@@ -18,6 +18,13 @@ export const WHATSAPP_AUTOMATION_TEMPLATE_EXAMPLES: Record<WhatsAppAutomationTri
     'Periodic Service | ₹2,499',
     '15 Jul 2026, 10:00 AM | Doorstep pickup | Flat 201, Kapur Bawadi, Near ABC Mall, Thane 400601',
   ],
+  booking_updated: [
+    'Rahul Sharma',
+    'L-12345678',
+    'Honda City (MH01AB1234)',
+    'General Service | ₹3,499',
+    '15 Jul 2026, 10:00 AM | Doorstep pickup | Flat 201, Kapur Bawadi, Near ABC Mall, Thane 400601',
+  ],
   booking_incomplete: ['Rahul Sharma', 'Honda City', 'Periodic Service'],
   membership_payment_success: ['Rahul Sharma', '699', 'MyFNG Prime', 'pay_ABC123'],
   membership_payment_failed: ['Rahul Sharma', '699', 'MyFNG Prime'],

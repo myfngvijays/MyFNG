@@ -303,7 +303,13 @@ export function getLeadServiceLabel(lead: Record<string, any>) {
     return misaServices.map((service) => service.name).join(', ');
   }
 
-  if (lead.service_type) return prettifyServiceType(lead.service_type);
+  const rawType = String(lead.service_type || '').trim();
+  const generic = new Set(['CAR_SERVICE', 'HOME_SERVICE', 'RSA', 'NORMAL', 'SERVICE', 'CAR SERVICE']);
+  if (rawType && !generic.has(rawType.toUpperCase())) {
+    return prettifyServiceType(rawType);
+  }
+
+  if (rawType) return prettifyServiceType(rawType);
   return 'Service';
 }
 
@@ -485,10 +491,25 @@ export function computeChatbotBookingOverview(bookings: Record<string, any>[]): 
 }
 
 export async function enrichLeadsServiceDisplay(supabaseAdmin: any, leads: Record<string, any>[]) {
+  const parseIds = (value: unknown): string[] => {
+    if (Array.isArray(value)) return value.map((v) => String(v || '').trim()).filter(Boolean);
+    if (typeof value === 'string') {
+      const raw = value.trim();
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map((v) => String(v || '').trim()).filter(Boolean);
+      } catch {
+        return raw.split(',').map((v) => v.trim()).filter(Boolean);
+      }
+    }
+    return [];
+  };
+
   const allServiceTypeIds = new Set<string>();
   for (const lead of leads) {
-    if (Array.isArray(lead.service_type_ids)) {
-      lead.service_type_ids.forEach((id: string) => allServiceTypeIds.add(id));
+    for (const id of parseIds(lead.service_type_ids)) {
+      allServiceTypeIds.add(id);
     }
   }
 
@@ -514,11 +535,19 @@ export async function enrichLeadsServiceDisplay(supabaseAdmin: any, leads: Recor
       continue;
     }
 
-    if (Array.isArray(lead.service_type_ids) && lead.service_type_ids.length > 0) {
-      const names = lead.service_type_ids.map((id: string) => serviceNameMap[id]).filter(Boolean);
+    const ids = parseIds(lead.service_type_ids);
+    if (ids.length > 0) {
+      const names = ids.map((id: string) => serviceNameMap[id]).filter(Boolean);
       if (names.length > 0) {
         lead.service_display = names.join(', ');
+        continue;
       }
+    }
+
+    const rawType = String(lead.service_type || '').trim();
+    const generic = new Set(['CAR_SERVICE', 'HOME_SERVICE', 'RSA', 'NORMAL', 'SERVICE', 'CAR SERVICE']);
+    if (rawType && !generic.has(rawType.toUpperCase())) {
+      lead.service_display = rawType;
     }
   }
 

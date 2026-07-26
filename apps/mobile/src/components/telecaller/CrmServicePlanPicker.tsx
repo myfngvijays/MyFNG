@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { getOilTypeForPlan } from '../../lib/misa/misaPricing';
-import { getServiceIconUrl } from '../../lib/serviceIcons';
+import { getServiceIconSource } from '../../lib/serviceIcons';
 import { fetchServicePricingMap, resolveCityZoneId, resolveVehicleClass } from '../../lib/servicePricing';
 import { COLORS, SPACING, SHADOWS } from '../../constants/theme';
 
@@ -50,9 +50,13 @@ function inr(n: number) {
 
 function titleCaseCat(c: string) {
   return String(c || '')
+    .replace(/^CAR\s+/i, '')
+    .replace(/\s+SERVICE$/i, '')
+    .replace(/\s+SERVICES$/i, '')
     .split(' ')
     .map((w) => (w ? w.charAt(0) + w.slice(1).toLowerCase() : ''))
-    .join(' ');
+    .join(' ')
+    .trim();
 }
 
 export default function CrmServicePlanPicker({
@@ -181,13 +185,13 @@ export default function CrmServicePlanPicker({
     else if (selectedCategory && categories.length && !categories.includes(selectedCategory)) {
       setSelectedCategory(categories[0]);
     }
-  }, [categories, selectedCategory]);
+  }, [categories]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isPeriodicCategory = String(selectedCategory || '').toUpperCase().includes('PERIODIC');
 
   const servicesInCategory = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return filteredBase
+    const list = filteredBase
       .filter((s) => !selectedCategory || s.category === selectedCategory)
       .filter((s) => {
         if (!isPeriodicCategory) return true;
@@ -196,7 +200,24 @@ export default function CrmServicePlanPicker({
         return oil === oilType;
       })
       .filter((s) => !q || s.name.toLowerCase().includes(q));
-  }, [filteredBase, selectedCategory, isPeriodicCategory, oilType, search]);
+    // Selected services float to the top within the category
+    return [...list].sort((a, b) => {
+      const sa = selectedIds.includes(a.id) ? 0 : 1;
+      const sb = selectedIds.includes(b.id) ? 0 : 1;
+      return sa - sb || a.name.localeCompare(b.name);
+    });
+  }, [filteredBase, selectedCategory, isPeriodicCategory, oilType, search, selectedIds]);
+
+  // Prefer category that contains an already-selected service
+  useEffect(() => {
+    if (!selectedIds.length || !categories.length) return;
+    const selectedCats = new Set(
+      filteredBase.filter((s) => selectedIds.includes(s.id)).map((s) => s.category),
+    );
+    if (selectedCategory && selectedCats.has(selectedCategory)) return;
+    const preferred = categories.find((c) => selectedCats.has(c));
+    if (preferred) setSelectedCategory(preferred);
+  }, [selectedIds, categories, filteredBase, selectedCategory]);
 
   useEffect(() => {
     const ids = filteredBase.map((s) => s.id);
@@ -235,7 +256,7 @@ export default function CrmServicePlanPicker({
 
   return (
     <View>
-      <Text style={styles.title}>{title}</Text>
+      {title ? <Text style={styles.title}>{title}</Text> : null}
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {banner}
 
@@ -243,7 +264,7 @@ export default function CrmServicePlanPicker({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
           {categories.map((c) => {
             const active = c === selectedCategory;
-            const iconUrl = getServiceIconUrl(c);
+            const iconSource = getServiceIconSource(c);
             return (
               <TouchableOpacity
                 key={c}
@@ -252,10 +273,10 @@ export default function CrmServicePlanPicker({
                 activeOpacity={0.85}
               >
                 <View style={[styles.catIcon, active && styles.catIconActive]}>
-                  {iconUrl ? (
-                    <Image source={{ uri: iconUrl }} style={{ width: 22, height: 22 }} resizeMode="contain" />
+                  {iconSource ? (
+                    <Image source={iconSource} style={styles.catIconImg} resizeMode="contain" />
                   ) : (
-                    <Ionicons name="construct-outline" size={18} color={active ? COLORS.primary : COLORS.textSecondary} />
+                    <Ionicons name="construct-outline" size={22} color={active ? COLORS.primary : COLORS.textSecondary} />
                   )}
                 </View>
                 <Text style={[styles.catText, active && styles.catTextActive]} numberOfLines={2}>
@@ -434,28 +455,34 @@ const styles = StyleSheet.create({
   title: { fontSize: 15, fontWeight: '800', color: COLORS.textHeading, marginBottom: 4 },
   subtitle: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 10 },
   muted: { fontSize: 12, color: COLORS.textSecondary },
-  catRow: { gap: 8, paddingVertical: 8 },
+  catRow: { gap: 10, paddingVertical: 4, paddingRight: 8 },
   catItem: {
-    width: 78,
+    width: 84,
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    backgroundColor: '#F8FBFF',
+    borderWidth: 1.5,
+    borderColor: '#E2EAF5',
   },
-  catItemActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '10' },
+  catItemActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#EAF2FF',
+  },
   catIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: COLORS.gray[100],
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
+    overflow: 'hidden',
   },
-  catIconActive: { backgroundColor: COLORS.primary + '18' },
-  catText: { fontSize: 10, fontWeight: '600', color: COLORS.textSecondary, textAlign: 'center' },
+  catIconActive: { backgroundColor: 'transparent' },
+  catIconImg: { width: 42, height: 42 },
+  catText: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, textAlign: 'center' },
   catTextActive: { color: COLORS.primary },
   searchRow: {
     flexDirection: 'row',

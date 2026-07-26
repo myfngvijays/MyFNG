@@ -1,9 +1,8 @@
 /**
- * Telecaller Edit Lead Screen - Mobile
- * Complete lead editing with multi-select service types and dynamic dropdowns
+ * Telecaller Edit Lead — MyFNG blue theme, booking-flow style fields
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,23 +12,44 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { supabase } from '@/lib/supabase';
-import { parseIds } from '@/lib/parseIds';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
+import { parseIds } from '@/lib/parseIds';
+import { COLORS, SPACING } from '@/constants/theme';
+import CarModelSearchField from '@/components/CarModelSearchField';
+import CrmServicePlanPicker from '@/components/telecaller/CrmServicePlanPicker';
+import CrmPickupVisitStep, { type CrmPickupVisitValue } from '@/components/telecaller/CrmPickupVisitStep';
 
-interface FormData {
+const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
+const EDITABLE_STATUSES = new Set([
+  'NEW',
+  'CONTACTED',
+  'INCOMPLETE',
+  'ASSIGNED',
+  'VALIDATED',
+]);
+
+type FormData = {
   customer_name: string;
   customer_phone: string;
   customer_alternate_phone: string;
   customer_email: string;
-  customer_address: string;
   city_id: string;
+  city: string;
+  pincode: string;
   vehicle_number: string;
   vehicle_make: string;
   model_id: string;
   vehicle_model: string;
+  vehicle_class: string;
   vehicle_fuel_type: string;
   vehicle_year: string;
   odometer_km: string;
@@ -38,297 +58,491 @@ interface FormData {
   problem_description: string;
   pickup_required: boolean;
   pickup_address: string;
+  address_type: 'home' | 'work' | 'other';
+  flat_number: string;
+  landmark: string;
+  pickup_date: string;
+  pickup_time: string;
+  workshop_id: string;
+  workshop_name: string;
   preferred_slot_start: string;
+};
+
+function slotIso(date: string, time: string) {
+  if (!date || !time) return null;
+  return `${date}T${time}:00+05:30`;
+}
+
+function parseSlot(iso: string | null | undefined): { date: string; time: string } {
+  if (!iso) return { date: '', time: '' };
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) {
+      const m = String(iso).match(/(\d{4}-\d{2}-\d{2}).*?(\d{2}:\d{2})/);
+      return m ? { date: m[1], time: m[2] } : { date: '', time: '' };
+    }
+    // Use IST parts
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+    return {
+      date: `${get('year')}-${get('month')}-${get('day')}`,
+      time: `${get('hour')}:${get('minute')}`,
+    };
+  } catch {
+    return { date: '', time: '' };
+  }
+}
+
+function composeAddress(form: FormData) {
+  const flat = form.flat_number.trim();
+  const area = form.pickup_address.trim();
+  const landmarkRaw = form.landmark.trim().replace(/^Near\s+/i, '');
+  const city = form.city.trim();
+  const pin = form.pincode.trim();
+  return [
+    flat,
+    area,
+    landmarkRaw ? `Near ${landmarkRaw}` : '',
+    [city, pin].filter(Boolean).join(' '),
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
+/** Split composed pickup string into flat / area / landmark (no duplicates). */
+function parseComposedAddress(
+  raw: string,
+  meta: any,
+  city?: string,
+  pincode?: string,
+): { flat: string; area: string; landmark: string } {
+  let flat = String(meta?.flat_number || '').trim();
+  let landmark = String(meta?.landmark || '')
+    .trim()
+    .replace(/^Near\s+/i, '');
+  let area = String(meta?.area || '').trim();
+
+  if (area) {
+    return { flat, area, landmark };
+  }
+
+  let s = String(raw || meta?.pickup_address || '')
+    .replace(/\s*\((home|work|other)\)/gi, '')
+    .trim();
+
+  const nearM = s.match(/,?\s*Near\s+(.+?)(?=,|$)/i);
+  if (nearM) {
+    const lm = nearM[1].trim().replace(/^Near\s+/i, '');
+    if (!landmark) landmark = lm;
+    s = s.replace(nearM[0], ',');
+  }
+
+  if (city) {
+    s = s.replace(new RegExp(`,?\\s*${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig'), '');
+  }
+  const pin = String(pincode || '').trim();
+  if (pin) s = s.replace(new RegExp(`\\b${pin}\\b`, 'g'), '');
+  s = s.replace(/\b\d{6}\b/g, '');
+  s = s
+    .replace(/,{2,}/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^,\s*|,\s*$/g, '')
+    .trim();
+
+  const parts = s
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (!flat && parts.length >= 2 && /^(flat\s*)?\d+[A-Za-z0-9\/\-]*$/i.test(parts[0])) {
+    flat = parts[0].replace(/^flat\s*/i, '');
+    area = parts.slice(1).join(', ');
+  } else if (flat && parts[0] === flat) {
+    area = parts.slice(1).join(', ');
+  } else {
+    area = parts.join(', ');
+  }
+
+  // Drop leftover landmark / Near text from area
+  area = area
+    .replace(/,?\s*Near\s+.+$/i, '')
+    .replace(/,{2,}/g, ',')
+    .replace(/^,\s*|,\s*$/g, '')
+    .trim();
+
+  return { flat, area, landmark };
 }
 
 export default function TelecallerEditLeadScreen({ navigation: navProp, route: routeProp }: any) {
   const route = useRoute();
   const navigationHook = useNavigation();
   const navigation = navProp || navigationHook;
+  const insets = useSafeAreaInsets();
   const params = (routeProp?.params || (route as any)?.params || {}) as { leadId: string };
   const { leadId } = params;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [formData, setFormData] = useState<FormData>({
+  const [cities, setCities] = useState<any[]>([]);
+  const [cityOpen, setCityOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState('');
+  const [carDisplay, setCarDisplay] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [couponMeta, setCouponMeta] = useState<any>({});
+  const [initialServiceTypes, setInitialServiceTypes] = useState<string[]>([]);
+  const [initialServiceAddons, setInitialServiceAddons] = useState<string[]>([]);
+
+  const [form, setForm] = useState<FormData>({
     customer_name: '',
     customer_phone: '',
     customer_alternate_phone: '',
     customer_email: '',
-    customer_address: '',
     city_id: '',
+    city: '',
+    pincode: '',
     vehicle_number: '',
     vehicle_make: '',
     model_id: '',
     vehicle_model: '',
+    vehicle_class: '',
     vehicle_fuel_type: '',
     vehicle_year: '',
     odometer_km: '',
     service_types: [],
     service_addons: [],
     problem_description: '',
-    pickup_required: false,
+    pickup_required: true,
     pickup_address: '',
+    address_type: 'home',
+    flat_number: '',
+    landmark: '',
+    pickup_date: '',
+    pickup_time: '',
+    workshop_id: '',
+    workshop_name: '',
     preferred_slot_start: '',
   });
 
-  const [cities, setCities] = useState<any[]>([]);
-  const [makes, setMakes] = useState<any[]>([]);
-  const [models, setModels] = useState<any[]>([]);
-  const [serviceTypes, setServiceTypes] = useState<any[]>([]);
-  const [serviceAddons, setServiceAddons] = useState<any[]>([]);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const setField = (key: keyof FormData, value: any) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    (async () => {
+      try {
+        const [{ data: cityRows }, leadRes] = await Promise.all([
+          supabase.from('cities').select('id, name, state').eq('is_active', true).order('name'),
+          supabase.from('service_leads').select('*').eq('id', leadId).single(),
+        ]);
+        setCities(cityRows || []);
 
-  const fetchInitialData = async () => {
-    try {
-      await Promise.all([
-        fetchLeadDetails(),
-        fetchCities(),
-        fetchMakes(),
-        fetchServiceTypes(),
-        fetchServiceAddons(),
-      ]);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      Alert.alert('Error', 'Failed to load lead data');
-    } finally {
-      setLoading(false);
-    }
-  };
+        if (leadRes.error) throw leadRes.error;
+        const data = leadRes.data;
+        if (!EDITABLE_STATUSES.has(String(data.status || '').toUpperCase())) {
+          setErrorMessage(`Cannot edit lead with status: ${data.status}`);
+          return;
+        }
 
-  const fetchLeadDetails = async () => {
-    const { data, error } = await supabase
-      .from('service_leads')
-      .select('*')
-      .eq('id', leadId)
-      .single();
+        const meta = data.coupon_meta && typeof data.coupon_meta === 'object' ? data.coupon_meta : {};
+        setCouponMeta(meta);
+        const slot = parseSlot(data.preferred_slot_start);
+        const make = data.vehicle_make || '';
+        const model = data.vehicle_model || '';
+        setCarDisplay([make, model].filter(Boolean).join(' '));
 
-    if (error) throw error;
+        const cityName = data.city || '';
+        const pin = String(data.pincode || meta.pincode || '').replace(/\D/g, '').slice(0, 6);
+        const rawAddr = String(data.pickup_address || data.customer_address || '');
+        const parsed = parseComposedAddress(rawAddr, meta, cityName, pin);
 
-    if (!['NEW', 'CONTACTED', 'INCOMPLETE'].includes(String(data.status || ''))) {
-      setErrorMessage(`Cannot edit lead with status: ${data.status}`);
-      return;
-    }
+        const serviceTypes = parseIds(data.service_type_ids);
+        const serviceAddons = parseIds(data.subservice_ids);
+        setInitialServiceTypes(serviceTypes);
+        setInitialServiceAddons(serviceAddons);
 
-    // Parse service_type_ids and subservice_ids from JSONB / string / array
-    const serviceTypeIds = parseIds(data.service_type_ids);
-    const subserviceIds = parseIds(data.subservice_ids);
+        setForm({
+          customer_name: data.customer_name || '',
+          customer_phone: String(data.customer_phone || '').replace(/\D/g, '').slice(-10),
+          customer_alternate_phone: data.customer_alternate_phone || '',
+          customer_email: data.customer_email || '',
+          city_id: data.city_id || '',
+          city: cityName,
+          pincode: pin,
+          vehicle_number: data.vehicle_number || '',
+          vehicle_make: make,
+          model_id: data.model_id || '',
+          vehicle_model: model,
+          vehicle_class: data.vehicle_class || meta.vehicle_class || '',
+          vehicle_fuel_type: data.vehicle_fuel_type || '',
+          vehicle_year: data.vehicle_year?.toString() || '',
+          odometer_km: data.odometer_km?.toString() || '',
+          service_types: serviceTypes,
+          service_addons: serviceAddons,
+          problem_description: data.problem_description || '',
+          pickup_required: data.pickup_required !== false,
+          pickup_address: parsed.area,
+          address_type: (meta.address_type as any) || 'home',
+          flat_number: parsed.flat,
+          landmark: parsed.landmark,
+          pickup_date: meta.pickup_date || slot.date,
+          pickup_time: meta.pickup_time || slot.time,
+          workshop_id: data.workshop_id || '',
+          workshop_name: '',
+          preferred_slot_start: data.preferred_slot_start || '',
+        });
 
-    setFormData({
-      customer_name: data.customer_name || '',
-      customer_phone: data.customer_phone || '',
-      customer_alternate_phone: data.customer_alternate_phone || '',
-      customer_email: data.customer_email || '',
-      customer_address: data.customer_address || '',
-      city_id: data.city_id || '',
-      vehicle_number: data.vehicle_number || '',
-      vehicle_make: data.vehicle_make || '',
-      model_id: data.model_id || '',
-      vehicle_model: data.vehicle_model || '',
-      vehicle_fuel_type: data.vehicle_fuel_type || '',
-      vehicle_year: data.vehicle_year?.toString() || '',
-      odometer_km: data.odometer_km?.toString() || '',
-      service_types: serviceTypeIds,
-      service_addons: subserviceIds,
-      problem_description: data.problem_description || '',
-      pickup_required: data.pickup_required || false,
-      pickup_address: data.pickup_address || '',
-      preferred_slot_start: data.preferred_slot_start || '',
-    });
-
-    // Fetch models if make is already selected
-    if (data.vehicle_make) {
-      fetchModels(data.vehicle_make);
-    }
-  };
-
-  const fetchCities = async () => {
-    const { data, error } = await supabase
-      .from('cities')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
-    if (!error && data) setCities(data);
-  };
-
-  const fetchMakes = async () => {
-    const { data, error } = await supabase
-      .from('car_models')
-      .select('make')
-      .eq('is_active', true);
-
-    if (!error && data) {
-      const uniqueMakes = [...new Set(data.map(item => item.make))];
-      setMakes(uniqueMakes.sort().map(make => ({ make })));
-    }
-  };
-
-  const fetchModels = async (make: string) => {
-    const { data, error } = await supabase
-      .from('car_models')
-      .select('*')
-      .eq('make', make)
-      .eq('is_active', true)
-      .order('model_name');
-
-    if (!error && data) setModels(data);
-  };
-
-  const fetchServiceTypes = async () => {
-    const { data, error } = await supabase
-      .from('service_types')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
-    if (!error && data) setServiceTypes(data);
-  };
-
-  const fetchServiceAddons = async () => {
-    const { data, error } = await supabase
-      .from('service_addons')
-      .select('id, name, price')
-      .eq('is_active', true)
-      .order('name');
-
-    if (!error && data) setServiceAddons(data);
-  };
-
-  const handleChange = (field: keyof FormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Clear error for this field
-    if (errors[field]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
-    }
-
-    // Handle vehicle make change
-    if (field === 'vehicle_make') {
-      setFormData(prev => ({ ...prev, model_id: '', vehicle_model: '' }));
-      setModels([]);
-      if (value) {
-        fetchModels(value);
+        // Resolve city name if only id present
+        if (data.city_id && !cityName && cityRows) {
+          const c = cityRows.find((x: any) => x.id === data.city_id);
+          if (c?.name) setForm((prev) => ({ ...prev, city: c.name }));
+        }
+      } catch (e) {
+        console.error(e);
+        Alert.alert('Error', 'Failed to load lead');
+      } finally {
+        setLoading(false);
       }
-    }
+    })();
+  }, [leadId]);
 
-    // Handle model selection
-    if (field === 'model_id') {
-      const selectedModel = models.find(m => m.id === value);
-      if (selectedModel) {
-        setFormData(prev => ({ ...prev, vehicle_model: selectedModel.model_name }));
-      }
-    }
+  const filteredCities = useMemo(() => {
+    const q = cityQuery.trim().toLowerCase();
+    if (!q) return cities.slice(0, 50);
+    return cities.filter((c) => String(c.name || '').toLowerCase().includes(q)).slice(0, 50);
+  }, [cities, cityQuery]);
+
+  const pickupValue: CrmPickupVisitValue = {
+    pickup_required: form.pickup_required,
+    vehicle_number: form.vehicle_number,
+    pickup_date: form.pickup_date,
+    pickup_time: form.pickup_time,
+    pickup_address: form.pickup_address,
+    address_type: form.address_type,
+    flat_number: form.flat_number,
+    landmark: form.landmark,
+    workshop_id: form.workshop_id,
+    workshop_name: form.workshop_name,
   };
 
-  const toggleServiceType = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      service_types: prev.service_types.includes(id)
-        ? prev.service_types.filter(t => t !== id)
-        : [...prev.service_types, id],
-    }));
-  };
-
-  const toggleServiceAddon = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      service_addons: prev.service_addons.includes(id)
-        ? prev.service_addons.filter(a => a !== id)
-        : [...prev.service_addons, id],
-    }));
-  };
-
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    // Customer validation
-    if (!formData.customer_name.trim()) newErrors.customer_name = 'Name is required';
-    if (!formData.customer_phone.trim()) newErrors.customer_phone = 'Phone is required';
-    else if (!/^[6-9]\d{9}$/.test(formData.customer_phone.replace(/\D/g, ''))) {
-      newErrors.customer_phone = 'Invalid Indian phone number';
+  const validate = () => {
+    const next: Record<string, string> = {};
+    if (!form.customer_name.trim()) next.customer_name = 'Name required';
+    if (!/^[6-9]\d{9}$/.test(form.customer_phone.replace(/\D/g, ''))) {
+      next.customer_phone = 'Valid 10-digit phone required';
     }
-    if (!formData.customer_address.trim()) newErrors.customer_address = 'Address is required';
-    if (!formData.city_id) newErrors.city_id = 'City is required';
-
-    // Vehicle validation
-    if (!formData.vehicle_number.trim()) newErrors.vehicle_number = 'Vehicle number is required';
-    else if (!/^[A-Z]{2}[ -]?[0-9]{1,2}[ -]?[A-Z]{1,3}[ -]?[0-9]{4}$/.test(formData.vehicle_number.toUpperCase())) {
-      newErrors.vehicle_number = 'Invalid vehicle number format';
+    if (!form.city_id && !form.city) next.city_id = 'City required';
+    if (!form.vehicle_make || !form.vehicle_model) next.vehicle = 'Select car model';
+    if (!form.vehicle_fuel_type) next.vehicle_fuel_type = 'Fuel type required';
+    if (form.service_types.length === 0) next.service_types = 'Select at least one service';
+    if (form.pickup_required) {
+      if (!form.vehicle_number.trim()) next.vehicle_number = 'Registration required';
+      if (!form.pickup_date || !form.pickup_time) next.slot = 'Select date & time';
+      if (form.pickup_address.trim().length < 4) next.pickup_address = 'Address required';
+      if (form.landmark.trim().length < 2) next.landmark = 'Landmark required';
     }
-    if (!formData.vehicle_make) newErrors.vehicle_make = 'Make is required';
-    if (!formData.model_id) newErrors.model_id = 'Model is required';
-    if (!formData.vehicle_fuel_type) newErrors.vehicle_fuel_type = 'Fuel type is required';
-
-    // Service validation
-    if (formData.service_types.length === 0) newErrors.service_types = 'Select at least one service type';
-    if (!formData.problem_description.trim()) newErrors.problem_description = 'Problem description is required';
-
-    // Pickup validation
-    if (formData.pickup_required) {
-      if (!formData.pickup_address.trim() && !formData.customer_address.trim()) {
-        newErrors.pickup_address = 'Pickup address is required';
-      }
-      if (!formData.preferred_slot_start) {
-        newErrors.preferred_slot_start = 'Preferred pickup time is required';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
-      Alert.alert('Validation Error', 'Please fill all required fields correctly');
+    if (!validate()) {
+      Alert.alert('Missing info', 'Please fill required fields');
       return;
     }
-
+    if (!leadId) {
+      Alert.alert('Error', 'Lead id missing');
+      return;
+    }
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('service_leads')
-        .update({
-          customer_name: formData.customer_name,
-          customer_phone: formData.customer_phone,
-          customer_alternate_phone: formData.customer_alternate_phone || null,
-          customer_email: formData.customer_email || null,
-          customer_address: formData.customer_address,
-          city_id: formData.city_id,
-          vehicle_number: formData.vehicle_number.toUpperCase(),
-          vehicle_make: formData.vehicle_make,
-          model_id: formData.model_id,
-          vehicle_model: formData.vehicle_model,
-          vehicle_fuel_type: formData.vehicle_fuel_type,
-          vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
-          odometer_km: formData.odometer_km ? parseInt(formData.odometer_km) : null,
-          service_type_ids: JSON.stringify(formData.service_types),
-          subservice_ids: JSON.stringify(formData.service_addons),
-          problem_description: formData.problem_description,
-          pickup_required: formData.pickup_required,
-          pickup_address: formData.pickup_required ? (formData.pickup_address || formData.customer_address) : null,
-          preferred_slot_start: formData.pickup_required ? formData.preferred_slot_start : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', leadId);
+      const start = slotIso(form.pickup_date, form.pickup_time);
+      const endHour = form.pickup_time
+        ? `${String(Number(form.pickup_time.split(':')[0]) + 1).padStart(2, '0')}:00`
+        : '';
+      const end = slotIso(form.pickup_date, endHour);
+      const composed = form.pickup_required ? composeAddress(form) : form.pickup_address;
 
-      if (error) throw error;
+      const nextMeta = {
+        ...couponMeta,
+        address_type: form.address_type,
+        flat_number: form.flat_number || null,
+        landmark: form.landmark.replace(/^Near\s+/i, '') || null,
+        area: form.pickup_address || null,
+        pickup_date: form.pickup_date || null,
+        pickup_time: form.pickup_time || null,
+        pickup_address: form.pickup_address || null,
+        vehicle_class: form.vehicle_class || null,
+      };
 
-      Alert.alert('Success', 'Lead updated successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() }
+      const sorted = (ids: string[]) => [...ids].map(String).sort();
+      const servicesChangedLocal =
+        sorted(initialServiceTypes).join('|') !== sorted(form.service_types).join('|') ||
+        sorted(initialServiceAddons).join('|') !== sorted(form.service_addons).join('|');
+
+      let quotePayload: any = null;
+      if (servicesChangedLocal || form.service_types.length > 0) {
+        try {
+          const quoteRes = await apiFetch<any>('/api/telecaller/crm/quote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              service_type_ids: form.service_types,
+              addon_ids: form.service_addons,
+              city_id: form.city_id || null,
+              workshop_id: form.pickup_required ? null : form.workshop_id || null,
+              vehicle_class: form.vehicle_class || null,
+            }),
+          });
+          quotePayload = quoteRes?.quote || null;
+        } catch (e) {
+          console.warn('[EditLead] quote failed', e);
+        }
+      }
+
+      const payload = {
+        customer_name: form.customer_name.trim(),
+        customer_phone: form.customer_phone.replace(/\D/g, '').slice(-10),
+        customer_alternate_phone: form.customer_alternate_phone || null,
+        customer_email: form.customer_email || null,
+        customer_address: composed || form.pickup_address,
+        city_id: form.city_id || null,
+        city: form.city || null,
+        pincode: form.pincode || null,
+        vehicle_number: form.vehicle_number.toUpperCase().trim() || null,
+        vehicle_make: form.vehicle_make,
+        model_id: form.model_id || null,
+        vehicle_model: form.vehicle_model,
+        vehicle_fuel_type: form.vehicle_fuel_type,
+        vehicle_year: form.vehicle_year ? parseInt(form.vehicle_year, 10) : null,
+        odometer_km: form.odometer_km ? parseInt(form.odometer_km, 10) : null,
+        vehicle_class: form.vehicle_class || null,
+        service_types: form.service_types,
+        service_addons: form.service_addons,
+        problem_description: form.problem_description || null,
+        pickup_required: form.pickup_required,
+        pickup_address: form.pickup_required ? composed : null,
+        workshop_id: form.pickup_required ? null : form.workshop_id || null,
+        preferred_slot_start: start,
+        preferred_slot_end: end,
+        coupon_meta: nextMeta,
+        quote: quotePayload,
+        estimated_amount: Number(quotePayload?.total || 0) || undefined,
+        force_requote: servicesChangedLocal,
+        service_type:
+          (quotePayload?.line_items || [])
+            .map((i: any) => String(i?.name || '').trim())
+            .filter(Boolean)
+            .join(', ') || undefined,
+      };
+
+      let result: { success?: boolean; servicesChanged?: boolean; whatsapp?: any } | null = null;
+
+      try {
+        result = await apiFetch(`/api/telecaller/leads/${leadId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (apiErr: any) {
+        // Fallback: direct DB update if API path fails (e.g. deploy lag)
+        console.warn('[EditLead] API failed, falling back to supabase', apiErr?.message);
+        const serviceLabel =
+          payload.service_type ||
+          (quotePayload?.line_items || [])
+            .map((i: any) => String(i?.name || '').trim())
+            .filter(Boolean)
+            .join(', ');
+        const { error } = await supabase
+          .from('service_leads')
+          .update({
+            customer_name: payload.customer_name,
+            customer_phone: payload.customer_phone,
+            customer_alternate_phone: payload.customer_alternate_phone,
+            customer_email: payload.customer_email,
+            customer_address: payload.customer_address,
+            city_id: payload.city_id,
+            city: payload.city,
+            pincode: payload.pincode,
+            vehicle_number: payload.vehicle_number,
+            vehicle_make: payload.vehicle_make,
+            model_id: payload.model_id,
+            vehicle_model: payload.vehicle_model,
+            vehicle_fuel_type: payload.vehicle_fuel_type,
+            vehicle_year: payload.vehicle_year,
+            odometer_km: payload.odometer_km,
+            service_type_ids: JSON.stringify(payload.service_types),
+            subservice_ids: JSON.stringify(payload.service_addons),
+            ...(serviceLabel ? { service_type: serviceLabel } : {}),
+            ...(Number(quotePayload?.total || 0) > 0
+              ? {
+                  estimated_amount: Number(quotePayload.total),
+                  discount_amount: Number(quotePayload.discount || 0) || 0,
+                }
+              : {}),
+            problem_description: payload.problem_description,
+            pickup_required: payload.pickup_required,
+            pickup_address: payload.pickup_address,
+            workshop_id: payload.workshop_id,
+            preferred_slot_start: payload.preferred_slot_start,
+            preferred_slot_end: payload.preferred_slot_end,
+            coupon_meta: {
+              ...payload.coupon_meta,
+              ...(serviceLabel ? { package_label: serviceLabel } : {}),
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', leadId);
+        if (error) throw apiErr;
+        result = { success: true, servicesChanged: servicesChangedLocal };
+      }
+
+      const servicesChanged = Boolean(result?.servicesChanged || servicesChangedLocal);
+      let whatsapp = result?.whatsapp;
+
+      // Always notify on package/service change (covers API miss + supabase fallback)
+      if (servicesChanged && !whatsapp?.sent) {
+        try {
+          const notify = await apiFetch<{ success?: boolean; whatsapp?: any }>(
+            `/api/telecaller/leads/${leadId}/notify-update`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                previousServiceIds: initialServiceTypes,
+              }),
+            },
+          );
+          whatsapp = notify?.whatsapp || whatsapp;
+        } catch (notifyErr: any) {
+          console.warn('[EditLead] WhatsApp notify failed', notifyErr?.message);
+        }
+      }
+
+      if (servicesChanged) {
+        setInitialServiceTypes(form.service_types);
+        setInitialServiceAddons(form.service_addons);
+      }
+
+      const waNote =
+        servicesChanged && whatsapp?.sent
+          ? '\nCustomer notified on WhatsApp.'
+          : servicesChanged
+            ? '\nService updated — WhatsApp not sent (check Booking Confirmed automation).'
+            : '';
+
+      Alert.alert('Updated', `Lead saved successfully.${waNote}`, [
+        { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-    } catch (error: any) {
-      console.error('Error updating lead:', error);
-      Alert.alert('Error', error.message || 'Failed to update lead');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to update lead');
     } finally {
       setSaving(false);
     }
@@ -336,467 +550,499 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF6B00" />
-        <Text style={styles.loadingText}>Loading lead...</Text>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.muted}>Loading lead…</Text>
       </View>
     );
   }
 
   if (errorMessage) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.primaryButtonText}>Go Back</Text>
+      <View style={styles.center}>
+        <Text style={styles.errorBig}>{errorMessage}</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.primaryBtnText}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Lead</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
-        {/* Customer Details */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>👤 Customer Details</Text>
-          
-          <TextInput
-            style={[styles.input, !!errors.customer_name && styles.inputError]}
-            placeholder="Customer Name *"
-            value={formData.customer_name}
-            onChangeText={(v) => handleChange('customer_name', v)}
-          />
-          {errors.customer_name && <Text style={styles.errorText}>{errors.customer_name}</Text>}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Customer */}
+        <View style={[styles.card, styles.customerCard]}>
+          <View style={styles.customerHead}>
+            <View style={styles.customerAvatar}>
+              <Ionicons name="person" size={18} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Customer Details</Text>
+              <Text style={styles.customerSub}>Name, phones & location</Text>
+            </View>
+          </View>
 
+          <Text style={styles.fieldLabel}>Full name *</Text>
           <TextInput
-            style={[styles.input, !!errors.customer_phone && styles.inputError]}
-            placeholder="Phone Number *"
-            value={formData.customer_phone}
-            onChangeText={(v) => handleChange('customer_phone', v)}
-            keyboardType="phone-pad"
-            maxLength={10}
-          />
-          {errors.customer_phone && <Text style={styles.errorText}>{errors.customer_phone}</Text>}
-
-          <TextInput
-            style={styles.input}
-            placeholder="Alternate Phone"
-            value={formData.customer_alternate_phone}
-            onChangeText={(v) => handleChange('customer_alternate_phone', v)}
-            keyboardType="phone-pad"
+            style={[styles.input, styles.inputPremium, errors.customer_name && styles.inputErr]}
+            placeholder="Customer name"
+            placeholderTextColor={COLORS.textSecondary}
+            value={form.customer_name}
+            onChangeText={(v) => setField('customer_name', v)}
           />
 
+          <View style={styles.phoneRow}>
+            <View style={styles.phoneCol}>
+              <Text style={styles.fieldLabel}>Phone *</Text>
+              <TextInput
+                style={[styles.input, styles.inputPremium, errors.customer_phone && styles.inputErr]}
+                placeholder="10-digit"
+                placeholderTextColor={COLORS.textSecondary}
+                value={form.customer_phone}
+                onChangeText={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 10))}
+                keyboardType="phone-pad"
+                maxLength={10}
+              />
+            </View>
+            <View style={styles.phoneCol}>
+              <Text style={styles.fieldLabel}>Alternate</Text>
+              <TextInput
+                style={[styles.input, styles.inputPremium]}
+                placeholder="Optional"
+                placeholderTextColor={COLORS.textSecondary}
+                value={form.customer_alternate_phone}
+                onChangeText={(v) =>
+                  setField('customer_alternate_phone', v.replace(/\D/g, '').slice(0, 10))
+                }
+                keyboardType="phone-pad"
+                maxLength={10}
+              />
+            </View>
+          </View>
+
+          <Text style={styles.fieldLabel}>Email</Text>
           <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={formData.customer_email}
-            onChangeText={(v) => handleChange('customer_email', v)}
+            style={[styles.input, styles.inputPremium]}
+            placeholder="Optional email"
+            placeholderTextColor={COLORS.textSecondary}
+            value={form.customer_email}
+            onChangeText={(v) => setField('customer_email', v)}
             keyboardType="email-address"
             autoCapitalize="none"
           />
 
-          <TextInput
-            style={[styles.input, styles.textArea, !!errors.customer_address && styles.inputError]}
-            placeholder="Address *"
-            value={formData.customer_address}
-            onChangeText={(v) => handleChange('customer_address', v)}
-            multiline
-            numberOfLines={3}
-          />
-          {errors.customer_address && <Text style={styles.errorText}>{errors.customer_address}</Text>}
+          <Text style={styles.fieldLabel}>City *</Text>
+          <TouchableOpacity style={[styles.dropdown, styles.inputPremium]} onPress={() => setCityOpen(true)}>
+            <Text style={[styles.dropdownText, !form.city && styles.placeholder]}>
+              {form.city || 'Select city'}
+            </Text>
+            <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+          {errors.city_id ? <Text style={styles.err}>{errors.city_id}</Text> : null}
 
-          <View style={styles.pickerContainer}>
-            <Ionicons name="location" size={20} color="#6B7280" />
-            <Text style={styles.pickerLabel}>City *</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipContainer}>
-            {cities.map(city => (
-              <TouchableOpacity
-                key={city.id}
-                style={[styles.chip, formData.city_id === city.id && styles.chipSelected]}
-                onPress={() => handleChange('city_id', city.id)}
-              >
-                <Text style={[styles.chipText, formData.city_id === city.id && styles.chipTextSelected]}>
-                  {city.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {errors.city_id && <Text style={styles.errorText}>{errors.city_id}</Text>}
+          <Text style={styles.fieldLabel}>Pincode</Text>
+          <TextInput
+            style={[styles.input, styles.inputPremium]}
+            placeholder="6-digit pincode"
+            placeholderTextColor={COLORS.textSecondary}
+            value={form.pincode}
+            onChangeText={(v) => setField('pincode', v.replace(/\D/g, '').slice(0, 6))}
+            keyboardType="number-pad"
+            maxLength={6}
+          />
         </View>
 
-        {/* Vehicle Details */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚗 Vehicle Details</Text>
-
-          <TextInput
-            style={[styles.input, !!errors.vehicle_number && styles.inputError]}
-            placeholder="Vehicle Number (e.g., MH 01 AB 1234) *"
-            value={formData.vehicle_number}
-            onChangeText={(v) => handleChange('vehicle_number', v.toUpperCase())}
-            autoCapitalize="characters"
+        {/* Vehicle */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Vehicle Details</Text>
+          <CarModelSearchField
+            label="Car model *"
+            variant="website"
+            displayValue={carDisplay}
+            selectedMake={form.vehicle_make}
+            selectedModel={form.vehicle_model}
+            placeholder="Type model (e.g. Rapid, Swift)"
+            onSelect={(make, model, display, meta) => {
+              setCarDisplay(display);
+              setForm((prev) => ({
+                ...prev,
+                vehicle_make: make,
+                vehicle_model: model,
+                model_id: meta?.id || prev.model_id,
+                vehicle_class: meta?.class || prev.vehicle_class,
+              }));
+            }}
+            onClear={() => {
+              setCarDisplay('');
+              setForm((prev) => ({
+                ...prev,
+                vehicle_make: '',
+                vehicle_model: '',
+                model_id: '',
+                vehicle_class: '',
+              }));
+            }}
           />
-          {errors.vehicle_number && <Text style={styles.errorText}>{errors.vehicle_number}</Text>}
+          {errors.vehicle ? <Text style={styles.err}>{errors.vehicle}</Text> : null}
 
-          <View style={styles.pickerContainer}>
-            <Ionicons name="car" size={20} color="#6B7280" />
-            <Text style={styles.pickerLabel}>Vehicle Make *</Text>
+          <Text style={styles.label}>Fuel type *</Text>
+          <View style={styles.fuelRow}>
+            {FUEL_TYPES.map((fuel) => {
+              const active = form.vehicle_fuel_type === fuel;
+              return (
+                <TouchableOpacity
+                  key={fuel}
+                  style={[styles.fuelChip, active && styles.fuelChipActive]}
+                  onPress={() => setField('vehicle_fuel_type', fuel)}
+                >
+                  <Text style={[styles.fuelText, active && styles.fuelTextActive]}>{fuel}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipContainer}>
-            {makes.map((make, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.chip, formData.vehicle_make === make.make && styles.chipSelected]}
-                onPress={() => handleChange('vehicle_make', make.make)}
-              >
-                <Text style={[styles.chipText, formData.vehicle_make === make.make && styles.chipTextSelected]}>
-                  {make.make}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {errors.vehicle_make && <Text style={styles.errorText}>{errors.vehicle_make}</Text>}
+          {errors.vehicle_fuel_type ? <Text style={styles.err}>{errors.vehicle_fuel_type}</Text> : null}
 
-          {formData.vehicle_make && (
-            <>
-              <View style={styles.pickerContainer}>
-                <Ionicons name="car-sport" size={20} color="#6B7280" />
-                <Text style={styles.pickerLabel}>Vehicle Model *</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipContainer}>
-                {models.map(model => (
-                  <TouchableOpacity
-                    key={model.id}
-                    style={[styles.chip, formData.model_id === model.id && styles.chipSelected]}
-                    onPress={() => handleChange('model_id', model.id)}
-                  >
-                    <Text style={[styles.chipText, formData.model_id === model.id && styles.chipTextSelected]}>
-                      {model.model_name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              {errors.model_id && <Text style={styles.errorText}>{errors.model_id}</Text>}
-            </>
-          )}
-
-          <View style={styles.pickerContainer}>
-            <Ionicons name="water" size={20} color="#6B7280" />
-            <Text style={styles.pickerLabel}>Fuel Type *</Text>
-          </View>
-          <View style={styles.row}>
-            {['Petrol', 'Diesel', 'CNG', 'Electric', 'Hybrid'].map(fuel => (
-              <TouchableOpacity
-                key={fuel}
-                style={[styles.chip, formData.vehicle_fuel_type === fuel && styles.chipSelected]}
-                onPress={() => handleChange('vehicle_fuel_type', fuel)}
-              >
-                <Text style={[styles.chipText, formData.vehicle_fuel_type === fuel && styles.chipTextSelected]}>
-                  {fuel}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {errors.vehicle_fuel_type && <Text style={styles.errorText}>{errors.vehicle_fuel_type}</Text>}
-
-          <View style={styles.row}>
+          <View style={styles.row2}>
             <TextInput
-              style={[styles.input, styles.halfInput]}
+              style={[styles.input, styles.half]}
               placeholder="Year"
-              value={formData.vehicle_year}
-              onChangeText={(v) => handleChange('vehicle_year', v)}
+              placeholderTextColor={COLORS.textSecondary}
+              value={form.vehicle_year}
+              onChangeText={(v) => setField('vehicle_year', v.replace(/\D/g, '').slice(0, 4))}
               keyboardType="number-pad"
               maxLength={4}
             />
             <TextInput
-              style={[styles.input, styles.halfInput]}
+              style={[styles.input, styles.half]}
               placeholder="Odometer (km)"
-              value={formData.odometer_km}
-              onChangeText={(v) => handleChange('odometer_km', v)}
+              placeholderTextColor={COLORS.textSecondary}
+              value={form.odometer_km}
+              onChangeText={(v) => setField('odometer_km', v.replace(/\D/g, ''))}
               keyboardType="number-pad"
             />
           </View>
         </View>
 
-        {/* Service Requirements */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔧 Service Requirements</Text>
-
-          <Text style={styles.label}>Service Types * (Select all that apply)</Text>
-          <View style={styles.checkboxGroup}>
-            {serviceTypes.map(type => (
-              <TouchableOpacity
-                key={type.id}
-                style={styles.checkboxItem}
-                onPress={() => toggleServiceType(type.id.toString())}
-              >
-                <Ionicons
-                  name={formData.service_types.includes(type.id.toString()) ? 'checkbox' : 'square-outline'}
-                  size={24}
-                  color={formData.service_types.includes(type.id.toString()) ? '#FF6B00' : '#9CA3AF'}
-                />
-                <Text style={styles.checkboxLabel}>{type.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {errors.service_types && <Text style={styles.errorText}>{errors.service_types}</Text>}
-
-          <Text style={styles.label}>Add-ons (Optional)</Text>
-          <View style={styles.checkboxGroup}>
-            {serviceAddons.map(addon => (
-              <TouchableOpacity
-                key={addon.id}
-                style={styles.checkboxItem}
-                onPress={() => toggleServiceAddon(addon.id.toString())}
-              >
-                <Ionicons
-                  name={formData.service_addons.includes(addon.id.toString()) ? 'checkbox' : 'square-outline'}
-                  size={24}
-                  color={formData.service_addons.includes(addon.id.toString()) ? '#FF6B00' : '#9CA3AF'}
-                />
-                <Text style={styles.checkboxLabel}>{addon.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TextInput
-            style={[styles.input, styles.textArea, !!errors.problem_description && styles.inputError]}
-            placeholder="Problem Description *"
-            value={formData.problem_description}
-            onChangeText={(v) => handleChange('problem_description', v)}
-            multiline
-            numberOfLines={4}
+        {/* Services */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Services</Text>
+          <Text style={styles.hint}>Selected packages appear first. Tap to change.</Text>
+          <CrmServicePlanPicker
+            selectedIds={form.service_types}
+            onChange={(ids) => setField('service_types', ids)}
+            cityId={form.city_id}
+            vehicleClass={form.vehicle_class}
+            modelId={form.model_id}
+            title=""
           />
-          {errors.problem_description && <Text style={styles.errorText}>{errors.problem_description}</Text>}
+          {errors.service_types ? <Text style={styles.err}>{errors.service_types}</Text> : null}
+
+          <Text style={[styles.label, { marginTop: 12 }]}>Notes (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Any notes for workshop"
+            placeholderTextColor={COLORS.textSecondary}
+            value={form.problem_description}
+            onChangeText={(v) => setField('problem_description', v)}
+            multiline
+          />
         </View>
 
-        {/* Pickup Details */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚚 Pickup Details</Text>
-
-          <TouchableOpacity
-            style={styles.checkboxItem}
-            onPress={() => handleChange('pickup_required', !formData.pickup_required)}
-          >
-            <Ionicons
-              name={formData.pickup_required ? 'checkbox' : 'square-outline'}
-              size={24}
-              color={formData.pickup_required ? '#FF6B00' : '#9CA3AF'}
-            />
-            <Text style={styles.checkboxLabel}>Pickup Required</Text>
-          </TouchableOpacity>
-
-          {formData.pickup_required && (
-            <>
-              <TextInput
-                style={[styles.input, styles.textArea, !!errors.pickup_address && styles.inputError]}
-                placeholder="Pickup Address (Leave empty to use customer address)"
-                value={formData.pickup_address}
-                onChangeText={(v) => handleChange('pickup_address', v)}
-                multiline
-                numberOfLines={2}
-              />
-              {errors.pickup_address && <Text style={styles.errorText}>{errors.pickup_address}</Text>}
-
-              <TextInput
-                style={[styles.input, !!errors.preferred_slot_start && styles.inputError]}
-                placeholder="Preferred Pickup Time (e.g., 10:00 AM) *"
-                value={formData.preferred_slot_start}
-                onChangeText={(v) => handleChange('preferred_slot_start', v)}
-              />
-              {errors.preferred_slot_start && <Text style={styles.errorText}>{errors.preferred_slot_start}</Text>}
-            </>
-          )}
+        {/* Pickup / Visit */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Pickup / Visit</Text>
+          <CrmPickupVisitStep
+            value={pickupValue}
+            city={form.city}
+            cityId={form.city_id}
+            pincode={form.pincode}
+            onChange={(patch) => {
+              setForm((prev) => ({
+                ...prev,
+                ...patch,
+                preferred_slot_start:
+                  patch.pickup_date || patch.pickup_time
+                    ? slotIso(
+                        patch.pickup_date ?? prev.pickup_date,
+                        patch.pickup_time ?? prev.pickup_time,
+                      ) || prev.preferred_slot_start
+                    : prev.preferred_slot_start,
+              }));
+            }}
+          />
+          {errors.vehicle_number ? <Text style={styles.err}>{errors.vehicle_number}</Text> : null}
+          {errors.slot ? <Text style={styles.err}>{errors.slot}</Text> : null}
+          {errors.pickup_address ? <Text style={styles.err}>{errors.pickup_address}</Text> : null}
+          {errors.landmark ? <Text style={styles.err}>{errors.landmark}</Text> : null}
         </View>
+      </ScrollView>
 
-        {/* Submit Button */}
+      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TouchableOpacity
-          style={[styles.submitButton, saving && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
+          style={[styles.submit, saving && { opacity: 0.6 }]}
           disabled={saving}
+          onPress={handleSubmit}
         >
           {saving ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Ionicons name="checkmark-circle" size={24} color="#FFF" />
-              <Text style={styles.submitButtonText}>Update Lead</Text>
+              <Ionicons name="checkmark-circle" size={22} color="#fff" />
+              <Text style={styles.submitText}>Update Lead</Text>
             </>
           )}
         </TouchableOpacity>
+      </View>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </View>
+      {/* City dropdown modal */}
+      <Modal visible={cityOpen} transparent animationType="fade" onRequestClose={() => setCityOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCityOpen(false)}>
+          <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Select City</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Search city"
+              placeholderTextColor={COLORS.textSecondary}
+              value={cityQuery}
+              onChangeText={setCityQuery}
+              autoFocus
+            />
+            <ScrollView style={{ maxHeight: 320 }}>
+              {filteredCities.map((c) => {
+                const active = form.city_id === c.id || form.city === c.name;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.cityRow, active && styles.cityRowActive]}
+                    onPress={() => {
+                      setForm((prev) => ({ ...prev, city_id: c.id, city: c.name }));
+                      setCityOpen(false);
+                      setCityQuery('');
+                    }}
+                  >
+                    <Text style={[styles.cityRowText, active && styles.cityRowTextActive]}>
+                      {c.name}
+                    </Text>
+                    {active ? <Ionicons name="checkmark" size={18} color={COLORS.primary} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#6B7280',
-  },
-  primaryButton: {
-    marginTop: 16,
-    backgroundColor: '#FF6B00',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  muted: { marginTop: 10, color: COLORS.textSecondary },
+  errorBig: { color: COLORS.red, textAlign: 'center', marginBottom: 16, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FF6B00',
-    padding: 20,
-    paddingTop: 60,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingTop: Platform.OS === 'ios' ? 12 : 14,
+    paddingBottom: 14,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFF',
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  form: {
-    flex: 1,
-    padding: 15,
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  scroll: { flex: 1 },
+  content: { padding: SPACING.md, paddingBottom: 48 },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
   },
-  section: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 15,
+  customerCard: {
+    borderColor: '#C9DCFF',
+    backgroundColor: '#F7FAFF',
+    shadowColor: '#004AAD',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  sectionTitle: {
+  customerHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  customerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customerSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5B6B82',
+    marginBottom: 6,
+    letterSpacing: 0.2,
+  },
+  phoneRow: { flexDirection: 'row', gap: 10 },
+  phoneCol: { flex: 1 },
+  inputPremium: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D7E4F8',
+    borderWidth: 1.5,
+  },
+  cardTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 15,
+    fontWeight: '800',
+    color: COLORS.textHeading,
+    marginBottom: 0,
+  },
+  hint: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 12, lineHeight: 17 },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   input: {
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 14,
-    color: '#1F2937',
-    marginBottom: 12,
-    backgroundColor: '#FFF',
-  },
-  inputError: {
-    borderColor: '#EF4444',
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  halfInput: {
-    flex: 1,
-  },
-  pickerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  pickerLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  chipContainer: {
-    marginBottom: 12,
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFF',
-    marginRight: 8,
-  },
-  chipSelected: {
-    backgroundColor: '#FF6B00',
-    borderColor: '#FF6B00',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  chipTextSelected: {
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    color: COLORS.textPrimary,
+    backgroundColor: '#FAFCFF',
     marginBottom: 10,
   },
-  checkboxGroup: {
-    marginBottom: 15,
-  },
-  checkboxItem: {
+  inputErr: { borderColor: COLORS.red },
+  textArea: { minHeight: 72, textAlignVertical: 'top' },
+  dropdown: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 10,
+    backgroundColor: '#FAFCFF',
+  },
+  dropdownText: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  placeholder: { color: COLORS.textSecondary, fontWeight: '500' },
+  fuelRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8, marginBottom: 10 },
+  fuelChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
     paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FAFCFF',
   },
-  checkboxLabel: {
-    fontSize: 14,
-    color: '#374151',
+  fuelChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  fuelText: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  fuelTextActive: { color: '#fff' },
+  row2: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
+  err: { color: COLORS.red, fontSize: 12, marginBottom: 8, marginTop: -4 },
+  stickyFooter: {
+    backgroundColor: '#fff',
+    paddingHorizontal: SPACING.md,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E8EEF7',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#001F4D',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: { elevation: 10 },
+    }),
   },
-  errorText: {
-    fontSize: 12,
-    color: '#EF4444',
-    marginTop: -8,
-    marginBottom: 8,
-  },
-  submitButton: {
+  submit: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#FF6B00',
-    padding: 16,
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 15,
+    borderRadius: 14,
+  },
+  submitText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  primaryBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderRadius: 12,
-    marginTop: 10,
   },
-  submitButtonDisabled: {
-    opacity: 0.6,
+  primaryBtnText: { color: '#fff', fontWeight: '700' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
   },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFF',
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 18,
+    paddingBottom: 28,
   },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: COLORS.textHeading, marginBottom: 10 },
+  cityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  cityRowActive: { backgroundColor: '#EAF2FF', borderRadius: 10, borderBottomWidth: 0 },
+  cityRowText: { fontSize: 14, color: COLORS.textPrimary, fontWeight: '500' },
+  cityRowTextActive: { color: COLORS.primary, fontWeight: '700' },
 });
-
