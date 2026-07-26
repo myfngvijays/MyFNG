@@ -338,6 +338,11 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
                 <Text style={styles.meta}>
                   {item.city || '—'} · {item.workshop?.name || 'No workshop'} · {formatCrmSource(item)}
                 </Text>
+                {item.vehicle_number && String(item.vehicle_number).toUpperCase() !== 'NA' ? (
+                  <Text style={styles.meta}>
+                    {[item.vehicle_number, item.vehicle_make, item.vehicle_model].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
                 {item.message_preview || item.coupon_meta?.last_inbound_message || item.problem_description ? (
                   <View style={styles.msgRow}>
                     <Ionicons

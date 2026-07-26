@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import { findCustomerByPhone } from '@/lib/customer-service-leads';
 
 export type WhatsAppReferral = {
   source_url?: string | null;
@@ -22,10 +23,54 @@ export type EnsureWhatsAppLeadInput = {
   inboundReceivedAt?: string | null;
 };
 
-const OPEN_STATUSES = ['NEW', 'CONTACTED', 'INCOMPLETE', 'ASSIGNED', 'VALIDATED', 'PENDING'];
+export type KnownCustomerFill = {
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_id?: string | null;
+  vehicle_number?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_variant?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+  customer_address?: string | null;
+  pickup_address?: string | null;
+};
+
+/** Open / in-progress statuses that should receive new WhatsApp messages (enum-safe). */
+const OPEN_STATUSES = [
+  'NEW',
+  'VALIDATED',
+  'HOLD',
+  'ACCEPTED',
+  'IN_PROGRESS',
+  'ASSIGNED_TO_WORKSHOP',
+  'ON_THE_WAY',
+  'VEHICLE_DROPPED_AT_WORKSHOP',
+  'READY_FOR_BILLING',
+  'READY_FOR_DELIVERY',
+  'QC_APPROVED',
+  'REWORK_REQUIRED',
+];
+
+const CLOSED_STATUSES = new Set(['CANCELLED', 'COMPLETED', 'DELIVERED', 'REJECTED']);
 
 function normalizePhone10(phone: string): string {
   return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+function isPlaceholderName(name: string | null | undefined): boolean {
+  const n = String(name || '').trim();
+  if (!n) return true;
+  if (/^whatsapp\s*\d+/i.test(n)) return true;
+  if (/^user\s*\d+$/i.test(n)) return true;
+  if (/^customer\s*\d+$/i.test(n)) return true;
+  return false;
+}
+
+function isPlaceholderVehicle(v: string | null | undefined): boolean {
+  const n = String(v || '').trim().toUpperCase();
+  return !n || n === 'NA' || n === 'N/A' || n === '-';
 }
 
 /** Extract Meta Click-to-WhatsApp / ad referral from inbound message payload. */
@@ -83,6 +128,7 @@ function buildCouponMeta(input: {
   providerMessageId?: string | null;
   nowIso: string;
   isFirst?: boolean;
+  known?: KnownCustomerFill | null;
 }) {
   const prev =
     input.existing && typeof input.existing === 'object' ? { ...input.existing } : {};
@@ -96,16 +142,128 @@ function buildCouponMeta(input: {
     last_inbound_message: msg,
     profile_name: input.profileName || prev.profile_name || null,
     provider_message_id: input.providerMessageId || prev.provider_message_id || null,
+    autofill_from_customer: Boolean(input.known?.customer_id || input.known?.vehicle_number),
     ...(input.isFirst
       ? { first_message: msg, inbound_at: input.nowIso }
       : {}),
   };
 }
 
+/** Pull name / car / address from customers, vehicles, and past leads. */
+export async function lookupKnownCustomerFill(
+  supabaseAdmin: any,
+  phone10: string,
+): Promise<KnownCustomerFill> {
+  const fill: KnownCustomerFill = {};
+
+  try {
+    const customer = await findCustomerByPhone(supabaseAdmin, phone10);
+    if (customer?.id) {
+      fill.customer_id = String(customer.id);
+      if (customer.full_name && !isPlaceholderName(customer.full_name)) {
+        fill.customer_name = String(customer.full_name).trim();
+      }
+      if (customer.email) fill.customer_email = String(customer.email).trim();
+
+      const { data: vehicles } = await supabaseAdmin
+        .from('customer_vehicles')
+        .select('vehicle_number, make, model, variant, is_default, updated_at')
+        .eq('customer_id', customer.id)
+        .order('is_default', { ascending: false })
+        .order('updated_at', { ascending: false })
+        .limit(5);
+
+      const vehicle =
+        (vehicles || []).find((v: any) => v?.is_default && !isPlaceholderVehicle(v.vehicle_number)) ||
+        (vehicles || []).find((v: any) => !isPlaceholderVehicle(v?.vehicle_number)) ||
+        null;
+
+      if (vehicle) {
+        fill.vehicle_number = String(vehicle.vehicle_number || '').trim().toUpperCase() || null;
+        fill.vehicle_make = vehicle.make ? String(vehicle.make).trim() : null;
+        fill.vehicle_model = vehicle.model ? String(vehicle.model).trim() : null;
+        fill.vehicle_variant = vehicle.variant ? String(vehicle.variant).trim() : null;
+      }
+    }
+  } catch (e) {
+    console.warn('[whatsapp-inbound-lead] customer lookup failed', e);
+  }
+
+  try {
+    const { data: pastLeads } = await supabaseAdmin
+      .from('service_leads')
+      .select(
+        `customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
+         city, pincode, customer_address, pickup_address, created_at`,
+      )
+      .or(
+        `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`,
+      )
+      .order('created_at', { ascending: false })
+      .limit(15);
+
+    for (const row of pastLeads || []) {
+      if (!fill.customer_name && !isPlaceholderName(row.customer_name)) {
+        fill.customer_name = String(row.customer_name).trim();
+      }
+      if (isPlaceholderVehicle(fill.vehicle_number) && !isPlaceholderVehicle(row.vehicle_number)) {
+        fill.vehicle_number = String(row.vehicle_number).trim().toUpperCase();
+        fill.vehicle_make = fill.vehicle_make || (row.vehicle_make ? String(row.vehicle_make).trim() : null);
+        fill.vehicle_model =
+          fill.vehicle_model || (row.vehicle_model ? String(row.vehicle_model).trim() : null);
+        fill.vehicle_variant =
+          fill.vehicle_variant || (row.vehicle_variant ? String(row.vehicle_variant).trim() : null);
+      }
+      if (!fill.city && row.city) fill.city = String(row.city).trim();
+      if (!fill.pincode && row.pincode) fill.pincode = String(row.pincode).trim();
+      if (!fill.customer_address && row.customer_address) {
+        fill.customer_address = String(row.customer_address).trim();
+      }
+      if (!fill.pickup_address && (row.pickup_address || row.customer_address)) {
+        fill.pickup_address = String(row.pickup_address || row.customer_address).trim();
+      }
+    }
+  } catch (e) {
+    console.warn('[whatsapp-inbound-lead] past lead lookup failed', e);
+  }
+
+  return fill;
+}
+
+function applyKnownFillToPatch(
+  patch: Record<string, unknown>,
+  existing: Record<string, any> | null,
+  known: KnownCustomerFill,
+) {
+  if (known.customer_name && isPlaceholderName(existing?.customer_name)) {
+    patch.customer_name = known.customer_name;
+  }
+  if (known.customer_email && !existing?.customer_email) {
+    patch.customer_email = known.customer_email;
+  }
+  if (known.vehicle_number && isPlaceholderVehicle(existing?.vehicle_number)) {
+    patch.vehicle_number = known.vehicle_number;
+  }
+  if (known.vehicle_make && !existing?.vehicle_make) patch.vehicle_make = known.vehicle_make;
+  if (known.vehicle_model && !existing?.vehicle_model) patch.vehicle_model = known.vehicle_model;
+  if (known.vehicle_variant && !existing?.vehicle_variant) {
+    patch.vehicle_variant = known.vehicle_variant;
+  }
+  if (known.city && !existing?.city) patch.city = known.city;
+  if (known.pincode && !existing?.pincode) patch.pincode = known.pincode;
+  if (known.customer_address && !existing?.customer_address) {
+    patch.customer_address = known.customer_address;
+  }
+  if (known.pickup_address && !existing?.pickup_address) {
+    patch.pickup_address = known.pickup_address;
+  }
+}
+
 /**
  * Create (or reuse) a telecaller-visible service_lead for WhatsApp inbound.
  * Dedupes open leads for the same phone so repeat chats don't spam the queue.
  * Auto-assigns via Telecaller Distribution so RLS + CRM queue both show the lead.
+ * Auto-fills name/vehicle/address from customers + past leads when available.
  */
 export async function ensureWhatsAppInboundServiceLead(
   input: EnsureWhatsAppLeadInput,
@@ -124,16 +282,49 @@ export async function ensureWhatsAppInboundServiceLead(
   const labels = resolveLeadLabels(input.referral);
   const nowIso = input.inboundReceivedAt || new Date().toISOString();
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const known = await lookupKnownCustomerFill(supabaseAdmin, phone10);
 
   // Reuse open lead for same phone (10-digit or with 91 prefix)
-  const { data: existingRows, error: findErr } = await supabaseAdmin
-    .from('service_leads')
-    .select('id, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id')
-    .or(`customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`)
-    .in('status', OPEN_STATUSES)
-    .gte('created_at', sinceIso)
-    .order('created_at', { ascending: false })
-    .limit(5);
+  let existingRows: any[] | null = null;
+  let findErr: any = null;
+  {
+    const res = await supabaseAdmin
+      .from('service_leads')
+      .select(
+        `id, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id,
+         customer_name, customer_email, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
+         city, pincode, customer_address, pickup_address`,
+      )
+      .or(
+        `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`,
+      )
+      .in('status', OPEN_STATUSES)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    existingRows = res.data;
+    findErr = res.error;
+  }
+
+  // Fallback without status enum filter (older / mismatched enums)
+  if (findErr) {
+    console.warn('[whatsapp-inbound-lead] find retry without status filter:', findErr.message);
+    const res = await supabaseAdmin
+      .from('service_leads')
+      .select(
+        `id, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id,
+         customer_name, customer_email, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
+         city, pincode, customer_address, pickup_address`,
+      )
+      .or(
+        `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`,
+      )
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    existingRows = (res.data || []).filter((r: any) => !CLOSED_STATUSES.has(String(r.status || '').toUpperCase()));
+    findErr = res.error;
+  }
 
   if (findErr) {
     console.warn('[whatsapp-inbound-lead] find failed:', findErr.message);
@@ -154,17 +345,19 @@ export async function ensureWhatsAppInboundServiceLead(
         profileName: input.profileName,
         providerMessageId: input.providerMessageId,
         nowIso,
+        known,
       }),
       problem_description: String(input.messageText || '').trim().slice(0, 1000) || undefined,
       updated_at: new Date().toISOString(),
     };
+
+    applyKnownFillToPatch(patch, existing, known);
 
     if (input.referral) {
       patch.lead_source = labels.lead_source;
       patch.created_from = labels.created_from;
     }
 
-    // Auto-assign if still unassigned so telecaller CRM/RLS can see it
     let assignedTo: string | null = existing.assigned_telecaller_id
       ? String(existing.assigned_telecaller_id)
       : null;
@@ -181,7 +374,6 @@ export async function ensureWhatsAppInboundServiceLead(
       }
     }
 
-    // Drop undefined keys (problem_description when empty)
     Object.keys(patch).forEach((k) => {
       if (patch[k] === undefined) delete patch[k];
     });
@@ -200,7 +392,6 @@ export async function ensureWhatsAppInboundServiceLead(
     };
   }
 
-  // New lead — pick telecaller for distribution
   let assignedTelecallerId: string | null = null;
   try {
     const picked = await pickTelecallerWeightedRoundRobin();
@@ -210,6 +401,7 @@ export async function ensureWhatsAppInboundServiceLead(
   }
 
   const name =
+    known.customer_name ||
     String(input.profileName || '').trim() ||
     `WhatsApp ${phone10.slice(-4)}`;
   const firstMsg = String(input.messageText || '').trim().slice(0, 500);
@@ -230,7 +422,15 @@ export async function ensureWhatsAppInboundServiceLead(
     status: 'NEW',
     customer_name: name,
     customer_phone: phone10,
-    vehicle_number: 'NA',
+    customer_email: known.customer_email || null,
+    vehicle_number: known.vehicle_number || 'NA',
+    vehicle_make: known.vehicle_make || null,
+    vehicle_model: known.vehicle_model || null,
+    vehicle_variant: known.vehicle_variant || null,
+    city: known.city || null,
+    pincode: known.pincode || null,
+    customer_address: known.customer_address || null,
+    pickup_address: known.pickup_address || null,
     service_type: 'WhatsApp Enquiry',
     description: descriptionParts.join(' · '),
     problem_description: firstMsg || headline || null,
@@ -245,6 +445,7 @@ export async function ensureWhatsAppInboundServiceLead(
       providerMessageId: input.providerMessageId,
       nowIso,
       isFirst: true,
+      known,
     }),
     created_at: nowIso,
     updated_at: nowIso,
@@ -256,7 +457,6 @@ export async function ensureWhatsAppInboundServiceLead(
 
   let { data: inserted, error: insertErr } = await tryInsert(basePayload);
 
-  // Retry without optional columns that older DBs may lack
   if (insertErr) {
     console.warn('[whatsapp-inbound-lead] insert retry slim:', insertErr.message);
     const slim = { ...basePayload };
@@ -265,10 +465,12 @@ export async function ensureWhatsAppInboundServiceLead(
     delete slim.problem_description;
     delete slim.assigned_at;
     delete slim.description;
+    delete slim.customer_email;
+    delete slim.vehicle_variant;
+    delete slim.pickup_address;
     ({ data: inserted, error: insertErr } = await tryInsert(slim));
   }
 
-  // Older DBs may restrict created_from CHECK — fall back to API while keeping WhatsApp lead_source
   if (insertErr && /created_from|check constraint/i.test(insertErr.message || '')) {
     console.warn('[whatsapp-inbound-lead] created_from fallback:', insertErr.message);
     const fallback = {
@@ -293,10 +495,115 @@ export async function ensureWhatsAppInboundServiceLead(
     phone10,
     'assigned',
     assignedTelecallerId,
+    'autofill',
+    Boolean(known.customer_name || known.vehicle_number),
   );
   return {
     created: true,
     leadId: inserted?.id ? String(inserted.id) : null,
     assignedTo: assignedTelecallerId,
+  };
+}
+
+/**
+ * Backfill / refresh service_leads from recent inbound WhatsApp messages.
+ * Safe to call on CRM queue load so leads appear even if production webhook lag.
+ */
+export async function syncRecentWhatsAppInboundLeads(opts?: {
+  hours?: number;
+  limit?: number;
+  phone?: string | null;
+}): Promise<{
+  scanned: number;
+  unique: number;
+  created: number;
+  enriched: number;
+  failed: number;
+}> {
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    console.warn('[whatsapp-inbound-sync] admin unavailable:', adminError);
+    return { scanned: 0, unique: 0, created: 0, enriched: 0, failed: 0 };
+  }
+
+  const hours = Math.min(Math.max(Number(opts?.hours) || 12, 1), 24 * 30);
+  const limit = Math.min(Math.max(Number(opts?.limit) || 120, 1), 500);
+  const phoneFilter = String(opts?.phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+  const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  let query = supabaseAdmin
+    .from('whatsapp_messages')
+    .select('id, sender_phone, text_body, created_at, status_at, meta, payload')
+    .eq('direction', 'INBOUND')
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (phoneFilter.length === 10) {
+    query = query.or(
+      `sender_phone.eq.${phoneFilter},sender_phone.eq.91${phoneFilter},sender_phone.ilike.%${phoneFilter}`,
+    );
+  }
+
+  const { data: rows, error } = await query;
+  if (error) {
+    console.warn('[whatsapp-inbound-sync] query failed:', error.message);
+    return { scanned: 0, unique: 0, created: 0, enriched: 0, failed: 0 };
+  }
+
+  const byPhone = new Map<
+    string,
+    {
+      phone: string;
+      text: string | null;
+      at: string;
+      profileName: string | null;
+      providerMessageId: string | null;
+      referral: any;
+    }
+  >();
+
+  for (const row of rows || []) {
+    const phone10 = normalizePhone10(String(row.sender_phone || ''));
+    if (phone10.length < 10) continue;
+    if (byPhone.has(phone10)) continue;
+    const meta = row.meta && typeof row.meta === 'object' ? (row.meta as any) : {};
+    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as any) : {};
+    byPhone.set(phone10, {
+      phone: phone10,
+      text: row.text_body || null,
+      at: row.status_at || row.created_at || new Date().toISOString(),
+      profileName: meta?.profile_name || null,
+      providerMessageId: String(payload?.id || row.id || '').trim() || null,
+      referral: payload?.referral || null,
+    });
+  }
+
+  let created = 0;
+  let enriched = 0;
+  let failed = 0;
+
+  for (const item of byPhone.values()) {
+    const result = await ensureWhatsAppInboundServiceLead({
+      phone: item.phone,
+      profileName: item.profileName,
+      messageText: item.text,
+      referral: item.referral,
+      providerMessageId: item.providerMessageId,
+      inboundReceivedAt: item.at,
+    });
+    if (result.created) created += 1;
+    else if (result.leadId) enriched += 1;
+    else failed += 1;
+  }
+
+  return {
+    scanned: (rows || []).length,
+    unique: byPhone.size,
+    created,
+    enriched,
+    failed,
   };
 }

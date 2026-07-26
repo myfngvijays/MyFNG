@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { syncRecentWhatsAppInboundLeads } from '@/lib/whatsappAgents/inboundServiceLead';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,13 @@ export async function GET(request: NextRequest) {
     const profile = await resolveUserProfile(supabase, user);
     const teleCallerId = String(profile?.id || '').trim();
     if (!teleCallerId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+
+    // Pull latest WhatsApp chats into leads (covers production webhook lag / local API).
+    try {
+      await syncRecentWhatsAppInboundLeads({ hours: 24, limit: 80 });
+    } catch (syncErr) {
+      console.warn('[crm/leads] whatsapp sync skipped', syncErr);
+    }
 
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     const db = supabaseAdmin || supabase;
