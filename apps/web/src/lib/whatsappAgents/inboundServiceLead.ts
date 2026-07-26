@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
 
 export type WhatsAppReferral = {
   source_url?: string | null;
@@ -21,7 +22,7 @@ export type EnsureWhatsAppLeadInput = {
   inboundReceivedAt?: string | null;
 };
 
-const OPEN_STATUSES = ['NEW', 'CONTACTED', 'INCOMPLETE', 'ASSIGNED', 'VALIDATED'];
+const OPEN_STATUSES = ['NEW', 'CONTACTED', 'INCOMPLETE', 'ASSIGNED', 'VALIDATED', 'PENDING'];
 
 function normalizePhone10(phone: string): string {
   return String(phone || '').replace(/\D/g, '').slice(-10);
@@ -74,13 +75,41 @@ function resolveLeadLabels(referral: WhatsAppReferral | null | undefined) {
   return { created_from: 'WHATSAPP_META', lead_source: 'Meta Ads' };
 }
 
+function buildCouponMeta(input: {
+  existing?: Record<string, unknown> | null;
+  referral: WhatsAppReferral | null | undefined;
+  messageText?: string | null;
+  profileName?: string | null;
+  providerMessageId?: string | null;
+  nowIso: string;
+  isFirst?: boolean;
+}) {
+  const prev =
+    input.existing && typeof input.existing === 'object' ? { ...input.existing } : {};
+  const msg = String(input.messageText || '').trim().slice(0, 500) || null;
+  return {
+    ...prev,
+    whatsapp_inbound: true,
+    whatsapp_enquiry: true,
+    meta_referral: input.referral || prev.meta_referral || null,
+    last_inbound_at: input.nowIso,
+    last_inbound_message: msg,
+    profile_name: input.profileName || prev.profile_name || null,
+    provider_message_id: input.providerMessageId || prev.provider_message_id || null,
+    ...(input.isFirst
+      ? { first_message: msg, inbound_at: input.nowIso }
+      : {}),
+  };
+}
+
 /**
  * Create (or reuse) a telecaller-visible service_lead for WhatsApp inbound.
  * Dedupes open leads for the same phone so repeat chats don't spam the queue.
+ * Auto-assigns via Telecaller Distribution so RLS + CRM queue both show the lead.
  */
 export async function ensureWhatsAppInboundServiceLead(
   input: EnsureWhatsAppLeadInput,
-): Promise<{ created: boolean; leadId: string | null; skipped?: string }> {
+): Promise<{ created: boolean; leadId: string | null; skipped?: string; assignedTo?: string | null }> {
   const phone10 = normalizePhone10(input.phone);
   if (phone10.length < 10) {
     return { created: false, leadId: null, skipped: 'invalid_phone' };
@@ -99,8 +128,8 @@ export async function ensureWhatsAppInboundServiceLead(
   // Reuse open lead for same phone (10-digit or with 91 prefix)
   const { data: existingRows, error: findErr } = await supabaseAdmin
     .from('service_leads')
-    .select('id, status, coupon_meta, created_from, lead_source, customer_phone')
-    .in('customer_phone', [phone10, `91${phone10}`])
+    .select('id, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id')
+    .or(`customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`)
     .in('status', OPEN_STATUSES)
     .gte('created_at', sinceIso)
     .order('created_at', { ascending: false })
@@ -112,33 +141,72 @@ export async function ensureWhatsAppInboundServiceLead(
 
   const existing = (existingRows || [])[0] || null;
   if (existing?.id) {
-    // Enrich attribution if this inbound has Meta referral
+    const prevMeta =
+      existing.coupon_meta && typeof existing.coupon_meta === 'object'
+        ? (existing.coupon_meta as Record<string, unknown>)
+        : {};
+
+    const patch: Record<string, unknown> = {
+      coupon_meta: buildCouponMeta({
+        existing: prevMeta,
+        referral: input.referral,
+        messageText: input.messageText,
+        profileName: input.profileName,
+        providerMessageId: input.providerMessageId,
+        nowIso,
+      }),
+      problem_description: String(input.messageText || '').trim().slice(0, 1000) || undefined,
+      updated_at: new Date().toISOString(),
+    };
+
     if (input.referral) {
+      patch.lead_source = labels.lead_source;
+      patch.created_from = labels.created_from;
+    }
+
+    // Auto-assign if still unassigned so telecaller CRM/RLS can see it
+    let assignedTo: string | null = existing.assigned_telecaller_id
+      ? String(existing.assigned_telecaller_id)
+      : null;
+    if (!assignedTo) {
       try {
-        const prevMeta =
-          existing.coupon_meta && typeof existing.coupon_meta === 'object'
-            ? (existing.coupon_meta as Record<string, unknown>)
-            : {};
-        await supabaseAdmin
-          .from('service_leads')
-          .update({
-            lead_source: labels.lead_source,
-            created_from: labels.created_from,
-            coupon_meta: {
-              ...prevMeta,
-              whatsapp_inbound: true,
-              meta_referral: input.referral,
-              last_inbound_at: nowIso,
-              last_inbound_message: String(input.messageText || '').slice(0, 500) || null,
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
+        const { telecallerId } = await pickTelecallerWeightedRoundRobin();
+        if (telecallerId) {
+          patch.assigned_telecaller_id = telecallerId;
+          patch.assigned_at = nowIso;
+          assignedTo = telecallerId;
+        }
       } catch (e) {
-        console.warn('[whatsapp-inbound-lead] enrich failed', e);
+        console.warn('[whatsapp-inbound-lead] assign on enrich failed', e);
       }
     }
-    return { created: false, leadId: String(existing.id), skipped: 'existing_open_lead' };
+
+    // Drop undefined keys (problem_description when empty)
+    Object.keys(patch).forEach((k) => {
+      if (patch[k] === undefined) delete patch[k];
+    });
+
+    try {
+      await supabaseAdmin.from('service_leads').update(patch).eq('id', existing.id);
+    } catch (e) {
+      console.warn('[whatsapp-inbound-lead] enrich failed', e);
+    }
+
+    return {
+      created: false,
+      leadId: String(existing.id),
+      skipped: 'existing_open_lead',
+      assignedTo,
+    };
+  }
+
+  // New lead — pick telecaller for distribution
+  let assignedTelecallerId: string | null = null;
+  try {
+    const picked = await pickTelecallerWeightedRoundRobin();
+    assignedTelecallerId = picked.telecallerId || null;
+  } catch (e) {
+    console.warn('[whatsapp-inbound-lead] assignment failed', e);
   }
 
   const name =
@@ -154,7 +222,7 @@ export async function ensureWhatsAppInboundServiceLead(
     firstMsg ? `Msg: ${firstMsg}` : null,
   ].filter(Boolean);
 
-  const payload: Record<string, unknown> = {
+  const basePayload: Record<string, unknown> = {
     lead_number: leadNumber,
     lead_type: 'NORMAL',
     lead_source: labels.lead_source,
@@ -168,46 +236,67 @@ export async function ensureWhatsAppInboundServiceLead(
     problem_description: firstMsg || headline || null,
     is_incomplete: true,
     lead_priority: input.referral ? 'HIGH' : 'NORMAL',
-    assigned_telecaller_id: null,
-    coupon_meta: {
-      whatsapp_inbound: true,
-      whatsapp_enquiry: true,
-      meta_referral: input.referral || null,
-      first_message: firstMsg || null,
-      profile_name: input.profileName || null,
-      provider_message_id: input.providerMessageId || null,
-      inbound_at: nowIso,
-    },
+    assigned_telecaller_id: assignedTelecallerId,
+    assigned_at: assignedTelecallerId ? nowIso : null,
+    coupon_meta: buildCouponMeta({
+      referral: input.referral,
+      messageText: firstMsg,
+      profileName: input.profileName,
+      providerMessageId: input.providerMessageId,
+      nowIso,
+      isFirst: true,
+    }),
     created_at: nowIso,
     updated_at: nowIso,
   };
 
-  const { data: inserted, error: insertErr } = await supabaseAdmin
-    .from('service_leads')
-    .insert([payload])
-    .select('id')
-    .maybeSingle();
+  const tryInsert = async (payload: Record<string, unknown>) => {
+    return supabaseAdmin.from('service_leads').insert([payload]).select('id').maybeSingle();
+  };
 
+  let { data: inserted, error: insertErr } = await tryInsert(basePayload);
+
+  // Retry without optional columns that older DBs may lack
   if (insertErr) {
-    // Retry without optional columns that older DBs may lack
-    const slim = { ...payload };
+    console.warn('[whatsapp-inbound-lead] insert retry slim:', insertErr.message);
+    const slim = { ...basePayload };
     delete slim.is_incomplete;
     delete slim.lead_priority;
     delete slim.problem_description;
-    delete slim.assigned_telecaller_id;
-    const { data: retry, error: retryErr } = await supabaseAdmin
-      .from('service_leads')
-      .insert([slim])
-      .select('id')
-      .maybeSingle();
-    if (retryErr) {
-      console.error('[whatsapp-inbound-lead] insert failed:', insertErr.message, retryErr.message);
-      return { created: false, leadId: null, skipped: retryErr.message };
-    }
-    console.log('[whatsapp-inbound-lead] created (slim)', retry?.id, labels, phone10);
-    return { created: true, leadId: retry?.id ? String(retry.id) : null };
+    delete slim.assigned_at;
+    delete slim.description;
+    ({ data: inserted, error: insertErr } = await tryInsert(slim));
   }
 
-  console.log('[whatsapp-inbound-lead] created', inserted?.id, labels, phone10);
-  return { created: true, leadId: inserted?.id ? String(inserted.id) : null };
+  // Older DBs may restrict created_from CHECK — fall back to API while keeping WhatsApp lead_source
+  if (insertErr && /created_from|check constraint/i.test(insertErr.message || '')) {
+    console.warn('[whatsapp-inbound-lead] created_from fallback:', insertErr.message);
+    const fallback = {
+      ...basePayload,
+      created_from: 'API',
+    };
+    delete fallback.is_incomplete;
+    delete fallback.lead_priority;
+    delete fallback.assigned_at;
+    ({ data: inserted, error: insertErr } = await tryInsert(fallback));
+  }
+
+  if (insertErr) {
+    console.error('[whatsapp-inbound-lead] insert failed:', insertErr.message);
+    return { created: false, leadId: null, skipped: insertErr.message };
+  }
+
+  console.log(
+    '[whatsapp-inbound-lead] created',
+    inserted?.id,
+    labels,
+    phone10,
+    'assigned',
+    assignedTelecallerId,
+  );
+  return {
+    created: true,
+    leadId: inserted?.id ? String(inserted.id) : null,
+    assignedTo: assignedTelecallerId,
+  };
 }

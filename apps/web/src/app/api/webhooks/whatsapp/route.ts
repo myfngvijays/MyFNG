@@ -361,19 +361,29 @@ export async function POST(request: NextRequest) {
         // Create / enrich telecaller booking lead for WhatsApp (+ Meta CTWA ads)
         if (senderPhone) {
           const referral = extractWhatsAppReferral(inbound);
-          void ensureWhatsAppInboundServiceLead({
-            phone: senderPhone,
-            profileName,
-            messageText: brainText || textBody,
-            referral,
-            providerMessageId,
-            inboundReceivedAt: statusAt || now,
-          }).catch((leadErr) => {
+          try {
+            const leadResult = await ensureWhatsAppInboundServiceLead({
+              phone: senderPhone,
+              profileName,
+              messageText: brainText || textBody,
+              referral,
+              providerMessageId,
+              inboundReceivedAt: statusAt || now,
+            });
+            console.log('[whatsapp-webhook] inbound service lead', {
+              senderPhone,
+              created: leadResult.created,
+              leadId: leadResult.leadId,
+              assignedTo: leadResult.assignedTo || null,
+              skipped: leadResult.skipped || null,
+              hasReferral: Boolean(referral),
+            });
+          } catch (leadErr: any) {
             console.error('[whatsapp-webhook] inbound service lead failed:', {
               senderPhone,
               error: leadErr?.message || leadErr,
             });
-          });
+          }
         }
 
         if (senderPhone && brainText && isBrainEligibleInboundType(messageType)) {

@@ -338,6 +338,20 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
                 <Text style={styles.meta}>
                   {item.city || '—'} · {item.workshop?.name || 'No workshop'} · {formatCrmSource(item)}
                 </Text>
+                {item.message_preview || item.coupon_meta?.last_inbound_message || item.problem_description ? (
+                  <View style={styles.msgRow}>
+                    <Ionicons
+                      name={item.is_whatsapp_lead ? 'logo-whatsapp' : 'chatbubble-ellipses-outline'}
+                      size={13}
+                      color={item.is_whatsapp_lead ? '#25D366' : COLORS.textSecondary}
+                    />
+                    <Text style={styles.msgPreview} numberOfLines={2}>
+                      {item.message_preview ||
+                        item.coupon_meta?.last_inbound_message ||
+                        item.problem_description}
+                    </Text>
+                  </View>
+                ) : null}
                 {item.coupon_code ? (
                   <Text style={styles.coupon}>Coupon: {item.coupon_code}</Text>
                 ) : null}
@@ -611,6 +625,21 @@ const styles = StyleSheet.create({
   status: { backgroundColor: COLORS.primary + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   statusText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
   meta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3 },
+  msgRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.gray[200] || '#E5E7EB',
+  },
+  msgPreview: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    lineHeight: 16,
+  },
   coupon: { fontSize: 12, color: COLORS.orange, fontWeight: '600', marginTop: 4 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   act: {
