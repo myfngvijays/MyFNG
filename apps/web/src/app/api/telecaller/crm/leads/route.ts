@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
         id, lead_number, customer_name, customer_phone, status, city, created_from, lead_source,
         lead_priority, is_incomplete, follow_up_required, next_follow_up_at, last_call_at,
         total_calls, workshop_id, created_at, coupon_code, coupon_meta, payment_mode,
-        vehicle_make, vehicle_model, service_type, estimated_amount, description, problem_description,
+        vehicle_make, vehicle_model, vehicle_number, service_type, estimated_amount, description, problem_description,
         assigned_telecaller_id,
         workshop:workshops(id, name, city)
       `)
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
           id, lead_number, customer_name, customer_phone, status, city, created_from, lead_source,
           lead_priority, is_incomplete, follow_up_required, next_follow_up_at, last_call_at,
           total_calls, workshop_id, created_at, coupon_code, coupon_meta, payment_mode,
-          vehicle_make, vehicle_model, service_type, estimated_amount, description, problem_description,
+          vehicle_make, vehicle_model, vehicle_number, service_type, estimated_amount, description, problem_description,
           assigned_telecaller_id,
           workshop:workshops(id, name, city)
         `)
