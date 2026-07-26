@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { leadDisplayStatus, leadStatusPillClass } from '@/lib/telecaller/leadDisplayStatus';
 
 export default function TelecallerSubAdminDashboard() {
   const router = useRouter();
@@ -85,15 +86,7 @@ export default function TelecallerSubAdminDashboard() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      'NEW': 'bg-blue-100 text-blue-800',
-      'ACCEPTED': 'bg-green-100 text-green-800',
-      'IN_PROGRESS': 'bg-yellow-100 text-yellow-800',
-      'COMPLETED': 'bg-gray-100 text-gray-800',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
+  const getStatusColor = (lead: any) => leadStatusPillClass(lead);
 
   return (
     <DashboardLayout role="sub_admin">
@@ -251,8 +244,8 @@ export default function TelecallerSubAdminDashboard() {
                           <span className="text-sm text-gray-900">{lead.vehicle_number || 'N/A'}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(lead.status)}`}>
-                            {lead.status}
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(lead)}`}>
+                            {leadDisplayStatus(lead)}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

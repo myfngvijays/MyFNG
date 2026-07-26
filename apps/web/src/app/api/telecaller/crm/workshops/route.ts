@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const { data: rows, error } = await db
       .from('workshops')
       .select(
-        'id, name, workshop_name, city, address, short_address, pincode, service_pincode, mapping_pincodes, phone, is_verified, audit_score, one_day_capacity',
+        'id, name, workshop_name, workshop_area, near_famous_area, city, address, short_address, landmark, pincode, service_pincode, mapping_pincodes, phone, is_verified, audit_score, one_day_capacity, latitude, longitude',
       )
       .eq('is_verified', true)
       .order('audit_score', { ascending: false, nullsFirst: false })
@@ -66,17 +66,40 @@ export async function GET(request: NextRequest) {
       list = list.slice(0, 40);
     }
 
-    const workshops = list.map((w: any) => ({
-      id: w.id,
-      name: w.name || w.workshop_name,
-      city: w.city,
-      address: w.short_address || w.address,
-      pincode: w.pincode,
-      phone: w.phone,
-      is_verified: w.is_verified,
-      audit_score: w.audit_score,
-      one_day_capacity: w.one_day_capacity,
-    }));
+    const workshops = list.map((w: any) => {
+      const areaLabel =
+        String(w.workshop_name || '').trim() ||
+        String(w.workshop_area || '').trim() ||
+        String(w.near_famous_area || '').trim() ||
+        null;
+      const serviceCenter = String(w.name || '').trim() || null;
+      const address =
+        String(w.short_address || '').trim() ||
+        String(w.address || '').trim() ||
+        String(w.landmark || '').trim() ||
+        null;
+      return {
+        id: w.id,
+        /** MyFNG area brand name e.g. MyFNG Majiwada */
+        workshop_name: areaLabel,
+        /** Real service center / garage name */
+        service_center_name: serviceCenter,
+        name: areaLabel || serviceCenter || 'Workshop',
+        workshop_area: w.workshop_area || null,
+        near_famous_area: w.near_famous_area || null,
+        city: w.city,
+        address,
+        short_address: w.short_address || null,
+        landmark: w.landmark || null,
+        pincode: w.pincode,
+        phone: w.phone,
+        is_verified: w.is_verified,
+        audit_score: w.audit_score,
+        one_day_capacity: w.one_day_capacity,
+        latitude: w.latitude,
+        longitude: w.longitude,
+      };
+    });
 
     return NextResponse.json({
       success: true,

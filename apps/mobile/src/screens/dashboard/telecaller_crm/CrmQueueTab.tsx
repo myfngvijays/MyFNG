@@ -60,11 +60,76 @@ type Props = {
   initialFilter?: string;
   onOpenLead: (leadId: string) => void;
   onEditLead?: (leadId: string) => void;
+  datePreset?: CrmDatePreset;
+  customStart?: string;
+  customEnd?: string;
+  onDatePresetChange?: (v: CrmDatePreset) => void;
+  onCustomStartChange?: (v: string) => void;
+  onCustomEndChange?: (v: string) => void;
 };
 
-type DropdownKey = 'date' | 'city' | 'source' | 'priority' | null;
+type DropdownKey = 'date' | 'status' | 'city' | 'source' | 'priority' | null;
 
-export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditLead }: Props) {
+const STATUS_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'new', label: 'New' },
+  { id: 'interested', label: 'Interested' },
+  { id: 'will_visit', label: 'He will visit' },
+  { id: 'booking_confirmed', label: 'Booking confirmed' },
+  { id: 'in_service', label: 'In Service' },
+  { id: 'service_done', label: 'Service Done' },
+  { id: 'lost', label: 'Lost' },
+  { id: 'callback', label: 'Callback' },
+  { id: 'follow_up', label: 'Follow-up' },
+  { id: 'incomplete', label: 'Incomplete' },
+];
+
+function leadDisplayStatus(lead: any): string {
+  const label = String(lead?.coupon_meta?.last_call_label || '').trim();
+  if (label) return label;
+  const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+  const mapResult: Record<string, string> = {
+    INTERESTED: 'Interested',
+    WILL_VISIT: 'He will visit',
+    BOOKING_CONFIRMED: 'Booking confirmed',
+    IN_SERVICE: 'In Service',
+    SERVICE_DONE: 'Service Done',
+    LOST: 'Lost',
+    RINGING: 'Ringing',
+  };
+  if (result && mapResult[result]) return mapResult[result];
+  const hist = Array.isArray(lead?.coupon_meta?.profile_history)
+    ? lead.coupon_meta.profile_history
+    : [];
+  for (const entry of hist) {
+    const s = String(entry?.status || '').toUpperCase();
+    if (s && mapResult[s]) return mapResult[s];
+  }
+  const status = String(lead?.status || '').toUpperCase();
+  const mapStatus: Record<string, string> = {
+    NEW: 'New',
+    VALIDATED: 'Booking confirmed',
+    IN_PROGRESS: 'In Service',
+    COMPLETED: 'Service Done',
+    REJECTED: 'Lost',
+    CONTACTED: 'Contacted',
+    ASSIGNED: 'Assigned',
+    ACCEPTED: 'Accepted',
+  };
+  return mapStatus[status] || status.replace(/_/g, ' ') || 'New';
+}
+
+export default function CrmQueueTab({
+  initialFilter = 'all',
+  onOpenLead,
+  onEditLead,
+  datePreset: datePresetProp,
+  customStart: customStartProp,
+  customEnd: customEndProp,
+  onDatePresetChange,
+  onCustomStartChange,
+  onCustomEndChange,
+}: Props) {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -74,16 +139,24 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
   const [city, setCity] = useState('');
   const [source, setSource] = useState('');
   const [priority, setPriority] = useState('');
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('today');
+  const [customStartLocal, setCustomStartLocal] = useState(istYmd());
+  const [customEndLocal, setCustomEndLocal] = useState(istYmd());
   const [cities, setCities] = useState<string[]>([]);
   const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
   const [shareLead, setShareLead] = useState<any>(null);
   const [peers, setPeers] = useState<any[]>([]);
   const [sharing, setSharing] = useState(false);
 
+  const datePreset = datePresetProp ?? datePresetLocal;
+  const customStart = customStartProp ?? customStartLocal;
+  const customEnd = customEndProp ?? customEndLocal;
+  const setDatePreset = onDatePresetChange || setDatePresetLocal;
+  const setCustomStart = onCustomStartChange || setCustomStartLocal;
+  const setCustomEnd = onCustomEndChange || setCustomEndLocal;
+
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
+  const statusLabel = STATUS_FILTERS.find((c) => c.id === filter)?.label || 'All';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
 
   useEffect(() => {
@@ -113,8 +186,10 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
       if (city.trim()) params.set('city', city.trim());
       if (source.trim()) params.set('source', source.trim());
       if (priority.trim()) params.set('priority', priority.trim());
-      params.set('from', range.start);
-      params.set('to', range.end);
+      if (!range.allTime) {
+        params.set('from', range.start);
+        params.set('to', range.end);
+      }
       const data = await apiFetch<any>(`/api/telecaller/crm/leads?${params.toString()}`);
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
     } catch (e) {
@@ -168,16 +243,6 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
     }
   };
 
-  const chips = [
-    { id: 'all', label: 'All' },
-    { id: 'new', label: 'New' },
-    { id: 'callback', label: 'Callback' },
-    { id: 'follow_up', label: 'Follow-up' },
-    { id: 'incomplete', label: 'Incomplete' },
-    { id: 'booked', label: 'Booked' },
-    { id: 'rejected', label: 'Rejected' },
-  ];
-
   const cityOptions = useMemo(
     () => [{ value: '', label: 'All cities' }, ...cities.map((c) => ({ value: c, label: c }))],
     [cities],
@@ -189,7 +254,7 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
   };
 
   const renderSelect = (
-    key: Exclude<DropdownKey, 'date' | null>,
+    key: Exclude<DropdownKey, 'date' | 'status' | null>,
     label: string,
     value: string,
     options: Array<{ value: string; label: string }>,
@@ -252,62 +317,88 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-        style={styles.chipsScroll}
-      >
-        {chips.map((c) => (
+      {/* Status + Date filters — dropdowns (not horizontal slide) */}
+      <View style={styles.filterRow}>
+        <View style={[styles.dateDropdownWrap, styles.filterHalf, { zIndex: openDropdown === 'status' ? 30 : 20 }]}>
           <TouchableOpacity
-            key={c.id}
-            style={[styles.chip, filter === c.id && styles.chipActive]}
-            onPress={() => setFilter(c.id)}
+            style={styles.dateDropdownBtn}
+            onPress={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
+            activeOpacity={0.85}
           >
-            <Text style={[styles.chipText, filter === c.id && styles.chipTextActive]}>{c.label}</Text>
+            <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.dateDropdownText} numberOfLines={1}>
+              {statusLabel}
+            </Text>
+            <Ionicons
+              name={openDropdown === 'status' ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={COLORS.textSecondary}
+            />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+          {openDropdown === 'status' ? (
+            <View style={styles.dateMenu}>
+              <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                {STATUS_FILTERS.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.selectItem, filter === c.id && styles.selectItemActive]}
+                    onPress={() => {
+                      setFilter(c.id);
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <Text style={[styles.selectItemText, filter === c.id && styles.selectItemTextActive]}>
+                      {c.label}
+                    </Text>
+                    {filter === c.id ? (
+                      <Ionicons name="checkmark" size={16} color={COLORS.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+        </View>
 
-      {/* Date filter — dropdown */}
-      <View style={styles.dateDropdownWrap}>
-        <TouchableOpacity
-          style={styles.dateDropdownBtn}
-          onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.dateDropdownText} numberOfLines={1}>
-            {datePreset === 'custom' ? dateRange.label : dateLabel}
-          </Text>
-          <Ionicons
-            name={openDropdown === 'date' ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={COLORS.textSecondary}
-          />
-        </TouchableOpacity>
-        {openDropdown === 'date' ? (
-          <View style={styles.dateMenu}>
-            {CRM_DATE_PRESETS.map((p) => (
-              <TouchableOpacity
-                key={p.value}
-                style={[styles.selectItem, datePreset === p.value && styles.selectItemActive]}
-                onPress={() => {
-                  setDatePreset(p.value);
-                  setOpenDropdown(null);
-                  if (p.value === 'custom') setShowFilters(true);
-                }}
-              >
-                <Text style={[styles.selectItemText, datePreset === p.value && styles.selectItemTextActive]}>
-                  {p.label}
-                </Text>
-                {datePreset === p.value ? (
-                  <Ionicons name="checkmark" size={16} color={COLORS.primary} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
+        <View style={[styles.dateDropdownWrap, styles.filterHalf, { zIndex: openDropdown === 'date' ? 30 : 19 }]}>
+          <TouchableOpacity
+            style={styles.dateDropdownBtn}
+            onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.dateDropdownText} numberOfLines={1}>
+              {datePreset === 'custom' ? dateRange.label : dateLabel}
+            </Text>
+            <Ionicons
+              name={openDropdown === 'date' ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={COLORS.textSecondary}
+            />
+          </TouchableOpacity>
+          {openDropdown === 'date' ? (
+            <View style={styles.dateMenu}>
+              {CRM_DATE_PRESETS.map((p) => (
+                <TouchableOpacity
+                  key={p.value}
+                  style={[styles.selectItem, datePreset === p.value && styles.selectItemActive]}
+                  onPress={() => {
+                    setDatePreset(p.value);
+                    setOpenDropdown(null);
+                    if (p.value === 'custom') setShowFilters(true);
+                  }}
+                >
+                  <Text style={[styles.selectItemText, datePreset === p.value && styles.selectItemTextActive]}>
+                    {p.label}
+                  </Text>
+                  {datePreset === p.value ? (
+                    <Ionicons name="checkmark" size={16} color={COLORS.primary} />
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {loading ? (
@@ -331,7 +422,7 @@ export default function CrmQueueTab({ initialFilter = 'all', onOpenLead, onEditL
                 <View style={styles.cardTop}>
                   <Text style={styles.name} numberOfLines={1}>{item.customer_name}</Text>
                   <View style={styles.status}>
-                    <Text style={styles.statusText}>{item.status}</Text>
+                    <Text style={styles.statusText}>{leadDisplayStatus(item)}</Text>
                   </View>
                 </View>
                 <Text style={styles.meta}>#{item.lead_number} · {item.customer_phone}</Text>
@@ -544,18 +635,18 @@ const styles = StyleSheet.create({
   },
   search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
   filterBtn: { padding: 6 },
-  chipsScroll: { flexGrow: 0, maxHeight: 44 },
-  chips: { paddingHorizontal: SPACING.md, gap: 8, paddingBottom: 8, alignItems: 'center' },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: COLORS.gray[100],
-    marginRight: 8,
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: SPACING.md,
+    marginBottom: 8,
+    alignItems: 'flex-start',
   },
-  chipActive: { backgroundColor: COLORS.primary },
-  chipText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
-  chipTextActive: { color: '#fff' },
+  filterHalf: {
+    flex: 1,
+    marginHorizontal: 0,
+    marginBottom: 0,
+  },
   dateDropdownWrap: {
     marginHorizontal: SPACING.md,
     marginBottom: 8,

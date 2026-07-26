@@ -1,36 +1,129 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
+function dayBoundsFromParam(raw: string | null, fallbackYmd: string) {
+  const v = String(raw || '').trim();
+  if (!v) {
+    return {
+      start: `${fallbackYmd}T00:00:00.000+05:30`,
+      end: `${fallbackYmd}T23:59:59.999+05:30`,
+      ymd: fallbackYmd,
+    };
+  }
+  // Full ISO already (from mobile CRM)
+  if (v.includes('T')) {
+    const ymd = v.slice(0, 10);
+    return { start: v, end: v, ymd };
+  }
+  const ymd = v.slice(0, 10);
+  return {
+    start: `${ymd}T00:00:00.000+05:30`,
+    end: `${ymd}T23:59:59.999+05:30`,
+    ymd,
+  };
+}
+
+function istYmdToday() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 /**
- * GET /api/telecaller/crm/dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * GET /api/telecaller/crm/dashboard?from=&to=&all=1
  * Aggregated home KPIs + 7-day trend for Advanced CRM Home tab.
  */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClientFromRequest(request);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const profile = await resolveUserProfile(supabase, user);
     const teleCallerId = String(profile?.id || '').trim();
     if (!teleCallerId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const db = (supabaseAdmin ?? supabase) as any;
+
     const url = new URL(request.url);
-    const today = new Date().toISOString().slice(0, 10);
-    const from = String(url.searchParams.get('from') || today).slice(0, 10);
-    const to = String(url.searchParams.get('to') || today).slice(0, 10);
+    const allTime =
+      url.searchParams.get('all') === '1' ||
+      url.searchParams.get('all_time') === '1' ||
+      String(url.searchParams.get('preset') || '').toLowerCase() === 'all_time';
+
+    const today = istYmdToday();
+    const fromRaw = url.searchParams.get('from');
+    const toRaw = url.searchParams.get('to');
+
+    let rangeStart: string | null = null;
+    let rangeEnd: string | null = null;
+    let fromYmd = today;
+    let toYmd = today;
+
+    if (!allTime) {
+      const fromB = dayBoundsFromParam(fromRaw, today);
+      const toB = dayBoundsFromParam(toRaw, today);
+      // When mobile sends full ISO start/end, use them directly
+      if (fromRaw && fromRaw.includes('T') && toRaw && toRaw.includes('T')) {
+        rangeStart = fromRaw;
+        rangeEnd = toRaw;
+        fromYmd = fromRaw.slice(0, 10);
+        toYmd = toRaw.slice(0, 10);
+      } else {
+        rangeStart = fromB.start;
+        rangeEnd = toB.end;
+        fromYmd = fromB.ymd;
+        toYmd = toB.ymd;
+      }
+    }
 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 6);
-    const weekStart = weekAgo.toISOString().slice(0, 10);
+    const weekStartParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(weekAgo);
+    const wg = (t: string) => weekStartParts.find((p) => p.type === t)?.value || '';
+    const weekStart = `${wg('year')}-${wg('month')}-${wg('day')}`;
 
-    const rangeStart = `${from}T00:00:00`;
-    const rangeEnd = `${to}T23:59:59`;
+    const mineOrUnassigned = `assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`;
+
+    const applyCreatedRange = (q: any) => {
+      if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
+      return q;
+    };
+    const applyFuRange = (q: any) => {
+      if (rangeStart && rangeEnd) {
+        return q.gte('next_follow_up_at', rangeStart).lte('next_follow_up_at', rangeEnd);
+      }
+      return q;
+    };
+    const applySchedRange = (q: any) => {
+      if (rangeStart && rangeEnd) return q.gte('scheduled_time', rangeStart).lte('scheduled_time', rangeEnd);
+      return q;
+    };
+    const applyCallRange = (q: any) => {
+      if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
+      return q;
+    };
 
     const [
+      totalLeads,
       newLeads,
       callbacks,
       followUps,
@@ -41,63 +134,73 @@ export async function GET(request: NextRequest) {
       metrics,
       attendance,
     ] = await Promise.all([
-      supabase
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-        .eq('status', 'NEW')
-        .is('last_call_at', null)
-        .gte('created_at', rangeStart)
-        .lte('created_at', rangeEnd),
-      supabase
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .eq('assigned_telecaller_id', teleCallerId)
-        .eq('follow_up_required', true)
-        .lte('next_follow_up_at', rangeEnd)
-        .gte('next_follow_up_at', rangeStart),
-      supabase
-        .from('telecaller_follow_ups')
-        .select('id', { count: 'exact', head: true })
-        .eq('telecaller_id', teleCallerId)
-        .eq('status', 'PENDING')
-        .gte('scheduled_time', rangeStart)
-        .lte('scheduled_time', rangeEnd),
-      supabase
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .eq('created_by_id', teleCallerId)
-        .in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED'])
-        .gte('created_at', rangeStart)
-        .lte('created_at', rangeEnd),
-      supabase
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
-        .eq('is_incomplete', true)
-        .gte('created_at', rangeStart)
-        .lte('created_at', rangeEnd),
-      supabase
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .eq('assigned_telecaller_id', teleCallerId)
-        .eq('status', 'REJECTED')
-        .gte('created_at', rangeStart)
-        .lte('created_at', rangeEnd),
-      supabase
-        .from('telecaller_call_logs')
-        .select('call_status')
-        .eq('telecaller_id', teleCallerId)
-        .gte('created_at', rangeStart)
-        .lte('created_at', rangeEnd),
-      supabase
+      applyCreatedRange(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .or(mineOrUnassigned)
+          .is('deleted_at', null),
+      ),
+      applyCreatedRange(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .or(mineOrUnassigned)
+          .eq('status', 'NEW')
+          .is('deleted_at', null),
+      ),
+      applyFuRange(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_telecaller_id', teleCallerId)
+          .eq('follow_up_required', true)
+          .is('deleted_at', null),
+      ),
+      applySchedRange(
+        db
+          .from('telecaller_follow_ups')
+          .select('id', { count: 'exact', head: true })
+          .eq('telecaller_id', teleCallerId)
+          .eq('status', 'PENDING'),
+      ),
+      applyCreatedRange(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .or(mineOrUnassigned)
+          .in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'VALIDATED'])
+          .is('deleted_at', null),
+      ),
+      applyCreatedRange(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .or(mineOrUnassigned)
+          .eq('is_incomplete', true)
+          .is('deleted_at', null),
+      ),
+      applyCreatedRange(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_telecaller_id', teleCallerId)
+          .eq('status', 'REJECTED')
+          .is('deleted_at', null),
+      ),
+      applyCallRange(
+        db.from('telecaller_call_logs').select('call_status').eq('telecaller_id', teleCallerId),
+      ),
+      db
         .from('telecaller_performance_metrics')
-        .select('date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate')
+        .select(
+          'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate',
+        )
         .eq('telecaller_id', teleCallerId)
         .gte('date', weekStart)
         .lte('date', today)
         .order('date', { ascending: true }),
-      supabase
+      db
         .from('telecaller_attendance')
         .select('*')
         .eq('telecaller_id', teleCallerId)
@@ -112,10 +215,18 @@ export async function GET(request: NextRequest) {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const keyParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        weekday: 'short',
+      }).formatToParts(d);
+      const g = (t: string) => keyParts.find((p) => p.type === t)?.value || '';
+      const key = `${g('year')}-${g('month')}-${g('day')}`;
       seriesMap[key] = {
         date: key,
-        label: d.toLocaleDateString('en-IN', { weekday: 'short' }),
+        label: g('weekday'),
         calls: 0,
         answered: 0,
         leads_created: 0,
@@ -135,16 +246,19 @@ export async function GET(request: NextRequest) {
     });
 
     const trend = Object.values(seriesMap);
-    if (!(metrics.data || []).length && calls.length && from === today && to === today) {
+    if (!(metrics.data || []).length && calls.length && fromYmd === today && toYmd === today && !allTime) {
       const todayPoint = trend[trend.length - 1] as any;
-      todayPoint.calls = calls.length;
-      todayPoint.answered = answered;
+      if (todayPoint) {
+        todayPoint.calls = calls.length;
+        todayPoint.answered = answered;
+      }
     }
 
     return NextResponse.json({
       success: true,
-      range: { from, to },
+      range: { from: fromYmd, to: toYmd, all_time: allTime },
       kpis: {
+        total_leads: totalLeads.count || 0,
         new_leads: newLeads.count || 0,
         callbacks: callbacks.count || 0,
         followups_today: followUps.count || 0,

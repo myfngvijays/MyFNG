@@ -68,9 +68,9 @@ export default function TelecallerCrmHomePage() {
     { label: 'New', value: kpis.new_leads, color: 'text-blue-700', filter: 'new' },
     { label: 'Callbacks', value: kpis.callbacks, color: 'text-orange-600', filter: 'callback' },
     { label: 'Follow-ups', value: kpis.followups_today, color: 'text-indigo-600', filter: 'follow_up' },
-    { label: 'Booked', value: kpis.booked, color: 'text-emerald-600', filter: 'booked' },
+    { label: 'Booking confirmed', value: kpis.booked, color: 'text-emerald-600', filter: 'booked' },
     { label: 'Incomplete', value: kpis.incomplete, color: 'text-amber-600', filter: 'incomplete' },
-    { label: 'Rejected', value: kpis.rejected, color: 'text-red-600', filter: 'rejected' },
+    { label: 'Lost', value: kpis.rejected, color: 'text-red-600', filter: 'lost' },
   ];
 
   const maxCalls = Math.max(1, ...trend.map((t) => Number(t.calls || 0)));

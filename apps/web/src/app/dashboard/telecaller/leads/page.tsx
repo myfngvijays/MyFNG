@@ -10,6 +10,11 @@ import {
   type CrmDatePreset,
   istYmd,
 } from '@/lib/telecaller/crmDateRange';
+import {
+  LEAD_STATUS_FILTERS,
+  leadDisplayStatus,
+  leadStatusPillClass,
+} from '@/lib/telecaller/leadDisplayStatus';
 import { createClient } from '@/lib/supabase/client';
 import {
   Phone,
@@ -20,16 +25,6 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
-
-const FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'new', label: 'New' },
-  { id: 'callback', label: 'Callback' },
-  { id: 'follow_up', label: 'Follow-up' },
-  { id: 'incomplete', label: 'Incomplete' },
-  { id: 'booked', label: 'Booked' },
-  { id: 'rejected', label: 'Rejected' },
-];
 
 const SOURCE_OPTIONS = [
   { value: '', label: 'All sources' },
@@ -182,21 +177,39 @@ function TelecallerCrmLeadsContent() {
           </Link>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFilterAndUrl(f.id)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-                filter === f.id
-                  ? 'bg-[#004AAD] text-white'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200'
-              }`}
+        <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="min-w-[200px] flex-1">
+            <label className="mb-1 block text-xs font-bold text-slate-500">Status</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              value={filter}
+              onChange={(e) => setFilterAndUrl(e.target.value)}
             >
-              {f.label}
-            </button>
-          ))}
+              {LEAD_STATUS_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[180px] flex-1">
+            <label className="mb-1 block text-xs font-bold text-slate-500">Date</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              value={datePreset}
+              onChange={(e) => {
+                const v = e.target.value as CrmDatePreset;
+                setDatePreset(v);
+                if (v === 'custom') setShowFilters(true);
+              }}
+            >
+              {CRM_DATE_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -228,20 +241,6 @@ function TelecallerCrmLeadsContent() {
 
         {showFilters ? (
           <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-500">Date</label>
-              <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={datePreset}
-                onChange={(e) => setDatePreset(e.target.value as CrmDatePreset)}
-              >
-                {CRM_DATE_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </div>
             {datePreset === 'custom' ? (
               <>
                 <div>
@@ -331,8 +330,10 @@ function TelecallerCrmLeadsContent() {
                       <span className="text-sm font-extrabold text-[#023D95]">
                         {lead.lead_number || lead.id?.slice(0, 8)}
                       </span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
-                        {lead.status || '—'}
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${leadStatusPillClass(lead)}`}
+                      >
+                        {leadDisplayStatus(lead)}
                       </span>
                       {lead.lead_priority ? (
                         <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">

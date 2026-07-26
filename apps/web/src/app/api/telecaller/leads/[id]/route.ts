@@ -312,6 +312,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
+    // Allow telecaller to advance lead disposition (e.g. Booking confirmed → VALIDATED)
+    if (body?.status != null && String(body.status).trim()) {
+      const nextStatus = String(body.status).trim().toUpperCase();
+      const ALLOWED_STATUS_SET = new Set([
+        'NEW',
+        'CONTACTED',
+        'INCOMPLETE',
+        'PENDING',
+        'VALIDATED',
+        'ASSIGNED',
+        'IN_PROGRESS',
+        'COMPLETED',
+        'REJECTED',
+      ]);
+      if (ALLOWED_STATUS_SET.has(nextStatus)) {
+        update.status = nextStatus;
+      }
+    }
+
     if (body?.workshop_id !== undefined) {
       update.workshop_id = body.workshop_id || null;
     }

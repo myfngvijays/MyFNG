@@ -23,21 +23,88 @@ import { trackEvent } from '../lib/trackEvent';
 
 type Props = {
   navigation: any;
-  route: any;
+  route?: any;
+  /** When true (CRM tab), hide public back/pill nav and fill parent. */
+  embedded?: boolean;
 };
 
 type WorkshopRow = {
   id: string;
   name: string;
   workshop_name?: string | null;
+  workshop_area?: string | null;
+  near_famous_area?: string | null;
   city: string | null;
   address?: string | null;
+  short_address?: string | null;
+  pincode?: string | null;
+  service_pincode?: string | null;
+  mapping_pincodes?: unknown;
   latitude: number | null;
   longitude: number | null;
   map_link: string | null;
   is_verified: boolean | null;
   phone?: string | null;
 };
+
+const MAX_SANE_KM = 150;
+
+function normalizePinList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item || '').trim()).filter((p) => /^\d{6}$/.test(p));
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        return normalizePinList(JSON.parse(trimmed));
+      } catch {
+        /* fall through */
+      }
+    }
+    return trimmed
+      .split(/[|,;\s]+/)
+      .map((p) => p.trim())
+      .filter((p) => /^\d{6}$/.test(p));
+  }
+  return [];
+}
+
+function workshopCoversPincode(w: WorkshopRow, pincode: string): boolean {
+  const target = String(pincode || '').trim();
+  if (!/^\d{6}$/.test(target)) return false;
+  if (String(w.pincode || '').trim() === target) return true;
+  const servicePin = String(w.service_pincode || '').trim();
+  if (servicePin === target) return true;
+  if (servicePin && normalizePinList(servicePin.replace(/\|/g, ',')).includes(target)) return true;
+  return normalizePinList(w.mapping_pincodes).includes(target);
+}
+
+function workshopDisplayName(w: WorkshopRow) {
+  return (
+    String(w.workshop_name || '').trim() ||
+    String(w.workshop_area || '').trim() ||
+    String(w.near_famous_area || '').trim() ||
+    String(w.name || '').trim() ||
+    'Workshop'
+  );
+}
+
+function workshopCenterName(w: WorkshopRow) {
+  const area = workshopDisplayName(w);
+  const center = String(w.name || '').trim();
+  if (center && center !== area) return center;
+  return null;
+}
+
+function workshopAddress(w: WorkshopRow) {
+  return (
+    String(w.short_address || '').trim() ||
+    String(w.address || '').trim() ||
+    null
+  );
+}
 
 const { height: SCREEN_H } = Dimensions.get('window');
 const MAP_H = Math.max(240, Math.min(360, Math.round(SCREEN_H * 0.42)));
@@ -60,7 +127,16 @@ const SEARCH_LOCATION_PRESETS: Record<string, { lat: number; lng: number; label:
 };
 
 function workshopSearchText(w: WorkshopRow) {
-  return [w.name, w.workshop_name, w.city, w.address]
+  return [
+    w.name,
+    w.workshop_name,
+    w.workshop_area,
+    w.near_famous_area,
+    w.city,
+    w.address,
+    w.short_address,
+    w.pincode,
+  ]
     .map((v) => String(v || '').trim().toLowerCase())
     .filter(Boolean)
     .join(' ');
@@ -154,7 +230,7 @@ function openMapsForWorkshop(w: any) {
   Alert.alert('No map location', 'This workshop does not have a map location yet.');
 }
 
-export default function PublicWorkshopLocatorScreen({ navigation, route }: Props) {
+export default function PublicWorkshopLocatorScreen({ navigation, route, embedded = false }: Props) {
   const city: string | undefined = route?.params?.city;
   const routeUserLoc = route?.params?.userLoc as { lat?: number; lng?: number } | undefined;
   const initialUserLoc =
@@ -183,18 +259,41 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
 
   const filtered = useMemo(() => {
     const q = query.trim();
-    const base = q ? rows.filter((w) => workshopMatchesQuery(w, q)) : rows;
+    const pinQuery = /^\d{6}$/.test(q) ? q : null;
+    let base = rows;
+    if (pinQuery) {
+      const nearby = rows.filter((w) => workshopCoversPincode(w, pinQuery));
+      base = nearby.length ? nearby : rows.filter((w) => workshopMatchesQuery(w, q));
+    } else if (q) {
+      base = rows.filter((w) => workshopMatchesQuery(w, q));
+    }
 
-    if (!userLoc) return base;
+    if (!userLoc) return base.map((w) => ({ ...w, _km: null as number | null }));
+
     const scored = base
       .map((w) => {
         const lat = w.latitude;
         const lng = w.longitude;
-        if (typeof lat !== 'number' || typeof lng !== 'number') return { w, km: Number.POSITIVE_INFINITY };
+        if (typeof lat !== 'number' || typeof lng !== 'number') {
+          return { w, km: Number.POSITIVE_INFINITY };
+        }
+        // Ignore obviously bad coordinates
+        if (lat < 6 || lat > 38 || lng < 68 || lng > 98) {
+          return { w, km: Number.POSITIVE_INFINITY };
+        }
         return { w, km: haversineKm(userLoc, { lat, lng }) };
       })
       .sort((a, b) => a.km - b.km);
-    return scored.map((s) => ({ ...s.w, _km: s.km } as any));
+
+    // If GPS is wildly off (e.g. US coords vs India workshops), don't show absurd km
+    const finite = scored.filter((s) => Number.isFinite(s.km));
+    const saneCount = finite.filter((s) => s.km <= MAX_SANE_KM).length;
+    const useDistance = saneCount >= Math.min(3, Math.max(1, Math.floor(finite.length * 0.2)));
+
+    return scored.map((s) => ({
+      ...s.w,
+      _km: useDistance && Number.isFinite(s.km) && s.km <= MAX_SANE_KM ? s.km : null,
+    })) as any[];
   }, [rows, query, userLoc]);
 
   const mappable = useMemo(() => {
@@ -234,7 +333,9 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
       // Always fetch all verified workshops; distance sorting handles relevance
       const { data, error } = await supabase
         .from('workshops')
-        .select('id,name,workshop_name,city,address,latitude,longitude,map_link,near_area_google_map,is_verified,phone')
+        .select(
+          'id,name,workshop_name,workshop_area,near_famous_area,city,address,short_address,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,phone',
+        )
         .eq('is_verified', true)
         .order('created_at', { ascending: false })
         .limit(250);
@@ -298,6 +399,9 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
   const renderItem = ({ item }: any) => {
     const km = typeof item._km === 'number' && Number.isFinite(item._km) ? item._km : null;
     const isExpanded = expandedId === String(item.id);
+    const title = workshopDisplayName(item);
+    const center = workshopCenterName(item);
+    const address = workshopAddress(item);
     return (
       <View style={[styles.sheetItem, isExpanded ? styles.sheetItemActive : null]}>
         <TouchableOpacity
@@ -322,16 +426,28 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
             <Ionicons name="heart-outline" size={20} color={COLORS.primaryDark} />
           </TouchableOpacity>
 
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.sheetTitle} numberOfLines={1}>
-              {item.workshop_name || item.name}
+              {title}
             </Text>
-            <Text style={styles.sheetSub} numberOfLines={2}>
-              {item.city || '—'}
+            {center ? (
+              <Text style={styles.sheetCenter} numberOfLines={1}>
+                {center}
+              </Text>
+            ) : null}
+            {address ? (
+              <Text style={styles.sheetSub} numberOfLines={2}>
+                {address}
+              </Text>
+            ) : null}
+            <Text style={styles.sheetSub} numberOfLines={1}>
+              {[item.city, item.pincode].filter(Boolean).join(' · ') || '—'}
             </Text>
             {km != null ? (
               <View style={styles.kmPill}>
-                <Text style={styles.kmPillText}>{km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`}</Text>
+                <Text style={styles.kmPillText}>
+                  {km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)} km`}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -355,13 +471,14 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
     );
   };
 
-  return (
-    <SafeAreaView style={styles.safe}>
+  const content = (
       <View style={styles.screen}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
-            <Ionicons name="arrow-back" size={20} color={COLORS.primaryDark} />
-          </TouchableOpacity>
+          {!embedded ? (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+              <Ionicons name="arrow-back" size={20} color={COLORS.primaryDark} />
+            </TouchableOpacity>
+          ) : null}
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Workshop Locator</Text>
             <Text style={styles.subTitle}>
@@ -380,11 +497,12 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search workshop, city or area (e.g. Thane, Kalyan)"
+            placeholder="Search pincode, workshop, city (e.g. 400601)"
             placeholderTextColor={COLORS.gray[500]}
             style={styles.searchInput}
             autoCorrect={false}
             autoCapitalize="none"
+            keyboardType="default"
           />
           <TouchableOpacity onPress={fetchWorkshops} style={styles.refreshBtn} activeOpacity={0.9}>
             <Ionicons name={loading ? 'sync' : 'refresh'} size={16} color={COLORS.primary} />
@@ -467,7 +585,7 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
         </View>
 
         {/* Bottom sheet list overlay (BMS-style) */}
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, embedded ? styles.sheetEmbedded : styles.sheetPublic]}>
           <View style={styles.sheetHandle} />
         <FlatList
           data={filtered}
@@ -484,21 +602,28 @@ export default function PublicWorkshopLocatorScreen({ navigation, route }: Props
         />
         </View>
 
-        <PublicPillNav
-          activeTab="roadside"
-          onPressTab={(tab: PublicPillNavTab) => {
-            if (tab === 'home') navigation.navigate('PublicHome');
-            if (tab === 'services') navigation.navigate('PublicServicePackages', { city });
-            if (tab === 'ai') navigation.navigate('AIBooking', { city, fullScreen: true });
-            if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city });
-            if (tab === 'account') navigation.navigate('Settings');
-            if (tab === 'profile') navigation.navigate('Settings');
-            if (tab === 'settings') Alert.alert('Support', 'Use the home screen support option.');
-          }}
-        />
+        {!embedded ? (
+          <PublicPillNav
+            activeTab="roadside"
+            onPressTab={(tab: PublicPillNavTab) => {
+              if (tab === 'home') navigation.navigate('PublicHome');
+              if (tab === 'services') navigation.navigate('PublicServicePackages', { city });
+              if (tab === 'ai') navigation.navigate('AIBooking', { city, fullScreen: true });
+              if (tab === 'roadside') navigation.navigate('RoadsideAssistance', { city });
+              if (tab === 'account') navigation.navigate('Settings');
+              if (tab === 'profile') navigation.navigate('Settings');
+              if (tab === 'settings') Alert.alert('Support', 'Use the home screen support option.');
+            }}
+          />
+        ) : null}
       </View>
-    </SafeAreaView>
   );
+
+  if (embedded) {
+    return content;
+  }
+
+  return <SafeAreaView style={styles.safe}>{content}</SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
@@ -675,7 +800,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 64, // above pill nav
     top: MAP_H + 118, // header + search + map approx
     backgroundColor: '#fff',
     borderTopLeftRadius: 22,
@@ -688,6 +812,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -6 },
     elevation: 6,
   },
+  sheetEmbedded: { bottom: 0 },
+  sheetPublic: { bottom: 64 },
   sheetHandle: {
     alignSelf: 'center',
     width: 46,
@@ -699,7 +825,7 @@ const styles = StyleSheet.create({
   },
   sheetList: {
     paddingHorizontal: SPACING.md,
-    paddingBottom: 110,
+    paddingBottom: 120,
     paddingTop: 6,
     gap: 10,
   },
@@ -729,16 +855,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
   sheetTitle: { fontSize: FONT_SIZES.md, fontWeight: '900', color: COLORS.primaryDark },
-  sheetSub: { marginTop: 4, fontSize: FONT_SIZES.xs, fontWeight: '700', color: COLORS.gray[600], lineHeight: 16 },
+  sheetCenter: {
+    marginTop: 3,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  sheetSub: { marginTop: 4, fontSize: FONT_SIZES.xs, fontWeight: '600', color: COLORS.gray[600], lineHeight: 16 },
   kmPill: {
     alignSelf: 'flex-start',
     marginTop: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#EEF6FF',
   },
-  kmPillText: { fontSize: FONT_SIZES.xs, fontWeight: '900', color: COLORS.gray[800] },
+  kmPillText: { fontSize: FONT_SIZES.xs, fontWeight: '900', color: COLORS.primary },
   sheetActions: {
     flexDirection: 'row',
     gap: SPACING.sm,

@@ -23,17 +23,39 @@ import {
 type Props = {
   onNavigate: (screen: string, params?: any) => void;
   onOpenWhatsApp: () => void;
+  datePreset?: CrmDatePreset;
+  customStart?: string;
+  customEnd?: string;
+  onDatePresetChange?: (v: CrmDatePreset) => void;
+  onCustomStartChange?: (v: string) => void;
+  onCustomEndChange?: (v: string) => void;
 };
 
-export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
+export default function CrmHomeTab({
+  onNavigate,
+  onOpenWhatsApp,
+  datePreset: datePresetProp,
+  customStart: customStartProp,
+  customEnd: customEndProp,
+  onDatePresetChange,
+  onCustomStartChange,
+  onCustomEndChange,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<any>(null);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('today');
+  const [customStartLocal, setCustomStartLocal] = useState(istYmd());
+  const [customEndLocal, setCustomEndLocal] = useState(istYmd());
   const [dateOpen, setDateOpen] = useState(false);
   const [aanshActive, setAanshActive] = useState(false);
+
+  const datePreset = datePresetProp ?? datePresetLocal;
+  const customStart = customStartProp ?? customStartLocal;
+  const customEnd = customEndProp ?? customEndLocal;
+  const setDatePreset = onDatePresetChange || setDatePresetLocal;
+  const setCustomStart = onCustomStartChange || setCustomStartLocal;
+  const setCustomEnd = onCustomEndChange || setCustomEndLocal;
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
@@ -41,10 +63,13 @@ export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
   const load = useCallback(async () => {
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
-      const params = new URLSearchParams({
-        from: range.start,
-        to: range.end,
-      });
+      const params = new URLSearchParams();
+      if (range.allTime) {
+        params.set('all', '1');
+      } else {
+        params.set('from', range.start);
+        params.set('to', range.end);
+      }
       const res = await apiFetch<any>(`/api/telecaller/crm/dashboard?${params.toString()}`);
       setData(res);
     } catch (e) {
@@ -64,7 +89,7 @@ export default function CrmHomeTab({ onNavigate, onOpenWhatsApp }: Props) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.muted}>Loading Advanced CRM...</Text>
+        <Text style={styles.muted}>Loading MyFNG CRM...</Text>
       </View>
     );
   }

@@ -124,6 +124,8 @@ const ICON_MAP: Record<string, IoniconsName> = {
   'alarm': 'alarm-outline',
   'hourglass': 'hourglass-outline',
   'history': 'time-outline',
+  'circle-outline': 'ellipse-outline',
+  'radiobox-blank': 'ellipse-outline',
   'schedule': 'calendar-outline',
   'event': 'calendar-outline',
   'date': 'calendar-outline',

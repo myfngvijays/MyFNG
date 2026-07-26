@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDateTime } from "@/lib/dateFormat";
+import { formatDateTime, formatDateDMY } from "@/lib/dateFormat";
 import {
   View,
   Text,
@@ -10,7 +10,11 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
-  BackHandler
+  BackHandler,
+  Platform,
+  Modal,
+  Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
@@ -21,14 +25,337 @@ import { apiFetch } from '../../../lib/api';
 import { parseIds } from '../../../lib/parseIds';
 import { openPhoneCall, openWhatsApp } from '../../../lib/phone';
 import { COLORS, SPACING } from '../../../constants/theme';
+import CarModelSearchField from '../../../components/CarModelSearchField';
+import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanPicker';
+import CrmPickupVisitStep, {
+  type CrmPickupVisitValue,
+} from '../../../components/telecaller/CrmPickupVisitStep';
 
-const CALL_STATUSES = ['ANSWERED', 'NO_ANSWER', 'BUSY', 'SWITCHED_OFF', 'WRONG_NUMBER'];
-const CALL_OUTCOMES = ['INFO_COLLECTED', 'FOLLOW_UP_SCHEDULED', 'NOT_INTERESTED', 'LEAD_CREATED', 'OTHER'];
-const NO_OUTCOME_STATUSES = new Set(['SWITCHED_OFF', 'WRONG_NUMBER']);
-const FOLLOW_UP_TYPES = ['CALLBACK', 'REMINDER', 'FOLLOW_UP'];
-const FOLLOW_UP_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
+const EDITABLE_LEAD_STATUSES = new Set([
+  'NEW',
+  'CONTACTED',
+  'INCOMPLETE',
+  'ASSIGNED',
+  'VALIDATED',
+  'PENDING',
+  'IN_PROGRESS',
+]);
 
-export default function TelecallerLeadDetailScreen({ route, navigation, embedded = false }: any) {
+const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
+
+type EditForm = {
+  customer_name: string;
+  customer_phone: string;
+  customer_alternate_phone: string;
+  customer_email: string;
+  city_id: string;
+  city: string;
+  pincode: string;
+  vehicle_number: string;
+  vehicle_make: string;
+  model_id: string;
+  vehicle_model: string;
+  vehicle_class: string;
+  vehicle_fuel_type: string;
+  vehicle_year: string;
+  odometer_km: string;
+  service_types: string[];
+  service_addons: string[];
+  problem_description: string;
+  pickup_required: boolean;
+  pickup_address: string;
+  address_type: 'home' | 'work' | 'other';
+  flat_number: string;
+  landmark: string;
+  pickup_date: string;
+  pickup_time: string;
+  workshop_id: string;
+  workshop_name: string;
+};
+
+function emptyEditForm(): EditForm {
+  return {
+    customer_name: '',
+    customer_phone: '',
+    customer_alternate_phone: '',
+    customer_email: '',
+    city_id: '',
+    city: '',
+    pincode: '',
+    vehicle_number: '',
+    vehicle_make: '',
+    model_id: '',
+    vehicle_model: '',
+    vehicle_class: '',
+    vehicle_fuel_type: '',
+    vehicle_year: '',
+    odometer_km: '',
+    service_types: [],
+    service_addons: [],
+    problem_description: '',
+    pickup_required: true,
+    pickup_address: '',
+    address_type: 'home',
+    flat_number: '',
+    landmark: '',
+    pickup_date: '',
+    pickup_time: '',
+    workshop_id: '',
+    workshop_name: '',
+  };
+}
+
+function slotIso(date: string, time: string) {
+  if (!date || !time) return null;
+  return `${date}T${time}:00+05:30`;
+}
+
+function parseSlot(iso: string | null | undefined): { date: string; time: string } {
+  if (!iso) return { date: '', time: '' };
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) {
+      const m = String(iso).match(/(\d{4}-\d{2}-\d{2}).*?(\d{2}:\d{2})/);
+      return m ? { date: m[1], time: m[2] } : { date: '', time: '' };
+    }
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+    return {
+      date: `${get('year')}-${get('month')}-${get('day')}`,
+      time: `${get('hour')}:${get('minute')}`,
+    };
+  } catch {
+    return { date: '', time: '' };
+  }
+}
+
+function composeAddress(form: EditForm) {
+  const flat = form.flat_number.trim();
+  const area = form.pickup_address.trim();
+  const landmarkRaw = form.landmark.trim().replace(/^Near\s+/i, '');
+  const city = form.city.trim();
+  const pin = form.pincode.trim();
+  return [flat, area, landmarkRaw ? `Near ${landmarkRaw}` : '', [city, pin].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join(', ');
+}
+
+function parseComposedAddress(
+  raw: string,
+  meta: any,
+  city?: string,
+  pincode?: string,
+): { flat: string; area: string; landmark: string } {
+  let flat = String(meta?.flat_number || '').trim();
+  let landmark = String(meta?.landmark || '')
+    .trim()
+    .replace(/^Near\s+/i, '');
+  let area = String(meta?.area || '').trim();
+  if (area) return { flat, area, landmark };
+
+  let s = String(raw || meta?.pickup_address || '')
+    .replace(/\s*\((home|work|other)\)/gi, '')
+    .trim();
+  const nearM = s.match(/,?\s*Near\s+(.+?)(?=,|$)/i);
+  if (nearM) {
+    if (!landmark) landmark = nearM[1].trim().replace(/^Near\s+/i, '');
+    s = s.replace(nearM[0], ',');
+  }
+  if (city) {
+    s = s.replace(new RegExp(`,?\\s*${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig'), '');
+  }
+  const pin = String(pincode || '').trim();
+  if (pin) s = s.replace(new RegExp(`\\b${pin}\\b`, 'g'), '');
+  s = s
+    .replace(/\b\d{6}\b/g, '')
+    .replace(/,{2,}/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^,\s*|,\s*$/g, '')
+    .trim();
+  const parts = s
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!flat && parts.length >= 2 && /^(flat\s*)?\d+[A-Za-z0-9\/\-]*$/i.test(parts[0])) {
+    flat = parts[0].replace(/^flat\s*/i, '');
+    area = parts.slice(1).join(', ');
+  } else if (flat && parts[0] === flat) {
+    area = parts.slice(1).join(', ');
+  } else {
+    area = parts.join(', ');
+  }
+  area = area
+    .replace(/,?\s*Near\s+.+$/i, '')
+    .replace(/,{2,}/g, ',')
+    .replace(/^,\s*|,\s*$/g, '')
+    .trim();
+  return { flat, area, landmark };
+}
+
+function buildFormFromLead(data: any): EditForm {
+  const meta = data?.coupon_meta && typeof data.coupon_meta === 'object' ? data.coupon_meta : {};
+  const slot = parseSlot(data?.preferred_slot_start);
+  const cityName = data?.city || '';
+  const pin = String(data?.pincode || meta.pincode || '')
+    .replace(/\D/g, '')
+    .slice(0, 6);
+  const parsed = parseComposedAddress(
+    String(data?.pickup_address || data?.customer_address || ''),
+    meta,
+    cityName,
+    pin,
+  );
+  return {
+    customer_name: data?.customer_name || '',
+    customer_phone: String(data?.customer_phone || '')
+      .replace(/\D/g, '')
+      .slice(-10),
+    customer_alternate_phone: data?.customer_alternate_phone || '',
+    customer_email: data?.customer_email || '',
+    city_id: data?.city_id || '',
+    city: cityName,
+    pincode: pin,
+    vehicle_number: data?.vehicle_number || '',
+    vehicle_make: data?.vehicle_make || '',
+    model_id: data?.model_id || '',
+    vehicle_model: data?.vehicle_model || '',
+    vehicle_class: data?.vehicle_class || meta.vehicle_class || '',
+    vehicle_fuel_type: data?.vehicle_fuel_type || '',
+    vehicle_year: data?.vehicle_year?.toString() || '',
+    odometer_km: data?.odometer_km?.toString() || '',
+    service_types: parseIds(data?.service_type_ids),
+    service_addons: parseIds(data?.subservice_ids),
+    problem_description: data?.problem_description || '',
+    pickup_required: data?.pickup_required !== false,
+    pickup_address: parsed.area,
+    address_type: (meta.address_type as any) || 'home',
+    flat_number: parsed.flat,
+    landmark: parsed.landmark,
+    pickup_date: meta.pickup_date || slot.date,
+    pickup_time: meta.pickup_time || slot.time,
+    workshop_id: data?.workshop_id || '',
+    workshop_name: data?.workshop?.name || '',
+  };
+}
+
+function servicesIdsChanged(
+  aTypes: string[],
+  bTypes: string[],
+  aAddons: string[],
+  bAddons: string[],
+) {
+  const sorted = (ids: string[]) => [...ids].map(String).sort().join('|');
+  return sorted(aTypes) !== sorted(bTypes) || sorted(aAddons) !== sorted(bAddons);
+}
+
+type CallDisposition = {
+  id: string;
+  label: string;
+  call_status: string;
+  outcome: string | null;
+  lead_status?: string | null;
+};
+
+const RINGING: CallDisposition = {
+  id: 'RINGING',
+  label: 'Ringing',
+  call_status: 'NO_ANSWER',
+  outcome: null,
+};
+
+const STATUS_OPTIONS: CallDisposition[] = [
+  { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
+  { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
+  {
+    id: 'BOOKING_CONFIRMED',
+    label: 'Booking confirmed',
+    call_status: 'ANSWERED',
+    outcome: 'LEAD_CREATED',
+    lead_status: 'VALIDATED',
+  },
+  {
+    id: 'IN_SERVICE',
+    label: 'In Service',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'IN_PROGRESS',
+  },
+  {
+    id: 'SERVICE_DONE',
+    label: 'Service Done',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'COMPLETED',
+  },
+  {
+    id: 'LOST',
+    label: 'Lost',
+    call_status: 'ANSWERED',
+    outcome: 'NOT_INTERESTED',
+    lead_status: 'REJECTED',
+  },
+];
+
+const LOST_REASONS = [
+  'Not Interested',
+  'Unqualified Lead',
+  'No-Response to Calls',
+  'Already Service Done',
+  'Under Warranty',
+  'Looking For Authorised Service Center',
+  'Other Reasons',
+];
+
+function combineDateAndTime(dateYmd: string, timeHm: string): string | null {
+  if (!dateYmd && !timeHm) return null;
+  const now = new Date();
+  const ymd =
+    dateYmd ||
+    [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+  const hm =
+    timeHm ||
+    `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const iso = new Date(`${ymd}T${hm}:00`);
+  if (Number.isNaN(iso.getTime())) return null;
+  return iso.toISOString();
+}
+
+function formatDisplayDate(ymd: string): string {
+  if (!ymd) return 'Select date';
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  return formatDateDMY(new Date(y, m - 1, d)) || ymd;
+}
+
+function formatDisplayTime(hm: string): string {
+  if (!hm) return 'Select time';
+  const [hStr, mStr] = hm.split(':');
+  let h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hm;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+export default function TelecallerLeadDetailScreen({
+  route,
+  navigation,
+  embedded = false,
+  initialEditing = false,
+}: any) {
   const { user } = useAuth();
   const { leadId } = route.params;
 
@@ -37,36 +364,606 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showCallLogForm, setShowCallLogForm] = useState(false);
-  const [showFollowUpForm, setShowFollowUpForm] = useState(false);
-  const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
+  const [editing, setEditing] = useState(Boolean(initialEditing));
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [showLostMenu, setShowLostMenu] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const [pricingItems, setPricingItems] = useState<Array<{ name: string; price: number }>>([]);
   const [couponInput, setCouponInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
+  const [carDisplay, setCarDisplay] = useState('');
+  const [cities, setCities] = useState<any[]>([]);
+  const [cityOpen, setCityOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState('');
+  const [couponMeta, setCouponMeta] = useState<any>({});
+  const [initialServiceTypes, setInitialServiceTypes] = useState<string[]>([]);
+  const [initialServiceAddons, setInitialServiceAddons] = useState<string[]>([]);
+  const [pinWorkshops, setPinWorkshops] = useState<any[]>([]);
+  const [loadingPinWs, setLoadingPinWs] = useState(false);
+  const [profileHistory, setProfileHistory] = useState<any[]>([]);
 
-  const [callLogData, setCallLogData] = useState({
-    call_status: 'ANSWERED',
-    call_duration: '',
-    outcome: 'INFO_COLLECTED',
-    notes: ''
+  const [activityData, setActivityData] = useState({
+    result: 'RINGING',
+    lostReason: '',
+    notes: '',
+    date: '',
+    time: '',
   });
-  const needsOutcome = !NO_OUTCOME_STATUSES.has(callLogData.call_status);
 
-  const [followUpData, setFollowUpData] = useState({
-    follow_up_type: 'CALLBACK',
-    scheduled_time: '',
-    reason: '',
-    priority: 'NORMAL'
-  });
+  const setEditField = (key: keyof EditForm, value: any) =>
+    setEditForm((prev) => ({ ...prev, [key]: value }));
+
+  const filteredCities = React.useMemo(() => {
+    const q = cityQuery.trim().toLowerCase();
+    if (!q) return cities.slice(0, 50);
+    return cities.filter((c) => String(c.name || '').toLowerCase().includes(q)).slice(0, 50);
+  }, [cities, cityQuery]);
+
+  const pickupValue: CrmPickupVisitValue = {
+    pickup_required: editForm.pickup_required,
+    vehicle_number: editForm.vehicle_number,
+    pickup_date: editForm.pickup_date,
+    pickup_time: editForm.pickup_time,
+    pickup_address: editForm.pickup_address,
+    address_type: editForm.address_type,
+    flat_number: editForm.flat_number,
+    landmark: editForm.landmark,
+    workshop_id: editForm.workshop_id,
+    workshop_name: editForm.workshop_name,
+  };
+
+  const seedEditForm = (data: any) => {
+    const next = buildFormFromLead(data);
+    setEditForm(next);
+    setCarDisplay([next.vehicle_make, next.vehicle_model].filter(Boolean).join(' '));
+    const meta = data?.coupon_meta && typeof data.coupon_meta === 'object' ? data.coupon_meta : {};
+    setCouponMeta(meta);
+    setInitialServiceTypes(next.service_types);
+    setInitialServiceAddons(next.service_addons);
+    const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
+    setProfileHistory(hist);
+  };
+
+  const startEditing = async () => {
+    if (!lead) return;
+    seedEditForm(lead);
+    setActivityData({
+      result: 'RINGING',
+      lostReason: '',
+      notes: '',
+      date: '',
+      time: '',
+    });
+    setEditing(true);
+    if (cities.length === 0) {
+      try {
+        const { data: cityRows } = await supabase
+          .from('cities')
+          .select('id, name, state')
+          .eq('is_active', true)
+          .order('name');
+        setCities(cityRows || []);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setCityOpen(false);
+  };
+
+  const saveLeadEdits = async () => {
+    if (!leadId) return;
+    if (!editForm.customer_name.trim()) {
+      Alert.alert('Missing info', 'Customer name required');
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(editForm.customer_phone.replace(/\D/g, ''))) {
+      Alert.alert('Missing info', 'Valid 10-digit phone required');
+      return;
+    }
+    if (!editForm.city_id && !editForm.city) {
+      Alert.alert('Missing info', 'City required');
+      return;
+    }
+    if (!editForm.vehicle_make || !editForm.vehicle_model) {
+      Alert.alert('Missing info', 'Select car model');
+      return;
+    }
+    if (!editForm.vehicle_fuel_type) {
+      Alert.alert('Missing info', 'Fuel type required');
+      return;
+    }
+    if (editForm.service_types.length === 0) {
+      Alert.alert('Missing info', 'Select at least one service');
+      return;
+    }
+
+    const bookingConfirmed = activityData.result === 'BOOKING_CONFIRMED';
+    if (bookingConfirmed) {
+      if (!editForm.vehicle_number.trim()) {
+        Alert.alert('Missing info', 'Registration required');
+        return;
+      }
+      if (editForm.pickup_required) {
+        if (!editForm.pickup_date || !editForm.pickup_time) {
+          Alert.alert('Missing info', 'Select date & time');
+          return;
+        }
+        if (editForm.pickup_address.trim().length < 4) {
+          Alert.alert('Missing info', 'Address required');
+          return;
+        }
+        if (editForm.landmark.trim().length < 2) {
+          Alert.alert('Missing info', 'Landmark required');
+          return;
+        }
+      } else if (!editForm.workshop_id) {
+        Alert.alert('Missing info', 'Select a workshop');
+        return;
+      }
+    }
+    if (activityData.result === 'LOST' && !activityData.lostReason) {
+      Alert.alert('Missing info', 'Select lost reason');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const start = slotIso(editForm.pickup_date, editForm.pickup_time);
+      const endHour = editForm.pickup_time
+        ? `${String(Number(editForm.pickup_time.split(':')[0]) + 1).padStart(2, '0')}:00`
+        : '';
+      const end = slotIso(editForm.pickup_date, endHour);
+      const composed = editForm.pickup_required ? composeAddress(editForm) : editForm.pickup_address;
+      const nextMeta = {
+        ...couponMeta,
+        address_type: editForm.address_type,
+        flat_number: editForm.flat_number || null,
+        landmark: editForm.landmark.replace(/^Near\s+/i, '') || null,
+        area: editForm.pickup_address || null,
+        pickup_date: editForm.pickup_date || null,
+        pickup_time: editForm.pickup_time || null,
+        pickup_address: editForm.pickup_address || null,
+        vehicle_class: editForm.vehicle_class || null,
+        first_message: couponMeta.first_message || lead?.problem_description || null,
+        last_inbound_message:
+          couponMeta.last_inbound_message ||
+          couponMeta.first_message ||
+          lead?.problem_description ||
+          null,
+        telecaller_remarks: activityData.notes.trim() || couponMeta.telecaller_remarks || null,
+      };
+
+      let dispositionStatus: string | null = null;
+      if (activityData.result !== 'RINGING') {
+        const selected =
+          STATUS_OPTIONS.find((r) => r.id === activityData.result) || RINGING;
+        const statusLabel =
+          selected.id === 'LOST'
+            ? `Lost · ${activityData.lostReason}`
+            : selected.label;
+        nextMeta.last_call_status = selected.call_status;
+        nextMeta.last_call_result = selected.id;
+        nextMeta.last_call_label = statusLabel;
+        nextMeta.last_lost_reason = selected.id === 'LOST' ? activityData.lostReason : null;
+        nextMeta.last_call_at = new Date().toISOString();
+        if (selected.lead_status) dispositionStatus = selected.lead_status;
+      }
+      const servicesChangedLocal = servicesIdsChanged(
+        initialServiceTypes,
+        editForm.service_types,
+        initialServiceAddons,
+        editForm.service_addons,
+      );
+
+      const changeBits: string[] = [];
+      if (lead?.customer_name !== editForm.customer_name.trim()) changeBits.push('name');
+      if (String(lead?.customer_phone || '').slice(-10) !== editForm.customer_phone) changeBits.push('phone');
+      if (String(lead?.city || '') !== String(editForm.city || '')) changeBits.push('city');
+      if (String(lead?.pincode || '') !== String(editForm.pincode || '')) changeBits.push('pincode');
+      if (String(lead?.vehicle_number || '') !== String(editForm.vehicle_number || '')) {
+        changeBits.push('registration');
+      }
+      if (
+        String(lead?.vehicle_make || '') !== editForm.vehicle_make ||
+        String(lead?.vehicle_model || '') !== editForm.vehicle_model
+      ) {
+        changeBits.push('vehicle');
+      }
+      if (String(lead?.workshop_id || '') !== String(editForm.workshop_id || '')) changeBits.push('workshop');
+      if (servicesChangedLocal) changeBits.push('services');
+      if (activityData.result !== 'RINGING') {
+        const lbl =
+          STATUS_OPTIONS.find((r) => r.id === activityData.result)?.label || activityData.result;
+        changeBits.push(lbl);
+      }
+      if (bookingConfirmed) changeBits.push('booking');
+
+      const historyEntry = {
+        at: new Date().toISOString(),
+        summary: changeBits.length ? `Updated ${changeBits.join(', ')}` : 'Profile updated',
+        remark: activityData.notes.trim() || null,
+        status: activityData.result !== 'RINGING' ? activityData.result : null,
+        workshop_id: editForm.workshop_id || null,
+        workshop_name: editForm.workshop_name || null,
+        city: editForm.city || null,
+        pincode: editForm.pincode || null,
+      };
+      const prevHistory = Array.isArray(couponMeta.profile_history) ? couponMeta.profile_history : [];
+      nextMeta.profile_history = [historyEntry, ...prevHistory].slice(0, 50);
+
+      let quotePayload: any = null;
+      try {
+        const quoteRes = await apiFetch<any>('/api/telecaller/crm/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            service_type_ids: editForm.service_types,
+            addon_ids: editForm.service_addons,
+            city_id: editForm.city_id || null,
+            workshop_id: editForm.pickup_required ? null : editForm.workshop_id || null,
+            vehicle_class: editForm.vehicle_class || null,
+          }),
+        });
+        quotePayload = quoteRes?.quote || null;
+      } catch (e) {
+        console.warn('[LeadDetail] quote failed', e);
+      }
+
+      const payload = {
+        customer_name: editForm.customer_name.trim(),
+        customer_phone: editForm.customer_phone.replace(/\D/g, '').slice(-10),
+        customer_alternate_phone: editForm.customer_alternate_phone || null,
+        customer_email: editForm.customer_email || null,
+        customer_address: composed || editForm.pickup_address,
+        city_id: editForm.city_id || null,
+        city: editForm.city || null,
+        pincode: editForm.pincode || null,
+        vehicle_number: editForm.vehicle_number.toUpperCase().trim() || null,
+        vehicle_make: editForm.vehicle_make,
+        model_id: editForm.model_id || null,
+        vehicle_model: editForm.vehicle_model,
+        vehicle_fuel_type: editForm.vehicle_fuel_type,
+        vehicle_year: editForm.vehicle_year ? parseInt(editForm.vehicle_year, 10) : null,
+        odometer_km: editForm.odometer_km ? parseInt(editForm.odometer_km, 10) : null,
+        vehicle_class: editForm.vehicle_class || null,
+        service_types: editForm.service_types,
+        service_addons: editForm.service_addons,
+        problem_description:
+          lead?.problem_description ||
+          couponMeta.last_inbound_message ||
+          couponMeta.first_message ||
+          null,
+        pickup_required: editForm.pickup_required,
+        pickup_address: editForm.pickup_required ? composed : null,
+        workshop_id: editForm.workshop_id || null,
+        preferred_slot_start: start,
+        preferred_slot_end: end,
+        coupon_meta: nextMeta,
+        quote: quotePayload,
+        estimated_amount: Number(quotePayload?.total || 0) || undefined,
+        force_requote: servicesChangedLocal,
+        service_type:
+          (quotePayload?.line_items || [])
+            .map((i: any) => String(i?.name || '').trim())
+            .filter(Boolean)
+            .join(', ') || undefined,
+        ...(dispositionStatus ? { status: dispositionStatus } : {}),
+      };
+
+      let result: { success?: boolean; servicesChanged?: boolean; whatsapp?: any } | null = null;
+      try {
+        result = await apiFetch(`/api/telecaller/leads/${leadId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (apiErr: any) {
+        console.warn('[LeadDetail] API failed, falling back', apiErr?.message);
+        const serviceLabel =
+          payload.service_type ||
+          (quotePayload?.line_items || [])
+            .map((i: any) => String(i?.name || '').trim())
+            .filter(Boolean)
+            .join(', ');
+        const { error } = await supabase
+          .from('service_leads')
+          .update({
+            customer_name: payload.customer_name,
+            customer_phone: payload.customer_phone,
+            customer_alternate_phone: payload.customer_alternate_phone,
+            customer_email: payload.customer_email,
+            customer_address: payload.customer_address,
+            city_id: payload.city_id,
+            city: payload.city,
+            pincode: payload.pincode,
+            vehicle_number: payload.vehicle_number,
+            vehicle_make: payload.vehicle_make,
+            model_id: payload.model_id,
+            vehicle_model: payload.vehicle_model,
+            vehicle_fuel_type: payload.vehicle_fuel_type,
+            vehicle_year: payload.vehicle_year,
+            odometer_km: payload.odometer_km,
+            service_type_ids: JSON.stringify(payload.service_types),
+            subservice_ids: JSON.stringify(payload.service_addons),
+            ...(serviceLabel ? { service_type: serviceLabel } : {}),
+            ...(Number(quotePayload?.total || 0) > 0
+              ? {
+                  estimated_amount: Number(quotePayload.total),
+                  discount_amount: Number(quotePayload.discount || 0) || 0,
+                }
+              : {}),
+            problem_description: payload.problem_description,
+            pickup_required: payload.pickup_required,
+            pickup_address: payload.pickup_address,
+            workshop_id: payload.workshop_id,
+            preferred_slot_start: payload.preferred_slot_start,
+            preferred_slot_end: payload.preferred_slot_end,
+            coupon_meta: {
+              ...payload.coupon_meta,
+              ...(serviceLabel ? { package_label: serviceLabel } : {}),
+            },
+            ...(dispositionStatus ? { status: dispositionStatus } : {}),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', leadId);
+        if (error) throw apiErr;
+        result = { success: true, servicesChanged: servicesChangedLocal };
+      }
+
+      const servicesChanged = Boolean(result?.servicesChanged || servicesChangedLocal);
+      let whatsapp = result?.whatsapp;
+      if (servicesChanged && !whatsapp?.sent) {
+        try {
+          const notify = await apiFetch<{ success?: boolean; whatsapp?: any }>(
+            `/api/telecaller/leads/${leadId}/notify-update`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ previousServiceIds: initialServiceTypes }),
+            },
+          );
+          whatsapp = notify?.whatsapp || whatsapp;
+        } catch (notifyErr: any) {
+          console.warn('[LeadDetail] WhatsApp notify failed', notifyErr?.message);
+        }
+      }
+
+      const waNote =
+        servicesChanged && whatsapp?.sent
+          ? '\nCustomer notified on WhatsApp.'
+          : servicesChanged
+            ? '\nService updated — WhatsApp not sent.'
+            : '';
+
+      // Persist activity disposition when set during edit
+      if (activityData.result !== 'RINGING') {
+        try {
+          const selected =
+            activityData.result === 'RINGING'
+              ? RINGING
+              : STATUS_OPTIONS.find((r) => r.id === activityData.result) || RINGING;
+          const statusLabel =
+            selected.id === 'LOST'
+              ? `Lost · ${activityData.lostReason}`
+              : selected.label;
+          const notesParts = [
+            `[${statusLabel}]`,
+            activityData.notes.trim() || null,
+          ].filter(Boolean);
+          await apiFetch('/api/telecaller/calls/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lead_id: leadId,
+              call_type: 'OUTBOUND',
+              call_status: selected.call_status,
+              call_duration: null,
+              outcome: selected.outcome,
+              notes: notesParts.join(' '),
+              phone_number: editForm.customer_phone || lead?.customer_phone,
+              next_action: null,
+              next_action_time: null,
+            }),
+          });
+          const nextCallMeta = {
+            ...nextMeta,
+            last_call_status: selected.call_status,
+            last_call_result: selected.id,
+            last_call_label: statusLabel,
+            last_lost_reason: selected.id === 'LOST' ? activityData.lostReason : null,
+            last_call_at: new Date().toISOString(),
+          };
+          const leadUpdate: Record<string, unknown> = {
+            last_call_at: new Date().toISOString(),
+            total_calls: (lead?.total_calls || 0) + 1,
+            coupon_meta: nextCallMeta,
+            updated_at: new Date().toISOString(),
+          };
+          if (selected.lead_status) leadUpdate.status = selected.lead_status;
+          await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
+        } catch (actErr) {
+          console.warn('[LeadDetail] activity log during save failed', actErr);
+        }
+      }
+
+      setActivityData({
+        result: 'RINGING',
+        lostReason: '',
+        notes: '',
+        date: '',
+        time: '',
+      });
+      setEditing(false);
+      await fetchLeadDetails();
+      Alert.alert('Updated', `Lead saved successfully.${waNote}`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to update lead');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedResult: CallDisposition =
+    activityData.result === 'RINGING'
+      ? RINGING
+      : STATUS_OPTIONS.find((r) => r.id === activityData.result) || RINGING;
+
+  const activityItems = React.useMemo(() => {
+    const calls = (callLogs || []).map((log) => ({
+      id: `call-${log.id}`,
+      kind: 'call' as const,
+      sortAt: log.created_at,
+      title: formatCallLogLabel(log.call_status, log.outcome, log.notes),
+      notes: stripDispositionPrefix(log.notes || ''),
+      badgeColor: getCallStatusColor(log.call_status, log.outcome),
+      timeLabel: formatDateTime(log.created_at),
+    }));
+    const fus = (followUps || []).map((fu) => ({
+      id: `fu-${fu.id}`,
+      kind: 'followup' as const,
+      sortAt: fu.scheduled_time || fu.created_at,
+      title: 'Follow-up',
+      notes: fu.reason || '',
+      badgeColor: COLORS.primary + '22',
+      timeLabel: fu.scheduled_time
+        ? `Due ${formatDateTime(fu.scheduled_time)}`
+        : formatDateTime(fu.created_at),
+    }));
+    return [...calls, ...fus].sort(
+      (a, b) => new Date(b.sortAt || 0).getTime() - new Date(a.sortAt || 0).getTime(),
+    );
+  }, [callLogs, followUps]);
+
+  const customerMessage = React.useMemo(() => {
+    const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+    return String(
+      meta.last_inbound_message || meta.first_message || lead?.problem_description || '',
+    ).trim();
+  }, [lead]);
+
+  const loadWorkshopsForPincode = async (pin: string, cityName?: string) => {
+    const pincode = String(pin || '').replace(/\D/g, '').slice(0, 6);
+    if (!/^\d{6}$/.test(pincode)) {
+      setPinWorkshops([]);
+      return;
+    }
+    setLoadingPinWs(true);
+    try {
+      // Auto-fill city from pincode mapping when possible
+      if (!cityName) {
+        try {
+          const { data: cityRows } = await supabase
+            .from('cities')
+            .select('id, name, city_pincodes')
+            .eq('is_active', true);
+          const hit = (cityRows || []).find((c: any) => {
+            const raw = String(c.city_pincodes || '');
+            return raw.includes(pincode);
+          });
+          if (hit?.name) {
+            setEditForm((prev) => ({
+              ...prev,
+              city: hit.name,
+              city_id: hit.id || prev.city_id,
+              pincode,
+            }));
+            cityName = hit.name;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const params = new URLSearchParams();
+      params.set('pincode', pincode);
+      if (cityName) params.set('city', cityName);
+      const apiData = await apiFetch<any>(`/api/telecaller/crm/workshops?${params.toString()}`).catch(
+        () => null,
+      );
+      let list = Array.isArray(apiData?.workshops) ? apiData.workshops : [];
+      if (list.length === 0) {
+        const { data: rows } = await supabase
+          .from('workshops')
+          .select('id, name, workshop_name, city, address, pincode, phone, is_verified')
+          .eq('is_verified', true)
+          .limit(80);
+        list = (rows || []).map((w: any) => ({
+          id: w.id,
+          name: w.name || w.workshop_name,
+          city: w.city,
+          address: w.address,
+          pincode: w.pincode,
+          phone: w.phone,
+        }));
+        if (cityName) {
+          list = list.filter((w: any) =>
+            String(w.city || '').toLowerCase().includes(String(cityName).toLowerCase()),
+          );
+        }
+      }
+      setPinWorkshops(list.slice(0, 30));
+    } catch {
+      setPinWorkshops([]);
+    } finally {
+      setLoadingPinWs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!editing) return;
+    const pin = String(editForm.pincode || '').trim();
+    if (!/^\d{6}$/.test(pin)) {
+      setPinWorkshops([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      loadWorkshopsForPincode(pin, editForm.city || undefined);
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, editForm.pincode, editForm.city]);
 
   useEffect(() => {
     fetchLeadDetails();
   }, []);
 
+  useEffect(() => {
+    if (initialEditing && lead) {
+      seedEditForm(lead);
+      setEditing(true);
+      (async () => {
+        if (cities.length > 0) return;
+        try {
+          const { data: cityRows } = await supabase
+            .from('cities')
+            .select('id, name, state')
+            .eq('is_active', true)
+            .order('name');
+          setCities(cityRows || []);
+        } catch {
+          /* ignore */
+        }
+      })();
+    } else if (!initialEditing) {
+      setEditing(Boolean(initialEditing));
+    }
+  }, [initialEditing, leadId, lead?.id]);
+
   // Handle hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (editing) {
+        cancelEditing();
+        return true;
+      }
       if (navigation?.goBack) {
         navigation.goBack();
         return true;
@@ -75,7 +972,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
     });
 
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [navigation, editing]);
 
   const fetchLeadDetails = async () => {
     try {
@@ -93,6 +990,12 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
 
       if (leadError) throw leadError;
       setLead(leadData);
+      const meta =
+        leadData?.coupon_meta && typeof leadData.coupon_meta === 'object'
+          ? leadData.coupon_meta
+          : {};
+      setCouponMeta(meta);
+      setProfileHistory(Array.isArray(meta.profile_history) ? meta.profile_history : []);
 
       // Pricing snapshot (line items) for display
       try {
@@ -210,110 +1113,121 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
     fetchLeadDetails();
   };
 
-  const handleFollowUpDateChange = (_event: any, selectedDate?: Date) => {
-    setShowFollowUpPicker(false);
-    if (!selectedDate) return;
-    setFollowUpData(prev => ({
-      ...prev,
-      scheduled_time: selectedDate.toISOString(),
-    }));
+  const handlePickerChange = (_event: any, selectedDate?: Date) => {
+    const mode = pickerMode;
+    if (Platform.OS === 'android') setPickerMode(null);
+    if (!selectedDate || !mode) {
+      if (Platform.OS === 'ios') setPickerMode(null);
+      return;
+    }
+    if (mode === 'date') {
+      const ymd = [
+        selectedDate.getFullYear(),
+        String(selectedDate.getMonth() + 1).padStart(2, '0'),
+        String(selectedDate.getDate()).padStart(2, '0'),
+      ].join('-');
+      setActivityData((prev) => ({ ...prev, date: ymd }));
+    } else {
+      const hm = `${String(selectedDate.getHours()).padStart(2, '0')}:${String(
+        selectedDate.getMinutes(),
+      ).padStart(2, '0')}`;
+      setActivityData((prev) => ({ ...prev, time: hm }));
+    }
+    if (Platform.OS === 'ios') setPickerMode(null);
   };
 
-  const handleAddCallLog = async () => {
+  const handleSaveActivity = async () => {
     try {
-      const status = callLogData.call_status;
-      const skipOutcome = NO_OUTCOME_STATUSES.has(status);
+      const selected = selectedResult;
+      if (selected.id === 'LOST' && !activityData.lostReason) {
+        Alert.alert('Lost reason', 'Please select a lost reason.');
+        return;
+      }
+
+      const whenIso = combineDateAndTime(activityData.date, activityData.time);
+      const statusLabel =
+        selected.id === 'LOST'
+          ? `Lost · ${activityData.lostReason}`
+          : selected.label;
+      const notesParts = [
+        `[${statusLabel}]`,
+        activityData.notes.trim() || null,
+      ].filter(Boolean);
+
       await apiFetch('/api/telecaller/calls/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_id: leadId,
           call_type: 'OUTBOUND',
-          call_status: status,
-          call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
-          outcome: skipOutcome ? null : callLogData.outcome,
-          notes: callLogData.notes,
+          call_status: selected.call_status,
+          call_duration: null,
+          outcome: selected.outcome,
+          notes: notesParts.join(' '),
           phone_number: lead?.customer_phone,
+          next_action: whenIso ? 'FOLLOW_UP' : null,
+          next_action_time: whenIso,
         }),
       });
 
-      // Keep booking pipeline status intact; show call attempt on header from call logs
       const nextMeta = {
         ...(lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {}),
-        last_call_status: status,
+        last_call_status: selected.call_status,
+        last_call_result: selected.id,
+        last_call_label: statusLabel,
+        last_lost_reason: selected.id === 'LOST' ? activityData.lostReason : null,
         last_call_at: new Date().toISOString(),
       };
-      await supabase
-        .from('service_leads')
-        .update({
-          last_call_at: new Date().toISOString(),
-          total_calls: (lead?.total_calls || 0) + 1,
-          coupon_meta: nextMeta,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', leadId);
 
-      setCallLogData({
-        call_status: 'ANSWERED',
-        call_duration: '',
-        outcome: 'INFO_COLLECTED',
+      const leadUpdate: Record<string, unknown> = {
+        last_call_at: new Date().toISOString(),
+        total_calls: (lead?.total_calls || 0) + 1,
+        coupon_meta: nextMeta,
+        updated_at: new Date().toISOString(),
+      };
+      if (selected.lead_status) {
+        leadUpdate.status = selected.lead_status;
+      }
+      if (whenIso) {
+        leadUpdate.follow_up_required = true;
+        leadUpdate.next_follow_up_at = whenIso;
+      }
+
+      await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
+
+      if (whenIso) {
+        const { data: profile } = await supabase
+          .from('users_login')
+          .select('id')
+          .eq('email', user?.email)
+          .single();
+
+        await supabase.from('telecaller_follow_ups').insert([
+          {
+            lead_id: leadId,
+            telecaller_id: profile?.id,
+            follow_up_type: 'CALLBACK',
+            scheduled_time: whenIso,
+            reason: activityData.notes || statusLabel,
+            priority: 'NORMAL',
+            status: 'PENDING',
+          },
+        ]);
+      }
+
+      setActivityData({
+        result: 'RINGING',
+        lostReason: '',
         notes: '',
+        date: '',
+        time: '',
       });
-      setShowCallLogForm(false);
+      setShowActivityForm(false);
       fetchLeadDetails();
-      Alert.alert('Saved', `Status updated to ${formatStatusLabel(status)}`);
+      Alert.alert('Saved', statusLabel);
     } catch (error) {
-      console.error('Error adding call log:', error);
-      Alert.alert('Error', 'Failed to add call log');
-    }
-  };
-
-  const handleAddFollowUp = async () => {
-    try {
-      if (!followUpData.scheduled_time) {
-        Alert.alert('Missing time', 'Please select a follow-up time.');
-        return;
-      }
-      const { data: profile } = await supabase
-        .from('users_login')
-        .select('id')
-        .eq('email', user?.email)
-        .single();
-
-      const { error } = await supabase
-        .from('telecaller_follow_ups')
-        .insert([{
-          lead_id: leadId,
-          telecaller_id: profile?.id,
-          follow_up_type: followUpData.follow_up_type,
-          scheduled_time: followUpData.scheduled_time,
-          reason: followUpData.reason,
-          priority: followUpData.priority,
-          status: 'PENDING'
-        }]);
-
-      if (!error) {
-        await supabase
-          .from('service_leads')
-          .update({
-            follow_up_required: true,
-            next_follow_up_at: followUpData.scheduled_time
-          })
-          .eq('id', leadId);
-
-        setFollowUpData({
-          follow_up_type: 'CALLBACK',
-          scheduled_time: '',
-          reason: '',
-          priority: 'NORMAL'
-        });
-        setShowFollowUpForm(false);
-        fetchLeadDetails();
-        Alert.alert('Success', 'Follow-up scheduled!');
-      }
-    } catch (error) {
-      console.error('Error adding follow-up:', error);
-      Alert.alert('Error', 'Failed to schedule follow-up');
+      console.error('Error saving activity:', error);
+      Alert.alert('Error', 'Failed to save');
     }
   };
 
@@ -435,13 +1349,21 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
     );
   }
 
+  const canEdit = EDITABLE_LEAD_STATUSES.has(String(lead?.status || '').toUpperCase());
+
+  const headerStatus = resolveLeadDisplayStatus(lead, callLogs);
+  const badge = getCallStatusBadge(headerStatus);
+
   return (
-    <View style={styles.mainContainer}>
+    <KeyboardAvoidingView
+      style={styles.mainContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Header with Back Button */}
       <View style={[styles.headerBar, embedded && styles.headerBarEmbedded]}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => navigation?.goBack()}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => (editing ? cancelEditing() : navigation?.goBack())}
         >
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
@@ -451,22 +1373,20 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, editing && { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+          editing ? undefined : (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+          )
         }
       >
-        {(() => {
-          const headerStatus =
-            callLogs[0]?.call_status ||
-            lead?.coupon_meta?.last_call_status ||
-            lead.status;
-          const badge = getCallStatusBadge(headerStatus);
-          return (
             <View style={styles.header}>
               <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={styles.headerTitle}>{lead.customer_name}</Text>
+                <Text style={styles.headerTitle}>
+                  {editing ? editForm.customer_name || lead.customer_name : lead.customer_name}
+                </Text>
                 <Text style={styles.headerSubtitle}>Lead #{lead.lead_number}</Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
@@ -475,14 +1395,12 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
                 </Text>
               </View>
             </View>
-          );
-        })()}
 
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity
           style={[styles.actionButton, styles.actionButtonPrimary]}
-          onPress={() => openPhoneCall(lead.customer_phone)}
+          onPress={() => openPhoneCall(editing ? editForm.customer_phone : lead.customer_phone)}
         >
           <Icon name="phone" size={18} color="#fff" />
           <Text style={styles.actionButtonTextPrimary}>Call</Text>
@@ -496,13 +1414,15 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           <Text style={styles.actionButtonTextSecondary}>WhatsApp</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonEdit]}
-          onPress={() => navigation.navigate('TelecallerEditLead', { leadId })}
-        >
-          <Icon name="pencil" size={16} color={COLORS.primary} />
-          <Text style={styles.actionButtonTextEdit}>Edit</Text>
-        </TouchableOpacity>
+        {canEdit ? (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionButtonEdit]}
+            onPress={() => (editing ? cancelEditing() : startEditing())}
+          >
+            <Icon name={editing ? 'close' : 'pencil'} size={16} color={COLORS.primary} />
+            <Text style={styles.actionButtonTextEdit}>{editing ? 'Cancel' : 'Edit'}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Quick Stats */}
@@ -534,7 +1454,8 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
         </View>
       </View>
 
-      {/* Coupon CRM */}
+      {/* Coupon — view only at top; in edit mode it lives under Booking confirmed → Pickup */}
+      {!editing ? (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Coupon</Text>
         <View style={styles.sectionContent}>
@@ -578,6 +1499,7 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           })()}
         </View>
       </View>
+      ) : null}
 
       {/* Customer Information */}
       <View style={styles.section}>
@@ -588,29 +1510,183 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           <Text style={styles.sectionTitle}>Customer</Text>
         </View>
         <View style={styles.sectionContent}>
-          <DetailRow icon="account" label="Name" value={lead.customer_name} />
-          <View style={styles.detailGrid}>
-            <DetailRow icon="phone" label="Phone" value={lead.customer_phone} compact />
-            {lead.customer_alternate_phone ? (
-              <DetailRow icon="phone-plus" label="Alternate" value={lead.customer_alternate_phone} compact />
-            ) : (
-              <View style={{ flex: 1 }} />
-            )}
-          </View>
-          {lead.customer_email ? (
-            <DetailRow icon="email" label="Email" value={lead.customer_email} />
-          ) : null}
-          {(lead.pickup_address || lead.customer_address) ? (
-            <DetailRow
-              icon="map-marker"
-              label="Address"
-              value={formatLeadAddress(lead.pickup_address || lead.customer_address, lead.city, lead.pincode)}
-            />
-          ) : null}
-          <View style={styles.detailGrid}>
-            <DetailRow icon="city" label="City" value={lead.city || '—'} compact />
-            <DetailRow icon="map-marker-radius" label="Pincode" value={lead.pincode ? String(lead.pincode) : '—'} compact />
-          </View>
+          {editing ? (
+            <>
+              <DetailRow
+                icon="account"
+                label="Name"
+                value={editForm.customer_name}
+                editing
+                onChangeText={(v) => setEditField('customer_name', v)}
+                placeholder="Customer name"
+              />
+              <View style={styles.detailGrid}>
+                <DetailRow
+                  icon="phone"
+                  label="Phone"
+                  value={editForm.customer_phone}
+                  compact
+                  editing
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  onChangeText={(v) => setEditField('customer_phone', v.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="10-digit"
+                />
+                <DetailRow
+                  icon="phone-plus"
+                  label="Alternate"
+                  value={editForm.customer_alternate_phone}
+                  compact
+                  editing
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  onChangeText={(v) =>
+                    setEditField('customer_alternate_phone', v.replace(/\D/g, '').slice(0, 10))
+                  }
+                  placeholder="Optional"
+                />
+              </View>
+              <DetailRow
+                icon="email"
+                label="Email"
+                value={editForm.customer_email}
+                editing
+                keyboardType="email-address"
+                autoCapitalize="none"
+                onChangeText={(v) => setEditField('customer_email', v)}
+                placeholder="Optional email"
+              />
+              <View style={styles.detailGrid}>
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => setCityOpen(true)} activeOpacity={0.85}>
+                  <DetailRow icon="city" label="City" value={editForm.city || 'Select city'} compact />
+                </TouchableOpacity>
+                <DetailRow
+                  icon="map-marker-radius"
+                  label="Pincode"
+                  value={editForm.pincode}
+                  compact
+                  editing
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  onChangeText={(v) => setEditField('pincode', v.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6-digit"
+                />
+              </View>
+
+              {/^\d{6}$/.test(editForm.pincode) ? (
+                <View style={styles.workshopPickBox}>
+                  <Text style={styles.fieldCaption}>Workshop for this lead</Text>
+                  {loadingPinWs ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 10 }} />
+                  ) : pinWorkshops.length === 0 ? (
+                    <Text style={styles.mutedValue}>No workshops found for this pincode</Text>
+                  ) : (
+                    pinWorkshops.map((w) => {
+                      const active = editForm.workshop_id === w.id;
+                      const areaName = w.workshop_name || w.name || 'Workshop';
+                      const centerName = w.service_center_name || null;
+                      const address = w.address || w.short_address || null;
+                      return (
+                        <TouchableOpacity
+                          key={w.id}
+                          style={[styles.workshopPickRow, active && styles.workshopPickRowActive]}
+                          onPress={() =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              workshop_id: w.id,
+                              workshop_name: areaName,
+                            }))
+                          }
+                          activeOpacity={0.85}
+                        >
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.workshopPickName} numberOfLines={1}>
+                              {areaName}
+                            </Text>
+                            {centerName && centerName !== areaName ? (
+                              <Text style={styles.workshopPickCenter} numberOfLines={1}>
+                                {centerName}
+                              </Text>
+                            ) : null}
+                            {address ? (
+                              <Text style={styles.workshopPickSub} numberOfLines={2}>
+                                {address}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.workshopPickSub} numberOfLines={1}>
+                              {[w.city, w.pincode || editForm.pincode].filter(Boolean).join(' · ')}
+                            </Text>
+                          </View>
+                          <Icon
+                            name={active ? 'check-circle' : 'circle-outline'}
+                            size={20}
+                            color={active ? COLORS.primary : COLORS.gray[400]}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </View>
+              ) : (
+                <Text style={[styles.mutedValue, { marginTop: 4 }]}>
+                  Enter 6-digit pincode to see nearby workshops
+                </Text>
+              )}
+
+              {customerMessage ? (
+                <View style={styles.customerMsgBox}>
+                  <Text style={styles.fieldCaption}>Customer message</Text>
+                  <Text style={styles.customerMsgText}>{customerMessage}</Text>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <DetailRow icon="account" label="Name" value={lead.customer_name} />
+              <View style={styles.detailGrid}>
+                <DetailRow icon="phone" label="Phone" value={lead.customer_phone} compact />
+                {lead.customer_alternate_phone ? (
+                  <DetailRow
+                    icon="phone-plus"
+                    label="Alternate"
+                    value={lead.customer_alternate_phone}
+                    compact
+                  />
+                ) : (
+                  <View style={{ flex: 1 }} />
+                )}
+              </View>
+              {lead.customer_email ? (
+                <DetailRow icon="email" label="Email" value={lead.customer_email} />
+              ) : null}
+              {(lead.pickup_address || lead.customer_address) ? (
+                <DetailRow
+                  icon="map-marker"
+                  label="Address"
+                  value={formatLeadAddress(
+                    lead.pickup_address || lead.customer_address,
+                    lead.city,
+                    lead.pincode,
+                  )}
+                />
+              ) : null}
+              <View style={styles.detailGrid}>
+                <DetailRow icon="city" label="City" value={lead.city || '—'} compact />
+                <DetailRow
+                  icon="map-marker-radius"
+                  label="Pincode"
+                  value={lead.pincode ? String(lead.pincode) : '—'}
+                  compact
+                />
+              </View>
+              {customerMessage ? (
+                <View style={styles.customerMsgBox}>
+                  <Text style={styles.fieldCaption}>Customer message</Text>
+                  <Text style={styles.customerMsgText}>{customerMessage}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
 
@@ -623,23 +1699,122 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           <Text style={styles.sectionTitle}>Vehicle</Text>
         </View>
         <View style={styles.sectionContent}>
-          <DetailRow icon="car" label="Registration" value={lead.vehicle_number || 'Not provided'} />
-          <View style={styles.detailGrid}>
-            <DetailRow icon="car-side" label="Make" value={lead.vehicle_make || '—'} compact />
-            <DetailRow icon="car-info" label="Model" value={lead.vehicle_model || '—'} compact />
-          </View>
-          <View style={styles.detailGrid}>
-            <DetailRow icon="gas-station" label="Fuel" value={lead.vehicle_fuel_type || '—'} compact />
-            <DetailRow
-              icon="calendar"
-              label="Year"
-              value={lead.vehicle_year ? String(lead.vehicle_year) : '—'}
-              compact
-            />
-          </View>
-          {lead.vehicle_variant ? (
-            <DetailRow icon="tag" label="Variant" value={lead.vehicle_variant} />
-          ) : null}
+          {editing ? (
+            <>
+              <DetailRow
+                icon="car"
+                label="Registration"
+                value={editForm.vehicle_number}
+                editing
+                autoCapitalize="characters"
+                maxLength={12}
+                onChangeText={(v) =>
+                  setEditField(
+                    'vehicle_number',
+                    v.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
+                  )
+                }
+                placeholder="e.g. MH01BJ7842"
+              />
+              <CarModelSearchField
+                label="Car model"
+                variant="website"
+                displayValue={carDisplay}
+                selectedMake={editForm.vehicle_make}
+                selectedModel={editForm.vehicle_model}
+                placeholder="Type model (e.g. Rapid, Swift)"
+                onSelect={(make, model, display, meta) => {
+                  setCarDisplay(display);
+                  setEditForm((prev) => ({
+                    ...prev,
+                    vehicle_make: make,
+                    vehicle_model: model,
+                    model_id: meta?.id || prev.model_id,
+                    vehicle_class: meta?.class || prev.vehicle_class,
+                  }));
+                }}
+                onClear={() => {
+                  setCarDisplay('');
+                  setEditForm((prev) => ({
+                    ...prev,
+                    vehicle_make: '',
+                    vehicle_model: '',
+                    model_id: '',
+                    vehicle_class: '',
+                  }));
+                }}
+              />
+              <Text style={styles.fieldCaption}>Fuel type</Text>
+              <View style={styles.fuelRow}>
+                {FUEL_TYPES.map((fuel) => {
+                  const active = editForm.vehicle_fuel_type === fuel;
+                  return (
+                    <TouchableOpacity
+                      key={fuel}
+                      style={[styles.fuelChip, active && styles.fuelChipActive]}
+                      onPress={() => setEditField('vehicle_fuel_type', fuel)}
+                    >
+                      <Text style={[styles.fuelChipText, active && styles.fuelChipTextActive]}>
+                        {fuel}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.detailGrid}>
+                <DetailRow
+                  icon="calendar"
+                  label="Year"
+                  value={editForm.vehicle_year}
+                  compact
+                  editing
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  onChangeText={(v) => setEditField('vehicle_year', v.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="YYYY"
+                />
+                <DetailRow
+                  icon="car"
+                  label="Odometer"
+                  value={editForm.odometer_km}
+                  compact
+                  editing
+                  keyboardType="number-pad"
+                  onChangeText={(v) => setEditField('odometer_km', v.replace(/\D/g, ''))}
+                  placeholder="km"
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <DetailRow
+                icon="car"
+                label="Registration"
+                value={lead.vehicle_number || 'Not provided'}
+              />
+              <View style={styles.detailGrid}>
+                <DetailRow icon="car-side" label="Make" value={lead.vehicle_make || '—'} compact />
+                <DetailRow icon="car-info" label="Model" value={lead.vehicle_model || '—'} compact />
+              </View>
+              <View style={styles.detailGrid}>
+                <DetailRow
+                  icon="gas-station"
+                  label="Fuel"
+                  value={lead.vehicle_fuel_type || '—'}
+                  compact
+                />
+                <DetailRow
+                  icon="calendar"
+                  label="Year"
+                  value={lead.vehicle_year ? String(lead.vehicle_year) : '—'}
+                  compact
+                />
+              </View>
+              {lead.vehicle_variant ? (
+                <DetailRow icon="tag" label="Variant" value={lead.vehicle_variant} />
+              ) : null}
+            </>
+          )}
         </View>
       </View>
 
@@ -652,127 +1827,332 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
           <Text style={styles.sectionTitle}>Service & Price</Text>
         </View>
         <View style={styles.sectionContent}>
-          {(() => {
-            const estimated = Number(lead.estimated_amount || 0) || 0;
-            const discount = Number(lead.discount_amount || 0) || 0;
-            const payable = Math.max(0, estimated);
-            const lineSum = pricingItems.reduce((s, i) => s + (Number(i.price) || 0), 0);
-            const showAmount = estimated > 0 || lineSum > 0;
-            if (!showAmount) {
-              return (
-                <View style={styles.priceEmpty}>
-                  <Text style={styles.priceEmptyText}>Price not set yet — edit lead to refresh quote</Text>
-                </View>
-              );
-            }
-            return (
-              <View style={styles.priceCard}>
-                <View style={styles.priceCardTop}>
-                  <Text style={styles.priceCardLabel}>Booking amount</Text>
-                  <Text style={styles.priceCardValue}>
-                    ₹{(estimated > 0 ? estimated : lineSum).toLocaleString('en-IN')}
-                  </Text>
-                </View>
-                {discount > 0 ? (
-                  <View style={styles.priceMetaRow}>
-                    <Text style={styles.priceMetaLabel}>Discount</Text>
-                    <Text style={[styles.priceMetaValue, { color: COLORS.green }]}>
-                      −₹{discount.toLocaleString('en-IN')}
+          {!editing ? (
+            (() => {
+              const estimated = Number(lead.estimated_amount || 0) || 0;
+              const discount = Number(lead.discount_amount || 0) || 0;
+              const payable = Math.max(0, estimated);
+              const lineSum = pricingItems.reduce((s, i) => s + (Number(i.price) || 0), 0);
+              const showAmount = estimated > 0 || lineSum > 0;
+              if (!showAmount) {
+                return (
+                  <View style={styles.priceEmpty}>
+                    <Text style={styles.priceEmptyText}>
+                      Price not set yet — tap Edit to add services & quote
                     </Text>
                   </View>
-                ) : null}
-                <View style={styles.priceMetaRow}>
-                  <Text style={styles.priceMetaLabel}>Payable</Text>
-                  <Text style={styles.pricePayable}>
-                    ₹{(estimated > 0 ? payable : Math.max(0, lineSum - discount)).toLocaleString('en-IN')}
-                  </Text>
-                </View>
-                {lead.payment_mode ? (
-                  <Text style={styles.priceMode}>{formatPaymentMode(lead.payment_mode)}</Text>
-                ) : null}
-              </View>
-            );
-          })()}
-
-          <Text style={styles.fieldCaption}>Packages</Text>
-          {serviceTypeNames.length > 0 ? (
-            <View style={styles.tagsContainer}>
-              {serviceTypeNames.map((name, idx) => (
-                <View key={`${name}-${idx}`} style={[styles.tag, styles.tagBlue]}>
-                  <Text style={styles.tagText}>{name}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.mutedValue}>Not specified</Text>
-          )}
-
-          {pricingItems.length > 0 ? (
-            <View style={styles.lineItemsBox}>
-              {pricingItems.map((item, idx) => (
-                <View key={`${item.name}-${idx}`} style={styles.lineItemRow}>
-                  <Text style={styles.lineItemName} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.lineItemPrice}>
-                    {item.price > 0 ? `₹${item.price.toLocaleString('en-IN')}` : '—'}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {subserviceNames.length > 0 ? (
-            <>
-              <Text style={[styles.fieldCaption, { marginTop: 12 }]}>Add-ons</Text>
-              <View style={styles.tagsContainer}>
-                {subserviceNames.map((name, idx) => (
-                  <View key={`${name}-${idx}`} style={[styles.tag, styles.tagGreen]}>
-                    <Text style={styles.tagText}>{name}</Text>
+                );
+              }
+              return (
+                <View style={styles.priceCard}>
+                  <View style={styles.priceCardTop}>
+                    <Text style={styles.priceCardLabel}>Booking amount</Text>
+                    <Text style={styles.priceCardValue}>
+                      ₹{(estimated > 0 ? estimated : lineSum).toLocaleString('en-IN')}
+                    </Text>
                   </View>
-                ))}
-              </View>
-            </>
+                  {discount > 0 ? (
+                    <View style={styles.priceMetaRow}>
+                      <Text style={styles.priceMetaLabel}>Discount</Text>
+                      <Text style={[styles.priceMetaValue, { color: COLORS.green }]}>
+                        −₹{discount.toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.priceMetaRow}>
+                    <Text style={styles.priceMetaLabel}>Payable</Text>
+                    <Text style={styles.pricePayable}>
+                      ₹
+                      {(estimated > 0 ? payable : Math.max(0, lineSum - discount)).toLocaleString(
+                        'en-IN',
+                      )}
+                    </Text>
+                  </View>
+                  {lead.payment_mode ? (
+                    <Text style={styles.priceMode}>{formatPaymentMode(lead.payment_mode)}</Text>
+                  ) : null}
+                </View>
+              );
+            })()
           ) : null}
 
-          {(() => {
-            const schedule = formatLeadSchedule(lead);
-            if (!schedule) return null;
-            return <DetailRow icon="calendar-clock" label="Schedule" value={schedule} />;
-          })()}
+          {editing ? (
+            <>
+              <Text style={styles.fieldCaption}>Packages</Text>
+              <CrmServicePlanPicker
+                selectedIds={editForm.service_types}
+                onChange={(ids) => setEditField('service_types', ids)}
+                cityId={editForm.city_id}
+                vehicleClass={editForm.vehicle_class}
+                modelId={editForm.model_id}
+                title=""
+              />
 
-          <DetailRow
-            icon="car-pickup"
-            label="Service mode"
-            value={lead.pickup_required ? 'Doorstep pickup' : 'Workshop visit'}
-          />
-
-          {(() => {
-            const notes = String(lead.problem_description || '').trim();
-            if (!notes) return null;
-            if (/^(pickup|visit)\s*:/i.test(notes) && notes.length < 40) return null;
-            return <DetailRow icon="message-text" label="Notes" value={notes} />;
-          })()}
-
-          {(() => {
-            const code = String(
-              lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? ''
-            ).trim();
-            const discountAmount =
-              Number(lead?.discount_amount ?? lead?.coupon_discount_amount ?? lead?.coupon_discount ?? 0) || 0;
-            if (!code) return null;
-            return (
-              <View style={styles.couponBanner}>
-                <View style={styles.couponHeader}>
-                  <Text style={styles.couponTitle}>Coupon Applied</Text>
-                  <Text style={styles.couponCode}>{code}</Text>
-                </View>
-                <Text style={styles.couponText}>
-                  {discountAmount > 0
-                    ? `Discount: ₹${discountAmount.toLocaleString('en-IN')}`
-                    : 'Note: Discount will reflect at billing time.'}
-                </Text>
+              <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Activity</Text>
+              <Text style={styles.formLabel}>Quick</Text>
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[styles.chip, activityData.result === 'RINGING' && styles.chipActive]}
+                  onPress={() =>
+                    setActivityData({
+                      ...activityData,
+                      result: 'RINGING',
+                      lostReason: '',
+                    })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      activityData.result === 'RINGING' && styles.chipTextActive,
+                    ]}
+                  >
+                    Ringing
+                  </Text>
+                </TouchableOpacity>
               </View>
-            );
-          })()}
+
+              <Text style={styles.formLabel}>Status</Text>
+              <TouchableOpacity
+                style={styles.selectBtn}
+                onPress={() => {
+                  setShowLostMenu(false);
+                  setShowStatusMenu(true);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.selectBtnText,
+                    activityData.result === 'RINGING' && { color: COLORS.textSecondary },
+                  ]}
+                >
+                  {activityData.result === 'RINGING' ? 'Select status' : selectedResult.label}
+                </Text>
+                <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+
+              {activityData.result === 'LOST' ? (
+                <>
+                  <Text style={styles.formLabel}>Lost reason</Text>
+                  <TouchableOpacity
+                    style={styles.selectBtn}
+                    onPress={() => {
+                      setShowStatusMenu(false);
+                      setShowLostMenu(true);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.selectBtnText,
+                        !activityData.lostReason && { color: COLORS.textSecondary },
+                      ]}
+                    >
+                      {activityData.lostReason || 'Select lost reason'}
+                    </Text>
+                    <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                </>
+              ) : null}
+
+              <Text style={styles.formLabel}>Date & time (optional)</Text>
+              <View style={styles.dateTimeRow}>
+                <TouchableOpacity
+                  style={[styles.datetimeButton, { flex: 1 }]}
+                  onPress={() => setPickerMode('date')}
+                >
+                  <Text style={styles.datetimeButtonText}>{formatDisplayDate(activityData.date)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.datetimeButton, { flex: 1 }]}
+                  onPress={() => setPickerMode('time')}
+                >
+                  <Text style={styles.datetimeButtonText}>{formatDisplayTime(activityData.time)}</Text>
+                </TouchableOpacity>
+              </View>
+              {activityData.date || activityData.time ? (
+                <TouchableOpacity
+                  onPress={() => setActivityData({ ...activityData, date: '', time: '' })}
+                  style={{ marginBottom: 8 }}
+                >
+                  <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '600' }}>
+                    Clear date & time
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <Text style={styles.formLabel}>Remark</Text>
+              <TextInput
+                style={styles.inlineNotes}
+                placeholder="Your remark (optional)"
+                placeholderTextColor={COLORS.textSecondary}
+                value={activityData.notes}
+                onChangeText={(v) => setActivityData({ ...activityData, notes: v })}
+                multiline
+              />
+
+              {activityData.result === 'BOOKING_CONFIRMED' ? (
+                <>
+                  <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Pickup / Visit</Text>
+                  <CrmPickupVisitStep
+                    value={pickupValue}
+                    city={editForm.city}
+                    cityId={editForm.city_id}
+                    pincode={editForm.pincode}
+                    hideVehicleNumber
+                    hideWorkshopPicker={Boolean(editForm.workshop_id)}
+                    onChange={(patch) => {
+                      setEditForm((prev) => ({
+                        ...prev,
+                        ...patch,
+                      }));
+                    }}
+                  />
+
+                  <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Coupon</Text>
+                  {(() => {
+                    const code = String(
+                      lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? '',
+                    ).trim();
+                    if (code) {
+                      return (
+                        <View style={styles.couponBanner}>
+                          <View style={styles.couponHeader}>
+                            <Text style={styles.couponTitle}>Applied</Text>
+                            <Text style={styles.couponCode}>{code}</Text>
+                          </View>
+                          <TouchableOpacity onPress={handleRemoveCoupon}>
+                            <Text
+                              style={{
+                                color: COLORS.red,
+                                fontWeight: '600',
+                                fontSize: 12,
+                                marginTop: 6,
+                              }}
+                            >
+                              Remove coupon
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    }
+                    return (
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TextInput
+                          style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                          placeholder="Enter coupon code"
+                          value={couponInput}
+                          onChangeText={setCouponInput}
+                          autoCapitalize="characters"
+                          placeholderTextColor={COLORS.textSecondary}
+                        />
+                        <TouchableOpacity
+                          style={[
+                            styles.formButton,
+                            styles.formButtonPrimary,
+                            { flex: 0, paddingHorizontal: 16 },
+                          ]}
+                          onPress={handleApplyCoupon}
+                        >
+                          <Text style={styles.formButtonTextPrimary}>Apply</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })()}
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={styles.fieldCaption}>Packages</Text>
+              {serviceTypeNames.length > 0 ? (
+                <View style={styles.tagsContainer}>
+                  {serviceTypeNames.map((name, idx) => (
+                    <View key={`${name}-${idx}`} style={[styles.tag, styles.tagBlue]}>
+                      <Text style={styles.tagText}>{name}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.mutedValue}>Not specified</Text>
+              )}
+
+              {pricingItems.length > 0 ? (
+                <View style={styles.lineItemsBox}>
+                  {pricingItems.map((item, idx) => (
+                    <View key={`${item.name}-${idx}`} style={styles.lineItemRow}>
+                      <Text style={styles.lineItemName} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.lineItemPrice}>
+                        {item.price > 0 ? `₹${item.price.toLocaleString('en-IN')}` : '—'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {subserviceNames.length > 0 ? (
+                <>
+                  <Text style={[styles.fieldCaption, { marginTop: 12 }]}>Add-ons</Text>
+                  <View style={styles.tagsContainer}>
+                    {subserviceNames.map((name, idx) => (
+                      <View key={`${name}-${idx}`} style={[styles.tag, styles.tagGreen]}>
+                        <Text style={styles.tagText}>{name}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+
+              {(() => {
+                const schedule = formatLeadSchedule(lead);
+                if (!schedule) return null;
+                return <DetailRow icon="calendar-clock" label="Schedule" value={schedule} />;
+              })()}
+
+              <DetailRow
+                icon="car-pickup"
+                label="Service mode"
+                value={lead.pickup_required ? 'Doorstep pickup' : 'Workshop visit'}
+              />
+
+              {(() => {
+                const notes = String(lead.problem_description || '').trim();
+                if (!notes) return null;
+                if (/^(pickup|visit)\s*:/i.test(notes) && notes.length < 40) return null;
+                // Customer WhatsApp text is shown under Customer → Customer message
+                if (customerMessage && notes === customerMessage) return null;
+                return <DetailRow icon="message-text" label="Notes" value={notes} />;
+              })()}
+
+              {(() => {
+                const code = String(
+                  lead?.coupon_code ?? lead?.coupon ?? lead?.applied_coupon_code ?? '',
+                ).trim();
+                const discountAmount =
+                  Number(
+                    lead?.discount_amount ??
+                      lead?.coupon_discount_amount ??
+                      lead?.coupon_discount ??
+                      0,
+                  ) || 0;
+                if (!code) return null;
+                return (
+                  <View style={styles.couponBanner}>
+                    <View style={styles.couponHeader}>
+                      <Text style={styles.couponTitle}>Coupon Applied</Text>
+                      <Text style={styles.couponCode}>{code}</Text>
+                    </View>
+                    <Text style={styles.couponText}>
+                      {discountAmount > 0
+                        ? `Discount: ₹${discountAmount.toLocaleString('en-IN')}`
+                        : 'Note: Discount will reflect at billing time.'}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </>
+          )}
         </View>
       </View>
 
@@ -788,94 +2168,122 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
         </View>
       )}
 
-      {/* Call History */}
+      {/* Activity — calls + call-later in one place */}
+      {!editing ? (
+      <>
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Call History ({callLogs.length})</Text>
+          <Text style={styles.sectionTitle}>Activity ({activityItems.length})</Text>
           <TouchableOpacity
             style={styles.addIconBtn}
-            onPress={() => setShowCallLogForm(!showCallLogForm)}
+            onPress={() => setShowActivityForm(!showActivityForm)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Icon name="plus-circle" size={26} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
-        {showCallLogForm && (
+        {showActivityForm && (
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Add Call Log</Text>
-            <Text style={styles.formLabel}>Call Status</Text>
+            <Text style={styles.formTitle}>Log Call</Text>
+
+            <Text style={styles.formLabel}>Quick</Text>
             <View style={styles.chipRow}>
-              {CALL_STATUSES.map((status) => (
-                <TouchableOpacity
-                  key={status}
+              <TouchableOpacity
+                style={[styles.chip, activityData.result === 'RINGING' && styles.chipActive]}
+                onPress={() =>
+                  setActivityData({
+                    ...activityData,
+                    result: 'RINGING',
+                    lostReason: '',
+                  })
+                }
+              >
+                <Text
                   style={[
-                    styles.chip,
-                    callLogData.call_status === status && styles.chipActive,
+                    styles.chipText,
+                    activityData.result === 'RINGING' && styles.chipTextActive,
                   ]}
-                  onPress={() =>
-                    setCallLogData({
-                      ...callLogData,
-                      call_status: status,
-                      outcome: NO_OUTCOME_STATUSES.has(status) ? '' : callLogData.outcome || 'INFO_COLLECTED',
-                    })
-                  }
+                >
+                  Ringing
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.formLabel}>Status</Text>
+            <TouchableOpacity
+              style={styles.selectBtn}
+              onPress={() => {
+                setShowLostMenu(false);
+                setShowStatusMenu(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.selectBtnText,
+                  activityData.result === 'RINGING' && { color: COLORS.textSecondary },
+                ]}
+              >
+                {activityData.result === 'RINGING' ? 'Select status' : selectedResult.label}
+              </Text>
+              <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+
+            {activityData.result === 'LOST' ? (
+              <>
+                <Text style={styles.formLabel}>Lost reason</Text>
+                <TouchableOpacity
+                  style={styles.selectBtn}
+                  onPress={() => {
+                    setShowStatusMenu(false);
+                    setShowLostMenu(true);
+                  }}
                 >
                   <Text
                     style={[
-                      styles.chipText,
-                      callLogData.call_status === status && styles.chipTextActive,
+                      styles.selectBtnText,
+                      !activityData.lostReason && { color: COLORS.textSecondary },
                     ]}
                   >
-                    {formatStatusLabel(status)}
+                    {activityData.lostReason || 'Select lost reason'}
                   </Text>
+                  <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            {needsOutcome ? (
-              <>
-                <Text style={styles.formLabel}>Outcome</Text>
-                <View style={styles.chipRow}>
-                  {CALL_OUTCOMES.map((outcome) => (
-                    <TouchableOpacity
-                      key={outcome}
-                      style={[
-                        styles.chip,
-                        callLogData.outcome === outcome && styles.chipActive,
-                      ]}
-                      onPress={() => setCallLogData({ ...callLogData, outcome })}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          callLogData.outcome === outcome && styles.chipTextActive,
-                        ]}
-                      >
-                        {formatStatusLabel(outcome)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
               </>
-            ) : (
-              <Text style={styles.outcomeHint}>
-                Outcome not needed for {formatStatusLabel(callLogData.call_status)}.
-              </Text>
-            )}
-            <TextInput
-              style={styles.input}
-              placeholder="Call duration (seconds)"
-              value={callLogData.call_duration}
-              onChangeText={(value) => setCallLogData({ ...callLogData, call_duration: value })}
-              keyboardType="number-pad"
-              placeholderTextColor={COLORS.textSecondary}
-            />
+            ) : null}
+
+            <Text style={styles.formLabel}>Date & time (optional)</Text>
+            <View style={styles.dateTimeRow}>
+              <TouchableOpacity
+                style={[styles.datetimeButton, { flex: 1 }]}
+                onPress={() => setPickerMode('date')}
+              >
+                <Text style={styles.datetimeButtonText}>{formatDisplayDate(activityData.date)}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.datetimeButton, { flex: 1 }]}
+                onPress={() => setPickerMode('time')}
+              >
+                <Text style={styles.datetimeButtonText}>{formatDisplayTime(activityData.time)}</Text>
+              </TouchableOpacity>
+            </View>
+            {activityData.date || activityData.time ? (
+              <TouchableOpacity
+                onPress={() => setActivityData({ ...activityData, date: '', time: '' })}
+                style={{ marginBottom: 8 }}
+              >
+                <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: '600' }}>
+                  Clear date & time
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <Text style={styles.formLabel}>Remark</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Notes..."
-              value={callLogData.notes}
-              onChangeText={(value) => setCallLogData({ ...callLogData, notes: value })}
+              placeholder="Your remark (optional)"
+              value={activityData.notes}
+              onChangeText={(value) => setActivityData({ ...activityData, notes: value })}
               multiline
               numberOfLines={3}
               placeholderTextColor={COLORS.textSecondary}
@@ -883,13 +2291,13 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
             <View style={styles.formButtons}>
               <TouchableOpacity
                 style={[styles.formButton, styles.formButtonPrimary]}
-                onPress={handleAddCallLog}
+                onPress={handleSaveActivity}
               >
                 <Text style={styles.formButtonTextPrimary}>Save</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.formButton, styles.formButtonSecondary]}
-                onPress={() => setShowCallLogForm(false)}
+                onPress={() => setShowActivityForm(false)}
               >
                 <Text style={styles.formButtonTextSecondary}>Cancel</Text>
               </TouchableOpacity>
@@ -898,161 +2306,176 @@ export default function TelecallerLeadDetailScreen({ route, navigation, embedded
         )}
 
         <View style={styles.sectionContent}>
-          {callLogs.length === 0 ? (
-            <Text style={styles.emptyText}>No call logs yet</Text>
+          {activityItems.length === 0 ? (
+            <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
-            callLogs.map((log) => (
-              <View key={log.id} style={styles.logCard}>
+            activityItems.map((item) => (
+              <View key={item.id} style={styles.logCard}>
                 <View style={styles.logHeader}>
-                  <View style={[styles.logBadge, { backgroundColor: getCallStatusColor(log.call_status) }]}>
-                    <Text style={styles.logBadgeText}>{formatStatusLabel(log.call_status)}</Text>
+                  <View style={[styles.logBadge, { backgroundColor: item.badgeColor }]}>
+                    <Text style={styles.logBadgeText}>{item.title}</Text>
                   </View>
-                  {log.call_duration && (
-                    <Text style={styles.logDuration}>
-                      {Math.floor(log.call_duration / 60)}m {log.call_duration % 60}s
-                    </Text>
-                  )}
                 </View>
-                {log.notes && <Text style={styles.logNotes}>{log.notes}</Text>}
-                <Text style={styles.logTime}>
-                  {formatDateTime(log.created_at)}
-                </Text>
+                {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
+                <Text style={styles.logTime}>{item.timeLabel}</Text>
               </View>
             ))
           )}
         </View>
       </View>
 
-      {/* Follow-ups */}
+      {/* Update History — profile edits timeline */}
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Follow-ups ({followUps.length})</Text>
-          <TouchableOpacity
-            style={styles.addIconBtn}
-            onPress={() => setShowFollowUpForm(!showFollowUpForm)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Icon name="plus-circle" size={26} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {showFollowUpForm && (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Schedule Follow-up</Text>
-            <Text style={styles.formLabel}>Follow-up Type</Text>
-            <View style={styles.chipRow}>
-              {FOLLOW_UP_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.chip,
-                    followUpData.follow_up_type === type && styles.chipActive,
-                  ]}
-                  onPress={() => setFollowUpData({ ...followUpData, follow_up_type: type })}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      followUpData.follow_up_type === type && styles.chipTextActive,
-                    ]}
-                  >
-                    {type.replace('_', ' ')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.formLabel}>Priority</Text>
-            <View style={styles.chipRow}>
-              {FOLLOW_UP_PRIORITIES.map((priority) => (
-                <TouchableOpacity
-                  key={priority}
-                  style={[
-                    styles.chip,
-                    followUpData.priority === priority && styles.chipActive,
-                  ]}
-                  onPress={() => setFollowUpData({ ...followUpData, priority })}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      followUpData.priority === priority && styles.chipTextActive,
-                    ]}
-                  >
-                    {priority}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.formLabel}>Scheduled Time</Text>
-            <TouchableOpacity
-              style={styles.datetimeButton}
-              onPress={() => setShowFollowUpPicker(true)}
-            >
-              <Text style={styles.datetimeButtonText}>
-                {followUpData.scheduled_time
-                  ? formatDateTime(followUpData.scheduled_time)
-                  : 'Select date & time'}
-              </Text>
-            </TouchableOpacity>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Reason..."
-              value={followUpData.reason}
-              onChangeText={(value) => setFollowUpData({ ...followUpData, reason: value })}
-              placeholderTextColor={COLORS.textSecondary}
-            />
-            <View style={styles.formButtons}>
-              <TouchableOpacity
-                style={[styles.formButton, styles.formButtonPrimary]}
-                onPress={handleAddFollowUp}
-              >
-                <Text style={styles.formButtonTextPrimary}>Schedule</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.formButton, styles.formButtonSecondary]}
-                onPress={() => setShowFollowUpForm(false)}
-              >
-                <Text style={styles.formButtonTextSecondary}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+            <Icon name="history" size={16} color={COLORS.orange} />
           </View>
-        )}
-
+          <Text style={styles.sectionTitle}>
+            Update History ({profileHistory.length})
+          </Text>
+        </View>
         <View style={styles.sectionContent}>
-          {followUps.length === 0 ? (
-            <Text style={styles.emptyText}>No follow-ups scheduled</Text>
+          {profileHistory.length === 0 ? (
+            <Text style={styles.emptyText}>No profile updates yet</Text>
           ) : (
-            followUps.map((fu) => (
-              <View key={fu.id} style={styles.logCard}>
+            profileHistory.map((item: any, idx: number) => (
+              <View key={`${item.at || idx}-${idx}`} style={styles.logCard}>
                 <View style={styles.logHeader}>
-                  <Text style={styles.followUpType}>{fu.follow_up_type}</Text>
-                  <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(fu.priority) }]}>
-                    <Text style={styles.priorityText}>{fu.priority}</Text>
+                  <View style={[styles.logBadge, { backgroundColor: COLORS.orange + '22' }]}>
+                    <Text style={styles.logBadgeText}>{item.summary || 'Profile updated'}</Text>
                   </View>
                 </View>
-                <Text style={styles.logNotes}>{fu.reason}</Text>
+                {item.workshop_name ? (
+                  <Text style={styles.logNotes}>Workshop: {item.workshop_name}</Text>
+                ) : null}
+                {item.city || item.pincode ? (
+                  <Text style={styles.logNotes}>
+                    {[item.city, item.pincode].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+                {item.remark ? <Text style={styles.logNotes}>Remark: {item.remark}</Text> : null}
                 <Text style={styles.logTime}>
-                  {formatDateTime(fu.scheduled_time)}
+                  {item.at ? formatDateTime(item.at) : '—'}
                 </Text>
               </View>
             ))
           )}
         </View>
       </View>
+      </>
+      ) : null}
     </ScrollView>
 
-    {showFollowUpPicker && (
+    {pickerMode ? (
       <DateTimePicker
-        value={followUpData.scheduled_time ? new Date(followUpData.scheduled_time) : new Date()}
-        mode="datetime"
-        display="default"
-        onChange={handleFollowUpDateChange}
+        value={
+          pickerMode === 'date'
+            ? (activityData.date ? new Date(`${activityData.date}T12:00:00`) : new Date())
+            : (activityData.time
+                ? new Date(`1970-01-01T${activityData.time}:00`)
+                : new Date())
+        }
+        mode={pickerMode}
+        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+        onChange={handlePickerChange}
       />
-    )}
-    </View>
+    ) : null}
+
+    <Modal visible={showStatusMenu} transparent animationType="fade" onRequestClose={() => setShowStatusMenu(false)}>
+      <Pressable style={styles.menuOverlay} onPress={() => setShowStatusMenu(false)}>
+        <View style={styles.menuSheet}>
+          <Text style={styles.menuTitle}>Select status</Text>
+          {STATUS_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.id}
+              style={styles.menuItem}
+              onPress={() => {
+                setActivityData({
+                  ...activityData,
+                  result: opt.id,
+                  lostReason: opt.id === 'LOST' ? activityData.lostReason : '',
+                });
+                setShowStatusMenu(false);
+              }}
+            >
+              <Text style={styles.menuItemText}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Pressable>
+    </Modal>
+
+    <Modal visible={showLostMenu} transparent animationType="fade" onRequestClose={() => setShowLostMenu(false)}>
+      <Pressable style={styles.menuOverlay} onPress={() => setShowLostMenu(false)}>
+        <View style={styles.menuSheet}>
+          <Text style={styles.menuTitle}>Lost reason</Text>
+          {LOST_REASONS.map((reason) => (
+            <TouchableOpacity
+              key={reason}
+              style={styles.menuItem}
+              onPress={() => {
+                setActivityData({ ...activityData, lostReason: reason });
+                setShowLostMenu(false);
+              }}
+            >
+              <Text style={styles.menuItemText}>{reason}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Pressable>
+    </Modal>
+
+    <Modal visible={cityOpen} transparent animationType="fade" onRequestClose={() => setCityOpen(false)}>
+      <Pressable style={styles.menuOverlay} onPress={() => setCityOpen(false)}>
+        <Pressable style={styles.citySheet} onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.menuTitle}>Select City</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Search city"
+            placeholderTextColor={COLORS.textSecondary}
+            value={cityQuery}
+            onChangeText={setCityQuery}
+            autoFocus
+          />
+          <ScrollView style={{ maxHeight: 320 }}>
+            {filteredCities.map((c) => {
+              const active = editForm.city_id === c.id || editForm.city === c.name;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.cityRow, active && styles.cityRowActive]}
+                  onPress={() => {
+                    setEditForm((prev) => ({ ...prev, city_id: c.id, city: c.name }));
+                    setCityOpen(false);
+                    setCityQuery('');
+                  }}
+                >
+                  <Text style={[styles.cityRowText, active && styles.cityRowTextActive]}>{c.name}</Text>
+                  {active ? <Icon name="check" size={18} color={COLORS.primary} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    {editing ? (
+      <View style={styles.saveBar}>
+        <TouchableOpacity
+          style={[styles.saveBarBtn, saving && { opacity: 0.65 }]}
+          disabled={saving}
+          onPress={saveLeadEdits}
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveBarBtnText}>Save & Update Booking</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    ) : null}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1061,9 +2484,26 @@ interface DetailRowProps {
   label: string;
   value: string;
   compact?: boolean;
+  editing?: boolean;
+  onChangeText?: (v: string) => void;
+  placeholder?: string;
+  keyboardType?: any;
+  maxLength?: number;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }
 
-function DetailRow({ icon, label, value, compact }: DetailRowProps) {
+function DetailRow({
+  icon,
+  label,
+  value,
+  compact,
+  editing,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  maxLength,
+  autoCapitalize,
+}: DetailRowProps) {
   return (
     <View style={[styles.detailRow, compact && styles.detailRowCompact]}>
       <View style={styles.detailIcon}>
@@ -1071,7 +2511,20 @@ function DetailRow({ icon, label, value, compact }: DetailRowProps) {
       </View>
       <View style={styles.detailBody}>
         <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{value || '—'}</Text>
+        {editing ? (
+          <TextInput
+            style={styles.detailInput}
+            value={value || ''}
+            onChangeText={onChangeText}
+            placeholder={placeholder || label}
+            placeholderTextColor={COLORS.textSecondary}
+            keyboardType={keyboardType}
+            maxLength={maxLength}
+            autoCapitalize={autoCapitalize}
+          />
+        ) : (
+          <Text style={styles.detailValue}>{value || '—'}</Text>
+        )}
       </View>
     </View>
   );
@@ -1086,6 +2539,75 @@ function formatStatusLabel(raw: string | null | undefined): string {
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function resolveLeadDisplayStatus(lead: any, callLogs?: any[]): string {
+  const metaLabel = String(lead?.coupon_meta?.last_call_label || '').trim();
+  if (metaLabel) return metaLabel;
+
+  const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+  if (result && result !== 'RINGING') {
+    const fromOpt = STATUS_OPTIONS.find((o) => o.id === result);
+    if (fromOpt) return fromOpt.label;
+  }
+
+  const hist = Array.isArray(lead?.coupon_meta?.profile_history)
+    ? lead.coupon_meta.profile_history
+    : [];
+  for (const entry of hist) {
+    const s = String(entry?.status || '').toUpperCase();
+    if (s && s !== 'RINGING') {
+      const fromOpt = STATUS_OPTIONS.find((o) => o.id === s);
+      if (fromOpt) return fromOpt.label;
+    }
+  }
+
+  const latestNotes = callLogs?.[0]?.notes;
+  const tagged = String(latestNotes || '').match(/^\[([^\]]+)\]/);
+  if (tagged?.[1]) return tagged[1];
+
+  const status = String(lead?.status || '').toUpperCase();
+  switch (status) {
+    case 'NEW':
+      return 'New';
+    case 'VALIDATED':
+      return 'Booking confirmed';
+    case 'IN_PROGRESS':
+      return 'In Service';
+    case 'COMPLETED':
+      return 'Service Done';
+    case 'REJECTED':
+      return 'Lost';
+    case 'CONTACTED':
+      return 'Contacted';
+    case 'ASSIGNED':
+      return 'Assigned';
+    case 'ACCEPTED':
+      return 'Accepted';
+    default:
+      return formatStatusLabel(status || 'New');
+  }
+}
+
+function stripDispositionPrefix(notes: string): string {
+  return String(notes || '').replace(/^\[[^\]]+\]\s*/, '').trim();
+}
+
+function formatCallLogLabel(
+  callStatus: string | null | undefined,
+  outcome: string | null | undefined,
+  notes?: string | null,
+): string {
+  const tagged = String(notes || '').match(/^\[([^\]]+)\]/);
+  if (tagged?.[1]) return tagged[1];
+  const status = String(callStatus || '').toUpperCase();
+  const out = String(outcome || '').toUpperCase();
+  if (status === 'NO_ANSWER' || status === 'BUSY' || status === 'SWITCHED_OFF') return 'Ringing';
+  if (out === 'LEAD_CREATED') return 'Booking confirmed';
+  if (out === 'NOT_INTERESTED') return 'Lost';
+  if (out === 'INFO_COLLECTED') return 'Interested';
+  if (status === 'ANSWERED') return 'Connected';
+  return formatStatusLabel(callStatus);
 }
 
 function formatLeadSource(raw: string | null | undefined): string {
@@ -1176,17 +2698,31 @@ function getStatusFg(status: string): string {
 }
 
 function getCallStatusBadge(status: string): { bg: string; fg: string } {
-  switch (String(status || '').toUpperCase()) {
-    case 'ANSWERED':
-      return { bg: '#D1FAE5', fg: '#047857' };
+  const key = String(status || '').toUpperCase();
+  if (key === 'ANSWERED' || key === 'CONNECTED') {
+    return { bg: '#D1FAE5', fg: '#047857' };
+  }
+  if (
+    key.includes('BOOKING') ||
+    key === 'VALIDATED' ||
+    key === 'SERVICE DONE' ||
+    key === 'COMPLETED'
+  ) {
+    return { bg: '#D1FAE5', fg: '#047857' };
+  }
+  if (key.includes('INTERESTED') || key.includes('WILL VISIT') || key === 'IN SERVICE' || key === 'IN_PROGRESS') {
+    return { bg: '#DBEAFE', fg: COLORS.primary };
+  }
+  if (key.includes('LOST') || key === 'REJECTED' || key === 'WRONG_NUMBER') {
+    return { bg: '#FEE2E2', fg: '#B91C1C' };
+  }
+  switch (key) {
     case 'NO_ANSWER':
     case 'BUSY':
+    case 'RINGING':
       return { bg: '#FEF3C7', fg: '#B45309' };
     case 'SWITCHED_OFF':
       return { bg: '#E5E7EB', fg: '#374151' };
-    case 'WRONG_NUMBER':
-    case 'REJECTED':
-      return { bg: '#FEE2E2', fg: '#B91C1C' };
     case 'NEW':
       return { bg: '#DBEAFE', fg: COLORS.primary };
     default:
@@ -1198,7 +2734,10 @@ function getStatusColor(status: string): string {
   return getStatusBg(status);
 }
 
-function getCallStatusColor(status: string): string {
+function getCallStatusColor(status: string, outcome?: string | null): string {
+  const out = String(outcome || '').toUpperCase();
+  if (out === 'NOT_INTERESTED') return COLORS.red + '30';
+  if (out === 'LEAD_CREATED') return COLORS.green + '30';
   switch (status) {
     case 'ANSWERED': return COLORS.green + '30';
     case 'NO_ANSWER': return COLORS.orange + '30';
@@ -1489,6 +3028,161 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     lineHeight: 20,
   },
+  detailInput: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#D6E4F7',
+    borderRadius: 10,
+    backgroundColor: '#F8FBFF',
+    marginTop: 2,
+  },
+  fuelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  fuelChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#D6E4F7',
+    backgroundColor: '#F8FBFF',
+  },
+  fuelChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  fuelChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  fuelChipTextActive: {
+    color: '#fff',
+  },
+  inlineNotes: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: '#D6E4F7',
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    backgroundColor: '#F8FBFF',
+    textAlignVertical: 'top',
+  },
+  saveBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: SPACING.md,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 18 : 12,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: '#E8EEF7',
+  },
+  saveBarBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBarBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  citySheet: {
+    backgroundColor: '#fff',
+    marginHorizontal: 24,
+    marginTop: 120,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '70%',
+  },
+  cityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  cityRowActive: {
+    backgroundColor: '#F0F7FF',
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  cityRowText: {
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  cityRowTextActive: {
+    color: COLORS.primary,
+  },
+  workshopPickBox: {
+    marginTop: 10,
+    gap: 6,
+  },
+  workshopPickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
+    backgroundColor: '#F8FBFF',
+    marginTop: 4,
+  },
+  workshopPickRowActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#EAF2FF',
+  },
+  workshopPickName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  workshopPickCenter: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginTop: 2,
+  },
+  workshopPickSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  customerMsgBox: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#EEF2F7',
+  },
+  customerMsgText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+    backgroundColor: '#F8FBFF',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E8EEF7',
+  },
   fieldCaption: {
     fontSize: 11,
     fontWeight: '700',
@@ -1720,6 +3414,60 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: COLORS.white,
+  },
+  selectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: COLORS.gray[200] || '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    backgroundColor: '#fff',
+  },
+  selectBtnText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 8,
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.35)',
+    justifyContent: 'flex-end',
+  },
+  menuSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 28,
+    maxHeight: '70%',
+  },
+  menuTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 10,
+  },
+  menuItem: {
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.gray[200] || '#E5E7EB',
+  },
+  menuItemText: {
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
   },
   datetimeButton: {
     borderWidth: 1,

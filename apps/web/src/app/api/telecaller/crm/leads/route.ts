@@ -19,6 +19,90 @@ function leadMessagePreview(lead: Record<string, any>): string | null {
   return null;
 }
 
+const DISPOSITION_TO_LEAD_STATUS: Record<string, string> = {
+  BOOKING_CONFIRMED: 'VALIDATED',
+  IN_SERVICE: 'IN_PROGRESS',
+  SERVICE_DONE: 'COMPLETED',
+  LOST: 'REJECTED',
+};
+
+const DISPOSITION_LABEL: Record<string, string> = {
+  INTERESTED: 'Interested',
+  WILL_VISIT: 'He will visit',
+  BOOKING_CONFIRMED: 'Booking confirmed',
+  IN_SERVICE: 'In Service',
+  SERVICE_DONE: 'Service Done',
+  LOST: 'Lost',
+  RINGING: 'Ringing',
+};
+
+function latestDisposition(meta: any): string | null {
+  const fromResult = String(meta?.last_call_result || '').toUpperCase();
+  if (fromResult && fromResult !== 'RINGING') return fromResult;
+  const hist = Array.isArray(meta?.profile_history) ? meta.profile_history : [];
+  for (const entry of hist) {
+    const s = String(entry?.status || '').toUpperCase();
+    if (s && s !== 'RINGING') return s;
+  }
+  return null;
+}
+
+/** Fix leads where booking/activity was saved in history but status column stayed NEW. */
+async function healLeadStatuses(db: any, rows: any[]) {
+  const patches: Promise<any>[] = [];
+  for (const row of rows || []) {
+    const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+    const disposition = latestDisposition(meta);
+    if (!disposition) continue;
+    const nextStatus = DISPOSITION_TO_LEAD_STATUS[disposition];
+    if (!nextStatus) continue;
+    const current = String(row?.status || '').toUpperCase();
+    if (current === nextStatus) {
+      // Still ensure display label exists for list badge
+      if (!meta.last_call_result || !meta.last_call_label) {
+        const nextMeta = {
+          ...meta,
+          last_call_result: meta.last_call_result || disposition,
+          last_call_label: meta.last_call_label || DISPOSITION_LABEL[disposition] || disposition,
+        };
+        row.coupon_meta = nextMeta;
+        patches.push(
+          db
+            .from('service_leads')
+            .update({ coupon_meta: nextMeta, updated_at: new Date().toISOString() })
+            .eq('id', row.id),
+        );
+      }
+      continue;
+    }
+    // Only advance from early statuses — don't overwrite ASSIGNED/ACCEPTED etc.
+    if (!['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'VALIDATED'].includes(current)) continue;
+    if (current === 'VALIDATED' && nextStatus === 'VALIDATED') continue;
+
+    const nextMeta = {
+      ...meta,
+      last_call_result: meta.last_call_result || disposition,
+      last_call_label: meta.last_call_label || DISPOSITION_LABEL[disposition] || disposition,
+      last_call_status: meta.last_call_status || 'ANSWERED',
+    };
+    row.status = nextStatus;
+    row.coupon_meta = nextMeta;
+    patches.push(
+      db
+        .from('service_leads')
+        .update({
+          status: nextStatus,
+          coupon_meta: nextMeta,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id),
+    );
+  }
+  if (patches.length) {
+    await Promise.allSettled(patches);
+  }
+}
+
 /**
  * GET /api/telecaller/crm/leads
  * Advanced filtered queue for Service leads.
@@ -56,7 +140,7 @@ export async function GET(request: NextRequest) {
     const from = sp.get('from');
     const to = sp.get('to');
     const q = sp.get('q');
-    const filter = sp.get('filter'); // new|callback|incomplete|follow_up|rejected|all
+    const filter = sp.get('filter'); // new|interested|will_visit|booking_confirmed|in_service|service_done|lost|callback|incomplete|follow_up|booked|rejected|all
     const limit = Math.min(Math.max(parseInt(sp.get('limit') || '80', 10) || 80, 1), 200);
 
     let query = db
@@ -90,17 +174,33 @@ export async function GET(request: NextRequest) {
     if (to) query = query.lte('created_at', to);
 
     if (filter === 'new') {
-      query = query.eq('status', 'NEW').is('last_call_at', null);
+      query = query.eq('status', 'NEW');
+    } else if (filter === 'interested') {
+      query = query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
+    } else if (filter === 'will_visit') {
+      query = query.filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT');
+    } else if (filter === 'booking_confirmed') {
+      query = query.eq('status', 'VALIDATED');
+    } else if (filter === 'booked') {
+      query = query.in('status', [
+        'VALIDATED',
+        'ASSIGNED',
+        'ACCEPTED',
+        'IN_PROGRESS',
+        'COMPLETED',
+      ]);
+    } else if (filter === 'in_service') {
+      query = query.eq('status', 'IN_PROGRESS');
+    } else if (filter === 'service_done') {
+      query = query.eq('status', 'COMPLETED');
+    } else if (filter === 'lost' || filter === 'rejected') {
+      query = query.eq('status', 'REJECTED');
     } else if (filter === 'callback') {
       query = query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
     } else if (filter === 'incomplete') {
       query = query.eq('is_incomplete', true);
     } else if (filter === 'follow_up') {
       query = query.eq('follow_up_required', true);
-    } else if (filter === 'rejected') {
-      query = query.eq('status', 'REJECTED');
-    } else if (filter === 'booked') {
-      query = query.in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED']);
     }
 
     if (q) {
@@ -136,15 +236,28 @@ export async function GET(request: NextRequest) {
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       if (from) retry = retry.gte('created_at', from);
       if (to) retry = retry.lte('created_at', to);
-      if (filter === 'new') retry = retry.eq('status', 'NEW').is('last_call_at', null);
+      if (filter === 'new') retry = retry.eq('status', 'NEW');
+      else if (filter === 'interested') {
+        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
+      } else if (filter === 'will_visit') {
+        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT');
+      } else if (filter === 'booking_confirmed') {
+        retry = retry.eq('status', 'VALIDATED');
+      } else if (filter === 'booked') {
+        retry = retry.in('status', [
+          'VALIDATED',
+          'ASSIGNED',
+          'ACCEPTED',
+          'IN_PROGRESS',
+          'COMPLETED',
+        ]);
+      } else if (filter === 'in_service') retry = retry.eq('status', 'IN_PROGRESS');
+      else if (filter === 'service_done') retry = retry.eq('status', 'COMPLETED');
+      else if (filter === 'lost' || filter === 'rejected') retry = retry.eq('status', 'REJECTED');
       else if (filter === 'callback') {
         retry = retry.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
       } else if (filter === 'incomplete') retry = retry.eq('is_incomplete', true);
       else if (filter === 'follow_up') retry = retry.eq('follow_up_required', true);
-      else if (filter === 'rejected') retry = retry.eq('status', 'REJECTED');
-      else if (filter === 'booked') {
-        retry = retry.in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED']);
-      }
       if (q) {
         retry = retry.or(
           `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`,
@@ -155,7 +268,14 @@ export async function GET(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-    const leads = (data || []).map((row: any) => ({
+    const rows = data || [];
+    try {
+      await healLeadStatuses(db, rows);
+    } catch (healErr) {
+      console.warn('[crm/leads] status heal skipped', healErr);
+    }
+
+    const leads = rows.map((row: any) => ({
       ...row,
       message_preview: leadMessagePreview(row),
       is_whatsapp_lead:

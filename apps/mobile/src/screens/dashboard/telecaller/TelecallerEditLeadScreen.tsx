@@ -181,13 +181,38 @@ function parseComposedAddress(
   return { flat, area, landmark };
 }
 
-export default function TelecallerEditLeadScreen({ navigation: navProp, route: routeProp }: any) {
+type EditLeadProps = {
+  navigation?: any;
+  route?: any;
+  /** When true, hide standalone header and use callbacks (embedded in Lead Details). */
+  embedded?: boolean;
+  onSaved?: () => void;
+  onCancel?: () => void;
+};
+
+export default function TelecallerEditLeadScreen({
+  navigation: navProp,
+  route: routeProp,
+  embedded = false,
+  onSaved,
+  onCancel,
+}: EditLeadProps) {
   const route = useRoute();
   const navigationHook = useNavigation();
   const navigation = navProp || navigationHook;
   const insets = useSafeAreaInsets();
   const params = (routeProp?.params || (route as any)?.params || {}) as { leadId: string };
   const { leadId } = params;
+
+  const handleClose = () => {
+    if (onCancel) onCancel();
+    else navigation.goBack();
+  };
+
+  const handleAfterSave = () => {
+    if (onSaved) onSaved();
+    else navigation.goBack();
+  };
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -539,7 +564,7 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
             : '';
 
       Alert.alert('Updated', `Lead saved successfully.${waNote}`, [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { text: 'OK', onPress: handleAfterSave },
       ]);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to update lead');
@@ -550,7 +575,7 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
 
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, embedded && { minHeight: 220 }]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.muted}>Loading lead…</Text>
       </View>
@@ -559,10 +584,10 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
 
   if (errorMessage) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, embedded && { minHeight: 220 }]}>
         <Text style={styles.errorBig}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.primaryBtnText}>Go Back</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleClose}>
+          <Text style={styles.primaryBtnText}>{embedded ? 'Close' : 'Go Back'}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -570,22 +595,29 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, embedded && styles.containerEmbedded]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Lead</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      {!embedded ? (
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={handleClose}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Edit Lead</Text>
+          <View style={{ width: 40 }} />
+        </View>
+      ) : null}
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: 24 },
+          embedded && styles.contentEmbedded,
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
       >
         {/* Customer */}
         <View style={[styles.card, styles.customerCard]}>
@@ -794,7 +826,13 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
         </View>
       </ScrollView>
 
-      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <View
+        style={[
+          styles.stickyFooter,
+          { paddingBottom: embedded ? 10 : Math.max(insets.bottom, 10) },
+          embedded && styles.stickyFooterEmbedded,
+        ]}
+      >
         <TouchableOpacity
           style={[styles.submit, saving && { opacity: 0.6 }]}
           disabled={saving}
@@ -854,6 +892,15 @@ export default function TelecallerEditLeadScreen({ navigation: navProp, route: r
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  containerEmbedded: { backgroundColor: 'transparent' },
+  contentEmbedded: { paddingTop: 4, paddingBottom: 16 },
+  stickyFooterEmbedded: {
+    borderTopWidth: 0,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.md,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   muted: { marginTop: 10, color: COLORS.textSecondary },
   errorBig: { color: COLORS.red, textAlign: 'center', marginBottom: 16, fontWeight: '600' },

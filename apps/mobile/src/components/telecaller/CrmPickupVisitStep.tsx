@@ -133,6 +133,10 @@ type Props = {
   /** Home service: force pickup, hide Visit */
   forcePickup?: boolean;
   quoteTotal?: number;
+  /** Hide reg# field when shown elsewhere (e.g. Vehicle section) */
+  hideVehicleNumber?: boolean;
+  /** Hide nearby workshop list when already selected above */
+  hideWorkshopPicker?: boolean;
 };
 
 export default function CrmPickupVisitStep({
@@ -143,6 +147,8 @@ export default function CrmPickupVisitStep({
   pincode = '',
   forcePickup = false,
   quoteTotal,
+  hideVehicleNumber = false,
+  hideWorkshopPicker = false,
 }: Props) {
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -184,6 +190,11 @@ export default function CrmPickupVisitStep({
 
   useEffect(() => {
     if (pickupRequired) return;
+    if (hideWorkshopPicker && value.workshop_id) {
+      setWorkshops([]);
+      setLoadingWs(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoadingWs(true);
@@ -236,14 +247,14 @@ export default function CrmPickupVisitStep({
     return () => {
       cancelled = true;
     };
-  }, [pickupRequired, city, cityId, pincode]);
+  }, [pickupRequired, city, cityId, pincode, hideWorkshopPicker, value.workshop_id]);
 
   const setMode = (pickup: boolean) => {
     if (forcePickup && !pickup) return;
     onChange({
       pickup_required: pickup,
       ...(pickup
-        ? { workshop_id: '', workshop_name: '' }
+        ? {}
         : { pickup_address: '', flat_number: '', landmark: '' }),
     });
   };
@@ -307,20 +318,22 @@ export default function CrmPickupVisitStep({
         </View>
       )}
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Vehicle Number *</Text>
-        <TextInput
-          style={[styles.input, { letterSpacing: 1.2, fontWeight: '700', textTransform: 'uppercase' }]}
-          value={value.vehicle_number}
-          onChangeText={(t) =>
-            onChange({ vehicle_number: t.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12) })
-          }
-          placeholder="e.g. MH01BJ7842"
-          placeholderTextColor={COLORS.textSecondary}
-          autoCapitalize="characters"
-          maxLength={12}
-        />
-      </View>
+      {!hideVehicleNumber ? (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Vehicle Number *</Text>
+          <TextInput
+            style={[styles.input, { letterSpacing: 1.2, fontWeight: '700', textTransform: 'uppercase' }]}
+            value={value.vehicle_number}
+            onChangeText={(t) =>
+              onChange({ vehicle_number: t.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12) })
+            }
+            placeholder="e.g. MH01BJ7842"
+            placeholderTextColor={COLORS.textSecondary}
+            autoCapitalize="characters"
+            maxLength={12}
+          />
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>{pickupRequired ? 'Pickup Date *' : 'Visit Date *'}</Text>
@@ -480,7 +493,7 @@ export default function CrmPickupVisitStep({
             </>
           ) : null}
         </View>
-      ) : (
+      ) : hideWorkshopPicker && value.workshop_id ? null : (
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Nearby Workshops</Text>
           {!/^\d{6}$/.test(String(pincode || '').trim()) ? (

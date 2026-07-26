@@ -84,43 +84,97 @@ function formatAmount(value: unknown): string {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
-/** Clean address for WhatsApp — no duplicate PIN / (home) clutter */
-function formatAddressLine(lead: BookingConfirmedLead, body?: Record<string, unknown> | null): string {
-  const meta = (body?.coupon_meta || body || {}) as Record<string, unknown>;
-  const flat = String(lead.flat_number || meta.flat_number || '').trim();
-  const landmark = String(lead.landmark || meta.landmark || '').trim();
-  const raw = String(lead.pickup_address || lead.customer_address || '').trim();
+/** Clean address for WhatsApp — no duplicate flat / PIN / (home) clutter */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  // Prefer structured parts when available
-  if (flat || landmark) {
-    const area = raw
-      .replace(/^Landmark:\s*/i, '')
-      .replace(/\s*\(home\)|\s*\(work\)|\s*\(other\)/gi, '')
-      .replace(/,?\s*PIN\s*\d{6}/gi, '')
-      .replace(/,?\s*Landmark:\s*[^,]*/gi, '')
-      .trim();
-    // If raw already looks composed, strip noise instead
-    const base = [flat, area || raw, landmark ? `Near ${landmark.replace(/^Landmark:\s*/i, '')}` : '']
-      .filter(Boolean)
-      .join(', ');
-    const cityPin = [lead.city, lead.pincode].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
-    if (cityPin && !base.toLowerCase().includes(String(lead.pincode || '').toLowerCase())) {
-      return `${base}, ${cityPin}`;
-    }
-    return base || cityPin;
-  }
-
-  // Clean stored composed address
-  let cleaned = raw
+function stripNoiseFromAddress(raw: string): string {
+  return String(raw || '')
+    .replace(/^Landmark:\s*/i, '')
     .replace(/\s*\((home|work|other)\)/gi, '')
-    .replace(/,?\s*Landmark:\s*/gi, ', Near ')
     .replace(/,?\s*PIN\s*(\d{6})/gi, ', $1')
+    .replace(/,?\s*Landmark:\s*/gi, ', Near ')
     .replace(/,\s*,+/g, ',')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
 
+/** Remove a known prefix segment (e.g. flat already inside composed address). */
+function stripLeadingSegment(text: string, segment: string): string {
+  const seg = String(segment || '').trim();
+  if (!seg || !text) return text;
+  const re = new RegExp(`^${escapeRegExp(seg)}\\s*,?\\s*`, 'i');
+  return text.replace(re, '').trim();
+}
+
+function stripNearLandmark(text: string, landmark: string): string {
+  const lm = String(landmark || '')
+    .trim()
+    .replace(/^Near\s+/i, '')
+    .replace(/^Landmark:\s*/i, '');
+  if (!lm || !text) return text;
+  return text
+    .replace(new RegExp(`,?\\s*Near\\s+${escapeRegExp(lm)}\\b`, 'i'), '')
+    .replace(new RegExp(`,?\\s*Landmark:\\s*${escapeRegExp(lm)}\\b`, 'i'), '')
+    .replace(/,\s*,+/g, ',')
+    .trim();
+}
+
+function dedupeAddressParts(parts: string[]): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    const t = String(part || '').trim();
+    if (!t) continue;
+    const lower = t.toLowerCase();
+    if (out.some((o) => o.toLowerCase() === lower)) continue;
+    // Skip if this piece is already fully contained in a previous longer part
+    if (out.some((o) => o.toLowerCase().includes(lower))) continue;
+    // If a previous shorter part is contained in this one, replace it
+    const idx = out.findIndex((o) => lower.includes(o.toLowerCase()) && o.length < t.length);
+    if (idx >= 0) {
+      out[idx] = t;
+      continue;
+    }
+    out.push(t);
+  }
+  return out;
+}
+
+function formatAddressLine(lead: BookingConfirmedLead, body?: Record<string, unknown> | null): string {
+  const meta = (body?.coupon_meta || body || {}) as Record<string, unknown>;
+  const flat = String(lead.flat_number || meta.flat_number || '').trim();
+  const landmarkRaw = String(lead.landmark || meta.landmark || '')
+    .trim()
+    .replace(/^Near\s+/i, '')
+    .replace(/^Landmark:\s*/i, '');
+  const raw = stripNoiseFromAddress(String(lead.pickup_address || lead.customer_address || ''));
+
+  // pickup_address is often already composed as "flat, area, Near landmark, city pin".
+  // Never prepend flat/landmark again if they're already inside raw.
+  let area = raw;
+  if (flat) area = stripLeadingSegment(area, flat);
+  if (landmarkRaw) area = stripNearLandmark(area, landmarkRaw);
+  // Also drop trailing city/pin from area — we append once below
   const city = String(lead.city || '').trim();
   const pin = String(lead.pincode || '').trim();
+  if (city) {
+    area = area
+      .replace(new RegExp(`,?\\s*${escapeRegExp(city)}(?:\\s+${pin || '\\d{6}'})?\\s*$`, 'i'), '')
+      .trim();
+  } else if (pin) {
+    area = area.replace(new RegExp(`,?\\s*${escapeRegExp(pin)}\\s*$`), '').trim();
+  }
+
+  const cityPin = [city, pin].filter(Boolean).join(' ');
+  const landmarkPart = landmarkRaw ? `Near ${landmarkRaw}` : '';
+
+  if (flat || landmarkRaw || area) {
+    const base = dedupeAddressParts([flat, area, landmarkPart, cityPin]).join(', ');
+    return base || cityPin || 'Address to be confirmed';
+  }
+
+  let cleaned = raw;
   if (city && !cleaned.toLowerCase().includes(city.toLowerCase())) {
     cleaned = cleaned ? `${cleaned}, ${city}` : city;
   }
@@ -128,7 +182,7 @@ function formatAddressLine(lead: BookingConfirmedLead, body?: Record<string, unk
     cleaned = cleaned ? `${cleaned} ${pin}` : pin;
   }
 
-  return cleaned || [city, pin].filter(Boolean).join(' ') || 'Address to be confirmed';
+  return cleaned || cityPin || 'Address to be confirmed';
 }
 
 /**

@@ -12,6 +12,10 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
+import {
+  leadDisplayStatus,
+  leadStatusBannerClass,
+} from '@/lib/telecaller/leadDisplayStatus';
 
 export default function LeadDetailPage() {
   const params = useParams();
@@ -55,8 +59,19 @@ export default function LeadDetailPage() {
     call_status: 'ANSWERED',
     call_duration: '',
     outcome: 'INFO_COLLECTED',
+    activity: 'INTERESTED',
     notes: ''
   });
+
+  const ACTIVITY_OPTIONS = [
+    { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null as string | null },
+    { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
+    { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', call_status: 'ANSWERED', outcome: 'LEAD_CREATED', lead_status: 'VALIDATED' },
+    { id: 'IN_SERVICE', label: 'In Service', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'IN_PROGRESS' },
+    { id: 'SERVICE_DONE', label: 'Service Done', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'COMPLETED' },
+    { id: 'LOST', label: 'Lost', call_status: 'ANSWERED', outcome: 'NOT_INTERESTED', lead_status: 'REJECTED' },
+    { id: 'RINGING', label: 'Ringing / No answer', call_status: 'NO_ANSWER', outcome: null, lead_status: null },
+  ];
 
   const [followUpData, setFollowUpData] = useState({
     follow_up_type: 'CALLBACK',
@@ -152,39 +167,69 @@ export default function LeadDetailPage() {
 
   async function handleAddCallLog() {
     try {
+      const selected =
+        ACTIVITY_OPTIONS.find((o) => o.id === callLogData.activity) || ACTIVITY_OPTIONS[0];
+      const statusLabel = selected.label;
+      const notesParts = [`[${statusLabel}]`, callLogData.notes.trim() || null].filter(Boolean);
+
       const res = await fetch('/api/telecaller/calls/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_id: leadId,
           call_type: 'OUTBOUND',
-          call_status: callLogData.call_status,
+          call_status: selected.call_status,
           call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
-          outcome: callLogData.outcome,
-          notes: callLogData.notes,
+          outcome: selected.outcome,
+          notes: notesParts.join(' '),
           phone_number: lead?.customer_phone,
         }),
       });
 
       if (res.ok) {
-        // Update lead's last_call_at and total_calls (best-effort)
+        // Persist activity on lead (status + coupon_meta) via PATCH
         try {
-          const supabase = createClient();
-          await supabase
-            .from('service_leads')
-            .update({
-              last_call_at: new Date().toISOString(),
-              total_calls: (lead?.total_calls || 0) + 1
-            })
-            .eq('id', leadId);
-        } catch {
-          // ignore
+          const prevMeta =
+            lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+          const nextMeta = {
+            ...prevMeta,
+            last_call_status: selected.call_status,
+            last_call_result: selected.id,
+            last_call_label: statusLabel,
+            last_call_at: new Date().toISOString(),
+          };
+          await fetch(`/api/telecaller/leads/${leadId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              coupon_meta: nextMeta,
+              ...(selected.lead_status ? { status: selected.lead_status } : {}),
+              customer_name: lead?.customer_name,
+              customer_phone: lead?.customer_phone,
+              city: lead?.city,
+              city_id: lead?.city_id,
+              pincode: lead?.pincode,
+              vehicle_number: lead?.vehicle_number,
+              vehicle_make: lead?.vehicle_make,
+              vehicle_model: lead?.vehicle_model,
+              model_id: lead?.model_id,
+              workshop_id: lead?.workshop_id,
+              pickup_required: lead?.pickup_required,
+              pickup_address: lead?.pickup_address,
+              problem_description: lead?.problem_description,
+              service_types: parseIds(lead?.service_type_ids),
+              service_addons: parseIds(lead?.subservice_ids),
+            }),
+          });
+        } catch (e) {
+          console.warn('lead status update after call log failed', e);
         }
 
         setCallLogData({
           call_status: 'ANSWERED',
           call_duration: '',
           outcome: 'INFO_COLLECTED',
+          activity: 'INTERESTED',
           notes: ''
         });
         setShowCallLogForm(false);
@@ -325,16 +370,12 @@ export default function LeadDetailPage() {
         </div>
 
         {/* Status Banner */}
-        <div className={`card ${
-          lead.status === 'NEW' ? 'bg-blue-50 border-blue-200' :
-          lead.status === 'ASSIGNED' ? 'bg-indigo-50 border-indigo-200' :
-          lead.status === 'ACCEPTED' ? 'bg-green-50 border-green-200' :
-          lead.status === 'REJECTED' ? 'bg-red-50 border-red-200' :
-          'bg-gray-50 border-gray-200'
-        }`}>
+        <div className={`card ${leadStatusBannerClass(lead)}`}>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="text-base sm:text-lg font-semibold">Status: {lead.status}</h3>
+              <h3 className="text-base sm:text-lg font-semibold">
+                Status: {leadDisplayStatus(lead)}
+              </h3>
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                 Created {formatDateTime(lead.created_at)}
               </p>
@@ -558,15 +599,15 @@ export default function LeadDetailPage() {
               {showCallLogForm && (
                 <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg space-y-2 sm:space-y-3">
                   <select
-                    value={callLogData.call_status}
-                    onChange={(e) => setCallLogData({...callLogData, call_status: e.target.value})}
+                    value={callLogData.activity}
+                    onChange={(e) => setCallLogData({ ...callLogData, activity: e.target.value })}
                     className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                   >
-                    <option value="ANSWERED">Answered</option>
-                    <option value="NO_ANSWER">No Answer</option>
-                    <option value="BUSY">Busy</option>
-                    <option value="SWITCHED_OFF">Switched Off</option>
-                    <option value="WRONG_NUMBER">Wrong Number</option>
+                    {ACTIVITY_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
                   </select>
 
                   <input
@@ -576,18 +617,6 @@ export default function LeadDetailPage() {
                     onChange={(e) => setCallLogData({...callLogData, call_duration: e.target.value})}
                     className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                   />
-
-                  <select
-                    value={callLogData.outcome}
-                    onChange={(e) => setCallLogData({...callLogData, outcome: e.target.value})}
-                    className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
-                  >
-                    <option value="INFO_COLLECTED">Info Collected</option>
-                    <option value="LEAD_CREATED">Lead Created</option>
-                    <option value="FOLLOW_UP_SET">Follow-up Set</option>
-                    <option value="CUSTOMER_REJECTED">Customer Rejected</option>
-                    <option value="ESCALATED">Escalated</option>
-                  </select>
 
                   <textarea
                     placeholder="Call notes..."
@@ -622,7 +651,7 @@ export default function LeadDetailPage() {
                               log.call_status === 'NO_ANSWER' ? 'bg-orange-100 text-orange-700' :
                               'bg-gray-100 text-gray-700'
                             }`}>
-                              {log.call_status}
+                              {String(log.notes || '').match(/^\[([^\]]+)\]/)?.[1] || log.call_status}
                             </span>
                             {log.call_duration && (
                               <span className="text-xs sm:text-sm text-gray-500">

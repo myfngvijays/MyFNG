@@ -8,6 +8,7 @@ import {
   User, Phone, Mail, MapPin, Car, Wrench, Calendar,
   ArrowLeft, Save, X, AlertCircle
 } from 'lucide-react';
+import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 
 export default function EditLeadPage() {
   const params = useParams();
@@ -268,9 +269,9 @@ export default function EditLeadPage() {
 
       if (leadError) throw leadError;
       
-      // Check if lead can be edited (only NEW, CONTACTED, INCOMPLETE status)
-      if (!['NEW', 'CONTACTED', 'INCOMPLETE'].includes(leadData.status)) {
-        setError(`Cannot edit lead with status: ${leadData.status}. Only NEW, CONTACTED, or INCOMPLETE leads can be edited.`);
+      // Check if lead can be edited
+      if (!['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'VALIDATED', 'ASSIGNED', 'IN_PROGRESS'].includes(leadData.status)) {
+        setError(`Cannot edit lead with status: ${leadData.status}.`);
         setLoading(false);
         return;
       }
@@ -550,7 +551,7 @@ export default function EditLeadPage() {
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-50 border border-blue-200 rounded-lg w-full sm:w-auto">
             <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0" />
-            <span className="text-xs sm:text-sm text-blue-800">Status: {lead.status}</span>
+            <span className="text-xs sm:text-sm text-blue-800">Status: {leadDisplayStatus(lead)}</span>
           </div>
         </div>
 
