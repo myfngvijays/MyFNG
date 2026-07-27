@@ -258,22 +258,6 @@ export default function PricingSharePage() {
         }
       `}</style>
 
-      <header className="sticky top-0 z-20 border-b border-[#E5EAF2] bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#004AAD]">
-              Service &amp; Price
-            </p>
-            <h1 className="text-[17px] font-extrabold text-[#0F172A]">
-              {data?.carModel || 'MyFNG Pricing'}
-            </h1>
-          </div>
-          <Link href="/" className="text-[12px] font-semibold text-[#64748B]">
-            MY FNG
-          </Link>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-3xl px-4 py-4 pb-36">
         {loading ? (
           <div className="rounded-2xl bg-white p-8 text-center text-[#64748B] shadow-sm">
@@ -297,16 +281,32 @@ export default function PricingSharePage() {
           </div>
         ) : (
           <>
-            {/* High-contrast info card */}
-            <div className="mb-4 rounded-2xl bg-[#004AAD] p-4 text-white shadow-md">
-              <p className="text-[13px] font-semibold text-white">
-                {[data?.city, data?.pincode ? `PIN ${data.pincode}` : null]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-              <p className="mt-1 text-[12px] text-white/85">
-                Link valid until {formatExpiry(data?.expiresAt)} · View only
-              </p>
+            {/* App-style blue header: car + location + expiry */}
+            <div className="mb-5 rounded-2xl bg-[#004AAD] px-4 py-3.5 text-white shadow-md">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
+                    Service &amp; Price
+                  </p>
+                  <h1 className="mt-0.5 truncate text-[17px] font-extrabold uppercase leading-tight text-white">
+                    {data?.carModel || 'MyFNG Pricing'}
+                  </h1>
+                  <p className="mt-1.5 text-[13px] font-semibold text-white">
+                    {[data?.city, data?.pincode ? `PIN ${data.pincode}` : null]
+                      .filter(Boolean)
+                      .join(' • ')}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-white/85">
+                    Link valid until {formatExpiry(data?.expiresAt)} • View only
+                  </p>
+                </div>
+                <Link
+                  href="/"
+                  className="shrink-0 pt-0.5 text-[12px] font-extrabold uppercase tracking-wide text-white"
+                >
+                  MY FNG
+                </Link>
+              </div>
             </div>
 
             <p className="mb-2 text-[12px] font-bold uppercase tracking-wide text-[#64748B]">
@@ -392,7 +392,9 @@ export default function PricingSharePage() {
             ) : null}
 
             <h2 className="mb-3 text-[15px] font-extrabold uppercase tracking-wide text-[#0F172A]">
-              {activeBlock?.category || 'Services'}
+              {activeBlock?.category
+                ? `Car ${activeBlock.category.replace(/^car\s+/i, '')}`
+                : 'Services'}
             </h2>
 
             <div className="grid grid-cols-2 gap-3">
@@ -400,6 +402,11 @@ export default function PricingSharePage() {
                 const key = planKey(plan, activeCategory);
                 const isOn = Boolean(selected[key]);
                 const pointsOpen = openPoints === key;
+                const pts =
+                  plan.pointsLabel ||
+                  (typeof plan.points === 'number' && plan.points > 0
+                    ? `${plan.points} pts`
+                    : null);
                 return (
                   <div
                     key={key}
@@ -421,25 +428,23 @@ export default function PricingSharePage() {
                           {plan.tier || plan.name}
                         </p>
                         <span
-                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] ${
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold ${
                             isOn
-                              ? 'border-[#16A34A] bg-[#16A34A] text-white'
-                              : 'border-[#CBD5E1] text-transparent'
+                              ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                              : 'border-[#CBD5E1] bg-white text-transparent'
                           }`}
                         >
                           ✓
                         </span>
                       </div>
-                      {plan.pointsLabel ? (
-                        <p className="text-[11px] text-[#64748B]">{plan.pointsLabel}</p>
-                      ) : null}
+                      {pts ? <p className="text-[11px] text-[#64748B]">{pts}</p> : null}
                       <p className="mt-2 text-[16px] font-extrabold text-[#0F172A]">
                         {inr(plan.price)}
                       </p>
                       {isOn ? (
-                        <p className="mt-1 text-[11px] font-semibold text-[#16A34A]">Added</p>
+                        <p className="mt-1 text-[12px] font-semibold text-[#16A34A]">Added</p>
                       ) : (
-                        <p className="mt-1 text-[11px] font-semibold text-[#004AAD]">+ Add</p>
+                        <p className="mt-1 text-[12px] font-semibold text-[#004AAD]">+ Add</p>
                       )}
                     </button>
                     {plan.checklist?.length ? (
