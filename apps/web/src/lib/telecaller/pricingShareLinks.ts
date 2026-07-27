@@ -308,6 +308,56 @@ export async function loadPricingForShareLink(
   }
 
   if (!blocks.length) return { blocks: [], error: 'no_prices' };
+
+  // Attach DB checklists for every service (Periodic fallback above; others need templates)
+  try {
+    const admin = getSupabaseAdmin();
+    const ids = Array.from(
+      new Set(
+        blocks
+          .flatMap((b) => b.plans.map((p) => p.service_type_id))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (admin && ids.length) {
+      const { data: tplRows } = await admin
+        .from('service_type_checklist_templates')
+        .select('service_type_id, title, points, checklist_items')
+        .in('service_type_id', ids);
+
+      const byId = new Map<string, { points?: number; items: any[] }>();
+      for (const row of tplRows || []) {
+        const sid = String((row as any)?.service_type_id || '');
+        const items = Array.isArray((row as any)?.checklist_items)
+          ? (row as any).checklist_items
+          : [];
+        if (sid && items.length) {
+          byId.set(sid, {
+            points:
+              typeof (row as any)?.points === 'number' ? (row as any).points : undefined,
+            items,
+          });
+        }
+      }
+
+      for (const block of blocks) {
+        block.plans = block.plans.map((plan) => {
+          const sid = plan.service_type_id ? String(plan.service_type_id) : '';
+          const tpl = sid ? byId.get(sid) : undefined;
+          if (!tpl?.items?.length) return plan;
+          // Prefer DB template when present (overrides periodic static fallback)
+          return {
+            ...plan,
+            points: tpl.points || plan.points,
+            checklist_items: tpl.items,
+          };
+        });
+      }
+    }
+  } catch {
+    /* templates optional */
+  }
+
   return { blocks };
 }
 
