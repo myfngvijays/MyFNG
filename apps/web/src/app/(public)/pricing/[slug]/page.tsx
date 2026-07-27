@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { CheckCircle, Droplets, Shield, X } from 'lucide-react';
 import Navbar from '@/components/landing/Navbar';
 
+type ChecklistItem = { name: string; category?: string };
+
 type PlanCard = {
   id?: string | null;
   name: string;
@@ -15,7 +17,7 @@ type PlanCard = {
   badge?: string | null;
   price: number;
   oil?: string;
-  checklist?: string[];
+  checklist?: Array<string | ChecklistItem>;
 };
 
 type Block =
@@ -126,23 +128,70 @@ const PRELOAD_ICONS = [
   `${ICON_SM}/icon-suspension-service.png`,
 ];
 
-/** Short items → 2-col; longer lines stay full width */
-function packChecklistRows(items: string[]) {
+function normalizeChecklist(items?: Array<string | ChecklistItem>): ChecklistItem[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((it) => {
+      if (typeof it === 'string') {
+        const name = it.trim();
+        return name ? { name, category: 'General' } : null;
+      }
+      const name = String(it?.name || '').trim();
+      if (!name) return null;
+      return { name, category: String(it?.category || 'General').trim() || 'General' };
+    })
+    .filter(Boolean) as ChecklistItem[];
+}
+
+/**
+ * Segregate by category. Within each category:
+ * all short items first as clean 2-col pairs, then long items full-width.
+ * Never interleave 2-col and 1-col rows.
+ */
+function buildChecklistSections(items?: Array<string | ChecklistItem>) {
   const SHORT = 28;
-  const rows: Array<{ full: boolean; items: string[] }> = [];
-  let i = 0;
-  while (i < items.length) {
-    const a = items[i];
-    const b = items[i + 1];
-    if (a.length <= SHORT && b && b.length <= SHORT) {
-      rows.push({ full: false, items: [a, b] });
-      i += 2;
-    } else {
-      rows.push({ full: true, items: [a] });
-      i += 1;
-    }
+  const normalized = normalizeChecklist(items);
+  const byCat = new Map<string, ChecklistItem[]>();
+  for (const it of normalized) {
+    const key = it.category || 'General';
+    if (!byCat.has(key)) byCat.set(key, []);
+    byCat.get(key)!.push(it);
   }
-  return rows;
+
+  // Prefer known periodic order, then others
+  const preferred = [
+    'Engine Compartment',
+    'Cabin',
+    'Wheel & Brakes',
+    'Others',
+    'General',
+  ];
+  const catKeys = [
+    ...preferred.filter((k) => byCat.has(k)),
+    ...Array.from(byCat.keys()).filter((k) => !preferred.includes(k)),
+  ];
+
+  return catKeys.map((category) => {
+    const list = byCat.get(category) || [];
+    const short = list.filter((it) => it.name.length <= SHORT);
+    const long = list.filter((it) => it.name.length > SHORT);
+
+    const pairRows: string[][] = [];
+    for (let i = 0; i < short.length; i += 2) {
+      if (i + 1 < short.length) {
+        pairRows.push([short[i].name, short[i + 1].name]);
+      } else {
+        // leftover short alone → treat as full-width at end of short block
+        long.unshift(short[i]);
+      }
+    }
+
+    return {
+      category,
+      pairRows,
+      fullRows: long.map((it) => it.name),
+    };
+  });
 }
 
 function displayPlanTitle(plan: PlanCard, isPeriodic: boolean) {
@@ -158,9 +207,14 @@ function displayPlanTitle(plan: PlanCard, isPeriodic: boolean) {
 
 function pointsCount(plan: PlanCard) {
   if (typeof plan.points === 'number' && plan.points > 0) return plan.points;
-  if (plan.checklist?.length) return plan.checklist.length;
+  const n = normalizeChecklist(plan.checklist).length;
+  if (n > 0) return n;
   const m = String(plan.pointsLabel || '').match(/(\d+)/);
   return m ? Number(m[1]) : 0;
+}
+
+function checklistLabels(plan: PlanCard): string[] {
+  return normalizeChecklist(plan.checklist).map((it) => it.name);
 }
 
 export default function PricingSharePage() {
@@ -573,7 +627,7 @@ export default function PricingSharePage() {
                 const title = displayPlanTitle(plan, isPeriodic);
                 const titleFormatted = isPeriodic ? title.replace(' ', '\n') : title;
                 const pts = pointsCount(plan);
-                const preview = (plan.checklist || []).slice(0, 5);
+                const preview = checklistLabels(plan).slice(0, 5);
                 return (
                   <div
                     key={key}
@@ -752,39 +806,64 @@ export default function PricingSharePage() {
                 </button>
               </div>
 
-              <div className="space-y-0">
-                {packChecklistRows(details.plan.checklist || []).map((row, rIdx) =>
-                  row.full ? (
-                    <div
-                      key={`${details.plan.id || details.plan.name}-row-${rIdx}`}
-                      className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] text-gray-700"
-                    >
-                      <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span className="flex-1 break-words leading-snug">{row.items[0]}</span>
-                    </div>
-                  ) : (
-                    <div
-                      key={`${details.plan.id || details.plan.name}-row-${rIdx}`}
-                      className="grid grid-cols-2 gap-x-3 border-b border-gray-100"
-                    >
-                      {row.items.map((item, j) => (
-                        <div
-                          key={`${rIdx}-${j}`}
-                          className="flex items-start gap-1.5 py-1.5 text-[12px] text-gray-700"
-                        >
-                          <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
-                          <span className="min-w-0 break-words leading-snug">{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ),
-                )}
-                {!details.plan.checklist?.length ? (
-                  <p className="py-4 text-center text-sm text-gray-600">
-                    No checklist available for this service.
-                  </p>
-                ) : null}
-              </div>
+              {(() => {
+                const sections = buildChecklistSections(details.plan.checklist);
+                const multiCat = sections.length > 1;
+                if (!sections.length) {
+                  return (
+                    <p className="py-4 text-center text-sm text-gray-600">
+                      No checklist available for this service.
+                    </p>
+                  );
+                }
+                return (
+                  <div className="space-y-4">
+                    {sections.map((section) => (
+                      <div key={section.category}>
+                        {multiCat && section.category !== 'General' ? (
+                          <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-gray-500">
+                            {section.category}
+                          </p>
+                        ) : null}
+
+                        {/* All 2-col pairs first — never mixed with singles */}
+                        {section.pairRows.length > 0 ? (
+                          <div className="grid grid-cols-2 gap-x-3">
+                            {section.pairRows.flatMap((pair, pIdx) =>
+                              pair.map((item, j) => (
+                                <div
+                                  key={`${section.category}-p-${pIdx}-${j}`}
+                                  className="flex items-start gap-1.5 border-b border-gray-100 py-1.5 text-[12px] text-gray-700"
+                                >
+                                  <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
+                                  <span className="min-w-0 break-words leading-snug">
+                                    {item}
+                                  </span>
+                                </div>
+                              )),
+                            )}
+                          </div>
+                        ) : null}
+
+                        {/* Then full-width long lines */}
+                        {section.fullRows.length > 0 ? (
+                          <div className={section.pairRows.length ? 'mt-0.5' : ''}>
+                            {section.fullRows.map((item, fIdx) => (
+                              <div
+                                key={`${section.category}-f-${fIdx}`}
+                                className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] text-gray-700"
+                              >
+                                <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                                <span className="flex-1 break-words leading-snug">{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/periodic/i.test(details.category) ? (
                 <p className="mt-2 pb-2 text-[10px] italic text-red-600">

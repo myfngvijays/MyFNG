@@ -15,6 +15,24 @@ import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 
 export const dynamic = 'force-dynamic';
 
+function mapChecklistItems(items: any[]): Array<{ name: string; category: string }> {
+  if (!Array.isArray(items)) return [];
+  const out: Array<{ name: string; category: string }> = [];
+  for (const item of items) {
+    const name =
+      typeof item === 'string'
+        ? item.trim()
+        : String(item?.name || item?.title || item?.label || '').trim();
+    if (!name) continue;
+    const category =
+      typeof item === 'object' && item
+        ? String(item?.category || 'General').trim() || 'General'
+        : 'General';
+    out.push({ name, category });
+  }
+  return out;
+}
+
 /**
  * Public: load time-limited pricing share page data.
  * GET /api/public/pricing-share/:slug
@@ -67,11 +85,7 @@ export async function GET(
           badge: getPlanBadge(p.service_name),
           price: Math.round(Number(p.min_price || 0)),
           oil: getOilTypeForPlan(p),
-          checklist: Array.isArray(p.checklist_items)
-            ? p.checklist_items.map((item: any) =>
-                typeof item === 'string' ? item : String(item?.name || item?.title || ''),
-              ).filter(Boolean)
-            : [],
+          checklist: mapChecklistItems(p.checklist_items),
         });
         return {
           category: block.category,
@@ -92,13 +106,7 @@ export async function GET(
           points: p.points,
           pointsLabel: getPlanPoints(p),
           price: Math.round(Number(p.min_price || 0)),
-          checklist: Array.isArray(p.checklist_items)
-            ? p.checklist_items
-                .map((item: any) =>
-                  typeof item === 'string' ? item : String(item?.name || item?.title || ''),
-                )
-                .filter(Boolean)
-            : [],
+          checklist: mapChecklistItems(p.checklist_items),
         })),
       };
     });
