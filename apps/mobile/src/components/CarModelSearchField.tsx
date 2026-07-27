@@ -121,7 +121,7 @@ export default function CarModelSearchField({
           autoComplete="off"
         />
         {hasSelection ? (
-          <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+          <Ionicons name="checkmark-circle" size={website ? 22 : 18} color="#22C55E" />
         ) : query ? (
           <TouchableOpacity
             onPress={() => {
@@ -135,14 +135,7 @@ export default function CarModelSearchField({
           </TouchableOpacity>
         ) : null}
       </View>
-      {hasSelection && (premium || website) ? (
-        <View style={styles.selectedPill}>
-          <Ionicons name="checkmark-circle" size={14} color="#059669" />
-          <Text style={styles.selectedPillText}>
-            Selected: {selectedMake} {selectedModel}
-          </Text>
-        </View>
-      ) : null}
+      {/* Selection shown via checkmark in the input row — no extra "Selected:" pill */}
       {loading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color={COLORS.primary} />
@@ -206,8 +199,14 @@ export default function CarModelSearchField({
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  label: { fontSize: 12, fontWeight: '700', color: '#475569' },
-  labelPremium: { fontSize: 12, fontWeight: '800', color: '#334155' },
+  label: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  labelPremium: { fontSize: 12, fontWeight: '800', color: '#334155', textTransform: 'none' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -215,9 +214,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBD5E1',
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     backgroundColor: '#fff',
+    minHeight: 42,
   },
   rowPremium: {
     borderRadius: 14,
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#EFF6FF',
   },
-  input: { flex: 1, fontSize: 14, color: '#111', padding: 0 },
+  input: { flex: 1, fontSize: 13, color: '#111', padding: 0 },
   inputPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   selectedPill: {
     flexDirection: 'row',

@@ -1614,10 +1614,6 @@ export default function TelecallerLeadDetailScreen({
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.pricingSendHint}>
-          Send Pricing → myfng.in/pricing/… link (3h valid) + WhatsApp. Car + pincode required.
-          Bina plan → full category pricing on the page.
-        </Text>
       </View>
 
       {/* Quick Stats */}
@@ -1922,8 +1918,8 @@ export default function TelecallerLeadDetailScreen({
                 placeholder="e.g. MH01BJ7842"
               />
               <CarModelSearchField
-                label="Car model"
-                variant="website"
+                label="CAR MODEL"
+                variant="default"
                 displayValue={carDisplay}
                 selectedMake={editForm.vehicle_make}
                 selectedModel={editForm.vehicle_model}

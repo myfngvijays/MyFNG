@@ -160,7 +160,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({
       success: true,
-      message: `Pricing link sent (valid ~3 hours).\n${result.url}`,
+      message: `Pricing link sent (valid ~6 hours).\n${result.url}`,
       shareUrl: result.url,
       expiresAt: result.expiresAt,
       result,
