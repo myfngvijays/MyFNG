@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Smartphone,
   Search,
@@ -19,6 +19,10 @@ import {
   ShieldCheck,
   Plus,
   Minus,
+  Bell,
+  BellOff,
+  BellRing,
+  Trash2,
 } from 'lucide-react';
 import { appPlatformBadgeClass, appPlatformLabel } from '@/lib/app-platform';
 import {
@@ -42,9 +46,13 @@ type Overview = {
   bookings_with_coupon: number;
   coupon_redemptions: number;
   open_coupon_assignments: number;
+  push_on?: number;
+  push_off?: number;
+  push_no_token?: number;
 };
 
 type AppPlatform = 'ANDROID' | 'IOS' | null;
+type PushStatus = 'ON' | 'OFF' | 'NO_TOKEN';
 
 type CustomerRow = {
   id: string;
@@ -65,7 +73,24 @@ type CustomerRow = {
   is_app_user: boolean;
   app_platform?: AppPlatform;
   account_status?: CustomerAccountStatus;
+  push_status?: PushStatus;
+  push_enabled?: boolean;
+  push_has_device?: boolean;
+  push_last_seen_at?: string | null;
+  push_device_name?: string | null;
 };
+
+function pushStatusLabel(status?: PushStatus | null) {
+  if (status === 'ON') return 'Push On';
+  if (status === 'OFF') return 'Push Off';
+  return 'No Token';
+}
+
+function pushStatusBadgeClass(status?: PushStatus | null) {
+  if (status === 'ON') return 'bg-emerald-100 text-emerald-800';
+  if (status === 'OFF') return 'bg-red-100 text-red-700';
+  return 'bg-amber-100 text-amber-800';
+}
 
 type DetailTab = 'profile' | 'bookings' | 'wallet' | 'membership' | 'coupons';
 
@@ -181,6 +206,8 @@ export default function CustomerInsightsApp() {
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const reloadDetail = useCallback(async (customerId: string) => {
     const res = await fetch(`/api/super_admin/customers/${customerId}`);
@@ -214,6 +241,7 @@ export default function CustomerInsightsApp() {
       setOverview(json.overview || null);
       setCustomers(json.customers || []);
       setTotal(json.pagination?.total || 0);
+      setSelectedIds(new Set());
     } catch (e: any) {
       setError(e?.message || 'Failed to load');
       setCustomers([]);
@@ -222,9 +250,94 @@ export default function CustomerInsightsApp() {
     }
   }, [customEnd, customStart, datePreset, filter, page, platform, search]);
 
+  const allPageSelected =
+    customers.length > 0 && customers.every((c) => selectedIds.has(c.id));
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const c of customers) next.delete(c.id);
+      } else {
+        for (const c of customers) next.add(c.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) {
+      setError('Select at least one customer to delete');
+      return;
+    }
+    const ok = window.confirm(
+      `Delete ${ids.length} selected customer(s)?\n\nThis permanently removes their app account data. Cannot undo.`,
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/super_admin/customers/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Delete failed');
+
+      if (selectedId && ids.includes(selectedId)) {
+        setSelectedId(null);
+        setDetail(null);
+      }
+      setSelectedIds(new Set());
+      await fetchList();
+    } catch (e: any) {
+      setError(e?.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const purgeTestFriends = useCallback(async (opts?: { silent?: boolean }) => {
+    try {
+      const res = await fetch('/api/super_admin/customers/purge-test-friends', { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to remove Test Friends');
+      if (!opts?.silent && json.deleted_customers > 0) {
+        setError(null);
+      }
+      return Number(json.deleted_customers || 0);
+    } catch (e: any) {
+      if (!opts?.silent) setError(e?.message || 'Failed to remove Test Friends');
+      return 0;
+    }
+  }, []);
+
+  const didPurgeTestFriends = useRef(false);
   useEffect(() => {
-    fetchList();
-  }, [fetchList]);
+    let active = true;
+    (async () => {
+      if (!didPurgeTestFriends.current) {
+        didPurgeTestFriends.current = true;
+        await purgeTestFriends({ silent: true });
+      }
+      if (active) fetchList();
+    })();
+    return () => {
+      active = false;
+    };
+  }, [fetchList, purgeTestFriends]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -582,6 +695,17 @@ export default function CustomerInsightsApp() {
           />
           <button
             type="button"
+            onClick={async () => {
+              setLoading(true);
+              await purgeTestFriends();
+              await fetchList();
+            }}
+            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+          >
+            Remove Test Friends
+          </button>
+          <button
+            type="button"
             onClick={fetchList}
             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
@@ -592,25 +716,47 @@ export default function CustomerInsightsApp() {
       </div>
 
       {overview ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 mb-6">
-          <StatCard label="All App Users" value={overview.total_customers} icon={<Smartphone className="h-5 w-5" />} />
-          <StatCard label="Android" value={overview.android_users} icon={<Smartphone className="h-5 w-5" />} />
-          <StatCard label="iOS" value={overview.ios_users} icon={<Smartphone className="h-5 w-5" />} />
-          <StatCard label="Unknown Platform" value={overview.unknown_platform_users} icon={<Smartphone className="h-5 w-5" />} />
-          <StatCard label="Service Bookings" value={overview.total_service_bookings} icon={<ClipboardList className="h-5 w-5" />} />
-          <StatCard
-            label="Coupon Bookings"
-            value={overview.bookings_with_coupon}
-            sub={`${overview.coupon_redemptions} redeemed · ${overview.open_coupon_assignments} open`}
-            icon={<Ticket className="h-5 w-5" />}
-          />
-          <StatCard label="Active Memberships" value={overview.active_memberships} icon={<Crown className="h-5 w-5" />} />
-          <StatCard
-            label="Wallet Users"
-            value={overview.customers_with_wallet_balance}
-            sub={`Total ${inr(overview.total_wallet_balance)}`}
-            icon={<Wallet className="h-5 w-5" />}
-          />
+        <div className="space-y-3 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+            <StatCard label="All App Users" value={overview.total_customers} icon={<Smartphone className="h-5 w-5" />} />
+            <StatCard label="Android" value={overview.android_users} icon={<Smartphone className="h-5 w-5" />} />
+            <StatCard label="iOS" value={overview.ios_users} icon={<Smartphone className="h-5 w-5" />} />
+            <StatCard label="Unknown Platform" value={overview.unknown_platform_users} icon={<Smartphone className="h-5 w-5" />} />
+            <StatCard label="Service Bookings" value={overview.total_service_bookings} icon={<ClipboardList className="h-5 w-5" />} />
+            <StatCard
+              label="Coupon Bookings"
+              value={overview.bookings_with_coupon}
+              sub={`${overview.coupon_redemptions} redeemed · ${overview.open_coupon_assignments} open`}
+              icon={<Ticket className="h-5 w-5" />}
+            />
+            <StatCard label="Active Memberships" value={overview.active_memberships} icon={<Crown className="h-5 w-5" />} />
+            <StatCard
+              label="Wallet Users"
+              value={overview.customers_with_wallet_balance}
+              sub={`Total ${inr(overview.total_wallet_balance)}`}
+              icon={<Wallet className="h-5 w-5" />}
+            />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <StatCard
+              label="Push On"
+              value={overview.push_on ?? 0}
+              sub="Active FCM token"
+              icon={<BellRing className="h-5 w-5" />}
+            />
+            <StatCard
+              label="Push Off"
+              value={overview.push_off ?? 0}
+              sub="Disabled in app settings"
+              icon={<BellOff className="h-5 w-5" />}
+            />
+            <StatCard
+              label="No Push Token"
+              value={overview.push_no_token ?? 0}
+              sub="Permission denied / never registered"
+              icon={<Bell className="h-5 w-5" />}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -686,6 +832,9 @@ export default function CustomerInsightsApp() {
                 <option value="WITH_MEMBERSHIP">With membership</option>
                 <option value="WITH_WALLET">With wallet balance</option>
                 <option value="WITH_COUPON">With coupons</option>
+                <option value="PUSH_ON">Push On</option>
+                <option value="PUSH_OFF">Push Off (app)</option>
+                <option value="PUSH_NO_TOKEN">No Push Token</option>
               </select>
             </div>
           </div>
@@ -694,13 +843,49 @@ export default function CustomerInsightsApp() {
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
           ) : null}
 
+          {selectedIds.size > 0 ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-red-800">
+                {selectedIds.size} customer{selectedIds.size === 1 ? '' : 's'} selected
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteSelected()}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? 'Deleting…' : 'Delete selected'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-3 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300"
+                        checked={allPageSelected}
+                        onChange={toggleSelectAllPage}
+                        aria-label="Select all on page"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Customer</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Platform</th>
+                    <th className="px-4 py-3 text-left font-bold text-gray-600">Push</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Joined</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Last Login</th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Bookings</th>
@@ -712,13 +897,13 @@ export default function CustomerInsightsApp() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
                         Loading customers...
                       </td>
                     </tr>
                   ) : customers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
                         No customers found
                       </td>
                     </tr>
@@ -728,12 +913,24 @@ export default function CustomerInsightsApp() {
                         key={c.id}
                         className={`border-t border-gray-100 cursor-pointer hover:bg-blue-50/40 ${
                           selectedId === c.id ? 'bg-blue-50' : ''
-                        }`}
+                        } ${selectedIds.has(c.id) ? 'bg-red-50/40' : ''}`}
                         onClick={() => {
                           setSelectedId(c.id);
                           setDetailTab('profile');
                         }}
                       >
+                        <td
+                          className="px-3 py-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300"
+                            checked={selectedIds.has(c.id)}
+                            onChange={() => toggleSelectOne(c.id)}
+                            aria-label={`Select ${c.full_name || c.phone || c.id}`}
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="font-bold text-gray-900 flex items-center gap-1.5">
                             <span>{c.full_name || 'Unnamed'}</span>
@@ -759,6 +956,22 @@ export default function CustomerInsightsApp() {
                             className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${appPlatformBadgeClass(c.app_platform || null)}`}
                           >
                             {appPlatformLabel(c.app_platform || null)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${pushStatusBadgeClass(c.push_status)}`}
+                            title={
+                              c.push_status === 'OFF'
+                                ? 'Push disabled in app settings'
+                                : c.push_status === 'ON'
+                                  ? c.push_device_name
+                                    ? `Token on ${c.push_device_name}`
+                                    : 'Active push token'
+                                  : 'No active FCM token (permission / not registered)'
+                            }
+                          >
+                            {pushStatusLabel(c.push_status)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(c.created_at)}</td>
@@ -900,6 +1113,30 @@ export default function CustomerInsightsApp() {
                           >
                             {appPlatformLabel(detail.customer.app_platform || null)}
                           </span>
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <div className="text-xs text-gray-500">Push notifications</div>
+                        <div className="font-semibold">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${pushStatusBadgeClass(detail.customer.push_status)}`}
+                          >
+                            {pushStatusLabel(detail.customer.push_status)}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          {detail.customer.push_status === 'OFF'
+                            ? 'Off in app settings'
+                            : detail.customer.push_status === 'ON'
+                              ? [
+                                  detail.customer.push_device_name,
+                                  detail.customer.push_last_seen_at
+                                    ? `seen ${fmtDate(detail.customer.push_last_seen_at)}`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ') || 'Active token'
+                              : 'No active device token'}
                         </div>
                       </div>
                       <div className="rounded-xl bg-gray-50 p-3">

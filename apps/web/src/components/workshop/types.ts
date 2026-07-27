@@ -8,6 +8,8 @@ export type GmbReview = {
   time: number;
   relative_time: string;
   reply?: string;
+  /** GBP resource name, e.g. accounts/.../locations/.../reviews/... */
+  review_id?: string;
 };
 
 export type GmbPhoto = {

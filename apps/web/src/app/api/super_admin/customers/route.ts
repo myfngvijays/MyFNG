@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
+  applyExcludeReferralTestDummies,
   enrichCustomerListRows,
   fetchCustomerOverview,
+  isReferralTestDummyCustomer,
   matchesPlatformFilter,
 } from '@/lib/customer-insights-admin';
 import { exportCustomersCsv } from '@/lib/admin-exports';
@@ -98,6 +100,7 @@ export async function GET(request: NextRequest) {
       )
       .order('created_at', { ascending: false });
 
+    query = applyExcludeReferralTestDummies(query);
     query = applyReportDateRangeFilter(query, 'created_at', preset, start, end);
 
     if (search) {
@@ -119,6 +122,7 @@ export async function GET(request: NextRequest) {
     }
 
     let customers = await enrichCustomerListRows(supabaseAdmin, data || []);
+    customers = customers.filter((c) => !isReferralTestDummyCustomer(c));
 
     if (filter === 'WITH_BOOKING') {
       customers = customers.filter((c) => c.bookings_count > 0);
@@ -130,6 +134,12 @@ export async function GET(request: NextRequest) {
       customers = customers.filter(
         (c) => c.coupon_assigned_count > 0 || c.coupon_bookings_count > 0 || c.coupon_redeemed_count > 0,
       );
+    } else if (filter === 'PUSH_ON') {
+      customers = customers.filter((c) => c.push_status === 'ON');
+    } else if (filter === 'PUSH_OFF') {
+      customers = customers.filter((c) => c.push_status === 'OFF');
+    } else if (filter === 'PUSH_NO_TOKEN') {
+      customers = customers.filter((c) => c.push_status === 'NO_TOKEN');
     }
 
     if (platform !== 'ALL') {

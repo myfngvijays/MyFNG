@@ -129,11 +129,14 @@ export function parseReviews(reviewsJson: any): GmbReview[] {
   return raw.map((rev: any) => ({
     author_name: String(rev?.reviewer?.displayName || ''),
     author_photo: String(rev?.reviewer?.profilePhotoUrl || ''),
-    rating: GBP_STAR_MAP[String(rev?.starRating || '')] ?? 0,
-    text: String(rev?.comment || ''),
-    time: rev?.createTime ? Math.floor(new Date(rev.createTime).getTime() / 1000) : 0,
-    relative_time: String(rev?.relativePublishTimeDescription || ''),
+    rating: GBP_STAR_MAP[String(rev?.starRating || '')] ?? (Number(rev?.rating) || 0),
+    text: String(rev?.comment || rev?.text || ''),
+    time: rev?.createTime
+      ? Math.floor(new Date(rev.createTime).getTime() / 1000)
+      : Number(rev?.time || 0) || 0,
+    relative_time: String(rev?.relativePublishTimeDescription || rev?.relative_time || ''),
     reply: rev?.reviewReply?.comment ? String(rev.reviewReply.comment) : undefined,
+    review_id: String(rev?.name || rev?.reviewId || '').trim() || undefined,
   }));
 }
 

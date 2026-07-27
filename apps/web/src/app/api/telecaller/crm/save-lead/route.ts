@@ -7,6 +7,17 @@ import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 
 export const dynamic = 'force-dynamic';
 
+const ALLOWED_LEAD_STATUS = new Set([
+  'NEW',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'VALIDATED',
+  'REJECTED',
+  'CONVERTED',
+  'CLOSED',
+  'COMPLETED',
+]);
+
 /**
  * POST /api/telecaller/crm/save-lead
  * Soft-save a lead with basic details (no full booking). is_incomplete = true.
@@ -45,7 +56,6 @@ export async function POST(request: NextRequest) {
     let pricingCategories = Array.isArray(body?.pricing_categories)
       ? body.pricing_categories.map((c: any) => String(c || '').trim()).filter(Boolean)
       : [];
-    // PERIODIC booking with no chips → store category so Send Pricing sends all 4 tiers
     if (!pricingCategories.length && bookingType === 'PERIODIC') {
       pricingCategories = ['Car Periodic Service'];
     }
@@ -64,12 +74,31 @@ export async function POST(request: NextRequest) {
               ? 'Membership'
               : 'Enquiry');
 
-    // DB requires vehicle_number NOT NULL — placeholder OK for soft / incomplete leads
     const vehicleNumber =
       String(body?.vehicle_number || '')
         .trim()
         .toUpperCase()
         .slice(0, 20) || 'PENDING';
+
+    const statusRaw = String(body?.status || 'NEW').toUpperCase();
+    const status = ALLOWED_LEAD_STATUS.has(statusRaw) ? statusRaw : 'NEW';
+    const callStatus = String(body?.call_status || 'ANSWERED').toUpperCase() || 'ANSWERED';
+    const outcome = body?.outcome != null ? String(body.outcome) : 'INFO_COLLECTED';
+    const callResult = String(body?.call_result || '').trim() || null;
+    const callLabel = String(body?.call_label || '').trim() || null;
+    const lostReason = String(body?.lost_reason || '').trim() || null;
+    const callNotes =
+      String(body?.call_notes || body?.problem_description || '').trim() || null;
+
+    // activity_at = when the call/conversation happened (all statuses incl. Lost)
+    // next_follow_up_at = optional future callback only (do NOT treat activity as follow-up)
+    const parseIso = (raw: unknown): string | null => {
+      if (!raw) return null;
+      const d = new Date(String(raw));
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    };
+    const activityAt = parseIso(body?.activity_at) || now;
+    const nextFollowUpAt = parseIso(body?.next_follow_up_at);
 
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
@@ -93,21 +122,43 @@ export async function POST(request: NextRequest) {
       vehicle_fuel_type: body?.vehicle_fuel_type || null,
       service_type_ids: serviceTypeIds.length ? JSON.stringify(serviceTypeIds) : null,
       service_type: interest,
-      problem_description: body?.problem_description || null,
-      description: `Telecaller lead (basic) · ${interest}`,
-      status: 'NEW',
+      problem_description: callNotes,
+      description: callNotes
+        ? `Telecaller lead · ${callLabel || interest} · ${callNotes}`
+        : `Telecaller lead (basic) · ${interest}`,
+      status,
       lead_priority: body?.lead_priority || 'NORMAL',
       created_from: 'TELECALLER_CRM',
       created_by_id: profile?.id || null,
       assigned_telecaller_id: profile?.id || null,
       assigned_at: now,
       is_incomplete: true,
+      last_call_at: activityAt,
+      total_calls: 1,
+      ...(nextFollowUpAt
+        ? { follow_up_required: true, next_follow_up_at: nextFollowUpAt }
+        : { follow_up_required: false, next_follow_up_at: null }),
       coupon_meta: {
         ...(typeof body?.coupon_meta === 'object' && body.coupon_meta ? body.coupon_meta : {}),
         booking_type: bookingType,
         saved_as: 'LEAD',
         vehicle_class: body?.vehicle_class || null,
         interest_label: interest,
+        last_call_status: callStatus,
+        last_call_result: callResult,
+        last_call_label: callLabel,
+        last_lost_reason: callResult === 'LOST' ? lostReason : null,
+        last_call_at: activityAt,
+        profile_history: [
+          {
+            at: activityAt,
+            summary: callLabel || 'Lead created',
+            remark: callNotes,
+            status: callResult,
+            event: 'CREATED',
+            lost_reason: callResult === 'LOST' ? lostReason : null,
+          },
+        ],
         ...(pricingCategories.length ? { pricing_categories: pricingCategories } : {}),
       },
       created_at: now,
@@ -121,7 +172,6 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error || !lead) {
-      // Retry without is_incomplete if column missing
       if (error && /is_incomplete/i.test(error.message || '')) {
         delete insert.is_incomplete;
         const retry = await db
@@ -150,15 +200,34 @@ export async function POST(request: NextRequest) {
           lead_id: lead.id,
           telecaller_id: profile?.id,
           call_type: 'OUTBOUND',
-          call_status: 'ANSWERED',
-          outcome: 'INFO_COLLECTED',
-          notes: 'Advanced CRM — saved as lead (basic details)',
+          call_status: callStatus,
+          outcome: outcome || null,
+          notes: callNotes || callLabel || 'Advanced CRM — saved as lead',
           phone_number: customerPhone,
-          created_at: now,
+          created_at: activityAt,
         },
       ]);
     } catch {
       /* optional */
+    }
+
+    // Only when client explicitly sends next_follow_up_at (Add Lead does not)
+    if (nextFollowUpAt) {
+      try {
+        await db.from('telecaller_follow_ups').insert([
+          {
+            lead_id: lead.id,
+            telecaller_id: profile?.id,
+            follow_up_type: 'CALLBACK',
+            scheduled_time: nextFollowUpAt,
+            reason: callNotes || callLabel || 'Follow-up',
+            priority: 'NORMAL',
+            status: 'PENDING',
+          },
+        ]);
+      } catch {
+        /* optional */
+      }
     }
 
     try {
@@ -166,9 +235,16 @@ export async function POST(request: NextRequest) {
         {
           lead_id: lead.id,
           event_type: 'CREATED',
-          event_data: { source: 'TELECALLER_CRM', saved_as: 'LEAD', booking_type: bookingType },
+          event_data: {
+            source: 'TELECALLER_CRM',
+            saved_as: 'LEAD',
+            booking_type: bookingType,
+            call_result: callResult,
+            call_label: callLabel,
+            activity_at: activityAt,
+          },
           created_by_id: profile?.id,
-          created_at: now,
+          created_at: activityAt,
         },
       ]);
     } catch {

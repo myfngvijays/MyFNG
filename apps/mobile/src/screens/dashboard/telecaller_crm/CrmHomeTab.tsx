@@ -100,9 +100,19 @@ export default function CrmHomeTab({
   const onFloor = punchedIn;
 
   const quickActions = [
-    { label: 'Book / Lead', icon: 'add-circle' as const, color: COLORS.green, go: () => onNavigate('book') },
-    { label: 'Open Leads', icon: 'list' as const, color: COLORS.primary, go: () => onNavigate('queue') },
-    { label: 'Follow-ups', icon: 'calendar' as const, color: COLORS.orange, go: () => onNavigate('engage', { segment: 'followups' }) },
+    {
+      label: 'Booking',
+      icon: 'calendar' as const,
+      color: COLORS.green,
+      go: () => onNavigate('book', { mode: 'book' }),
+    },
+    {
+      label: 'Add Lead',
+      icon: 'person-add' as const,
+      color: COLORS.primary,
+      go: () => onNavigate('book', { mode: 'lead' }),
+    },
+    { label: 'Open Leads', icon: 'list' as const, color: COLORS.orange, go: () => onNavigate('queue') },
     { label: 'WhatsApp', icon: 'logo-whatsapp' as const, color: '#25D366', go: onOpenWhatsApp },
   ];
 

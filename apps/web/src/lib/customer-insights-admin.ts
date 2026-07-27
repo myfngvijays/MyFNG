@@ -5,10 +5,41 @@ import { syncServiceLeadMembershipPricingForAdmin, resolveAdminBookingPayableAmo
 import { computeWalletRewardTotals, filterVisibleWalletTransactions, getWalletSummary } from './wallet-service';
 import { resolveAppPlatform, type AppPlatform } from './app-platform';
 import { resolveCustomerAccountStatus } from './customer-account-admin';
+import { MOBILE_PUSH_PLATFORM } from './push/constants';
 import {
   applyReportDateRangeFilter,
   shouldApplyDateRangeFilter,
 } from './report-date-range';
+
+/** App Settings toggle + whether an active FCM device token exists. */
+export type CustomerPushStatus = 'ON' | 'OFF' | 'NO_TOKEN';
+
+export function resolveCustomerPushStatus(
+  pushEnabled: boolean | null | undefined,
+  hasActiveDevice: boolean,
+): CustomerPushStatus {
+  if (pushEnabled === false) return 'OFF';
+  if (hasActiveDevice) return 'ON';
+  return 'NO_TOKEN';
+}
+
+/** Dummy rows from Refer & Rise simulate-invite ("Test Friend" + synthetic 90… phones). */
+export function isReferralTestDummyCustomer(customer: {
+  full_name?: string | null;
+  phone?: string | null;
+  phone_verified?: boolean | null;
+}): boolean {
+  const name = String(customer.full_name || '').trim().toLowerCase();
+  if (name !== 'test friend') return false;
+  if (customer.phone_verified === true) return false;
+  const digits = phoneDigits(customer.phone);
+  return Boolean(digits && digits.startsWith('90') && digits.length === 10);
+}
+
+/** Exclude referral test dummies from App Customers list / overview / export. */
+export function applyExcludeReferralTestDummies(query: any) {
+  return query.not('full_name', 'ilike', 'Test Friend');
+}
 
 async function fetchCustomerSessions(
   supabaseAdmin: any,
@@ -81,7 +112,8 @@ export async function fetchCustomerOverview(
   const preset = options?.preset || 'all_time';
   const dateFiltered = shouldApplyDateRangeFilter(preset);
 
-  let customersQuery = supabaseAdmin.from('customers').select('id, phone, app_platform');
+  let customersQuery = supabaseAdmin.from('customers').select('id, phone, app_platform, full_name, phone_verified');
+  customersQuery = applyExcludeReferralTestDummies(customersQuery);
   customersQuery = applyReportDateRangeFilter(
     customersQuery,
     'created_at',
@@ -91,7 +123,9 @@ export async function fetchCustomerOverview(
   );
 
   const { data: customersData } = await customersQuery;
-  const customers = customersData || [];
+  const customers = (customersData || []).filter(
+    (c: any) => !isReferralTestDummyCustomer(c),
+  );
   const customerIds = customers.map((c: any) => String(c.id));
   const digitsList = [
     ...new Set(customers.map((c: any) => phoneDigits(c.phone)).filter(Boolean)),
@@ -111,6 +145,9 @@ export async function fetchCustomerOverview(
       bookings_with_coupon: 0,
       coupon_redemptions: 0,
       open_coupon_assignments: 0,
+      push_on: 0,
+      push_off: 0,
+      push_no_token: 0,
     };
   }
 
@@ -130,6 +167,8 @@ export async function fetchCustomerOverview(
     redemptionRes,
     assignmentRes,
     sessions,
+    pushPrefsRes,
+    pushDevicesRes,
   ] = await Promise.all([
     dateFiltered
       ? supabaseAdmin
@@ -167,6 +206,25 @@ export async function fetchCustomerOverview(
           .select('id', { count: 'exact', head: true })
           .is('redeemed_at', null),
     fetchCustomerSessions(supabaseAdmin, dateFiltered ? customerIds : undefined),
+    dateFiltered
+      ? supabaseAdmin
+          .from('customer_notification_preferences')
+          .select('customer_id, push_enabled')
+          .in('customer_id', customerIds)
+      : supabaseAdmin.from('customer_notification_preferences').select('customer_id, push_enabled'),
+    dateFiltered
+      ? supabaseAdmin
+          .from('notification_devices')
+          .select('customer_id')
+          .eq('platform', MOBILE_PUSH_PLATFORM)
+          .eq('is_active', true)
+          .in('customer_id', customerIds)
+      : supabaseAdmin
+          .from('notification_devices')
+          .select('customer_id')
+          .eq('platform', MOBILE_PUSH_PLATFORM)
+          .eq('is_active', true)
+          .not('customer_id', 'is', null),
   ]);
 
   const latestSessionByCustomer = indexLatestSessions(sessions);
@@ -210,6 +268,27 @@ export async function fetchCustomerOverview(
     openCouponAssignments = assignmentRes.count || 0;
   }
 
+  const pushOffIds = new Set<string>();
+  for (const p of pushPrefsRes.data || []) {
+    if (p.push_enabled === false) pushOffIds.add(String(p.customer_id));
+  }
+  const pushDeviceIds = new Set<string>();
+  for (const d of pushDevicesRes.data || []) {
+    if (d.customer_id) pushDeviceIds.add(String(d.customer_id));
+  }
+  let pushOn = 0;
+  let pushOff = 0;
+  let pushNoToken = 0;
+  for (const customer of customers) {
+    const status = resolveCustomerPushStatus(
+      pushOffIds.has(String(customer.id)) ? false : true,
+      pushDeviceIds.has(String(customer.id)),
+    );
+    if (status === 'ON') pushOn += 1;
+    else if (status === 'OFF') pushOff += 1;
+    else pushNoToken += 1;
+  }
+
   return {
     total_customers: customers.length,
     android_users: androidUsers,
@@ -225,6 +304,9 @@ export async function fetchCustomerOverview(
     bookings_with_coupon: bookingsWithCoupon,
     coupon_redemptions: couponRedemptions,
     open_coupon_assignments: openCouponAssignments,
+    push_on: pushOn,
+    push_off: pushOff,
+    push_no_token: pushNoToken,
   };
 }
 
@@ -234,8 +316,14 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
   const ids = customers.map((c) => c.id);
   const nowIso = new Date().toISOString();
 
-  const [{ data: wallets }, { data: memberships }, { data: assignments }, sessions] =
-    await Promise.all([
+  const [
+    { data: wallets },
+    { data: memberships },
+    { data: assignments },
+    sessions,
+    { data: pushPrefs },
+    { data: pushDevices },
+  ] = await Promise.all([
     supabaseAdmin.from('wallet_accounts').select('customer_id, current_balance').in('customer_id', ids),
     supabaseAdmin
       .from('customer_memberships')
@@ -247,6 +335,16 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
       .select('customer_id, redeemed_at')
       .in('customer_id', ids),
     fetchCustomerSessions(supabaseAdmin, ids),
+    supabaseAdmin
+      .from('customer_notification_preferences')
+      .select('customer_id, push_enabled')
+      .in('customer_id', ids),
+    supabaseAdmin
+      .from('notification_devices')
+      .select('customer_id, last_seen_at, device_name')
+      .in('customer_id', ids)
+      .eq('platform', MOBILE_PUSH_PLATFORM)
+      .eq('is_active', true),
   ]);
 
   const walletByCustomer = new Map<string, number>();
@@ -272,6 +370,24 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
   }
 
   const latestSessionByCustomer = indexLatestSessions(sessions);
+
+  const pushEnabledByCustomer = new Map<string, boolean>();
+  for (const p of pushPrefs || []) {
+    pushEnabledByCustomer.set(String(p.customer_id), p.push_enabled !== false);
+  }
+  const pushDeviceByCustomer = new Map<
+    string,
+    { last_seen_at?: string | null; device_name?: string | null }
+  >();
+  for (const d of pushDevices || []) {
+    const cid = String(d.customer_id);
+    if (!pushDeviceByCustomer.has(cid)) {
+      pushDeviceByCustomer.set(cid, {
+        last_seen_at: d.last_seen_at,
+        device_name: d.device_name,
+      });
+    }
+  }
 
   const digitsList = [...new Set(customers.map((c) => phoneDigits(c.phone)).filter(Boolean))] as string[];
   const bookingsByDigits = new Map<string, number>();
@@ -304,12 +420,18 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
       session?.user_agent,
       session?.app_platform,
     );
+    const cid = String(c.id);
+    const device = pushDeviceByCustomer.get(cid);
+    const pushEnabled = pushEnabledByCustomer.has(cid)
+      ? pushEnabledByCustomer.get(cid)
+      : true;
+    const pushStatus = resolveCustomerPushStatus(pushEnabled, Boolean(device));
 
     return {
       ...c,
       app_platform: appPlatform,
       account_status: resolveCustomerAccountStatus(c.account_status, c.is_active),
-      wallet_balance: walletByCustomer.get(String(c.id)) || 0,
+      wallet_balance: walletByCustomer.get(cid) || 0,
       bookings_count: digits ? bookingsByDigits.get(digits) || 0 : 0,
       coupon_bookings_count: digits ? couponBookingsByDigits.get(digits) || 0 : 0,
       coupon_assigned_count: couponStats.assigned,
@@ -319,6 +441,11 @@ export async function enrichCustomerListRows(supabaseAdmin: any, customers: any[
       membership_plan_code: membership?.plan?.code || null,
       membership_type: membership?.plan?.membership_type || null,
       is_app_user: Boolean(c.firebase_uid || c.phone_verified || c.last_login_at),
+      push_enabled: pushEnabled !== false,
+      push_has_device: Boolean(device),
+      push_status: pushStatus,
+      push_last_seen_at: device?.last_seen_at || null,
+      push_device_name: device?.device_name || null,
     };
   });
 }
@@ -362,6 +489,8 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     eventsRes,
     leadsRes,
     chatbotRes,
+    pushPrefsRes,
+    pushDevicesRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('customer_vehicles')
@@ -414,6 +543,19 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
           .order('created_at', { ascending: false })
           .limit(50)
       : Promise.resolve({ data: [] }),
+    supabaseAdmin
+      .from('customer_notification_preferences')
+      .select('push_enabled')
+      .eq('customer_id', customerId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('notification_devices')
+      .select('id, device_name, last_seen_at, is_active')
+      .eq('customer_id', customerId)
+      .eq('platform', MOBILE_PUSH_PLATFORM)
+      .eq('is_active', true)
+      .order('last_seen_at', { ascending: false })
+      .limit(5),
   ]);
 
   const leads = (leadsRes.data || []).map((l: any) => enrichBookingLead(l));
@@ -525,11 +667,21 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     benefit_title: benefitTitleByCode.get(String(u.benefit_code)) || u.benefit_code,
   }));
 
+  const pushEnabled = pushPrefsRes.data?.push_enabled !== false;
+  const pushDevices = pushDevicesRes.data || [];
+  const pushHasDevice = pushDevices.length > 0;
+  const pushStatus = resolveCustomerPushStatus(pushEnabled, pushHasDevice);
+
   return {
     customer: {
       ...customer,
       app_platform: resolveAppPlatform(customer.app_platform, latestSession?.user_agent, latestSession?.app_platform),
       account_status: resolveCustomerAccountStatus(customer.account_status, customer.is_active),
+      push_enabled: pushEnabled,
+      push_has_device: pushHasDevice,
+      push_status: pushStatus,
+      push_last_seen_at: pushDevices[0]?.last_seen_at || null,
+      push_device_name: pushDevices[0]?.device_name || null,
     },
     vehicles: vehiclesRes.data || [],
     addresses: addressesRes.data || [],
@@ -549,5 +701,6 @@ export async function fetchCustomerDetail(supabaseAdmin: any, customerId: string
     service_bookings: serviceBookings,
     chatbot_bookings: chatbotRes.data || [],
     analytics_events: eventsRes.data || [],
+    push_devices: pushDevices,
   };
 }

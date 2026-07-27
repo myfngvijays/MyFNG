@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Package, Search, ChevronRight, Loader2, ListChecks, FolderPlus, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
+import PackageChecklistModal from '@/components/admin/PackageChecklistModal';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -11,6 +12,7 @@ export default function PackageListPage() {
   const [packages, setPackages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [checklistTarget, setChecklistTarget] = useState<{ id: string; name: string } | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -407,7 +409,7 @@ export default function PackageListPage() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        router.push(`/dashboard/super_admin/inventory/packages/${pkg.id}/checklist`);
+                        setChecklistTarget({ id: String(pkg.id), name: String(pkg.name || '') });
                       }}
                       className="flex items-center text-blue-600 text-sm font-medium hover:text-blue-700"
                     >
@@ -635,6 +637,14 @@ export default function PackageListPage() {
           </div>
         </div>
       )}
+
+      {checklistTarget ? (
+        <PackageChecklistModal
+          packageId={checklistTarget.id}
+          packageNameHint={checklistTarget.name}
+          onClose={() => setChecklistTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }

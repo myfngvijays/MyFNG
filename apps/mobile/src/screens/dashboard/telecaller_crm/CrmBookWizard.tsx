@@ -14,6 +14,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
@@ -33,25 +34,67 @@ const BOOKING_TYPES = [
   { id: 'MEMBERSHIP', label: 'Membership', icon: 'diamond-outline' as const },
 ];
 
-/** WhatsApp pricing categories (session send — pick which to share) */
-const PRICING_CATEGORIES = [
-  { id: 'Car Periodic Service', label: 'Periodic' },
-  { id: 'Car AC Service', label: 'AC' },
-  { id: 'Car Battery Service', label: 'Battery' },
-  { id: 'Car Brake Service', label: 'Brake' },
-  { id: 'Car Clutch Service', label: 'Clutch' },
-  { id: 'Car Denting & Painting', label: 'Denting' },
-  { id: 'Car Detailing Service', label: 'Detailing' },
-  { id: 'Car Engine Service', label: 'Engine' },
-  { id: 'Car Tyre & Wheel Care', label: 'Tyre' },
-  { id: 'Electrical & Battery Service', label: 'Electrical' },
-  { id: 'Suspension & Steering Service', label: 'Suspension' },
-];
-
 const PAYMENT_MODES = [
   { id: 'PAY_LATER', label: 'Pay Later', hint: 'Pay at workshop / after service', disabled: false },
   { id: 'PAY_NOW', label: 'Pay Now', hint: 'Online payment (coming soon for telecaller)', disabled: true },
 ];
+
+/** Same statuses as Lead Details call-activity flow */
+const LEAD_STATUS_OPTIONS = [
+  { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
+  { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
+  {
+    id: 'BOOKING_CONFIRMED',
+    label: 'Booking confirmed',
+    call_status: 'ANSWERED',
+    outcome: 'LEAD_CREATED',
+    lead_status: 'VALIDATED',
+  },
+  {
+    id: 'IN_SERVICE',
+    label: 'In Service',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'IN_PROGRESS',
+  },
+  {
+    id: 'SERVICE_DONE',
+    label: 'Service Done',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'COMPLETED',
+  },
+  {
+    id: 'LOST',
+    label: 'Lost',
+    call_status: 'ANSWERED',
+    outcome: 'NOT_INTERESTED',
+    lead_status: 'REJECTED',
+  },
+];
+
+const LOST_REASONS = [
+  'Not Interested',
+  'Unqualified Lead',
+  'No-Response to Calls',
+  'Already Service Done',
+  'Under Warranty',
+  'Looking For Authorised Service Center',
+  'Other Reasons',
+];
+
+function todayDateStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function nowTimeStr() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 const STEP_META = [
   { title: "Let's get started!", subtitle: 'Select your location and car model' },
@@ -64,22 +107,34 @@ const STEP_META = [
 type Props = {
   onDone: (leadId: string) => void;
   onCancel?: () => void;
+  initialMode?: 'book' | 'lead';
+  hideModeSwitch?: boolean;
 };
 
-export default function CrmBookWizard({ onDone, onCancel }: Props) {
+export default function CrmBookWizard({
+  onDone,
+  onCancel,
+  initialMode = 'book',
+  hideModeSwitch = false,
+}: Props) {
   /** book = full 5-step booking; lead = basic details → save incomplete lead */
-  const [mode, setMode] = useState<'book' | 'lead'>('book');
+  const [mode, setMode] = useState<'book' | 'lead'>(initialMode);
   const [step, setStep] = useState(0); // 0..4 like book-service
   const [saving, setSaving] = useState(false);
   const [quoting, setQuoting] = useState(false);
-  const [sendingPricing, setSendingPricing] = useState(false);
-  /** Categories to share on WhatsApp after Save Lead — default Periodic (all 4 tiers) */
-  const [pricingCategories, setPricingCategories] = useState<string[]>(['Car Periodic Service']);
 
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
   const [cityQuery, setCityQuery] = useState('');
   const [carDisplay, setCarDisplay] = useState('');
+  const [resolvingCity, setResolvingCity] = useState(false);
+  const [leadStatusId, setLeadStatusId] = useState('INTERESTED');
+  const [lostReason, setLostReason] = useState('');
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [lostMenuOpen, setLostMenuOpen] = useState(false);
+  const [activityDate, setActivityDate] = useState(todayDateStr);
+  const [activityTime, setActivityTime] = useState(nowTimeStr);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
 
   const [form, setForm] = useState({
     customer_name: '',
@@ -127,7 +182,11 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
       try {
         const [citiesApi, citiesDb] = await Promise.all([
           apiFetch<any>('/api/cities').catch(() => null),
-          supabase.from('cities').select('id, name, state').eq('is_active', true).order('name'),
+          supabase
+            .from('cities')
+            .select('id, name, state, city_pincodes')
+            .eq('is_active', true)
+            .order('name'),
         ]);
         const fromApi = Array.isArray(citiesApi?.cities)
           ? citiesApi.cities
@@ -135,7 +194,8 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
             ? citiesApi
             : [];
         const fromDb = Array.isArray(citiesDb.data) ? citiesDb.data : [];
-        setCities(fromApi.length > 0 ? fromApi : fromDb);
+        // Prefer DB rows when they include pincode mapping for auto city
+        setCities(fromDb.length > 0 ? fromDb : fromApi);
       } catch (e) {
         console.error('book wizard bootstrap failed', e);
       }
@@ -143,6 +203,45 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
   }, []);
 
   const setField = (key: string, value: any) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const resolveCityFromPincode = async (pin: string) => {
+    const pincode = String(pin || '').replace(/\D/g, '').slice(0, 6);
+    if (!/^\d{6}$/.test(pincode)) {
+      setField('city', '');
+      setField('city_id', '');
+      return;
+    }
+    setResolvingCity(true);
+    try {
+      let rows = cities;
+      if (!rows.some((c) => c.city_pincodes != null)) {
+        const { data } = await supabase
+          .from('cities')
+          .select('id, name, state, city_pincodes')
+          .eq('is_active', true);
+        rows = Array.isArray(data) ? data : [];
+        if (rows.length) setCities(rows);
+      }
+      const hit = (rows || []).find((c: any) => {
+        const raw = String(c.city_pincodes || '');
+        return raw.includes(pincode);
+      });
+      if (hit?.name) {
+        setForm((prev) => ({
+          ...prev,
+          pincode,
+          city: hit.name,
+          city_id: hit.id || prev.city_id,
+        }));
+      } else {
+        setForm((prev) => ({ ...prev, pincode, city: prev.city, city_id: prev.city_id }));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setResolvingCity(false);
+    }
+  };
 
   const needsPickupStep =
     form.booking_type === 'PERIODIC' || form.booking_type === 'OTHER_SERVICES';
@@ -363,60 +462,29 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
     return true;
   }, [mode, step, form, catalogMeta, needsPickupStep, canSaveLead]);
 
-  const togglePricingCategory = (id: string) => {
-    setPricingCategories((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
-    );
-  };
-
-  const sendPricingForLead = async (leadId: string) => {
-    const pincode = form.pincode.replace(/\D/g, '').slice(0, 6);
-    const carModel = [form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ').trim();
-    if (!/^\d{6}$/.test(pincode) || !carModel || !pricingCategories.length) {
-      return { ok: false, message: 'Pincode, car model and pricing category required to send.' };
-    }
-    setSendingPricing(true);
-    try {
-      const res = await apiFetch<any>(`/api/telecaller/leads/${leadId}/send-pricing`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pincode,
-          carModel,
-          categories: pricingCategories,
-        }),
-      });
-      if (!res?.success) {
-        throw new Error(res?.message || res?.error || 'Failed to send pricing');
-      }
-      return { ok: true, message: res.message || 'Pricing sent on WhatsApp.' };
-    } catch (e: any) {
-      return {
-        ok: false,
-        message:
-          e?.message ||
-          'Could not send. Customer must have an open WhatsApp chat (24h window).',
-      };
-    } finally {
-      setSendingPricing(false);
-    }
-  };
-
   const saveAsLead = async () => {
     if (!canSaveLead) {
       Alert.alert('Missing info', 'Customer name and 10-digit phone required');
       return;
     }
     const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
-    const carModel = [form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ').trim();
-    const wantsPricing = pricingCategories.length > 0;
-    if (wantsPricing && (!/^\d{6}$/.test(pin) || !carModel)) {
-      Alert.alert(
-        'Pricing needs more info',
-        'To share pricing, fill 6-digit pincode and car model (or clear pricing categories to save without sending).',
-      );
+    const statusOpt =
+      LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
+    if (statusOpt.id === 'LOST' && !lostReason.trim()) {
+      Alert.alert('Lost reason', 'Lost select kiya hai — reason choose karo');
       return;
     }
+    // Date/Time = kab baat hui (call activity), NOT follow-up schedule
+    const activityIso =
+      activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
+    if (!activityIso) {
+      Alert.alert('Call time', 'Kab baat hui — date & time dalo');
+      return;
+    }
+    const statusLabel =
+      statusOpt.id === 'LOST' && lostReason
+        ? `Lost · ${lostReason}`
+        : statusOpt.label;
 
     setSaving(true);
     try {
@@ -428,61 +496,31 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
           customer_phone: form.customer_phone.trim(),
           city_id: form.city_id || null,
           city: form.city || null,
-          pincode: form.pincode || null,
+          pincode: pin || null,
           vehicle_number: 'PENDING',
           vehicle_make: form.vehicle_make || null,
           vehicle_model: form.vehicle_model || null,
           model_id: form.model_id || null,
           vehicle_class: form.vehicle_class || null,
           vehicle_fuel_type: form.vehicle_fuel_type || null,
-          booking_type: form.booking_type,
-          service_type_ids: form.service_type_ids,
+          booking_type: 'CAR_SERVICE',
+          service_type_ids: [],
           problem_description: form.problem_description || null,
-          pricing_categories: pricingCategories,
-          package_label:
-            form.booking_type === 'PERIODIC'
-              ? 'Periodic Service'
-              : form.booking_type === 'OTHER_SERVICES'
-                ? 'Other Services'
-                : form.booking_type === 'RSA'
-                  ? 'RSA'
-                  : form.booking_type === 'MEMBERSHIP'
-                    ? 'Membership'
-                    : null,
+          package_label: 'Enquiry',
+          status: statusOpt.lead_status || 'NEW',
+          call_status: statusOpt.call_status,
+          outcome: statusOpt.outcome,
+          call_result: statusOpt.id,
+          call_label: statusLabel,
+          call_notes: form.problem_description || null,
+          lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
+          activity_at: activityIso,
         }),
       });
       if (!data?.lead?.id && !data?.success) {
         throw new Error(data?.error || 'Failed to save lead');
       }
       const leadId = String(data.lead?.id || '');
-
-      if (leadId && wantsPricing && /^\d{6}$/.test(pin) && carModel) {
-        const labels = pricingCategories
-          .map((id) => PRICING_CATEGORIES.find((c) => c.id === id)?.label || id)
-          .join(', ');
-        Alert.alert(
-          'Lead saved',
-          `Send ${labels} pricing on WhatsApp now?\n\nNeeds open 24h WhatsApp chat (no template).`,
-          [
-            {
-              text: 'Later',
-              style: 'cancel',
-              onPress: () => onDone(leadId),
-            },
-            {
-              text: 'Send Pricing',
-              onPress: async () => {
-                const result = await sendPricingForLead(leadId);
-                Alert.alert(result.ok ? 'Sent' : 'WhatsApp', result.message, [
-                  { text: 'OK', onPress: () => onDone(leadId) },
-                ]);
-              },
-            },
-          ],
-        );
-        return;
-      }
-
       Alert.alert(
         'Lead saved',
         data.message || 'Lead created. Complete booking later from Lead Details.',
@@ -622,6 +660,8 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
   };
 
   const meta = STEP_META[step];
+  const selectedLeadStatus =
+    LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
 
   return (
     <KeyboardAvoidingView
@@ -630,40 +670,42 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
     >
       <View style={styles.topBar}>
-        <View style={styles.modeRow}>
-          <TouchableOpacity
-            style={[styles.modeChip, mode === 'book' && styles.modeChipActive]}
-            onPress={() => {
-              setMode('book');
-              setStep(0);
-            }}
-          >
-            <Ionicons
-              name="calendar-outline"
-              size={15}
-              color={mode === 'book' ? '#fff' : COLORS.primary}
-            />
-            <Text style={[styles.modeChipText, mode === 'book' && styles.modeChipTextActive]}>
-              Full Booking
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeChip, mode === 'lead' && styles.modeChipActive]}
-            onPress={() => {
-              setMode('lead');
-              setStep(0);
-            }}
-          >
-            <Ionicons
-              name="person-add-outline"
-              size={15}
-              color={mode === 'lead' ? '#fff' : COLORS.primary}
-            />
-            <Text style={[styles.modeChipText, mode === 'lead' && styles.modeChipTextActive]}>
-              Add Lead
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {!hideModeSwitch ? (
+          <View style={styles.modeRow}>
+            <TouchableOpacity
+              style={[styles.modeChip, mode === 'book' && styles.modeChipActive]}
+              onPress={() => {
+                setMode('book');
+                setStep(0);
+              }}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={15}
+                color={mode === 'book' ? '#fff' : COLORS.primary}
+              />
+              <Text style={[styles.modeChipText, mode === 'book' && styles.modeChipTextActive]}>
+                Full Booking
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeChip, mode === 'lead' && styles.modeChipActive]}
+              onPress={() => {
+                setMode('lead');
+                setStep(0);
+              }}
+            >
+              <Ionicons
+                name="person-add-outline"
+                size={15}
+                color={mode === 'lead' ? '#fff' : COLORS.primary}
+              />
+              <Text style={[styles.modeChipText, mode === 'lead' && styles.modeChipTextActive]}>
+                Add Lead
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {mode === 'book' ? (
           <>
             <View style={styles.progress}>
@@ -680,7 +722,7 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
             <Text style={styles.stepOf}>Quick save</Text>
             <Text style={styles.stepTitle}>Add Lead</Text>
             <Text style={styles.stepSub}>
-              Basic details only — save now, book later from Lead Details
+              Name, phone, pin → city auto · call notes & status
             </Text>
           </>
         )}
@@ -694,26 +736,6 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
       >
         {mode === 'lead' && (
           <>
-            <Text style={styles.sectionLabel}>Interest (optional)</Text>
-            <View style={styles.typeGrid}>
-              {BOOKING_TYPES.map((t) => {
-                const active = form.booking_type === t.id;
-                return (
-                  <TouchableOpacity
-                    key={t.id}
-                    style={[styles.typeCard, active && styles.typeCardActive]}
-                    onPress={() => setField('booking_type', t.id)}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons name={t.icon} size={22} color={active ? '#fff' : COLORS.primary} />
-                    <Text style={[styles.typeCardText, active && styles.typeCardTextActive]}>
-                      {t.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
             <Field
               label="Customer Name *"
               value={form.customer_name}
@@ -728,68 +750,40 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
               maxLength={15}
               placeholder="10-digit mobile"
             />
-
-            <Text style={styles.sectionLabel}>City (optional)</Text>
-            <TouchableOpacity style={styles.selectBtn} onPress={() => setCityOpen((v) => !v)}>
-              <Text style={styles.selectBtnText}>{form.city || 'Select city'}</Text>
-              <Ionicons
-                name={cityOpen ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color={COLORS.textSecondary}
-              />
-            </TouchableOpacity>
-            {cityOpen ? (
-              <View style={styles.menu}>
-                <TextInput
-                  style={styles.menuSearch}
-                  value={cityQuery}
-                  onChangeText={setCityQuery}
-                  placeholder="Search city"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-                <ScrollView
-                  style={{ maxHeight: 180 }}
-                  nestedScrollEnabled
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {filteredCities.map((c: any) => {
-                    const name = c.name || c.city_name || '';
-                    return (
-                      <TouchableOpacity
-                        key={c.id || name}
-                        style={styles.menuItem}
-                        onPress={() => {
-                          setField('city', name);
-                          setField('city_id', c.id || '');
-                          setCityOpen(false);
-                          setCityQuery('');
-                        }}
-                      >
-                        <Text style={styles.menuItemText}>{name}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            ) : null}
-
             <Field
-              label={pricingCategories.length ? 'Pincode * (for pricing)' : 'Pincode (optional)'}
+              label="Pincode"
               value={form.pincode}
-              onChange={(v) => setField('pincode', v.replace(/\D/g, '').slice(0, 6))}
+              onChange={(v) => {
+                const pin = v.replace(/\D/g, '').slice(0, 6);
+                setField('pincode', pin);
+                if (pin.length === 6) void resolveCityFromPincode(pin);
+                if (pin.length < 6) {
+                  setField('city', '');
+                  setField('city_id', '');
+                }
+              }}
               keyboardType="number-pad"
               maxLength={6}
-              placeholder="e.g. 400601"
+              placeholder="6-digit pincode"
             />
+            {resolvingCity ? (
+              <Text style={styles.hint}>Finding city…</Text>
+            ) : form.city ? (
+              <View style={styles.cityAutoRow}>
+                <Ionicons name="location-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.cityAutoText}>{form.city}</Text>
+              </View>
+            ) : form.pincode.length === 6 ? (
+              <Text style={styles.hint}>City not found for this pincode</Text>
+            ) : null}
 
             <View style={{ marginTop: 6 }}>
               <CarModelSearchField
-                label={pricingCategories.length ? 'Car Model * (for pricing)' : 'Car Model (optional)'}
-                variant="website"
+                label="Car Model"
                 displayValue={carDisplay}
                 selectedMake={form.vehicle_make}
                 selectedModel={form.vehicle_model}
-                placeholder="Enter Model (e.g. Rapid, Swift)"
+                placeholder="e.g. Swift, Rapid"
                 onSelect={(make, model, display, meta) => {
                   setField('vehicle_make', make);
                   setField('vehicle_model', model);
@@ -807,43 +801,68 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
               />
             </View>
 
-            <Text style={styles.sectionLabel}>Pricing to share</Text>
-            <Text style={styles.hint}>
-              Periodic ON (default) → bina plan Add kiye saare 4 plans WhatsApp pe. Clear chips to
-              save without pricing.
-            </Text>
-            <View style={styles.pricingChipRow}>
-              {PRICING_CATEGORIES.map((c) => {
-                const active = pricingCategories.includes(c.id);
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.pricingChip, active && styles.pricingChipActive]}
-                    onPress={() => togglePricingCategory(c.id)}
-                    activeOpacity={0.85}
+            <Text style={styles.sectionLabel}>Lead Status</Text>
+            <TouchableOpacity
+              style={styles.selectBtn}
+              onPress={() => setStatusMenuOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.selectBtnText}>{selectedLeadStatus.label}</Text>
+              <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+
+            {leadStatusId === 'LOST' ? (
+              <>
+                <Text style={styles.sectionLabel}>Lost reason *</Text>
+                <TouchableOpacity
+                  style={styles.selectBtn}
+                  onPress={() => setLostMenuOpen(true)}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.selectBtnText,
+                      !lostReason && { color: COLORS.textSecondary },
+                    ]}
                   >
-                    <Text
-                      style={[styles.pricingChipText, active && styles.pricingChipTextActive]}
-                    >
-                      {c.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                    {lostReason || 'Select lost reason'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </>
+            ) : null}
 
             <Field
-              label="Notes / Customer message (optional)"
+              label="Call Activity"
               value={form.problem_description}
               onChange={(v) => setField('problem_description', v)}
-              placeholder="e.g. Asked for pricing, will decide later"
+              placeholder="Kya baat hui — notes"
+              multiline
+              style={[styles.input, { minHeight: 72, textAlignVertical: 'top' }]}
             />
+
+            <Text style={styles.sectionLabel}>Call date & time (kab baat hui)</Text>
+            <View style={styles.dateTimeRow}>
+              <TouchableOpacity
+                style={[styles.selectBtn, { flex: 1 }]}
+                onPress={() => setPickerMode('date')}
+              >
+                <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.selectBtnText}>{activityDate || 'Date'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.selectBtn, { flex: 1 }]}
+                onPress={() => setPickerMode('time')}
+              >
+                <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.selectBtnText}>{activityTime || 'Time'}</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.infoBox}>
               <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
               <Text style={styles.infoText}>
-                Saves as incomplete lead. After save you can send the selected pricing on WhatsApp
-                (24h chat window required).
+                Incomplete lead save. Book later from Lead Details — Send Pricing bhi wahan se.
               </Text>
             </View>
           </>
@@ -1275,7 +1294,7 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
             disabled={!canNext || saving}
             onPress={next}
           >
-            {saving || quoting || sendingPricing ? (
+            {saving || quoting ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.nextText}>
@@ -1285,6 +1304,93 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {pickerMode ? (
+        <DateTimePicker
+          value={
+            pickerMode === 'date'
+              ? activityDate
+                ? new Date(`${activityDate}T12:00:00`)
+                : new Date()
+              : activityTime
+                ? new Date(`1970-01-01T${activityTime}:00`)
+                : new Date()
+          }
+          mode={pickerMode}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(_e, date) => {
+            const modeNow = pickerMode;
+            if (Platform.OS === 'android') setPickerMode(null);
+            if (!date) {
+              if (Platform.OS === 'ios') setPickerMode(null);
+              return;
+            }
+            if (modeNow === 'date') {
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, '0');
+              const d = String(date.getDate()).padStart(2, '0');
+              setActivityDate(`${y}-${m}-${d}`);
+              if (Platform.OS === 'ios') setPickerMode(null);
+            } else {
+              setActivityTime(
+                `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+              );
+              if (Platform.OS === 'ios') setPickerMode(null);
+            }
+          }}
+        />
+      ) : null}
+
+      <Modal
+        visible={statusMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatusMenuOpen(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setStatusMenuOpen(false)}>
+          <View style={styles.menuSheet}>
+            <Text style={styles.menuTitle}>Select status</Text>
+            {LEAD_STATUS_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.id}
+                style={styles.menuSheetItem}
+                onPress={() => {
+                  setLeadStatusId(opt.id);
+                  if (opt.id !== 'LOST') setLostReason('');
+                  setStatusMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuSheetItemText}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={lostMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLostMenuOpen(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setLostMenuOpen(false)}>
+          <View style={styles.menuSheet}>
+            <Text style={styles.menuTitle}>Lost reason</Text>
+            {LOST_REASONS.map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                style={styles.menuSheetItem}
+                onPress={() => {
+                  setLostReason(reason);
+                  setLostMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuSheetItemText}>{reason}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1403,6 +1509,7 @@ const styles = StyleSheet.create({
   selectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     backgroundColor: COLORS.white,
     borderRadius: 10,
     borderWidth: 1,
@@ -1411,6 +1518,41 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   selectBtnText: { flex: 1, color: COLORS.textPrimary, fontWeight: '600' },
+  dateTimeRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  cityAutoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  cityAutoText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  menuSheet: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    paddingVertical: 8,
+    overflow: 'hidden',
+  },
+  menuTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuSheetItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.gray[100],
+  },
+  menuSheetItemText: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
   menu: {
     marginTop: 6,
     backgroundColor: COLORS.white,

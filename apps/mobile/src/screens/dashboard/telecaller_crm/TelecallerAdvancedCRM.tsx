@@ -9,6 +9,7 @@ import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen
 import CrmHomeTab from './CrmHomeTab';
 import CrmQueueTab from './CrmQueueTab';
 import CrmBookWizard from './CrmBookWizard';
+import CrmBookChooser from './CrmBookChooser';
 import CrmEngageTab from './CrmEngageTab';
 import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
@@ -23,6 +24,7 @@ export default function TelecallerAdvancedCRM() {
   const [tab, setTab] = useState('home');
   const [queueFilter, setQueueFilter] = useState('all');
   const [engageSegment, setEngageSegment] = useState('followups');
+  const [bookMode, setBookMode] = useState<'book' | 'lead' | null>(null);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
@@ -79,6 +81,7 @@ export default function TelecallerAdvancedCRM() {
         return;
       }
       if (screen === 'book' || screen === 'createLead' || screen === 'TelecallerCreateLead') {
+        setBookMode(params?.mode === 'lead' || screen === 'createLead' ? 'lead' : params?.mode === 'book' ? 'book' : null);
         setTab('book');
         return;
       }
@@ -105,6 +108,11 @@ export default function TelecallerAdvancedCRM() {
   const handleTabChange = (id: string) => {
     setDetailLeadId(null);
     setDetailEditing(false);
+    if (id === 'book') {
+      setBookMode(null);
+    } else {
+      setBookMode(null);
+    }
     setTab(id);
     if (id === 'queue') setQueueFilter('all');
   };
@@ -141,6 +149,9 @@ export default function TelecallerAdvancedCRM() {
                 return;
               }
               if (screen === 'book') {
+                setBookMode(
+                  params?.mode === 'lead' ? 'lead' : params?.mode === 'book' ? 'book' : null,
+                );
                 setTab('book');
                 return;
               }
@@ -166,12 +177,22 @@ export default function TelecallerAdvancedCRM() {
             onEditLead={(id) => openLead(id, true)}
           />
         )}
-        {tab === 'book' && (
+        {tab === 'book' && !bookMode && (
+          <CrmBookChooser
+            onPick={(mode) => setBookMode(mode)}
+            onCancel={() => setTab('home')}
+          />
+        )}
+        {tab === 'book' && bookMode && (
           <CrmBookWizard
+            key={bookMode}
+            initialMode={bookMode}
+            hideModeSwitch
             onDone={(leadId) => {
+              setBookMode(null);
               openLead(leadId, false);
             }}
-            onCancel={() => setTab('home')}
+            onCancel={() => setBookMode(null)}
           />
         )}
         {tab === 'workshops' && <CrmWorkshopLocatorTab navigation={navigation} />}

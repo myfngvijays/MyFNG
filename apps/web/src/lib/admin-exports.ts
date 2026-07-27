@@ -1,5 +1,10 @@
 import { enrichBookingLead, filterBookingLeads, enrichLeadsServiceDisplay, getLeadServiceLabel, getLeadDisplayAmount } from './booking-lead-utils';
-import { enrichCustomerListRows, matchesPlatformFilter } from './customer-insights-admin';
+import {
+  applyExcludeReferralTestDummies,
+  enrichCustomerListRows,
+  isReferralTestDummyCustomer,
+  matchesPlatformFilter,
+} from './customer-insights-admin';
 import { resolveReportDateRange, rowsToCsv } from './report-date-range';
 
 const SERVICE_LEADS_CSV_COLUMNS = [
@@ -34,6 +39,9 @@ const CUSTOMERS_CSV_COLUMNS = [
   { key: 'phone', label: 'Phone' },
   { key: 'email', label: 'Email' },
   { key: 'app_platform', label: 'Platform' },
+  { key: 'push_status', label: 'Push Status' },
+  { key: 'push_enabled', label: 'Push Enabled (App)' },
+  { key: 'push_has_device', label: 'Has Push Token' },
   { key: 'created_at', label: 'Joined' },
   { key: 'bookings_count', label: 'Bookings' },
   { key: 'wallet_balance', label: 'Wallet' },
@@ -221,6 +229,8 @@ export async function exportCustomersCsv(
     .order('created_at', { ascending: false })
     .limit(10000);
 
+  query = applyExcludeReferralTestDummies(query);
+
   if (search) {
     query = query.or(
       [`full_name.ilike.%${search}%`, `phone.ilike.%${search}%`, `email.ilike.%${search}%`].join(','),
@@ -231,6 +241,7 @@ export async function exportCustomersCsv(
   if (error) throw new Error('Failed to export customers');
 
   let customers = await enrichCustomerListRows(supabaseAdmin, data || []);
+  customers = customers.filter((c) => !isReferralTestDummyCustomer(c));
 
   if (filter === 'WITH_BOOKING') {
     customers = customers.filter((c) => c.bookings_count > 0);
@@ -242,6 +253,12 @@ export async function exportCustomersCsv(
     customers = customers.filter(
       (c) => c.coupon_assigned_count > 0 || c.coupon_bookings_count > 0 || c.coupon_redeemed_count > 0,
     );
+  } else if (filter === 'PUSH_ON') {
+    customers = customers.filter((c) => c.push_status === 'ON');
+  } else if (filter === 'PUSH_OFF') {
+    customers = customers.filter((c) => c.push_status === 'OFF');
+  } else if (filter === 'PUSH_NO_TOKEN') {
+    customers = customers.filter((c) => c.push_status === 'NO_TOKEN');
   }
 
   if (platform !== 'ALL') {
@@ -253,6 +270,9 @@ export async function exportCustomersCsv(
     phone: c.phone || '',
     email: c.email || '',
     app_platform: c.app_platform || '',
+    push_status: c.push_status || 'NO_TOKEN',
+    push_enabled: c.push_enabled === false ? 'No' : 'Yes',
+    push_has_device: c.push_has_device ? 'Yes' : 'No',
     created_at: formatCsvDate(c.created_at),
     bookings_count: c.bookings_count ?? 0,
     wallet_balance: c.wallet_balance ?? 0,

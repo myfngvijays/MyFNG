@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Edit, Trash2, X, Save, Star, Upload, Download } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Save, Star, Upload, Download, RefreshCw } from 'lucide-react';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import {
   CUSTOMER_REVIEWS_CSV_TEMPLATE,
@@ -18,6 +18,7 @@ type ReviewRow = {
   display_order: number;
   is_active: boolean;
   screen?: string;
+  source?: string;
   created_at?: string;
 };
 
@@ -26,6 +27,11 @@ export default function CustomerReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
+  const [syncingGmb, setSyncingGmb] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncScreen, setSyncScreen] = useState<'home' | 'rsa' | 'both'>('both');
+  const [gbpStatus, setGbpStatus] = useState<{ connected: boolean; connected_at?: string | null } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [editing, setEditing] = useState<ReviewRow | null>(null);
@@ -217,17 +223,82 @@ export default function CustomerReviewsPage() {
     e.target.value = '';
   }
 
+  async function loadGbpStatus() {
+    try {
+      const res = await fetch('/api/integrations/google-business/status');
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setGbpStatus({
+          connected: Boolean(json.connected),
+          connected_at: json.connected_at || null,
+        });
+      }
+    } catch {
+      setGbpStatus(null);
+    }
+  }
+
+  function openSyncModal() {
+    setSyncModalOpen(true);
+    void loadGbpStatus();
+  }
+
+  async function syncFromGmb() {
+    setSyncingGmb(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch('/api/super_admin/customer-reviews/sync-gmb', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ screen: syncScreen, min_stars: 4 }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const parts = [json?.message || json?.error || `Sync failed (${res.status})`];
+        if (json?.location_name) parts.push(`Location: ${json.location_name}`);
+        if (json?.place_id) parts.push(`Place: ${json.place_id}`);
+        if (Array.isArray(json?.debug) && json.debug.length) {
+          parts.push(`Debug: ${json.debug.join(' | ')}`);
+        }
+        if (json?.oauth_connected && /refresh|token/i.test(String(json?.message || ''))) {
+          parts.push('Fix: Workshops → Public Pages → Connect Google Business (reconnect)');
+        } else if (!json?.oauth_connected) {
+          parts.push('Fix: Workshops → Public Pages → Connect Google Business');
+        } else {
+          parts.push('Fix: Workshops → Public Pages pe GMB location Fetch/Save, phir Sync dubara');
+        }
+        throw new Error(parts.join('\n'));
+      }
+      setSyncMsg(json.message || 'GMB sync complete');
+      setSyncModalOpen(false);
+      await fetchRows();
+    } catch (e: any) {
+      alert(e?.message || 'GMB sync failed');
+    } finally {
+      setSyncingGmb(false);
+    }
+  }
+
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Customer Reviews</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage reviews for the mobile app Home and RSA screens. Choose screen when adding each review.
+            Manage reviews for the mobile app Home and RSA screens. Sync 4★ &amp; 5★ from Google Business (auto every 12h).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <AdminPageRefresh onClick={() => void fetchRows()} loading={loading} />
+          <button
+            type="button"
+            onClick={openSyncModal}
+            disabled={syncingGmb}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncingGmb ? 'animate-spin' : ''}`} />
+            {syncingGmb ? 'Syncing…' : 'Sync from GMB'}
+          </button>
           <button
             type="button"
             onClick={openBulkModal}
@@ -244,6 +315,12 @@ export default function CustomerReviewsPage() {
           </button>
         </div>
       </div>
+
+      {syncMsg ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {syncMsg}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600">Loading…</div>
@@ -273,6 +350,11 @@ export default function CustomerReviewsPage() {
                   }`}>
                     {r.screen === 'rsa' ? 'RSA' : 'Home'}
                   </span>
+                  {r.source === 'gmb' ? (
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      GMB
+                    </span>
+                  ) : null}
                   <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
                     r.is_active
                       ? 'bg-green-100 text-green-700 border border-green-200'
@@ -441,6 +523,88 @@ export default function CustomerReviewsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {syncModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 border-b border-gray-200">
+              <div>
+                <div className="text-lg font-bold text-gray-900">Sync from Google Business</div>
+                <div className="text-xs text-gray-500 mt-0.5">Only 4★ &amp; 5★ reviews with text</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSyncModalOpen(false)}
+                className="p-2 rounded-lg hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div
+                className={`rounded-xl border px-3 py-2 text-sm ${
+                  gbpStatus?.connected
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-900'
+                }`}
+              >
+                {gbpStatus == null
+                  ? 'Checking Google Business connection…'
+                  : gbpStatus.connected
+                    ? 'Google Business connected ✓'
+                    : 'Google Business not connected — sync may fail'}
+              </div>
+
+              {!gbpStatus?.connected ? (
+                <a
+                  href={`/api/integrations/google-business/connect?return_to=${encodeURIComponent(
+                    '/dashboard/super_admin/website-images/customer-reviews',
+                  )}`}
+                  className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Connect Google Business
+                </a>
+              ) : null}
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Import to screen</label>
+                <select
+                  value={syncScreen}
+                  onChange={(e) => setSyncScreen(e.target.value as 'home' | 'rsa' | 'both')}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
+                >
+                  <option value="both">Home + RSA</option>
+                  <option value="home">Home only</option>
+                  <option value="rsa">RSA only</option>
+                </select>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Tip: Agar OAuth fail ho, pehle Workshops → Public Pages pe GMB location fetch karo — uske cached reviews bhi use honge.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSyncModalOpen(false)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void syncFromGmb()}
+                  disabled={syncingGmb}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-4 w-4 ${syncingGmb ? 'animate-spin' : ''}`} />
+                  {syncingGmb ? 'Syncing…' : 'Start Sync'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
