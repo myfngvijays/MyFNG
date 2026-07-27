@@ -156,10 +156,15 @@ function AppDownloadBanner({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function Navbar() {
+export default function Navbar({
+  hideAppBanner = false,
+}: {
+  /** Pricing share etc.: only logo + hamburger, no promo banners */
+  hideAppBanner?: boolean;
+} = {}) {
   const pathname = usePathname();
   const isHomePage = pathname === '/';
-  const [showAppBanner, setShowAppBanner] = useState(true);
+  const [showAppBanner, setShowAppBanner] = useState(!hideAppBanner);
   const [cityName, setCityName] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(true);
   const [showCityDropdown, setShowCityDropdown] = useState(false);
@@ -356,7 +361,7 @@ export default function Navbar() {
 
   return (
     <header className="fixed top-0 w-full z-50">
-      {showAppBanner && (
+      {showAppBanner && !hideAppBanner && (
         <AppDownloadBanner onClose={() => setShowAppBanner(false)} />
       )}
       <div className="bg-white/95 backdrop-blur-sm shadow-sm">

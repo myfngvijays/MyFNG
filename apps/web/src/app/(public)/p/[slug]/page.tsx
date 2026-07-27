@@ -298,10 +298,10 @@ export default function PricingSharePage() {
         }
       `}</style>
 
-      <Navbar />
+      <Navbar hideAppBanner />
 
-      {/* Spacer for fixed Navbar + app promo banners (content was clipping under header) */}
-      <main className="mx-auto max-w-3xl px-3 pb-40 pt-[11.5rem] sm:px-4 sm:pt-[12.5rem]">
+      {/* Slim header only (no promo banners) */}
+      <main className="mx-auto max-w-3xl px-3 pb-36 pt-20 sm:px-4 sm:pt-24">
         {loading ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500 shadow-sm">
             Loading pricing…
@@ -340,45 +340,13 @@ export default function PricingSharePage() {
                   View only
                 </span>
               </div>
-              {isPeriodic ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <span
-                    className={`text-xs font-semibold ${
-                      oil === 'semi' ? 'text-gray-900' : 'text-gray-400'
-                    }`}
-                  >
-                    Semi
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setOil(oil === 'semi' ? 'full' : 'semi')}
-                    className="relative h-6 w-11 flex-shrink-0 rounded-full bg-brand-primary transition-all"
-                    aria-label="Toggle oil type"
-                  >
-                    <div
-                      className={`absolute top-[3px] flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white shadow transition-all ${
-                        oil === 'full' ? 'left-[23px]' : 'left-[3px]'
-                      }`}
-                    >
-                      <Droplets className="h-2.5 w-2.5 text-brand-primary" />
-                    </div>
-                  </button>
-                  <span
-                    className={`text-xs font-semibold ${
-                      oil === 'full' ? 'text-gray-900' : 'text-gray-400'
-                    }`}
-                  >
-                    Fully
-                  </span>
-                </div>
-              ) : null}
-              <p className="mt-2 text-[11px] text-gray-500">
+              <p className="mt-1.5 text-[11px] text-gray-500">
                 Link valid until {formatExpiry(data?.expiresAt)}
               </p>
             </div>
 
             {/* Category icons — same as book-service */}
-            <div className="mb-4 -mx-3 sm:-mx-4">
+            <div className="mb-3 -mx-3 sm:-mx-4">
               <div className="scrollbar-hide flex gap-3 overflow-x-auto px-3 pb-2 sm:gap-4 sm:px-4">
                 {(data?.categoryTabs || []).map((tab) => {
                   const isSelected = tab.id === activeCategory;
@@ -423,19 +391,41 @@ export default function PricingSharePage() {
               </div>
             </div>
 
+            {/* Oil toggle sits under category icons (replaces Semi Synthetic Oil pill) */}
             {isPeriodic ? (
-              <div className="mb-3 flex items-center gap-2">
-                <div
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold transition-all ${
-                    oil === 'semi'
-                      ? 'border-blue-200 bg-blue-100 text-blue-800'
-                      : 'border-purple-200 bg-purple-100 text-purple-800'
+              <div className="mb-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2">
+                <Droplets className="h-3.5 w-3.5 flex-shrink-0 text-brand-primary" />
+                <span
+                  className={`text-xs font-semibold ${
+                    oil === 'semi' ? 'text-gray-900' : 'text-gray-400'
                   }`}
                 >
-                  <Droplets className="h-3 w-3" />
+                  Semi
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOil(oil === 'semi' ? 'full' : 'semi')}
+                  className="relative h-6 w-11 flex-shrink-0 rounded-full bg-brand-primary transition-all"
+                  aria-label="Toggle oil type"
+                >
+                  <div
+                    className={`absolute top-[3px] flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white shadow transition-all ${
+                      oil === 'full' ? 'left-[23px]' : 'left-[3px]'
+                    }`}
+                  >
+                    <Droplets className="h-2.5 w-2.5 text-brand-primary" />
+                  </div>
+                </button>
+                <span
+                  className={`text-xs font-semibold ${
+                    oil === 'full' ? 'text-gray-900' : 'text-gray-400'
+                  }`}
+                >
+                  Fully
+                </span>
+                <span className="ml-1 text-[10px] text-gray-400">
                   {oil === 'semi' ? 'Semi Synthetic Oil' : 'Fully Synthetic Oil'}
-                </div>
-                <span className="text-[10px] text-gray-400">packages</span>
+                </span>
               </div>
             ) : null}
 
@@ -585,20 +575,24 @@ export default function PricingSharePage() {
         </div>
       ) : null}
 
-      {/* Points modal — compact height, one point per line */}
+      {/* Points bottom sheet — opens from bottom, half screen max */}
       {details ? (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center p-3 pb-4 pt-28 sm:items-center sm:p-4 sm:pt-4">
+        <div className="fixed inset-0 z-[70] flex items-end justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDetails(null)} />
-          <div className="relative flex max-h-[68vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[72vh] sm:rounded-3xl">
-            <div className="flex shrink-0 items-start justify-between gap-2 border-b border-gray-200 p-3 sm:p-4">
+          <div
+            className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200"
+            style={{ height: '50vh', maxHeight: '50vh' }}
+          >
+            <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-gray-300" />
+            <div className="flex shrink-0 items-start justify-between gap-2 border-b border-gray-200 px-3 pb-2.5 pt-2">
               <div className="min-w-0">
-                <div className="truncate text-base font-extrabold text-gray-900 sm:text-lg">
+                <div className="truncate text-[15px] font-extrabold text-gray-900">
                   {displayPlanTitle(details.plan, /periodic/i.test(details.category))}
                   {details.plan.oil
                     ? ` (${details.plan.oil === 'full' ? 'Fully Synthetic' : 'Semi Synthetic'})`
                     : ''}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
                   <span>Checklist</span>
                   {pointsCount(details.plan) > 0 ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-700">
@@ -621,32 +615,31 @@ export default function PricingSharePage() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-lg font-extrabold text-gray-900">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+                <div>
+                  <div className="text-base font-extrabold text-gray-900">
                     {details.plan.price > 0 ? inr(details.plan.price) : '—'}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      togglePlan(details.plan, details.category);
-                      setDetails(null);
-                    }}
-                    className="inline-flex items-center justify-center rounded-lg bg-green-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-green-700"
-                  >
-                    {selected[planKey(details.plan, details.category)]
-                      ? 'Added ✓'
-                      : 'Select Package'}
-                  </button>
+                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-emerald-800">
+                    <Shield className="h-3 w-3 text-green-600" />
+                    <span>
+                      {/periodic/i.test(details.category) ? '1000 kms / 1 Month' : 'NA'}
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-emerald-800">
-                  <Shield className="h-3.5 w-3.5 text-green-600" />
-                  <span className="font-semibold">Warranty:</span>
-                  <span>
-                    {/periodic/i.test(details.category) ? '1000 kms / 1 Month' : 'NA'}
-                  </span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    togglePlan(details.plan, details.category);
+                    setDetails(null);
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg bg-green-600 px-3 py-2 text-xs font-extrabold text-white shadow hover:bg-green-700"
+                >
+                  {selected[planKey(details.plan, details.category)]
+                    ? 'Added ✓'
+                    : 'Select Package'}
+                </button>
               </div>
 
               <div className="space-y-0">
@@ -660,17 +653,19 @@ export default function PricingSharePage() {
                   </div>
                 ))}
                 {!details.plan.checklist?.length ? (
-                  <p className="text-sm text-gray-600">No checklist available for this service.</p>
+                  <p className="py-4 text-center text-sm text-gray-600">
+                    No checklist available for this service.
+                  </p>
                 ) : null}
               </div>
 
               {/periodic/i.test(details.category) ? (
-                <p className="mt-3 text-[10px] italic text-red-600 sm:text-xs">
+                <p className="mt-2 pb-2 text-[10px] italic text-red-600">
                   * Spare part replacements charged at actual cost. Service packages use
                   company-recommended oil and filters.
                 </p>
               ) : (
-                <p className="mt-3 text-[10px] italic text-red-600 sm:text-xs">
+                <p className="mt-2 pb-2 text-[10px] italic text-red-600">
                   * This includes only labor charges. Additional parts billed at actual cost.
                 </p>
               )}
