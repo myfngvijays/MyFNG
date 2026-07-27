@@ -825,17 +825,17 @@ export default function PricingSharePage() {
                           </p>
                         ) : null}
 
-                        {/* All 2-col pairs first — never mixed with singles */}
+                        {/* All 2-col pairs first — same font/icon as full-width rows */}
                         {section.pairRows.length > 0 ? (
                           <div className="grid grid-cols-2 gap-x-3">
                             {section.pairRows.flatMap((pair, pIdx) =>
                               pair.map((item, j) => (
                                 <div
                                   key={`${section.category}-p-${pIdx}-${j}`}
-                                  className="flex items-start gap-1.5 border-b border-gray-100 py-1.5 text-[12px] text-gray-700"
+                                  className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] font-normal text-gray-700"
                                 >
-                                  <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
-                                  <span className="min-w-0 break-words leading-snug">
+                                  <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                                  <span className="min-w-0 break-words text-[13px] font-normal leading-snug text-gray-700">
                                     {item}
                                   </span>
                                 </div>
@@ -850,10 +850,12 @@ export default function PricingSharePage() {
                             {section.fullRows.map((item, fIdx) => (
                               <div
                                 key={`${section.category}-f-${fIdx}`}
-                                className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] text-gray-700"
+                                className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] font-normal text-gray-700"
                               >
                                 <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                                <span className="flex-1 break-words leading-snug">{item}</span>
+                                <span className="flex-1 break-words text-[13px] font-normal leading-snug text-gray-700">
+                                  {item}
+                                </span>
                               </div>
                             ))}
                           </div>
