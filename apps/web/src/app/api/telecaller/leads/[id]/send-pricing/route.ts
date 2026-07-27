@@ -118,7 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           : result.error === 'car_model_required'
             ? 'Fill car model before sending pricing.'
             : result.error === 'services_required'
-              ? 'Select Periodic/AC (category) or Add a plan, then send.'
+              ? 'Fill car model and pincode, then send.'
               : result.url
                 ? `WhatsApp send failed, but pricing page is ready: ${result.url}`
                 : result.details?.filter(Boolean).join(' ') ||

@@ -17,13 +17,39 @@ import { getPeriodicChecklistFallback } from '@/lib/services/periodicChecklistFa
 import { normalizePhoneNumber, sendTemplateMessage } from '@/lib/services/whatsappService';
 import { sendAgentTextMessage } from '@/lib/whatsappAgents/shared/outbound';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
-import {
-  expandPeriodicSelectionToBothOilTypes,
-  normalizePricingCategories,
-} from '@/lib/telecaller/sendLeadPricingWhatsApp';
+import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhatsApp';
 
 const DEFAULT_TTL_HOURS = 3;
 const SHARE_TEMPLATE = 'pricing_share_link';
+
+/** Full catalogue shown on every share link (one link → all services). */
+export const ALL_SHARE_PRICING_CATEGORIES = [
+  'Car Periodic Service',
+  'Car Engine Service',
+  'Car AC Service',
+  'Car Battery Service',
+  'Car Brake Service',
+  'Car Clutch Service',
+  'Car Denting & Painting',
+  'Car Detailing Service',
+  'Car Tyre & Wheel Care',
+  'Electrical & Battery Service',
+  'Suspension & Steering Service',
+] as const;
+
+export const SHARE_CATEGORY_LABELS: Record<string, string> = {
+  'Car Periodic Service': 'Periodic',
+  'Car Engine Service': 'Engine',
+  'Car AC Service': 'AC',
+  'Car Battery Service': 'Battery',
+  'Car Brake Service': 'Brake',
+  'Car Clutch Service': 'Clutch',
+  'Car Denting & Painting': 'Denting',
+  'Car Detailing Service': 'Detailing',
+  'Car Tyre & Wheel Care': 'Tyre',
+  'Electrical & Battery Service': 'Electrical',
+  'Suspension & Steering Service': 'Suspension',
+};
 
 const TIER_POINTS: Record<string, number> = {
   Basic: 15,
@@ -123,12 +149,12 @@ export async function createPricingShareLink(input: {
 }): Promise<{ row: PricingShareLinkRow; url: string } | { error: string }> {
   const carModel = String(input.carModel || '').trim();
   const pincode = String(input.pincode || '').replace(/\D/g, '').slice(0, 6);
-  const categories = normalizePricingCategories(input.categories || []);
+  // Always store full catalogue — one link shows all services
+  const categories = [...ALL_SHARE_PRICING_CATEGORIES];
   const serviceTypeIds = parseServiceIdList(input.serviceTypeIds);
 
   if (!carModel) return { error: 'car_model_required' };
   if (!/^\d{6}$/.test(pincode)) return { error: 'pincode_required' };
-  if (!categories.length && !serviceTypeIds.length) return { error: 'services_required' };
 
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { error: 'db_unavailable' };
@@ -156,11 +182,16 @@ export async function createPricingShareLink(input: {
     car_model: carModel,
     pincode,
     city: input.city || null,
-    categories: categories.length ? categories : ['Car Periodic Service'],
+    categories,
     service_type_ids: serviceTypeIds,
     expires_at: expiresAt,
     created_by: input.createdBy || null,
-    meta: { ttl_hours: ttl, source: 'telecaller_send_pricing' },
+    meta: {
+      ttl_hours: ttl,
+      source: 'telecaller_send_pricing',
+      catalogue: 'all_services',
+      requested_categories: normalizePricingCategories(input.categories || []),
+    },
   };
 
   const { data, error } = await supabaseAdmin
@@ -234,15 +265,13 @@ export type PricingShareBlock = {
   isPeriodic: boolean;
 };
 
-/** Load live prices for a share link (same pricing engine as telecaller). */
+/** Load live prices for a share link — always full catalogue for the car/pin. */
 export async function loadPricingForShareLink(
   row: PricingShareLinkRow,
 ): Promise<{ blocks: PricingShareBlock[]; error?: string }> {
-  const categories = normalizePricingCategories(row.categories?.length ? row.categories : []);
-  const selectedIds = parseServiceIdList(row.service_type_ids);
   const carModel = String(row.car_model || '').trim();
   const pincode = String(row.pincode || '').replace(/\D/g, '').slice(0, 6);
-  const cats = categories.length ? categories : ['Car Periodic Service'];
+  const cats = [...ALL_SHARE_PRICING_CATEGORIES];
   const blocks: PricingShareBlock[] = [];
 
   for (const category of cats) {
@@ -256,15 +285,7 @@ export async function loadPricingForShareLink(
     let plans = asPlans(raw);
     if (!plans.length) continue;
 
-    const isPeriodic =
-      /periodic/i.test(category) || isPeriodicPricing(plans);
-
-    if (selectedIds.length) {
-      plans = isPeriodic
-        ? expandPeriodicSelectionToBothOilTypes(plans, selectedIds)
-        : plans.filter((p) => p.service_type_id && selectedIds.includes(String(p.service_type_id)));
-      if (!plans.length) continue;
-    }
+    const isPeriodic = /periodic/i.test(category) || isPeriodicPricing(plans);
 
     if (isPeriodic) {
       plans = plans.map((plan) => {
@@ -320,17 +341,15 @@ export async function sendPricingShareWhatsApp(input: {
       return 'a few hours';
     }
   })();
-  const cats = (input.categories || []).filter(Boolean).join(', ') || 'Service';
-
   const sessionMsg = [
     `Hi ${name},`,
     '',
-    `Sharing MyFNG *${cats}* pricing for *${car}*.`,
+    `Sharing MyFNG *full service pricing* for *${car}*.`,
     '',
-    `View full plans here (valid until ${expiresLabel}):`,
+    `View all packages (Periodic, AC, Engine, Denting & more) here — valid until ${expiresLabel}:`,
     url,
     '',
-    'Reply *BOOK* when ready to proceed. — Team MyFNG',
+    'Select plans on the page and send back on WhatsApp, or reply *BOOK*. — Team MyFNG',
   ].join('\n');
 
   const textRes = await sendAgentTextMessage({

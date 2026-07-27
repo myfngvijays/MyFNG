@@ -9,7 +9,9 @@ import {
 import {
   getPricingShareLinkBySlug,
   loadPricingForShareLink,
+  SHARE_CATEGORY_LABELS,
 } from '@/lib/telecaller/pricingShareLinks';
+import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,19 +96,29 @@ export async function GET(
       };
     });
 
+    const categoryTabs = payloadBlocks.map((b) => ({
+      id: b.category,
+      label: SHARE_CATEGORY_LABELS[b.category] || b.category.replace(/^Car\s+/i, '').replace(/\s+Service$/i, ''),
+      count: b.isPeriodic
+        ? (b.semi?.length || 0) + (b.full?.length || 0)
+        : b.plans?.length || 0,
+    }));
+
     return NextResponse.json({
       expired: false,
       slug: found.row.slug,
       customerName: found.row.customer_name,
+      customerPhone: found.row.customer_phone || null,
       carModel: found.row.car_model,
       pincode: found.row.pincode,
       city: found.row.city,
       categories: found.row.categories,
+      categoryTabs,
+      preselectedIds: parseServiceIdList(found.row.service_type_ids),
       expiresAt: found.row.expires_at,
       blocks: payloadBlocks,
-      bookUrl: `/book-service?prefill_category=${encodeURIComponent(
-        String(found.row.categories?.[0] || 'Car Periodic Service'),
-      )}`,
+      bookUrl: '/book-service',
+      viewOnly: true,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal error' }, { status: 500 });
