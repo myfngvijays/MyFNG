@@ -553,26 +553,27 @@ export async function getServicePlansByPincode({ category, carModel, pincode }: 
       return [];
     }
 
-    // Step 5: Resolve prices using city/zone/class tiers (same as app + web)
-    const plans: any[] = [];
-    for (const svc of serviceTypes) {
-      const price = await fetchServicePriceForBooking(
-        supabase,
-        svc.id,
-        cityId,
-        zoneId,
-        targetClass,
-      );
-      if (price > 0) {
-        plans.push({
+    // Step 5: Resolve prices in parallel (was sequential — very slow for large catalogues)
+    const priced = await Promise.all(
+      serviceTypes.map(async (svc) => {
+        const price = await fetchServicePriceForBooking(
+          supabase,
+          svc.id,
+          cityId,
+          zoneId,
+          targetClass,
+        );
+        if (!(price > 0)) return null;
+        return {
           service_name: svc.name,
           description: svc.description,
           min_price: price,
           max_price: price,
           service_type_id: svc.id,
-        });
-      }
-    }
+        };
+      }),
+    );
+    const plans = priced.filter(Boolean) as any[];
 
     if (plans.length === 0) {
       if (isPremiumLuxuryClass(targetClass)) {

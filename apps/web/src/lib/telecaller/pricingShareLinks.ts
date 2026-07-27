@@ -209,7 +209,14 @@ export async function createPricingShareLink(input: {
     ...data,
     categories: parseJsonArray(data.categories),
     service_type_ids: parseJsonArray(data.service_type_ids),
+    meta: (data.meta && typeof data.meta === 'object' ? data.meta : {}) as Record<
+      string,
+      unknown
+    >,
   };
+
+  // Warm cache in background so customer open is fast (don't block WhatsApp send)
+  void warmPricingShareCache(row);
 
   return { row, url: pricingSharePublicUrl(row.slug) };
 }
@@ -242,18 +249,17 @@ export async function getPricingShareLinkBySlug(
 
   const expired = new Date(row.expires_at).getTime() <= Date.now();
 
+  // Don't block response on view counter
   if (!expired) {
-    try {
-      await supabaseAdmin
-        .from('pricing_share_links')
-        .update({
-          view_count: Number(row.view_count || 0) + 1,
-          last_viewed_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-    } catch {
-      /* optional */
-    }
+    void supabaseAdmin
+      .from('pricing_share_links')
+      .update({
+        view_count: Number(row.view_count || 0) + 1,
+        last_viewed_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+      .then(() => undefined)
+      .catch(() => undefined);
   }
 
   return { ok: true, row, expired };
@@ -265,59 +271,104 @@ export type PricingShareBlock = {
   isPeriodic: boolean;
 };
 
+async function persistSharePricingCache(linkId: string, blocks: PricingShareBlock[]) {
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin || !linkId) return;
+    const { data } = await supabaseAdmin
+      .from('pricing_share_links')
+      .select('meta')
+      .eq('id', linkId)
+      .maybeSingle();
+    const prev = (data?.meta && typeof data.meta === 'object' ? data.meta : {}) as Record<
+      string,
+      unknown
+    >;
+    await supabaseAdmin
+      .from('pricing_share_links')
+      .update({
+        meta: {
+          ...prev,
+          cached_blocks: blocks,
+          cached_at: new Date().toISOString(),
+        },
+      })
+      .eq('id', linkId);
+  } catch {
+    /* cache optional */
+  }
+}
+
 /** Load live prices for a share link — always full catalogue for the car/pin. */
 export async function loadPricingForShareLink(
   row: PricingShareLinkRow,
 ): Promise<{ blocks: PricingShareBlock[]; error?: string }> {
+  // Instant path: payload cached when link was created / first opened
+  const meta = (row.meta && typeof row.meta === 'object' ? row.meta : {}) as Record<
+    string,
+    unknown
+  >;
+  const cached = meta.cached_blocks;
+  if (Array.isArray(cached) && cached.length > 0) {
+    return { blocks: cached as PricingShareBlock[] };
+  }
+
   const carModel = String(row.car_model || '').trim();
   const pincode = String(row.pincode || '').replace(/\D/g, '').slice(0, 6);
   const cats = [...ALL_SHARE_PRICING_CATEGORIES];
-  const blocks: PricingShareBlock[] = [];
 
-  for (const category of cats) {
-    let raw: any[] = [];
-    try {
-      raw = (await getServicePlansByPincode({ category, carModel, pincode })) as any[];
-    } catch {
-      continue;
-    }
-    if (raw?.[0] && isPlanError(raw[0])) continue;
-    let plans = asPlans(raw);
-    if (!plans.length) continue;
+  // Parallel category loads (was sequential ×11 — main load-time bottleneck)
+  const settled = await Promise.all(
+    cats.map(async (category) => {
+      let raw: any[] = [];
+      try {
+        raw = (await getServicePlansByPincode({ category, carModel, pincode })) as any[];
+      } catch {
+        return null;
+      }
+      if (raw?.[0] && isPlanError(raw[0])) return null;
+      let plans = asPlans(raw);
+      if (!plans.length) return null;
 
-    // Only true Periodic category uses Semi/Fully oil split.
-    // Do NOT use isPeriodicPricing(plans) — "Full Body Paint" falsely matches oil "full".
-    const isPeriodic = /periodic/i.test(category);
+      // Only true Periodic category uses Semi/Fully oil split.
+      const isPeriodic = /periodic/i.test(category);
 
-    if (isPeriodic) {
-      plans = plans.map((plan) => {
-        const tier = getPlanTierLabel(plan.service_name);
-        const fallback = getPeriodicChecklistFallback({
-          points: plan.points,
-          tier,
-          serviceName: plan.service_name,
+      if (isPeriodic) {
+        plans = plans.map((plan) => {
+          if (Array.isArray(plan.checklist_items) && plan.checklist_items.length) {
+            return plan;
+          }
+          const tier = getPlanTierLabel(plan.service_name);
+          const fallback = getPeriodicChecklistFallback({
+            points: plan.points,
+            tier,
+            serviceName: plan.service_name,
+          });
+          if (!fallback?.items?.length) return plan;
+          return {
+            ...plan,
+            points: fallback.points || plan.points,
+            checklist_items: fallback.items,
+          };
         });
-        if (!fallback?.items?.length) return plan;
-        return {
-          ...plan,
-          points: fallback.points || plan.points,
-          checklist_items: fallback.items,
-        };
-      });
-    }
+      }
 
-    blocks.push({ category, plans, isPeriodic });
-  }
+      return { category, plans, isPeriodic } as PricingShareBlock;
+    }),
+  );
 
+  const blocks = settled.filter(Boolean) as PricingShareBlock[];
   if (!blocks.length) return { blocks: [], error: 'no_prices' };
 
-  // Attach DB checklists for every service (Periodic fallback above; others need templates)
+  // Fill missing checklists only (getServicePlansByPincode already attaches most)
   try {
     const { supabaseAdmin } = getSupabaseAdmin();
     const ids = Array.from(
       new Set(
         blocks
-          .flatMap((b) => b.plans.map((p) => p.service_type_id))
+          .flatMap((b) => b.plans)
+          .filter((p) => !Array.isArray(p.checklist_items) || !p.checklist_items.length)
+          .map((p) => p.service_type_id)
           .filter((id): id is string => Boolean(id)),
       ),
     );
@@ -328,15 +379,15 @@ export async function loadPricingForShareLink(
         .in('service_type_id', ids);
 
       const byId = new Map<string, { points?: number; items: any[] }>();
-      for (const row of tplRows || []) {
-        const sid = String((row as any)?.service_type_id || '');
-        const items = Array.isArray((row as any)?.checklist_items)
-          ? (row as any).checklist_items
+      for (const tpl of tplRows || []) {
+        const sid = String((tpl as any)?.service_type_id || '');
+        const items = Array.isArray((tpl as any)?.checklist_items)
+          ? (tpl as any).checklist_items
           : [];
         if (sid && items.length) {
           byId.set(sid, {
             points:
-              typeof (row as any)?.points === 'number' ? (row as any).points : undefined,
+              typeof (tpl as any)?.points === 'number' ? (tpl as any).points : undefined,
             items,
           });
         }
@@ -344,10 +395,12 @@ export async function loadPricingForShareLink(
 
       for (const block of blocks) {
         block.plans = block.plans.map((plan) => {
+          if (Array.isArray(plan.checklist_items) && plan.checklist_items.length) {
+            return plan;
+          }
           const sid = plan.service_type_id ? String(plan.service_type_id) : '';
           const tpl = sid ? byId.get(sid) : undefined;
           if (!tpl?.items?.length) return plan;
-          // Prefer DB template when present (overrides periodic static fallback)
           return {
             ...plan,
             points: tpl.points || plan.points,
@@ -360,7 +413,24 @@ export async function loadPricingForShareLink(
     /* templates optional */
   }
 
+  // Cache for next open (and warm after create)
+  if (row.id) {
+    void persistSharePricingCache(row.id, blocks);
+  }
+
   return { blocks };
+}
+
+/** Precompute catalogue when link is created so customer open is instant. */
+export async function warmPricingShareCache(row: PricingShareLinkRow): Promise<void> {
+  try {
+    const { blocks } = await loadPricingForShareLink(row);
+    if (blocks.length && row.id) {
+      await persistSharePricingCache(row.id, blocks);
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function sendPricingShareWhatsApp(input: {
