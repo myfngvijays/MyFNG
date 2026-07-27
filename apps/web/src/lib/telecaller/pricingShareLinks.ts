@@ -311,7 +311,7 @@ export async function loadPricingForShareLink(
 
   // Attach DB checklists for every service (Periodic fallback above; others need templates)
   try {
-    const admin = getSupabaseAdmin();
+    const { supabaseAdmin } = getSupabaseAdmin();
     const ids = Array.from(
       new Set(
         blocks
@@ -319,8 +319,8 @@ export async function loadPricingForShareLink(
           .filter((id): id is string => Boolean(id)),
       ),
     );
-    if (admin && ids.length) {
-      const { data: tplRows } = await admin
+    if (supabaseAdmin && ids.length) {
+      const { data: tplRows } = await supabaseAdmin
         .from('service_type_checklist_templates')
         .select('service_type_id, title, points, checklist_items')
         .in('service_type_id', ids);
