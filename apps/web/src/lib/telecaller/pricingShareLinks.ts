@@ -1,7 +1,7 @@
 /**
  * Time-limited public pricing share links: https://myfng.in/pricing/{slug}
  * (also available at /p/{slug} via rewrite)
- * Default TTL: 3 hours. Used by telecaller Send Pricing for all categories.
+ * Default TTL: 6 hours. Used by telecaller Send Pricing for all categories.
  */
 
 import { randomBytes } from 'crypto';
@@ -18,7 +18,7 @@ import { sendAgentTextMessage } from '@/lib/whatsappAgents/shared/outbound';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhatsApp';
 
-const DEFAULT_TTL_HOURS = 3;
+const DEFAULT_TTL_HOURS = 6;
 const SHARE_TEMPLATE = 'pricing_share_link';
 
 /** Full catalogue shown on every share link (one link → all services). */

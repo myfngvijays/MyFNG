@@ -1,6 +1,6 @@
 -- ============================================
 -- Time-limited public pricing share links
--- URL: https://myfng.in/pricing/{slug}  (also /p/{slug})  default TTL 3 hours
+-- URL: https://myfng.in/pricing/{slug}  (also /p/{slug})  default TTL 6 hours
 -- Used by telecaller Send Pricing — works for Periodic + all categories
 -- ============================================
 
