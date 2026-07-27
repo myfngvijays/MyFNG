@@ -217,6 +217,17 @@ function checklistLabels(plan: PlanCard): string[] {
   return normalizeChecklist(plan.checklist).map((it) => it.name);
 }
 
+/** Card preview: prefer short lines so 5th row isn't a truncated long point */
+function previewChecklistLabels(plan: PlanCard, limit = 5, preferShort = false): string[] {
+  const labels = checklistLabels(plan);
+  if (!preferShort) return labels.slice(0, limit);
+  const SHORT = 28;
+  const short = labels.filter((l) => l.length <= SHORT);
+  if (short.length >= limit) return short.slice(0, limit);
+  const long = labels.filter((l) => l.length > SHORT);
+  return [...short, ...long].slice(0, limit);
+}
+
 export default function PricingSharePage() {
   const params = useParams();
   const slug = String(params?.slug || '');
@@ -626,7 +637,7 @@ export default function PricingSharePage() {
                 const title = displayPlanTitle(plan, isPeriodic);
                 const titleFormatted = isPeriodic ? title.replace(' ', '\n') : title;
                 const pts = pointsCount(plan);
-                const preview = checklistLabels(plan).slice(0, 5);
+                const preview = previewChecklistLabels(plan, 5, isPeriodic);
                 return (
                   <div
                     key={key}
