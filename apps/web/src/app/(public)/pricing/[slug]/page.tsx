@@ -206,11 +206,21 @@ export default function PricingSharePage() {
 
   const visiblePlans: PlanCard[] = useMemo(() => {
     if (!activeBlock) return [];
+    if (activeBlock.isPeriodic && /periodic/i.test(activeCategory)) {
+      const bucket = oil === 'semi' ? activeBlock.semi : activeBlock.full;
+      const other = activeBlock.other || [];
+      return bucket.length ? bucket : other;
+    }
     if (activeBlock.isPeriodic) {
-      return oil === 'semi' ? activeBlock.semi : activeBlock.full;
+      // Legacy bad payload: treat as flat list
+      return [
+        ...(activeBlock.semi || []),
+        ...(activeBlock.full || []),
+        ...(activeBlock.other || []),
+      ];
     }
     return activeBlock.plans;
-  }, [activeBlock, oil]);
+  }, [activeBlock, activeCategory, oil]);
 
   const selectedList = useMemo(() => Object.values(selected), [selected]);
   const selectedTotal = useMemo(
@@ -268,7 +278,9 @@ export default function PricingSharePage() {
   };
 
   const expired = Boolean(data?.expired);
-  const isPeriodic = Boolean(activeBlock?.isPeriodic);
+  // Oil toggle ONLY for true Periodic category (never Denting "Full Body Paint")
+  const isPeriodic =
+    Boolean(activeBlock?.isPeriodic) && /periodic/i.test(activeCategory || '');
   const carLabel = (data?.carModel || 'Your car').trim();
   const cityLabel = data?.city || 'selected city';
 
@@ -301,7 +313,7 @@ export default function PricingSharePage() {
       <Navbar hideAppBanner />
 
       {/* Slim header only (no promo banners) */}
-      <main className="mx-auto max-w-3xl px-3 pb-36 pt-20 sm:px-4 sm:pt-24">
+      <main className="mx-auto max-w-3xl px-4 pb-36 pt-20 sm:px-6 sm:pt-24">
         {loading ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500 shadow-sm">
             Loading pricing…
@@ -324,30 +336,30 @@ export default function PricingSharePage() {
           </div>
         ) : (
           <>
-            {/* Book-service style: Choose your plan */}
-            <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+            {/* Choose your plan — blue info box */}
+            <div className="mb-4 rounded-2xl bg-[#004AAD] px-4 py-3.5 text-white shadow-md">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-extrabold text-gray-900 sm:text-base">
+                  <div className="text-sm font-extrabold text-white sm:text-base">
                     Choose your plan
                   </div>
-                  <div className="text-xs text-gray-600 sm:text-sm">
+                  <div className="mt-0.5 text-xs text-white/90 sm:text-sm">
                     {carLabel} in {cityLabel}
                     {data?.pincode ? ` · PIN ${data.pincode}` : ''}
                   </div>
                 </div>
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-brand-primary">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-white/85">
                   View only
                 </span>
               </div>
-              <p className="mt-1.5 text-[11px] text-gray-500">
+              <p className="mt-1.5 text-[11px] text-white/80">
                 Link valid until {formatExpiry(data?.expiresAt)}
               </p>
             </div>
 
-            {/* Category icons — same as book-service */}
-            <div className="mb-3 -mx-3 sm:-mx-4">
-              <div className="scrollbar-hide flex gap-3 overflow-x-auto px-3 pb-2 sm:gap-4 sm:px-4">
+            {/* Category icons — padding so rings aren't clipped */}
+            <div className="mb-3">
+              <div className="scrollbar-hide flex gap-3 overflow-x-auto px-0.5 pb-2 pt-2 sm:gap-4">
                 {(data?.categoryTabs || []).map((tab) => {
                   const isSelected = tab.id === activeCategory;
                   const { src } = categoryIcon(tab.label || tab.id);
@@ -361,7 +373,7 @@ export default function PricingSharePage() {
                         setDetails(null);
                       }}
                       className={`flex w-[5rem] flex-shrink-0 flex-col items-center gap-1.5 transition-all sm:w-[5.5rem] ${
-                        isSelected ? 'scale-105' : 'opacity-75 hover:opacity-100'
+                        isSelected ? '' : 'opacity-75 hover:opacity-100'
                       }`}
                     >
                       <div
@@ -581,7 +593,7 @@ export default function PricingSharePage() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setDetails(null)} />
           <div
             className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl animate-in slide-in-from-bottom duration-200"
-            style={{ height: '50vh', maxHeight: '50vh' }}
+            style={{ height: '62vh', maxHeight: '62vh' }}
           >
             <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-gray-300" />
             <div className="flex shrink-0 items-start justify-between gap-2 border-b border-gray-200 px-3 pb-2.5 pt-2">

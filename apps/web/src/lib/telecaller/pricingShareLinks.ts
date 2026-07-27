@@ -10,7 +10,6 @@ import { getServicePlansByPincode } from '@/lib/chatbot_v2/database-queries';
 import { SITE_URL } from '@/lib/seo/metadata';
 import {
   getPlanTierLabel,
-  isPeriodicPricing,
   type PricingPlanItem,
 } from '@/lib/whatsappBotFlow/periodicPlansUi';
 import { getPeriodicChecklistFallback } from '@/lib/services/periodicChecklistFallbacks';
@@ -44,7 +43,7 @@ export const SHARE_CATEGORY_LABELS: Record<string, string> = {
   'Car Battery Service': 'Battery',
   'Car Brake Service': 'Brake',
   'Car Clutch Service': 'Clutch',
-  'Car Denting & Painting': 'Denting',
+  'Car Denting & Painting': 'Denting & Painting',
   'Car Detailing Service': 'Detailing',
   'Car Tyre & Wheel Care': 'Tyre',
   'Electrical & Battery Service': 'Electrical',
@@ -97,6 +96,7 @@ function asPlans(rows: any[]): PricingPlanItem[] {
         description: r.description != null ? String(r.description) : null,
         service_type_id: r.service_type_id != null ? String(r.service_type_id) : null,
         points,
+        checklist_items: Array.isArray(r.checklist_items) ? r.checklist_items : undefined,
       };
     });
 }
@@ -285,7 +285,9 @@ export async function loadPricingForShareLink(
     let plans = asPlans(raw);
     if (!plans.length) continue;
 
-    const isPeriodic = /periodic/i.test(category) || isPeriodicPricing(plans);
+    // Only true Periodic category uses Semi/Fully oil split.
+    // Do NOT use isPeriodicPricing(plans) — "Full Body Paint" falsely matches oil "full".
+    const isPeriodic = /periodic/i.test(category);
 
     if (isPeriodic) {
       plans = plans.map((plan) => {
