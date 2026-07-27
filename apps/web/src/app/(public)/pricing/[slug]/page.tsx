@@ -81,8 +81,8 @@ function formatExpiry(iso?: string) {
   }
 }
 
-/** MyFNG business WhatsApp (same as booking / membership CTA) */
-const MYFNG_WHATSAPP = '919167779696';
+/** Pricing share — Send selection on WhatsApp */
+const MYFNG_WHATSAPP = '919594996161';
 
 function planKey(plan: PlanCard, category: string) {
   return `${category}::${plan.id || plan.name}::${plan.oil || 'x'}::${plan.price}`;
