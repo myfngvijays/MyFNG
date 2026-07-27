@@ -81,6 +81,9 @@ function formatExpiry(iso?: string) {
   }
 }
 
+/** MyFNG business WhatsApp (same as booking / membership CTA) */
+const MYFNG_WHATSAPP = '919167779696';
+
 function planKey(plan: PlanCard, category: string) {
   return `${category}::${plan.id || plan.name}::${plan.oil || 'x'}::${plan.price}`;
 }
@@ -131,6 +134,7 @@ export default function PricingSharePage() {
   const [oil, setOil] = useState<'semi' | 'full'>('semi');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
   const [details, setDetails] = useState<DetailsPlan | null>(null);
+  const [shieldBlur, setShieldBlur] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -177,25 +181,43 @@ export default function PricingSharePage() {
     };
   }, [slug]);
 
+  // View-only shields (web cannot fully block OS screenshots; we deter + blur on leave)
   useEffect(() => {
     const blockContext = (e: Event) => e.preventDefault();
     const blockCopy = (e: ClipboardEvent) => e.preventDefault();
+    const blockDrag = (e: Event) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && ['c', 's', 'p', 'u', 'a'].includes(key)) {
         e.preventDefault();
       }
-      if (key === 'printscreen') e.preventDefault();
+      if (key === 'printscreen' || e.key === 'PrintScreen') {
+        e.preventDefault();
+        setShieldBlur(true);
+        window.setTimeout(() => setShieldBlur(false), 2500);
+      }
+    };
+    const onVisibility = () => {
+      // Blur while app is backgrounded (common screenshot / recents flow)
+      if (document.visibilityState === 'hidden') {
+        setShieldBlur(true);
+      } else {
+        window.setTimeout(() => setShieldBlur(false), 800);
+      }
     };
     document.addEventListener('contextmenu', blockContext);
     document.addEventListener('copy', blockCopy);
     document.addEventListener('cut', blockCopy);
+    document.addEventListener('dragstart', blockDrag);
     document.addEventListener('keydown', blockKeys);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       document.removeEventListener('contextmenu', blockContext);
       document.removeEventListener('copy', blockCopy);
       document.removeEventListener('cut', blockCopy);
+      document.removeEventListener('dragstart', blockDrag);
       document.removeEventListener('keydown', blockKeys);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -274,7 +296,11 @@ export default function PricingSharePage() {
       '',
       `Pricing link: ${typeof window !== 'undefined' ? window.location.href : ''}`,
     ];
-    window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank', 'noopener,noreferrer');
+    window.open(
+      `https://wa.me/${MYFNG_WHATSAPP}?text=${encodeURIComponent(lines.join('\n'))}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
   };
 
   const expired = Boolean(data?.expired);
@@ -297,6 +323,10 @@ export default function PricingSharePage() {
           user-select: none !important;
           -webkit-touch-callout: none !important;
         }
+        .pricing-share-view img {
+          pointer-events: none;
+          -webkit-user-drag: none;
+        }
         @media print {
           body * {
             display: none !important;
@@ -310,10 +340,21 @@ export default function PricingSharePage() {
         }
       `}</style>
 
+      {shieldBlur ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/95 px-8 text-center backdrop-blur-md">
+          <div>
+            <p className="text-lg font-extrabold text-gray-900">View only</p>
+            <p className="mt-2 text-sm text-gray-600">
+              Screenshots &amp; copying are not allowed on this pricing link.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <Navbar hideAppBanner />
 
       {/* Slim header only (no promo banners) */}
-      <main className="mx-auto max-w-3xl px-4 pb-36 pt-20 sm:px-6 sm:pt-24">
+      <main className="mx-auto max-w-3xl px-5 pb-36 pt-20 sm:px-8 sm:pt-24">
         {loading ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500 shadow-sm">
             Loading pricing…
@@ -566,7 +607,7 @@ export default function PricingSharePage() {
       </main>
 
       {!loading && !expired && !data?.error ? (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white px-5 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:px-8">
           <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row">
             <button
               type="button"
@@ -596,7 +637,7 @@ export default function PricingSharePage() {
             style={{ height: '62vh', maxHeight: '62vh' }}
           >
             <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-gray-300" />
-            <div className="flex shrink-0 items-start justify-between gap-2 border-b border-gray-200 px-3 pb-2.5 pt-2">
+            <div className="flex shrink-0 items-start justify-between gap-2 border-b border-gray-200 px-5 pb-2.5 pt-2 sm:px-6">
               <div className="min-w-0">
                 <div className="truncate text-[15px] font-extrabold text-gray-900">
                   {displayPlanTitle(details.plan, /periodic/i.test(details.category))}
@@ -627,8 +668,8 @@ export default function PricingSharePage() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2">
-              <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-2 sm:px-6">
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
                 <div>
                   <div className="text-base font-extrabold text-gray-900">
                     {details.plan.price > 0 ? inr(details.plan.price) : '—'}
