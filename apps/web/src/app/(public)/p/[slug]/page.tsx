@@ -414,9 +414,10 @@ export default function PricingSharePage() {
     <div
       className="pricing-share-view min-h-screen bg-gray-50 select-none"
       onContextMenu={(e) => e.preventDefault()}
-      style={{ WebkitUserSelect: 'none', userSelect: 'none' } as React.CSSProperties}
+      suppressHydrationWarning
     >
-      <style jsx global>{`
+      {/* Plain style tag — avoid inline WebkitUserSelect (causes hydration mismatch) */}
+      <style>{`
         .pricing-share-view,
         .pricing-share-view * {
           -webkit-user-select: none !important;
@@ -428,9 +429,7 @@ export default function PricingSharePage() {
           -webkit-user-drag: none;
         }
         @media print {
-          body * {
-            display: none !important;
-          }
+          body * { display: none !important; }
           body::after {
             content: 'Printing this pricing page is not allowed.';
             display: block !important;
