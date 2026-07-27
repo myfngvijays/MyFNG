@@ -217,10 +217,12 @@ function checklistLabels(plan: PlanCard): string[] {
   return normalizeChecklist(plan.checklist).map((it) => it.name);
 }
 
-/** Card preview: prefer short lines so 5th row isn't a truncated long point */
-function previewChecklistLabels(plan: PlanCard, limit = 5, preferShort = false): string[] {
-  const labels = checklistLabels(plan);
+/** Card preview for Periodic: 4 short points, skip oil-filter + long lines */
+function previewChecklistLabels(plan: PlanCard, limit = 4, preferShort = false): string[] {
+  let labels = checklistLabels(plan);
   if (!preferShort) return labels.slice(0, limit);
+  // Hide "Replace Engine Oil Filter" from card preview (still in View all points)
+  labels = labels.filter((l) => !/oil\s*filter/i.test(l));
   const SHORT = 28;
   const short = labels.filter((l) => l.length <= SHORT);
   if (short.length >= limit) return short.slice(0, limit);
@@ -635,9 +637,8 @@ export default function PricingSharePage() {
                 const key = planKey(plan, activeCategory);
                 const isOn = Boolean(selected[key]);
                 const title = displayPlanTitle(plan, isPeriodic);
-                const titleFormatted = isPeriodic ? title.replace(' ', '\n') : title;
                 const pts = pointsCount(plan);
-                const preview = previewChecklistLabels(plan, 5, isPeriodic);
+                const preview = previewChecklistLabels(plan, isPeriodic ? 4 : 5, isPeriodic);
                 return (
                   <div
                     key={key}
@@ -656,9 +657,9 @@ export default function PricingSharePage() {
                     ) : null}
 
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-h-[3.5rem] min-w-0">
-                        <div className="whitespace-pre-wrap break-words text-lg font-extrabold leading-[1.15] text-gray-900 sm:text-xl">
-                          {titleFormatted}
+                      <div className="min-w-0 flex-1 pr-2">
+                        <div className="truncate text-lg font-extrabold leading-tight text-gray-900 sm:text-xl">
+                          {title}
                         </div>
                         <div className="mt-1 text-xs font-bold text-brand-primary sm:text-sm">
                           {pts > 0 ? `${pts} Activity Points` : 'Activity Points Included'}
@@ -673,14 +674,20 @@ export default function PricingSharePage() {
 
                     <div className="mt-2 flex flex-col">
                       {preview.length > 0 ? (
-                        <div className="space-y-2">
+                        <div
+                          className={
+                            isPeriodic
+                              ? 'grid grid-cols-2 gap-x-2 gap-y-1.5'
+                              : 'space-y-2'
+                          }
+                        >
                           {preview.map((item, i) => (
                             <div
                               key={`${key}-pt-${i}`}
-                              className="flex items-start gap-2 text-[13px] text-gray-700"
+                              className="flex items-start gap-1.5 text-[12px] font-normal text-gray-700"
                             >
-                              <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                              <span className="line-clamp-1 break-words">{item}</span>
+                              <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
+                              <span className="line-clamp-1 min-w-0 break-words">{item}</span>
                             </div>
                           ))}
                         </div>
@@ -692,7 +699,7 @@ export default function PricingSharePage() {
                       <button
                         type="button"
                         onClick={() => setDetails({ plan, category: activeCategory })}
-                        className="pt-1 text-left text-[13px] font-bold text-brand-primary hover:text-brand-secondary"
+                        className="pt-1.5 text-left text-[12px] font-bold italic text-brand-primary hover:text-brand-secondary"
                       >
                         View all points
                         {pts > 0 ? ` (${pts})` : ''}
