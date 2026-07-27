@@ -79,6 +79,11 @@ const nextConfig = {
         source: '/media/:path*',
         destination: `${supabaseUrl}/storage/v1/object/public/:path*`,
       },
+      // Short share links → pricing page
+      {
+        source: '/p/:slug',
+        destination: '/pricing/:slug',
+      },
     ];
   },
 

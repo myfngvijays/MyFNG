@@ -1615,8 +1615,8 @@ export default function TelecallerLeadDetailScreen({
           )}
         </TouchableOpacity>
         <Text style={styles.pricingSendHint}>
-          Send Pricing → myfng.in/p/… link (3h valid) + WhatsApp. Car + pincode required. Bina
-          plan → full category pricing on the page.
+          Send Pricing → myfng.in/pricing/… link (3h valid) + WhatsApp. Car + pincode required.
+          Bina plan → full category pricing on the page.
         </Text>
       </View>
 

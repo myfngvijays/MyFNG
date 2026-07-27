@@ -1,6 +1,6 @@
 -- ============================================
 -- Time-limited public pricing share links
--- URL: https://myfng.in/p/{slug}  (default TTL 3 hours)
+-- URL: https://myfng.in/pricing/{slug}  (also /p/{slug})  default TTL 3 hours
 -- Used by telecaller Send Pricing — works for Periodic + all categories
 -- ============================================
 
@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_pricing_share_links_lead
   ON public.pricing_share_links (lead_id);
 
 COMMENT ON TABLE public.pricing_share_links IS
-  'Telecaller-generated pricing pages: myfng.in/p/{slug}, expire after ~3h';
+  'Telecaller-generated pricing pages: myfng.in/pricing/{slug}, expire after ~3h';
 
 ALTER TABLE public.pricing_share_links ENABLE ROW LEVEL SECURITY;
 
@@ -73,7 +73,7 @@ INSERT INTO public.whatsapp_templates (
   'UTILITY',
   E'Hi {{1}},\n\nSharing MyFNG service pricing for {{2}}.\n\nView plans here (valid for a limited time):\n{{3}}\n\nThis is an automated pricing update from MyFNG. Reply BOOK to proceed.',
   '["customer_name","car_model","pricing_url"]'::jsonb,
-  '["Rahul","Hyundai i20","https://myfng.in/p/a8k2m9xq"]'::jsonb,
+  '["Rahul","Hyundai i20","https://myfng.in/pricing/a8k2m9xq"]'::jsonb,
   false,
   '{"purpose":"telecaller_pricing_share","source":"local_draft","meta_submit_note":"UTILITY — short message with time-limited pricing page URL."}'::jsonb,
   NOW(),

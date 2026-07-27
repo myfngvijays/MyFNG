@@ -1,5 +1,6 @@
 /**
- * Time-limited public pricing share links: https://myfng.in/p/{slug}
+ * Time-limited public pricing share links: https://myfng.in/pricing/{slug}
+ * (also available at /p/{slug} via rewrite)
  * Default TTL: 3 hours. Used by telecaller Send Pricing for all categories.
  */
 
@@ -84,7 +85,8 @@ function makeSlug(len = 10): string {
 
 export function pricingSharePublicUrl(slug: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL || SITE_URL).replace(/\/$/, '');
-  return `${base}/p/${String(slug || '').trim()}`;
+  // Prefer /pricing/… (clearer path). /p/… still works via next.config rewrite.
+  return `${base}/pricing/${String(slug || '').trim()}`;
 }
 
 function firstName(full: string | null | undefined): string {
