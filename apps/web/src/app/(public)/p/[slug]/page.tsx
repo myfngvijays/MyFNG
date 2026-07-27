@@ -832,10 +832,10 @@ export default function PricingSharePage() {
                               pair.map((item, j) => (
                                 <div
                                   key={`${section.category}-p-${pIdx}-${j}`}
-                                  className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] font-normal text-gray-700"
+                                  className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[12px] font-normal text-gray-700"
                                 >
-                                  <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                                  <span className="min-w-0 break-words text-[13px] font-normal leading-snug text-gray-700">
+                                  <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
+                                  <span className="min-w-0 break-words text-[12px] font-normal leading-snug text-gray-700">
                                     {item}
                                   </span>
                                 </div>
@@ -850,10 +850,10 @@ export default function PricingSharePage() {
                             {section.fullRows.map((item, fIdx) => (
                               <div
                                 key={`${section.category}-f-${fIdx}`}
-                                className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] font-normal text-gray-700"
+                                className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[12px] font-normal text-gray-700"
                               >
-                                <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                                <span className="flex-1 break-words text-[13px] font-normal leading-snug text-gray-700">
+                                <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
+                                <span className="flex-1 break-words text-[12px] font-normal leading-snug text-gray-700">
                                   {item}
                                 </span>
                               </div>
