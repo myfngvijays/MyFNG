@@ -850,7 +850,7 @@ export default function LeadDetailPage() {
                       : `all ${pricingCategories.join(', ')} plans`;
                     if (
                       !confirm(
-                        `Send pricing (${modeHint}) · ${carModel} · PIN ${pincode}?\n(1 WhatsApp text — no View plans)`,
+                        `Send pricing (${modeHint}) · ${carModel} · PIN ${pincode}?\nCreates myfng.in/p/… link (valid 3h) + WhatsApp`,
                       )
                     ) {
                       return;
@@ -879,7 +879,7 @@ export default function LeadDetailPage() {
                     } catch (e: any) {
                       alert(
                         e?.message ||
-                          'Could not send. Customer needs an open WhatsApp chat (24h).',
+                          'Could not send pricing link. Check WhatsApp session or approve pricing_share_link template.',
                       );
                     } finally {
                       setSendingPricing(false);

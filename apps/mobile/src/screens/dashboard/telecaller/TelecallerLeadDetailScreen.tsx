@@ -1360,7 +1360,7 @@ export default function TelecallerLeadDetailScreen({
 
     Alert.alert(
       'Send pricing on WhatsApp?',
-      `${modeHint}\n\nWorks only if customer messaged on WhatsApp within 24h (no template).`,
+      `${modeHint}\n\nCreates a pricing page link (valid 3 hours) and sends it on WhatsApp.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1385,19 +1385,21 @@ export default function TelecallerLeadDetailScreen({
                       : ['Car Periodic Service'],
                 }),
               });
-              if (!res?.success) {
+              if (!res?.success && !res?.shareUrl) {
                 throw new Error(res?.message || res?.error || 'Failed to send pricing');
               }
               Alert.alert(
-                'Sent',
+                res?.success ? 'Sent' : 'Pricing link ready',
                 res.message ||
-                  `Pricing sent (${res?.result?.messagesSent || 0} WhatsApp message(s)).`,
+                  (res.shareUrl
+                    ? `Link: ${res.shareUrl}`
+                    : 'Pricing link sent on WhatsApp (valid ~3 hours).'),
               );
             } catch (e: any) {
               Alert.alert(
                 'WhatsApp',
                 e?.message ||
-                  'Could not send. Customer must have an open WhatsApp chat (24h window).',
+                  'Could not send. Need open WhatsApp chat, or approve pricing_share_link template.',
               );
             } finally {
               setSendingPricing(false);
@@ -1613,8 +1615,8 @@ export default function TelecallerLeadDetailScreen({
           )}
         </TouchableOpacity>
         <Text style={styles.pricingSendHint}>
-          Plan Add → sirf woh tier + points. Bina plan → Periodic ke saare 4 plans (Semi+Fully).
-          Pincode + car required. 1 WhatsApp text.
+          Send Pricing → myfng.in/p/… link (3h valid) + WhatsApp. Car + pincode required. Bina
+          plan → full category pricing on the page.
         </Text>
       </View>
 

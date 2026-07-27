@@ -1,8 +1,9 @@
 /**
- * Telecaller → customer WhatsApp pricing (ONE session text message, no View plans).
+ * Telecaller → customer WhatsApp pricing.
  *
  * Rules:
- * - Specific plan(s) selected → those tiers; Periodic expands Semi + Fully (same points, both prices)
+ * - Periodic → Meta template `periodic_service_pricing` (works outside 24h) + optional session checklist
+ * - Specific plan(s) → those tiers; Periodic expands Semi + Fully (same points, both prices)
  * - Only category selected (Periodic / AC / …) → send ALL plans in that category
  */
 
@@ -16,9 +17,12 @@ import {
   type PricingPlanItem,
 } from '@/lib/whatsappBotFlow/periodicPlansUi';
 import { getPeriodicChecklistFallback } from '@/lib/services/periodicChecklistFallbacks';
-import { normalizePhoneNumber } from '@/lib/services/whatsappService';
+import { normalizePhoneNumber, sendTemplateMessage } from '@/lib/services/whatsappService';
 import { sendAgentTextMessage } from '@/lib/whatsappAgents/shared/outbound';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
+
+const PERIODIC_PRICING_TEMPLATE = 'periodic_service_pricing';
+const PERIODIC_TEMPLATE_TIERS = ['Basic', 'General', 'Premium', 'Platinum'] as const;
 
 const TIER_POINTS: Record<string, number> = {
   Basic: 15,
@@ -68,7 +72,7 @@ const PERIODIC_TIERS = new Set(['Basic', 'General', 'Premium', 'Platinum']);
  * If telecaller selects Basic (Semi), also include Basic (Fully) — same points, different price.
  * Same for General / Premium / Platinum.
  */
-function expandPeriodicSelectionToBothOilTypes(
+export function expandPeriodicSelectionToBothOilTypes(
   allPlans: PricingPlanItem[],
   selectedIds: string[],
 ): PricingPlanItem[] {
@@ -104,6 +108,38 @@ function expandPeriodicSelectionToBothOilTypes(
   };
 
   return [...byTier].sort((a, b) => tierRank(a) - tierRank(b) || oilRank(a) - oilRank(b));
+}
+
+function firstName(full: string | null | undefined): string {
+  const t = String(full || '').trim();
+  if (!t) return 'Customer';
+  return t.split(/\s+/)[0] || 'Customer';
+}
+
+function tierOilPrice(plans: PricingPlanItem[], oil: 'semi' | 'full', tier: string): string {
+  const match = plans.find(
+    (p) => getOilTypeForPlan(p) === oil && getPlanTierLabel(p.service_name) === tier,
+  );
+  const n = Number(match?.min_price || 0);
+  // Meta template params must be non-empty (sendTemplateMessage drops blanks)
+  return n > 0 ? String(Math.round(n)) : 'NA';
+}
+
+/** Build body params for Meta template periodic_service_pricing (11 vars). */
+export function buildPeriodicServicePricingTemplateParams(input: {
+  customerName?: string | null;
+  carModel: string;
+  pincode: string;
+  plans: PricingPlanItem[];
+}): string[] {
+  const plans = input.plans || [];
+  return [
+    firstName(input.customerName),
+    String(input.carModel || '').trim() || 'your car',
+    String(input.pincode || '').replace(/\D/g, '').slice(0, 6) || '000000',
+    ...PERIODIC_TEMPLATE_TIERS.map((tier) => tierOilPrice(plans, 'semi', tier)),
+    ...PERIODIC_TEMPLATE_TIERS.map((tier) => tierOilPrice(plans, 'full', tier)),
+  ];
 }
 
 /** Map booking_type / chip labels → category names used by pricing DB */
@@ -280,6 +316,8 @@ export async function sendLeadPricingWhatsApp(input: {
   let periodicCount = 0;
   let otherCategoryCount = 0;
   const blocks: Array<{ category: string; plans: PricingPlanItem[] }> = [];
+  /** Full Periodic catalogue (unfiltered) — used for Meta template prices */
+  let periodicTemplatePlans: PricingPlanItem[] = [];
   const mode: 'plans' | 'category' = selectedIds.length > 0 ? 'plans' : 'category';
 
   for (const category of categories) {
@@ -303,9 +341,13 @@ export async function sendLeadPricingWhatsApp(input: {
       continue;
     }
 
+    const isPeriodicCat = isPeriodicCategoryName(category) || isPeriodicPricing(plans);
+    if (isPeriodicCat && plans.length) {
+      periodicTemplatePlans = plans;
+    }
+
     // Specific plan(s) selected → those tiers; for Periodic expand Semi+Fully (same points)
     if (selectedIds.length) {
-      const isPeriodicCat = isPeriodicCategoryName(category) || isPeriodicPricing(plans);
       const filtered = isPeriodicCat
         ? expandPeriodicSelectionToBothOilTypes(plans, selectedIds)
         : plans.filter((p) => p.service_type_id && selectedIds.includes(String(p.service_type_id)));
@@ -316,7 +358,7 @@ export async function sendLeadPricingWhatsApp(input: {
       plans = filtered;
     }
 
-    const isPeriodic = isPeriodicCategoryName(category) || isPeriodicPricing(plans);
+    const isPeriodic = isPeriodicCat || isPeriodicPricing(plans);
     if (isPeriodic) periodicCount += plans.length;
     else otherCategoryCount += 1;
 
@@ -335,6 +377,7 @@ export async function sendLeadPricingWhatsApp(input: {
       }
       const all = asPlans(raw);
       const isPeriodicCat = isPeriodicCategoryName(category) || isPeriodicPricing(all);
+      if (isPeriodicCat && all.length) periodicTemplatePlans = all;
       const plans = isPeriodicCat
         ? expandPeriodicSelectionToBothOilTypes(all, selectedIds)
         : all.filter((p) => p.service_type_id && selectedIds.includes(String(p.service_type_id)));
@@ -424,6 +467,43 @@ export async function sendLeadPricingWhatsApp(input: {
     }),
   );
 
+  let messagesSent = 0;
+  const sendDetails: string[] = [...details];
+
+  // Periodic: Meta-approved template (works outside 24h window)
+  if (hasPeriodicBlock && periodicTemplatePlans.length) {
+    const templateParams = buildPeriodicServicePricingTemplateParams({
+      customerName: input.customerName,
+      carModel,
+      pincode,
+      plans: periodicTemplatePlans,
+    });
+    const tplRes = await sendTemplateMessage({
+      phoneNumber: phone,
+      templateName: PERIODIC_PRICING_TEMPLATE,
+      templateParams,
+      languageCode: 'en',
+    });
+    if (tplRes.success) {
+      messagesSent += 1;
+      sendDetails.push('periodic_service_pricing_template');
+      return {
+        sent: true,
+        phone,
+        carModel,
+        pincode,
+        categories,
+        periodicCount,
+        otherCategoryCount,
+        messagesSent,
+        mode,
+        details: sendDetails,
+      };
+    }
+    sendDetails.push(`template_failed:${tplRes.error || 'unknown'}`);
+  }
+
+  // Non-periodic, or Periodic template failed → session text
   const textRes = await sendAgentTextMessage({
     phone,
     message: bodyText,
@@ -443,9 +523,11 @@ export async function sendLeadPricingWhatsApp(input: {
       categories,
       mode,
       details: [
-        'WhatsApp session message failed. Customer must have messaged you within 24h (no template used).',
+        hasPeriodicBlock
+          ? 'Periodic template and session message both failed.'
+          : 'WhatsApp session message failed. Customer must have messaged you within 24h (or use Periodic template).',
         textRes.error || '',
-        ...details,
+        ...sendDetails,
       ],
     });
   }
@@ -460,6 +542,6 @@ export async function sendLeadPricingWhatsApp(input: {
     otherCategoryCount,
     messagesSent: 1,
     mode,
-    details: ['pricing_text', mode],
+    details: ['pricing_text', mode, ...sendDetails],
   };
 }

@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import {
-  inferPricingCategoriesFromLead,
-  sendLeadPricingWhatsApp,
-} from '@/lib/telecaller/sendLeadPricingWhatsApp';
+import { inferPricingCategoriesFromLead } from '@/lib/telecaller/sendLeadPricingWhatsApp';
+import { createAndSendPricingShare } from '@/lib/telecaller/pricingShareLinks';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
 
 async function loadLeadRow(db: any, leadId: string) {
@@ -22,8 +20,8 @@ async function loadLeadRow(db: any, leadId: string) {
 }
 
 /**
- * Send pricing for SELECTED service categories only (session text/list — no Meta template).
- * Requires pincode + car model + at least one selected service.
+ * Create time-limited pricing page (myfng.in/p/{slug}) and WhatsApp the link.
+ * Works for Periodic + all other categories. Default link TTL: 3 hours.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -72,7 +70,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       body?.serviceTypeIds ?? body?.service_type_ids ?? row.service_type_ids,
     );
 
-    // Categories: body → coupon_meta → booking_type/package → default Periodic (all 4 tiers)
     const bodyCategories = Array.isArray(body?.categories)
       ? body.categories.map((c: any) => String(c || '').trim()).filter(Boolean)
       : [];
@@ -90,16 +87,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       });
     }
 
-    const result = await sendLeadPricingWhatsApp({
+    const result = await createAndSendPricingShare({
       phone: String(row.customer_phone || ''),
-      pincode,
-      carModel,
       customerName: row.customer_name,
+      carModel,
+      pincode,
+      city: row.city || meta.city || null,
+      categories,
+      serviceTypeIds: serviceTypeIds.length ? serviceTypeIds : null,
       leadId: row.id,
       leadNumber: row.lead_number,
-      // Specific plans win; empty ids + categories = all plans in category
-      serviceTypeIds: serviceTypeIds.length ? serviceTypeIds : null,
-      categories: categories.length ? categories : null,
+      createdBy: userProfile?.id || user.id,
+      ttlHours: Number(body?.ttlHours) > 0 ? Number(body.ttlHours) : 3,
     });
 
     if (!result.sent) {
@@ -111,26 +110,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           : result.error === 'whatsapp_send_failed'
             ? 502
             : 422;
+
+      // Link may still exist — return URL so telecaller can copy
       const message =
         result.error === 'pincode_required'
           ? 'Fill 6-digit pincode before sending pricing.'
           : result.error === 'car_model_required'
             ? 'Fill car model before sending pricing.'
             : result.error === 'services_required'
-              ? 'Select Periodic/AC (category) for all plans, or Add a specific plan (Basic/General/…) then send.'
-              : result.error === 'no_pricing_for_selection'
-                ? 'No prices found for the selected plan/category + this pincode/model.'
+              ? 'Select Periodic/AC (category) or Add a plan, then send.'
+              : result.url
+                ? `WhatsApp send failed, but pricing page is ready: ${result.url}`
                 : result.details?.filter(Boolean).join(' ') ||
-                  'Could not send pricing on WhatsApp. Customer needs an open 24h WhatsApp chat.';
+                  'Could not send pricing link on WhatsApp.';
+
       return NextResponse.json(
         {
-          success: false,
+          success: Boolean(result.url),
           error: message,
           code: result.error,
           message,
+          shareUrl: result.url || null,
+          expiresAt: result.expiresAt || null,
           result,
         },
-        { status },
+        { status: result.url ? 200 : status },
       );
     }
 
@@ -139,12 +143,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         row.coupon_meta && typeof row.coupon_meta === 'object' ? { ...row.coupon_meta } : {};
       prevMeta.pricing_whatsapp_sent_at = new Date().toISOString();
       prevMeta.pricing_whatsapp_sent_by = user.id;
-      prevMeta.pricing_whatsapp_summary = {
-        categories: result.categories,
-        mode: result.mode,
-        periodic: result.periodicCount,
-        other_categories: result.otherCategoryCount,
-        messages: result.messagesSent,
+      prevMeta.pricing_share = {
+        url: result.url,
+        slug: result.slug,
+        expires_at: result.expiresAt,
+        channel: result.channel,
+        categories,
       };
       await db
         .from('service_leads')
@@ -154,10 +158,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       /* optional */
     }
 
-    const catLabel = result.categories.length ? result.categories.join(', ') : 'selected services';
     return NextResponse.json({
       success: true,
-      message: `Pricing sent for ${catLabel} (${result.messagesSent} WhatsApp message${result.messagesSent === 1 ? '' : 's'}).`,
+      message: `Pricing link sent (valid ~3 hours).\n${result.url}`,
+      shareUrl: result.url,
+      expiresAt: result.expiresAt,
       result,
     });
   } catch (error: any) {
