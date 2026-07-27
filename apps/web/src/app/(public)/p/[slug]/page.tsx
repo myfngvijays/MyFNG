@@ -88,23 +88,61 @@ function planKey(plan: PlanCard, category: string) {
   return `${category}::${plan.id || plan.name}::${plan.oil || 'x'}::${plan.price}`;
 }
 
+/** Small 128px icons (~6–13KB) — full /icon-*-service.png are ~1MB each and load slowly */
+const ICON_SM = '/icons-sm';
+
 function categoryIcon(label: string): { src: string; bg: string } {
   const cat = label.toLowerCase();
-  if (cat.includes('periodic')) return { src: '/icon-periodic-service.png', bg: 'bg-blue-50' };
-  if (cat.includes('ac')) return { src: '/icon-ac-service.png', bg: 'bg-cyan-50' };
+  if (cat.includes('periodic'))
+    return { src: `${ICON_SM}/icon-periodic-service.png`, bg: 'bg-blue-50' };
+  if (cat.includes('ac')) return { src: `${ICON_SM}/icon-ac-service.png`, bg: 'bg-cyan-50' };
   if (cat.includes('battery') || cat.includes('electrical'))
-    return { src: '/icon-electrical-service.png', bg: 'bg-amber-50' };
-  if (cat.includes('brake')) return { src: '/icon-brake-service.png', bg: 'bg-red-50' };
-  if (cat.includes('clutch')) return { src: '/icon-clutch-service.png', bg: 'bg-purple-50' };
+    return { src: `${ICON_SM}/icon-electrical-service.png`, bg: 'bg-amber-50' };
+  if (cat.includes('brake')) return { src: `${ICON_SM}/icon-brake-service.png`, bg: 'bg-red-50' };
+  if (cat.includes('clutch')) return { src: `${ICON_SM}/icon-clutch-service.png`, bg: 'bg-purple-50' };
   if (cat.includes('tyre') || cat.includes('wheel'))
-    return { src: '/icon-tyre-service.png', bg: 'bg-gray-100' };
-  if (cat.includes('detailing')) return { src: '/icon-detailing-service.png', bg: 'bg-pink-50' };
+    return { src: `${ICON_SM}/icon-tyre-service.png`, bg: 'bg-gray-100' };
+  if (cat.includes('detailing'))
+    return { src: `${ICON_SM}/icon-detailing-service.png`, bg: 'bg-pink-50' };
   if (cat.includes('denting') || cat.includes('painting'))
-    return { src: '/icon-denting-service.png', bg: 'bg-green-50' };
-  if (cat.includes('engine')) return { src: '/icon-engine-service.png', bg: 'bg-orange-50' };
+    return { src: `${ICON_SM}/icon-denting-service.png`, bg: 'bg-green-50' };
+  if (cat.includes('engine'))
+    return { src: `${ICON_SM}/icon-engine-service.png`, bg: 'bg-orange-50' };
   if (cat.includes('suspension') || cat.includes('steering'))
-    return { src: '/icon-suspension-service.png', bg: 'bg-indigo-50' };
-  return { src: '/icon-periodic-service.png', bg: 'bg-gray-50' };
+    return { src: `${ICON_SM}/icon-suspension-service.png`, bg: 'bg-indigo-50' };
+  return { src: `${ICON_SM}/icon-periodic-service.png`, bg: 'bg-gray-50' };
+}
+
+const PRELOAD_ICONS = [
+  `${ICON_SM}/icon-periodic-service.png`,
+  `${ICON_SM}/icon-engine-service.png`,
+  `${ICON_SM}/icon-ac-service.png`,
+  `${ICON_SM}/icon-electrical-service.png`,
+  `${ICON_SM}/icon-brake-service.png`,
+  `${ICON_SM}/icon-clutch-service.png`,
+  `${ICON_SM}/icon-denting-service.png`,
+  `${ICON_SM}/icon-detailing-service.png`,
+  `${ICON_SM}/icon-tyre-service.png`,
+  `${ICON_SM}/icon-suspension-service.png`,
+];
+
+/** Short items → 2-col; longer lines stay full width */
+function packChecklistRows(items: string[]) {
+  const SHORT = 28;
+  const rows: Array<{ full: boolean; items: string[] }> = [];
+  let i = 0;
+  while (i < items.length) {
+    const a = items[i];
+    const b = items[i + 1];
+    if (a.length <= SHORT && b && b.length <= SHORT) {
+      rows.push({ full: false, items: [a, b] });
+      i += 2;
+    } else {
+      rows.push({ full: true, items: [a] });
+      i += 1;
+    }
+  }
+  return rows;
 }
 
 function displayPlanTitle(plan: PlanCard, isPeriodic: boolean) {
@@ -180,6 +218,14 @@ export default function PricingSharePage() {
       cancelled = true;
     };
   }, [slug]);
+
+  // Preload tiny category icons so the strip appears instantly
+  useEffect(() => {
+    PRELOAD_ICONS.forEach((src) => {
+      const img = new window.Image();
+      img.src = src;
+    });
+  }, []);
 
   // View-only shields (web cannot fully block OS screenshots; we deter + blur on leave)
   useEffect(() => {
@@ -383,6 +429,12 @@ export default function PricingSharePage() {
                 <div className="min-w-0">
                   <div className="text-sm font-extrabold text-white sm:text-base">
                     Choose your plan
+                    {data?.customerName ? (
+                      <span className="font-semibold text-white/95">
+                        {' '}
+                        · {String(data.customerName).trim()}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 text-xs text-white/90 sm:text-sm">
                     {carLabel} in {cityLabel}
@@ -428,6 +480,11 @@ export default function PricingSharePage() {
                         <img
                           src={src}
                           alt={displayName}
+                          width={56}
+                          height={56}
+                          decoding="async"
+                          loading="eager"
+                          fetchPriority="high"
                           className="h-[70%] w-[70%] object-contain mix-blend-darken"
                         />
                       </div>
@@ -696,15 +753,32 @@ export default function PricingSharePage() {
               </div>
 
               <div className="space-y-0">
-                {(details.plan.checklist || []).map((item, idx) => (
-                  <div
-                    key={`${details.plan.id || details.plan.name}-full-${idx}`}
-                    className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] text-gray-700"
-                  >
-                    <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                    <span className="flex-1 break-words leading-snug">{item}</span>
-                  </div>
-                ))}
+                {packChecklistRows(details.plan.checklist || []).map((row, rIdx) =>
+                  row.full ? (
+                    <div
+                      key={`${details.plan.id || details.plan.name}-row-${rIdx}`}
+                      className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px] text-gray-700"
+                    >
+                      <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                      <span className="flex-1 break-words leading-snug">{row.items[0]}</span>
+                    </div>
+                  ) : (
+                    <div
+                      key={`${details.plan.id || details.plan.name}-row-${rIdx}`}
+                      className="grid grid-cols-2 gap-x-3 border-b border-gray-100"
+                    >
+                      {row.items.map((item, j) => (
+                        <div
+                          key={`${rIdx}-${j}`}
+                          className="flex items-start gap-1.5 py-1.5 text-[12px] text-gray-700"
+                        >
+                          <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-600" />
+                          <span className="min-w-0 break-words leading-snug">{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ),
+                )}
                 {!details.plan.checklist?.length ? (
                   <p className="py-4 text-center text-sm text-gray-600">
                     No checklist available for this service.
