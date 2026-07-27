@@ -156,6 +156,31 @@ function composeAddress(form: EditForm) {
     .join(', ');
 }
 
+/** No plan selected → full category pricing; default Periodic (all 4 tiers). */
+function inferLeadPricingCategories(meta: any, serviceType?: string | null): string[] {
+  const hints = [
+    meta?.booking_type,
+    meta?.package_label,
+    meta?.interest_label,
+    serviceType,
+  ]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  for (const hint of hints) {
+    const u = hint.toUpperCase();
+    if (u.includes('PERIODIC')) return ['Car Periodic Service'];
+    if (u.includes('AC')) return ['Car AC Service'];
+    if (u.includes('BATTERY')) return ['Car Battery Service'];
+    if (u.includes('BRAKE')) return ['Car Brake Service'];
+    if (u.includes('CLUTCH')) return ['Car Clutch Service'];
+    if (u.includes('DENT')) return ['Car Denting & Painting'];
+    if (u.includes('DETAIL')) return ['Car Detailing Service'];
+    if (u.includes('ENGINE')) return ['Car Engine Service'];
+    if (u.includes('TYRE') || u.includes('WHEEL')) return ['Car Tyre & Wheel Care'];
+  }
+  return ['Car Periodic Service'];
+}
+
 function parseComposedAddress(
   raw: string,
   meta: any,
@@ -382,6 +407,7 @@ export default function TelecallerLeadDetailScreen({
   const [pricingItems, setPricingItems] = useState<Array<{ name: string; price: number }>>([]);
   const [couponInput, setCouponInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const [sendingPricing, setSendingPricing] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
   const [carDisplay, setCarDisplay] = useState('');
   const [cities, setCities] = useState<any[]>([]);
@@ -392,6 +418,7 @@ export default function TelecallerLeadDetailScreen({
   const [initialServiceAddons, setInitialServiceAddons] = useState<string[]>([]);
   const [pinWorkshops, setPinWorkshops] = useState<any[]>([]);
   const [loadingPinWs, setLoadingPinWs] = useState(false);
+  const [showAllWorkshops, setShowAllWorkshops] = useState(false);
   const [profileHistory, setProfileHistory] = useState<any[]>([]);
 
   const [activityData, setActivityData] = useState({
@@ -530,12 +557,13 @@ export default function TelecallerLeadDetailScreen({
       Alert.alert('Missing info', 'Fuel type required');
       return;
     }
-    if (editForm.service_types.length === 0) {
-      Alert.alert('Missing info', 'Select at least one service');
-      return;
-    }
 
     const bookingConfirmed = activityData.result === 'BOOKING_CONFIRMED';
+    // Service plan required only when confirming booking — soft leads can save without plan
+    if (bookingConfirmed && editForm.service_types.length === 0) {
+      Alert.alert('Missing info', 'Select at least one service to confirm booking');
+      return;
+    }
     if (bookingConfirmed) {
       if (!editForm.vehicle_number.trim()) {
         Alert.alert('Missing info', 'Registration required');
@@ -650,21 +678,25 @@ export default function TelecallerLeadDetailScreen({
       nextMeta.profile_history = [historyEntry, ...prevHistory].slice(0, 50);
 
       let quotePayload: any = null;
-      try {
-        const quoteRes = await apiFetch<any>('/api/telecaller/crm/quote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            service_type_ids: editForm.service_types,
-            addon_ids: editForm.service_addons,
-            city_id: editForm.city_id || null,
-            workshop_id: editForm.pickup_required ? null : editForm.workshop_id || null,
-            vehicle_class: editForm.vehicle_class || null,
-          }),
-        });
-        quotePayload = quoteRes?.quote || null;
-      } catch (e) {
-        console.warn('[LeadDetail] quote failed', e);
+      const hasServices =
+        editForm.service_types.length > 0 || editForm.service_addons.length > 0;
+      if (hasServices) {
+        try {
+          const quoteRes = await apiFetch<any>('/api/telecaller/crm/quote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              service_type_ids: editForm.service_types,
+              addon_ids: editForm.service_addons,
+              city_id: editForm.city_id || null,
+              workshop_id: editForm.pickup_required ? null : editForm.workshop_id || null,
+              vehicle_class: editForm.vehicle_class || null,
+            }),
+          });
+          quotePayload = quoteRes?.quote || null;
+        } catch (e) {
+          console.warn('[LeadDetail] quote failed', e);
+        }
       }
 
       const payload = {
@@ -706,6 +738,10 @@ export default function TelecallerLeadDetailScreen({
             .filter(Boolean)
             .join(', ') || undefined,
         ...(dispositionStatus ? { status: dispositionStatus } : {}),
+        // booking_confirmed WhatsApp ONLY when status = Booking confirmed
+        send_booking_confirmed_whatsapp: bookingConfirmed,
+        // Never auto-fire update WA for Interested / Lost / etc.
+        send_booking_updated_whatsapp: false,
       };
 
       let result: { success?: boolean; servicesChanged?: boolean; whatsapp?: any } | null = null;
@@ -768,29 +804,12 @@ export default function TelecallerLeadDetailScreen({
         result = { success: true, servicesChanged: servicesChangedLocal };
       }
 
-      const servicesChanged = Boolean(result?.servicesChanged || servicesChangedLocal);
-      let whatsapp = result?.whatsapp;
-      if (servicesChanged && !whatsapp?.sent) {
-        try {
-          const notify = await apiFetch<{ success?: boolean; whatsapp?: any }>(
-            `/api/telecaller/leads/${leadId}/notify-update`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ previousServiceIds: initialServiceTypes }),
-            },
-          );
-          whatsapp = notify?.whatsapp || whatsapp;
-        } catch (notifyErr: any) {
-          console.warn('[LeadDetail] WhatsApp notify failed', notifyErr?.message);
-        }
-      }
-
+      const whatsapp = result?.whatsapp;
       const waNote =
-        servicesChanged && whatsapp?.sent
-          ? '\nCustomer notified on WhatsApp.'
-          : servicesChanged
-            ? '\nService updated — WhatsApp not sent.'
+        bookingConfirmed && whatsapp?.sent
+          ? '\nBooking confirmation sent on WhatsApp.'
+          : bookingConfirmed
+            ? '\nBooking saved — WhatsApp confirmation not sent.'
             : '';
 
       // Persist activity disposition when set during edit
@@ -1302,6 +1321,93 @@ export default function TelecallerLeadDetailScreen({
     }
   };
 
+  const handleSendPricingWhatsApp = async () => {
+    const pincode = String(editing ? editForm.pincode : lead?.pincode || '')
+      .replace(/\D/g, '')
+      .slice(0, 6);
+    const carModel = String(
+      editing
+        ? [editForm.vehicle_make, editForm.vehicle_model].filter(Boolean).join(' ')
+        : [lead?.vehicle_make, lead?.vehicle_model].filter(Boolean).join(' ') ||
+            lead?.vehicle_model ||
+            '',
+    ).trim();
+    const serviceTypeIds = editing
+      ? [...(editForm.service_types || []), ...(editForm.service_addons || [])]
+      : parseIds(lead?.service_type_ids);
+    const meta =
+      lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+    const savedCategories = Array.isArray((meta as any).pricing_categories)
+      ? (meta as any).pricing_categories.map((c: any) => String(c || '').trim()).filter(Boolean)
+      : [];
+    // No plan selected → send full category (default Periodic = all 4 tiers Semi+Fully)
+    const pricingCategories = savedCategories.length
+      ? savedCategories
+      : inferLeadPricingCategories(meta, lead?.service_type);
+
+    if (!/^\d{6}$/.test(pincode)) {
+      Alert.alert('Pricing', 'Enter 6-digit pincode first (Edit → City / Pincode).');
+      return;
+    }
+    if (!carModel) {
+      Alert.alert('Pricing', 'Select car model first (Edit → Vehicle).');
+      return;
+    }
+
+    const modeHint = serviceTypeIds.length
+      ? `Selected plan(s) only for ${carModel} · PIN ${pincode}.`
+      : `All ${pricingCategories.join(', ') || 'Periodic'} plans for ${carModel} · PIN ${pincode}.`;
+
+    Alert.alert(
+      'Send pricing on WhatsApp?',
+      `${modeHint}\n\nWorks only if customer messaged on WhatsApp within 24h (no template).`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            setSendingPricing(true);
+            try {
+              const res = await apiFetch<any>(`/api/telecaller/leads/${leadId}/send-pricing`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  pincode,
+                  carModel,
+                  serviceTypeIds: serviceTypeIds.length ? serviceTypeIds : undefined,
+                  // Empty ids → API sends all plans in category (default Periodic)
+                  categories: serviceTypeIds.length
+                    ? pricingCategories.length
+                      ? pricingCategories
+                      : undefined
+                    : pricingCategories.length
+                      ? pricingCategories
+                      : ['Car Periodic Service'],
+                }),
+              });
+              if (!res?.success) {
+                throw new Error(res?.message || res?.error || 'Failed to send pricing');
+              }
+              Alert.alert(
+                'Sent',
+                res.message ||
+                  `Pricing sent (${res?.result?.messagesSent || 0} WhatsApp message(s)).`,
+              );
+            } catch (e: any) {
+              Alert.alert(
+                'WhatsApp',
+                e?.message ||
+                  'Could not send. Customer must have an open WhatsApp chat (24h window).',
+              );
+            } finally {
+              setSendingPricing(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleApplyCoupon = async () => {
     const code = couponInput.trim().toUpperCase();
     if (!code) {
@@ -1491,6 +1597,27 @@ export default function TelecallerLeadDetailScreen({
         ) : null}
       </View>
 
+      <View style={styles.pricingSendWrap}>
+        <TouchableOpacity
+          style={[styles.pricingSendBtn, sendingPricing && { opacity: 0.7 }]}
+          disabled={sendingPricing}
+          onPress={handleSendPricingWhatsApp}
+        >
+          {sendingPricing ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Icon name="cash" size={18} color="#fff" />
+              <Text style={styles.pricingSendBtnText}>Send Pricing on WhatsApp</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <Text style={styles.pricingSendHint}>
+          Plan Add → sirf woh tier + points. Bina plan → Periodic ke saare 4 plans (Semi+Fully).
+          Pincode + car required. 1 WhatsApp text.
+        </Text>
+      </View>
+
       {/* Quick Stats */}
       <View style={styles.statsCard}>
         <View style={styles.statItem}>
@@ -1641,13 +1768,23 @@ export default function TelecallerLeadDetailScreen({
 
               {/^\d{6}$/.test(editForm.pincode) ? (
                 <View style={styles.workshopPickBox}>
-                  <Text style={styles.fieldCaption}>Workshop for this lead</Text>
+                  <View style={styles.workshopPickHead}>
+                    <Text style={styles.fieldCaption}>Workshop for this lead</Text>
+                    {pinWorkshops.length > 1 ? (
+                      <TouchableOpacity onPress={() => setShowAllWorkshops(true)} hitSlop={8}>
+                        <Text style={styles.viewAllText}>View all</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   {loadingPinWs ? (
                     <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 10 }} />
                   ) : pinWorkshops.length === 0 ? (
                     <Text style={styles.mutedValue}>No workshops found for this pincode</Text>
                   ) : (
-                    pinWorkshops.map((w) => {
+                    (() => {
+                      const preview =
+                        pinWorkshops.find((w) => w.id === editForm.workshop_id) || pinWorkshops[0];
+                      const w = preview;
                       const active = editForm.workshop_id === w.id;
                       const areaName = w.workshop_name || w.name || 'Workshop';
                       const centerName = w.service_center_name || null;
@@ -1690,7 +1827,7 @@ export default function TelecallerLeadDetailScreen({
                           />
                         </TouchableOpacity>
                       );
-                    })
+                    })()
                   )}
                 </View>
               ) : (
@@ -2533,6 +2670,73 @@ export default function TelecallerLeadDetailScreen({
       </Pressable>
     </Modal>
 
+    <Modal
+      visible={showAllWorkshops}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowAllWorkshops(false)}
+    >
+      <View style={styles.sheetOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllWorkshops(false)} />
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHead}>
+            <Text style={styles.menuTitle}>Nearby workshops</Text>
+            <TouchableOpacity onPress={() => setShowAllWorkshops(false)} hitSlop={8}>
+              <Icon name="close" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            {pinWorkshops.map((w) => {
+              const active = editForm.workshop_id === w.id;
+              const areaName = w.workshop_name || w.name || 'Workshop';
+              const centerName = w.service_center_name || null;
+              const address = w.address || w.short_address || null;
+              return (
+                <TouchableOpacity
+                  key={w.id}
+                  style={[styles.workshopPickRow, active && styles.workshopPickRowActive]}
+                  onPress={() => {
+                    setEditForm((prev) => ({
+                      ...prev,
+                      workshop_id: w.id,
+                      workshop_name: areaName,
+                    }));
+                    setShowAllWorkshops(false);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.workshopPickName} numberOfLines={1}>
+                      {areaName}
+                    </Text>
+                    {centerName && centerName !== areaName ? (
+                      <Text style={styles.workshopPickCenter} numberOfLines={1}>
+                        {centerName}
+                      </Text>
+                    ) : null}
+                    {address ? (
+                      <Text style={styles.workshopPickSub} numberOfLines={2}>
+                        {address}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.workshopPickSub} numberOfLines={1}>
+                      {[w.city, w.pincode || editForm.pincode].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                  <Icon
+                    name={active ? 'check-circle' : 'circle-outline'}
+                    size={20}
+                    color={active ? COLORS.primary : COLORS.gray[400]}
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+
     {editing ? (
       <View style={styles.saveBar}>
         <TouchableOpacity
@@ -2996,6 +3200,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
   },
+  pricingSendWrap: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: 10,
+  },
+  pricingSendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#004AAD',
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  pricingSendBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  pricingSendHint: {
+    marginTop: 6,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   actionButtonTextEdit: {
     color: COLORS.primary,
     fontWeight: '700',
@@ -3238,6 +3467,45 @@ const styles = StyleSheet.create({
   workshopPickBox: {
     marginTop: 10,
     gap: 6,
+  },
+  workshopPickHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  viewAllText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingTop: 8,
+    maxHeight: '75%',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.gray[300],
+    marginBottom: 10,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   workshopPickRow: {
     flexDirection: 'row',

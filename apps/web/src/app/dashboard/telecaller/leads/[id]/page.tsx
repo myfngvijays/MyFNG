@@ -29,6 +29,7 @@ export default function LeadDetailPage() {
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [sendingPricing, setSendingPricing] = useState(false);
   const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const SHOW_SERVICE_ADDONS = false;
@@ -812,6 +813,83 @@ export default function LeadDetailPage() {
                 >
                   <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Send WhatsApp
+                </button>
+                <button
+                  type="button"
+                  disabled={sendingPricing}
+                  onClick={async () => {
+                    const pincode = String(lead?.pincode || '').replace(/\D/g, '').slice(0, 6);
+                    const carModel = [lead?.vehicle_make, lead?.vehicle_model]
+                      .filter(Boolean)
+                      .join(' ')
+                      .trim();
+                    const serviceTypeIds = parseIds(lead?.service_type_ids);
+                    const meta =
+                      lead?.coupon_meta && typeof lead.coupon_meta === 'object'
+                        ? lead.coupon_meta
+                        : {};
+                    const savedCategories = Array.isArray((meta as any).pricing_categories)
+                      ? (meta as any).pricing_categories
+                          .map((c: any) => String(c || '').trim())
+                          .filter(Boolean)
+                      : [];
+                    // No plan → all plans in category (default Periodic)
+                    const pricingCategories = savedCategories.length
+                      ? savedCategories
+                      : ['Car Periodic Service'];
+                    if (!/^\d{6}$/.test(pincode)) {
+                      alert('Fill 6-digit pincode on the lead first.');
+                      return;
+                    }
+                    if (!carModel) {
+                      alert('Fill car model on the lead first.');
+                      return;
+                    }
+                    const modeHint = serviceTypeIds.length
+                      ? 'selected plan(s) only'
+                      : `all ${pricingCategories.join(', ')} plans`;
+                    if (
+                      !confirm(
+                        `Send pricing (${modeHint}) · ${carModel} · PIN ${pincode}?\n(1 WhatsApp text — no View plans)`,
+                      )
+                    ) {
+                      return;
+                    }
+                    setSendingPricing(true);
+                    try {
+                      const res = await fetch(`/api/telecaller/leads/${leadId}/send-pricing`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          pincode,
+                          carModel,
+                          serviceTypeIds: serviceTypeIds.length ? serviceTypeIds : undefined,
+                          categories: serviceTypeIds.length
+                            ? pricingCategories.length
+                              ? pricingCategories
+                              : undefined
+                            : pricingCategories,
+                        }),
+                      });
+                      const json = await res.json().catch(() => ({}));
+                      if (!res.ok || !json?.success) {
+                        throw new Error(json?.message || json?.error || 'Failed to send pricing');
+                      }
+                      alert(json.message || 'Pricing sent on WhatsApp.');
+                    } catch (e: any) {
+                      alert(
+                        e?.message ||
+                          'Could not send. Customer needs an open WhatsApp chat (24h).',
+                      );
+                    } finally {
+                      setSendingPricing(false);
+                    }
+                  }}
+                  className="btn btn-primary w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-60"
+                  style={{ backgroundColor: '#004AAD', color: '#fff' }}
+                >
+                  <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  {sendingPricing ? 'Sending…' : 'Send Pricing on WhatsApp'}
                 </button>
                 <button className="btn btn-outline w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 sm:gap-2">
                   <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

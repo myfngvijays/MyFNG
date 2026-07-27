@@ -9,6 +9,10 @@ import {
 } from '@/lib/whatsappBotFlow/inboundMessage';
 import { tryHandleMembershipClaimWhatsAppReply, extractMembershipClaimButtonId } from '@/lib/membership-claim-approval';
 import {
+  extractPricingPlanListReply,
+  tryHandlePricingPlanListReply,
+} from '@/lib/telecaller/handlePricingPlanListReply';
+import {
   ensureWhatsAppInboundServiceLead,
   extractWhatsAppReferral,
 } from '@/lib/whatsappAgents/inboundServiceLead';
@@ -301,6 +305,27 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        let pricingPlanPointsHandled = false;
+        const pricingPlanReply = extractPricingPlanListReply(inbound);
+        if (senderPhone && pricingPlanReply) {
+          try {
+            pricingPlanPointsHandled = await tryHandlePricingPlanListReply({
+              senderPhone,
+              reply: pricingPlanReply,
+            });
+            console.log('[whatsapp-webhook] pricing plan list reply', {
+              senderPhone,
+              id: pricingPlanReply.id,
+              title: pricingPlanReply.title,
+              handled: pricingPlanPointsHandled,
+            });
+          } catch (pricingPlanError: unknown) {
+            const message =
+              pricingPlanError instanceof Error ? pricingPlanError.message : String(pricingPlanError);
+            console.error('[whatsapp-webhook] pricing plan list reply failed:', message);
+          }
+        }
+
         const brainText = extractInboundBrainText(inbound);
         const textBody =
           brainText ||
@@ -386,7 +411,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (senderPhone && brainText && isBrainEligibleInboundType(messageType)) {
+        if (
+          senderPhone &&
+          brainText &&
+          isBrainEligibleInboundType(messageType) &&
+          !pricingPlanPointsHandled
+        ) {
           void processInboundWhatsAppMessage({
             phone: senderPhone,
             message: brainText,

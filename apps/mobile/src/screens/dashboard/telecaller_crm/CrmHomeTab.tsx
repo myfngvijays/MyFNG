@@ -100,7 +100,7 @@ export default function CrmHomeTab({
   const onFloor = punchedIn;
 
   const quickActions = [
-    { label: 'New Booking', icon: 'add-circle' as const, color: COLORS.green, go: () => onNavigate('book') },
+    { label: 'Book / Lead', icon: 'add-circle' as const, color: COLORS.green, go: () => onNavigate('book') },
     { label: 'Open Leads', icon: 'list' as const, color: COLORS.primary, go: () => onNavigate('queue') },
     { label: 'Follow-ups', icon: 'calendar' as const, color: COLORS.orange, go: () => onNavigate('engage', { segment: 'followups' }) },
     { label: 'WhatsApp', icon: 'logo-whatsapp' as const, color: '#25D366', go: onOpenWhatsApp },

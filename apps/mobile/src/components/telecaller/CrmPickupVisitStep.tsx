@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -153,6 +155,7 @@ export default function CrmPickupVisitStep({
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loadingWs, setLoadingWs] = useState(false);
+  const [showAllWorkshops, setShowAllWorkshops] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
 
   const todayStr = formatDateYMD(getIndiaDate());
@@ -506,39 +509,43 @@ export default function CrmPickupVisitStep({
             </Text>
           ) : (
             <>
-              <Text style={[styles.hint, { marginBottom: 8 }]}>
-                Showing workshops for PIN {pincode}
-              </Text>
-              <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled>
-                {workshops.map((w) => {
-                  const active = value.workshop_id === w.id;
-                  return (
-                    <TouchableOpacity
-                      key={w.id}
-                      style={[styles.wsCard, active && styles.wsCardActive]}
-                      onPress={() => onChange({ workshop_id: w.id, workshop_name: w.name })}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.wsName}>{w.name}</Text>
-                        <Text style={styles.hint}>
-                          {[w.address, w.city || city, w.pincode].filter(Boolean).join(' · ')}
+              <View style={styles.wsHeadRow}>
+                <Text style={[styles.hint, { flex: 1 }]}>Showing workshops for PIN {pincode}</Text>
+                {workshops.length > 1 ? (
+                  <TouchableOpacity onPress={() => setShowAllWorkshops(true)} hitSlop={8}>
+                    <Text style={styles.viewAllText}>View all</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {(() => {
+                const w = workshops.find((x) => x.id === value.workshop_id) || workshops[0];
+                const active = value.workshop_id === w.id;
+                return (
+                  <TouchableOpacity
+                    key={w.id}
+                    style={[styles.wsCard, active && styles.wsCardActive]}
+                    onPress={() => onChange({ workshop_id: w.id, workshop_name: w.name })}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wsName}>{w.name}</Text>
+                      <Text style={styles.hint}>
+                        {[w.address, w.city || city, w.pincode].filter(Boolean).join(' · ')}
+                      </Text>
+                      {w.capacity_status ? (
+                        <Text style={[styles.hint, { color: COLORS.primary, fontWeight: '600' }]}>
+                          {w.capacity_status}
+                          {w.active_leads != null ? ` · ${w.active_leads} active` : ''}
                         </Text>
-                        {w.capacity_status ? (
-                          <Text style={[styles.hint, { color: COLORS.primary, fontWeight: '600' }]}>
-                            {w.capacity_status}
-                            {w.active_leads != null ? ` · ${w.active_leads} active` : ''}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Ionicons
-                        name={active ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={20}
-                        color={active ? COLORS.primary : COLORS.gray[400]}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                      ) : null}
+                    </View>
+                    <Ionicons
+                      name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={20}
+                      color={active ? COLORS.primary : COLORS.gray[400]}
+                    />
+                  </TouchableOpacity>
+                );
+              })()}
             </>
           )}
         </View>
@@ -550,6 +557,59 @@ export default function CrmPickupVisitStep({
           <Text style={styles.totalValue}>₹{Math.round(quoteTotal).toLocaleString('en-IN')}</Text>
         </View>
       ) : null}
+
+      <Modal
+        visible={showAllWorkshops}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAllWorkshops(false)}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllWorkshops(false)} />
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Nearby workshops</Text>
+              <TouchableOpacity onPress={() => setShowAllWorkshops(false)} hitSlop={8}>
+                <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              {workshops.map((w) => {
+                const active = value.workshop_id === w.id;
+                return (
+                  <TouchableOpacity
+                    key={w.id}
+                    style={[styles.wsCard, active && styles.wsCardActive]}
+                    onPress={() => {
+                      onChange({ workshop_id: w.id, workshop_name: w.name });
+                      setShowAllWorkshops(false);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wsName}>{w.name}</Text>
+                      <Text style={styles.hint}>
+                        {[w.address, w.city || city, w.pincode].filter(Boolean).join(' · ')}
+                      </Text>
+                      {w.capacity_status ? (
+                        <Text style={[styles.hint, { color: COLORS.primary, fontWeight: '600' }]}>
+                          {w.capacity_status}
+                          {w.active_leads != null ? ` · ${w.active_leads} active` : ''}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Ionicons
+                      name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={20}
+                      color={active ? COLORS.primary : COLORS.gray[400]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -685,6 +745,13 @@ const styles = StyleSheet.create({
   opt: { fontSize: 11, fontWeight: '500', color: COLORS.textSecondary },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   checkText: { fontSize: 12, fontWeight: '600', color: '#16A34A' },
+  wsHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  viewAllText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
   wsCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -695,6 +762,35 @@ const styles = StyleSheet.create({
   },
   wsCardActive: { backgroundColor: COLORS.primary + '08', borderRadius: 8, paddingHorizontal: 8 },
   wsName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingTop: 8,
+    maxHeight: '75%',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.gray[300],
+    marginBottom: 10,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  sheetTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textHeading },
   totalBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { notifyBookingUpdatedWhatsApp } from '@/lib/services/bookingUpdatedWhatsApp';
 import {
   buildTelecallerCrmQuote,
@@ -433,8 +434,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
+    // WhatsApp rules:
+    // - booking_confirmed ONLY when telecaller sets Booking Confirmed (explicit flag / new VALIDATED)
+    // - booking_updated ONLY for already-confirmed leads when services change (never booking_confirmed)
+    // - Interested / Lost / etc. → save only, no booking WhatsApp
+    const nextStatus = String(update.status || updated?.status || existingLead.status || '')
+      .trim()
+      .toUpperCase();
+    const prevStatus = String(existingLead.status || '').trim().toUpperCase();
+    const sendBookingConfirmedWa =
+      body?.send_booking_confirmed_whatsapp === true ||
+      (nextStatus === 'VALIDATED' && prevStatus !== 'VALIDATED');
+    const sendBookingUpdatedWa =
+      !sendBookingConfirmedWa &&
+      servicesChanged &&
+      (prevStatus === 'VALIDATED' || nextStatus === 'VALIDATED') &&
+      body?.send_booking_updated_whatsapp !== false;
+
     let whatsapp: any = null;
-    if (servicesChanged) {
+    if (sendBookingConfirmedWa || sendBookingUpdatedWa) {
       try {
         const prevLabel = await resolveServiceTypeNames(db, prevServiceIds);
         const nextLabel =
@@ -468,26 +486,39 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           update.estimated_amount ?? resolvedQuote?.total ?? updated?.estimated_amount ?? 0,
         );
 
-        whatsapp = await notifyBookingUpdatedWhatsApp({
-          lead: {
-            ...updated,
-            workshop_name: workshopName || null,
-            flat_number: meta.flat_number || null,
-            landmark: meta.landmark || null,
-            address_type: meta.address_type || null,
-            estimated_amount: newAmount,
-          },
-          customerId: updated?.customer_id || null,
-          serviceLabel: nextLabel || null,
-          previousServiceLabel: prevLabel || null,
-          amount: newAmount,
-          body: {
-            ...body,
-            coupon_meta: meta,
-            service_type_ids: nextServiceIds,
-            quote: resolvedQuote,
-          },
-        });
+        const leadForWa = {
+          ...updated,
+          workshop_name: workshopName || null,
+          flat_number: meta.flat_number || null,
+          landmark: meta.landmark || null,
+          address_type: meta.address_type || null,
+          estimated_amount: newAmount,
+        };
+        const waBody = {
+          ...body,
+          coupon_meta: meta,
+          service_type_ids: nextServiceIds,
+          quote: resolvedQuote,
+        };
+
+        if (sendBookingConfirmedWa) {
+          whatsapp = await notifyBookingConfirmedWhatsApp({
+            lead: leadForWa,
+            customerId: updated?.customer_id || null,
+            serviceLabel: nextLabel || null,
+            amount: newAmount,
+            body: waBody,
+          });
+        } else {
+          whatsapp = await notifyBookingUpdatedWhatsApp({
+            lead: leadForWa,
+            customerId: updated?.customer_id || null,
+            serviceLabel: nextLabel || null,
+            previousServiceLabel: prevLabel || null,
+            amount: newAmount,
+            body: waBody,
+          });
+        }
 
         if (whatsapp?.skipped || !whatsapp?.sent) {
           console.log('[telecaller/leads PATCH] WhatsApp skipped:', whatsapp?.skipReason || whatsapp?.error);

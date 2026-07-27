@@ -33,6 +33,21 @@ const BOOKING_TYPES = [
   { id: 'MEMBERSHIP', label: 'Membership', icon: 'diamond-outline' as const },
 ];
 
+/** WhatsApp pricing categories (session send — pick which to share) */
+const PRICING_CATEGORIES = [
+  { id: 'Car Periodic Service', label: 'Periodic' },
+  { id: 'Car AC Service', label: 'AC' },
+  { id: 'Car Battery Service', label: 'Battery' },
+  { id: 'Car Brake Service', label: 'Brake' },
+  { id: 'Car Clutch Service', label: 'Clutch' },
+  { id: 'Car Denting & Painting', label: 'Denting' },
+  { id: 'Car Detailing Service', label: 'Detailing' },
+  { id: 'Car Engine Service', label: 'Engine' },
+  { id: 'Car Tyre & Wheel Care', label: 'Tyre' },
+  { id: 'Electrical & Battery Service', label: 'Electrical' },
+  { id: 'Suspension & Steering Service', label: 'Suspension' },
+];
+
 const PAYMENT_MODES = [
   { id: 'PAY_LATER', label: 'Pay Later', hint: 'Pay at workshop / after service', disabled: false },
   { id: 'PAY_NOW', label: 'Pay Now', hint: 'Online payment (coming soon for telecaller)', disabled: true },
@@ -52,9 +67,14 @@ type Props = {
 };
 
 export default function CrmBookWizard({ onDone, onCancel }: Props) {
+  /** book = full 5-step booking; lead = basic details → save incomplete lead */
+  const [mode, setMode] = useState<'book' | 'lead'>('book');
   const [step, setStep] = useState(0); // 0..4 like book-service
   const [saving, setSaving] = useState(false);
   const [quoting, setQuoting] = useState(false);
+  const [sendingPricing, setSendingPricing] = useState(false);
+  /** Categories to share on WhatsApp after Save Lead — default Periodic (all 4 tiers) */
+  const [pricingCategories, setPricingCategories] = useState<string[]>(['Car Periodic Service']);
 
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
@@ -303,7 +323,15 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
     return `${date}T${time}:00+05:30`;
   };
 
+  const canSaveLead = useMemo(() => {
+    return (
+      form.customer_name.trim().length > 0 &&
+      form.customer_phone.trim().replace(/\D/g, '').length >= 10
+    );
+  }, [form.customer_name, form.customer_phone]);
+
   const canNext = useMemo(() => {
+    if (mode === 'lead') return canSaveLead;
     if (step === 0) return Boolean(form.city && form.vehicle_make && form.vehicle_model);
     if (step === 1) {
       return (
@@ -333,9 +361,145 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
     }
     if (step === 4) return Boolean(form.payment_mode);
     return true;
-  }, [step, form, catalogMeta, needsPickupStep]);
+  }, [mode, step, form, catalogMeta, needsPickupStep, canSaveLead]);
+
+  const togglePricingCategory = (id: string) => {
+    setPricingCategories((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    );
+  };
+
+  const sendPricingForLead = async (leadId: string) => {
+    const pincode = form.pincode.replace(/\D/g, '').slice(0, 6);
+    const carModel = [form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ').trim();
+    if (!/^\d{6}$/.test(pincode) || !carModel || !pricingCategories.length) {
+      return { ok: false, message: 'Pincode, car model and pricing category required to send.' };
+    }
+    setSendingPricing(true);
+    try {
+      const res = await apiFetch<any>(`/api/telecaller/leads/${leadId}/send-pricing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pincode,
+          carModel,
+          categories: pricingCategories,
+        }),
+      });
+      if (!res?.success) {
+        throw new Error(res?.message || res?.error || 'Failed to send pricing');
+      }
+      return { ok: true, message: res.message || 'Pricing sent on WhatsApp.' };
+    } catch (e: any) {
+      return {
+        ok: false,
+        message:
+          e?.message ||
+          'Could not send. Customer must have an open WhatsApp chat (24h window).',
+      };
+    } finally {
+      setSendingPricing(false);
+    }
+  };
+
+  const saveAsLead = async () => {
+    if (!canSaveLead) {
+      Alert.alert('Missing info', 'Customer name and 10-digit phone required');
+      return;
+    }
+    const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
+    const carModel = [form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ').trim();
+    const wantsPricing = pricingCategories.length > 0;
+    if (wantsPricing && (!/^\d{6}$/.test(pin) || !carModel)) {
+      Alert.alert(
+        'Pricing needs more info',
+        'To share pricing, fill 6-digit pincode and car model (or clear pricing categories to save without sending).',
+      );
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const data = await apiFetch<any>('/api/telecaller/crm/save-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: form.customer_name.trim(),
+          customer_phone: form.customer_phone.trim(),
+          city_id: form.city_id || null,
+          city: form.city || null,
+          pincode: form.pincode || null,
+          vehicle_number: 'PENDING',
+          vehicle_make: form.vehicle_make || null,
+          vehicle_model: form.vehicle_model || null,
+          model_id: form.model_id || null,
+          vehicle_class: form.vehicle_class || null,
+          vehicle_fuel_type: form.vehicle_fuel_type || null,
+          booking_type: form.booking_type,
+          service_type_ids: form.service_type_ids,
+          problem_description: form.problem_description || null,
+          pricing_categories: pricingCategories,
+          package_label:
+            form.booking_type === 'PERIODIC'
+              ? 'Periodic Service'
+              : form.booking_type === 'OTHER_SERVICES'
+                ? 'Other Services'
+                : form.booking_type === 'RSA'
+                  ? 'RSA'
+                  : form.booking_type === 'MEMBERSHIP'
+                    ? 'Membership'
+                    : null,
+        }),
+      });
+      if (!data?.lead?.id && !data?.success) {
+        throw new Error(data?.error || 'Failed to save lead');
+      }
+      const leadId = String(data.lead?.id || '');
+
+      if (leadId && wantsPricing && /^\d{6}$/.test(pin) && carModel) {
+        const labels = pricingCategories
+          .map((id) => PRICING_CATEGORIES.find((c) => c.id === id)?.label || id)
+          .join(', ');
+        Alert.alert(
+          'Lead saved',
+          `Send ${labels} pricing on WhatsApp now?\n\nNeeds open 24h WhatsApp chat (no template).`,
+          [
+            {
+              text: 'Later',
+              style: 'cancel',
+              onPress: () => onDone(leadId),
+            },
+            {
+              text: 'Send Pricing',
+              onPress: async () => {
+                const result = await sendPricingForLead(leadId);
+                Alert.alert(result.ok ? 'Sent' : 'WhatsApp', result.message, [
+                  { text: 'OK', onPress: () => onDone(leadId) },
+                ]);
+              },
+            },
+          ],
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Lead saved',
+        data.message || 'Lead created. Complete booking later from Lead Details.',
+      );
+      if (leadId) onDone(leadId);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to save lead');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const next = async () => {
+    if (mode === 'lead') {
+      await saveAsLead();
+      return;
+    }
     if (!canNext) {
       Alert.alert('Missing info', 'Please fill required fields');
       return;
@@ -466,14 +630,60 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
     >
       <View style={styles.topBar}>
-        <View style={styles.progress}>
-          {[0, 1, 2, 3, 4].map((s) => (
-            <View key={s} style={[styles.dot, step >= s && styles.dotActive]} />
-          ))}
+        <View style={styles.modeRow}>
+          <TouchableOpacity
+            style={[styles.modeChip, mode === 'book' && styles.modeChipActive]}
+            onPress={() => {
+              setMode('book');
+              setStep(0);
+            }}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={15}
+              color={mode === 'book' ? '#fff' : COLORS.primary}
+            />
+            <Text style={[styles.modeChipText, mode === 'book' && styles.modeChipTextActive]}>
+              Full Booking
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeChip, mode === 'lead' && styles.modeChipActive]}
+            onPress={() => {
+              setMode('lead');
+              setStep(0);
+            }}
+          >
+            <Ionicons
+              name="person-add-outline"
+              size={15}
+              color={mode === 'lead' ? '#fff' : COLORS.primary}
+            />
+            <Text style={[styles.modeChipText, mode === 'lead' && styles.modeChipTextActive]}>
+              Add Lead
+            </Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.stepOf}>Step {step + 1} of 5</Text>
-        <Text style={styles.stepTitle}>{meta.title}</Text>
-        <Text style={styles.stepSub}>{meta.subtitle}</Text>
+        {mode === 'book' ? (
+          <>
+            <View style={styles.progress}>
+              {[0, 1, 2, 3, 4].map((s) => (
+                <View key={s} style={[styles.dot, step >= s && styles.dotActive]} />
+              ))}
+            </View>
+            <Text style={styles.stepOf}>Step {step + 1} of 5</Text>
+            <Text style={styles.stepTitle}>{meta.title}</Text>
+            <Text style={styles.stepSub}>{meta.subtitle}</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.stepOf}>Quick save</Text>
+            <Text style={styles.stepTitle}>Add Lead</Text>
+            <Text style={styles.stepSub}>
+              Basic details only — save now, book later from Lead Details
+            </Text>
+          </>
+        )}
       </View>
 
       <ScrollView
@@ -482,8 +692,165 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {mode === 'lead' && (
+          <>
+            <Text style={styles.sectionLabel}>Interest (optional)</Text>
+            <View style={styles.typeGrid}>
+              {BOOKING_TYPES.map((t) => {
+                const active = form.booking_type === t.id;
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.typeCard, active && styles.typeCardActive]}
+                    onPress={() => setField('booking_type', t.id)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name={t.icon} size={22} color={active ? '#fff' : COLORS.primary} />
+                    <Text style={[styles.typeCardText, active && styles.typeCardTextActive]}>
+                      {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Field
+              label="Customer Name *"
+              value={form.customer_name}
+              onChange={(v) => setField('customer_name', v)}
+              placeholder="Customer name"
+            />
+            <Field
+              label="Phone *"
+              value={form.customer_phone}
+              onChange={(v) => setField('customer_phone', v)}
+              keyboardType="phone-pad"
+              maxLength={15}
+              placeholder="10-digit mobile"
+            />
+
+            <Text style={styles.sectionLabel}>City (optional)</Text>
+            <TouchableOpacity style={styles.selectBtn} onPress={() => setCityOpen((v) => !v)}>
+              <Text style={styles.selectBtnText}>{form.city || 'Select city'}</Text>
+              <Ionicons
+                name={cityOpen ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+            {cityOpen ? (
+              <View style={styles.menu}>
+                <TextInput
+                  style={styles.menuSearch}
+                  value={cityQuery}
+                  onChangeText={setCityQuery}
+                  placeholder="Search city"
+                  placeholderTextColor={COLORS.textSecondary}
+                />
+                <ScrollView
+                  style={{ maxHeight: 180 }}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {filteredCities.map((c: any) => {
+                    const name = c.name || c.city_name || '';
+                    return (
+                      <TouchableOpacity
+                        key={c.id || name}
+                        style={styles.menuItem}
+                        onPress={() => {
+                          setField('city', name);
+                          setField('city_id', c.id || '');
+                          setCityOpen(false);
+                          setCityQuery('');
+                        }}
+                      >
+                        <Text style={styles.menuItemText}>{name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <Field
+              label={pricingCategories.length ? 'Pincode * (for pricing)' : 'Pincode (optional)'}
+              value={form.pincode}
+              onChange={(v) => setField('pincode', v.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholder="e.g. 400601"
+            />
+
+            <View style={{ marginTop: 6 }}>
+              <CarModelSearchField
+                label={pricingCategories.length ? 'Car Model * (for pricing)' : 'Car Model (optional)'}
+                variant="website"
+                displayValue={carDisplay}
+                selectedMake={form.vehicle_make}
+                selectedModel={form.vehicle_model}
+                placeholder="Enter Model (e.g. Rapid, Swift)"
+                onSelect={(make, model, display, meta) => {
+                  setField('vehicle_make', make);
+                  setField('vehicle_model', model);
+                  setField('model_id', meta?.id || '');
+                  setField('vehicle_class', meta?.class || '');
+                  setCarDisplay(display);
+                }}
+                onClear={() => {
+                  setField('vehicle_make', '');
+                  setField('vehicle_model', '');
+                  setField('model_id', '');
+                  setField('vehicle_class', '');
+                  setCarDisplay('');
+                }}
+              />
+            </View>
+
+            <Text style={styles.sectionLabel}>Pricing to share</Text>
+            <Text style={styles.hint}>
+              Periodic ON (default) → bina plan Add kiye saare 4 plans WhatsApp pe. Clear chips to
+              save without pricing.
+            </Text>
+            <View style={styles.pricingChipRow}>
+              {PRICING_CATEGORIES.map((c) => {
+                const active = pricingCategories.includes(c.id);
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.pricingChip, active && styles.pricingChipActive]}
+                    onPress={() => togglePricingCategory(c.id)}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[styles.pricingChipText, active && styles.pricingChipTextActive]}
+                    >
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Field
+              label="Notes / Customer message (optional)"
+              value={form.problem_description}
+              onChange={(v) => setField('problem_description', v)}
+              placeholder="e.g. Asked for pricing, will decide later"
+            />
+
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.infoText}>
+                Saves as incomplete lead. After save you can send the selected pricing on WhatsApp
+                (24h chat window required).
+              </Text>
+            </View>
+          </>
+        )}
+
         {/* Step 0: City + Car (book-service) */}
-        {step === 0 && (
+        {mode === 'book' && step === 0 && (
           <>
             <Text style={styles.sectionLabel}>Booking type</Text>
             <View style={styles.typeGrid}>
@@ -589,7 +956,7 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
         )}
 
         {/* Step 1: Customer — no OTP */}
-        {step === 1 && (
+        {mode === 'book' && step === 1 && (
           <>
             <Field label="Customer Name *" value={form.customer_name} onChange={(v) => setField('customer_name', v)} />
             <Field
@@ -618,7 +985,7 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
         )}
 
         {/* Step 2: Services */}
-        {step === 2 && (
+        {mode === 'book' && step === 2 && (
           <CrmBookingCatalog
             bookingType={form.booking_type}
             selectedIds={form.service_type_ids}
@@ -659,7 +1026,7 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
         )}
 
         {/* Step 3: Pickup / Visit */}
-        {step === 3 && (
+        {mode === 'book' && step === 3 && (
           <CrmPickupVisitStep
             forcePickup={false}
             city={form.city}
@@ -698,7 +1065,7 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
         )}
 
         {/* Step 4: Payment */}
-        {step === 4 && (
+        {mode === 'book' && step === 4 && (
           <>
             {PAYMENT_MODES.map((m) => {
               const active = form.payment_mode === m.id;
@@ -879,16 +1246,19 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
       </Modal>
 
       <View style={styles.footer}>
-        {!canNext && step === 0 ? (
+        {mode === 'lead' && !canNext ? (
+          <Text style={styles.footerHint}>Name and 10-digit phone required</Text>
+        ) : null}
+        {mode === 'book' && !canNext && step === 0 ? (
           <Text style={styles.footerHint}>Select city and car model (type to search)</Text>
         ) : null}
-        {!canNext && step === 1 ? (
+        {mode === 'book' && !canNext && step === 1 ? (
           <Text style={styles.footerHint}>Name, 10-digit phone and 6-digit pincode required</Text>
         ) : null}
-        {!canNext && step === 2 ? (
+        {mode === 'book' && !canNext && step === 2 ? (
           <Text style={styles.footerHint}>Select at least one service / plan</Text>
         ) : null}
-        {!canNext && step === 3 ? (
+        {mode === 'book' && !canNext && step === 3 ? (
           <Text style={styles.footerHint}>
             Vehicle number, date, time
             {form.pickup_required ? ', address & landmark' : ''} required
@@ -896,17 +1266,21 @@ export default function CrmBookWizard({ onDone, onCancel }: Props) {
         ) : null}
         <View style={styles.footerRow}>
           <TouchableOpacity style={styles.backBtn} onPress={goBack}>
-            <Text style={styles.backText}>{step === 0 ? 'Close' : 'Back'}</Text>
+            <Text style={styles.backText}>
+              {mode === 'lead' || step === 0 ? 'Close' : 'Back'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.nextBtn, (!canNext || saving) && styles.nextBtnDisabled]}
             disabled={!canNext || saving}
             onPress={next}
           >
-            {saving || quoting ? (
+            {saving || quoting || sendingPricing ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.nextText}>{step === 4 ? 'Create Booking' : 'Continue'}</Text>
+              <Text style={styles.nextText}>
+                {mode === 'lead' ? 'Save Lead' : step === 4 ? 'Create Booking' : 'Continue'}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -946,6 +1320,46 @@ function Field({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   topBar: { paddingHorizontal: SPACING.md, paddingTop: 4, paddingBottom: 8 },
+  modeRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  modeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+  },
+  modeChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  modeChipText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  modeChipTextActive: { color: '#fff' },
+  pricingChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  pricingChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  pricingChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '14',
+  },
+  pricingChipText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
+  pricingChipTextActive: { color: COLORS.primary },
   progress: { flexDirection: 'row', gap: 6, marginBottom: 10 },
   dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: COLORS.gray[200] },
   dotActive: { backgroundColor: COLORS.primary },

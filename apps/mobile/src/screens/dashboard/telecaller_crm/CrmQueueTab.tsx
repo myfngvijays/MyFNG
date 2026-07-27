@@ -31,7 +31,7 @@ const SOURCE_OPTIONS = [
   { value: 'WHATSAPP_META', label: 'Meta Ads (WA)' },
   { value: 'MOBILE_APP', label: 'App' },
   { value: 'WEB', label: 'Website' },
-  { value: 'TELECALLER_CRM', label: 'CRM Book' },
+  { value: 'TELECALLER_CRM', label: 'CRM' },
   { value: 'TELECALLER', label: 'Telecaller' },
   { value: 'ENQUIRY', label: 'Enquiry' },
 ];
@@ -43,7 +43,7 @@ function formatCrmSource(lead: any): string {
     return src || 'Meta Ads';
   }
   if (from.includes('WHATSAPP') || /whatsapp/i.test(src)) return src || 'WhatsApp';
-  if (from.includes('TELECALLER_CRM')) return 'CRM Book';
+  if (from.includes('TELECALLER_CRM')) return 'CRM';
   if (from.includes('MOBILE') || from.includes('APP')) return 'App';
   if (from === 'WEB' || from.includes('WEBSITE')) return 'Website';
   return src || lead?.created_from || '—';

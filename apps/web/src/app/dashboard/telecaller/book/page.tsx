@@ -9,11 +9,13 @@ import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
 import { createClient } from '@/lib/supabase/client';
 import {
   AlertCircle,
+  Calendar,
   ChevronDown,
   Diamond,
   Grid3X3,
   Loader2,
   Search,
+  UserPlus,
   Wrench,
 } from 'lucide-react';
 
@@ -22,6 +24,20 @@ const BOOKING_TYPES = [
   { id: 'OTHER_SERVICES', label: 'Other Services', icon: Grid3X3 },
   { id: 'RSA', label: 'RSA', icon: AlertCircle },
   { id: 'MEMBERSHIP', label: 'Membership', icon: Diamond },
+];
+
+const PRICING_CATEGORIES = [
+  { id: 'Car Periodic Service', label: 'Periodic' },
+  { id: 'Car AC Service', label: 'AC' },
+  { id: 'Car Battery Service', label: 'Battery' },
+  { id: 'Car Brake Service', label: 'Brake' },
+  { id: 'Car Clutch Service', label: 'Clutch' },
+  { id: 'Car Denting & Painting', label: 'Denting' },
+  { id: 'Car Detailing Service', label: 'Detailing' },
+  { id: 'Car Engine Service', label: 'Engine' },
+  { id: 'Car Tyre & Wheel Care', label: 'Tyre' },
+  { id: 'Electrical & Battery Service', label: 'Electrical' },
+  { id: 'Suspension & Steering Service', label: 'Suspension' },
 ];
 
 const PAYMENT_MODES = [
@@ -109,10 +125,14 @@ const initialForm: FormState = {
 
 export default function TelecallerCrmBookPage() {
   const router = useRouter();
+  /** book = full 5-step booking; lead = basic details → save incomplete lead */
+  const [mode, setMode] = useState<'book' | 'lead'>('book');
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [quoting, setQuoting] = useState(false);
+  const [sendingPricing, setSendingPricing] = useState(false);
   const [error, setError] = useState('');
+  const [pricingCategories, setPricingCategories] = useState<string[]>([]);
 
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
@@ -327,7 +347,15 @@ export default function TelecallerCrmBookPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, quote, catalogMeta, bookingTypeLabel, needsPickupStep]);
 
+  const canSaveLead = useMemo(() => {
+    return (
+      form.customer_name.trim().length > 0 &&
+      form.customer_phone.trim().replace(/\D/g, '').length >= 10
+    );
+  }, [form.customer_name, form.customer_phone]);
+
   const canNext = useMemo(() => {
+    if (mode === 'lead') return canSaveLead;
     if (step === 0) return Boolean(form.city && form.vehicle_make && form.vehicle_model);
     if (step === 1) {
       return (
@@ -354,10 +382,106 @@ export default function TelecallerCrmBookPage() {
     }
     if (step === 4) return Boolean(form.payment_mode);
     return true;
-  }, [step, form, catalogMeta, needsPickupStep]);
+  }, [mode, step, form, catalogMeta, needsPickupStep, canSaveLead]);
+
+  const togglePricingCategory = (id: string) => {
+    setPricingCategories((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    );
+  };
+
+  const saveAsLead = async () => {
+    const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
+    const carModel = [form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ').trim();
+    const wantsPricing = pricingCategories.length > 0;
+    if (wantsPricing && (!/^\d{6}$/.test(pin) || !carModel)) {
+      setError(
+        'To share pricing, fill 6-digit pincode and car model (or clear pricing categories).',
+      );
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/telecaller/crm/save-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: form.customer_name.trim(),
+          customer_phone: form.customer_phone.trim(),
+          city_id: form.city_id || null,
+          city: form.city || null,
+          pincode: form.pincode || null,
+          vehicle_number: 'PENDING',
+          vehicle_make: form.vehicle_make || null,
+          vehicle_model: form.vehicle_model || null,
+          model_id: form.model_id || null,
+          vehicle_class: form.vehicle_class || null,
+          vehicle_fuel_type: form.vehicle_fuel_type || null,
+          booking_type: form.booking_type,
+          service_type_ids: form.service_type_ids,
+          problem_description: form.problem_description || null,
+          pricing_categories: pricingCategories,
+          package_label:
+            BOOKING_TYPES.find((t) => t.id === form.booking_type)?.label || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || (!data?.lead?.id && !data?.success)) {
+        throw new Error(data?.error || 'Failed to save lead');
+      }
+      const leadId = String(data.lead?.id || '');
+
+      if (leadId && wantsPricing && /^\d{6}$/.test(pin) && carModel) {
+        const sendNow = window.confirm(
+          `Lead saved. Send ${pricingCategories.length} pricing categor${
+            pricingCategories.length === 1 ? 'y' : 'ies'
+          } on WhatsApp now?\n\nNeeds open 24h WhatsApp chat.`,
+        );
+        if (sendNow) {
+          setSendingPricing(true);
+          try {
+            const priceRes = await fetch(`/api/telecaller/leads/${leadId}/send-pricing`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pincode: pin, carModel, categories: pricingCategories }),
+            });
+            const priceData = await priceRes.json().catch(() => ({}));
+            if (!priceRes.ok || !priceData?.success) {
+              window.alert(
+                priceData?.message ||
+                  priceData?.error ||
+                  'Pricing send failed. Open lead and retry when WhatsApp session is active.',
+              );
+            } else {
+              window.alert(priceData.message || 'Pricing sent.');
+            }
+          } finally {
+            setSendingPricing(false);
+          }
+        }
+      }
+
+      if (leadId) router.push(`/dashboard/telecaller/leads/${leadId}`);
+      else router.push('/dashboard/telecaller/leads');
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save lead');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const next = async () => {
     setError('');
+    if (mode === 'lead') {
+      if (!canSaveLead) {
+        setError('Customer name and 10-digit phone required.');
+        return;
+      }
+      await saveAsLead();
+      return;
+    }
     if (!canNext) {
       setError('Please fill all required fields.');
       return;
@@ -504,26 +628,246 @@ export default function TelecallerCrmBookPage() {
     <DashboardLayout role="telecaller">
       <div className="mx-auto max-w-3xl pb-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-extrabold text-gray-900">Advanced CRM Booking</h1>
-          <p className="mt-1 text-sm text-gray-500">Same flow as mobile telecaller book wizard</p>
+          <h1 className="text-2xl font-extrabold text-gray-900">Advanced CRM</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Full booking or quick Add Lead — same as mobile telecaller
+          </p>
         </div>
 
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex gap-1.5">
-            {[0, 1, 2, 3, 4].map((s) => (
-              <div
-                key={s}
-                className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-[#004AAD]' : 'bg-gray-200'}`}
-              />
-            ))}
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('book');
+                setStep(0);
+                setError('');
+              }}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-extrabold transition ${
+                mode === 'book'
+                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                  : 'border-[#004AAD] bg-white text-[#004AAD]'
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              Full Booking
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('lead');
+                setStep(0);
+                setError('');
+              }}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-extrabold transition ${
+                mode === 'lead'
+                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                  : 'border-[#004AAD] bg-white text-[#004AAD]'
+              }`}
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Lead
+            </button>
           </div>
-          <p className="text-xs font-bold text-[#004AAD]">Step {step + 1} of 5</p>
-          <h2 className="mt-1 text-xl font-extrabold text-gray-900">{meta.title}</h2>
-          <p className="text-sm text-gray-500">{meta.subtitle}</p>
+          {mode === 'book' ? (
+            <>
+              <div className="mb-3 flex gap-1.5">
+                {[0, 1, 2, 3, 4].map((s) => (
+                  <div
+                    key={s}
+                    className={`h-1 flex-1 rounded-full ${step >= s ? 'bg-[#004AAD]' : 'bg-gray-200'}`}
+                  />
+                ))}
+              </div>
+              <p className="text-xs font-bold text-[#004AAD]">Step {step + 1} of 5</p>
+              <h2 className="mt-1 text-xl font-extrabold text-gray-900">{meta.title}</h2>
+              <p className="text-sm text-gray-500">{meta.subtitle}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-bold text-[#004AAD]">Quick save</p>
+              <h2 className="mt-1 text-xl font-extrabold text-gray-900">Add Lead</h2>
+              <p className="text-sm text-gray-500">
+                Basic details only — save now, book later from Lead Details
+              </p>
+            </>
+          )}
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          {step === 0 && (
+          {mode === 'lead' && (
+            <>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">
+                Interest (optional)
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {BOOKING_TYPES.map((t) => {
+                  const active = form.booking_type === t.id;
+                  const Icon = t.icon;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setField('booking_type', t.id)}
+                      className={`flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4 text-center transition ${
+                        active
+                          ? 'border-[#004AAD] bg-[#004AAD] text-white'
+                          : 'border-gray-200 bg-white text-gray-800 hover:border-[#004AAD]/40'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="text-xs font-extrabold">{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <Field
+                  label="Customer Name *"
+                  value={form.customer_name}
+                  onChange={(v) => setField('customer_name', v)}
+                  placeholder="Customer name"
+                />
+                <Field
+                  label="Phone *"
+                  value={form.customer_phone}
+                  onChange={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 15))}
+                  inputMode="tel"
+                  placeholder="10-digit mobile"
+                />
+              </div>
+
+              <p className="mb-2 mt-4 text-xs font-bold uppercase tracking-wide text-gray-500">
+                City (optional)
+              </p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setCityOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-3 py-2.5 text-left text-sm font-semibold text-gray-900"
+                >
+                  <span>{form.city || 'Select city'}</span>
+                  <ChevronDown
+                    className={`h-4 w-4 text-gray-400 transition ${cityOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {cityOpen ? (
+                  <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                    <div className="relative border-b border-gray-100">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <input
+                        value={cityQuery}
+                        onChange={(e) => setCityQuery(e.target.value)}
+                        placeholder="Search city"
+                        className="w-full py-2.5 pl-9 pr-3 text-sm focus:outline-none"
+                      />
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      {filteredCities.map((c: any) => {
+                        const name = c.name || c.city_name || '';
+                        return (
+                          <button
+                            key={c.id || name}
+                            type="button"
+                            onClick={() => {
+                              setField('city', name);
+                              setField('city_id', c.id || '');
+                              setCityOpen(false);
+                              setCityQuery('');
+                            }}
+                            className="block w-full border-b border-gray-50 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-[#004AAD]/5 last:border-0"
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-3 space-y-3">
+                <Field
+                  label={
+                    pricingCategories.length ? 'Pincode * (for pricing)' : 'Pincode (optional)'
+                  }
+                  value={form.pincode}
+                  onChange={(v) => setField('pincode', v.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  placeholder="e.g. 400601"
+                />
+              </div>
+
+              <div className="mt-3">
+                <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
+                  {pricingCategories.length ? 'Car Model * (for pricing)' : 'Car Model (optional)'}
+                </p>
+                <CrmCarSearch
+                  displayValue={carDisplay}
+                  onSelect={(car) => {
+                    setField('vehicle_make', car.make);
+                    setField('vehicle_model', car.model);
+                    setField('model_id', car.id);
+                    setField('vehicle_class', car.vehicleClass || '');
+                    setCarDisplay([car.make, car.model, car.variant].filter(Boolean).join(' '));
+                  }}
+                  onClear={() => {
+                    setField('vehicle_make', '');
+                    setField('vehicle_model', '');
+                    setField('model_id', '');
+                    setField('vehicle_class', '');
+                    setCarDisplay('');
+                  }}
+                />
+              </div>
+
+              <div className="mt-4">
+                <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">
+                  Pricing to share (optional)
+                </p>
+                <p className="mb-2 text-xs text-gray-500">
+                  Select which pricing to send on WhatsApp after save. Clear all to save without
+                  pricing.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {PRICING_CATEGORIES.map((c) => {
+                    const active = pricingCategories.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => togglePricingCategory(c.id)}
+                        className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold transition ${
+                          active
+                            ? 'border-[#004AAD] bg-[#004AAD]/10 text-[#004AAD]'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-[#004AAD]/40'
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <Field
+                  label="Notes / Customer message (optional)"
+                  value={form.problem_description}
+                  onChange={(v) => setField('problem_description', v)}
+                  placeholder="e.g. Asked for pricing, will decide later"
+                />
+              </div>
+
+              <div className="mt-3 rounded-xl bg-[#004AAD]/10 px-4 py-3 text-sm font-semibold text-[#004AAD]">
+                Saves as incomplete lead. After save you can send the selected pricing on WhatsApp
+                (24h chat window required).
+              </div>
+            </>
+          )}
+
+          {mode === 'book' && step === 0 && (
             <>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Booking type</p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -630,7 +974,7 @@ export default function TelecallerCrmBookPage() {
             </>
           )}
 
-          {step === 1 && (
+          {mode === 'book' && step === 1 && (
             <>
               <Field
                 label="Customer Name *"
@@ -657,7 +1001,7 @@ export default function TelecallerCrmBookPage() {
             </>
           )}
 
-          {step === 2 && (
+          {mode === 'book' && step === 2 && (
             <CrmBookingCatalog
               bookingType={form.booking_type}
               selectedIds={form.service_type_ids}
@@ -705,7 +1049,7 @@ export default function TelecallerCrmBookPage() {
             />
           )}
 
-          {step === 3 && (
+          {mode === 'book' && step === 3 && (
             <CrmPickupVisitStep
               city={form.city}
               cityId={form.city_id}
@@ -742,7 +1086,7 @@ export default function TelecallerCrmBookPage() {
             />
           )}
 
-          {step === 4 && (
+          {mode === 'book' && step === 4 && (
             <>
               {PAYMENT_MODES.map((m) => {
                 const active = form.payment_mode === m.id;
@@ -883,10 +1227,12 @@ export default function TelecallerCrmBookPage() {
 
         {!canNext ? (
           <p className="mt-3 text-xs font-semibold text-amber-600">
-            {step === 0 && 'Select city and car model (type to search).'}
-            {step === 1 && 'Name, 10-digit phone and 6-digit pincode required.'}
-            {step === 2 && 'Select at least one service / plan.'}
-            {step === 3 &&
+            {mode === 'lead' && 'Name and 10-digit phone required.'}
+            {mode === 'book' && step === 0 && 'Select city and car model (type to search).'}
+            {mode === 'book' && step === 1 && 'Name, 10-digit phone and 6-digit pincode required.'}
+            {mode === 'book' && step === 2 && 'Select at least one service / plan.'}
+            {mode === 'book' &&
+              step === 3 &&
               `Vehicle number, date, time${form.pickup_required ? ', address & landmark' : ''} required.`}
           </p>
         ) : null}
@@ -897,19 +1243,21 @@ export default function TelecallerCrmBookPage() {
             onClick={goBack}
             className="flex-1 rounded-xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-800 hover:bg-gray-200"
           >
-            {step === 0 ? 'Cancel' : 'Back'}
+            {mode === 'lead' || step === 0 ? 'Cancel' : 'Back'}
           </button>
           <button
             type="button"
-            disabled={!canNext || saving || quoting}
+            disabled={!canNext || saving || quoting || sendingPricing}
             onClick={next}
             className="flex-[2] rounded-xl bg-[#004AAD] px-4 py-3 text-sm font-bold text-white hover:bg-[#023D95] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {saving || quoting ? (
+            {saving || quoting || sendingPricing ? (
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Please wait…
               </span>
+            ) : mode === 'lead' ? (
+              'Save Lead'
             ) : step === 4 ? (
               'Create Booking'
             ) : (

@@ -32,8 +32,9 @@ function buildUpdateText(input: {
 }
 
 /**
- * Notify customer when telecaller updates booking services/packages.
- * Order: booking_confirmed (usually approved) → booking_updated → plain text.
+ * Notify customer when telecaller updates an already-confirmed booking.
+ * Never uses booking_confirmed — that template is only for first confirmation.
+ * Order: booking_updated template → plain text (24h session).
  */
 export async function notifyBookingUpdatedWhatsApp(input: {
   lead: BookingConfirmedLead;
@@ -69,20 +70,7 @@ export async function notifyBookingUpdatedWhatsApp(input: {
     reason: 'lead_services_updated',
   };
 
-  // 1) Prefer booking_confirmed — already live in most envs
-  const confirmed = await sendAutomationWhatsApp({
-    triggerKey: 'booking_confirmed',
-    phone,
-    customerId: input.customerId || null,
-    templateParams,
-    payload: { ...payload, channel: 'booking_confirmed_for_update' },
-    skipCooldownCheck: true,
-  });
-  if (confirmed.sent) {
-    return { ...confirmed, triggerKey: 'booking_updated' as const };
-  }
-
-  // 2) Dedicated booking_updated template (if configured + approved)
+  // 1) Dedicated booking_updated template (if configured + approved)
   const updated = await sendAutomationWhatsApp({
     triggerKey: 'booking_updated',
     phone,
@@ -93,7 +81,7 @@ export async function notifyBookingUpdatedWhatsApp(input: {
   });
   if (updated.sent) return updated;
 
-  // 3) Plain text — works inside 24h WhatsApp session window
+  // 2) Plain text — works inside 24h WhatsApp session window
   const textResult = await sendTextMessage(
     phone,
     buildUpdateText({
@@ -118,15 +106,10 @@ export async function notifyBookingUpdatedWhatsApp(input: {
   return {
     sent: false,
     skipped: true,
-    skipReason:
-      confirmed.skipReason ||
-      updated.skipReason ||
-      textResult.error ||
-      'send_failed',
+    skipReason: updated.skipReason || textResult.error || 'send_failed',
     triggerKey: 'booking_updated' as const,
     deliveryStatus: 'FAILED' as const,
     details: {
-      booking_confirmed: confirmed.skipReason || confirmed.deliveryStatus,
       booking_updated: updated.skipReason || updated.deliveryStatus,
       text: textResult.error || null,
     },

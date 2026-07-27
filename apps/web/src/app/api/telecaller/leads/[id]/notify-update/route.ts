@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { notifyBookingUpdatedWhatsApp } from '@/lib/services/bookingUpdatedWhatsApp';
 import {
   buildTelecallerCrmQuote,
@@ -37,6 +38,8 @@ async function loadLeadRow(db: any, leadId: string) {
 
 /**
  * Force-send WhatsApp after telecaller changes lead services/packages.
+ * Use send_booking_confirmed=true only for Booking Confirmed status.
+ * Default path never uses booking_confirmed template (update / text only).
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -145,21 +148,33 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       workshopName = String(ws?.name || '').trim();
     }
 
-    const whatsapp = await notifyBookingUpdatedWhatsApp({
-      lead: {
-        ...row,
-        workshop_name: workshopName || null,
-        flat_number: meta.flat_number || null,
-        landmark: meta.landmark || null,
-        address_type: meta.address_type || null,
-        estimated_amount: freshAmount,
-      },
-      customerId: row.customer_id || null,
-      serviceLabel: nextLabel,
-      previousServiceLabel: prevLabel || null,
-      amount: freshAmount,
-      body: { coupon_meta: meta, service_type_ids: serviceIds, quote },
-    });
+    const leadForWa = {
+      ...row,
+      workshop_name: workshopName || null,
+      flat_number: meta.flat_number || null,
+      landmark: meta.landmark || null,
+      address_type: meta.address_type || null,
+      estimated_amount: freshAmount,
+    };
+    const waBody = { coupon_meta: meta, service_type_ids: serviceIds, quote };
+
+    const whatsapp =
+      body?.send_booking_confirmed === true
+        ? await notifyBookingConfirmedWhatsApp({
+            lead: leadForWa,
+            customerId: row.customer_id || null,
+            serviceLabel: nextLabel,
+            amount: freshAmount,
+            body: waBody,
+          })
+        : await notifyBookingUpdatedWhatsApp({
+            lead: leadForWa,
+            customerId: row.customer_id || null,
+            serviceLabel: nextLabel,
+            previousServiceLabel: prevLabel || null,
+            amount: freshAmount,
+            body: waBody,
+          });
 
     return NextResponse.json({
       success: Boolean(whatsapp?.sent),
