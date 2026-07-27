@@ -29,6 +29,7 @@ import {
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
+import { upsertBookingServiceLead } from '@/lib/service-lead-reopen';
 
 function generateLeadNumber() {
   return `L-${Date.now().toString().slice(-8)}`;
@@ -289,14 +290,34 @@ export async function createAuthenticatedServiceBooking(
       : lead.description || null,
   };
 
-  const { data: serviceLead, error: leadError } = await supabaseAdmin
-    .from('service_leads')
-    .insert(leadInsert)
-    .select('id, lead_number')
-    .single();
-
-  if (leadError || !serviceLead) {
-    return NextResponse.json({ error: leadError?.message || 'Booking failed' }, { status: 500 });
+  let serviceLead: { id: string; lead_number: string };
+  try {
+    const serviceLabel = resolveBookingServiceLabel(body);
+    const upserted = await upsertBookingServiceLead(supabaseAdmin, {
+      phone: normalizedPhone,
+      leadPayload: leadInsert,
+      bookingSummary: [
+        serviceLabel,
+        leadInsert.vehicle_number && String(leadInsert.vehicle_number).toUpperCase() !== 'NA'
+          ? String(leadInsert.vehicle_number)
+          : null,
+        finalAmount ? `₹${Math.round(Number(finalAmount))}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    });
+    serviceLead = upserted.lead;
+    if (!upserted.created) {
+      console.info(
+        '[service-booking-create] reopened lead',
+        serviceLead.lead_number,
+        'was',
+        upserted.previousStatus,
+        upserted.previousLabel,
+      );
+    }
+  } catch (leadErr: any) {
+    return NextResponse.json({ error: leadErr?.message || 'Booking failed' }, { status: 500 });
   }
 
   if (referralClaimId && referralClaimMeta) {
@@ -388,6 +409,43 @@ export async function createAuthenticatedServiceBooking(
     ...resolvedUtm,
   };
 
+  // WhatsApp first — never block confirmation on TeleCRM latency/timeouts.
+  try {
+    const whatsappResult = await notifyBookingConfirmedWhatsApp({
+      lead: {
+        id: serviceLead.id,
+        lead_number: serviceLead.lead_number,
+        customer_name: leadInsert.customer_name,
+        customer_phone: normalizedPhone,
+        vehicle_number: leadInsert.vehicle_number,
+        vehicle_make: leadInsert.vehicle_make,
+        vehicle_model: leadInsert.vehicle_model,
+        vehicle_variant: leadInsert.vehicle_variant,
+        service_type: leadInsert.service_type,
+        preferred_slot_start: leadInsert.preferred_slot_start,
+        preferred_date: leadInsert.preferred_date,
+        preferred_time_slot: leadInsert.preferred_time_slot,
+        pickup_required: leadInsert.pickup_required,
+        pickup_address: leadInsert.pickup_address,
+        customer_address: leadInsert.customer_address,
+        city: leadInsert.city,
+        pincode: leadInsert.pincode,
+        workshop_name: leadInsert.workshop_name,
+        estimated_amount: leadInsert.estimated_amount ?? finalAmount,
+        flat_number: leadInsert.flat_number,
+        landmark: leadInsert.landmark,
+      },
+      customerId: customer.id,
+      body,
+      amount: finalAmount,
+    });
+    if (whatsappResult.skipped || !whatsappResult.sent) {
+      console.log('[service-booking-create] booking confirmed WhatsApp skipped:', whatsappResult.skipReason || whatsappResult.error);
+    }
+  } catch (whatsappErr: any) {
+    console.error('[service-booking-create] booking confirmed WhatsApp failed:', whatsappErr?.message || whatsappErr);
+  }
+
   try {
     await pushServiceLeadToTeleCRM(telecrmLead, supabaseAdmin, {
       leadTag: 'APP',
@@ -411,32 +469,6 @@ export async function createAuthenticatedServiceBooking(
     } catch (fallbackErr: any) {
       console.error('[service-booking-create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
     }
-  }
-
-  try {
-    const whatsappResult = await notifyBookingConfirmedWhatsApp({
-      lead: {
-        id: serviceLead.id,
-        lead_number: serviceLead.lead_number,
-        customer_name: leadInsert.customer_name,
-        customer_phone: normalizedPhone,
-        vehicle_number: leadInsert.vehicle_number,
-        vehicle_make: leadInsert.vehicle_make,
-        vehicle_model: leadInsert.vehicle_model,
-        vehicle_variant: leadInsert.vehicle_variant,
-        service_type: leadInsert.service_type,
-        preferred_slot_start: leadInsert.preferred_slot_start,
-        preferred_date: leadInsert.preferred_date,
-        preferred_time_slot: leadInsert.preferred_time_slot,
-      },
-      customerId: customer.id,
-      body,
-    });
-    if (whatsappResult.skipped || !whatsappResult.sent) {
-      console.log('[service-booking-create] booking confirmed WhatsApp skipped:', whatsappResult.skipReason || whatsappResult.error);
-    }
-  } catch (whatsappErr: any) {
-    console.error('[service-booking-create] booking confirmed WhatsApp failed:', whatsappErr?.message || whatsappErr);
   }
 
   return NextResponse.json({

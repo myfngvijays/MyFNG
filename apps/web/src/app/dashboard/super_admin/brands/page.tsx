@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Search, Loader2, Upload, X, Check, Car } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 interface CarBrand {
@@ -216,14 +217,17 @@ export default function CarBrandsPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Car Brands Management</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">Manage car brand logos and information</p>
         </div>
-        <button
-          onClick={handleAddNew}
-          className="flex items-center gap-1.5 sm:gap-2 bg-brand-primary hover:bg-brand-primary-hover text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors w-full sm:w-auto justify-center"
-        >
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <AdminPageRefresh onClick={() => void fetchBrands()} loading={loading} />
+          <button
+            onClick={handleAddNew}
+            className="flex items-center gap-1.5 sm:gap-2 bg-brand-primary hover:bg-brand-primary-hover text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors w-full sm:w-auto justify-center"
+          >
           <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
           <span className="hidden sm:inline">Add Brand</span>
           <span className="sm:hidden">Add</span>
         </button>
+        </div>
       </div>
 
       {/* Search */}

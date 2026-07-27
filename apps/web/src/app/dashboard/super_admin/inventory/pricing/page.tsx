@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Save, Search, Store, Loader2, Car, MapPin, Copy, Download, Upload, X } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function WorkshopPricingPage() {
@@ -571,6 +572,15 @@ export default function WorkshopPricingPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    await Promise.all([fetchWorkshops(), fetchZones(), fetchCarClasses()]);
+    if (selectedWorkshop && selectedWorkshop !== 'ALL') {
+      await fetchPricingData(selectedWorkshop, selectedClass, selectedZone);
+    } else if (selectedWorkshop === 'ALL' && selectedZone) {
+      await fetchProductsForBulkMode();
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -579,6 +589,7 @@ export default function WorkshopPricingPage() {
           <p className="text-gray-500">Override prices by Zone, Workshop & Car Class</p>
         </div>
         <div className="flex gap-2">
+          <AdminPageRefresh onClick={() => void handleRefresh()} loading={loading} />
           {isBulkMode && (
             <button 
               onClick={handleBulkSave}

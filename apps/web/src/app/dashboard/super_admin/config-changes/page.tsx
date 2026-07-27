@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { SystemConfigChange } from '@/shared/types/audit';
 import { Loader2, Settings, Filter, ChevronLeft, ChevronRight, Eye, History } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { formatDateTime } from "@/lib/utils";
@@ -104,9 +105,12 @@ export default function ConfigChangesPage() {
               <p className="text-white/90 text-xs sm:text-sm md:text-base mt-0.5 sm:mt-1">Track all system configuration modifications</p>
             </div>
           </div>
-          <div className="text-left sm:text-right flex-shrink-0">
-            <p className="text-xl sm:text-2xl font-bold">{total.toLocaleString()}</p>
-            <p className="text-xs sm:text-sm text-white/80">Total Changes</p>
+          <div className="text-left sm:text-right flex-shrink-0 flex items-center gap-3">
+            <AdminPageRefresh onClick={() => void fetchConfigChanges()} loading={loading} />
+            <div>
+              <p className="text-xl sm:text-2xl font-bold">{total.toLocaleString()}</p>
+              <p className="text-xs sm:text-sm text-white/80">Total Changes</p>
+            </div>
           </div>
         </div>
       </div>

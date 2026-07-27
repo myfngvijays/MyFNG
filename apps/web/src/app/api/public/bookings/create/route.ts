@@ -20,6 +20,7 @@ import { buildPostBookingMembershipOffer } from '@/lib/post-booking-membership-o
 import { notifyBookingConfirmedWhatsApp } from '@/lib/services/bookingConfirmedWhatsApp';
 import { extractUtmFromUnknown, mergeUtmParams, parseUtmFromRequest } from '@/lib/utm';
 import { mergeLeadMetaWithUtm } from '@/lib/telecrm/utmFields';
+import { upsertBookingServiceLead } from '@/lib/service-lead-reopen';
 
 type BookingPayload = {
   lead?: Record<string, any>;
@@ -298,14 +299,43 @@ export async function POST(request: NextRequest) {
       created_at: lead?.created_at || nowIso,
     };
 
-    const { data: serviceLead, error: leadError } = await supabaseAdmin
-      .from('service_leads')
-      .insert([serviceLeadPayload])
-      .select()
-      .single();
-
-    if (leadError) {
-      return NextResponse.json({ error: leadError.message }, { status: 500 });
+    let serviceLead: any;
+    try {
+      const serviceLabel = resolveBookingServiceLabel(body);
+      const upserted = await upsertBookingServiceLead(supabaseAdmin, {
+        phone: customerPhone,
+        leadPayload: serviceLeadPayload,
+        bookingSummary: [
+          serviceLabel,
+          vehicleNumber && vehicleNumber !== 'NA' ? vehicleNumber : null,
+          finalAmount ? `₹${Math.round(Number(finalAmount))}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+      // Reload full row for TeleCRM / WhatsApp (upsert returns id + lead_number)
+      const { data: fullLead, error: reloadErr } = await supabaseAdmin
+        .from('service_leads')
+        .select('*')
+        .eq('id', upserted.lead.id)
+        .single();
+      if (reloadErr || !fullLead) {
+        return NextResponse.json(
+          { error: reloadErr?.message || 'Booking saved but reload failed' },
+          { status: 500 },
+        );
+      }
+      serviceLead = fullLead;
+      if (!upserted.created) {
+        console.info(
+          '[bookings/create] reopened lead',
+          upserted.lead.lead_number,
+          'was',
+          upserted.previousStatus,
+        );
+      }
+    } catch (leadErr: any) {
+      return NextResponse.json({ error: leadErr?.message || 'Booking failed' }, { status: 500 });
     }
 
     if (walletDeduction > 0 && registeredCustomer?.id && serviceLead?.id) {
@@ -358,6 +388,21 @@ export async function POST(request: NextRequest) {
       ...resolvedUtm,
     };
 
+    // WhatsApp first — confirmation must not wait on TeleCRM.
+    try {
+      const whatsappResult = await notifyBookingConfirmedWhatsApp({
+        lead: serviceLead as Record<string, any>,
+        customerId: registeredCustomer?.id || null,
+        body,
+        amount: finalAmount,
+      });
+      if (whatsappResult.skipped || !whatsappResult.sent) {
+        console.log('[bookings/create] booking confirmed WhatsApp skipped:', whatsappResult.skipReason || whatsappResult.error);
+      }
+    } catch (whatsappErr: any) {
+      console.error('[bookings/create] booking confirmed WhatsApp failed:', whatsappErr?.message || whatsappErr);
+    }
+
     try {
       await pushServiceLeadToTeleCRM(telecrmLead, supabaseAdmin, {
         leadTag: isMobileClient ? 'APP' : 'WEBSITE',
@@ -381,19 +426,6 @@ export async function POST(request: NextRequest) {
       } catch (fallbackErr: any) {
         console.error('[bookings/create] TeleCRM fallback insert failed:', fallbackErr?.message || fallbackErr);
       }
-    }
-
-    try {
-      const whatsappResult = await notifyBookingConfirmedWhatsApp({
-        lead: serviceLead as Record<string, any>,
-        customerId: registeredCustomer?.id || null,
-        body,
-      });
-      if (whatsappResult.skipped || !whatsappResult.sent) {
-        console.log('[bookings/create] booking confirmed WhatsApp skipped:', whatsappResult.skipReason || whatsappResult.error);
-      }
-    } catch (whatsappErr: any) {
-      console.error('[bookings/create] booking confirmed WhatsApp failed:', whatsappErr?.message || whatsappErr);
     }
 
     return NextResponse.json(

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Loader2, MessageSquare, Plus, Search, SendHorizonal } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 
 type AdminChatRole = 'user' | 'assistant';
 type AdminChatMessage = {
@@ -257,6 +258,10 @@ export default function SuperAdminAIChatPage() {
           <p className="text-sm text-gray-600 mt-1">Independent assistant for Super Admin operations.</p>
         </div>
         <div className="flex items-center gap-2">
+          <AdminPageRefresh
+            onClick={() => void loadConversations(search)}
+            loading={loadingConversations}
+          />
           <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}

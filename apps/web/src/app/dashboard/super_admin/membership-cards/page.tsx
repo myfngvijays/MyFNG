@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Crown, Plus, Save, Trash2, X } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import MembershipCardFields from '@/components/admin/MembershipCardFields';
 import MembershipCardPreview from '@/components/admin/MembershipCardPreview';
 import {
@@ -240,9 +241,12 @@ export default function MembershipCardsPage() {
             </p>
           </div>
         </div>
-        <button type="button" onClick={openAdd} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-700">
-          <Plus className="h-4 w-4" /> Add Card
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminPageRefresh onClick={() => void fetchRows()} loading={loading} />
+          <button type="button" onClick={openAdd} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-700">
+            <Plus className="h-4 w-4" /> Add Card
+          </button>
+        </div>
       </div>
 
       {fetchError ? (

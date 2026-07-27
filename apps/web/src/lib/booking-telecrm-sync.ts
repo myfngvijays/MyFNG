@@ -9,19 +9,34 @@ const EXTERNAL_AUTOUPDATE_URL =
 const EXTERNAL_AUTOUPDATE_BEARER =
   '398fc0c7-ee90-4992-b214-4063f9f7ad031727771960659:e9580bb4-cb6f-47ff-81fb-847e5a98a5a2';
 
+const TELECRM_TIMEOUT_MS = 8_000;
+
 async function postTelecrmPayload(fields: Record<string, string | number | boolean>) {
   const summary = buildTelecrmFieldSummaryNote(fields);
-  const res = await fetch(EXTERNAL_AUTOUPDATE_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${EXTERNAL_AUTOUPDATE_BEARER}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      fields,
-      actions: summary ? [{ type: 'SYSTEM_NOTE', text: summary }] : [],
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELECRM_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(EXTERNAL_AUTOUPDATE_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${EXTERNAL_AUTOUPDATE_BEARER}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields,
+        actions: summary ? [{ type: 'SYSTEM_NOTE', text: summary }] : [],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`TeleCRM push timed out after ${TELECRM_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const responseBody = await res.text().catch(() => '');
 
   if (!res.ok) {
@@ -33,10 +48,33 @@ async function postTelecrmPayload(fields: Record<string, string | number | boole
   }
 }
 
+async function resolveServiceTypeLabel(
+  supabaseAdmin: any,
+  leadRow: Record<string, any>,
+): Promise<string | null> {
+  const raw = String(leadRow.service_type || '').trim();
+  if (raw && raw !== 'CAR_SERVICE' && raw !== 'HOME_CAR_SERVICE' && raw !== 'RSA') {
+    return raw;
+  }
+  const ids = Array.isArray(leadRow.service_type_ids)
+    ? leadRow.service_type_ids.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+    : [];
+  if (!ids.length || !supabaseAdmin) return raw || null;
+
+  try {
+    const { data } = await supabaseAdmin.from('service_types').select('name').in('id', ids);
+    const names = (data || []).map((row: { name?: string }) => String(row.name || '').trim()).filter(Boolean);
+    if (names.length) return names.join(', ');
+  } catch (err) {
+    console.warn('[booking-telecrm-sync] service type resolve failed:', err);
+  }
+  return raw || null;
+}
+
 export async function pushServiceLeadToTeleCRM(
   leadRow: Record<string, any>,
-  _supabaseAdmin: any,
-  _options?: {
+  supabaseAdmin: any,
+  options?: {
     leadTag?: string;
     leadSource?: string;
     createdFrom?: string;
@@ -46,7 +84,14 @@ export async function pushServiceLeadToTeleCRM(
   const phoneDigits = String(leadRow.customer_phone || '').replace(/\D/g, '').slice(-10);
   if (!phoneDigits) return;
 
-  const fields = buildMinimalBookingTelecrmFields(leadRow, phoneDigits);
+  const serviceLabel = await resolveServiceTypeLabel(supabaseAdmin, leadRow);
+  const enrichedLead = serviceLabel ? { ...leadRow, service_type: serviceLabel } : leadRow;
+
+  const fields = buildMinimalBookingTelecrmFields(enrichedLead, phoneDigits, {
+    leadTag: options?.leadTag,
+    leadSource: options?.leadSource,
+    createdFrom: options?.createdFrom,
+  });
   const utmKeys = ['UTM Source', 'UTM Medium', 'UTM Campaign', 'UTM Term', 'UTM Content'];
   const hasUtm = utmKeys.some((key) => Boolean(fields[key]));
 

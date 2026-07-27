@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import { pickTelecallerForLead } from '@/lib/enquiry/assignment';
+import { channelFromWhatsAppLabels } from '@/lib/enquiry/leadChannels';
 import { findCustomerByPhone } from '@/lib/customer-service-leads';
 
 export type WhatsAppReferral = {
@@ -279,10 +280,11 @@ export async function ensureWhatsAppInboundServiceLead(
     return { created: false, leadId: null, skipped: 'no_admin' };
   }
 
-  const labels = resolveLeadLabels(input.referral);
+  let labels = resolveLeadLabels(input.referral);
   const nowIso = input.inboundReceivedAt || new Date().toISOString();
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const known = await lookupKnownCustomerFill(supabaseAdmin, phone10);
+  const firstMsgForRoute = String(input.messageText || '').trim();
 
   // Reuse open lead for same phone (10-digit or with 91 prefix)
   let existingRows: any[] | null = null;
@@ -363,11 +365,37 @@ export async function ensureWhatsAppInboundServiceLead(
       : null;
     if (!assignedTo) {
       try {
-        const { telecallerId } = await pickTelecallerWeightedRoundRobin();
-        if (telecallerId) {
-          patch.assigned_telecaller_id = telecallerId;
+        const channel = channelFromWhatsAppLabels(labels.created_from, labels.lead_source);
+        const picked = await pickTelecallerForLead({
+          channel,
+          messageText: firstMsgForRoute,
+        });
+        if (picked.trigger?.mark_as_meta) {
+          labels = {
+            created_from: 'WHATSAPP_META',
+            lead_source: picked.trigger.label
+              ? `Meta Ads · ${picked.trigger.label}`
+              : 'Meta Ads',
+          };
+          patch.lead_source = labels.lead_source;
+          patch.created_from = labels.created_from;
+        }
+        if (picked.telecallerId) {
+          patch.assigned_telecaller_id = picked.telecallerId;
           patch.assigned_at = nowIso;
-          assignedTo = telecallerId;
+          assignedTo = picked.telecallerId;
+          const prev =
+            existing.coupon_meta && typeof existing.coupon_meta === 'object'
+              ? (existing.coupon_meta as Record<string, unknown>)
+              : {};
+          patch.coupon_meta = {
+            ...(typeof patch.coupon_meta === 'object' && patch.coupon_meta
+              ? (patch.coupon_meta as Record<string, unknown>)
+              : prev),
+            message_trigger_id: picked.trigger?.id || null,
+            message_trigger_label: picked.trigger?.label || null,
+            assignment_mode: picked.assignment_mode || null,
+          };
         }
       } catch (e) {
         console.warn('[whatsapp-inbound-lead] assign on enrich failed', e);
@@ -393,9 +421,27 @@ export async function ensureWhatsAppInboundServiceLead(
   }
 
   let assignedTelecallerId: string | null = null;
+  let assignmentMode: string | null = null;
+  let triggerId: string | null = null;
+  let triggerLabel: string | null = null;
   try {
-    const picked = await pickTelecallerWeightedRoundRobin();
+    const channel = channelFromWhatsAppLabels(labels.created_from, labels.lead_source);
+    const picked = await pickTelecallerForLead({
+      channel,
+      messageText: firstMsgForRoute,
+    });
     assignedTelecallerId = picked.telecallerId || null;
+    assignmentMode = picked.assignment_mode || null;
+    if (picked.trigger) {
+      triggerId = picked.trigger.id;
+      triggerLabel = picked.trigger.label || picked.trigger.phrase;
+      if (picked.trigger.mark_as_meta) {
+        labels = {
+          created_from: 'WHATSAPP_META',
+          lead_source: triggerLabel ? `Meta Ads · ${triggerLabel}` : 'Meta Ads',
+        };
+      }
+    }
   } catch (e) {
     console.warn('[whatsapp-inbound-lead] assignment failed', e);
   }
@@ -404,15 +450,33 @@ export async function ensureWhatsAppInboundServiceLead(
     known.customer_name ||
     String(input.profileName || '').trim() ||
     `WhatsApp ${phone10.slice(-4)}`;
-  const firstMsg = String(input.messageText || '').trim().slice(0, 500);
+  const firstMsg = firstMsgForRoute.slice(0, 500);
   const headline = String(input.referral?.headline || '').trim();
   const leadNumber = `L-${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`;
 
   const descriptionParts = [
-    input.referral ? `Meta ${labels.lead_source}` : 'WhatsApp inbound',
+    labels.created_from === 'WHATSAPP_META' || input.referral
+      ? `Meta ${labels.lead_source}`
+      : 'WhatsApp inbound',
     headline ? `Ad: ${headline}` : null,
+    triggerLabel ? `Trigger: ${triggerLabel}` : null,
     firstMsg ? `Msg: ${firstMsg}` : null,
   ].filter(Boolean);
+
+  const couponMeta = buildCouponMeta({
+    referral: input.referral,
+    messageText: firstMsg,
+    profileName: input.profileName,
+    providerMessageId: input.providerMessageId,
+    nowIso,
+    isFirst: true,
+    known,
+  }) as Record<string, unknown>;
+  if (triggerId) {
+    couponMeta.message_trigger_id = triggerId;
+    couponMeta.message_trigger_label = triggerLabel;
+    couponMeta.assignment_mode = assignmentMode;
+  }
 
   const basePayload: Record<string, unknown> = {
     lead_number: leadNumber,
@@ -435,18 +499,10 @@ export async function ensureWhatsAppInboundServiceLead(
     description: descriptionParts.join(' · '),
     problem_description: firstMsg || headline || null,
     is_incomplete: true,
-    lead_priority: input.referral ? 'HIGH' : 'NORMAL',
+    lead_priority: input.referral || triggerId ? 'HIGH' : 'NORMAL',
     assigned_telecaller_id: assignedTelecallerId,
     assigned_at: assignedTelecallerId ? nowIso : null,
-    coupon_meta: buildCouponMeta({
-      referral: input.referral,
-      messageText: firstMsg,
-      profileName: input.profileName,
-      providerMessageId: input.providerMessageId,
-      nowIso,
-      isFirst: true,
-      known,
-    }),
+    coupon_meta: couponMeta,
     created_at: nowIso,
     updated_at: nowIso,
   };

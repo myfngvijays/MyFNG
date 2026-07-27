@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Save, Search, Store, Loader2, Car, MapPin, Copy, Building2, Download, Upload, X } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function ServiceTypePricingPage() {
@@ -752,6 +753,18 @@ export default function ServiceTypePricingPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    await Promise.all([fetchWorkshops(), fetchZones(), fetchCarClasses()]);
+    if (selectedZone) {
+      await fetchCitiesByZone(selectedZone);
+    }
+    if (selectedWorkshop && selectedWorkshop !== 'ALL') {
+      await fetchPricingData(selectedWorkshop, selectedClass, selectedZone, selectedCity);
+    } else if (selectedWorkshop === 'ALL' && selectedZone) {
+      await fetchServiceTypesForBulkMode();
+    }
+  };
+
   return (
     <div className="p-3 sm:p-4 md:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-5 md:mb-6">
@@ -760,6 +773,7 @@ export default function ServiceTypePricingPage() {
           <p className="text-gray-500 text-xs sm:text-sm mt-0.5 sm:mt-1">Override service prices by Zone, City, Workshop & Car Class</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <AdminPageRefresh onClick={() => void handleRefresh()} loading={loading} />
           {isBulkMode && (
             <button 
               onClick={handleBulkSave}

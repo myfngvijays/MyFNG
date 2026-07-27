@@ -27,6 +27,8 @@ import {
   Car,
   UserCheck,
   Ticket,
+  Wallet,
+  ClipboardList,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLivePreview';
@@ -148,6 +150,8 @@ export default function AdvancedComposeSection() {
   const [targetCustomerType, setTargetCustomerType] = useState<'all' | 'new' | 'returning'>('all');
   const [targetCouponUsers, setTargetCouponUsers] = useState<'all' | 'used' | 'never' | 'assigned'>('all');
   const [targetCouponCodes, setTargetCouponCodes] = useState<string[]>([]);
+  const [targetWallet, setTargetWallet] = useState<'all' | 'has_balance' | 'no_balance'>('all');
+  const [targetBooking, setTargetBooking] = useState<'all' | 'booked' | 'completed' | 'never'>('all');
   const [availableCoupons, setAvailableCoupons] = useState<{ id: string; code: string }[]>([]);
   const [targetPhoneList, setTargetPhoneList] = useState('');
   const [availableCities, setAvailableCities] = useState<string[]>([]);
@@ -191,18 +195,37 @@ export default function AdvancedComposeSection() {
       setEstimatedReach(count);
       return;
     }
-    if (targetCities.length === 0 && targetMembership === 'all') { setEstimatedReach(null); return; }
+    if (
+      targetCities.length === 0 &&
+      targetMembership === 'all' &&
+      targetWallet === 'all' &&
+      targetBooking === 'all'
+    ) {
+      setEstimatedReach(null);
+      return;
+    }
     setEstimating(true);
     const q = new URLSearchParams();
     if (targetCities.length > 0) q.set('cities', targetCities.join(','));
     if (targetMembership !== 'all') q.set('membership', targetMembership);
-    if (targetMembership === 'members' && targetMembershipPlans.length > 0) q.set('plans', targetMembershipPlans.join(','));
+    if (targetMembership === 'members' && targetMembershipPlans.length > 0) {
+      q.set('plans', targetMembershipPlans.join(','));
+    }
+    if (targetWallet !== 'all') q.set('wallet', targetWallet);
+    if (targetBooking !== 'all') q.set('booking', targetBooking);
     fetch(`/api/super_admin/notifications/estimate-reach?${q}`)
       .then((r) => r.json())
       .then((d) => setEstimatedReach(d.count ?? null))
       .catch(() => setEstimatedReach(null))
       .finally(() => setEstimating(false));
-  }, [targetCities, targetMembership, targetMembershipPlans, targetPhoneList]);
+  }, [
+    targetCities,
+    targetMembership,
+    targetMembershipPlans,
+    targetPhoneList,
+    targetWallet,
+    targetBooking,
+  ]);
 
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (val: string) =>
     setter((prev) => prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]);
@@ -329,6 +352,8 @@ export default function AdvancedComposeSection() {
           target_customer_type: targetCustomerType !== 'all' ? targetCustomerType : undefined,
           target_coupon_users: targetCouponUsers !== 'all' ? targetCouponUsers : undefined,
           target_coupon_codes: (targetCouponUsers === 'used' || targetCouponUsers === 'assigned') && targetCouponCodes.length > 0 ? targetCouponCodes : undefined,
+          target_wallet: targetWallet !== 'all' ? targetWallet : undefined,
+          target_booking: targetBooking !== 'all' ? targetBooking : undefined,
           target_phone_list: phoneList?.length ? phoneList : undefined,
         }),
       });
@@ -470,7 +495,10 @@ export default function AdvancedComposeSection() {
           </div>
 
           {/* ── Advanced Targeting ── */}
-          <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+          <div
+            data-targeting-version="wallet-booking-v1"
+            className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3"
+          >
             <div className="flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-blue-600" />
               <p className="text-sm font-bold text-gray-800">Audience Targeting</p>
@@ -506,6 +534,67 @@ export default function AdvancedComposeSection() {
                   })}
                 </div>
               ) : null}
+            </div>
+
+            {/* Wallet + Service booking — shown before phone list */}
+            <div className="grid md:grid-cols-2 gap-4 rounded-lg border border-emerald-200 bg-white/80 p-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-600 flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Wallet Balance
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      ['all', 'All'],
+                      ['has_balance', 'Has wallet money'],
+                      ['no_balance', 'Empty / no wallet'],
+                    ] as const
+                  ).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setTargetWallet(val)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
+                        targetWallet === val
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-600 hover:border-emerald-400'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400">Has wallet money = balance &gt; Rs 0</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-600 flex items-center gap-1.5">
+                  <ClipboardList className="w-3.5 h-3.5 text-indigo-600" /> Service Booking
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      ['all', 'All'],
+                      ['booked', 'Booked service'],
+                      ['completed', 'Service completed'],
+                      ['never', 'Never booked'],
+                    ] as const
+                  ).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setTargetBooking(val)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
+                        targetBooking === val
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-600 hover:border-indigo-400'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400">Booked / completed / never booked customers</p>
+              </div>
             </div>
 
             {/* Customer Type + Coupon Users side by side */}

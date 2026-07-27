@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useCallback } from 'react';
+import { Suspense, useCallback, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { BarChart3, Layers, Settings2, Code2, List, Activity } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import './analytics-admin-theme.css';
 import OverviewSection from './sections/OverviewSection';
 import PlatformsSection from './sections/PlatformsSection';
@@ -31,6 +32,7 @@ function ProductAnalyticsAppInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const section = sectionFromParam(searchParams.get('section'));
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const setSection = useCallback(
     (next: SectionId) => {
@@ -43,12 +45,15 @@ function ProductAnalyticsAppInner() {
     <div className="analytics-admin-shell min-h-screen">
       <div className="border-b border-violet-100 bg-white/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-violet-600">App + Website</p>
-            <h1 className="text-2xl font-black text-gray-900 mt-0.5">Analytics</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Firebase Analytics, Microsoft Clarity &amp; GA4 — Android, iOS aur website ek jagah se manage karein.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-violet-600">App + Website</p>
+              <h1 className="text-2xl font-black text-gray-900 mt-0.5">Analytics</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Firebase Analytics, Microsoft Clarity &amp; GA4 — Android, iOS aur website ek jagah se manage karein.
+              </p>
+            </div>
+            <AdminPageRefresh onClick={() => setRefreshKey((key) => key + 1)} />
           </div>
           <div className="flex flex-wrap gap-2 mt-4">
             {NAV.map((item) => {
@@ -74,7 +79,7 @@ function ProductAnalyticsAppInner() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6" key={refreshKey}>
         {section === 'overview' ? <OverviewSection /> : null}
         {section === 'platforms' ? <PlatformsSection /> : null}
         {section === 'events' ? <EventsCatalogSection /> : null}

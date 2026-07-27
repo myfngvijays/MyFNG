@@ -8,11 +8,11 @@ import {
   TextInput,
   ActivityIndicator,
   StyleSheet,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../lib/api';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import TelecallerWhatsAppChat from './TelecallerWhatsAppChat';
 
 type ChatRow = {
   phone: string;
@@ -49,11 +49,26 @@ function formatTime(value?: string | null): string {
   });
 }
 
+function previewText(raw?: string | null): string {
+  const text = String(raw || '').trim();
+  if (!text) return '—';
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') {
+      return String(parsed.text || parsed.payload || text);
+    }
+  } catch {
+    /* plain */
+  }
+  return text;
+}
+
 export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [mode, setMode] = useState<'assigned' | 'unassigned'>('assigned');
+  const [activePhone, setActivePhone] = useState<string | null>(null);
 
   const fetchChats = useCallback(async () => {
     setLoading(true);
@@ -82,24 +97,32 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
     return () => clearTimeout(t);
   }, [visible, fetchChats]);
 
+  useEffect(() => {
+    if (!visible) setActivePhone(null);
+  }, [visible]);
+
   const unreadCount = useMemo(
     () => rows.filter((r) => String(r.last_direction || '').toUpperCase() === 'INBOUND').length,
     [rows]
   );
 
-  const openChat = (phone: string) => {
-    const digits = String(phone || '').replace(/\D/g, '');
-    const normalized = digits.length === 10 ? `91${digits}` : digits;
-    Linking.openURL(`whatsapp://send?phone=${normalized}`).catch(() => {
-      Linking.openURL(`https://wa.me/${normalized}`);
-    });
+  const handleClose = () => {
+    setActivePhone(null);
+    onClose();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={activePhone ? () => setActivePhone(null) : handleClose}
+    >
+      {activePhone ? (
+        <TelecallerWhatsAppChat phone={activePhone} onBack={() => setActivePhone(null)} />
+      ) : (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+          <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
             <Ionicons name="close" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -155,7 +178,11 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
             renderItem={({ item }) => {
               const inbound = String(item.last_direction || '').toUpperCase() === 'INBOUND';
               return (
-                <TouchableOpacity style={styles.card} onPress={() => openChat(item.phone)} activeOpacity={0.8}>
+                <TouchableOpacity
+                  style={styles.card}
+                  onPress={() => setActivePhone(item.phone)}
+                  activeOpacity={0.8}
+                >
                   <View style={[styles.avatar, inbound && styles.avatarUnread]}>
                     <Ionicons name="logo-whatsapp" size={18} color={COLORS.white} />
                   </View>
@@ -165,7 +192,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                       <Text style={styles.time}>{formatTime(item.last_message_at)}</Text>
                     </View>
                     <Text style={styles.preview} numberOfLines={2}>
-                      {item.last_message_preview || '—'}
+                      {previewText(item.last_message_preview)}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -174,6 +201,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
           />
         )}
       </View>
+      )}
     </Modal>
   );
 }

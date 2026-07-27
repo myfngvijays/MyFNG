@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, Package, Search, Filter, Loader2, Edit2, X } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function ProductMasterPage() {
@@ -137,13 +138,16 @@ export default function ProductMasterPage() {
           <h1 className="text-2xl font-bold text-gray-900">Product Master</h1>
           <p className="text-gray-500">Manage global catalog of Parts, Labours & Consumables</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
+        <div className="flex gap-2">
+          <AdminPageRefresh onClick={() => void fetchProducts()} loading={loading} />
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
           <Plus className="w-4 h-4" />
           Add New Product
         </button>
+        </div>
       </div>
 
       {/* Filters */}

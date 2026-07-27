@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { Users, Search, UserPlus, UserX, UserCheck, Filter, X, ArrowUpDown } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { formatDateDMY } from '@/lib/utils';
 
 const ROLE_STYLES: Record<string, { badge: string; avatar: string }> = {
@@ -421,10 +422,12 @@ export default function UserManagementPage() {
                 Create users, assign roles, and manage access
               </p>
             </div>
-            <button 
-              onClick={() => setShowAddModal(true)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
-            >
+            <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
+              <AdminPageRefresh onClick={() => void fetchUsers()} loading={loading} />
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
+              >
               <UserPlus className="w-4 h-4 flex-shrink-0" />
               <span className="hidden sm:inline">Create User</span>
               <span className="sm:hidden">Create</span>

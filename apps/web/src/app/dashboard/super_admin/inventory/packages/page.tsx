@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Package, Search, ChevronRight, Loader2, ListChecks, FolderPlus, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -227,7 +228,8 @@ export default function PackageListPage() {
           <p className="text-gray-500">Manage services and their included products (parts/consumables)</p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
+          <AdminPageRefresh onClick={() => void fetchPackages()} loading={loading} />
+          <button
             onClick={() => setShowCategoryModal(true)}
             className="flex items-center gap-2 px-4 py-2 border border-brand-primary text-brand-primary rounded-lg hover:bg-brand-primary/5 font-medium transition-colors"
           >

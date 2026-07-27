@@ -122,6 +122,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
     const phoneDigits = String(bookingData.phone_number || '').replace(/\D/g, '').slice(-10);
     if (!phoneDigits) return null;
 
+    const { upsertBookingServiceLead } = await import('@/lib/service-lead-reopen');
     const leadNumber = `L-${Date.now().toString().slice(-8)}`;
     const nowIso = new Date().toISOString();
     const leadSource = getMisaLeadSource(channel);
@@ -137,7 +138,7 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       lead_type: 'NORMAL',
       lead_source: leadSource,
       created_from: getMisaCreatedFrom(channel),
-      status: 'NEW',
+      status: 'VALIDATED',
       customer_name: bookingData.customer_name || null,
       customer_phone: phoneDigits,
       vehicle_number: bookingData.vehicle_number || 'NA',
@@ -169,19 +170,25 @@ async function createServiceLead(bookingData: BookingData, channel: MisaBookingC
       payload.meta = meta;
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('service_leads')
-      .insert([payload])
-      .select('id')
-      .single();
+    const upserted = await upsertBookingServiceLead(supabaseAdmin, {
+      phone: phoneDigits,
+      leadPayload: payload,
+      bookingSummary: [
+        bookingData.service_name || bookingData.service_category || 'WhatsApp booking',
+        bookingData.car_model,
+        quotedPrice ? `₹${Math.round(quotedPrice)}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    });
 
-    if (error) {
-      console.error('[BOOKING] service_leads insert failed:', error);
-      return null;
-    }
-
-    console.log('[BOOKING] service_leads entry created:', data?.id);
-    return data?.id || null;
+    console.log(
+      '[BOOKING] service_leads',
+      upserted.created ? 'created' : 'reopened',
+      upserted.lead.id,
+      upserted.previousStatus,
+    );
+    return upserted.lead.id;
   } catch (err) {
     console.error('[BOOKING] service_leads creation error:', err);
     return null;

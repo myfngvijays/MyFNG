@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Edit, Trash2, Upload, X, Save, RefreshCcw, ImageIcon } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 
 type BannerRow = {
   id: string;
@@ -285,12 +286,15 @@ export default function HomeCarouselImagesPage() {
             current city automatically.
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" /> Add Banner
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminPageRefresh onClick={() => void fetchRows()} loading={loading} />
+          <button
+            onClick={openAdd}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4" /> Add Banner
+          </button>
+        </div>
       </div>
 
       {rows.length === 0 && !loading ? (

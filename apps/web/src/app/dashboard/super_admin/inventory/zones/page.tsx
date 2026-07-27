@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Plus, MapPin, Loader2, Building2, X, Check, Edit, Trash2 } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 
 export default function ZoneManagerPage() {
@@ -156,13 +157,22 @@ export default function ZoneManagerPage() {
           <h1 className="text-2xl font-bold text-gray-900">Zone Management</h1>
           <p className="text-gray-500">Manage geographic pricing zones and map cities to zones</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
+        <div className="flex items-center gap-3">
+          <AdminPageRefresh
+            onClick={() => {
+              void fetchZones();
+              void fetchAllCities();
+            }}
+            loading={loading}
+          />
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
           <Plus className="w-4 h-4" />
           Add New Zone
         </button>
+        </div>
       </div>
 
       {loading ? (

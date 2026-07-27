@@ -7,6 +7,7 @@ import {
   MessageSquare, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 
 type Popup = {
   id: string;
@@ -226,6 +227,8 @@ export default function AppPopupsPage() {
             </h1>
             <p className="text-sm text-gray-600 mt-0.5">Create & manage popups shown in the mobile app</p>
           </div>
+        <div className="flex items-center gap-2">
+          <AdminPageRefresh onClick={() => void fetchPopups()} loading={loading} />
           <button
             type="button"
             onClick={openCreate}
@@ -233,6 +236,7 @@ export default function AppPopupsPage() {
           >
             <Plus className="w-4 h-4" /> New Popup
           </button>
+        </div>
         </div>
       </div>
 

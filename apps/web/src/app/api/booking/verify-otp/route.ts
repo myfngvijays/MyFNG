@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { ensureWebsiteOtpVerifiedLead } from '@/lib/service-lead-reopen';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,6 +71,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const phone = normalizePhone(body.phone);
   const otp = normalizeOtp(body.otp);
+  const mobileHeader = String(request.headers.get('x-mobile-client') || '').toLowerCase();
+  const bodyChannel = String(body.channel || body.source || '').toUpperCase();
+  const otpChannel: 'WEB' | 'MOBILE' =
+    bodyChannel === 'MOBILE' ||
+    bodyChannel === 'MOBILE_APP' ||
+    bodyChannel === 'APP' ||
+    mobileHeader === 'true' ||
+    mobileHeader === '1'
+      ? 'MOBILE'
+      : 'WEB';
 
   if (phone.length !== 10) {
     return NextResponse.json({ verified: false, error: 'Valid phone is required' }, { status: 400 });
@@ -117,9 +128,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ verified: false, error: 'Failed to finalize OTP verification' }, { status: 500 });
   }
 
+  // MyFNG incomplete lead → admin Website bookings + telecaller CRM
+  let myfngLead: Awaited<ReturnType<typeof ensureWebsiteOtpVerifiedLead>> | null = null;
+  try {
+    myfngLead = await ensureWebsiteOtpVerifiedLead(supabaseAdmin, phone, { channel: otpChannel });
+    console.info('[verify-otp] MyFNG OTP lead result', {
+      phone,
+      channel: otpChannel,
+      created: myfngLead.created,
+      lead_number: myfngLead.leadNumber,
+      lead_id: myfngLead.leadId,
+      skipped: myfngLead.skipped || null,
+    });
+  } catch (err) {
+    console.error('[verify-otp] MyFNG incomplete lead failed (non-blocking):', err);
+  }
+
   pushOtpVerifiedToTeleCRM(phone).catch((err) => {
     console.error('[verify-otp] TeleCRM sync failed (non-blocking):', err);
   });
 
-  return NextResponse.json({ verified: true });
+  return NextResponse.json({
+    verified: true,
+    lead_id: myfngLead?.leadId || null,
+    lead_number: myfngLead?.leadNumber || null,
+  });
 }

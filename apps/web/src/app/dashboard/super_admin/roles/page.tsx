@@ -5,6 +5,7 @@ import {
   Shield, Search, Users, ChevronDown, ChevronUp, Eye, Loader2,
   Pencil, Plus, X, Save, Trash2,
 } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 
 type RoleGroup = 'admin_roles' | 'manager_roles' | 'internal_staff' | 'workshop_staff' | 'company_field_staff' | 'customers';
 
@@ -312,12 +313,15 @@ export default function RolesPermissionsPage() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">View and edit all roles, their permissions, and menu access</p>
         </div>
-        <button
-          className="px-4 py-2.5 bg-brand-primary text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2"
-          onClick={openCreateModal}
-        >
-          <Plus className="w-4 h-4" /> Create Role
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminPageRefresh onClick={() => void fetchRoles()} loading={loading} />
+          <button
+            className="px-4 py-2.5 bg-brand-primary text-white rounded-lg text-sm font-bold hover:opacity-90 flex items-center gap-2"
+            onClick={openCreateModal}
+          >
+            <Plus className="w-4 h-4" /> Create Role
+          </button>
+        </div>
       </div>
 
       {error && !editRole && (

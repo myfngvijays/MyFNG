@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNav from '../../../components/BottomNav';
-import TelecallerWhatsAppInbox from '../../../components/telecaller/TelecallerWhatsAppInbox';
+import TelecallerWhatsAppInbox, {
+  TelecallerWhatsAppFab,
+} from '../../../components/telecaller/TelecallerWhatsAppInbox';
 import TelecallerLeadDetailScreen from '../telecaller/TelecallerLeadDetailScreen';
 import CrmHomeTab from './CrmHomeTab';
 import CrmQueueTab from './CrmQueueTab';
@@ -180,6 +182,9 @@ export default function TelecallerAdvancedCRM() {
       </View>
 
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
+      {!detailLeadId && tab !== 'book' ? (
+        <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} bottomOffset={108} />
+      ) : null}
 
       <BottomNav
         activeTab={tab === 'engage' ? 'workshops' : tab}
@@ -199,6 +204,6 @@ const tabs = [
 ];
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
   body: { flex: 1, minHeight: 0 },
 });

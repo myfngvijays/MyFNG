@@ -9,6 +9,7 @@ import {
   Send,
   XCircle,
 } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
 
 type TemplateStatus = {
@@ -417,15 +418,18 @@ export default function WhatsAppAutomationPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-green-600" />
-            <h1 className="text-2xl font-bold text-gray-900">WhatsApp Automation</h1>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-6 h-6 text-green-600" />
+              <h1 className="text-2xl font-bold text-gray-900">WhatsApp Automation</h1>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              All triggers use UTILITY templates in English. Use Active for instant/event sends and Cron for scheduled jobs — no page reload.
+              {refreshing ? ' · Updating...' : ''}
+            </p>
           </div>
-          <p className="text-sm text-gray-500 mt-1">
-            All triggers use UTILITY templates in English. Use Active for instant/event sends and Cron for scheduled jobs — no page reload.
-            {refreshing ? ' · Updating...' : ''}
-          </p>
+          <AdminPageRefresh onClick={() => void loadTriggers(true)} loading={refreshing || loading} />
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-4">

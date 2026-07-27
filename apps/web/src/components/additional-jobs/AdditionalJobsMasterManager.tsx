@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Edit2, Trash2, ToggleLeft, ToggleRight, Loader2, Download, Upload, X, Save, Copy, MapPin, Car } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import { createClient } from '@/lib/supabase/client';
 
 type WorkshopOption = { id: string; name: string; city?: string | null; zone_id?: string | null };
@@ -1365,6 +1366,17 @@ export default function AdditionalJobsMasterManager({
           </p>
         </div>
         <div className="flex gap-2">
+          <AdminPageRefresh
+            onClick={() => {
+              void fetchItems();
+              if (isSuperAdmin) {
+                void fetchWorkshops();
+                void fetchZones();
+              }
+              if (labourPricingActive) void fetchLabourPricing();
+            }}
+            loading={loading || labourLoading}
+          />
           {labourPricingActive && (
             <>
               {isSuperAdmin && isLabourBulkMode ? (

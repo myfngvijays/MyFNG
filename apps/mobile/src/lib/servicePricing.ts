@@ -88,6 +88,34 @@ export async function resolveVehicleClass(carModelId: string): Promise<string | 
   }
 }
 
+/** Resolve car_models id + class from make/model names when model_id is missing. */
+export async function resolveVehicleClassByMakeModel(
+  make: string | null | undefined,
+  model: string | null | undefined,
+): Promise<{ id: string | null; class: string | null }> {
+  const m = String(make || '').trim();
+  const mod = String(model || '').trim();
+  if (!m || !mod) return { id: null, class: null };
+  try {
+    const makeToken = m.split(/\s+/)[0] || m;
+    const modelToken = mod.split(/\s+/)[0] || mod;
+    const { data } = await supabase
+      .from('car_models')
+      .select('id, class')
+      .eq('is_active', true)
+      .ilike('make', `%${makeToken}%`)
+      .ilike('model_name', `%${modelToken}%`)
+      .order('model_name')
+      .limit(1)
+      .maybeSingle();
+    const id = String((data as { id?: string })?.id || '').trim() || null;
+    const cls = String((data as { class?: string })?.class || '').trim() || null;
+    return { id, class: cls };
+  } catch {
+    return { id: null, class: null };
+  }
+}
+
 export async function fetchDraftServicePricing(draft: BookingDraft): Promise<Record<string, number>> {
   const sessionPrices = getDraftDisplayPrices(draft);
   if (Object.keys(sessionPrices).length > 0) return sessionPrices;

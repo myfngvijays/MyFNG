@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { useRouter } from 'next/navigation';
 import { Store, Search, Plus, MapPin, Edit2, X, Building, Globe, Download, Upload } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 
 export default function WorkshopManagementPage() {
   const router = useRouter();
@@ -812,6 +813,7 @@ export default function WorkshopManagementPage() {
               <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Manage workshops, approvals, and zones</p>
             </div>
             <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
+              <AdminPageRefresh onClick={() => void fetchWorkshops()} loading={loading} />
               <button 
                 onClick={() => router.push('/dashboard/super_admin/workshops/public-pages')}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"

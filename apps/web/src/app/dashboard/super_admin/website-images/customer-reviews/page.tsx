@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Edit, Trash2, X, Save, Star, Upload, Download } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import {
   CUSTOMER_REVIEWS_CSV_TEMPLATE,
   parseCustomerReviewsCsv,
@@ -226,6 +227,7 @@ export default function CustomerReviewsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <AdminPageRefresh onClick={() => void fetchRows()} loading={loading} />
           <button
             type="button"
             onClick={openBulkModal}

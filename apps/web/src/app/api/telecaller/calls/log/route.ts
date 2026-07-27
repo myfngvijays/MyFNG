@@ -104,6 +104,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to log call' }, { status: 500 });
     }
 
+    // Lost / not interested → stop WhatsApp bot mid-flow (no more location/service prompts)
+    const outcomeUpper = String(outcome || '').toUpperCase();
+    const notesUpper = String(notes || '').toUpperCase();
+    if (
+      outcomeUpper === 'NOT_INTERESTED' ||
+      notesUpper.includes('[LOST') ||
+      notesUpper.includes('LOST ·')
+    ) {
+      try {
+        const { stopWhatsAppBotForLostLead } = await import('@/lib/whatsappAgents/lostLeadGuard');
+        const phone =
+          phone_number ||
+          (
+            await db
+              .from('service_leads')
+              .select('customer_phone')
+              .eq('id', lead_id)
+              .maybeSingle()
+          ).data?.customer_phone;
+        await stopWhatsAppBotForLostLead(phone);
+      } catch (stopErr) {
+        console.warn('[calls/log] stop WhatsApp bot on Lost failed:', stopErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Call logged successfully',

@@ -30,6 +30,10 @@ import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanP
 import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
 } from '../../../components/telecaller/CrmPickupVisitStep';
+import {
+  resolveVehicleClass,
+  resolveVehicleClassByMakeModel,
+} from '../../../lib/servicePricing';
 
 const EDITABLE_LEAD_STATUSES = new Set([
   'NEW',
@@ -39,6 +43,10 @@ const EDITABLE_LEAD_STATUSES = new Set([
   'VALIDATED',
   'PENDING',
   'IN_PROGRESS',
+  'REJECTED', // Lost — telecallers must still edit & re-quote
+  'ACCEPTED',
+  'HOLD',
+  'COMPLETED',
 ]);
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
@@ -428,6 +436,47 @@ export default function TelecallerLeadDetailScreen({
     setProfileHistory(hist);
   };
 
+  /** Fill city_id / vehicle_class so package prices can resolve (Wagon R etc.). */
+  const enrichEditFormForPricing = async (data: any) => {
+    const base = buildFormFromLead(data);
+    let cityId = String(base.city_id || '').trim();
+    let modelId = String(base.model_id || '').trim();
+    let vehicleClass = String(base.vehicle_class || '').trim();
+    const cityName = String(base.city || '').trim();
+
+    if (!cityId && cityName) {
+      try {
+        const { data: cityRow } = await supabase
+          .from('cities')
+          .select('id')
+          .eq('is_active', true)
+          .ilike('name', cityName)
+          .limit(1)
+          .maybeSingle();
+        if (cityRow?.id) cityId = String(cityRow.id);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!vehicleClass && modelId) {
+      vehicleClass = (await resolveVehicleClass(modelId)) || '';
+    }
+    if ((!vehicleClass || !modelId) && base.vehicle_make && base.vehicle_model) {
+      const hit = await resolveVehicleClassByMakeModel(base.vehicle_make, base.vehicle_model);
+      if (hit.class) vehicleClass = hit.class;
+      if (hit.id) modelId = hit.id;
+    }
+
+    if (!cityId && !vehicleClass && !modelId) return;
+    setEditForm((prev) => ({
+      ...prev,
+      ...(cityId ? { city_id: cityId } : {}),
+      ...(modelId ? { model_id: modelId } : {}),
+      ...(vehicleClass ? { vehicle_class: vehicleClass } : {}),
+    }));
+  };
+
   const startEditing = async () => {
     if (!lead) return;
     seedEditForm(lead);
@@ -439,6 +488,7 @@ export default function TelecallerLeadDetailScreen({
       time: '',
     });
     setEditing(true);
+    void enrichEditFormForPricing(lead);
     if (cities.length === 0) {
       try {
         const { data: cityRows } = await supabase
@@ -939,6 +989,7 @@ export default function TelecallerLeadDetailScreen({
     if (initialEditing && lead) {
       seedEditForm(lead);
       setEditing(true);
+      void enrichEditFormForPricing(lead);
       (async () => {
         if (cities.length > 0) return;
         try {
@@ -1170,13 +1221,26 @@ export default function TelecallerLeadDetailScreen({
         }),
       });
 
+      const prevMeta =
+        lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? { ...lead.coupon_meta } : {};
+      const prevHistory = Array.isArray(prevMeta.profile_history) ? prevMeta.profile_history : [];
+      const historyEntry = {
+        at: new Date().toISOString(),
+        summary: statusLabel,
+        remark: activityData.notes.trim() || null,
+        status: selected.id,
+        event: 'STATUS',
+        previous_status: lead?.status || null,
+        previous_label: prevMeta.last_call_label || null,
+      };
       const nextMeta = {
-        ...(lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {}),
+        ...prevMeta,
         last_call_status: selected.call_status,
         last_call_result: selected.id,
         last_call_label: statusLabel,
         last_lost_reason: selected.id === 'LOST' ? activityData.lostReason : null,
         last_call_at: new Date().toISOString(),
+        profile_history: [historyEntry, ...prevHistory].slice(0, 50),
       };
 
       const leadUpdate: Record<string, unknown> = {
@@ -1383,14 +1447,16 @@ export default function TelecallerLeadDetailScreen({
         }
       >
             <View style={styles.header}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={styles.headerTitle}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                <Text style={styles.headerTitle} numberOfLines={2}>
                   {editing ? editForm.customer_name || lead.customer_name : lead.customer_name}
                 </Text>
-                <Text style={styles.headerSubtitle}>Lead #{lead.lead_number}</Text>
+                <Text style={styles.headerSubtitle} numberOfLines={1}>
+                  Lead #{lead.lead_number}
+                </Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
-                <Text style={[styles.statusText, { color: badge.fg }]}>
+                <Text style={[styles.statusText, { color: badge.fg }]} numberOfLines={1}>
                   {formatStatusLabel(headerStatus)}
                 </Text>
               </View>
@@ -1885,6 +1951,8 @@ export default function TelecallerLeadDetailScreen({
                 cityId={editForm.city_id}
                 vehicleClass={editForm.vehicle_class}
                 modelId={editForm.model_id}
+                vehicleMake={editForm.vehicle_make}
+                vehicleModel={editForm.vehicle_model}
                 title=""
               />
 
@@ -2324,27 +2392,32 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
-      {/* Update History — profile edits timeline */}
+      {/* User History — TeleCRM-style timeline (status, rebook, profile) */}
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
           <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
             <Icon name="history" size={16} color={COLORS.orange} />
           </View>
           <Text style={styles.sectionTitle}>
-            Update History ({profileHistory.length})
+            User History ({profileHistory.length})
           </Text>
         </View>
         <View style={styles.sectionContent}>
           {profileHistory.length === 0 ? (
-            <Text style={styles.emptyText}>No profile updates yet</Text>
+            <Text style={styles.emptyText}>No history yet</Text>
           ) : (
             profileHistory.map((item: any, idx: number) => (
               <View key={`${item.at || idx}-${idx}`} style={styles.logCard}>
                 <View style={styles.logHeader}>
                   <View style={[styles.logBadge, { backgroundColor: COLORS.orange + '22' }]}>
-                    <Text style={styles.logBadgeText}>{item.summary || 'Profile updated'}</Text>
+                    <Text style={styles.logBadgeText}>{item.summary || 'Updated'}</Text>
                   </View>
                 </View>
+                {item.previous_label || item.previous_status ? (
+                  <Text style={styles.logNotes}>
+                    Before: {item.previous_label || item.previous_status}
+                  </Text>
+                ) : null}
                 {item.workshop_name ? (
                   <Text style={styles.logNotes}>Workshop: {item.workshop_name}</Text>
                 ) : null}
@@ -2353,7 +2426,7 @@ export default function TelecallerLeadDetailScreen({
                     {[item.city, item.pincode].filter(Boolean).join(' · ')}
                   </Text>
                 ) : null}
-                {item.remark ? <Text style={styles.logNotes}>Remark: {item.remark}</Text> : null}
+                {item.remark ? <Text style={styles.logNotes}>{item.remark}</Text> : null}
                 <Text style={styles.logTime}>
                   {item.at ? formatDateTime(item.at) : '—'}
                 </Text>
@@ -2541,52 +2614,81 @@ function formatStatusLabel(raw: string | null | undefined): string {
     .trim();
 }
 
+/** Badge UI only — full "Lost · reason" stays in coupon_meta for history/filters. */
+function shortLeadStatusLabel(label: string): string {
+  const s = String(label || '').trim();
+  if (/^lost\b/i.test(s)) return 'Lost';
+  return s;
+}
+
 function resolveLeadDisplayStatus(lead: any, callLogs?: any[]): string {
+  let resolved = '';
   const metaLabel = String(lead?.coupon_meta?.last_call_label || '').trim();
-  if (metaLabel) return metaLabel;
+  if (metaLabel) {
+    resolved = metaLabel;
+  } else {
+    const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+    if (result && result !== 'RINGING') {
+      const fromOpt = STATUS_OPTIONS.find((o) => o.id === result);
+      if (fromOpt) resolved = fromOpt.label;
+    }
 
-  const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
-  if (result && result !== 'RINGING') {
-    const fromOpt = STATUS_OPTIONS.find((o) => o.id === result);
-    if (fromOpt) return fromOpt.label;
-  }
+    if (!resolved) {
+      const hist = Array.isArray(lead?.coupon_meta?.profile_history)
+        ? lead.coupon_meta.profile_history
+        : [];
+      for (const entry of hist) {
+        const s = String(entry?.status || '').toUpperCase();
+        if (s && s !== 'RINGING') {
+          const fromOpt = STATUS_OPTIONS.find((o) => o.id === s);
+          if (fromOpt) {
+            resolved = fromOpt.label;
+            break;
+          }
+        }
+      }
+    }
 
-  const hist = Array.isArray(lead?.coupon_meta?.profile_history)
-    ? lead.coupon_meta.profile_history
-    : [];
-  for (const entry of hist) {
-    const s = String(entry?.status || '').toUpperCase();
-    if (s && s !== 'RINGING') {
-      const fromOpt = STATUS_OPTIONS.find((o) => o.id === s);
-      if (fromOpt) return fromOpt.label;
+    if (!resolved) {
+      const latestNotes = callLogs?.[0]?.notes;
+      const tagged = String(latestNotes || '').match(/^\[([^\]]+)\]/);
+      if (tagged?.[1]) resolved = tagged[1];
+    }
+
+    if (!resolved) {
+      const status = String(lead?.status || '').toUpperCase();
+      switch (status) {
+        case 'NEW':
+          resolved = 'New';
+          break;
+        case 'VALIDATED':
+          resolved = 'Booking confirmed';
+          break;
+        case 'IN_PROGRESS':
+          resolved = 'In Service';
+          break;
+        case 'COMPLETED':
+          resolved = 'Service Done';
+          break;
+        case 'REJECTED':
+          resolved = 'Lost';
+          break;
+        case 'CONTACTED':
+          resolved = 'Contacted';
+          break;
+        case 'ASSIGNED':
+          resolved = 'Assigned';
+          break;
+        case 'ACCEPTED':
+          resolved = 'Accepted';
+          break;
+        default:
+          resolved = formatStatusLabel(status || 'New');
+      }
     }
   }
 
-  const latestNotes = callLogs?.[0]?.notes;
-  const tagged = String(latestNotes || '').match(/^\[([^\]]+)\]/);
-  if (tagged?.[1]) return tagged[1];
-
-  const status = String(lead?.status || '').toUpperCase();
-  switch (status) {
-    case 'NEW':
-      return 'New';
-    case 'VALIDATED':
-      return 'Booking confirmed';
-    case 'IN_PROGRESS':
-      return 'In Service';
-    case 'COMPLETED':
-      return 'Service Done';
-    case 'REJECTED':
-      return 'Lost';
-    case 'CONTACTED':
-      return 'Contacted';
-    case 'ASSIGNED':
-      return 'Assigned';
-    case 'ACCEPTED':
-      return 'Accepted';
-    default:
-      return formatStatusLabel(status || 'New');
-  }
+  return shortLeadStatusLabel(resolved);
 }
 
 function stripDispositionPrefix(notes: string): string {
@@ -2843,6 +2945,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
+    maxWidth: '46%',
+    flexShrink: 0,
   },
   statusText: {
     fontSize: 11,

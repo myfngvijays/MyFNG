@@ -284,8 +284,10 @@ export function prettifyServiceType(value?: string | null) {
     .join(' ');
 }
 
-export function getMisaServicesFromLead(lead: Record<string, any>): Array<{ name: string; price: number }> {
-  const meta = lead.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+export const getMisaServicesFromLead = (
+  lead: Record<string, any>,
+): Array<{ name: string; price: number }> => {
+  const meta = lead?.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
   const misaServices = Array.isArray(meta.misa_services) ? meta.misa_services : [];
   return misaServices
     .map((service: any) => ({
@@ -293,7 +295,7 @@ export function getMisaServicesFromLead(lead: Record<string, any>): Array<{ name
       price: Number(service?.price || 0),
     }))
     .filter((service) => service.name);
-}
+};
 
 export function getLeadServiceLabel(lead: Record<string, any>) {
   if (lead.service_display) return String(lead.service_display);

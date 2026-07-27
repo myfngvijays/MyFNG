@@ -12,6 +12,7 @@ import {
 } from '@/lib/telecaller/crmDateRange';
 import {
   LEAD_STATUS_FILTERS,
+  LOST_REASON_FILTERS,
   leadDisplayStatus,
   leadStatusPillClass,
 } from '@/lib/telecaller/leadDisplayStatus';
@@ -53,6 +54,7 @@ function TelecallerCrmLeadsContent() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(filterParam);
+  const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
   const [source, setSource] = useState('');
@@ -95,6 +97,7 @@ function TelecallerCrmLeadsContent() {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const params = new URLSearchParams({ limit: '80' });
       if (filter && filter !== 'all') params.set('filter', filter);
+      if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (q.trim()) params.set('q', q.trim());
       if (city.trim()) params.set('city', city.trim());
       if (source.trim()) params.set('source', source.trim());
@@ -111,7 +114,7 @@ function TelecallerCrmLeadsContent() {
     } finally {
       setLoading(false);
     }
-  }, [filter, q, city, source, priority, datePreset, customStart, customEnd]);
+  }, [filter, lostReason, q, city, source, priority, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     load();
@@ -155,6 +158,7 @@ function TelecallerCrmLeadsContent() {
 
   const setFilterAndUrl = (id: string) => {
     setFilter(id);
+    if (id !== 'lost') setLostReason('');
     const next = new URLSearchParams(searchParams?.toString() || '');
     if (id === 'all') next.delete('filter');
     else next.set('filter', id);
@@ -210,6 +214,22 @@ function TelecallerCrmLeadsContent() {
               ))}
             </select>
           </div>
+          {filter === 'lost' ? (
+            <div className="min-w-[220px] flex-1">
+              <label className="mb-1 block text-xs font-bold text-slate-500">Lost reason</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+                value={lostReason}
+                onChange={(e) => setLostReason(e.target.value)}
+              >
+                {LOST_REASON_FILTERS.map((f) => (
+                  <option key={f.id || 'all-lost'} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

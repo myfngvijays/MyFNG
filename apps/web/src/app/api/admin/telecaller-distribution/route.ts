@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { fetchMessageTriggers, saveMessageTriggers } from '@/lib/enquiry/assignment';
+import { normalizeMessageTriggers } from '@/lib/enquiry/messageTriggers';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
     const { data: allocations, error: allocErr } = await supabaseAdmin
       .from('enquiry_hub')
       .select(
-        'id, telecaller_id, allocation_percent, allocation_status, daily_limit, is_active, telecaller:users_login!telecaller_id(id, full_name, email, phone, is_active)'
+        'id, telecaller_id, allocation_percent, allocation_status, daily_limit, is_active, meta, telecaller:users_login!telecaller_id(id, full_name, email, phone, is_active)'
       )
       .eq('kind', 'ALLOCATION')
       .eq('is_active', true)
@@ -51,7 +53,18 @@ export async function GET(request: NextRequest) {
       (t: any) => String((t?.roles as any)?.role_code || '').toUpperCase() === 'TELECALLER'
     );
 
-    return NextResponse.json({ allocations: allocations || [], telecallers: onlyTelecallers });
+    let messageTriggers: Awaited<ReturnType<typeof fetchMessageTriggers>> = [];
+    try {
+      messageTriggers = await fetchMessageTriggers();
+    } catch {
+      messageTriggers = [];
+    }
+
+    return NextResponse.json({
+      allocations: allocations || [],
+      telecallers: onlyTelecallers,
+      message_triggers: messageTriggers,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
@@ -73,12 +86,23 @@ export async function PUT(request: NextRequest) {
     }
 
     const cleaned = rows
-      .map((r: any) => ({
-        telecaller_id: String(r.telecaller_id || '').trim(),
-        allocation_percent: Number(r.allocation_percent ?? 0),
-        allocation_status: String(r.allocation_status || 'ACTIVE').toUpperCase(),
-        daily_limit: r.daily_limit === null || r.daily_limit === '' ? null : Number(r.daily_limit),
-      }))
+      .map((r: any) => {
+        // null/omitted = all channels; [] = none; [...] = only those
+        const hasAllowlist = Array.isArray(r.allowed_channels);
+        const channels = hasAllowlist
+          ? r.allowed_channels.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
+          : null;
+        return {
+          telecaller_id: String(r.telecaller_id || '').trim(),
+          allocation_percent: Number(r.allocation_percent ?? 0),
+          allocation_status: String(r.allocation_status || 'ACTIVE').toUpperCase(),
+          daily_limit: r.daily_limit === null || r.daily_limit === '' ? null : Number(r.daily_limit),
+          meta: {
+            ...(r.meta && typeof r.meta === 'object' ? r.meta : {}),
+            allowed_channels: hasAllowlist ? channels : null,
+          },
+        };
+      })
       .filter((r: any) => r.telecaller_id);
 
     const activeSum = cleaned
@@ -113,6 +137,7 @@ export async function PUT(request: NextRequest) {
         allocation_percent: r.allocation_percent,
         allocation_status: r.allocation_status,
         daily_limit: r.daily_limit,
+        meta: r.meta,
         is_active: true,
         updated_at: nowIso,
       }));
@@ -131,6 +156,7 @@ export async function PUT(request: NextRequest) {
         allocation_percent: r.allocation_percent,
         allocation_status: r.allocation_status,
         daily_limit: r.daily_limit,
+        meta: r.meta,
         is_active: true,
         updated_at: nowIso,
       }));
@@ -151,6 +177,22 @@ export async function PUT(request: NextRequest) {
       .not('telecaller_id', 'in', `(${ids.map((id: string) => `"${id}"`).join(',')})`);
 
     if (deactivateErr) throw deactivateErr;
+
+    if (Array.isArray(body?.message_triggers)) {
+      const triggers = normalizeMessageTriggers(body.message_triggers);
+      const emptyPhrase = triggers.find((t) => !t.phrase.trim());
+      if (emptyPhrase) {
+        return NextResponse.json({ error: 'Each message trigger needs a phrase' }, { status: 400 });
+      }
+      const emptyTc = triggers.find((t) => !t.telecaller_id);
+      if (emptyTc) {
+        return NextResponse.json(
+          { error: 'Each message trigger needs a telecaller' },
+          { status: 400 },
+        );
+      }
+      await saveMessageTriggers(triggers);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

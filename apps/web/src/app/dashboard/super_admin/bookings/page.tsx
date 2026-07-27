@@ -3,13 +3,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
 import {
   filterBookingLeads,
   enrichBookingLead,
   getLeadServiceLabel,
   getLeadDisplayAmount,
-  getMisaServicesFromLead,
   getLeadUtmParams,
   resolveLeadSourceBadgeTheme,
   computeServiceLeadOverview,
@@ -158,6 +158,104 @@ function SourceBadge({ lead }: { lead: Record<string, any> }) {
   );
 }
 
+function normalizeLeadPhone(phone?: string | null): string {
+  return String(phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+}
+
+/** Web OTP Verified / Mob OTP Verified — shown in Source column. */
+function resolveOtpVerifiedTag(lead: Record<string, any>): {
+  label: 'Web OTP Verified' | 'Mob OTP Verified';
+  className: string;
+  kind: 'website' | 'app';
+} | null {
+  const meta =
+    lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? (lead.coupon_meta as Record<string, unknown>) : {};
+  const result = String(meta.last_call_result || lead.otp_result || '').toUpperCase();
+  const labelRaw = String(meta.last_call_label || lead.otp_label || '').toLowerCase();
+  const desc = String(lead.description || lead.problem_description || '').toLowerCase();
+  const isOtp =
+    Boolean(lead.otp_verified) ||
+    Boolean(meta.otp_verified_at) ||
+    Boolean(meta.website_otp_verified) ||
+    Boolean(meta.website_booking_abandoned) ||
+    result === 'OTP_VERIFIED' ||
+    labelRaw.includes('otp verified') ||
+    desc.includes('otp verified');
+  if (!isOtp) return null;
+
+  const channel = String(meta.otp_channel || lead.otp_channel || '').toUpperCase();
+  const createdFrom = String(lead.created_from || '').toUpperCase();
+  const isMobile =
+    channel === 'MOBILE' ||
+    channel === 'MOBILE_APP' ||
+    channel === 'APP' ||
+    labelRaw.includes('mob otp') ||
+    createdFrom === 'MOBILE_APP' ||
+    createdFrom === 'MOBILE' ||
+    createdFrom === 'MOBILE_PUBLIC';
+
+  if (isMobile) {
+    return {
+      label: 'Mob OTP Verified',
+      className: 'bg-emerald-100 text-emerald-800',
+      kind: 'app',
+    };
+  }
+  return {
+    label: 'Web OTP Verified',
+    className: 'bg-amber-100 text-amber-800',
+    kind: 'website',
+  };
+}
+
+function withOtpFlags(lead: Record<string, any>): Record<string, any> {
+  const meta =
+    lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? (lead.coupon_meta as Record<string, unknown>) : {};
+  const tag = resolveOtpVerifiedTag(lead);
+  return {
+    ...lead,
+    otp_verified: Boolean(tag),
+    otp_channel: String(meta.otp_channel || (tag?.kind === 'app' ? 'MOBILE' : tag ? 'WEB' : '') || ''),
+    otp_result: String(meta.last_call_result || ''),
+    otp_label: String(meta.last_call_label || tag?.label || ''),
+  };
+}
+
+function SourceCell({ lead }: { lead: Record<string, any> }) {
+  const otp = resolveOtpVerifiedTag(lead);
+  const meta =
+    lead?.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+  const status = String(lead.status || '').toUpperCase();
+  const showOtpAsSource =
+    Boolean(otp) &&
+    (lead.is_incomplete === true ||
+      Boolean(meta.website_booking_abandoned) ||
+      (status === 'NEW' && String(meta.last_call_result || '').toUpperCase() === 'OTP_VERIFIED'));
+
+  // Incomplete OTP leads: Source column shows Web/Mob OTP Verified
+  if (otp && showOtpAsSource) {
+    return (
+      <div className="inline-flex items-center gap-1.5 flex-nowrap">
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${otp.className}`}
+        >
+          <SourceBadgeIcon kind={otp.kind} />
+          {otp.label}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="inline-flex items-center gap-1.5 flex-nowrap">
+      <SourceBadge lead={lead} />
+    </div>
+  );
+}
+
 function getLeadUtmCampaign(lead: Record<string, any>) {
   return String(getLeadUtmParams(lead).utm_campaign || '').trim();
 }
@@ -239,8 +337,26 @@ function CouponBadge({
 }
 
 
+/** Read MISA multi-service rows from lead.meta (page-local; do not import by old name). */
+function extractMisaServices(lead: Record<string, any>): Array<{ name: string; price: number }> {
+  const meta = lead?.meta && typeof lead.meta === 'object' ? (lead.meta as Record<string, unknown>) : {};
+  const rows = Array.isArray(meta.misa_services) ? meta.misa_services : [];
+  return rows
+    .map((service: any) => ({
+      name: String(service?.name || '').trim(),
+      price: Number(service?.price || 0),
+    }))
+    .filter((service) => service.name);
+}
+
 function getServiceLabel(lead: ServiceLead) {
-  return getLeadServiceLabel(lead);
+  const misa = extractMisaServices(lead);
+  if (misa.length > 0) return misa.map((s) => s.name).join(', ');
+  try {
+    return getLeadServiceLabel(lead);
+  } catch {
+    return String(lead.service_display || lead.service_type || 'Service');
+  }
 }
 
 function prettifyKey(key: string) {
@@ -287,8 +403,8 @@ function formatDetailScalar(value: unknown): React.ReactNode {
 
 function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
   const meta = item.meta && typeof item.meta === 'object' ? (item.meta as Record<string, unknown>) : {};
-  const serviceLabel = getLeadServiceLabel(item);
-  const misaServices = getMisaServicesFromLead(item);
+  const serviceLabel = getServiceLabel(item);
+  const misaServices = extractMisaServices(item);
   const payable = getLeadDisplayAmount(item);
 
   const paymentExtras: Array<{ label: string; value: React.ReactNode }> = [];
@@ -341,7 +457,7 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
         <DetailFieldCard label="Priority" value={item.lead_priority} />
         <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
         <DetailFieldCard label="Created From" value={item.created_from} />
-        <DetailFieldCard label="Booking Channel" value={<SourceBadge lead={item} />} />
+        <DetailFieldCard label="Booking Channel" value={<SourceCell lead={item} />} />
         <DetailFieldCard label="Internal ID" value={item.id} />
       </DetailSection>
 
@@ -477,7 +593,7 @@ function LeadTrackingSection({ item }: { item: Record<string, any> }) {
         <div className="bg-white border border-blue-100 rounded-lg p-3">
           <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Lead Source</p>
           <div className="mt-1.5">
-            <SourceBadge lead={item} />
+            <SourceCell lead={item} />
           </div>
         </div>
         {UTM_KEYS.map((key) => (
@@ -594,6 +710,9 @@ export default function SuperAdminBookingsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Record<string, any> | null>(null);
   const [detailTitle, setDetailTitle] = useState('');
+  const [phoneBookingsOpen, setPhoneBookingsOpen] = useState(false);
+  const [phoneBookingsPhone, setPhoneBookingsPhone] = useState('');
+  const [phoneBookingsList, setPhoneBookingsList] = useState<ServiceLead[]>([]);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editLead, setEditLead] = useState<ServiceLead | null>(null);
@@ -770,6 +889,35 @@ export default function SuperAdminBookingsPage() {
     return leads;
   }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter]);
 
+  /** All loaded leads for a phone (for Bookings count + modal). */
+  const bookingsByPhone = useMemo(() => {
+    const map = new Map<string, ServiceLead[]>();
+    for (const lead of serviceLeads) {
+      const key = normalizeLeadPhone(lead.customer_phone);
+      if (!key || key.length !== 10) continue;
+      const list = map.get(key) || [];
+      list.push(lead);
+      map.set(key, list);
+    }
+    for (const [, list] of map) {
+      list.sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+      );
+    }
+    return map;
+  }, [serviceLeads]);
+
+  const openPhoneBookings = (phone: string | null | undefined, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const key = normalizeLeadPhone(phone);
+    if (!key) return;
+    const list = bookingsByPhone.get(key) || [];
+    setPhoneBookingsPhone(key);
+    setPhoneBookingsList(list);
+    setPhoneBookingsOpen(true);
+  };
+
   const serviceLeadOverview = useMemo(() => computeServiceLeadOverview(displayedServiceLeads), [displayedServiceLeads]);
   const chatbotOverview = useMemo(() => computeChatbotBookingOverview(displayedChatbotBookings), [displayedChatbotBookings]);
 
@@ -840,7 +988,7 @@ export default function SuperAdminBookingsPage() {
 
       if (activeTab === 'service_leads') {
         const rows = Array.isArray(payload?.leads) ? payload.leads : [];
-        setServiceLeads(rows.map((lead: ServiceLead) => enrichBookingLead(lead)));
+        setServiceLeads(rows.map((lead: ServiceLead) => withOtpFlags(enrichBookingLead(lead))));
       } else {
         const rows = Array.isArray(payload?.bookings) ? payload.bookings : [];
         setChatbotBookings(rows);
@@ -1084,16 +1232,23 @@ export default function SuperAdminBookingsPage() {
               <p className="text-sm text-gray-600 mt-1">Website, App & AI bookings — filter by source and coupon.</p>
             </div>
 
-            <div className="w-full lg:w-[420px] relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                id="bookings-search"
-                name="bookings-search"
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name, phone, vehicle, city, coupon..."
-                className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto lg:max-w-xl lg:flex-1 lg:justify-end">
+              <div className="w-full sm:flex-1 lg:w-[320px] relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  id="bookings-search"
+                  name="bookings-search"
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by name, phone, vehicle, city, coupon..."
+                  className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <AdminPageRefresh
+                onClick={() => void fetchData()}
+                loading={loading}
+                className="shrink-0 justify-center"
               />
             </div>
           </div>
@@ -1489,7 +1644,7 @@ export default function SuperAdminBookingsPage() {
           <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
               {activeTab === 'service_leads' ? (
-                <table className="w-full min-w-[1420px]">
+                <table className="w-full min-w-[1520px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
                       <th className="px-3 py-3 w-10">
@@ -1507,6 +1662,7 @@ export default function SuperAdminBookingsPage() {
                       <th className="px-4 py-3 whitespace-nowrap">Source</th>
                       <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th>
                       <th className="px-4 py-3 whitespace-nowrap">Phone</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Bookings</th>
                       <th className="px-4 py-3 whitespace-nowrap">Vehicle</th>
                       <th className="px-4 py-3 whitespace-nowrap">City</th>
                       <th className="px-4 py-3 min-w-[180px]">Service</th>
@@ -1521,9 +1677,13 @@ export default function SuperAdminBookingsPage() {
                   <tbody>
                     {displayedServiceLeads.map((lead) => {
                       const serviceLabel = getServiceLabel(lead);
-                      const misaServices = getMisaServicesFromLead(lead);
+                      const misaServices = extractMisaServices(lead);
                       const leadId = String(lead.id || '');
                       const isSelected = leadId ? selectedIds.has(leadId) : false;
+                      const phoneKey = normalizeLeadPhone(lead.customer_phone);
+                      const phoneBookingCount = phoneKey
+                        ? bookingsByPhone.get(phoneKey)?.length || 0
+                        : 0;
                       return (
                       <tr
                         key={String(lead.id || `${lead.lead_number}-${lead.created_at}`)}
@@ -1547,7 +1707,7 @@ export default function SuperAdminBookingsPage() {
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <SourceBadge lead={lead} />
+                          <SourceCell lead={lead} />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
                           <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
@@ -1555,6 +1715,21 @@ export default function SuperAdminBookingsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          {phoneBookingCount > 0 ? (
+                            <button
+                              type="button"
+                              title="View all bookings for this number"
+                              onClick={(e) => openPhoneBookings(lead.customer_phone, e)}
+                              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800 ring-1 ring-slate-200 hover:bg-blue-50 hover:text-blue-800 hover:ring-blue-200 transition"
+                            >
+                              <Hash className="h-3 w-3" />
+                              {phoneBookingCount}
+                            </button>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
@@ -1700,8 +1875,8 @@ export default function SuperAdminBookingsPage() {
                         {activeTab === 'service_leads' ? item.customer_phone || '-' : item.phone_number || '-'}
                       </p>
                       {activeTab === 'service_leads' ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <SourceBadge lead={item} />
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <SourceCell lead={item} />
                           {item.has_coupon_applied ? (
                             <LeadDiscountBadge lead={item} />
                           ) : null}
@@ -1713,6 +1888,19 @@ export default function SuperAdminBookingsPage() {
                           <p className="text-gray-500">City</p>
                           <p className="font-medium text-gray-800">{item.city || '-'}</p>
                         </div>
+                        {activeTab === 'service_leads' ? (
+                          <div>
+                            <p className="text-gray-500">Bookings</p>
+                            <button
+                              type="button"
+                              onClick={(e) => openPhoneBookings(item.customer_phone, e)}
+                              className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-800"
+                            >
+                              <Hash className="h-3 w-3" />
+                              {bookingsByPhone.get(normalizeLeadPhone(item.customer_phone))?.length || 1}
+                            </button>
+                          </div>
+                        ) : null}
                         <div>
                           <p className="text-gray-500">{activeTab === 'service_leads' ? 'Vehicle' : 'Car Model'}</p>
                           <p className="font-medium text-gray-800">
@@ -1873,6 +2061,97 @@ export default function SuperAdminBookingsPage() {
               >
                 {saving ? 'Saving…' : 'Save Changes'}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {phoneBookingsOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl max-h-[85vh] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-brand-primary" />
+                  Bookings for {phoneBookingsPhone}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {phoneBookingsList.length} booking{phoneBookingsList.length === 1 ? '' : 's'} · click a
+                  row for full details
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPhoneBookingsOpen(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(85vh-88px)]">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                  <tr className="text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
+                    <th className="px-4 py-2.5">Lead #</th>
+                    <th className="px-4 py-2.5">Source</th>
+                    <th className="px-4 py-2.5">Service</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">Amount</th>
+                    <th className="px-4 py-2.5">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {phoneBookingsList.map((row) => {
+                    const otp = resolveOtpVerifiedTag(row);
+                    return (
+                      <tr
+                        key={String(row.id || row.lead_number)}
+                        className="border-b border-gray-100 hover:bg-blue-50/60 cursor-pointer"
+                        onClick={() => {
+                          setPhoneBookingsOpen(false);
+                          openDetail('Service Lead Details', row);
+                        }}
+                      >
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                          {row.lead_number || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          {otp ? (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${otp.className}`}
+                            >
+                              {otp.label}
+                            </span>
+                          ) : (
+                            <SourceBadge lead={row} />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[180px] truncate">
+                          {getServiceLabel(row) || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                            {String(row.status || 'NEW').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          {formatCurrency(getLeadDisplayAmount(row))}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          {formatDateTime(row.created_at)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {phoneBookingsList.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
+                        No bookings found for this number
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

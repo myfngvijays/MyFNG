@@ -68,25 +68,44 @@ type Props = {
   onCustomEndChange?: (v: string) => void;
 };
 
-type DropdownKey = 'date' | 'status' | 'city' | 'source' | 'priority' | null;
+type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'source' | 'priority' | null;
 
+/** Match lead detail "Select status" + All / New */
 const STATUS_FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'new', label: 'New' },
+  { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
   { id: 'booking_confirmed', label: 'Booking confirmed' },
   { id: 'in_service', label: 'In Service' },
   { id: 'service_done', label: 'Service Done' },
   { id: 'lost', label: 'Lost' },
-  { id: 'callback', label: 'Callback' },
-  { id: 'follow_up', label: 'Follow-up' },
-  { id: 'incomplete', label: 'Incomplete' },
 ];
+
+const LOST_REASON_FILTERS = [
+  { id: '', label: 'All lost reasons' },
+  { id: 'Not Interested', label: 'Not Interested' },
+  { id: 'Unqualified Lead', label: 'Unqualified Lead' },
+  { id: 'No-Response to Calls', label: 'No-Response to Calls' },
+  { id: 'Already Service Done', label: 'Already Service Done' },
+  { id: 'Under Warranty', label: 'Under Warranty' },
+  { id: 'Looking For Authorised Service Center', label: 'Looking For Authorised Service Center' },
+  { id: 'Other Reasons', label: 'Other Reasons' },
+];
+
+/** UI badge only — keep full "Lost · reason" in meta for filters/history. */
+function shortLeadStatusLabel(label: string): string {
+  const s = String(label || '').trim();
+  if (/^lost\b/i.test(s)) return 'Lost';
+  return s;
+}
 
 function leadDisplayStatus(lead: any): string {
   const label = String(lead?.coupon_meta?.last_call_label || '').trim();
-  if (label) return label;
+  // Keep "Web OTP Verified" / "Mob OTP Verified" as-is (don't shorten)
+  if (label && /otp verified/i.test(label)) return label;
+  if (label) return shortLeadStatusLabel(label);
   const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
   const mapResult: Record<string, string> = {
     INTERESTED: 'Interested',
@@ -96,6 +115,7 @@ function leadDisplayStatus(lead: any): string {
     SERVICE_DONE: 'Service Done',
     LOST: 'Lost',
     RINGING: 'Ringing',
+    OTP_VERIFIED: 'OTP Verified',
   };
   if (result && mapResult[result]) return mapResult[result];
   const hist = Array.isArray(lead?.coupon_meta?.profile_history)
@@ -116,7 +136,40 @@ function leadDisplayStatus(lead: any): string {
     ASSIGNED: 'Assigned',
     ACCEPTED: 'Accepted',
   };
-  return mapStatus[status] || status.replace(/_/g, ' ') || 'New';
+  return shortLeadStatusLabel(mapStatus[status] || status.replace(/_/g, ' ') || 'New');
+}
+
+/** Whole-card light tint by display status */
+function leadStatusCardColors(label: string): {
+  cardBg: string;
+  border: string;
+  badgeBg: string;
+  badgeText: string;
+} {
+  const s = String(label || '').toUpperCase();
+  // Lost first — labels like "Lost · Already Service Done" must not match Service Done green
+  if (s.includes('LOST') || s === 'REJECTED') {
+    return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
+  }
+  if (s.includes('BOOKING') || s === 'SERVICE DONE' || s.startsWith('SERVICE DONE') || s === 'COMPLETED') {
+    return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
+  }
+  if (s.includes('IN SERVICE') || s === 'IN_PROGRESS') {
+    return { cardBg: '#EFF6FF', border: '#BFDBFE', badgeBg: '#DBEAFE', badgeText: '#1D4ED8' };
+  }
+  if (s.includes('WILL VISIT')) {
+    return { cardBg: '#F5F3FF', border: '#DDD6FE', badgeBg: '#EDE9FE', badgeText: '#6D28D9' };
+  }
+  if (s.includes('INTERESTED')) {
+    return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
+  }
+  if (s.includes('OTP')) {
+    return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#FEF3C7', badgeText: '#B45309' };
+  }
+  if (s === 'NEW' || s.includes('INCOMPLETE')) {
+    return { cardBg: '#F8FAFC', border: '#E2E8F0', badgeBg: '#E2E8F0', badgeText: '#475569' };
+  }
+  return { cardBg: COLORS.white, border: COLORS.border || '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
 }
 
 export default function CrmQueueTab({
@@ -135,6 +188,7 @@ export default function CrmQueueTab({
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(initialFilter);
+  const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
   const [source, setSource] = useState('');
@@ -157,6 +211,8 @@ export default function CrmQueueTab({
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
   const statusLabel = STATUS_FILTERS.find((c) => c.id === filter)?.label || 'All';
+  const lostReasonLabel =
+    LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
 
   useEffect(() => {
@@ -182,6 +238,7 @@ export default function CrmQueueTab({
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const params = new URLSearchParams({ limit: '80' });
       if (filter && filter !== 'all') params.set('filter', filter);
+      if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (q.trim()) params.set('q', q.trim());
       if (city.trim()) params.set('city', city.trim());
       if (source.trim()) params.set('source', source.trim());
@@ -198,7 +255,7 @@ export default function CrmQueueTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filter, q, city, source, priority, datePreset, customStart, customEnd]);
+  }, [filter, lostReason, q, city, source, priority, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     setLoading(true);
@@ -206,7 +263,10 @@ export default function CrmQueueTab({
   }, [load]);
 
   useEffect(() => {
-    if (initialFilter) setFilter(initialFilter);
+    if (initialFilter) {
+      setFilter(initialFilter);
+      if (initialFilter !== 'lost') setLostReason('');
+    }
   }, [initialFilter]);
 
   const openShare = async (lead: any) => {
@@ -317,88 +377,175 @@ export default function CrmQueueTab({
         </TouchableOpacity>
       </View>
 
-      {/* Status + Date filters — dropdowns (not horizontal slide) */}
-      <View style={styles.filterRow}>
-        <View style={[styles.dateDropdownWrap, styles.filterHalf, { zIndex: openDropdown === 'status' ? 30 : 20 }]}>
-          <TouchableOpacity
-            style={styles.dateDropdownBtn}
-            onPress={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
-            activeOpacity={0.85}
+      {/* Status + Date — menus overlay leads (absolute), don't push list down */}
+      <View style={styles.filterSection} pointerEvents="box-none">
+        <View style={styles.filterRow} pointerEvents="box-none">
+          <View
+            style={[
+              styles.dateDropdownWrap,
+              styles.filterHalf,
+              openDropdown === 'status' && styles.dropdownOpen,
+            ]}
           >
-            <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
-            <Text style={styles.dateDropdownText} numberOfLines={1}>
-              {statusLabel}
-            </Text>
-            <Ionicons
-              name={openDropdown === 'status' ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={COLORS.textSecondary}
-            />
-          </TouchableOpacity>
-          {openDropdown === 'status' ? (
-            <View style={styles.dateMenu}>
-              <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                {STATUS_FILTERS.map((c) => (
+            <TouchableOpacity
+              style={styles.dateDropdownBtn}
+              onPress={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.dateDropdownText} numberOfLines={1}>
+                {statusLabel}
+              </Text>
+              <Ionicons
+                name={openDropdown === 'status' ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+            {openDropdown === 'status' ? (
+              <View style={styles.dateMenu}>
+                <ScrollView
+                  style={styles.dateMenuScroll}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {STATUS_FILTERS.map((c) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.selectItem, filter === c.id && styles.selectItemActive]}
+                      onPress={() => {
+                        setFilter(c.id);
+                        if (c.id !== 'lost') setLostReason('');
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.selectItemText,
+                          filter === c.id && styles.selectItemTextActive,
+                        ]}
+                      >
+                        {c.label}
+                      </Text>
+                      {filter === c.id ? (
+                        <Ionicons name="checkmark" size={16} color={COLORS.primary} />
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+          </View>
+
+          <View
+            style={[
+              styles.dateDropdownWrap,
+              styles.filterHalf,
+              openDropdown === 'date' && styles.dropdownOpen,
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.dateDropdownBtn}
+              onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.dateDropdownText} numberOfLines={1}>
+                {datePreset === 'custom' ? dateRange.label : dateLabel}
+              </Text>
+              <Ionicons
+                name={openDropdown === 'date' ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+            {openDropdown === 'date' ? (
+              <View style={styles.dateMenu}>
+                {CRM_DATE_PRESETS.map((p) => (
                   <TouchableOpacity
-                    key={c.id}
-                    style={[styles.selectItem, filter === c.id && styles.selectItemActive]}
+                    key={p.value}
+                    style={[styles.selectItem, datePreset === p.value && styles.selectItemActive]}
                     onPress={() => {
-                      setFilter(c.id);
+                      setDatePreset(p.value);
                       setOpenDropdown(null);
+                      if (p.value === 'custom') setShowFilters(true);
                     }}
                   >
-                    <Text style={[styles.selectItemText, filter === c.id && styles.selectItemTextActive]}>
-                      {c.label}
+                    <Text
+                      style={[
+                        styles.selectItemText,
+                        datePreset === p.value && styles.selectItemTextActive,
+                      ]}
+                    >
+                      {p.label}
                     </Text>
-                    {filter === c.id ? (
+                    {datePreset === p.value ? (
                       <Ionicons name="checkmark" size={16} color={COLORS.primary} />
                     ) : null}
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
-            </View>
-          ) : null}
+              </View>
+            ) : null}
+          </View>
         </View>
 
-        <View style={[styles.dateDropdownWrap, styles.filterHalf, { zIndex: openDropdown === 'date' ? 30 : 19 }]}>
-          <TouchableOpacity
-            style={styles.dateDropdownBtn}
-            onPress={() => setOpenDropdown(openDropdown === 'date' ? null : 'date')}
-            activeOpacity={0.85}
+        {filter === 'lost' ? (
+          <View
+            style={[
+              styles.dateDropdownWrap,
+              styles.lostReasonWrap,
+              openDropdown === 'lostReason' && styles.dropdownOpen,
+            ]}
           >
-            <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-            <Text style={styles.dateDropdownText} numberOfLines={1}>
-              {datePreset === 'custom' ? dateRange.label : dateLabel}
-            </Text>
-            <Ionicons
-              name={openDropdown === 'date' ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={COLORS.textSecondary}
-            />
-          </TouchableOpacity>
-          {openDropdown === 'date' ? (
-            <View style={styles.dateMenu}>
-              {CRM_DATE_PRESETS.map((p) => (
-                <TouchableOpacity
-                  key={p.value}
-                  style={[styles.selectItem, datePreset === p.value && styles.selectItemActive]}
-                  onPress={() => {
-                    setDatePreset(p.value);
-                    setOpenDropdown(null);
-                    if (p.value === 'custom') setShowFilters(true);
-                  }}
+            <TouchableOpacity
+              style={styles.dateDropdownBtn}
+              onPress={() => setOpenDropdown(openDropdown === 'lostReason' ? null : 'lostReason')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+              <Text style={styles.dateDropdownText} numberOfLines={1}>
+                {lostReasonLabel}
+              </Text>
+              <Ionicons
+                name={openDropdown === 'lostReason' ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+            {openDropdown === 'lostReason' ? (
+              <View style={styles.dateMenu}>
+                <ScrollView
+                  style={styles.dateMenuScroll}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
                 >
-                  <Text style={[styles.selectItemText, datePreset === p.value && styles.selectItemTextActive]}>
-                    {p.label}
-                  </Text>
-                  {datePreset === p.value ? (
-                    <Ionicons name="checkmark" size={16} color={COLORS.primary} />
-                  ) : null}
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : null}
-        </View>
+                  {LOST_REASON_FILTERS.map((c) => (
+                    <TouchableOpacity
+                      key={c.id || 'all-lost'}
+                      style={[styles.selectItem, lostReason === c.id && styles.selectItemActive]}
+                      onPress={() => {
+                        setLostReason(c.id);
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.selectItemText,
+                          lostReason === c.id && styles.selectItemTextActive,
+                        ]}
+                      >
+                        {c.label}
+                      </Text>
+                      {lostReason === c.id ? (
+                        <Ionicons name="checkmark" size={16} color={COLORS.primary} />
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       {loading ? (
@@ -408,7 +555,13 @@ export default function CrmQueueTab({
           data={leads}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
-          style={{ flex: 1 }}
+          style={styles.list}
+          onScrollBeginDrag={() => {
+            if (openDropdown) setOpenDropdown(null);
+          }}
+          onTouchStart={() => {
+            if (openDropdown) setOpenDropdown(null);
+          }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -416,13 +569,23 @@ export default function CrmQueueTab({
               <Text style={styles.emptyText}>No leads in this queue</Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
+          renderItem={({ item }) => {
+            const statusLabel = leadDisplayStatus(item);
+            const tint = leadStatusCardColors(statusLabel);
+            return (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: tint.cardBg, borderColor: tint.border, borderWidth: 1 },
+              ]}
+            >
               <TouchableOpacity onPress={() => onOpenLead(item.id)}>
                 <View style={styles.cardTop}>
                   <Text style={styles.name} numberOfLines={1}>{item.customer_name}</Text>
-                  <View style={styles.status}>
-                    <Text style={styles.statusText}>{leadDisplayStatus(item)}</Text>
+                  <View style={[styles.status, { backgroundColor: tint.badgeBg }]}>
+                    <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
+                      {statusLabel}
+                    </Text>
                   </View>
                 </View>
                 <Text style={styles.meta}>#{item.lead_number} · {item.customer_phone}</Text>
@@ -446,6 +609,17 @@ export default function CrmQueueTab({
                         item.coupon_meta?.last_inbound_message ||
                         item.problem_description}
                     </Text>
+                  </View>
+                ) : null}
+                {Array.isArray(item.history_preview) && item.history_preview.length > 0 ? (
+                  <View style={styles.histBox}>
+                    <Text style={styles.histTitle}>History</Text>
+                    {item.history_preview.slice(0, 2).map((h: any, idx: number) => (
+                      <Text key={`${h.at || idx}`} style={styles.histLine} numberOfLines={2}>
+                        • {h.summary || 'Updated'}
+                        {h.previous_label ? ` (was ${h.previous_label})` : ''}
+                      </Text>
+                    ))}
                   </View>
                 ) : null}
                 {item.coupon_code ? (
@@ -476,7 +650,8 @@ export default function CrmQueueTab({
                 </TouchableOpacity>
               </View>
             </View>
-          )}
+            );
+          }}
         />
       )}
 
@@ -620,7 +795,7 @@ export default function CrmQueueTab({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, backgroundColor: COLORS.background, overflow: 'visible' },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -635,22 +810,42 @@ const styles = StyleSheet.create({
   },
   search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
   filterBtn: { padding: 6 },
+  filterSection: {
+    zIndex: 50,
+    elevation: 50,
+    marginBottom: 8,
+    overflow: 'visible',
+  },
   filterRow: {
     flexDirection: 'row',
     gap: 8,
     marginHorizontal: SPACING.md,
-    marginBottom: 8,
     alignItems: 'flex-start',
+    zIndex: 60,
+    elevation: 60,
+    overflow: 'visible',
+  },
+  list: {
+    flex: 1,
+    zIndex: 1,
   },
   filterHalf: {
     flex: 1,
     marginHorizontal: 0,
     marginBottom: 0,
   },
-  dateDropdownWrap: {
+  lostReasonWrap: {
     marginHorizontal: SPACING.md,
-    marginBottom: 8,
+    marginTop: 8,
+  },
+  dateDropdownWrap: {
+    position: 'relative',
     zIndex: 20,
+    elevation: 20,
+  },
+  dropdownOpen: {
+    zIndex: 70,
+    elevation: 70,
   },
   dateDropdownBtn: {
     flexDirection: 'row',
@@ -666,13 +861,22 @@ const styles = StyleSheet.create({
   },
   dateDropdownText: { flex: 1, fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   dateMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     marginTop: 6,
     backgroundColor: COLORS.white,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
-    ...SHADOWS.small,
+    zIndex: 80,
+    elevation: 24,
+    ...SHADOWS.large,
+  },
+  dateMenuScroll: {
+    maxHeight: 320,
   },
   selectWrap: { marginTop: 10, zIndex: 5 },
   selectBtn: {
@@ -710,16 +914,15 @@ const styles = StyleSheet.create({
   filterLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 },
   customRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   card: {
-    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
     ...SHADOWS.small,
   },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, flex: 1 },
-  status: { backgroundColor: COLORS.primary + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  statusText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, flex: 1, minWidth: 0 },
+  status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: '46%', flexShrink: 0 },
+  statusText: { fontSize: 10, fontWeight: '700' },
   meta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3 },
   msgRow: {
     flexDirection: 'row',
@@ -735,6 +938,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textPrimary,
     lineHeight: 16,
+  },
+  histBox: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.gray[200] || '#E5E7EB',
+  },
+  histTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  histLine: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    lineHeight: 15,
+    marginBottom: 2,
   },
   coupon: { fontSize: 12, color: COLORS.orange, fontWeight: '600', marginTop: 4 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 10 },

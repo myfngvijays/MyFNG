@@ -14,7 +14,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { getOilTypeForPlan } from '../../lib/misa/misaPricing';
 import { getServiceIconSource } from '../../lib/serviceIcons';
-import { fetchServicePricingMap, resolveCityZoneId, resolveVehicleClass } from '../../lib/servicePricing';
+import {
+  fetchServicePricingMap,
+  resolveCityZoneId,
+  resolveVehicleClass,
+  resolveVehicleClassByMakeModel,
+} from '../../lib/servicePricing';
 import { COLORS, SPACING, SHADOWS } from '../../constants/theme';
 
 export type CrmServiceItem = {
@@ -35,6 +40,8 @@ type Props = {
   cityId?: string | null;
   vehicleClass?: string | null;
   modelId?: string | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
   /** Restrict to these category names (uppercase), e.g. ['PERIODIC'] for packages */
   categoryFilter?: string[] | null;
   /** Only keep services matching this predicate */
@@ -66,6 +73,8 @@ export default function CrmServicePlanPicker({
   cityId,
   vehicleClass,
   modelId,
+  vehicleMake,
+  vehicleModel,
   categoryFilter,
   filterFn,
   title = 'Choose services',
@@ -234,6 +243,10 @@ export default function CrmServicePlanPicker({
         if (!cls && modelId) {
           cls = await resolveVehicleClass(modelId);
         }
+        if (!cls && vehicleMake && vehicleModel) {
+          const hit = await resolveVehicleClassByMakeModel(vehicleMake, vehicleModel);
+          cls = hit.class;
+        }
         const map = await fetchServicePricingMap(ids, cityId || null, zoneId, cls);
         if (!cancelled) setPricing(map);
       } catch {
@@ -245,7 +258,7 @@ export default function CrmServicePlanPicker({
     return () => {
       cancelled = true;
     };
-  }, [filteredBase, cityId, vehicleClass, modelId]);
+  }, [filteredBase, cityId, vehicleClass, modelId, vehicleMake, vehicleModel]);
 
   const toggle = (id: string) => {
     if (selectedIds.includes(id)) onChange(selectedIds.filter((x) => x !== id));
@@ -253,12 +266,21 @@ export default function CrmServicePlanPicker({
   };
 
   const selectedTotal = selectedIds.reduce((sum, id) => sum + (pricing[id] || 0), 0);
+  const hasPricingContext = Boolean(
+    String(cityId || '').trim() ||
+      String(vehicleClass || '').trim() ||
+      String(modelId || '').trim() ||
+      (String(vehicleMake || '').trim() && String(vehicleModel || '').trim()),
+  );
 
   return (
     <View>
       {title ? <Text style={styles.title}>{title}</Text> : null}
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {banner}
+      {!hasPricingContext ? (
+        <Text style={styles.priceHint}>Select city & car model to load ₹ prices</Text>
+      ) : null}
 
       {categories.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
@@ -366,16 +388,16 @@ export default function CrmServicePlanPicker({
                       {s.name}
                     </Text>
                     {pts > 0 ? <Text style={styles.planPoints}>{pts} Points</Text> : null}
+                    <Text style={styles.planPriceInline}>
+                      {pricingLoading ? '…' : price ? inr(price) : '—'}
+                    </Text>
                   </View>
-                </TouchableOpacity>
-                <View style={styles.planRight}>
-                  <Text style={styles.planPrice}>{price ? inr(price) : '—'}</Text>
                   <Ionicons
                     name={selected ? 'checkmark-circle' : 'ellipse-outline'}
                     size={22}
                     color={selected ? COLORS.green : COLORS.gray[400]}
                   />
-                </View>
+                </TouchableOpacity>
                 {items.length > 0 ? (
                   <TouchableOpacity style={styles.viewAll} onPress={() => setDetails(s)}>
                     <Text style={styles.viewAllText}>Points ({items.length})</Text>
@@ -551,6 +573,12 @@ const styles = StyleSheet.create({
   planHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   planName: { fontSize: 13, fontWeight: '800', color: COLORS.textHeading },
   planPoints: { fontSize: 11, color: COLORS.primary, fontWeight: '700', marginTop: 2 },
+  planPriceInline: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginTop: 4,
+  },
   planRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -559,6 +587,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   planPrice: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary },
+  priceHint: {
+    fontSize: 12,
+    color: COLORS.orange,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
   planItems: { marginTop: 10, gap: 6 },
   planItemRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 4 },
   planItemText: { flex: 1, fontSize: 12, color: COLORS.textSecondary, lineHeight: 17 },

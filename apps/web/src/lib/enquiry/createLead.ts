@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import { channelFromEnquiryLeadSource } from '@/lib/enquiry/leadChannels';
 
 export const LEAD_SOURCES = [
   'Google Ads',
@@ -85,7 +86,9 @@ export async function createLeadFromBody({ body, leadSourceOverride }: CreateLea
   const now = new Date().toISOString();
   const leadNumber = ensureLeadNumber();
 
-  const { telecallerId, reason } = await pickTelecallerWeightedRoundRobin();
+  const { telecallerId, reason } = await pickTelecallerWeightedRoundRobin(
+    channelFromEnquiryLeadSource(leadSource),
+  );
   const assignedAt = telecallerId ? now : null;
   const leadStatus = telecallerId ? 'ASSIGNED' : 'NEW';
 

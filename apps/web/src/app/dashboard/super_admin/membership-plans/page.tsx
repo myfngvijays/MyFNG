@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Edit, Trash2, X, Save, Crown, ChevronUp, ChevronDown } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import MembershipIconField from '@/components/admin/MembershipIconField';
 import MembershipPlacementFields from '@/components/admin/MembershipPlacementFields';
 import MembershipValueCardPreview from '@/components/admin/MembershipValueCardPreview';
@@ -688,6 +689,7 @@ export default function MembershipPlansPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <AdminPageRefresh onClick={() => void fetchRows()} loading={loading} />
           <button
             onClick={() => openAdd('SERVICE')}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700"

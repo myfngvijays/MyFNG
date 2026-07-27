@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { syncRecentWhatsAppInboundLeads } from '@/lib/whatsappAgents/inboundServiceLead';
+import { dedupeLeadsByPhone } from '@/lib/service-lead-reopen';
 
 export const dynamic = 'force-dynamic';
 
@@ -141,6 +142,7 @@ export async function GET(request: NextRequest) {
     const to = sp.get('to');
     const q = sp.get('q');
     const filter = sp.get('filter'); // new|interested|will_visit|booking_confirmed|in_service|service_done|lost|callback|incomplete|follow_up|booked|rejected|all
+    const lostReason = String(sp.get('lost_reason') || '').trim();
     const limit = Math.min(Math.max(parseInt(sp.get('limit') || '80', 10) || 80, 1), 200);
 
     let query = db
@@ -153,7 +155,15 @@ export async function GET(request: NextRequest) {
         assigned_telecaller_id,
         workshop:workshops(id, name, city)
       `)
-      .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+      // Unassigned + own + OTP-verified incomplete (website/app abandon) for every telecaller
+      .or(
+        [
+          `assigned_telecaller_id.is.null`,
+          `assigned_telecaller_id.eq.${teleCallerId}`,
+          `coupon_meta->>last_call_result.eq.OTP_VERIFIED`,
+          `coupon_meta->>website_otp_verified.eq.true`,
+        ].join(','),
+      )
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -195,10 +205,16 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', 'COMPLETED');
     } else if (filter === 'lost' || filter === 'rejected') {
       query = query.eq('status', 'REJECTED');
+      if (lostReason) {
+        query = query.filter('coupon_meta->>last_lost_reason', 'eq', lostReason);
+      }
     } else if (filter === 'callback') {
       query = query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
     } else if (filter === 'incomplete') {
-      query = query.eq('is_incomplete', true);
+      // Incomplete booking stubs + website/app OTP-verified (not yet booked)
+      query = query.or(
+        'is_incomplete.eq.true,coupon_meta->>last_call_result.eq.OTP_VERIFIED,coupon_meta->>website_otp_verified.eq.true',
+      );
     } else if (filter === 'follow_up') {
       query = query.eq('follow_up_required', true);
     }
@@ -223,7 +239,14 @@ export async function GET(request: NextRequest) {
           assigned_telecaller_id,
           workshop:workshops(id, name, city)
         `)
-        .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+        .or(
+          [
+            `assigned_telecaller_id.is.null`,
+            `assigned_telecaller_id.eq.${teleCallerId}`,
+            `coupon_meta->>last_call_result.eq.OTP_VERIFIED`,
+            `coupon_meta->>website_otp_verified.eq.true`,
+          ].join(','),
+        )
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -253,11 +276,18 @@ export async function GET(request: NextRequest) {
         ]);
       } else if (filter === 'in_service') retry = retry.eq('status', 'IN_PROGRESS');
       else if (filter === 'service_done') retry = retry.eq('status', 'COMPLETED');
-      else if (filter === 'lost' || filter === 'rejected') retry = retry.eq('status', 'REJECTED');
-      else if (filter === 'callback') {
+      else if (filter === 'lost' || filter === 'rejected') {
+        retry = retry.eq('status', 'REJECTED');
+        if (lostReason) {
+          retry = retry.filter('coupon_meta->>last_lost_reason', 'eq', lostReason);
+        }
+      } else if (filter === 'callback') {
         retry = retry.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
-      } else if (filter === 'incomplete') retry = retry.eq('is_incomplete', true);
-      else if (filter === 'follow_up') retry = retry.eq('follow_up_required', true);
+      } else if (filter === 'incomplete') {
+        retry = retry.or(
+          'is_incomplete.eq.true,coupon_meta->>last_call_result.eq.OTP_VERIFIED,coupon_meta->>website_otp_verified.eq.true',
+        );
+      } else if (filter === 'follow_up') retry = retry.eq('follow_up_required', true);
       if (q) {
         retry = retry.or(
           `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`,
@@ -275,14 +305,22 @@ export async function GET(request: NextRequest) {
       console.warn('[crm/leads] status heal skipped', healErr);
     }
 
-    const leads = rows.map((row: any) => ({
-      ...row,
-      message_preview: leadMessagePreview(row),
-      is_whatsapp_lead:
-        /whatsapp|meta|instagram|facebook/i.test(
-          `${row?.created_from || ''} ${row?.lead_source || ''}`,
-        ) || Boolean(row?.coupon_meta?.whatsapp_inbound),
-    }));
+    const deduped = dedupeLeadsByPhone(rows);
+
+    const leads = deduped.map((row: any) => {
+      const hist = Array.isArray(row?.coupon_meta?.profile_history)
+        ? row.coupon_meta.profile_history
+        : [];
+      return {
+        ...row,
+        message_preview: leadMessagePreview(row),
+        history_preview: hist.slice(0, 3),
+        is_whatsapp_lead:
+          /whatsapp|meta|instagram|facebook/i.test(
+            `${row?.created_from || ''} ${row?.lead_source || ''}`,
+          ) || Boolean(row?.coupon_meta?.whatsapp_inbound),
+      };
+    });
 
     return NextResponse.json({ success: true, leads, total: leads.length });
   } catch (e: any) {

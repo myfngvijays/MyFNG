@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Upload, Loader2, FileText } from 'lucide-react';
 import Link from 'next/link';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 
 export default function ManualInvoicesPage() {
   const [csvText, setCsvText] = useState('');
@@ -166,13 +167,16 @@ export default function ManualInvoicesPage() {
             Upload CSV to generate invoices in MyFNG format.
           </p>
         </div>
-        <Link
-          href="/dashboard/super_admin/manual-invoices/created"
-          className="btn btn-secondary flex items-center gap-2 text-sm w-fit"
-        >
-          <FileText className="w-4 h-4" />
-          View Created Invoice
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminPageRefresh onClick={() => void fillNextInvoiceNumber(true)} loading={autoLoading} />
+          <Link
+            href="/dashboard/super_admin/manual-invoices/created"
+            className="btn btn-secondary flex items-center gap-2 text-sm w-fit"
+          >
+            <FileText className="w-4 h-4" />
+            View Created Invoice
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border p-4 space-y-4">

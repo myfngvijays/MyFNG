@@ -170,6 +170,8 @@ export async function POST(request: NextRequest) {
     const targetCustomerType = String(body?.target_customer_type || '').trim();
     const targetCouponUsers = String(body?.target_coupon_users || '').trim();
     const targetCouponCodes: string[] = Array.isArray(body?.target_coupon_codes) ? body.target_coupon_codes.map((c: any) => String(c).trim()).filter(Boolean) : [];
+    const targetWallet = String(body?.target_wallet || '').trim(); // has_balance | no_balance
+    const targetBooking = String(body?.target_booking || '').trim(); // booked | completed | never
     const targetPhoneList: string[] = Array.isArray(body?.target_phone_list) ? body.target_phone_list : [];
 
     if (!title || !message) {
@@ -199,7 +201,19 @@ export async function POST(request: NextRequest) {
     let targetCustomer: { id: string; phone: string; full_name: string | null } | null = null;
     const pushDisabledCustomerIds = await getPushDisabledCustomerIds(supabaseAdmin);
 
-    const hasAdvancedTargeting = targetPhoneList.length > 0 || targetCities.length > 0 || targetMembership || targetServiceCenters.length > 0 || targetCarBrands.length > 0 || targetCustomerType || targetCouponUsers;
+    const hasAdvancedTargeting =
+      targetPhoneList.length > 0 ||
+      targetCities.length > 0 ||
+      targetMembership ||
+      targetServiceCenters.length > 0 ||
+      targetCarBrands.length > 0 ||
+      targetCustomerType ||
+      targetCouponUsers ||
+      targetWallet === 'has_balance' ||
+      targetWallet === 'no_balance' ||
+      targetBooking === 'booked' ||
+      targetBooking === 'completed' ||
+      targetBooking === 'never';
 
     if (hasAdvancedTargeting && targetRole === 'CUSTOMER') {
       let filteredCustomerIds: Set<string> | null = null;
@@ -361,6 +375,90 @@ export async function POST(request: NextRequest) {
           const assignedCustomerIds = new Set((assignments || []).map((a: any) => a.customer_id));
           filteredCustomerIds = filteredCustomerIds !== null ? new Set([...filteredCustomerIds].filter((id) => assignedCustomerIds.has(id))) : assignedCustomerIds;
         }
+
+        if (targetWallet === 'has_balance' || targetWallet === 'no_balance') {
+          const { data: wallets } = await supabaseAdmin
+            .from('wallet_accounts')
+            .select('customer_id, current_balance')
+            .gt('current_balance', 0);
+
+          const withBalanceIds = new Set(
+            (wallets || [])
+              .map((w: any) => String(w.customer_id || '').trim())
+              .filter(Boolean),
+          );
+
+          if (targetWallet === 'has_balance') {
+            filteredCustomerIds =
+              filteredCustomerIds !== null
+                ? new Set([...filteredCustomerIds].filter((id) => withBalanceIds.has(id)))
+                : withBalanceIds;
+          } else if (filteredCustomerIds !== null) {
+            filteredCustomerIds = new Set(
+              [...filteredCustomerIds].filter((id) => !withBalanceIds.has(id)),
+            );
+          } else {
+            const { data: allC } = await supabaseAdmin.from('customers').select('id');
+            filteredCustomerIds = new Set(
+              (allC || [])
+                .map((c: any) => String(c.id))
+                .filter((id: string) => !withBalanceIds.has(id)),
+            );
+          }
+        }
+
+        if (targetBooking === 'booked' || targetBooking === 'completed' || targetBooking === 'never') {
+          let leadsQuery = supabaseAdmin
+            .from('service_leads')
+            .select('customer_id, customer_phone, status')
+            .not('customer_phone', 'is', null);
+
+          if (targetBooking === 'completed') {
+            leadsQuery = leadsQuery.in('status', ['COMPLETED', 'READY_FOR_DELIVERY']);
+          }
+
+          const { data: leads } = await leadsQuery;
+          const bookedPhones = new Set<string>();
+          const bookedDirectIds = new Set<string>();
+          for (const lead of leads || []) {
+            const cid = String((lead as any).customer_id || '').trim();
+            if (cid) bookedDirectIds.add(cid);
+            const phone = String((lead as any).customer_phone || '')
+              .replace(/\D/g, '')
+              .slice(-10);
+            if (phone.length === 10) bookedPhones.add(phone);
+          }
+
+          const { data: customers } = await supabaseAdmin.from('customers').select('id, phone');
+          const bookedIds = new Set<string>(bookedDirectIds);
+          for (const c of customers || []) {
+            const phone = String((c as any).phone || '')
+              .replace(/\D/g, '')
+              .slice(-10);
+            if (phone.length === 10 && bookedPhones.has(phone)) {
+              bookedIds.add(String((c as any).id));
+            }
+          }
+
+          if (targetBooking === 'never') {
+            if (filteredCustomerIds !== null) {
+              filteredCustomerIds = new Set(
+                [...filteredCustomerIds].filter((id) => !bookedIds.has(id)),
+              );
+            } else {
+              filteredCustomerIds = new Set(
+                (customers || [])
+                  .map((c: any) => String(c.id))
+                  .filter((id: string) => !bookedIds.has(id)),
+              );
+            }
+          } else {
+            filteredCustomerIds =
+              filteredCustomerIds !== null
+                ? new Set([...filteredCustomerIds].filter((id) => bookedIds.has(id)))
+                : bookedIds;
+          }
+        }
       }
 
       const targetIds = filteredCustomerIds ? [...filteredCustomerIds] : [];
@@ -489,6 +587,8 @@ export async function POST(request: NextRequest) {
           os_filter: osFilter,
           target_cities: targetCities.length > 0 ? targetCities : null,
           target_membership: targetMembership || null,
+          target_wallet: targetWallet || null,
+          target_booking: targetBooking || null,
           target_phone_list_count: targetPhoneList.length || null,
         },
       });
@@ -578,6 +678,8 @@ export async function POST(request: NextRequest) {
         platform_stats: platformStats,
         target_cities: targetCities.length > 0 ? targetCities : null,
         target_membership: targetMembership || null,
+        target_wallet: targetWallet || null,
+        target_booking: targetBooking || null,
         target_phone_list_count: targetPhoneList.length || null,
       },
     });

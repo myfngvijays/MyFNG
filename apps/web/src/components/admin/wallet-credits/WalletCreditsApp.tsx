@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useCallback } from 'react';
+import { Suspense, useCallback, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { History, IndianRupee, MinusCircle } from 'lucide-react';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import BulkCreditSection from './sections/BulkCreditSection';
 import BulkDebitSection from './sections/BulkDebitSection';
 import HistorySection from './sections/HistorySection';
@@ -24,6 +25,7 @@ function WalletCreditsAppInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const section = sectionFromParam(searchParams.get('section'));
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const setSection = useCallback(
     (next: SectionId) => {
@@ -36,12 +38,15 @@ function WalletCreditsAppInner() {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50/40">
       <div className="border-b border-emerald-100/80 bg-white/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">Wallet Operations</p>
-            <h1 className="text-2xl font-black text-gray-900 mt-0.5">Wallet Credits</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Advanced bulk credit/debit — Google Sheet, variable amounts, expiry, push notifications.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">Wallet Operations</p>
+              <h1 className="text-2xl font-black text-gray-900 mt-0.5">Wallet Credits</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Advanced bulk credit/debit — Google Sheet, variable amounts, expiry, push notifications.
+              </p>
+            </div>
+            <AdminPageRefresh onClick={() => setRefreshKey((key) => key + 1)} />
           </div>
           <div className="flex flex-wrap gap-2 mt-4">
             {NAV.map((item) => {
@@ -69,7 +74,7 @@ function WalletCreditsAppInner() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6" key={refreshKey}>
         {section === 'bulk' ? <BulkCreditSection /> : null}
         {section === 'debit' ? <BulkDebitSection /> : null}
         {section === 'history' ? <HistorySection /> : null}

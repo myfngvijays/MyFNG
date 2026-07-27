@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import './push-admin-theme.css';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import PushDashboardSection from './sections/DashboardSection';
 import PushFirebaseSettingsSection from './sections/FirebaseSettingsSection';
 import PushComposeSection from './sections/ComposeSection';
@@ -57,6 +58,7 @@ export default function AdvancePushApp() {
   const searchParams = useSearchParams();
   const section = sectionFromParam(searchParams.get('section'));
   const [headerSearch, setHeaderSearch] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [admin, setAdmin] = useState<AdminProfile>({
     name: 'Super Admin',
     role: 'Super Admin',
@@ -131,6 +133,7 @@ export default function AdvancePushApp() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AdminPageRefresh onClick={() => setRefreshKey((key) => key + 1)} />
             <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 w-full sm:w-64">
               <Search className="w-4 h-4 text-gray-400 shrink-0" />
               <input
@@ -168,7 +171,7 @@ export default function AdvancePushApp() {
         </div>
       </div>
 
-      <main className="px-4 sm:px-6 lg:px-8 py-6">{renderSection()}</main>
+      <main className="px-4 sm:px-6 lg:px-8 py-6" key={refreshKey}>{renderSection()}</main>
     </div>
   );
 }

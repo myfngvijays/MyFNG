@@ -27,6 +27,10 @@ import { COLORS, SPACING } from '@/constants/theme';
 import CarModelSearchField from '@/components/CarModelSearchField';
 import CrmServicePlanPicker from '@/components/telecaller/CrmServicePlanPicker';
 import CrmPickupVisitStep, { type CrmPickupVisitValue } from '@/components/telecaller/CrmPickupVisitStep';
+import {
+  resolveVehicleClass,
+  resolveVehicleClassByMakeModel,
+} from '@/lib/servicePricing';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
 const EDITABLE_STATUSES = new Set([
@@ -35,6 +39,12 @@ const EDITABLE_STATUSES = new Set([
   'INCOMPLETE',
   'ASSIGNED',
   'VALIDATED',
+  'PENDING',
+  'IN_PROGRESS',
+  'REJECTED',
+  'ACCEPTED',
+  'HOLD',
+  'COMPLETED',
 ]);
 
 type FormData = {
@@ -328,6 +338,33 @@ export default function TelecallerEditLeadScreen({
         if (data.city_id && !cityName && cityRows) {
           const c = cityRows.find((x: any) => x.id === data.city_id);
           if (c?.name) setForm((prev) => ({ ...prev, city: c.name }));
+        }
+
+        // Resolve city_id / vehicle_class for package ₹ pricing
+        let resolvedCityId = String(data.city_id || '').trim();
+        let resolvedModelId = String(data.model_id || '').trim();
+        let resolvedClass = String(data.vehicle_class || meta.vehicle_class || '').trim();
+        if (!resolvedCityId && cityName && cityRows?.length) {
+          const hit = cityRows.find(
+            (x: any) => String(x.name || '').toLowerCase() === cityName.toLowerCase(),
+          );
+          if (hit?.id) resolvedCityId = String(hit.id);
+        }
+        if (!resolvedClass && resolvedModelId) {
+          resolvedClass = (await resolveVehicleClass(resolvedModelId)) || '';
+        }
+        if ((!resolvedClass || !resolvedModelId) && make && model) {
+          const hit = await resolveVehicleClassByMakeModel(make, model);
+          if (hit.class) resolvedClass = hit.class;
+          if (hit.id) resolvedModelId = hit.id;
+        }
+        if (resolvedCityId || resolvedClass || resolvedModelId) {
+          setForm((prev) => ({
+            ...prev,
+            ...(resolvedCityId ? { city_id: resolvedCityId } : {}),
+            ...(resolvedModelId ? { model_id: resolvedModelId } : {}),
+            ...(resolvedClass ? { vehicle_class: resolvedClass } : {}),
+          }));
         }
       } catch (e) {
         console.error(e);
@@ -782,6 +819,8 @@ export default function TelecallerEditLeadScreen({
             cityId={form.city_id}
             vehicleClass={form.vehicle_class}
             modelId={form.model_id}
+            vehicleMake={form.vehicle_make}
+            vehicleModel={form.vehicle_model}
             title=""
           />
           {errors.service_types ? <Text style={styles.err}>{errors.service_types}</Text> : null}

@@ -15,6 +15,7 @@ import {
   Layers,
 } from 'lucide-react';
 import './pcm-theme.css';
+import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import PcmDashboardSection from './sections/DashboardSection';
 import PcmCouponsSection from './sections/CouponsSection';
 import PcmCampaignsSection from './sections/CampaignsSection';
@@ -61,6 +62,7 @@ export default function AdvanceCouponApp() {
   const searchParams = useSearchParams();
   const section = sectionFromParam(searchParams.get('section'));
   const [headerSearch, setHeaderSearch] = useState(searchParams.get('search') || '');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const setSection = useCallback(
     (next: string) => {
@@ -108,6 +110,7 @@ export default function AdvanceCouponApp() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AdminPageRefresh onClick={() => setRefreshKey((key) => key + 1)} />
             <input
               className="w-full sm:w-56 px-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 placeholder:text-gray-400"
               placeholder="Search coupons..."
@@ -150,7 +153,7 @@ export default function AdvanceCouponApp() {
         </div>
       </div>
 
-      <main className="px-4 sm:px-6 lg:px-8 pb-8">
+      <main className="px-4 sm:px-6 lg:px-8 pb-8" key={refreshKey}>
         {section === 'dashboard' ? <PcmDashboardSection onNavigate={setSection} /> : null}
         {section === 'coupons' || section === 'bulk' || section === 'assign' ? (
           <Suspense fallback={<div className="h-40 pcm-card rounded-xl border animate-pulse" />}>
