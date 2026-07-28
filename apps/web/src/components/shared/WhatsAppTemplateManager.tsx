@@ -18,10 +18,23 @@ type TemplateRow = {
   variable_keys: string[];
   example_values: string[];
   is_active: boolean;
-  meta?: { status?: string; template_id?: string } | null;
+  meta?: { status?: string; template_id?: string; source?: string } | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Push is for drafts not yet linked / rejected by Meta. */
+function canPushTemplateToMeta(row: TemplateRow) {
+  const status = String(row.meta?.status || '').toUpperCase();
+  const source = String(row.meta?.source || '').toLowerCase();
+  if (['APPROVED', 'PENDING', 'IN_APPEAL', 'PAUSED', 'DISABLED'].includes(status)) {
+    return false;
+  }
+  return (
+    ['', 'NOT_SYNCED', 'REJECTED', 'LOCAL_DRAFT'].includes(status) ||
+    source === 'local_draft'
+  );
+}
 
 type ViewMode = 'list' | 'grid';
 type DateField = 'created' | 'updated';
@@ -902,7 +915,7 @@ export default function WhatsAppTemplateManager() {
                     ) : null}
                     <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}>
                       <div className="inline-flex items-center gap-2">
-                        {['', 'NOT_SYNCED', 'REJECTED'].includes(String(row.meta?.status || '').toUpperCase()) ? (
+                        {canPushTemplateToMeta(row) ? (
                           <button
                             type="button"
                             className="rounded border px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"

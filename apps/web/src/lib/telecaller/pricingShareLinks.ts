@@ -21,6 +21,42 @@ import { normalizePricingCategories } from '@/lib/telecaller/sendLeadPricingWhat
 const DEFAULT_TTL_HOURS = 6;
 const SHARE_TEMPLATE = 'pricing_share_link';
 
+/** Match WhatsApp copy: "28 Jul, 08:21 pm" (IST). */
+function formatPricingShareExpiry(expiresAt: string): string {
+  try {
+    const d = new Date(expiresAt);
+    if (Number.isNaN(d.getTime())) return 'a few hours';
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).formatToParts(d);
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value || '';
+    const day = get('day');
+    const month = get('month');
+    const hour = get('hour');
+    const minute = get('minute');
+    const dayPeriod = get('dayPeriod').toLowerCase();
+    if (!day || !month || !hour || !minute) {
+      return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    }
+    return `${day} ${month}, ${hour}:${minute} ${dayPeriod}`;
+  } catch {
+    return 'a few hours';
+  }
+}
+
 /** Full catalogue shown on every share link (one link → all services). */
 export const ALL_SHARE_PRICING_CATEGORIES = [
   'Car Periodic Service',
@@ -449,20 +485,7 @@ export async function sendPricingShareWhatsApp(input: {
   const name = firstName(input.customerName);
   const car = String(input.carModel || '').trim() || 'your car';
   const url = String(input.url || '').trim();
-  const expiresLabel = (() => {
-    try {
-      return new Date(input.expiresAt).toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-      });
-    } catch {
-      return 'a few hours';
-    }
-  })();
+  const expiresLabel = formatPricingShareExpiry(input.expiresAt);
   const sessionMsg = [
     `Hi ${name},`,
     '',
@@ -487,10 +510,11 @@ export async function sendPricingShareWhatsApp(input: {
   });
   if (textRes.success) return { sent: true, channel: 'session_text' };
 
+  // Must match whatsapp_templates.pricing_share_link: {{1}} name, {{2}} car, {{3}} expiry, {{4}} url
   const tplRes = await sendTemplateMessage({
     phoneNumber: phone,
     templateName: SHARE_TEMPLATE,
-    templateParams: [name, car, url],
+    templateParams: [name, car, expiresLabel, url],
     languageCode: 'en',
   });
   if (tplRes.success) return { sent: true, channel: 'pricing_share_link_template' };

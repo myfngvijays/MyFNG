@@ -71,11 +71,11 @@ INSERT INTO public.whatsapp_templates (
   'Pricing Share Link',
   'en',
   'UTILITY',
-  E'Hi {{1}},\n\nSharing MyFNG service pricing for {{2}}.\n\nView plans here (valid for a limited time):\n{{3}}\n\nThis is an automated pricing update from MyFNG. Reply BOOK to proceed.',
-  '["customer_name","car_model","pricing_url"]'::jsonb,
-  '["Rahul","Hyundai i20","https://myfng.in/pricing/a8k2m9xq"]'::jsonb,
+  E'Hi {{1}},\n\nSharing MyFNG *full service pricing* for *{{2}}*.\n\nView all packages (Periodic, AC, Engine, Denting & more) here — valid until {{3}}:\n{{4}}\n\nSelect plans on the page and send back on WhatsApp, or reply *BOOK*. — Team MyFNG',
+  '["customer_name","car_model","expiry_date_time","pricing_url"]'::jsonb,
+  '["Yunick","MARUTI WAGON R","28 Jul, 08:21 pm","https://myfng.in/pricing/ukpjtath3f"]'::jsonb,
   false,
-  '{"purpose":"telecaller_pricing_share","source":"local_draft","meta_submit_note":"UTILITY — short message with time-limited pricing page URL."}'::jsonb,
+  '{"purpose":"telecaller_pricing_share","source":"local_draft","meta_submit_note":"UTILITY — telecaller pricing page link with expiry. Session text uses same copy when 24h window is open."}'::jsonb,
   NOW(),
   NOW()
 )
