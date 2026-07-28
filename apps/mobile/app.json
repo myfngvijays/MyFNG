@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "31",
+      "buildNumber": "32",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:myfng.in"
@@ -54,7 +54,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 31,
+      "versionCode": 32,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
