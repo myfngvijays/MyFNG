@@ -3,7 +3,7 @@
     "name": "MyFNG",
     "slug": "myfng-app",
     "scheme": "myfng",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
     "icon": "./assets/app-icon.png",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "30",
+      "buildNumber": "31",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:myfng.in"
@@ -54,7 +54,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 30,
+      "versionCode": 31,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
