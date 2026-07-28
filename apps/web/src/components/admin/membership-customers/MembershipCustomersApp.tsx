@@ -409,6 +409,7 @@ export default function MembershipCustomersApp() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [benefitModal, setBenefitModal] = useState<BenefitClaimsModal | null>(null);
@@ -468,6 +469,7 @@ export default function MembershipCustomersApp() {
       setRows(json.memberships || []);
       setTotal(json.pagination?.total || 0);
       setRangeLabel(json.range_label || 'Last 30 days');
+      setSelectedIds(new Set());
     } catch (e: any) {
       setError(e?.message || 'Failed to load');
       setRows([]);
@@ -640,6 +642,30 @@ export default function MembershipCustomersApp() {
     }
   };
 
+  const allPageSelected =
+    rows.length > 0 && rows.every((r) => selectedIds.has(r.membership_id));
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const r of rows) next.delete(r.membership_id);
+      } else {
+        for (const r of rows) next.add(r.membership_id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleDeleteMembership = async () => {
     if (!selectedId || !selectedRow) return;
     const ok = window.confirm(
@@ -655,9 +681,52 @@ export default function MembershipCustomersApp() {
       if (!res.ok) throw new Error(json.error || 'Failed to remove membership');
       setSelectedId(null);
       setDetail(null);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedId);
+        return next;
+      });
       await fetchList();
     } catch (e: any) {
       setError(e?.message || 'Failed to remove membership');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) {
+      setError('Select at least one membership to delete');
+      return;
+    }
+    const ok = window.confirm(
+      `Remove ${ids.length} selected membership(s)?\n\nThis deletes membership records and benefit usage history. Cannot undo.`,
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    setError(null);
+    try {
+      const failures: string[] = [];
+      for (const id of ids) {
+        const res = await fetch(`/api/super_admin/membership-customers/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          failures.push(json.error || id);
+        }
+      }
+      if (selectedId && ids.includes(selectedId)) {
+        setSelectedId(null);
+        setDetail(null);
+      }
+      setSelectedIds(new Set());
+      await fetchList();
+      if (failures.length) {
+        setError(`Removed some; ${failures.length} failed`);
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Bulk delete failed');
     } finally {
       setDeleting(false);
     }
@@ -1051,10 +1120,46 @@ export default function MembershipCustomersApp() {
                 </select>
               </div>
 
+              {selectedIds.size > 0 ? (
+                <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-red-800">
+                    {selectedIds.size} membership{selectedIds.size === 1 ? '' : 's'} selected
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds(new Set())}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteSelected()}
+                      disabled={deleting}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deleting ? 'Deleting…' : 'Delete selected'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                     <tr>
+                      <th className="sticky left-0 z-20 bg-gray-50 px-3 py-3 w-12 min-w-[3rem] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-violet-600 rounded border-gray-400 cursor-pointer"
+                          checked={allPageSelected}
+                          onChange={toggleSelectAllPage}
+                          aria-label="Select all on page"
+                          title="Select all on page"
+                        />
+                      </th>
                       <th className="px-3 py-3">Customer</th>
                       <th className="px-3 py-3">Plan / Amount</th>
                       <th className="px-3 py-3">Purchased</th>
@@ -1069,25 +1174,42 @@ export default function MembershipCustomersApp() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
+                        <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
                           Loading...
                         </td>
                       </tr>
                     ) : rows.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
+                        <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
                           No membership customers found
                         </td>
                       </tr>
                     ) : (
                       rows.map((row) => {
                         const active = selectedId === row.membership_id;
+                        const checked = selectedIds.has(row.membership_id);
                         return (
                           <tr
                             key={row.membership_id}
                             onClick={() => setSelectedId(row.membership_id)}
-                            className={`border-t border-gray-100 cursor-pointer hover:bg-violet-50/50 ${active ? 'bg-violet-50' : ''}`}
+                            className={`border-t border-gray-100 cursor-pointer hover:bg-violet-50/50 ${
+                              active ? 'bg-violet-50' : ''
+                            } ${checked ? 'bg-red-50/40' : ''}`}
                           >
+                            <td
+                              className={`sticky left-0 z-10 px-3 py-3 w-12 min-w-[3rem] border-r border-gray-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
+                                checked ? 'bg-red-50' : active ? 'bg-violet-50' : 'bg-white'
+                              }`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-violet-600 rounded border-gray-400 cursor-pointer"
+                                checked={checked}
+                                onChange={() => toggleSelectOne(row.membership_id)}
+                                aria-label={`Select ${row.customer_name || row.phone || row.membership_id}`}
+                              />
+                            </td>
                             <td className="px-3 py-3">
                               <div className="font-bold text-gray-900">{row.customer_name}</div>
                               <div className="text-xs text-gray-500">{row.phone}</div>

@@ -874,13 +874,14 @@ export default function CustomerInsightsApp() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-3 py-3 w-10">
+                    <th className="sticky left-0 z-20 bg-gray-50 px-3 py-3 w-12 min-w-[3rem] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
+                        className="h-4 w-4 accent-blue-600 rounded border-gray-400 cursor-pointer"
                         checked={allPageSelected}
                         onChange={toggleSelectAllPage}
                         aria-label="Select all on page"
+                        title="Select all on page"
                       />
                     </th>
                     <th className="px-4 py-3 text-left font-bold text-gray-600">Customer</th>
@@ -897,13 +898,13 @@ export default function CustomerInsightsApp() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
                         Loading customers...
                       </td>
                     </tr>
                   ) : customers.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
                         No customers found
                       </td>
                     </tr>
@@ -920,12 +921,18 @@ export default function CustomerInsightsApp() {
                         }}
                       >
                         <td
-                          className="px-3 py-3"
+                          className={`sticky left-0 z-10 px-3 py-3 w-12 min-w-[3rem] border-r border-gray-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] ${
+                            selectedIds.has(c.id)
+                              ? 'bg-red-50'
+                              : selectedId === c.id
+                                ? 'bg-blue-50'
+                                : 'bg-white'
+                          }`}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300"
+                            className="h-4 w-4 accent-blue-600 rounded border-gray-400 cursor-pointer"
                             checked={selectedIds.has(c.id)}
                             onChange={() => toggleSelectOne(c.id)}
                             aria-label={`Select ${c.full_name || c.phone || c.id}`}

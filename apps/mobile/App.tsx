@@ -72,13 +72,14 @@ import {
   setupFcmNotificationHandlers,
   subscribeToFcmTokenRefresh,
 } from './src/services/pushNotifications';
-import { checkForceUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
+import { checkForceUpdate, dismissSoftUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
 import { notifyAppSessionIncompleteOnServer } from './src/lib/whatsappAutomationClient';
 import { initializeClarity } from './src/lib/clarity';
 import { preloadMobileAuthConfig } from './src/lib/mobileAuthConfig';
 import { initializeFirebaseAnalytics, refreshFirebaseAnalyticsEnabled } from './src/lib/firebaseAnalytics';
 import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
+import SoftUpdateModal from './src/components/SoftUpdateModal';
 
 const Stack = createNativeStackNavigator();
 
@@ -88,6 +89,7 @@ function AppContent() {
   const [authReady, setAuthReady] = useState(false);
   const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
   const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
+  const [softUpdate, setSoftUpdate] = useState<ForceUpdateResult | null>(null);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loginScreenKey, setLoginScreenKey] = useState(0);
@@ -189,12 +191,22 @@ function AppContent() {
   const runForceUpdateCheck = useCallback(async () => {
     if (__DEV__) {
       setForceUpdate(null);
+      setSoftUpdate(null);
       setUpdateCheckDone(true);
       return;
     }
 
     const result = await checkForceUpdate();
-    setForceUpdate(result.required ? result : null);
+    if (result.required) {
+      setForceUpdate(result);
+      setSoftUpdate(null);
+    } else if (result.softAvailable) {
+      setForceUpdate(null);
+      setSoftUpdate(result);
+    } else {
+      setForceUpdate(null);
+      setSoftUpdate(null);
+    }
     setUpdateCheckDone(true);
   }, []);
 
@@ -371,7 +383,7 @@ function AppContent() {
         visible
         message={forceUpdate.message || ''}
         storeUrl={forceUpdate.storeUrl || ''}
-        latestVersion={forceUpdate.minVersion}
+        latestVersion={forceUpdate.latestVersion || forceUpdate.minVersion}
       />
     );
   }
@@ -393,49 +405,63 @@ function AppContent() {
   };
 
   return (
-    <NavigationContainer ref={navigationRef} onStateChange={onNavigationStateChange}>
-      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
-        {!user || !userProfile || isCustomerSessionUser ? (
-          <>
-            {/* Public Home (marketing + navigation hub) */}
-            <Stack.Screen name="PublicHome" component={PublicHomeScreen} />
-            {/* Website-style Book Service Now wizard (opened via CTA button) */}
-            <Stack.Screen name="PublicBookServiceNow" component={PublicBookServiceNowScreen} />
-            <Stack.Screen
-              name="AIBooking"
-              component={AIBookingScreen}
-              options={{
-                presentation: 'fullScreenModal',
-                animation: 'slide_from_bottom',
-                headerShown: false,
-                contentStyle: { backgroundColor: '#071526' },
-              }}
-            />
-            <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
-            <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
-            <Stack.Screen name="RoadsideAssistance" component={RoadsideAssistanceScreen} />
-            <Stack.Screen name="SmartToolWeb" component={SmartToolWebScreen} />
-            <Stack.Screen name="CarHealthCheck" component={CarHealthCheckScreen} />
-            <Stack.Screen name="FuelCostCalculator" component={FuelCostCalculatorScreen} />
-            <Stack.Screen name="AuthorisedPricing" component={AuthorisedPricingScreen} />
-            <Stack.Screen name="ResaleValue" component={ResaleValueScreen} />
-            <Stack.Screen name="CarQuizGame" component={CarQuizGameScreen} />
-            <Stack.Screen name="CarPartsPrice" component={CarPartsPriceScreen} />
-            <Stack.Screen name="Settings">
-              {(props) => <SettingsScreen {...props} onCustomerLogout={handleLogout} />}
-            </Stack.Screen>
-          <Stack.Screen name="Login">
-              {(props) => (
-                <LoginScreen
-                  key={`login-${loginScreenKey}`}
-                  {...props}
-                  onLoginSuccess={handleLoginSuccess}
-                />
-              )}
-            </Stack.Screen>
-            <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
-            <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
-            {isCustomerSessionUser ? (
+    <>
+      <NavigationContainer ref={navigationRef} onStateChange={onNavigationStateChange}>
+        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+          {!user || !userProfile || isCustomerSessionUser ? (
+            <>
+              {/* Public Home (marketing + navigation hub) */}
+              <Stack.Screen name="PublicHome" component={PublicHomeScreen} />
+              {/* Website-style Book Service Now wizard (opened via CTA button) */}
+              <Stack.Screen name="PublicBookServiceNow" component={PublicBookServiceNowScreen} />
+              <Stack.Screen
+                name="AIBooking"
+                component={AIBookingScreen}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  headerShown: false,
+                  contentStyle: { backgroundColor: '#071526' },
+                }}
+              />
+              <Stack.Screen name="PublicServicePackages" component={PublicServicePackagesScreen} />
+              <Stack.Screen name="PublicWorkshopLocator" component={PublicWorkshopLocatorScreen} />
+              <Stack.Screen name="RoadsideAssistance" component={RoadsideAssistanceScreen} />
+              <Stack.Screen name="SmartToolWeb" component={SmartToolWebScreen} />
+              <Stack.Screen name="CarHealthCheck" component={CarHealthCheckScreen} />
+              <Stack.Screen name="FuelCostCalculator" component={FuelCostCalculatorScreen} />
+              <Stack.Screen name="AuthorisedPricing" component={AuthorisedPricingScreen} />
+              <Stack.Screen name="ResaleValue" component={ResaleValueScreen} />
+              <Stack.Screen name="CarQuizGame" component={CarQuizGameScreen} />
+              <Stack.Screen name="CarPartsPrice" component={CarPartsPriceScreen} />
+              <Stack.Screen name="Settings">
+                {(props) => <SettingsScreen {...props} onCustomerLogout={handleLogout} />}
+              </Stack.Screen>
+            <Stack.Screen name="Login">
+                {(props) => (
+                  <LoginScreen
+                    key={`login-${loginScreenKey}`}
+                    {...props}
+                    onLoginSuccess={handleLoginSuccess}
+                  />
+                )}
+              </Stack.Screen>
+              <Stack.Screen name="CustomerSignup" component={CustomerRegistrationScreen} />
+              <Stack.Screen name="CustomerOtpLogin" component={CustomerOtpLoginScreen} />
+              {isCustomerSessionUser ? (
+                <Stack.Screen name="Dashboard">
+                  {(props) => (
+                    <DashboardNavigator
+                      {...props}
+                      userProfile={userProfile}
+                      onLogout={handleLogout}
+                    />
+                  )}
+                </Stack.Screen>
+              ) : null}
+            </>
+          ) : (
+            <>
               <Stack.Screen name="Dashboard">
                 {(props) => (
                   <DashboardNavigator
@@ -445,33 +471,37 @@ function AppContent() {
                   />
                 )}
               </Stack.Screen>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Stack.Screen name="Dashboard">
-              {(props) => (
-                <DashboardNavigator
-                  {...props}
-                  userProfile={userProfile}
-                  onLogout={handleLogout}
-                />
-              )}
-            </Stack.Screen>
-            <Stack.Screen
-              name="AIBooking"
-              component={AIBookingScreen}
-              options={{
-                presentation: 'fullScreenModal',
-                animation: 'slide_from_bottom',
-                headerShown: false,
-                contentStyle: { backgroundColor: '#071526' },
-              }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+              <Stack.Screen
+                name="AIBooking"
+                component={AIBookingScreen}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                  headerShown: false,
+                  contentStyle: { backgroundColor: '#071526' },
+                }}
+              />
+            </>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+
+      {softUpdate?.softAvailable ? (
+        <SoftUpdateModal
+          visible
+          message={softUpdate.message || ''}
+          storeUrl={softUpdate.storeUrl || ''}
+          latestVersion={softUpdate.latestVersion}
+          onLater={() => {
+            trackEvent('soft_update_dismissed', {
+              latest_version: softUpdate.latestVersion || '',
+            });
+            void dismissSoftUpdate(softUpdate.latestVersion || '');
+            setSoftUpdate(null);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

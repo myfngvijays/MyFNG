@@ -293,32 +293,32 @@ export default function TelecallerCrmHomePage() {
             <div className="grid grid-cols-2 gap-2.5">
               {[
                 {
-                  href: '/dashboard/telecaller/book',
-                  label: 'New Booking',
-                  icon: Phone,
+                  href: '/dashboard/telecaller/book?mode=book',
+                  label: 'Booking',
+                  icon: Calendar,
                   color: '#10B981',
+                },
+                {
+                  href: '/dashboard/telecaller/book?mode=lead',
+                  label: 'Add Lead',
+                  icon: Phone,
+                  color: '#004AAD',
                 },
                 {
                   href: '/dashboard/telecaller/leads',
                   label: 'Open Leads',
                   icon: ClipboardList,
-                  color: '#004AAD',
-                },
-                {
-                  href: '/dashboard/telecaller/engage',
-                  label: 'Follow-ups',
-                  icon: Calendar,
                   color: '#F59E0B',
                 },
                 {
-                  href: '/dashboard/telecaller/rsa',
-                  label: 'WhatsApp / RSA',
+                  href: '/dashboard/telecaller/engage?tab=followups',
+                  label: 'Follow-ups',
                   icon: MessageCircle,
                   color: '#25D366',
                 },
               ].map((a) => (
                 <Link
-                  key={a.href}
+                  key={a.href + a.label}
                   href={a.href}
                   className="rounded-2xl bg-white py-4 px-3 shadow-sm border border-slate-100 flex flex-col items-center gap-2 hover:border-blue-200 transition"
                 >

@@ -34,7 +34,8 @@ import {
   ClipboardCheck,
   Globe,
   MessageSquare,
-  MessageCircle
+  MessageCircle,
+  MapPin,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -742,9 +743,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
         { href: '/dashboard/telecaller/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { href: '/dashboard/telecaller/workshops', icon: <MapPin className="w-5 h-5" />, label: 'Workshops' },
         { href: '/dashboard/telecaller/engage', icon: <Calendar className="w-5 h-5" />, label: 'Engage' },
-        { href: '/dashboard/telecaller/enquiry-leads', icon: <FileText className="w-5 h-5" />, label: 'Enquiry' },
-        { href: '/dashboard/telecaller/rsa', icon: <AlertTriangle className="w-5 h-5" />, label: 'RSA' },
         { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'Me' },
       ],
       'SUB_ADMIN': [

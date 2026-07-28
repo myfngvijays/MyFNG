@@ -428,7 +428,8 @@ export default function SystemSettingsPage() {
           <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
             <h2 className="font-semibold text-base sm:text-lg">📱 Mobile App Force Update</h2>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
-              When you publish a new Android/iOS build, raise the minimum version/build here to block old apps.
+              Soft &quot;Update Available&quot; is automatic from Play Store / App Store — no need to bump numbers for that.
+              Use the fields below only when you want to <span className="font-semibold">force-block</span> older apps.
             </p>
           </div>
           <div className="p-4 sm:p-5 md:p-6 space-y-4">

@@ -16,13 +16,13 @@ export const seoAdminTheme = {
   btnGhost:
     'inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-brand-fng/30 hover:bg-blue-50/50 disabled:opacity-60',
   btnPrimary:
-    'inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-my to-brand-fng px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/20 hover:from-[#034aab] hover:to-brand-primary-hover disabled:opacity-60',
+    'inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#023D95] to-[#0088E8] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-900/20 hover:from-[#034aab] hover:to-[#0367C4] disabled:opacity-60',
   btnDark:
-    'inline-flex items-center gap-2 rounded-xl bg-brand-my px-3 py-2 text-sm font-semibold text-white hover:bg-[#034aab]',
+    'inline-flex items-center gap-2 rounded-xl bg-[#023D95] px-3 py-2 text-sm font-semibold text-white hover:bg-[#034aab]',
   tabActive:
-    'rounded-full bg-gradient-to-r from-brand-my to-brand-fng px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15',
+    'rounded-full bg-gradient-to-r from-[#023D95] to-[#0088E8] px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15',
   tabInactive:
-    'rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-blue-50/60 hover:text-brand-my',
+    'rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-blue-50/60 hover:text-[#023D95]',
   listItem: 'w-full rounded-xl px-3 py-3 text-left transition hover:bg-slate-50',
   listItemActive: 'w-full rounded-xl px-3 py-3 text-left transition bg-blue-50 ring-1 ring-brand-fng/30',
   badge: {

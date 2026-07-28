@@ -353,25 +353,41 @@ export default function SiteSeoAdminApp() {
 
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <div className="flex flex-wrap gap-2">
-          {(Object.keys(TAB_META) as SeoTab[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={tab === key ? t.tabActive : t.tabInactive}
-            >
-              {TAB_META[key].label}
-              {key === 'service'
-                ? ` (${servicePageCount})`
-                : key === 'city'
-                  ? ` (${cityPageCount})`
-                  : key === 'workshop'
-                    ? ` (${workshops.length})`
-                    : key === 'blog'
-                      ? ` (${blogs.length})`
-                      : ''}
-            </button>
-          ))}
+          {(Object.keys(TAB_META) as SeoTab[]).map((key) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={
+                  active
+                    ? 'rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/15'
+                    : t.tabInactive
+                }
+                style={
+                  active
+                    ? {
+                        backgroundImage: 'linear-gradient(to right, #023D95, #0088E8)',
+                        backgroundColor: '#023D95',
+                        color: '#ffffff',
+                      }
+                    : undefined
+                }
+              >
+                {TAB_META[key].label}
+                {key === 'service'
+                  ? ` (${servicePageCount})`
+                  : key === 'city'
+                    ? ` (${cityPageCount})`
+                    : key === 'workshop'
+                      ? ` (${workshops.length})`
+                      : key === 'blog'
+                        ? ` (${blogs.length})`
+                        : ''}
+              </button>
+            );
+          })}
         </div>
         <p className={`mt-2 text-sm ${t.subtitle}`}>{TAB_META[tab].subtitle}</p>
       </div>

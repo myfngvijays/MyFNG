@@ -66,4 +66,22 @@ export const PUSH_FALLBACK_TEMPLATES = [
     priority: 'default',
     category: 'reminder',
   },
+  {
+    id: 'fallback-welcome-expiry-d15',
+    name: 'Welcome Bonus Expiry D15',
+    title: '₹{{amount}} Welcome Bonus — 15 days left',
+    body: 'Your MyFNG welcome bonus expires in 15 days. Book a service and use it before it expires.',
+    target_role: 'CUSTOMER',
+    priority: 'high',
+    category: 'automation',
+  },
+  {
+    id: 'fallback-welcome-expiry-daily',
+    name: 'Welcome Bonus Expiry Daily',
+    title: '₹{{amount}} Welcome Bonus — {{days_left}} days left',
+    body: 'Hurry! Your welcome bonus expires in {{days_left}} days. Book now and save.',
+    target_role: 'CUSTOMER',
+    priority: 'high',
+    category: 'automation',
+  },
 ] as const;

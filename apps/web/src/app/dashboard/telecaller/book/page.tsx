@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
 import CrmBookingCatalog, { type CrmCatalogSelection } from '@/components/telecaller/crm/CrmBookingCatalog';
@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Calendar,
   ChevronDown,
+  ChevronRight,
   Diamond,
   Grid3X3,
   Loader2,
@@ -26,18 +27,48 @@ const BOOKING_TYPES = [
   { id: 'MEMBERSHIP', label: 'Membership', icon: Diamond },
 ];
 
-const PRICING_CATEGORIES = [
-  { id: 'Car Periodic Service', label: 'Periodic' },
-  { id: 'Car AC Service', label: 'AC' },
-  { id: 'Car Battery Service', label: 'Battery' },
-  { id: 'Car Brake Service', label: 'Brake' },
-  { id: 'Car Clutch Service', label: 'Clutch' },
-  { id: 'Car Denting & Painting', label: 'Denting' },
-  { id: 'Car Detailing Service', label: 'Detailing' },
-  { id: 'Car Engine Service', label: 'Engine' },
-  { id: 'Car Tyre & Wheel Care', label: 'Tyre' },
-  { id: 'Electrical & Battery Service', label: 'Electrical' },
-  { id: 'Suspension & Steering Service', label: 'Suspension' },
+/** Same statuses as mobile Add Lead / Lead Details */
+const LEAD_STATUS_OPTIONS = [
+  { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
+  { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
+  {
+    id: 'BOOKING_CONFIRMED',
+    label: 'Booking confirmed',
+    call_status: 'ANSWERED',
+    outcome: 'LEAD_CREATED',
+    lead_status: 'VALIDATED',
+  },
+  {
+    id: 'IN_SERVICE',
+    label: 'In Service',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'IN_PROGRESS',
+  },
+  {
+    id: 'SERVICE_DONE',
+    label: 'Service Done',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    lead_status: 'COMPLETED',
+  },
+  {
+    id: 'LOST',
+    label: 'Lost',
+    call_status: 'ANSWERED',
+    outcome: 'NOT_INTERESTED',
+    lead_status: 'REJECTED',
+  },
+];
+
+const LOST_REASONS = [
+  'Not Interested',
+  'Unqualified Lead',
+  'No-Response to Calls',
+  'Already Service Done',
+  'Under Warranty',
+  'Looking For Authorised Service Center',
+  'Other Reasons',
 ];
 
 const PAYMENT_MODES = [
@@ -52,6 +83,19 @@ const STEP_META = [
   { title: 'Pickup Details', subtitle: 'Pickup or visit workshop' },
   { title: 'Payment Options', subtitle: 'Choose preferred payment method' },
 ];
+
+function todayDateStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function nowTimeStr() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 type FormState = {
   customer_name: string;
@@ -123,21 +167,30 @@ const initialForm: FormState = {
   package_label: '',
 };
 
-export default function TelecallerCrmBookPage() {
+function TelecallerCrmBookContent() {
   const router = useRouter();
-  /** book = full 5-step booking; lead = basic details → save incomplete lead */
-  const [mode, setMode] = useState<'book' | 'lead'>('book');
+  const searchParams = useSearchParams();
+  const modeParam = searchParams?.get('mode');
+
+  /** null = chooser (Booking / Add Lead), same as mobile CrmBookChooser */
+  const [mode, setMode] = useState<'book' | 'lead' | null>(
+    modeParam === 'book' || modeParam === 'lead' ? modeParam : null,
+  );
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [quoting, setQuoting] = useState(false);
-  const [sendingPricing, setSendingPricing] = useState(false);
   const [error, setError] = useState('');
-  const [pricingCategories, setPricingCategories] = useState<string[]>([]);
 
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
   const [cityQuery, setCityQuery] = useState('');
   const [carDisplay, setCarDisplay] = useState('');
+  const [resolvingCity, setResolvingCity] = useState(false);
+
+  const [leadStatusId, setLeadStatusId] = useState('INTERESTED');
+  const [lostReason, setLostReason] = useState('');
+  const [activityDate, setActivityDate] = useState(todayDateStr);
+  const [activityTime, setActivityTime] = useState(nowTimeStr);
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [quote, setQuote] = useState<any>(null);
@@ -145,6 +198,10 @@ export default function TelecallerCrmBookPage() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponsLoading, setCouponsLoading] = useState(false);
   const [showAllCoupons, setShowAllCoupons] = useState(false);
+
+  useEffect(() => {
+    if (modeParam === 'book' || modeParam === 'lead') setMode(modeParam);
+  }, [modeParam]);
 
   useEffect(() => {
     (async () => {
@@ -155,7 +212,7 @@ export default function TelecallerCrmBookPage() {
             .catch(() => null),
           createClient()
             .from('cities')
-            .select('id, name, state')
+            .select('id, name, state, city_pincodes')
             .eq('is_active', true)
             .order('name'),
         ]);
@@ -165,7 +222,8 @@ export default function TelecallerCrmBookPage() {
             ? citiesApi
             : [];
         const fromDb = Array.isArray(citiesDb.data) ? citiesDb.data : [];
-        setCities(fromApi.length > 0 ? fromApi : fromDb);
+        // Prefer DB rows when they include pincode mapping for auto city
+        setCities(fromDb.length > 0 ? fromDb : fromApi);
       } catch (e) {
         console.error('book wizard bootstrap failed', e);
       }
@@ -174,6 +232,45 @@ export default function TelecallerCrmBookPage() {
 
   const setField = (key: keyof FormState, value: any) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  const resolveCityFromPincode = async (pin: string) => {
+    const pincode = String(pin || '').replace(/\D/g, '').slice(0, 6);
+    if (!/^\d{6}$/.test(pincode)) {
+      setField('city', '');
+      setField('city_id', '');
+      return;
+    }
+    setResolvingCity(true);
+    try {
+      let rows = cities;
+      if (!rows.some((c) => c.city_pincodes != null)) {
+        const { data } = await createClient()
+          .from('cities')
+          .select('id, name, state, city_pincodes')
+          .eq('is_active', true);
+        rows = Array.isArray(data) ? data : [];
+        if (rows.length) setCities(rows);
+      }
+      const hit = (rows || []).find((c: any) => {
+        const raw = String(c.city_pincodes || '');
+        return raw.includes(pincode);
+      });
+      if (hit?.name) {
+        setForm((prev) => ({
+          ...prev,
+          pincode,
+          city: hit.name,
+          city_id: hit.id || prev.city_id,
+        }));
+      } else {
+        setForm((prev) => ({ ...prev, pincode }));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setResolvingCity(false);
+    }
+  };
 
   const needsPickupStep =
     form.booking_type === 'PERIODIC' || form.booking_type === 'OTHER_SERVICES';
@@ -348,13 +445,28 @@ export default function TelecallerCrmBookPage() {
   }, [form, quote, catalogMeta, bookingTypeLabel, needsPickupStep]);
 
   const canSaveLead = useMemo(() => {
+    const pinOk = /^\d{6}$/.test(form.pincode.trim());
+    const phoneOk = form.customer_phone.trim().replace(/\D/g, '').length >= 10;
+    const lostOk = leadStatusId !== 'LOST' || Boolean(lostReason.trim());
+    const activityOk = Boolean(activityDate && activityTime);
     return (
-      form.customer_name.trim().length > 0 &&
-      form.customer_phone.trim().replace(/\D/g, '').length >= 10
+      form.customer_name.trim().length > 0 && phoneOk && pinOk && lostOk && activityOk
     );
-  }, [form.customer_name, form.customer_phone]);
+  }, [
+    form.customer_name,
+    form.customer_phone,
+    form.pincode,
+    leadStatusId,
+    lostReason,
+    activityDate,
+    activityTime,
+  ]);
+
+  const selectedLeadStatus =
+    LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
 
   const canNext = useMemo(() => {
+    if (!mode) return false;
     if (mode === 'lead') return canSaveLead;
     if (step === 0) return Boolean(form.city && form.vehicle_make && form.vehicle_model);
     if (step === 1) {
@@ -384,22 +496,29 @@ export default function TelecallerCrmBookPage() {
     return true;
   }, [mode, step, form, catalogMeta, needsPickupStep, canSaveLead]);
 
-  const togglePricingCategory = (id: string) => {
-    setPricingCategories((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
-    );
-  };
-
   const saveAsLead = async () => {
-    const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
-    const carModel = [form.vehicle_make, form.vehicle_model].filter(Boolean).join(' ').trim();
-    const wantsPricing = pricingCategories.length > 0;
-    if (wantsPricing && (!/^\d{6}$/.test(pin) || !carModel)) {
-      setError(
-        'To share pricing, fill 6-digit pincode and car model (or clear pricing categories).',
-      );
+    if (!canSaveLead) {
+      setError('Name, 10-digit phone, 6-digit pincode, status and call date/time required.');
       return;
     }
+    const pin = form.pincode.replace(/\D/g, '').slice(0, 6);
+    const statusOpt =
+      LEAD_STATUS_OPTIONS.find((s) => s.id === leadStatusId) || LEAD_STATUS_OPTIONS[0];
+    if (statusOpt.id === 'LOST' && !lostReason.trim()) {
+      setError('Lost select kiya hai — reason choose karo');
+      return;
+    }
+    // Date/Time = kab baat hui (call activity), NOT follow-up schedule
+    const activityIso =
+      activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
+    if (!activityIso) {
+      setError('Kab baat hui — date & time dalo');
+      return;
+    }
+    const statusLabel =
+      statusOpt.id === 'LOST' && lostReason
+        ? `Lost · ${lostReason}`
+        : statusOpt.label;
 
     setSaving(true);
     setError('');
@@ -412,19 +531,25 @@ export default function TelecallerCrmBookPage() {
           customer_phone: form.customer_phone.trim(),
           city_id: form.city_id || null,
           city: form.city || null,
-          pincode: form.pincode || null,
+          pincode: pin || null,
           vehicle_number: 'PENDING',
           vehicle_make: form.vehicle_make || null,
           vehicle_model: form.vehicle_model || null,
           model_id: form.model_id || null,
           vehicle_class: form.vehicle_class || null,
           vehicle_fuel_type: form.vehicle_fuel_type || null,
-          booking_type: form.booking_type,
-          service_type_ids: form.service_type_ids,
+          booking_type: 'CAR_SERVICE',
+          service_type_ids: [],
           problem_description: form.problem_description || null,
-          pricing_categories: pricingCategories,
-          package_label:
-            BOOKING_TYPES.find((t) => t.id === form.booking_type)?.label || null,
+          package_label: 'Enquiry',
+          status: statusOpt.lead_status || 'NEW',
+          call_status: statusOpt.call_status,
+          outcome: statusOpt.outcome,
+          call_result: statusOpt.id,
+          call_label: statusLabel,
+          call_notes: form.problem_description || null,
+          lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
+          activity_at: activityIso,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -432,37 +557,6 @@ export default function TelecallerCrmBookPage() {
         throw new Error(data?.error || 'Failed to save lead');
       }
       const leadId = String(data.lead?.id || '');
-
-      if (leadId && wantsPricing && /^\d{6}$/.test(pin) && carModel) {
-        const sendNow = window.confirm(
-          `Lead saved. Send ${pricingCategories.length} pricing categor${
-            pricingCategories.length === 1 ? 'y' : 'ies'
-          } on WhatsApp now?\n\nNeeds open 24h WhatsApp chat.`,
-        );
-        if (sendNow) {
-          setSendingPricing(true);
-          try {
-            const priceRes = await fetch(`/api/telecaller/leads/${leadId}/send-pricing`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pincode: pin, carModel, categories: pricingCategories }),
-            });
-            const priceData = await priceRes.json().catch(() => ({}));
-            if (!priceRes.ok || !priceData?.success) {
-              window.alert(
-                priceData?.message ||
-                  priceData?.error ||
-                  'Pricing send failed. Open lead and retry when WhatsApp session is active.',
-              );
-            } else {
-              window.alert(priceData.message || 'Pricing sent.');
-            }
-          } finally {
-            setSendingPricing(false);
-          }
-        }
-      }
-
       if (leadId) router.push(`/dashboard/telecaller/leads/${leadId}`);
       else router.push('/dashboard/telecaller/leads');
     } catch (e: any) {
@@ -476,7 +570,7 @@ export default function TelecallerCrmBookPage() {
     setError('');
     if (mode === 'lead') {
       if (!canSaveLead) {
-        setError('Customer name and 10-digit phone required.');
+        setError('Name, phone, pincode, status and call date/time required.');
         return;
       }
       await saveAsLead();
@@ -544,8 +638,10 @@ export default function TelecallerCrmBookPage() {
 
   const goBack = () => {
     setError('');
-    if (step === 0) {
-      router.push('/dashboard/telecaller/leads');
+    if (mode === 'lead' || step === 0) {
+      setMode(null);
+      setStep(0);
+      router.replace('/dashboard/telecaller/book');
       return;
     }
     if (step === 4 && !needsPickupStep) {
@@ -624,51 +720,73 @@ export default function TelecallerCrmBookPage() {
 
   const meta = STEP_META[step];
 
+  if (!mode) {
+    return (
+      <DashboardLayout role="telecaller">
+        <div className="mx-auto max-w-lg pb-8">
+          <h1 className="text-2xl font-extrabold text-gray-900">Book / Lead</h1>
+          <p className="mt-1 text-sm text-gray-500">Choose what you want to do</p>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode('book');
+              setStep(0);
+              setError('');
+              router.replace('/dashboard/telecaller/book?mode=book');
+            }}
+            className="mt-6 flex w-full items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-[#004AAD]/40"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/15">
+              <Calendar className="h-6 w-6 text-emerald-600" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-extrabold text-gray-900">Booking</span>
+              <span className="mt-0.5 block text-sm text-gray-500">
+                Full booking flow — city, car, services, pickup
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 text-gray-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode('lead');
+              setStep(0);
+              setError('');
+              router.replace('/dashboard/telecaller/book?mode=lead');
+            }}
+            className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-[#004AAD]/40"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#004AAD]/15">
+              <UserPlus className="h-6 w-6 text-[#004AAD]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-extrabold text-gray-900">Add Lead</span>
+              <span className="mt-0.5 block text-sm text-gray-500">
+                Quick save — name, phone, pin, call notes & status
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 text-gray-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard/telecaller')}
+            className="mt-6 w-full rounded-xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-200"
+          >
+            Close
+          </button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="telecaller">
       <div className="mx-auto max-w-3xl pb-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-extrabold text-gray-900">Advanced CRM</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Full booking or quick Add Lead — same as mobile telecaller
-          </p>
-        </div>
-
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('book');
-                setStep(0);
-                setError('');
-              }}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-extrabold transition ${
-                mode === 'book'
-                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                  : 'border-[#004AAD] bg-white text-[#004AAD]'
-              }`}
-            >
-              <Calendar className="h-4 w-4" />
-              Full Booking
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('lead');
-                setStep(0);
-                setError('');
-              }}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-extrabold transition ${
-                mode === 'lead'
-                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                  : 'border-[#004AAD] bg-white text-[#004AAD]'
-              }`}
-            >
-              <UserPlus className="h-4 w-4" />
-              Add Lead
-            </button>
-          </div>
           {mode === 'book' ? (
             <>
               <div className="mb-3 flex gap-1.5">
@@ -688,7 +806,7 @@ export default function TelecallerCrmBookPage() {
               <p className="text-xs font-bold text-[#004AAD]">Quick save</p>
               <h2 className="mt-1 text-xl font-extrabold text-gray-900">Add Lead</h2>
               <p className="text-sm text-gray-500">
-                Basic details only — save now, book later from Lead Details
+                Name, phone, pin, status & call notes — book later from Lead Details
               </p>
             </>
           )}
@@ -697,111 +815,50 @@ export default function TelecallerCrmBookPage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           {mode === 'lead' && (
             <>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">
-                Interest (optional)
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {BOOKING_TYPES.map((t) => {
-                  const active = form.booking_type === t.id;
-                  const Icon = t.icon;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setField('booking_type', t.id)}
-                      className={`flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4 text-center transition ${
-                        active
-                          ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                          : 'border-gray-200 bg-white text-gray-800 hover:border-[#004AAD]/40'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                      <span className="text-xs font-extrabold">{t.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <Field
-                  label="Customer Name *"
-                  value={form.customer_name}
-                  onChange={(v) => setField('customer_name', v)}
-                  placeholder="Customer name"
-                />
-                <Field
-                  label="Phone *"
-                  value={form.customer_phone}
-                  onChange={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 15))}
-                  inputMode="tel"
-                  placeholder="10-digit mobile"
-                />
-              </div>
-
-              <p className="mb-2 mt-4 text-xs font-bold uppercase tracking-wide text-gray-500">
-                City (optional)
-              </p>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setCityOpen((v) => !v)}
-                  className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-3 py-2.5 text-left text-sm font-semibold text-gray-900"
-                >
-                  <span>{form.city || 'Select city'}</span>
-                  <ChevronDown
-                    className={`h-4 w-4 text-gray-400 transition ${cityOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-                {cityOpen ? (
-                  <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
-                    <div className="relative border-b border-gray-100">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        value={cityQuery}
-                        onChange={(e) => setCityQuery(e.target.value)}
-                        placeholder="Search city"
-                        className="w-full py-2.5 pl-9 pr-3 text-sm focus:outline-none"
-                      />
-                    </div>
-                    <div className="max-h-52 overflow-y-auto">
-                      {filteredCities.map((c: any) => {
-                        const name = c.name || c.city_name || '';
-                        return (
-                          <button
-                            key={c.id || name}
-                            type="button"
-                            onClick={() => {
-                              setField('city', name);
-                              setField('city_id', c.id || '');
-                              setCityOpen(false);
-                              setCityQuery('');
-                            }}
-                            className="block w-full border-b border-gray-50 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-[#004AAD]/5 last:border-0"
-                          >
-                            {name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-3 space-y-3">
-                <Field
-                  label={
-                    pricingCategories.length ? 'Pincode * (for pricing)' : 'Pincode (optional)'
+              <Field
+                label="Customer Name *"
+                value={form.customer_name}
+                onChange={(v) => setField('customer_name', v)}
+                placeholder="Customer name"
+              />
+              <Field
+                label="Phone *"
+                value={form.customer_phone}
+                onChange={(v) => setField('customer_phone', v.replace(/\D/g, '').slice(0, 15))}
+                inputMode="tel"
+                placeholder="10-digit mobile"
+              />
+              <Field
+                label="Pincode *"
+                value={form.pincode}
+                onChange={(v) => {
+                  const pin = v.replace(/\D/g, '').slice(0, 6);
+                  setField('pincode', pin);
+                  if (pin.length === 6) void resolveCityFromPincode(pin);
+                  if (pin.length < 6) {
+                    setField('city', '');
+                    setField('city_id', '');
                   }
-                  value={form.pincode}
-                  onChange={(v) => setField('pincode', v.replace(/\D/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  placeholder="e.g. 400601"
-                />
-              </div>
+                }}
+                inputMode="numeric"
+                placeholder="6-digit pincode"
+              />
+              {resolvingCity ? (
+                <p className="mb-3 text-xs font-semibold text-gray-500">Finding city…</p>
+              ) : form.city ? (
+                <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-[#004AAD]">
+                  <Search className="h-3.5 w-3.5" />
+                  {form.city}
+                </p>
+              ) : form.pincode.length === 6 ? (
+                <p className="mb-3 text-xs font-semibold text-amber-600">
+                  City not found for this pincode
+                </p>
+              ) : null}
 
-              <div className="mt-3">
+              <div className="mb-3">
                 <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-                  {pricingCategories.length ? 'Car Model * (for pricing)' : 'Car Model (optional)'}
+                  Car Model
                 </p>
                 <CrmCarSearch
                   displayValue={carDisplay}
@@ -822,47 +879,77 @@ export default function TelecallerCrmBookPage() {
                 />
               </div>
 
-              <div className="mt-4">
-                <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">
-                  Pricing to share (optional)
+              <div className="mb-3">
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                  Lead Status
+                </label>
+                <select
+                  value={leadStatusId}
+                  onChange={(e) => {
+                    setLeadStatusId(e.target.value);
+                    if (e.target.value !== 'LOST') setLostReason('');
+                  }}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                >
+                  {LEAD_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {leadStatusId === 'LOST' ? (
+                <div className="mb-3">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">
+                    Lost reason *
+                  </label>
+                  <select
+                    value={lostReason}
+                    onChange={(e) => setLostReason(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  >
+                    <option value="">Select lost reason</option>
+                    {LOST_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              <Field
+                label="Call Activity"
+                value={form.problem_description}
+                onChange={(v) => setField('problem_description', v)}
+                placeholder="Kya baat hui — notes"
+                multiline
+              />
+
+              <div className="mb-3">
+                <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
+                  Call date & time (kab baat hui)
                 </p>
-                <p className="mb-2 text-xs text-gray-500">
-                  Select which pricing to send on WhatsApp after save. Clear all to save without
-                  pricing.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {PRICING_CATEGORIES.map((c) => {
-                    const active = pricingCategories.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => togglePricingCategory(c.id)}
-                        className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold transition ${
-                          active
-                            ? 'border-[#004AAD] bg-[#004AAD]/10 text-[#004AAD]'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-[#004AAD]/40'
-                        }`}
-                      >
-                        {c.label}
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="date"
+                    value={activityDate}
+                    onChange={(e) => setActivityDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  />
+                  <input
+                    type="time"
+                    value={activityTime}
+                    onChange={(e) => setActivityTime(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+                  />
                 </div>
               </div>
 
-              <div className="mt-3">
-                <Field
-                  label="Notes / Customer message (optional)"
-                  value={form.problem_description}
-                  onChange={(v) => setField('problem_description', v)}
-                  placeholder="e.g. Asked for pricing, will decide later"
-                />
-              </div>
-
-              <div className="mt-3 rounded-xl bg-[#004AAD]/10 px-4 py-3 text-sm font-semibold text-[#004AAD]">
-                Saves as incomplete lead. After save you can send the selected pricing on WhatsApp
-                (24h chat window required).
+              <div className="mt-1 rounded-xl bg-[#004AAD]/10 px-4 py-3 text-sm font-semibold text-[#004AAD]">
+                Incomplete lead save. Book later from Lead Details — Send Pricing bhi wahan se.
+                {selectedLeadStatus ? ` Status: ${selectedLeadStatus.label}.` : ''}
               </div>
             </>
           )}
@@ -1045,7 +1132,6 @@ export default function TelecallerCrmBookPage() {
                     : {}),
                 }));
               }}
-              showQuotePrices
             />
           )}
 
@@ -1227,7 +1313,8 @@ export default function TelecallerCrmBookPage() {
 
         {!canNext ? (
           <p className="mt-3 text-xs font-semibold text-amber-600">
-            {mode === 'lead' && 'Name and 10-digit phone required.'}
+            {mode === 'lead' &&
+              'Name, 10-digit phone, 6-digit pincode, status and call date/time required.'}
             {mode === 'book' && step === 0 && 'Select city and car model (type to search).'}
             {mode === 'book' && step === 1 && 'Name, 10-digit phone and 6-digit pincode required.'}
             {mode === 'book' && step === 2 && 'Select at least one service / plan.'}
@@ -1243,15 +1330,15 @@ export default function TelecallerCrmBookPage() {
             onClick={goBack}
             className="flex-1 rounded-xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-800 hover:bg-gray-200"
           >
-            {mode === 'lead' || step === 0 ? 'Cancel' : 'Back'}
+            {mode === 'lead' || step === 0 ? 'Close' : 'Back'}
           </button>
           <button
             type="button"
-            disabled={!canNext || saving || quoting || sendingPricing}
+            disabled={!canNext || saving || quoting}
             onClick={next}
             className="flex-[2] rounded-xl bg-[#004AAD] px-4 py-3 text-sm font-bold text-white hover:bg-[#023D95] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {saving || quoting || sendingPricing ? (
+            {saving || quoting ? (
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Please wait…
@@ -1318,30 +1405,59 @@ export default function TelecallerCrmBookPage() {
   );
 }
 
+export default function TelecallerCrmBookPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout role="telecaller">
+          <div className="flex items-center justify-center gap-2 py-20 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin text-[#004AAD]" />
+            Loading…
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <TelecallerCrmBookContent />
+    </Suspense>
+  );
+}
+
 function Field({
   label,
   value,
   onChange,
   placeholder,
   inputMode,
+  multiline,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  multiline?: boolean;
 }) {
   return (
     <div className="mb-3">
       <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        inputMode={inputMode}
-        className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-      />
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+        />
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          inputMode={inputMode}
+          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+        />
+      )}
     </div>
   );
 }

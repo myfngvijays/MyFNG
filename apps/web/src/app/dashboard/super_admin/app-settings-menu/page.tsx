@@ -21,6 +21,7 @@ type MenuItem = {
 const ICON_MAP: Record<string, any> = {
   person: User, location: MapPin, trophy: Trophy, wallet: Wallet,
   receipt: Receipt, cart: ShoppingCart, pricetag: Tag, gift: Gift,
+  'gift-outline': Gift,
   notifications: Bell, 'shield-checkmark': ShieldCheck, 'document-text': FileText,
   'help-circle': HelpCircle, trash: Trash2,
 };

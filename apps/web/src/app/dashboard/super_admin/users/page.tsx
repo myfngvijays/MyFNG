@@ -428,10 +428,11 @@ export default function UserManagementPage() {
                 onClick={() => setShowAddModal(true)}
                 className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base whitespace-nowrap w-full sm:w-auto justify-center"
               >
-              <UserPlus className="w-4 h-4 flex-shrink-0" />
-              <span className="hidden sm:inline">Create User</span>
-              <span className="sm:hidden">Create</span>
-            </button>
+                <UserPlus className="w-4 h-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Create User</span>
+                <span className="sm:hidden">Create</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

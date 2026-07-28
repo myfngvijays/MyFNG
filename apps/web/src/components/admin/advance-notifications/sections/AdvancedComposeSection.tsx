@@ -33,6 +33,7 @@ import {
 import toast from 'react-hot-toast';
 import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLivePreview';
 import PushMediaUploadField from '../components/PushMediaUploadField';
+import TemplatePicker from '../components/TemplatePicker';
 
 type PlatformChoice = 'both' | 'android' | 'ios';
 type AudienceChoice = 'all' | 'android' | 'ios';
@@ -414,6 +415,17 @@ export default function AdvancedComposeSection() {
             </h2>
             <span className="push-badge-accent">Targeted · City · Membership · Phone List</span>
           </div>
+
+          <TemplatePicker
+            onSelect={(t) => {
+              setTitle(String(t.title || '').slice(0, TITLE_MAX));
+              setMessage(String(t.body || '').slice(0, MESSAGE_MAX));
+              if (t.priority === 'high' || t.priority === 'default') {
+                setPriority(t.priority);
+              }
+              toast.success(`Loaded “${t.name}”`);
+            }}
+          />
 
           {/* Title + Message side by side */}
           <div className="grid md:grid-cols-2 gap-4">

@@ -10,6 +10,7 @@ import {
   Flame,
   Search,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import './push-admin-theme.css';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
@@ -18,8 +19,9 @@ import PushFirebaseSettingsSection from './sections/FirebaseSettingsSection';
 import PushComposeSection from './sections/ComposeSection';
 import AdvancedComposeSection from './sections/AdvancedComposeSection';
 import PushHistorySection from './sections/HistorySection';
+import PushTemplatesSection from './sections/TemplatesSection';
 
-type SectionId = 'dashboard' | 'firebase' | 'compose' | 'advanced' | 'history';
+type SectionId = 'dashboard' | 'firebase' | 'templates' | 'compose' | 'advanced' | 'history';
 
 type AdminProfile = {
   name: string;
@@ -33,13 +35,21 @@ type NavItem = { id: SectionId; label: string; icon: typeof Bell; description: s
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Devices & broadcast KPIs' },
   { id: 'firebase', label: 'Firebase Settings', icon: Flame, description: 'FCM credentials' },
+  { id: 'templates', label: 'Templates', icon: FileText, description: 'Manual + automation push copy' },
   { id: 'compose', label: 'Send Notification', icon: Send, description: 'Compose & broadcast' },
   { id: 'advanced', label: 'Advanced Send', icon: Sparkles, description: 'Targeted by city, membership & phone list' },
   { id: 'history', label: 'Notification History', icon: History, description: 'Delivery logs' },
 ];
 
 function sectionFromParam(value: string | null): SectionId {
-  const allowed = new Set<SectionId>(['dashboard', 'firebase', 'compose', 'advanced', 'history']);
+  const allowed = new Set<SectionId>([
+    'dashboard',
+    'firebase',
+    'templates',
+    'compose',
+    'advanced',
+    'history',
+  ]);
   if (value && allowed.has(value as SectionId)) return value as SectionId;
   return 'dashboard';
 }
@@ -100,6 +110,8 @@ export default function AdvancePushApp() {
         return <PushDashboardSection onNavigate={setSection} admin={admin} />;
       case 'firebase':
         return <PushFirebaseSettingsSection />;
+      case 'templates':
+        return <PushTemplatesSection />;
       case 'compose':
         return (
           <Suspense fallback={<div className="h-40 push-card animate-pulse" />}>

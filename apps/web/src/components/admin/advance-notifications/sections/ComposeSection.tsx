@@ -20,6 +20,7 @@ import {
 import toast from 'react-hot-toast';
 import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLivePreview';
 import PushMediaUploadField from '../components/PushMediaUploadField';
+import TemplatePicker from '../components/TemplatePicker';
 import { PUSH_TEST_PHONE_PRESETS } from '@/lib/push/push-admin-constants';
 
 type PlatformChoice = 'both' | 'android' | 'ios';
@@ -183,6 +184,17 @@ export default function PushComposeSection() {
             <h2 className="text-lg font-bold text-gray-900">Send Push Notification</h2>
             <span className="push-badge-accent">FCM HTTP v1 · Real-time delivery</span>
           </div>
+
+        <TemplatePicker
+          onSelect={(t) => {
+            setTitle(String(t.title || '').slice(0, TITLE_MAX));
+            setMessage(String(t.body || '').slice(0, MESSAGE_MAX));
+            if (t.priority === 'high' || t.priority === 'default') {
+              setPriority(t.priority);
+            }
+            toast.success(`Loaded “${t.name}”`);
+          }}
+        />
 
         {/* Title + Message side by side */}
         <div className="grid md:grid-cols-2 gap-4">
