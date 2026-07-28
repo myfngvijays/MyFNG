@@ -714,7 +714,7 @@ export default function HomePage() {
       priceFrom: '₹2,999',
       eta: '3–6 hrs',
       warranty: 'NA',
-      highlights: ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts', 'Interior Deep Clean', 'Exterior Polish'],
+      highlights: ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop'],
     },
     {
       icon: Car,

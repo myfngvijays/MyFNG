@@ -3745,7 +3745,7 @@ export default function BookServicePage() {
                     : isDenting
                       ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Color Matching', 'Premium Finish']
                       : isDetailing
-                        ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Interior Deep Clean', 'Exterior Polish']
+                        ? ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop']
                         : ['Live Photos & Videos Updates', 'Transparent Pricing', 'Free Pickup & Drop', 'Genuine OEM/OES Parts'];
 
                   const warrantyLabel = isPeriodic
