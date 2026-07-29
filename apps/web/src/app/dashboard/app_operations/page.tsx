@@ -28,7 +28,7 @@ export default function AppOperationsHomePage() {
         </Link>
         <Link href="/dashboard/app_operations/referral" className="rounded-xl border bg-white p-4 hover:border-blue-300">
           <Gift className="w-6 h-6 text-blue-600 mb-2" />
-          <div className="font-semibold">Refer & Earn</div>
+          <div className="font-semibold">Refer & Rise</div>
         </Link>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { formatDateDMY } from "@/lib/utils";
 export default function ZonesTab() {
   const [zones, setZones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', description: '' });
 
@@ -33,6 +34,15 @@ export default function ZonesTab() {
       setLoading(false);
     }
   };
+
+  const q = searchTerm.trim().toLowerCase();
+  const filteredZones = !q
+    ? zones
+    : zones.filter(
+        (zone) =>
+          String(zone.name || '').toLowerCase().includes(q) ||
+          String(zone.description || '').toLowerCase().includes(q)
+      );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +70,8 @@ export default function ZonesTab() {
           <input
             type="text"
             placeholder="Search zones..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none"
           />
         </div>
@@ -79,7 +91,7 @@ export default function ZonesTab() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {zones.map((zone) => (
+          {filteredZones.map((zone) => (
             <div key={zone.id} className="border rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow bg-white">
               <div className="flex justify-between items-start mb-2 sm:mb-3">
                 <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg">

@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     const status = String(searchParams.get('status') || 'ALL').trim().toLowerCase();
     const limit = Math.min(Number(searchParams.get('limit') || 200), 500);
     const exportCsv = searchParams.get('export') === '1';
-    const preset = String(searchParams.get('preset') || 'all_time');
+    const preset = String(searchParams.get('preset') || 'last_30_days');
     const start = searchParams.get('start');
     const end = searchParams.get('end');
 

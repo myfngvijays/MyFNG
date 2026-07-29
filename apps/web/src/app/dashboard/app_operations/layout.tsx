@@ -49,10 +49,10 @@ const navigationItems: NavItem[] = [
     description: 'Prime members & benefits',
   },
   {
-    name: 'Refer & Earn',
+    name: 'Refer & Rise',
     href: '/dashboard/app_operations/referral',
     icon: Gift,
-    description: 'Referral rewards & activity',
+    description: 'Referrals, milestones & leaderboard',
   },
 ];
 

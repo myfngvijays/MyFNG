@@ -17,8 +17,13 @@ export default function ZoneManagerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [citySubmitting, setCitySubmitting] = useState(false);
   const [selectedCityIds, setSelectedCityIds] = useState<string[]>([]);
+  const [citySearch, setCitySearch] = useState('');
   
   const supabase = getBrowserClient();
+
+  const filteredCities = citySearch.trim()
+    ? allCities.filter((c) => String(c.name || '').toLowerCase().includes(citySearch.trim().toLowerCase()))
+    : allCities;
 
   useEffect(() => {
     fetchZones();
@@ -96,6 +101,7 @@ export default function ZoneManagerPage() {
 
   const handleOpenCityModal = (zone: any) => {
     setSelectedZone(zone);
+    setCitySearch('');
     setShowCityModal(true);
     fetchCitiesByZone(zone.id);
   };
@@ -312,20 +318,15 @@ export default function ZoneManagerPage() {
                 <input
                   type="text"
                   placeholder="Search cities..."
+                  value={citySearch}
                   className="w-full p-3 border rounded-lg"
-                  onChange={(e) => {
-                    const search = e.target.value.toLowerCase();
-                    const filtered = allCities.filter(c => 
-                      c.name.toLowerCase().includes(search)
-                    );
-                    // Update selected cities based on filtered results
-                  }}
+                  onChange={(e) => setCitySearch(e.target.value)}
                 />
               </div>
 
               {/* Cities List */}
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {allCities.map((city) => {
+                {filteredCities.map((city) => {
                   const isSelected = selectedCityIds.includes(city.id);
                   const isInOtherZone = city.zone_id && city.zone_id !== selectedZone.id;
                   
@@ -371,10 +372,14 @@ export default function ZoneManagerPage() {
                 })}
               </div>
 
-              {allCities.length === 0 && (
+              {filteredCities.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <Building2 className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                  <p>No cities found. Add cities first.</p>
+                  <p>
+                    {allCities.length === 0
+                      ? 'No cities found. Add cities first.'
+                      : `No cities match "${citySearch.trim()}"`}
+                  </p>
                 </div>
               )}
             </div>

@@ -556,6 +556,48 @@ export async function enrichLeadsServiceDisplay(supabaseAdmin: any, leads: Recor
   return leads;
 }
 
+/** Granular source filter used by bookings UI + export API. */
+export function matchesBookingSourceFilter(lead: Record<string, any>, sourceFilter: string): boolean {
+  const source = String(sourceFilter || 'ALL').trim().toUpperCase();
+  if (!source || source === 'ALL') return true;
+
+  const enriched = lead.source_badge_kind || lead.booking_source ? lead : enrichBookingLead(lead);
+  const kind = String(enriched.source_badge_kind || '').toLowerCase();
+  const bookingSource = String(enriched.booking_source || '').toUpperCase();
+  const leadSource = String(enriched.lead_source || '').trim();
+  const leadSourceLower = leadSource.toLowerCase();
+
+  switch (source) {
+    case 'APP':
+      return bookingSource === 'APP' || kind === 'app';
+    case 'WEBSITE':
+      return (
+        kind === 'website' ||
+        leadSource === 'Website' ||
+        leadSource === 'WEB' ||
+        leadSource === 'delhi_service'
+      );
+    case 'MISA':
+      return bookingSource === 'MISA' || kind === 'misa' || /misa ai/i.test(leadSource);
+    case 'WHATSAPP':
+      return kind === 'whatsapp' || leadSource === 'WhatsApp';
+    case 'GOOGLE':
+      return kind === 'google' || leadSource === 'Google Ads';
+    case 'META':
+      return kind === 'meta' || kind === 'instagram' || leadSource === 'Instagram Ads';
+    case 'PARTNER':
+      return leadSource === 'Partner';
+    case 'REFERENCE':
+      return leadSource === 'Reference';
+    case 'BANNER':
+      return leadSource === 'Banner/Offline' || leadSourceLower.includes('banner');
+    case 'OTHER':
+      return bookingSource === 'OTHER' || kind === 'other' || leadSource === 'Other';
+    default:
+      return bookingSource === source;
+  }
+}
+
 export function filterBookingLeads(
   leads: Record<string, any>[],
   filters: {
@@ -571,7 +613,7 @@ export function filterBookingLeads(
   return leads.filter((lead) => {
     const enriched = lead.booking_source ? lead : enrichBookingLead(lead);
 
-    if (source !== 'ALL' && enriched.booking_source !== source) return false;
+    if (!matchesBookingSourceFilter(enriched, source)) return false;
 
     if (hasCoupon === 'YES' && !enriched.has_coupon_applied) return false;
     if (hasCoupon === 'NO' && enriched.has_coupon_applied) return false;
@@ -592,6 +634,7 @@ export function filterBookingLeads(
         enriched.referral_reward_family,
         enriched.lead_source,
         enriched.booking_source_label,
+        enriched.assigned_telecaller_name,
       ]
         .filter(Boolean)
         .join(' ')

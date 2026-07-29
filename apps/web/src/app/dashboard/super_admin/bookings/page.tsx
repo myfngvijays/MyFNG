@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
@@ -13,7 +13,6 @@ import {
   getLeadUtmParams,
   resolveLeadSourceBadgeTheme,
   computeServiceLeadOverview,
-  computeChatbotBookingOverview,
   type LeadSourceBadgeKind,
 } from '@/lib/booking-lead-utils';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
@@ -21,14 +20,32 @@ import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
 
 type ServiceLead = Record<string, any>;
-type ChatbotBooking = Record<string, any>;
 type CsvRow = Record<string, string>;
-type ActiveTab = 'service_leads' | 'chatbot_bookings' | 'upload_crm';
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
-const SOURCE_OPTIONS = ['ALL', 'APP', 'WEBSITE', 'MISA', 'OTHER'] as const;
+const SOURCE_OPTIONS = [
+  'ALL',
+  'APP',
+  'WEBSITE',
+  'MISA',
+  'WHATSAPP',
+  'GOOGLE',
+  'META',
+  'PARTNER',
+  'REFERENCE',
+  'BANNER',
+  'OTHER',
+] as const;
 const COUPON_OPTIONS = ['ALL', 'YES', 'PROMO', 'REFERRAL', 'NO'] as const;
+const PAGE_SIZE_OPTIONS = [25, 50, 75, 100] as const;
+const EDIT_LEAD_SOURCES = [
+  ...LEAD_SOURCES,
+  'MISA AI (Website)',
+  'MISA AI (App)',
+  'WhatsApp MISA AI',
+  'AI Chatbot',
+] as const;
 
 function leadStatusSelectClass(status?: string | null) {
   const s = String(status || 'NEW').toUpperCase();
@@ -273,6 +290,44 @@ function UtmCampaignCell({ lead }: { lead: Record<string, any> }) {
   );
 }
 
+/** Strong, distinct backgrounds per assignee (text stays dark for readability). */
+const ASSIGNEE_BADGE_STYLES = [
+  'bg-sky-200 text-gray-900 ring-sky-400',
+  'bg-violet-200 text-gray-900 ring-violet-400',
+  'bg-emerald-200 text-gray-900 ring-emerald-400',
+  'bg-amber-200 text-gray-900 ring-amber-400',
+  'bg-rose-200 text-gray-900 ring-rose-400',
+  'bg-cyan-200 text-gray-900 ring-cyan-400',
+  'bg-fuchsia-200 text-gray-900 ring-fuchsia-400',
+  'bg-lime-200 text-gray-900 ring-lime-500',
+  'bg-orange-200 text-gray-900 ring-orange-400',
+  'bg-teal-200 text-gray-900 ring-teal-400',
+  'bg-indigo-200 text-gray-900 ring-indigo-400',
+  'bg-pink-200 text-gray-900 ring-pink-400',
+  'bg-yellow-200 text-gray-900 ring-yellow-400',
+  'bg-blue-200 text-gray-900 ring-blue-400',
+];
+
+function assigneeBadgeClass(name: string) {
+  const key = String(name || '').trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return ASSIGNEE_BADGE_STYLES[hash % ASSIGNEE_BADGE_STYLES.length];
+}
+
+function AssigneeBadge({ name }: { name?: string | null }) {
+  const label = String(name || '').trim();
+  if (!label) return <span className="text-gray-300">Unassigned</span>;
+  return (
+    <span
+      className={`inline-flex max-w-[160px] truncate rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${assigneeBadgeClass(label)}`}
+      title={label}
+    >
+      {label}
+    </span>
+  );
+}
+
 function LeadDiscountBadge({ lead }: { lead: Record<string, any> }) {
   const referralApplied = Boolean(lead.referral_reward_applied);
   const referralLabel = lead.referral_reward_label as string | null;
@@ -458,6 +513,18 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
         <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
         <DetailFieldCard label="Created From" value={item.created_from} />
         <DetailFieldCard label="Booking Channel" value={<SourceCell lead={item} />} />
+        <DetailFieldCard
+          label="Assignee"
+          value={
+            item.assigned_telecaller_name ? (
+              <AssigneeBadge name={item.assigned_telecaller_name} />
+            ) : item.assigned_telecaller_id ? (
+              'Assigned'
+            ) : (
+              'Unassigned'
+            )
+          }
+        />
         <DetailFieldCard label="Internal ID" value={item.id} />
       </DetailSection>
 
@@ -550,38 +617,6 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
   );
 }
 
-function ChatbotBookingDetailContent({ item }: { item: Record<string, any> }) {
-  return (
-    <div className="space-y-4">
-      <DetailSection title="Customer" icon={UserRound} className="border-emerald-200 bg-emerald-50/50">
-        <DetailFieldCard label="Name" value={item.customer_name} />
-        <DetailFieldCard label="Phone" value={item.phone_number} />
-        <DetailFieldCard label="City" value={item.city} />
-        <DetailFieldCard label="Pincode" value={item.pincode} />
-      </DetailSection>
-
-      <DetailSection title="Vehicle & Service" icon={Car} className="border-blue-200 bg-blue-50/50">
-        <DetailFieldCard label="Car Model" value={item.car_model} />
-        <DetailFieldCard label="Vehicle Number" value={item.vehicle_number} />
-        <DetailFieldCard label="Car Class" value={item.car_class} />
-        <DetailFieldCard label="Service" value={item.service_name} />
-        <DetailFieldCard label="Category" value={item.service_category} />
-      </DetailSection>
-
-      <DetailSection title="Booking" icon={ClipboardList} className="border-violet-200 bg-violet-50/50">
-        <DetailFieldCard label="Status" value={item.status} />
-        <DetailFieldCard label="Preferred Date" value={item.preferred_date} />
-        <DetailFieldCard label="Preferred Time" value={item.preferred_time} />
-        <DetailFieldCard label="Address" value={item.address} />
-        <DetailFieldCard label="Quoted Price" value={formatCurrency(item.quoted_price)} />
-        <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
-        <DetailFieldCard label="Session ID" value={item.session_id} />
-        <DetailFieldCard label="Notes" value={item.notes} />
-      </DetailSection>
-    </div>
-  );
-}
-
 function LeadTrackingSection({ item }: { item: Record<string, any> }) {
   const utm = getLeadUtmParams(item);
   const hasUtm = UTM_KEYS.some((key) => Boolean(utm[key]));
@@ -622,6 +657,18 @@ function sourceFilterLabel(source: (typeof SOURCE_OPTIONS)[number]) {
       return 'Website';
     case 'MISA':
       return 'MISA AI';
+    case 'WHATSAPP':
+      return 'WhatsApp';
+    case 'GOOGLE':
+      return 'Google Ads';
+    case 'META':
+      return 'Meta / Insta Ads';
+    case 'PARTNER':
+      return 'Partner';
+    case 'REFERENCE':
+      return 'Reference';
+    case 'BANNER':
+      return 'Banner / Offline';
     case 'OTHER':
       return 'Other';
     default:
@@ -667,37 +714,61 @@ function StatCard({
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
+function FilterSelect({
+  label,
+  value,
+  onChange,
   children,
-  activeClassName,
+  className = '',
 }: {
-  active: boolean;
-  onClick: () => void;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
   children: React.ReactNode;
-  activeClassName: string;
+  className?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
-        active ? activeClassName : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-      }`}
-    >
-      {children}
-    </button>
+    <label className={`flex flex-col gap-1 min-w-[140px] ${className}`}>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      >
+        {children}
+      </select>
+    </label>
   );
 }
 
+function couponFilterLabel(coupon: (typeof COUPON_OPTIONS)[number]) {
+  switch (coupon) {
+    case 'ALL':
+      return 'All discounts';
+    case 'YES':
+      return 'Any discount';
+    case 'PROMO':
+      return 'Promo coupon';
+    case 'REFERRAL':
+      return 'Refer & Rise';
+    case 'NO':
+      return 'No discount';
+    default:
+      return coupon;
+  }
+}
+
 export default function SuperAdminBookingsPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('service_leads');
+  const [showUploadCrm, setShowUploadCrm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
   const [couponFilter, setCouponFilter] = useState<(typeof COUPON_OPTIONS)[number]>('ALL');
-  const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
+  /** ALL | UNASSIGNED | exact assignee name */
+  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
+  const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
+  const [datePreset, setDatePreset] = useState<ReportDatePreset>('last_30_days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -705,7 +776,8 @@ export default function SuperAdminBookingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [serviceLeads, setServiceLeads] = useState<ServiceLead[]>([]);
-  const [chatbotBookings, setChatbotBookings] = useState<ChatbotBooking[]>([]);
+  const [totalInRange, setTotalInRange] = useState<number | null>(null);
+  const [leadsTruncated, setLeadsTruncated] = useState(false);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Record<string, any> | null>(null);
@@ -734,6 +806,8 @@ export default function SuperAdminBookingsPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // CSV upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -861,21 +935,20 @@ export default function SuperAdminBookingsPage() {
     setUploadResult(null);
   };
 
-  const displayedChatbotBookings = useMemo(() => {
-    let rows = chatbotBookings;
-    if (statusFilter !== 'ALL') {
-      rows = rows.filter((b) => String(b.status || '').toUpperCase() === statusFilter);
+  const assigneeOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const lead of serviceLeads) {
+      const name = String((lead as any).assigned_telecaller_name || '').trim();
+      if (name) names.add(name);
     }
-    if (!searchTerm.trim()) return rows;
-    const q = searchTerm.trim().toLowerCase();
-    return rows.filter((b) =>
-      [b.customer_name, b.phone_number, b.city, b.service_name, b.car_model, b.status]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
-    );
-  }, [chatbotBookings, searchTerm, statusFilter]);
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [serviceLeads]);
+
+  const filteredAssigneeOptions = useMemo(() => {
+    const q = assigneeSearch.trim().toLowerCase();
+    if (!q) return assigneeOptions;
+    return assigneeOptions.filter((name) => name.toLowerCase().includes(q));
+  }, [assigneeOptions, assigneeSearch]);
 
   const displayedServiceLeads = useMemo(() => {
     let leads = filterBookingLeads(serviceLeads, {
@@ -886,8 +959,28 @@ export default function SuperAdminBookingsPage() {
     if (statusFilter !== 'ALL') {
       leads = leads.filter((lead) => String(lead.status || 'NEW').toUpperCase() === statusFilter);
     }
+    if (assigneeFilter === 'UNASSIGNED') {
+      leads = leads.filter((lead) => !String((lead as any).assigned_telecaller_name || '').trim());
+    } else if (assigneeFilter !== 'ALL') {
+      const want = assigneeFilter.trim().toLowerCase();
+      leads = leads.filter(
+        (lead) => String((lead as any).assigned_telecaller_name || '').trim().toLowerCase() === want
+      );
+    } else if (assigneeSearch.trim()) {
+      const q = assigneeSearch.trim().toLowerCase();
+      if (q === 'unassigned' || q === 'none') {
+        leads = leads.filter((lead) => !String((lead as any).assigned_telecaller_name || '').trim());
+      } else {
+        leads = leads.filter((lead) =>
+          String((lead as any).assigned_telecaller_name || '')
+            .trim()
+            .toLowerCase()
+            .includes(q)
+        );
+      }
+    }
     return leads;
-  }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter]);
+  }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter, assigneeFilter, assigneeSearch]);
 
   /** All loaded leads for a phone (for Bookings count + modal). */
   const bookingsByPhone = useMemo(() => {
@@ -919,18 +1012,38 @@ export default function SuperAdminBookingsPage() {
   };
 
   const serviceLeadOverview = useMemo(() => computeServiceLeadOverview(displayedServiceLeads), [displayedServiceLeads]);
-  const chatbotOverview = useMemo(() => computeChatbotBookingOverview(displayedChatbotBookings), [displayedChatbotBookings]);
+
+  const totalPages = Math.max(1, Math.ceil(displayedServiceLeads.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+
+  const pagedServiceLeads = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return displayedServiceLeads.slice(start, start + pageSize);
+  }, [displayedServiceLeads, safePage, pageSize]);
+
+  const pageRangeLabel = useMemo(() => {
+    if (displayedServiceLeads.length === 0) return '0–0';
+    const start = (safePage - 1) * pageSize + 1;
+    const end = Math.min(safePage * pageSize, displayedServiceLeads.length);
+    return `${start}–${end}`;
+  }, [displayedServiceLeads.length, safePage, pageSize]);
+
+  // Reset to first page whenever filters / search change.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, assigneeSearch, searchTerm, datePreset, customStart, customEnd]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const hasActiveLeadFilters =
     sourceFilter !== 'ALL' ||
     couponFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
+    assigneeFilter !== 'ALL' ||
+    Boolean(assigneeSearch.trim()) ||
     Boolean(searchTerm.trim());
-
-  const activeData = useMemo(
-    () => (activeTab === 'service_leads' ? displayedServiceLeads : displayedChatbotBookings),
-    [activeTab, displayedServiceLeads, displayedChatbotBookings],
-  );
 
   const dateRangeLabel = useMemo(
     () => resolveReportDateRange(datePreset, customStart, customEnd).label,
@@ -960,25 +1073,23 @@ export default function SuperAdminBookingsPage() {
   };
 
   const fetchData = useCallback(async () => {
-    if (activeTab === 'upload_crm') return;
+    if (showUploadCrm) return;
     if (datePreset === 'custom' && (!customStart || !customEnd)) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const endpoint =
-        activeTab === 'service_leads' ? '/api/super_admin/leads' : '/api/super_admin/chatbot-bookings';
-
       const query = new URLSearchParams();
-      query.set('limit', '500');
+      // Paginated API — fetch up to 10k for the selected date range (was hard-capped at 200).
+      query.set('limit', '10000');
       query.set('preset', datePreset);
       if (datePreset === 'custom') {
         if (customStart) query.set('start', customStart);
         if (customEnd) query.set('end', customEnd);
       }
 
-      const res = await fetch(`${endpoint}?${query.toString()}`);
+      const res = await fetch(`/api/super_admin/leads?${query.toString()}`);
       const text = await res.text();
       const payload = text ? JSON.parse(text) : {};
 
@@ -986,19 +1097,19 @@ export default function SuperAdminBookingsPage() {
         throw new Error(payload?.error || 'Failed to load bookings data');
       }
 
-      if (activeTab === 'service_leads') {
-        const rows = Array.isArray(payload?.leads) ? payload.leads : [];
-        setServiceLeads(rows.map((lead: ServiceLead) => withOtpFlags(enrichBookingLead(lead))));
-      } else {
-        const rows = Array.isArray(payload?.bookings) ? payload.bookings : [];
-        setChatbotBookings(rows);
-      }
+      const rows = Array.isArray(payload?.leads) ? payload.leads : [];
+      setServiceLeads(rows.map((lead: ServiceLead) => withOtpFlags(enrichBookingLead(lead))));
+      const summary = payload?.summary || {};
+      const inRange =
+        typeof summary.total_in_range === 'number' ? summary.total_in_range : rows.length;
+      setTotalInRange(inRange);
+      setLeadsTruncated(Boolean(summary.truncated));
     } catch (err: any) {
       setError(err?.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, datePreset, customStart, customEnd]);
+  }, [showUploadCrm, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -1129,12 +1240,24 @@ export default function SuperAdminBookingsPage() {
     });
   };
 
+  const pageLeadIds = useMemo(
+    () => pagedServiceLeads.map((l) => String(l.id || '')).filter(Boolean),
+    [pagedServiceLeads],
+  );
+  const allPageSelected =
+    pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedIds.has(id));
+  const somePageSelected = pageLeadIds.some((id) => selectedIds.has(id));
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === displayedServiceLeads.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(displayedServiceLeads.map((l) => String(l.id)).filter(Boolean)));
-    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const id of pageLeadIds) next.delete(id);
+      } else {
+        for (const id of pageLeadIds) next.add(id);
+      }
+      return next;
+    });
   };
 
   const bulkDelete = async () => {
@@ -1186,16 +1309,10 @@ export default function SuperAdminBookingsPage() {
       }
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
+      if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
+      if (couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
 
-      if (activeTab === 'service_leads') {
-        if (sourceFilter !== 'ALL') params.set('source', sourceFilter);
-        if (couponFilter !== 'ALL') params.set('has_coupon', couponFilter);
-      }
-
-      const endpoint =
-        activeTab === 'service_leads' ? '/api/super_admin/leads' : '/api/super_admin/chatbot-bookings';
-
-      const res = await fetch(`${endpoint}?${params.toString()}`);
+      const res = await fetch(`/api/super_admin/leads?${params.toString()}`);
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error || 'Export failed');
@@ -1205,10 +1322,7 @@ export default function SuperAdminBookingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download =
-        activeTab === 'service_leads'
-          ? `service-leads-${datePreset}.csv`
-          : `ai-bookings-${datePreset}.csv`;
+      a.download = `bookings-leads-${datePreset}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Export downloaded');
@@ -1223,92 +1337,78 @@ export default function SuperAdminBookingsPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+            <div className="shrink-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
                 <ClipboardList className="w-6 h-6 text-brand-primary" />
                 Bookings & Leads
               </h1>
-              <p className="text-sm text-gray-600 mt-1">Website, App & AI bookings — filter by source and coupon.</p>
+              <p className="text-sm text-gray-600 mt-1">All bookings in one place — filter by source, status & assignee.</p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto lg:max-w-xl lg:flex-1 lg:justify-end">
-              <div className="w-full sm:flex-1 lg:w-[320px] relative">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="bookings-search"
-                  name="bookings-search"
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by name, phone, vehicle, city, coupon..."
-                  className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full xl:flex-1 xl:justify-end min-w-0">
+              {!showUploadCrm ? (
+                <div className="w-full sm:flex-1 xl:max-w-md relative">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    id="bookings-search"
+                    name="bookings-search"
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name, phone, vehicle, city, coupon..."
+                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              ) : null}
+
+              {showUploadCrm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowUploadCrm(false)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Back to leads
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowUploadCrm(true)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 shrink-0"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload CRM Data
+                </button>
+              )}
+
+              {!showUploadCrm ? (
+                <button
+                  type="button"
+                  onClick={() => void handleExport()}
+                  disabled={loading || exporting || (datePreset === 'custom' && (!customStart || !customEnd))}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+                >
+                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {exporting ? 'Exporting...' : 'Export CSV'}
+                </button>
+              ) : null}
+
               <AdminPageRefresh
-                onClick={() => void fetchData()}
+                onClick={() => {
+                  if (showUploadCrm) setShowUploadCrm(false);
+                  void fetchData();
+                }}
                 loading={loading}
                 className="shrink-0 justify-center"
               />
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab('service_leads')}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition ${
-                activeTab === 'service_leads'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <UserRound className="w-4 h-4" />
-              Service Leads
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('chatbot_bookings')}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition ${
-                activeTab === 'chatbot_bookings'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <Bot className="w-4 h-4" />
-              AI Bookings
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('upload_crm')}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition ${
-                activeTab === 'upload_crm'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <Upload className="w-4 h-4" />
-              Upload CRM Data
-            </button>
-
-            {activeTab !== 'upload_crm' ? (
-              <button
-                type="button"
-                onClick={() => void handleExport()}
-                disabled={loading || exporting || (datePreset === 'custom' && (!customStart || !customEnd))}
-                className="ml-auto inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {exporting ? 'Exporting...' : 'Export CSV'}
-              </button>
-            ) : null}
-          </div>
-
-          {activeTab !== 'upload_crm' ? (
-            <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
-              <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:gap-4">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0">Date</span>
+          {!showUploadCrm ? (
+            <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm space-y-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1 min-w-[160px]">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Date</span>
                   <ReportDateRangeFilter
                     variant="compact"
                     preset={datePreset}
@@ -1318,94 +1418,175 @@ export default function SuperAdminBookingsPage() {
                   />
                 </div>
 
-                {activeTab === 'service_leads' ? (
-                  <>
-                    <div className="hidden xl:block h-8 w-px bg-gray-200 shrink-0" />
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0 mr-0.5">Source</span>
+                    <FilterSelect
+                      label="Source"
+                      value={sourceFilter}
+                      onChange={(v) => setSourceFilter(v as (typeof SOURCE_OPTIONS)[number])}
+                    >
                       {SOURCE_OPTIONS.map((source) => (
-                        <FilterChip
-                          key={source}
-                          active={sourceFilter === source}
-                          onClick={() => setSourceFilter(source)}
-                          activeClassName={
-                            source === 'APP'
-                              ? 'border-emerald-600 bg-emerald-600 text-white'
-                              : source === 'WEBSITE'
-                                ? 'border-blue-600 bg-blue-600 text-white'
-                                : source === 'MISA'
-                                  ? 'border-violet-600 bg-violet-600 text-white'
-                                  : 'border-slate-700 bg-slate-700 text-white'
-                          }
-                        >
-                          {source === 'APP' ? <Smartphone className="h-3 w-3" /> : null}
-                          {source === 'WEBSITE' ? <Globe className="h-3 w-3" /> : null}
-                          {source === 'MISA' ? <Bot className="h-3 w-3" /> : null}
+                        <option key={source} value={source}>
                           {sourceFilterLabel(source)}
-                        </FilterChip>
+                        </option>
                       ))}
-                    </div>
+                    </FilterSelect>
 
-                    <div className="hidden xl:block h-8 w-px bg-gray-200 shrink-0" />
-
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0 mr-0.5">Discount</span>
+                    <FilterSelect
+                      label="Discount"
+                      value={couponFilter}
+                      onChange={(v) => setCouponFilter(v as (typeof COUPON_OPTIONS)[number])}
+                    >
                       {COUPON_OPTIONS.map((coupon) => (
-                        <FilterChip
-                          key={coupon}
-                          active={couponFilter === coupon}
-                          onClick={() => setCouponFilter(coupon)}
-                          activeClassName={
-                            coupon === 'REFERRAL'
-                              ? 'border-amber-600 bg-amber-600 text-white'
-                              : coupon === 'PROMO'
-                                ? 'border-orange-500 bg-orange-500 text-white'
-                                : 'border-orange-500 bg-orange-500 text-white'
-                          }
-                        >
-                          {coupon === 'YES' || coupon === 'PROMO' ? <Ticket className="h-3 w-3" /> : null}
-                          {coupon === 'REFERRAL' ? <Gift className="h-3 w-3" /> : null}
-                          {coupon === 'ALL'
-                            ? 'All'
-                            : coupon === 'YES'
-                              ? 'Any Discount'
-                              : coupon === 'PROMO'
-                                ? 'Promo Coupon'
-                                : coupon === 'REFERRAL'
-                                  ? 'Refer & Rise'
-                                  : 'No Discount'}
-                        </FilterChip>
+                        <option key={coupon} value={coupon}>
+                          {couponFilterLabel(coupon)}
+                        </option>
                       ))}
+                    </FilterSelect>
+
+                    <FilterSelect
+                      label="Status"
+                      value={statusFilter}
+                      onChange={(v) => setStatusFilter(v as (typeof STATUS_OPTIONS)[number])}
+                      className="min-w-[180px]"
+                    >
+                      {STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>
+                          {status === 'ALL' ? 'All statuses' : status.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </FilterSelect>
+
+                    <div className="flex flex-col gap-1 min-w-[220px] flex-1 max-w-sm relative">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Assignee</span>
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
+                        <input
+                          type="search"
+                          value={assigneeSearch}
+                          onChange={(e) => {
+                            setAssigneeSearch(e.target.value);
+                            setAssigneeFilter('ALL');
+                            setAssigneeMenuOpen(true);
+                          }}
+                          onFocus={() => setAssigneeMenuOpen(true)}
+                          onBlur={() => {
+                            window.setTimeout(() => setAssigneeMenuOpen(false), 150);
+                          }}
+                          placeholder={
+                            assigneeFilter === 'UNASSIGNED'
+                              ? 'Unassigned'
+                              : assigneeFilter !== 'ALL'
+                                ? assigneeFilter
+                                : 'Search assignee...'
+                          }
+                          className="w-full rounded-lg border border-gray-300 bg-white pl-8 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          autoComplete="off"
+                        />
+                        {(assigneeFilter !== 'ALL' || assigneeSearch.trim()) ? (
+                          <button
+                            type="button"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setAssigneeFilter('ALL');
+                              setAssigneeSearch('');
+                            }}
+                            aria-label="Clear assignee filter"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        ) : null}
+                        {assigneeMenuOpen ? (
+                          <div className="absolute left-0 right-0 top-full mt-1 z-30 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+                            <button
+                              type="button"
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                assigneeFilter === 'ALL' && !assigneeSearch.trim() ? 'bg-blue-50 text-blue-800 font-semibold' : 'text-gray-700'
+                              }`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setAssigneeFilter('ALL');
+                                setAssigneeSearch('');
+                                setAssigneeMenuOpen(false);
+                              }}
+                            >
+                              All assignees
+                            </button>
+                            <button
+                              type="button"
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                assigneeFilter === 'UNASSIGNED' ? 'bg-blue-50 text-blue-800 font-semibold' : 'text-gray-700'
+                              }`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setAssigneeFilter('UNASSIGNED');
+                                setAssigneeSearch('');
+                                setAssigneeMenuOpen(false);
+                              }}
+                            >
+                              Unassigned
+                            </button>
+                            {filteredAssigneeOptions.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-gray-400">No matching assignees</p>
+                            ) : (
+                              filteredAssigneeOptions.map((name) => (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                    assigneeFilter === name ? 'bg-blue-50 text-blue-800 font-semibold' : 'text-gray-700'
+                                  }`}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setAssigneeFilter(name);
+                                    setAssigneeSearch('');
+                                    setAssigneeMenuOpen(false);
+                                  }}
+                                >
+                                  {name}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  </>
+
+                {(sourceFilter !== 'ALL' ||
+                  couponFilter !== 'ALL' ||
+                  statusFilter !== 'ALL' ||
+                  assigneeFilter !== 'ALL' ||
+                  assigneeSearch.trim()) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSourceFilter('ALL');
+                      setCouponFilter('ALL');
+                      setStatusFilter('ALL');
+                      setAssigneeFilter('ALL');
+                      setAssigneeSearch('');
+                    }}
+                    className="mb-0.5 px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    Clear filters
+                  </button>
                 ) : null}
 
                 {!loading ? (
-                  <p className="text-[11px] text-gray-500 xl:ml-auto shrink-0">
-                    <span className="font-bold text-gray-800">
-                      {activeTab === 'service_leads' ? displayedServiceLeads.length : displayedChatbotBookings.length}
-                    </span>
-                    {activeTab === 'service_leads' ? ` / ${serviceLeads.length} leads` : ' bookings'}
+                  <p className="text-[11px] text-gray-500 ml-auto shrink-0 pb-2 text-right">
+                    <span className="font-bold text-gray-800">{displayedServiceLeads.length}</span>
+                    {` / ${serviceLeads.length} loaded`}
+                    {typeof totalInRange === 'number' && totalInRange !== serviceLeads.length ? (
+                      <span className="text-gray-400"> · {totalInRange.toLocaleString('en-IN')} in range</span>
+                    ) : null}
                     {datePreset !== 'all_time' ? <span className="text-gray-400"> · {dateRangeLabel}</span> : null}
+                    {leadsTruncated ? (
+                      <span className="block text-amber-600 font-medium mt-0.5">
+                        Showing latest {serviceLeads.length.toLocaleString('en-IN')} of{' '}
+                        {(totalInRange || 0).toLocaleString('en-IN')} — narrow the date range for the rest
+                      </span>
+                    ) : null}
                   </p>
                 ) : null}
-              </div>
-
-              <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
-                {STATUS_OPTIONS.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => setStatusFilter(status)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
-                      statusFilter === status
-                        ? 'bg-brand-primary text-white border-brand-primary'
-                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    {status}
-                  </button>
-                ))}
               </div>
             </div>
           ) : null}
@@ -1413,7 +1594,7 @@ export default function SuperAdminBookingsPage() {
       </div>
 
       {/* Bulk action bar */}
-      {activeTab === 'service_leads' && selectedIds.size > 0 ? (
+      {!showUploadCrm && selectedIds.size > 0 ? (
         <div className="sticky top-[200px] z-10 mx-4 sm:mx-6 lg:mx-8 mt-2 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 text-white px-5 py-3 shadow-lg flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <CheckSquare className="w-5 h-5" />
@@ -1441,16 +1622,21 @@ export default function SuperAdminBookingsPage() {
       ) : null}
 
       <div className="px-4 sm:px-6 lg:px-8 py-5">
-        {activeTab !== 'upload_crm' && !loading ? (
+        {!showUploadCrm && !loading ? (
           <div className="mb-5">
-            {hasActiveLeadFilters && activeTab === 'service_leads' ? (
+            {hasActiveLeadFilters ? (
               <p className="mb-3 text-xs font-medium text-amber-700">
-                Overview for filtered results · {displayedServiceLeads.length} of {serviceLeads.length} leads
+                Overview for filtered results · {displayedServiceLeads.length} of {serviceLeads.length} loaded
+                {typeof totalInRange === 'number' ? ` · ${totalInRange.toLocaleString('en-IN')} in date range` : ''}
+              </p>
+            ) : leadsTruncated ? (
+              <p className="mb-3 text-xs font-medium text-amber-700">
+                Showing latest {serviceLeads.length.toLocaleString('en-IN')} of{' '}
+                {(totalInRange || 0).toLocaleString('en-IN')} leads in range — use a shorter date filter for full list
               </p>
             ) : datePreset !== 'all_time' ? (
               <p className="mb-3 text-xs font-medium text-gray-500">Overview for {dateRangeLabel}</p>
             ) : null}
-            {activeTab === 'service_leads' ? (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-9">
               <StatCard
                 label={hasActiveLeadFilters ? 'Filtered Leads' : 'Total Leads'}
@@ -1460,6 +1646,8 @@ export default function SuperAdminBookingsPage() {
                   setSourceFilter('ALL');
                   setCouponFilter('ALL');
                   setStatusFilter('ALL');
+                  setAssigneeFilter('ALL');
+                  setAssigneeSearch('');
                   setSearchTerm('');
                 }}
                 active={hasActiveLeadFilters}
@@ -1485,8 +1673,20 @@ export default function SuperAdminBookingsPage() {
                 onClick={() => setSourceFilter(sourceFilter === 'MISA' ? 'ALL' : 'MISA')}
                 active={sourceFilter === 'MISA'}
               />
-              <StatCard label="Google Ads" value={serviceLeadOverview.googleAds} icon={<Megaphone className="h-5 w-5" />} />
-              <StatCard label="Meta / Insta Ads" value={serviceLeadOverview.metaAds} icon={<Megaphone className="h-5 w-5" />} />
+              <StatCard
+                label="Google Ads"
+                value={serviceLeadOverview.googleAds}
+                icon={<Megaphone className="h-5 w-5" />}
+                onClick={() => setSourceFilter(sourceFilter === 'GOOGLE' ? 'ALL' : 'GOOGLE')}
+                active={sourceFilter === 'GOOGLE'}
+              />
+              <StatCard
+                label="Meta / Insta Ads"
+                value={serviceLeadOverview.metaAds}
+                icon={<Megaphone className="h-5 w-5" />}
+                onClick={() => setSourceFilter(sourceFilter === 'META' ? 'ALL' : 'META')}
+                active={sourceFilter === 'META'}
+              />
               <StatCard
                 label="Promo Coupon"
                 value={serviceLeadOverview.withPromoCoupon}
@@ -1517,18 +1717,10 @@ export default function SuperAdminBookingsPage() {
                 active={statusFilter === 'NEW'}
               />
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <StatCard label="Total AI Bookings" value={chatbotOverview.total} icon={<Bot className="h-5 w-5" />} />
-              <StatCard label="Pending" value={chatbotOverview.pending} icon={<ClipboardList className="h-5 w-5" />} />
-              <StatCard label="Completed" value={chatbotOverview.completed} icon={<CheckCircle2 className="h-5 w-5" />} />
-              <StatCard label="With Quote" value={chatbotOverview.withQuote} icon={<DollarSign className="h-5 w-5" />} />
-            </div>
-          )}
           </div>
         ) : null}
 
-        {activeTab === 'upload_crm' ? (
+        {showUploadCrm ? (
           <div className="space-y-5">
             {/* Upload Area */}
             <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8">
@@ -1635,7 +1827,7 @@ export default function SuperAdminBookingsPage() {
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">{error}</div>
-        ) : activeData.length === 0 ? (
+        ) : displayedServiceLeads.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center">
             <p className="text-gray-700 font-semibold">No records found</p>
             <p className="text-sm text-gray-500 mt-1">Try changing search or status filters.</p>
@@ -1643,15 +1835,14 @@ export default function SuperAdminBookingsPage() {
         ) : (
           <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
-              {activeTab === 'service_leads' ? (
-                <table className="w-full min-w-[1520px]">
+                <table className="w-full min-w-[1680px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
                       <th className="px-3 py-3 w-10">
-                        <button type="button" onClick={toggleSelectAll} className="p-0.5 rounded hover:bg-gray-200 transition">
-                          {selectedIds.size === 0 ? (
+                        <button type="button" onClick={toggleSelectAll} className="p-0.5 rounded hover:bg-gray-200 transition" title="Select all on this page">
+                          {!somePageSelected ? (
                             <Square className="w-4.5 h-4.5 text-gray-400" />
-                          ) : selectedIds.size === displayedServiceLeads.length ? (
+                          ) : allPageSelected ? (
                             <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
                           ) : (
                             <MinusSquare className="w-4.5 h-4.5 text-blue-600" />
@@ -1660,6 +1851,7 @@ export default function SuperAdminBookingsPage() {
                       </th>
                       <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
                       <th className="px-4 py-3 whitespace-nowrap">Source</th>
+                      <th className="px-4 py-3 whitespace-nowrap min-w-[140px]">Assignee</th>
                       <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th>
                       <th className="px-4 py-3 whitespace-nowrap">Phone</th>
                       <th className="px-4 py-3 whitespace-nowrap">Bookings</th>
@@ -1675,7 +1867,7 @@ export default function SuperAdminBookingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {displayedServiceLeads.map((lead) => {
+                    {pagedServiceLeads.map((lead) => {
                       const serviceLabel = getServiceLabel(lead);
                       const misaServices = extractMisaServices(lead);
                       const leadId = String(lead.id || '');
@@ -1708,6 +1900,9 @@ export default function SuperAdminBookingsPage() {
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           <SourceCell lead={lead} />
+                        </td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">
+                          <AssigneeBadge name={lead.assigned_telecaller_name} />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
                           <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
@@ -1789,60 +1984,18 @@ export default function SuperAdminBookingsPage() {
                     );})}
                   </tbody>
                 </table>
-              ) : (
-                <table className="w-full min-w-[960px]">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      <th className="px-4 py-3 whitespace-nowrap">Customer</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Phone</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Car Model</th>
-                      <th className="px-4 py-3 whitespace-nowrap">City</th>
-                      <th className="px-4 py-3 min-w-[160px]">Service</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Price</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayedChatbotBookings.map((booking) => (
-                      <tr
-                        key={String(booking.id || `${booking.session_id}-${booking.created_at}`)}
-                        onClick={() => openDetail('AI Booking Details', booking)}
-                        className="border-b border-gray-100 hover:bg-blue-50/50 cursor-pointer transition"
-                      >
-                        <td className="px-4 py-3 text-sm text-gray-800 max-w-[140px]">
-                          <span className="block truncate" title={booking.customer_name || ''}>{booking.customer_name || '-'}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{booking.phone_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{booking.car_model || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{booking.city || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px]">
-                          <span className="block truncate" title={booking.service_name || ''}>{booking.service_name || '-'}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(booking.quoted_price)}</td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <span className="inline-flex px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold whitespace-nowrap">
-                            {booking.status || '-'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(booking.created_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
             </div>
 
             <div className="grid grid-cols-1 gap-3 lg:hidden">
-              {activeData.map((item) => {
+              {pagedServiceLeads.map((item) => {
                 const itemId = String(item.id || '');
-                const isItemSelected = activeTab === 'service_leads' && itemId ? selectedIds.has(itemId) : false;
+                const isItemSelected = itemId ? selectedIds.has(itemId) : false;
                 return (
                 <div
-                  key={String(item.id || `${item.session_id || item.lead_number}-${item.created_at}`)}
+                  key={String(item.id || `${item.lead_number}-${item.created_at}`)}
                   className={`bg-white border rounded-xl p-4 shadow-sm ${isItemSelected ? 'border-blue-400 bg-blue-50/30' : 'border-gray-200'}`}
                 >
-                  {activeTab === 'service_leads' && itemId ? (
+                  {itemId ? (
                     <div className="flex items-center gap-2 mb-3">
                       <button
                         type="button"
@@ -1861,93 +2014,71 @@ export default function SuperAdminBookingsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <button
                       type="button"
-                      onClick={() =>
-                        openDetail(activeTab === 'service_leads' ? 'Service Lead Details' : 'AI Booking Details', item)
-                      }
+                      onClick={() => openDetail('Service Lead Details', item)}
                       className="text-left flex-1 min-w-0"
                     >
                       <p className="text-sm font-bold text-gray-900 break-words">
-                        {activeTab === 'service_leads'
-                          ? item.customer_name || item.lead_number || '-'
-                          : item.customer_name || '-'}
+                        {item.customer_name || item.lead_number || '-'}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {activeTab === 'service_leads' ? item.customer_phone || '-' : item.phone_number || '-'}
-                      </p>
-                      {activeTab === 'service_leads' ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <SourceCell lead={item} />
-                          {item.has_coupon_applied ? (
-                            <LeadDiscountBadge lead={item} />
-                          ) : null}
-                        </div>
-                      ) : null}
+                      <p className="text-xs text-gray-500 mt-0.5">{item.customer_phone || '-'}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <SourceCell lead={item} />
+                        {item.has_coupon_applied ? <LeadDiscountBadge lead={item} /> : null}
+                      </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
                         <div>
                           <p className="text-gray-500">City</p>
                           <p className="font-medium text-gray-800">{item.city || '-'}</p>
                         </div>
-                        {activeTab === 'service_leads' ? (
-                          <div>
-                            <p className="text-gray-500">Bookings</p>
-                            <button
-                              type="button"
-                              onClick={(e) => openPhoneBookings(item.customer_phone, e)}
-                              className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-800"
-                            >
-                              <Hash className="h-3 w-3" />
-                              {bookingsByPhone.get(normalizeLeadPhone(item.customer_phone))?.length || 1}
-                            </button>
-                          </div>
-                        ) : null}
                         <div>
-                          <p className="text-gray-500">{activeTab === 'service_leads' ? 'Vehicle' : 'Car Model'}</p>
-                          <p className="font-medium text-gray-800">
-                            {activeTab === 'service_leads' ? item.vehicle_number || '-' : item.car_model || '-'}
-                          </p>
+                          <p className="text-gray-500">Bookings</p>
+                          <button
+                            type="button"
+                            onClick={(e) => openPhoneBookings(item.customer_phone, e)}
+                            className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-800"
+                          >
+                            <Hash className="h-3 w-3" />
+                            {bookingsByPhone.get(normalizeLeadPhone(item.customer_phone))?.length || 1}
+                          </button>
                         </div>
                         <div>
-                          <p className="text-gray-500">{activeTab === 'service_leads' ? 'Amount' : 'Price'}</p>
-                          <p className="font-medium text-gray-800">
-                            {activeTab === 'service_leads'
-                              ? formatCurrency(getLeadDisplayAmount(item))
-                              : formatCurrency(item.quoted_price)}
-                          </p>
+                          <p className="text-gray-500">Vehicle</p>
+                          <p className="font-medium text-gray-800">{item.vehicle_number || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Amount</p>
+                          <p className="font-medium text-gray-800">{formatCurrency(getLeadDisplayAmount(item))}</p>
                         </div>
                         <div>
                           <p className="text-gray-500">Date</p>
                           <p className="font-medium text-gray-800">{formatDateTime(item.created_at)}</p>
                         </div>
-                        {activeTab === 'service_leads' ? (
-                          <>
-                            <div className="col-span-2">
-                              <p className="text-gray-500">Service</p>
-                              <p className="font-medium text-gray-800">{getServiceLabel(item) || '-'}</p>
-                            </div>
-                            <div className="col-span-2">
-                              <p className="text-gray-500">UTM Campaign</p>
-                              <div className="mt-0.5">
-                                <UtmCampaignCell lead={item} />
-                              </div>
-                            </div>
-                          </>
-                        ) : null}
+                        <div className="col-span-2">
+                          <p className="text-gray-500">Assignee</p>
+                          <div className="mt-0.5">
+                            <AssigneeBadge name={item.assigned_telecaller_name} />
+                          </div>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-gray-500">Service</p>
+                          <p className="font-medium text-gray-800">{getServiceLabel(item) || '-'}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-gray-500">UTM Campaign</p>
+                          <div className="mt-0.5">
+                            <UtmCampaignCell lead={item} />
+                          </div>
+                        </div>
                       </div>
                     </button>
-                    {activeTab === 'service_leads' ? (
-                      <LeadStatusSelect
-                        value={String(item.status || 'NEW')}
-                        updating={statusUpdatingId === String(item.id)}
-                        onChange={(status, ev) => void updateLeadStatus(item, status, ev)}
-                      />
-                    ) : (
-                      <span className="inline-flex px-2 py-1 rounded-full bg-purple-100 text-purple-700 text-[11px] font-semibold shrink-0">
-                        {item.status || '-'}
-                      </span>
-                    )}
+                    <LeadStatusSelect
+                      value={String(item.status || 'NEW')}
+                      updating={statusUpdatingId === String(item.id)}
+                      onChange={(status, ev) => void updateLeadStatus(item, status, ev)}
+                    />
                   </div>
-                  {activeTab === 'service_leads' && item.id ? (
+                  {item.id ? (
                     <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
                       <button
                         type="button"
@@ -1968,6 +2099,57 @@ export default function SuperAdminBookingsPage() {
                   ) : null}
                 </div>
               );})}
+            </div>
+
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                <span>
+                  Showing <span className="font-bold text-gray-900">{pageRangeLabel}</span> of{' '}
+                  <span className="font-bold text-gray-900">{displayedServiceLeads.length}</span>
+                </span>
+                <span className="text-gray-300">·</span>
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Per page</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
+                      setCurrentPage(1);
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Prev
+                </button>
+                <span className="min-w-[88px] text-center text-sm font-semibold text-gray-800">
+                  Page {safePage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -2011,7 +2193,7 @@ export default function SuperAdminBookingsPage() {
                 <div>
                   <label className="text-xs font-semibold text-gray-500">Lead Source</label>
                   <select className="w-full mt-1 px-3 py-2 border rounded-lg text-sm" value={editForm.lead_source} onChange={(e) => setEditForm((f) => ({ ...f, lead_source: e.target.value }))}>
-                    {LEAD_SOURCES.map((s) => (
+                    {EDIT_LEAD_SOURCES.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
@@ -2157,21 +2339,43 @@ export default function SuperAdminBookingsPage() {
         </div>
       ) : null}
 
-      {detailOpen && detailItem && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl max-h-[85vh] overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Car className="w-5 h-5 text-brand-primary" />
-                {detailTitle}
+      {detailOpen && detailItem ? (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            aria-label="Close lead details"
+            className="flex-1 min-w-0 bg-black/40"
+            onClick={() => setDetailOpen(false)}
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label={detailTitle || 'Lead details'}
+            className="relative z-10 flex h-full w-full max-w-2xl sm:max-w-3xl flex-col bg-white shadow-2xl border-l border-gray-200"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5 shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 min-w-0">
+                <Car className="w-5 h-5 text-brand-primary shrink-0" />
+                <span className="truncate">{detailTitle}</span>
               </h3>
-              <div className="flex items-center gap-2">
-                {detailItem.id && detailTitle.includes('Service Lead') ? (
+              <div className="flex items-center gap-2 shrink-0">
+                {detailItem.id ? (
                   <>
-                    <button type="button" onClick={() => { setDetailOpen(false); openEdit(detailItem); }} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDetailOpen(false);
+                        openEdit(detailItem);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50"
+                    >
                       Edit
                     </button>
-                    <button type="button" onClick={() => deleteLead(detailItem)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700">
+                    <button
+                      type="button"
+                      onClick={() => deleteLead(detailItem)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"
+                    >
                       Delete
                     </button>
                   </>
@@ -2186,16 +2390,12 @@ export default function SuperAdminBookingsPage() {
               </div>
             </div>
 
-            <div className="p-5 overflow-y-auto max-h-[calc(85vh-72px)]">
-              {detailTitle.includes('Service Lead') ? (
-                <ServiceLeadDetailContent item={detailItem} />
-              ) : (
-                <ChatbotBookingDetailContent item={detailItem} />
-              )}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5">
+              <ServiceLeadDetailContent item={detailItem} />
             </div>
-          </div>
+          </aside>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { getBrowserClient } from '@/lib/supabase/browserClient';
 export default function ProductsTab() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -40,6 +41,17 @@ export default function ProductsTab() {
       setLoading(false);
     }
   };
+
+  const q = searchTerm.trim().toLowerCase();
+  const filteredProducts = !q
+    ? products
+    : products.filter(
+        (p) =>
+          String(p.name || '').toLowerCase().includes(q) ||
+          String(p.hsn_sac_code || '').toLowerCase().includes(q) ||
+          String(p.category || '').toLowerCase().includes(q) ||
+          String(p.type || '').toLowerCase().includes(q)
+      );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +87,8 @@ export default function ProductsTab() {
           <input
             type="text"
             placeholder="Search products..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 border rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-brand-primary/20 outline-none"
           />
         </div>
@@ -109,7 +123,7 @@ export default function ProductsTab() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {products.map((p) => (
+                {filteredProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="px-3 sm:px-4 py-2 sm:py-3 font-medium text-gray-900 text-xs sm:text-sm">{p.name}</td>
                     <td className="px-3 sm:px-4 py-2 sm:py-3">
@@ -130,10 +144,10 @@ export default function ProductsTab() {
                     </td>
                   </tr>
                 ))}
-                {products.length === 0 && (
+                {filteredProducts.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 sm:py-10 md:py-12 text-center text-gray-500 text-sm sm:text-base">
-                      No products found. Add one to get started.
+                      {searchTerm.trim() ? `No results for "${searchTerm.trim()}"` : 'No products found. Add one to get started.'}
                     </td>
                   </tr>
                 )}
@@ -143,7 +157,7 @@ export default function ProductsTab() {
 
           {/* Mobile Cards */}
           <div className="lg:hidden space-y-3 sm:space-y-4">
-            {products.map((p) => (
+            {filteredProducts.map((p) => (
               <div key={p.id} className="card p-3 sm:p-4 hover:shadow-md transition">
                 <div className="flex items-start justify-between mb-2 sm:mb-3">
                   <div className="flex-1 min-w-0">
@@ -178,9 +192,11 @@ export default function ProductsTab() {
                 </div>
               </div>
             ))}
-            {products.length === 0 && (
+            {filteredProducts.length === 0 && (
               <div className="card text-center py-8 sm:py-10 md:py-12">
-                <p className="text-gray-500 text-sm sm:text-base">No products found. Add one to get started.</p>
+                <p className="text-gray-500 text-sm sm:text-base">
+                  {searchTerm.trim() ? `No results for "${searchTerm.trim()}"` : 'No products found. Add one to get started.'}
+                </p>
               </div>
             )}
           </div>
