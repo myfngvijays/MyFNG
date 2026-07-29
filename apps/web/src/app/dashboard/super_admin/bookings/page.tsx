@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
@@ -154,21 +154,32 @@ function SourceBadgeIcon({ kind }: { kind: LeadSourceBadgeKind }) {
   return <UserRound className="h-3.5 w-3.5 shrink-0" />;
 }
 
+/** Always-readable fallback colors (inline) if Tailwind classes fail to load. */
+const SOURCE_KIND_INLINE: Partial<Record<LeadSourceBadgeKind, React.CSSProperties>> = {
+  google: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
+  meta: { backgroundColor: '#E0F2FE', color: '#0C4A6E' },
+  instagram: { backgroundColor: '#FCE7F3', color: '#9D174D' },
+  whatsapp: { backgroundColor: '#D1FAE5', color: '#065F46' },
+  app: { backgroundColor: '#D1FAE5', color: '#065F46' },
+  website: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
+  misa: { backgroundColor: '#EDE9FE', color: '#5B21B6' },
+  other: { backgroundColor: '#F3F4F6', color: '#374151' },
+};
+
 function SourceBadge({ lead }: { lead: Record<string, any> }) {
-  const theme = lead.source_badge_kind
-    ? {
-        source_badge_kind: lead.source_badge_kind as LeadSourceBadgeKind,
-        source_badge_label: lead.source_badge_label,
-        source_badge_class: lead.source_badge_class,
-      }
-    : resolveLeadSourceBadgeTheme(lead);
+  // Always recompute from lead fields so stale enriched white-text classes are ignored.
+  const theme = resolveLeadSourceBadgeTheme(lead);
 
   const kind = theme.source_badge_kind;
   const label = theme.source_badge_label || lead.lead_source || lead.booking_source_label || 'Other';
   const styles = theme.source_badge_class || 'bg-gray-100 text-gray-700';
+  const inline = SOURCE_KIND_INLINE[kind] || SOURCE_KIND_INLINE.other;
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}
+      style={inline}
+    >
       <SourceBadgeIcon kind={kind} />
       {label}
     </span>
@@ -290,39 +301,75 @@ function UtmCampaignCell({ lead }: { lead: Record<string, any> }) {
   );
 }
 
-/** Strong, distinct backgrounds per assignee (text stays dark for readability). */
-const ASSIGNEE_BADGE_STYLES = [
-  'bg-sky-200 text-gray-900 ring-sky-400',
-  'bg-violet-200 text-gray-900 ring-violet-400',
-  'bg-emerald-200 text-gray-900 ring-emerald-400',
-  'bg-amber-200 text-gray-900 ring-amber-400',
-  'bg-rose-200 text-gray-900 ring-rose-400',
-  'bg-cyan-200 text-gray-900 ring-cyan-400',
-  'bg-fuchsia-200 text-gray-900 ring-fuchsia-400',
-  'bg-lime-200 text-gray-900 ring-lime-500',
-  'bg-orange-200 text-gray-900 ring-orange-400',
-  'bg-teal-200 text-gray-900 ring-teal-400',
-  'bg-indigo-200 text-gray-900 ring-indigo-400',
-  'bg-pink-200 text-gray-900 ring-pink-400',
-  'bg-yellow-200 text-gray-900 ring-yellow-400',
-  'bg-blue-200 text-gray-900 ring-blue-400',
+/** Hex palette so Tailwind purge cannot drop assignee badge backgrounds. */
+const ASSIGNEE_BADGE_COLORS = [
+  { bg: '#BAE6FD', ring: '#0EA5E9' }, // sky
+  { bg: '#DDD6FE', ring: '#8B5CF6' }, // violet
+  { bg: '#A7F3D0', ring: '#10B981' }, // emerald
+  { bg: '#FDE68A', ring: '#F59E0B' }, // amber
+  { bg: '#FECDD3', ring: '#F43F5E' }, // rose
+  { bg: '#A5F3FC', ring: '#06B6D4' }, // cyan
+  { bg: '#F5D0FE', ring: '#D946EF' }, // fuchsia
+  { bg: '#D9F99D', ring: '#84CC16' }, // lime
+  { bg: '#FED7AA', ring: '#F97316' }, // orange
+  { bg: '#99F6E4', ring: '#14B8A6' }, // teal — Ajit Mali lands here
+  { bg: '#C7D2FE', ring: '#6366F1' }, // indigo
+  { bg: '#FBCFE8', ring: '#EC4899' }, // pink
+  { bg: '#FEF08A', ring: '#EAB308' }, // yellow
+  { bg: '#BFDBFE', ring: '#3B82F6' }, // blue
 ];
 
-function assigneeBadgeClass(name: string) {
+function assigneeBadgeColors(name: string) {
   const key = String(name || '').trim().toLowerCase();
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return ASSIGNEE_BADGE_STYLES[hash % ASSIGNEE_BADGE_STYLES.length];
+  return ASSIGNEE_BADGE_COLORS[hash % ASSIGNEE_BADGE_COLORS.length];
 }
 
-function AssigneeBadge({ name }: { name?: string | null }) {
+function AssigneeBadge({
+  name,
+  onClick,
+  title,
+}: {
+  name?: string | null;
+  onClick?: (e: React.MouseEvent) => void;
+  title?: string;
+}) {
   const label = String(name || '').trim();
-  if (!label) return <span className="text-gray-300">Unassigned</span>;
+  if (!label) {
+    if (onClick) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className="inline-flex max-w-[160px] items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-300 hover:bg-indigo-50 hover:text-indigo-700 hover:ring-indigo-300"
+          title={title || 'Click to assign'}
+        >
+          Unassigned
+        </button>
+      );
+    }
+    return <span className="text-gray-300">Unassigned</span>;
+  }
+  const colors = assigneeBadgeColors(label);
+  const className =
+    'inline-flex max-w-[160px] truncate rounded-full px-2.5 py-1 text-xs font-semibold text-gray-900 ring-1';
+  const style = { backgroundColor: colors.bg, boxShadow: `inset 0 0 0 1px ${colors.ring}` };
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`${className} hover:brightness-95 cursor-pointer`}
+        style={style}
+        title={title || `${label} — click to reassign`}
+      >
+        {label}
+      </button>
+    );
+  }
   return (
-    <span
-      className={`inline-flex max-w-[160px] truncate rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${assigneeBadgeClass(label)}`}
-      title={label}
-    >
+    <span className={className} style={style} title={title || label}>
       {label}
     </span>
   );
@@ -803,6 +850,12 @@ export default function SuperAdminBookingsPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [telecallersLoading, setTelecallersLoading] = useState(false);
+  const [assignTelecallerId, setAssignTelecallerId] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  /** Quick assign modal from table Assignee column */
+  const [quickAssignLead, setQuickAssignLead] = useState<ServiceLead | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -1119,10 +1172,105 @@ export default function SuperAdminBookingsPage() {
     return () => clearTimeout(timer);
   }, [fetchData]);
 
+  const loadTelecallers = useCallback(async (forLead?: Record<string, any> | null) => {
+    setTelecallersLoading(true);
+    try {
+      const res = await fetch('/api/super_admin/telecallers?role=TELECALLER', {
+        credentials: 'include',
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to load telecallers');
+      const list = (json.telecallers || [])
+        .map((t: any) => ({
+          id: String(t.id),
+          full_name: String(t.full_name || t.phone || t.email || 'Telecaller').trim() || 'Telecaller',
+        }))
+        .filter((t: { id: string }) => t.id);
+      const curId = String(forLead?.assigned_telecaller_id || '').trim();
+      const curName = String(forLead?.assigned_telecaller_name || '').trim();
+      if (curId && !list.some((t: { id: string }) => t.id === curId)) {
+        setTelecallers([{ id: curId, full_name: curName || 'Current assignee' }, ...list]);
+      } else {
+        setTelecallers(list);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load telecallers');
+    } finally {
+      setTelecallersLoading(false);
+    }
+  }, []);
+
   const openDetail = (title: string, item: Record<string, any>) => {
     setDetailTitle(title);
     setDetailItem(item);
+    setAssignTelecallerId(String(item?.assigned_telecaller_id || ''));
     setDetailOpen(true);
+    void loadTelecallers(item);
+  };
+
+  const applyAssigneeUpdate = useCallback(
+    (leadId: string, updatedLead: ServiceLead) => {
+      setServiceLeads((prev) =>
+        prev.map((row) => (row.id === leadId ? updatedLead : row)),
+      );
+      if (detailOpen && detailItem?.id === leadId) {
+        setDetailItem(updatedLead);
+        setAssignTelecallerId(String(updatedLead.assigned_telecaller_id || ''));
+      }
+      if (quickAssignLead?.id === leadId) {
+        setQuickAssignLead(updatedLead);
+      }
+    },
+    [detailOpen, detailItem?.id, quickAssignLead?.id],
+  );
+
+  const saveAssigneeForLead = async (lead: ServiceLead, nextIdRaw: string) => {
+    if (!lead?.id) return;
+    const nextId = String(nextIdRaw || '').trim();
+    const prevId = String(lead.assigned_telecaller_id || '').trim();
+    if (nextId === prevId) {
+      toast('Assignee unchanged');
+      return;
+    }
+    setAssigning(true);
+    try {
+      const res = await fetch(`/api/super_admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ assigned_telecaller_id: nextId || null }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Assign failed');
+
+      const updatedLead = enrichBookingLead(
+        json.lead || { ...lead, assigned_telecaller_id: nextId || null },
+      );
+      applyAssigneeUpdate(String(lead.id), updatedLead);
+
+      if (!nextId) toast.success('Lead unassigned');
+      else if (!prevId) toast.success(`Assigned to ${updatedLead.assigned_telecaller_name || 'telecaller'}`);
+      else toast.success(`Reassigned to ${updatedLead.assigned_telecaller_name || 'telecaller'}`);
+
+      setQuickAssignLead(null);
+    } catch (err: any) {
+      toast.error(err?.message || 'Assign failed');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const saveAssignee = async () => {
+    if (!detailItem) return;
+    await saveAssigneeForLead(detailItem, assignTelecallerId);
+  };
+
+  const openQuickAssign = (lead: ServiceLead, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setQuickAssignLead(lead);
+    setAssignTelecallerId(String(lead.assigned_telecaller_id || ''));
+    void loadTelecallers(lead);
   };
 
   const openEdit = (lead: ServiceLead, e?: React.MouseEvent) => {
@@ -1867,7 +2015,7 @@ export default function SuperAdminBookingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedServiceLeads.map((lead) => {
+                    {pagedServiceLeads.map((lead, rowIndex) => {
                       const serviceLabel = getServiceLabel(lead);
                       const misaServices = extractMisaServices(lead);
                       const leadId = String(lead.id || '');
@@ -1876,11 +2024,16 @@ export default function SuperAdminBookingsPage() {
                       const phoneBookingCount = phoneKey
                         ? bookingsByPhone.get(phoneKey)?.length || 0
                         : 0;
+                      const zebra = rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50';
                       return (
                       <tr
                         key={String(lead.id || `${lead.lead_number}-${lead.created_at}`)}
                         onClick={() => openDetail('Service Lead Details', lead)}
-                        className={`border-b border-gray-100 cursor-pointer transition ${isSelected ? 'bg-blue-50 hover:bg-blue-100/60' : 'hover:bg-blue-50/50'}`}
+                        className={`border-b border-gray-100 cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-blue-50 hover:bg-blue-100/60'
+                            : `${zebra} hover:bg-sky-50/80`
+                        }`}
                       >
                         <td className="px-3 py-3 w-10">
                           {leadId ? (
@@ -1902,7 +2055,10 @@ export default function SuperAdminBookingsPage() {
                           <SourceCell lead={lead} />
                         </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">
-                          <AssigneeBadge name={lead.assigned_telecaller_name} />
+                          <AssigneeBadge
+                            name={lead.assigned_telecaller_name}
+                            onClick={(e) => openQuickAssign(lead, e)}
+                          />
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
                           <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
@@ -2055,12 +2211,6 @@ export default function SuperAdminBookingsPage() {
                           <p className="font-medium text-gray-800">{formatDateTime(item.created_at)}</p>
                         </div>
                         <div className="col-span-2">
-                          <p className="text-gray-500">Assignee</p>
-                          <div className="mt-0.5">
-                            <AssigneeBadge name={item.assigned_telecaller_name} />
-                          </div>
-                        </div>
-                        <div className="col-span-2">
                           <p className="text-gray-500">Service</p>
                           <p className="font-medium text-gray-800">{getServiceLabel(item) || '-'}</p>
                         </div>
@@ -2076,6 +2226,13 @@ export default function SuperAdminBookingsPage() {
                       value={String(item.status || 'NEW')}
                       updating={statusUpdatingId === String(item.id)}
                       onChange={(status, ev) => void updateLeadStatus(item, status, ev)}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-1">Assignee</p>
+                    <AssigneeBadge
+                      name={item.assigned_telecaller_name}
+                      onClick={(e) => openQuickAssign(item, e)}
                     />
                   </div>
                   {item.id ? (
@@ -2339,6 +2496,109 @@ export default function SuperAdminBookingsPage() {
         </div>
       ) : null}
 
+      {quickAssignLead ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close assign dialog"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setQuickAssignLead(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Assign telecaller"
+            className="relative z-10 w-full max-w-sm rounded-2xl border border-indigo-200 bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <p className="text-sm font-bold text-indigo-900">
+                  {quickAssignLead.assigned_telecaller_id ? 'Reassign telecaller' : 'Assign telecaller'}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {quickAssignLead.lead_number || 'Lead'} ·{' '}
+                  {quickAssignLead.customer_name || quickAssignLead.customer_phone || '—'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickAssignLead(null)}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-2">
+              Current:{' '}
+              <span className="font-semibold text-gray-800">
+                {quickAssignLead.assigned_telecaller_name || 'Unassigned'}
+              </span>
+            </p>
+
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100 mb-3">
+              <button
+                type="button"
+                disabled={assigning}
+                onClick={() => setAssignTelecallerId('')}
+                className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 ${
+                  !assignTelecallerId ? 'bg-indigo-50 font-semibold text-indigo-800' : 'text-gray-700'
+                }`}
+              >
+                Unassigned
+              </button>
+              {telecallersLoading ? (
+                <div className="px-3 py-4 text-sm text-gray-500 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+                </div>
+              ) : (
+                telecallers.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={assigning}
+                    onClick={() => setAssignTelecallerId(t.id)}
+                    className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 ${
+                      assignTelecallerId === t.id
+                        ? 'bg-indigo-50 font-semibold text-indigo-800'
+                        : 'text-gray-800'
+                    }`}
+                  >
+                    {t.full_name}
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={assigning || telecallersLoading}
+                onClick={() => void saveAssigneeForLead(quickAssignLead, assignTelecallerId)}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {assigning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={assigning}
+                onClick={() => setQuickAssignLead(null)}
+                className="rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {detailOpen && detailItem ? (
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
@@ -2390,7 +2650,55 @@ export default function SuperAdminBookingsPage() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 sm:p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <UserPlus className="w-4 h-4 text-indigo-700" />
+                  <p className="text-sm font-semibold text-indigo-900">
+                    {detailItem.assigned_telecaller_id ? 'Reassign telecaller' : 'Assign telecaller'}
+                  </p>
+                </div>
+                <p className="text-xs text-indigo-800/80 mb-3">
+                  Current:{' '}
+                  <span className="font-medium">
+                    {detailItem.assigned_telecaller_name ||
+                      (detailItem.assigned_telecaller_id ? 'Assigned' : 'Unassigned')}
+                  </span>
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select
+                    value={assignTelecallerId}
+                    onChange={(e) => setAssignTelecallerId(e.target.value)}
+                    disabled={telecallersLoading || assigning}
+                    className="flex-1 min-w-0 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  >
+                    <option value="">Unassigned</option>
+                    {telecallers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void saveAssignee()}
+                    disabled={assigning || telecallersLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {assigning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving…
+                      </>
+                    ) : detailItem.assigned_telecaller_id ? (
+                      'Reassign'
+                    ) : (
+                      'Assign'
+                    )}
+                  </button>
+                </div>
+              </div>
+
               <ServiceLeadDetailContent item={detailItem} />
             </div>
           </aside>

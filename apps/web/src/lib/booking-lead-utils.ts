@@ -197,7 +197,8 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
     return {
       source_badge_kind: 'google',
       source_badge_label: leadSource || 'Google Ads',
-      source_badge_class: 'bg-[#E8F0FE] text-[#185ABC] ring-1 ring-[#4285F4]/35',
+      // Standard Tailwind only — arbitrary hex classes were getting purged (white-on-white).
+      source_badge_class: 'bg-blue-100 text-blue-800 ring-1 ring-blue-300',
     };
   }
 
@@ -209,12 +210,12 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
     return {
       source_badge_kind: 'instagram',
       source_badge_label: leadSource || 'Instagram Ads',
-      source_badge_class:
-        'bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] text-white shadow-sm',
+      source_badge_class: 'bg-pink-100 text-pink-800 ring-1 ring-pink-300',
     };
   }
 
   if (
+    createdFrom === 'WHATSAPP_META' ||
     haystack.includes('facebook') ||
     haystack.includes('meta') ||
     haystack.includes('fb ')
@@ -222,15 +223,19 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
     return {
       source_badge_kind: 'meta',
       source_badge_label: leadSource || 'Meta Ads',
-      source_badge_class: 'bg-[#1877F2] text-white shadow-sm',
+      source_badge_class: 'bg-sky-100 text-sky-900 ring-1 ring-sky-400',
     };
   }
 
-  if (leadSource === 'WhatsApp' || haystack.includes('whatsapp')) {
+  if (
+    leadSource === 'WhatsApp' ||
+    createdFrom === 'WHATSAPP' ||
+    haystack.includes('whatsapp')
+  ) {
     return {
       source_badge_kind: 'whatsapp',
       source_badge_label: leadSource || 'WhatsApp',
-      source_badge_class: 'bg-[#DCFCE7] text-[#128C7E] ring-1 ring-[#25D366]/30',
+      source_badge_class: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-400',
     };
   }
 

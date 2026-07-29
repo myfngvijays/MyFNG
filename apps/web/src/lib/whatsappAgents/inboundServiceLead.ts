@@ -22,6 +22,8 @@ export type EnsureWhatsAppLeadInput = {
   referral?: WhatsAppReferral | null;
   providerMessageId?: string | null;
   inboundReceivedAt?: string | null;
+  /** Business line that received the message (e.g. 9594996161 / 9167779696). */
+  businessPhone?: string | null;
 };
 
 export type KnownCustomerFill = {
@@ -127,6 +129,7 @@ function buildCouponMeta(input: {
   messageText?: string | null;
   profileName?: string | null;
   providerMessageId?: string | null;
+  businessPhone?: string | null;
   nowIso: string;
   isFirst?: boolean;
   known?: KnownCustomerFill | null;
@@ -134,6 +137,7 @@ function buildCouponMeta(input: {
   const prev =
     input.existing && typeof input.existing === 'object' ? { ...input.existing } : {};
   const msg = String(input.messageText || '').trim().slice(0, 500) || null;
+  const businessPhone = normalizePhone10(input.businessPhone || '') || null;
   return {
     ...prev,
     whatsapp_inbound: true,
@@ -144,6 +148,9 @@ function buildCouponMeta(input: {
     profile_name: input.profileName || prev.profile_name || null,
     provider_message_id: input.providerMessageId || prev.provider_message_id || null,
     autofill_from_customer: Boolean(input.known?.customer_id || input.known?.vehicle_number),
+    ...(businessPhone
+      ? { wa_business_phone: businessPhone, wa_inbox: businessPhone }
+      : {}),
     ...(input.isFirst
       ? { first_message: msg, inbound_at: input.nowIso }
       : {}),
@@ -346,6 +353,7 @@ export async function ensureWhatsAppInboundServiceLead(
         messageText: input.messageText,
         profileName: input.profileName,
         providerMessageId: input.providerMessageId,
+        businessPhone: input.businessPhone,
         nowIso,
         known,
       }),
@@ -491,6 +499,7 @@ export async function ensureWhatsAppInboundServiceLead(
     messageText: firstMsg,
     profileName: input.profileName,
     providerMessageId: input.providerMessageId,
+    businessPhone: input.businessPhone,
     nowIso,
     isFirst: true,
     known,
@@ -614,7 +623,7 @@ export async function syncRecentWhatsAppInboundLeads(opts?: {
 
   let query = supabaseAdmin
     .from('whatsapp_messages')
-    .select('id, sender_phone, text_body, created_at, status_at, meta, payload')
+    .select('id, sender_phone, recipient_phone, text_body, created_at, status_at, meta, payload')
     .eq('direction', 'INBOUND')
     .gte('created_at', sinceIso)
     .order('created_at', { ascending: false })
@@ -641,6 +650,7 @@ export async function syncRecentWhatsAppInboundLeads(opts?: {
       profileName: string | null;
       providerMessageId: string | null;
       referral: any;
+      businessPhone: string | null;
     }
   >();
 
@@ -657,6 +667,7 @@ export async function syncRecentWhatsAppInboundLeads(opts?: {
       profileName: meta?.profile_name || null,
       providerMessageId: String(payload?.id || row.id || '').trim() || null,
       referral: payload?.referral || null,
+      businessPhone: normalizePhone10(String(row.recipient_phone || '')) || null,
     });
   }
 
@@ -670,6 +681,7 @@ export async function syncRecentWhatsAppInboundLeads(opts?: {
       profileName: item.profileName,
       messageText: item.text,
       referral: item.referral,
+      businessPhone: item.businessPhone,
       providerMessageId: item.providerMessageId,
       inboundReceivedAt: item.at,
     });

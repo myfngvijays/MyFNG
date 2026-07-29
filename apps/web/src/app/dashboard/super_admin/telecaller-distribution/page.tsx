@@ -662,8 +662,7 @@ export default function TelecallerDistributionPage() {
             <p className="text-xs sm:text-sm mt-1 text-indigo-900/80">
               Meta ad pe jo prefill message set karte ho (jaise{' '}
               <em>“Hi! I am interested in service!”</em>) — yahan woh exact / contains match set
-              karo. Match hone pe lead Meta mark hoti hai aur usi telecaller ko assign hoti hai
-              (% allocation se pehle).
+              karo. Match hone pe lead usi telecaller ko assign hoti hai.
             </p>
           </div>
 

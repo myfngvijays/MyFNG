@@ -394,9 +394,11 @@ export async function POST(request: NextRequest) {
               referral,
               providerMessageId,
               inboundReceivedAt: statusAt || now,
+              businessPhone: waMetadata?.display_phone_number || null,
             });
             console.log('[whatsapp-webhook] inbound service lead', {
               senderPhone,
+              businessPhone: waMetadata?.display_phone_number || null,
               created: leadResult.created,
               leadId: leadResult.leadId,
               assignedTo: leadResult.assignedTo || null,

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
 import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
+import { notifyTelecallerAssignedToLead } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -99,22 +100,112 @@ export async function PATCH(
         : Number(body.discount_amount);
     }
 
+    let previousAssigneeId: string | null = null;
+    let nextAssigneeId: string | null | undefined = undefined;
+    if (body.assigned_telecaller_id !== undefined) {
+      const raw = body.assigned_telecaller_id;
+      nextAssigneeId =
+        raw === null || raw === '' || raw === 'UNASSIGNED'
+          ? null
+          : String(raw).trim() || null;
+
+      if (nextAssigneeId) {
+        const { data: tc, error: tcErr } = await supabaseAdmin
+          .from('users_login')
+          .select('id, full_name, roles!inner(role_code)')
+          .eq('id', nextAssigneeId)
+          .eq('roles.role_code', 'TELECALLER')
+          .maybeSingle();
+        if (tcErr || !tc) {
+          return NextResponse.json({ error: 'Invalid telecaller' }, { status: 400 });
+        }
+      }
+
+      const { data: currentLead } = await supabaseAdmin
+        .from('service_leads')
+        .select('id, lead_number, assigned_telecaller_id')
+        .eq('id', id)
+        .maybeSingle();
+      previousAssigneeId = currentLead?.assigned_telecaller_id
+        ? String(currentLead.assigned_telecaller_id)
+        : null;
+
+      const nowIso = new Date().toISOString();
+      update.assigned_telecaller_id = nextAssigneeId;
+      update.assigned_at = nextAssigneeId ? nowIso : null;
+      update.telecaller_assigned_at = nextAssigneeId ? nowIso : null;
+    }
+
     if (Object.keys(update).length <= 1) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('service_leads')
       .update(update)
       .eq('id', id)
       .select('*')
       .single();
 
+    // Older schemas may not have telecaller_assigned_at
+    if (error && /telecaller_assigned_at/i.test(error.message || '')) {
+      delete update.telecaller_assigned_at;
+      ({ data, error } = await supabaseAdmin
+        .from('service_leads')
+        .update(update)
+        .eq('id', id)
+        .select('*')
+        .single());
+    }
+
     if (error) {
       return NextResponse.json({ error: error.message || 'Update failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ lead: data });
+    let assignedName: string | null = null;
+    const assignedId = data?.assigned_telecaller_id
+      ? String(data.assigned_telecaller_id)
+      : null;
+    if (assignedId) {
+      const { data: tcRow } = await supabaseAdmin
+        .from('users_login')
+        .select('full_name, phone, email')
+        .eq('id', assignedId)
+        .maybeSingle();
+      assignedName =
+        String(tcRow?.full_name || tcRow?.phone || tcRow?.email || 'Telecaller').trim() ||
+        'Telecaller';
+    }
+
+    if (
+      nextAssigneeId !== undefined &&
+      nextAssigneeId &&
+      nextAssigneeId !== previousAssigneeId
+    ) {
+      try {
+        const { data: actor } = await supabaseAdmin
+          .from('users_login')
+          .select('full_name')
+          .eq('id', auth.userId)
+          .maybeSingle();
+        await notifyTelecallerAssignedToLead({
+          leadId: id,
+          leadNumber: String(data?.lead_number || id),
+          telecallerId: nextAssigneeId,
+          assignedByName: actor?.full_name || undefined,
+          isReassignment: Boolean(previousAssigneeId),
+        });
+      } catch (notifyErr) {
+        console.warn('[super_admin/leads] assign notify failed', notifyErr);
+      }
+    }
+
+    return NextResponse.json({
+      lead: {
+        ...data,
+        assigned_telecaller_name: assignedName,
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }

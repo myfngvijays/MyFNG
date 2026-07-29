@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden - Role check failed' }, { status: 403 });
     }
     const roleCode = (userData as any).roles?.role_code;
-    if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(roleCode)) {
+    if (!['SUPER_ADMIN', 'SUB_ADMIN', 'APP_OPERATIONS'].includes(roleCode)) {
       return NextResponse.json({ error: 'Forbidden - Not super admin' }, { status: 403 });
     }
 
