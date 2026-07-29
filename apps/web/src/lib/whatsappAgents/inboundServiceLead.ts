@@ -363,43 +363,66 @@ export async function ensureWhatsAppInboundServiceLead(
     let assignedTo: string | null = existing.assigned_telecaller_id
       ? String(existing.assigned_telecaller_id)
       : null;
-    if (!assignedTo) {
-      try {
-        const channel = channelFromWhatsAppLabels(labels.created_from, labels.lead_source);
-        const picked = await pickTelecallerForLead({
-          channel,
-          messageText: firstMsgForRoute,
-        });
-        if (picked.trigger?.mark_as_meta) {
-          labels = {
-            created_from: 'WHATSAPP_META',
-            lead_source: picked.trigger.label
-              ? `Meta Ads · ${picked.trigger.label}`
-              : 'Meta Ads',
-          };
-          patch.lead_source = labels.lead_source;
-          patch.created_from = labels.created_from;
-        }
-        if (picked.telecallerId) {
-          patch.assigned_telecaller_id = picked.telecallerId;
-          patch.assigned_at = nowIso;
-          assignedTo = picked.telecallerId;
-          const prev =
-            existing.coupon_meta && typeof existing.coupon_meta === 'object'
+    // Always evaluate message triggers on inbound text.
+    // Trigger match → force assignee (even if lead already belongs to someone else).
+    // No trigger → only assign if currently unassigned (weighted RR).
+    try {
+      const channel = channelFromWhatsAppLabels(labels.created_from, labels.lead_source);
+      const picked = await pickTelecallerForLead({
+        channel,
+        messageText: firstMsgForRoute,
+      });
+      const isTriggerRoute =
+        picked.assignment_mode === 'MESSAGE_TRIGGER' && Boolean(picked.telecallerId);
+      // Trigger → always set/change assignee. No trigger → only fill if unassigned.
+      const shouldAssign = Boolean(picked.telecallerId) && (isTriggerRoute || !assignedTo);
+
+      if (isTriggerRoute && picked.trigger?.mark_as_meta) {
+        labels = {
+          created_from: 'WHATSAPP_META',
+          lead_source: picked.trigger.label
+            ? `Meta Ads · ${picked.trigger.label}`
+            : 'Meta Ads',
+        };
+        patch.lead_source = labels.lead_source;
+        patch.created_from = labels.created_from;
+      }
+
+      if (shouldAssign && picked.telecallerId) {
+        const prevAssignee = assignedTo;
+        const changing = Boolean(prevAssignee && prevAssignee !== picked.telecallerId);
+        patch.assigned_telecaller_id = picked.telecallerId;
+        patch.assigned_at = nowIso;
+        assignedTo = picked.telecallerId;
+        const baseMeta =
+          typeof patch.coupon_meta === 'object' && patch.coupon_meta
+            ? (patch.coupon_meta as Record<string, unknown>)
+            : existing.coupon_meta && typeof existing.coupon_meta === 'object'
               ? (existing.coupon_meta as Record<string, unknown>)
               : {};
-          patch.coupon_meta = {
-            ...(typeof patch.coupon_meta === 'object' && patch.coupon_meta
-              ? (patch.coupon_meta as Record<string, unknown>)
-              : prev),
-            message_trigger_id: picked.trigger?.id || null,
-            message_trigger_label: picked.trigger?.label || null,
-            assignment_mode: picked.assignment_mode || null,
-          };
-        }
-      } catch (e) {
-        console.warn('[whatsapp-inbound-lead] assign on enrich failed', e);
+        patch.coupon_meta = {
+          ...baseMeta,
+          message_trigger_id: picked.trigger?.id || null,
+          message_trigger_label: picked.trigger?.label || null,
+          assignment_mode: picked.assignment_mode || null,
+          ...(changing
+            ? {
+                previous_assigned_telecaller_id: prevAssignee,
+                reassigned_by_trigger: true,
+                reassigned_at: nowIso,
+              }
+            : {}),
+        };
+        console.log('[whatsapp-inbound-lead] assign/reassign', {
+          leadId: existing.id,
+          from: prevAssignee,
+          to: picked.telecallerId,
+          mode: picked.assignment_mode,
+          trigger: picked.trigger?.phrase || null,
+        });
       }
+    } catch (e) {
+      console.warn('[whatsapp-inbound-lead] assign on enrich failed', e);
     }
 
     Object.keys(patch).forEach((k) => {

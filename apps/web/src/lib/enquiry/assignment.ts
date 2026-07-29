@@ -175,15 +175,6 @@ function normalizeAllocations(rows: AllocationRow[]) {
   return { active, total };
 }
 
-async function isWithinDailyLimit(telecallerId: string, rows: AllocationRow[]): Promise<boolean> {
-  const row = rows.find((r) => String(r.telecaller_id) === telecallerId);
-  if (!row) return false;
-  const limit = row.daily_limit == null ? null : Number(row.daily_limit);
-  if (!limit || limit <= 0) return true;
-  const counts = await fetchAssignedCountsToday([telecallerId]);
-  return (counts.get(telecallerId) || 0) < limit;
-}
-
 export type PickTelecallerResult = {
   telecallerId: string | null;
   reason: string | null;
@@ -273,31 +264,15 @@ export async function pickTelecallerForLead(opts?: {
     const triggers = await fetchMessageTriggers();
     const matched = findMatchingMessageTrigger(messageText, triggers);
     if (matched) {
-      const rows = await fetchActiveAllocations();
-      const active = rows.filter(
-        (r) => String(r.allocation_status || 'ACTIVE').toUpperCase() === 'ACTIVE',
-      );
-      const target = active.find((r) => String(r.telecaller_id) === matched.telecaller_id);
-      if (target) {
-        const okLimit = await isWithinDailyLimit(matched.telecaller_id, rows);
-        if (okLimit) {
-          return {
-            telecallerId: matched.telecaller_id,
-            reason: null,
-            trigger: matched,
-            assignment_mode: 'MESSAGE_TRIGGER',
-            channel: matched.mark_as_meta ? 'WHATSAPP_META' : channel,
-          };
-        }
-        return {
-          telecallerId: null,
-          reason: 'trigger_daily_limit_reached',
-          trigger: matched,
-          assignment_mode: 'MESSAGE_TRIGGER',
-          channel,
-        };
-      }
-      // Trigger telecaller inactive → fall through to weighted RR
+      // Exact/contains trigger match → always that telecaller.
+      // Bypasses %, channel allowlist, Active RR pool, and daily limit.
+      return {
+        telecallerId: matched.telecaller_id,
+        reason: null,
+        trigger: matched,
+        assignment_mode: 'MESSAGE_TRIGGER',
+        channel: matched.mark_as_meta ? 'WHATSAPP_META' : channel,
+      };
     }
   }
 

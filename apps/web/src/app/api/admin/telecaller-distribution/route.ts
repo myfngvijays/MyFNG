@@ -31,13 +31,14 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 
+    // Return all allocation rows (not only is_active). Soft-deactivated rows must stay
+    // visible so Save does not drop telecallers from the config permanently.
     const { data: allocations, error: allocErr } = await supabaseAdmin
       .from('enquiry_hub')
       .select(
         'id, telecaller_id, allocation_percent, allocation_status, daily_limit, is_active, meta, telecaller:users_login!telecaller_id(id, full_name, email, phone, is_active)'
       )
       .eq('kind', 'ALLOCATION')
-      .eq('is_active', true)
       .order('created_at', { ascending: true });
 
     if (allocErr) throw allocErr;
@@ -168,15 +169,17 @@ export async function PUT(request: NextRequest) {
       if (insertErr) throw insertErr;
     }
 
-    // Deactivate allocations not in payload
-    const ids = cleaned.map((r: any) => r.telecaller_id);
-    const { error: deactivateErr } = await supabaseAdmin
-      .from('enquiry_hub')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('kind', 'ALLOCATION')
-      .not('telecaller_id', 'in', `(${ids.map((id: string) => `"${id}"`).join(',')})`);
+    // Soft-deactivate allocations removed from payload (UUID list must be unquoted).
+    const ids = cleaned.map((r: any) => r.telecaller_id).filter(Boolean);
+    if (ids.length > 0) {
+      const { error: deactivateErr } = await supabaseAdmin
+        .from('enquiry_hub')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('kind', 'ALLOCATION')
+        .not('telecaller_id', 'in', `(${ids.join(',')})`);
 
-    if (deactivateErr) throw deactivateErr;
+      if (deactivateErr) throw deactivateErr;
+    }
 
     if (Array.isArray(body?.message_triggers)) {
       const triggers = normalizeMessageTriggers(body.message_triggers);
