@@ -1,7 +1,32 @@
 import { NativeModules, Platform, PermissionsAndroid } from 'react-native';
 import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
-import { isAndroidEmulator, isIosSimulator } from '../config/environment';
+import { ENV, isAndroidEmulator, isIosSimulator } from '../config/environment';
 import { trackEvent } from '../lib/trackEvent';
+
+async function trackPushEngagement(
+  remoteMessage: FirebaseMessagingTypes.RemoteMessage | null | undefined,
+  event: 'open' | 'click',
+) {
+  const data = remoteMessage?.data || {};
+  const trackingId = String(data.tracking_id || '').trim();
+  if (!trackingId) return;
+  try {
+    const apiUrl = String(ENV.API_URL || '').replace(/\/$/, '');
+    if (!apiUrl) return;
+    await fetch(`${apiUrl}/api/push/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tracking_id: trackingId,
+        event,
+        campaign_id: data.campaign_id || undefined,
+        variant: data.ab_variant || undefined,
+      }),
+    });
+  } catch (e) {
+    console.warn('[FCM] push engagement track failed:', e);
+  }
+}
 
 const STORAGE_KEY = 'myfng_fcm_push_token_v1';
 export const PUSH_PLATFORM = 'FCM';
@@ -303,6 +328,10 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
 
   const unsubscribeOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
     trackEvent('push_notification_opened', { source: 'background' });
+    void trackPushEngagement(remoteMessage, 'open');
+    if (remoteMessage?.data?.deep_link || remoteMessage?.data?.cta_url) {
+      void trackPushEngagement(remoteMessage, 'click');
+    }
     console.warn('[FCM] Notification opened app:', remoteMessage.messageId);
     onOpen?.(remoteMessage);
   });
@@ -312,6 +341,10 @@ export function setupFcmNotificationHandlers(onOpen?: PushOpenHandler) {
     .then((remoteMessage) => {
       if (remoteMessage) {
         trackEvent('push_notification_opened', { source: 'quit' });
+        void trackPushEngagement(remoteMessage, 'open');
+        if (remoteMessage?.data?.deep_link || remoteMessage?.data?.cta_url) {
+          void trackPushEngagement(remoteMessage, 'click');
+        }
         console.warn('[FCM] App opened from notification:', remoteMessage.messageId);
         onOpen?.(remoteMessage);
       }

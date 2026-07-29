@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, Download, MessageSquare, RefreshCw } from 'lucide-react';
 import {
@@ -78,6 +78,20 @@ function buildQueryParams(input: {
 }
 
 export default function WhatsAppMessagesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
+          Loading WhatsApp messages…
+        </div>
+      }
+    >
+      <WhatsAppMessagesPageContent />
+    </Suspense>
+  );
+}
+
+function WhatsAppMessagesPageContent() {
   const searchParams = useSearchParams();
   const initialPreset = (searchParams.get('preset') || 'last_7_days') as ReportDatePreset;
   const initialStart = searchParams.get('start') || '';

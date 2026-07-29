@@ -29,6 +29,8 @@ import {
   Key,
   MessageSquare,
   FileText,
+  Wallet,
+  CarFront,
 } from 'lucide-react';
 
 type ServiceStatus = 'healthy' | 'degraded' | 'down';
@@ -91,15 +93,17 @@ interface MonitorData {
 }
 
 const categoryIcons: Record<string, any> = {
-  'Database': Database,
-  'Authentication': Shield,
-  'Payments': CreditCard,
-  'Notifications': Bell,
-  'AI': Brain,
-  'Storage': HardDrive,
+  Database: Database,
+  Authentication: Shield,
+  Payments: CreditCard,
+  Notifications: Bell,
+  Commerce: Wallet,
+  Operations: CarFront,
+  AI: Brain,
+  Storage: HardDrive,
   'Third Party': Globe,
   'Background Jobs': Clock,
-  'Security': Lock,
+  Security: Lock,
 };
 
 const statusConfig = {
@@ -756,7 +760,8 @@ export default function SystemMonitorPage() {
                 <li>- Services marked DOWN are auto-expanded on page load</li>
                 <li>- Cron alerts run every 3 hours and prefer the approved WhatsApp template when available</li>
                 <li>- Create the template from the section above so alerts work without the 24-hour WhatsApp window</li>
-                <li>- Health score is weighted: Database (25%), Auth (20%), Payments (15%), Notifications (10%), AI (10%)</li>
+                <li>- Health score is weighted across Database, Auth, Payments, Notifications, Commerce, Operations, AI, and more</li>
+                <li>- New checks cover Advance Push campaigns, FCM Admin, wallet, coupons, RSA leads, and feature crons</li>
                 <li>- Quick Fix buttons let you open relevant dashboards or trigger recovery actions directly</li>
               </ul>
             </div>

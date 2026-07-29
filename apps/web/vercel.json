@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/wallet-welcome-expiry-push",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-push",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

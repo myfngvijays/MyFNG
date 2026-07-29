@@ -15,6 +15,8 @@ export type FcmPushMessage = {
   data?: Record<string, unknown>;
   priority?: 'default' | 'high';
   imageUrl?: string;
+  /** Small notification icon (Android); also passed in data for clients */
+  iconUrl?: string;
   os?: FcmDeviceOs;
   /** Data-only ping — used for silent uninstall token probes */
   dataOnly?: boolean;
@@ -122,6 +124,12 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
           };
         }
 
+        const dataPayload = stringifyData({
+          ...(msg.data || {}),
+          ...(msg.iconUrl ? { icon_url: msg.iconUrl } : {}),
+          ...(msg.imageUrl ? { image_url: msg.imageUrl } : {}),
+        });
+
         return {
           token: msg.token,
           notification: {
@@ -129,13 +137,14 @@ export async function sendFcmPush(messages: FcmPushMessage[]): Promise<FcmDelive
             body: msg.body,
             ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
           },
-          data: stringifyData(msg.data),
+          data: dataPayload,
           android: {
             priority: msg.priority === 'high' ? 'high' : 'normal',
             notification: {
               channelId: androidChannel,
               sound: 'default',
               ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}),
+              ...(msg.iconUrl ? { icon: msg.iconUrl } : {}),
             },
           },
           apns: {

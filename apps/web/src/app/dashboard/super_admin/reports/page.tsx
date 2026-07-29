@@ -83,42 +83,99 @@ export default function ReportsAnalyticsPage() {
     fetchReportData();
   }, [fetchReportData]);
 
+  const buildReportRows = () => [
+    ['Period', period],
+    ['Generated', new Date().toISOString()],
+    [],
+    ['Operational', ''],
+    ['Total Leads', stats.totalLeads],
+    ['Converted', stats.convertedLeads],
+    ['Conversion Rate %', stats.conversionRate.toFixed(1)],
+    ['Active Workshops', stats.activeWorkshops],
+    [],
+    ['Financial', ''],
+    ['Total Revenue (₹)', stats.totalRevenue],
+    ['Avg Order Value (₹)', stats.avgOrderValue.toFixed(0)],
+    [],
+    ['Quality', ''],
+    ['Avg Rating', stats.avgRating],
+    ['SLA Compliance %', stats.slaCompliance],
+    ['Total Complaints', stats.totalComplaints],
+    [],
+    ['Department', 'Leads', 'Converted', 'Score %'],
+    ...departments.map((d) => [d.name, d.leads, d.converted, d.score]),
+  ];
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExport = (format: string) => {
-    if (format === 'csv') {
-      const rows = [
-        ['Period', period],
-        ['Generated', new Date().toISOString()],
-        [],
-        ['Operational', ''],
-        ['Total Leads', stats.totalLeads],
-        ['Converted', stats.convertedLeads],
-        ['Conversion Rate %', stats.conversionRate.toFixed(1)],
-        ['Active Workshops', stats.activeWorkshops],
-        [],
-        ['Financial', ''],
-        ['Total Revenue (₹)', stats.totalRevenue],
-        ['Avg Order Value (₹)', stats.avgOrderValue.toFixed(0)],
-        [],
-        ['Quality', ''],
-        ['Avg Rating', stats.avgRating],
-        ['SLA Compliance %', stats.slaCompliance],
-        ['Total Complaints', stats.totalComplaints],
-        [],
-        ['Department', 'Leads', 'Converted', 'Score %'],
-        ...departments.map((d) => [d.name, d.leads, d.converted, d.score]),
-      ];
-      const csv = rows.map((r) => r.join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `reports-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Report exported as CSV');
-    } else {
-      toast.error(format.toUpperCase() + ' export coming soon');
+    const stamp = new Date().toISOString().slice(0, 10);
+    const rows = buildReportRows();
+
+    if (format === 'csv' || format === 'excel') {
+      const csv = rows
+        .map((r) =>
+          r
+            .map((cell) => {
+              const value = String(cell ?? '');
+              return value.includes(',') || value.includes('"') || value.includes('\n')
+                ? `"${value.replace(/"/g, '""')}"`
+                : value;
+            })
+            .join(','),
+        )
+        .join('\n');
+      const isExcel = format === 'excel';
+      downloadBlob(
+        new Blob(['\uFEFF' + csv], {
+          type: isExcel ? 'application/vnd.ms-excel;charset=utf-8' : 'text/csv;charset=utf-8',
+        }),
+        `reports-${period}-${stamp}.${isExcel ? 'xls' : 'csv'}`,
+      );
+      toast.success(isExcel ? 'Report exported for Excel' : 'Report exported as CSV');
+      return;
     }
+
+    if (format === 'pdf') {
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>MyFNG Reports</title>
+        <style>
+          body{font-family:Arial,sans-serif;padding:24px;color:#111}
+          h1{font-size:20px;margin:0 0 8px}
+          p{color:#555;margin:0 0 16px;font-size:12px}
+          table{border-collapse:collapse;width:100%;font-size:12px}
+          td,th{border:1px solid #ddd;padding:8px;text-align:left}
+          th{background:#f3f4f6}
+        </style></head><body>
+        <h1>MyFNG Reports & Analytics</h1>
+        <p>Period: ${period} · Generated: ${new Date().toLocaleString('en-IN')}</p>
+        <table><tbody>
+        ${rows
+          .filter((r) => r.length > 0)
+          .map((r) => `<tr>${r.map((c) => `<td>${String(c ?? '')}</td>`).join('')}</tr>`)
+          .join('')}
+        </tbody></table>
+        <script>window.onload=function(){window.print();}</script>
+        </body></html>`;
+      const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
+      if (!win) {
+        toast.error('Allow popups to export PDF');
+        return;
+      }
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      toast.success('PDF print dialog opened');
+      return;
+    }
+
+    toast.error('Unsupported export format');
   };
 
   if (loading && stats.totalLeads === 0 && !error) {

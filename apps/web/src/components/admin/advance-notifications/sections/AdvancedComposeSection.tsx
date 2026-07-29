@@ -196,12 +196,16 @@ export default function AdvancedComposeSection() {
       setEstimatedReach(count);
       return;
     }
-    if (
-      targetCities.length === 0 &&
-      targetMembership === 'all' &&
-      targetWallet === 'all' &&
-      targetBooking === 'all'
-    ) {
+    const hasFilters =
+      targetCities.length > 0 ||
+      targetMembership !== 'all' ||
+      targetServiceCenters.length > 0 ||
+      targetCarBrands.length > 0 ||
+      targetCustomerType !== 'all' ||
+      targetCouponUsers !== 'all' ||
+      targetWallet !== 'all' ||
+      targetBooking !== 'all';
+    if (!hasFilters) {
       setEstimatedReach(null);
       return;
     }
@@ -211,6 +215,16 @@ export default function AdvancedComposeSection() {
     if (targetMembership !== 'all') q.set('membership', targetMembership);
     if (targetMembership === 'members' && targetMembershipPlans.length > 0) {
       q.set('plans', targetMembershipPlans.join(','));
+    }
+    if (targetServiceCenters.length > 0) q.set('service_centers', targetServiceCenters.join(','));
+    if (targetCarBrands.length > 0) q.set('car_brands', targetCarBrands.join(','));
+    if (targetCustomerType !== 'all') q.set('customer_type', targetCustomerType);
+    if (targetCouponUsers !== 'all') q.set('coupon_users', targetCouponUsers);
+    if (
+      (targetCouponUsers === 'used' || targetCouponUsers === 'assigned') &&
+      targetCouponCodes.length > 0
+    ) {
+      q.set('coupon_codes', targetCouponCodes.join(','));
     }
     if (targetWallet !== 'all') q.set('wallet', targetWallet);
     if (targetBooking !== 'all') q.set('booking', targetBooking);
@@ -223,6 +237,11 @@ export default function AdvancedComposeSection() {
     targetCities,
     targetMembership,
     targetMembershipPlans,
+    targetServiceCenters,
+    targetCarBrands,
+    targetCustomerType,
+    targetCouponUsers,
+    targetCouponCodes,
     targetPhoneList,
     targetWallet,
     targetBooking,
@@ -341,6 +360,7 @@ export default function AdvancedComposeSection() {
           priority,
           notification_type: notificationType,
           image_url: imageUrl.trim() || undefined,
+          icon_url: iconUrl.trim() || undefined,
           deep_link: deepLink.trim() || undefined,
           cta_url: ctaUrl.trim() || undefined,
           platform,
@@ -731,6 +751,93 @@ export default function AdvancedComposeSection() {
           {/* ── Actions ── */}
           <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
             <button type="button" onClick={resetForm} className="push-btn-ghost">Cancel</button>
+            <button
+              type="button"
+              onClick={async () => {
+                const name = prompt('Segment name (e.g. Pune members with wallet)');
+                if (!name?.trim()) return;
+                const res = await fetch('/api/super_admin/notifications/segments', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: name.trim(),
+                    filters: {
+                      target_cities: targetCities,
+                      target_membership: targetMembership !== 'all' ? targetMembership : undefined,
+                      target_membership_plans: targetMembershipPlans,
+                      target_service_centers: targetServiceCenters,
+                      target_car_brands: targetCarBrands,
+                      target_customer_type: targetCustomerType !== 'all' ? targetCustomerType : undefined,
+                      target_coupon_users: targetCouponUsers !== 'all' ? targetCouponUsers : undefined,
+                      target_coupon_codes: targetCouponCodes,
+                      target_wallet: targetWallet !== 'all' ? targetWallet : undefined,
+                      target_booking: targetBooking !== 'all' ? targetBooking : undefined,
+                    },
+                  }),
+                });
+                const data = await res.json();
+                if (!res.ok) toast.error(data.error || 'Failed to save segment');
+                else toast.success('Segment saved');
+              }}
+              className="push-btn-ghost"
+            >
+              Save segment
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const whenLocal = prompt('Schedule ISO or leave blank for +2 minutes (YYYY-MM-DDTHH:mm)');
+                let when: Date;
+                if (!whenLocal?.trim()) when = new Date(Date.now() + 2 * 60_000);
+                else when = new Date(whenLocal);
+                if (Number.isNaN(when.getTime())) {
+                  toast.error('Invalid date');
+                  return;
+                }
+                const phoneList = targetPhoneList.trim()
+                  ? targetPhoneList.split(/[\n,;]+/).map((p) => p.replace(/\D/g, '').slice(-10)).filter((p) => p.length === 10)
+                  : undefined;
+                const res = await fetch('/api/super_admin/notifications/campaigns', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: title.trim(),
+                    scheduled_at: when.toISOString(),
+                    payload: {
+                      title: title.trim(),
+                      message: message.trim(),
+                      target_role: 'CUSTOMER',
+                      priority,
+                      notification_type: notificationType,
+                      image_url: imageUrl.trim() || undefined,
+                      icon_url: iconUrl.trim() || undefined,
+                      deep_link: deepLink.trim() || undefined,
+                      cta_url: ctaUrl.trim() || undefined,
+                      platform,
+                      audience,
+                      target_cities: targetCities.length > 0 ? targetCities : undefined,
+                      target_membership: targetMembership !== 'all' ? targetMembership : undefined,
+                      target_membership_plans: targetMembership === 'members' && targetMembershipPlans.length > 0 ? targetMembershipPlans : undefined,
+                      target_service_centers: targetServiceCenters.length > 0 ? targetServiceCenters : undefined,
+                      target_car_brands: targetCarBrands.length > 0 ? targetCarBrands : undefined,
+                      target_customer_type: targetCustomerType !== 'all' ? targetCustomerType : undefined,
+                      target_coupon_users: targetCouponUsers !== 'all' ? targetCouponUsers : undefined,
+                      target_coupon_codes: (targetCouponUsers === 'used' || targetCouponUsers === 'assigned') && targetCouponCodes.length > 0 ? targetCouponCodes : undefined,
+                      target_wallet: targetWallet !== 'all' ? targetWallet : undefined,
+                      target_booking: targetBooking !== 'all' ? targetBooking : undefined,
+                      target_phone_list: phoneList?.length ? phoneList : undefined,
+                    },
+                  }),
+                });
+                const data = await res.json();
+                if (!res.ok) toast.error(data.error || 'Schedule failed');
+                else toast.success(`Scheduled for ${when.toLocaleString('en-IN')}`);
+              }}
+              disabled={!title.trim() || !message.trim()}
+              className="push-btn-ghost disabled:opacity-50"
+            >
+              Schedule later
+            </button>
             <button
               type="button"
               onClick={() => void handleSend()}

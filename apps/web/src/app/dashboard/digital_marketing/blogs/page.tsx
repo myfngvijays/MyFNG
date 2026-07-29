@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateDMY } from '@/lib/utils';
@@ -31,6 +31,22 @@ interface Blog {
 }
 
 export default function BlogsPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout role="digital_marketing">
+          <div className="flex items-center justify-center min-h-[40vh] text-sm text-gray-500">
+            Loading blogs…
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <BlogsPageContent />
+    </Suspense>
+  );
+}
+
+function BlogsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [blogs, setBlogs] = useState<Blog[]>([]);

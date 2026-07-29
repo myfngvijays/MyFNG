@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Activity,
@@ -120,6 +120,20 @@ function StatCard({
 }
 
 export default function VehicleHealthReportsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
+          Loading vehicle health reports…
+        </div>
+      }
+    >
+      <VehicleHealthReportsPageContent />
+    </Suspense>
+  );
+}
+
+function VehicleHealthReportsPageContent() {
   const searchParams = useSearchParams();
   const [preset, setPreset] = useState<ReportDatePreset>('last_30_days');
   const [customStart, setCustomStart] = useState('');

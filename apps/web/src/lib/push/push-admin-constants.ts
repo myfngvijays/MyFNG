@@ -34,6 +34,10 @@ export type PushLogEntry = {
     devices_attempted?: number;
     fcm_errors?: string[];
     priority?: string;
+    opens?: number;
+    clicks?: number;
+    ab_variant?: string | null;
+    tracking_id?: string;
   };
 };
 

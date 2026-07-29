@@ -23,6 +23,7 @@ import PcmAutomationsSection from './sections/AutomationsSection';
 import PcmCustomersSection from './sections/CustomersSection';
 import PcmReportsSection from './sections/ReportsSection';
 import PcmNotificationsSection from './sections/NotificationsSection';
+import PcmSettingsSection from './sections/SettingsSection';
 
 type SectionId =
   | 'dashboard'
@@ -58,6 +59,14 @@ function sectionFromParam(value: string | null): SectionId {
 }
 
 export default function AdvanceCouponApp() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading coupons…</div>}>
+      <AdvanceCouponAppInner />
+    </Suspense>
+  );
+}
+
+function AdvanceCouponAppInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const section = sectionFromParam(searchParams.get('section'));
@@ -165,30 +174,7 @@ export default function AdvanceCouponApp() {
         {section === 'customers' ? <PcmCustomersSection /> : null}
         {section === 'reports' ? <PcmReportsSection /> : null}
         {section === 'notifications' ? <PcmNotificationsSection /> : null}
-        {section === 'settings' ? (
-          <div className="pcm-card rounded-xl border p-8">
-            <h2 className="text-xl font-bold mb-2">Coupon Settings</h2>
-            <p className="text-sm text-gray-500 mb-6">Quick links for coupon system configuration.</p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <button type="button" className="pcm-card border rounded-lg p-4 text-left hover:shadow-md" onClick={() => setSection('coupons')}>
-                <div className="font-semibold">Coupon Rules</div>
-                <div className="text-xs text-gray-500 mt-1">Channels, cities, usage limits</div>
-              </button>
-              <button type="button" className="pcm-card border rounded-lg p-4 text-left hover:shadow-md" onClick={() => router.push('/dashboard/super_admin/coupons')}>
-                <div className="font-semibold">Classic Coupon Panel</div>
-                <div className="text-xs text-gray-500 mt-1">Original admin coupons page</div>
-              </button>
-              <button type="button" className="pcm-card border rounded-lg p-4 text-left hover:shadow-md" onClick={() => setSection('assign')}>
-                <div className="font-semibold">Bulk Assign</div>
-                <div className="text-xs text-gray-500 mt-1">CSV, XLS, Google Sheet</div>
-              </button>
-              <button type="button" className="pcm-card border rounded-lg p-4 text-left hover:shadow-md" onClick={() => setSection('reports')}>
-                <div className="font-semibold">Reports</div>
-                <div className="text-xs text-gray-500 mt-1">Redemptions & performance</div>
-              </button>
-            </div>
-          </div>
-        ) : null}
+        {section === 'settings' ? <PcmSettingsSection onNavigate={setSection} /> : null}
       </main>
     </div>
   );

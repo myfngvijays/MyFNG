@@ -5,7 +5,12 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const TRIGGERS = new Set(['welcome_bonus_expiry']);
+const TRIGGERS = new Set([
+  'welcome_bonus_expiry',
+  'membership_expiry',
+  'inactive_customer',
+  'booking_completed_followup',
+]);
 const MODES = new Set(['once_at_days', 'daily_range']);
 
 export async function GET(request: NextRequest) {

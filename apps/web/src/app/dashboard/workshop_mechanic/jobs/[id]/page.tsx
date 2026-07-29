@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils';
@@ -98,6 +98,22 @@ type AdditionalMasterItem = {
 };
 
 export default function MechanicJobDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout role="workshop_mechanic">
+          <div className="flex items-center justify-center min-h-[40vh] text-sm text-gray-500">
+            Loading job…
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <MechanicJobDetailPageContent />
+    </Suspense>
+  );
+}
+
+function MechanicJobDetailPageContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();

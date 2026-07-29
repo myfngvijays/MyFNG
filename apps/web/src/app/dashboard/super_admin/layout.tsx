@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useRef, useCallback } from 'react';
+import React, { Suspense, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
@@ -53,6 +53,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   HeartPulse,
+  MinusCircle,
+  Settings2,
+  Code2,
+  List,
+  Layers,
 } from 'lucide-react';
 
 type NavItem = {
@@ -196,6 +201,12 @@ const navigationItems: NavItem[] = [
         description: 'Home screen reviews',
       },
       {
+        name: 'RSA Hero Banner',
+        href: '/dashboard/super_admin/website-images/rsa-hero',
+        icon: AlertTriangle,
+        description: 'RSA landing / hero image',
+      },
+      {
         name: 'App Footer Content',
         href: '/dashboard/super_admin/app-footer',
         icon: PanelBottom,
@@ -246,10 +257,22 @@ const navigationItems: NavItem[] = [
         description: 'Service %, membership %, welcome bonus',
       },
       {
-        name: 'Wallet Credits',
+        name: 'Bulk Credit',
         href: '/dashboard/super_admin/wallet-credits?section=bulk',
         icon: Coins,
-        description: 'Bulk add wallet balance to selected users',
+        description: 'Bulk add wallet balance',
+      },
+      {
+        name: 'Bulk Debit',
+        href: '/dashboard/super_admin/wallet-credits?section=debit',
+        icon: MinusCircle,
+        description: 'Bulk remove wallet balance',
+      },
+      {
+        name: 'Wallet Credit History',
+        href: '/dashboard/super_admin/wallet-credits?section=history',
+        icon: History,
+        description: 'Audit trail & CSV export',
       },
       {
         name: 'Refer & Earn',
@@ -295,16 +318,34 @@ const navigationItems: NavItem[] = [
         description: 'FCM credentials',
       },
       {
+        name: 'Templates',
+        href: '/dashboard/super_admin/advance-notifications?section=templates',
+        icon: FileText,
+        description: 'Manual + automation copy',
+      },
+      {
         name: 'Send Notification',
         href: '/dashboard/super_admin/advance-notifications?section=compose',
         icon: Send,
         description: 'Compose & broadcast',
       },
       {
+        name: 'Advanced Send',
+        href: '/dashboard/super_admin/advance-notifications?section=advanced',
+        icon: Sparkles,
+        description: 'City, membership & phone targeting',
+      },
+      {
+        name: 'Campaigns',
+        href: '/dashboard/super_admin/advance-notifications?section=campaigns',
+        icon: Timer,
+        description: 'Scheduled + A/B campaigns',
+      },
+      {
         name: 'Notification History',
         href: '/dashboard/super_admin/advance-notifications?section=history',
         icon: History,
-        description: 'Delivery logs',
+        description: 'Delivery & open/click logs',
       },
     ],
   },
@@ -339,9 +380,46 @@ const navigationItems: NavItem[] = [
   },
   {
     name: 'Analytics',
-    href: '/dashboard/super_admin/analytics-hub?section=overview',
     icon: LineChart,
     description: 'Firebase GA4, Clarity — Android, iOS & Web',
+    children: [
+      {
+        name: 'Overview',
+        href: '/dashboard/super_admin/analytics-hub?section=overview',
+        icon: LineChart,
+        description: 'Android, iOS & Web status',
+      },
+      {
+        name: 'Platforms',
+        href: '/dashboard/super_admin/analytics-hub?section=platforms',
+        icon: Layers,
+        description: 'Per-platform tracking',
+      },
+      {
+        name: 'Events',
+        href: '/dashboard/super_admin/analytics-hub?section=events',
+        icon: List,
+        description: 'Tracked events catalog',
+      },
+      {
+        name: 'Live Data',
+        href: '/dashboard/super_admin/analytics-hub?section=live',
+        icon: Activity,
+        description: 'Real-time GA4 metrics',
+      },
+      {
+        name: 'Settings',
+        href: '/dashboard/super_admin/analytics-hub?section=settings',
+        icon: Settings2,
+        description: 'Firebase GA4 & Clarity IDs',
+      },
+      {
+        name: 'Code Reference',
+        href: '/dashboard/super_admin/analytics-hub?section=code',
+        icon: Code2,
+        description: 'Files & tracking reference',
+      },
+    ],
   },
   {
     name: 'Shared Content',
@@ -388,7 +466,13 @@ const navigationItems: NavItem[] = [
     name: 'Role Permissions',
     href: '/dashboard/super_admin/roles',
     icon: Shield,
-    description: 'View role access & permissions'
+    description: 'Create roles & manage permissions'
+  },
+  {
+    name: 'Fraud Cases',
+    href: '/dashboard/super_admin/fraud',
+    icon: AlertTriangle,
+    description: 'Fraud alerts & case review'
   },
   {
     name: 'Intelligence & Automation',
@@ -521,6 +605,25 @@ export default function SuperAdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Next.js requires useSearchParams() to be wrapped in Suspense during prerender.
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-sm text-gray-500">Loading…</div>
+        </div>
+      }
+    >
+      <SuperAdminLayoutInner>{children}</SuperAdminLayoutInner>
+    </Suspense>
+  );
+}
+
+function SuperAdminLayoutInner({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const isSiteSeoPage = pathname?.includes('/site-seo') ?? false;
@@ -541,6 +644,7 @@ export default function SuperAdminLayout({
     'Push Notifications': false,
     'Shared Content': false,
     'App Customers': false,
+    Analytics: false,
     WhatsApp: false,
     'MISA AI': false,
   });
@@ -594,6 +698,7 @@ export default function SuperAdminLayout({
       pathname?.startsWith('/dashboard/super_admin/website-images/home-carousel') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/promo-banners') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/customer-reviews') ||
+      pathname?.startsWith('/dashboard/super_admin/website-images/rsa-hero') ||
       pathname?.startsWith('/dashboard/super_admin/app-footer')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Content & Display': true }));
@@ -630,6 +735,15 @@ export default function SuperAdminLayout({
       pathname?.startsWith('/dashboard/super_admin/site-seo')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'Shared Content': true }));
+    }
+    if (pathname?.startsWith('/dashboard/super_admin/analytics-hub')) {
+      setOpenGroups((prev) => ({ ...prev, Analytics: true }));
+    }
+    if (
+      pathname?.startsWith('/dashboard/super_admin/whatsapp-') ||
+      pathname?.startsWith('/dashboard/super_admin/bot-flow')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, WhatsApp: true }));
     }
   }, [pathname]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -64,6 +64,20 @@ function invoiceToForm(inv: any): typeof emptyForm {
 }
 
 export default function EditManualInvoicePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[40vh] flex items-center justify-center text-sm text-gray-500">
+          Loading invoice…
+        </div>
+      }
+    >
+      <EditManualInvoicePageContent />
+    </Suspense>
+  );
+}
+
+function EditManualInvoicePageContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();

@@ -19,7 +19,7 @@ export type PushNotificationLogInsert = {
 
 export async function insertPushNotificationLog(
   entry: PushNotificationLogInsert,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; id?: string; error?: string }> {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) {
     const msg = 'Missing SUPABASE_SERVICE_ROLE_KEY — push history not saved';
@@ -27,19 +27,23 @@ export async function insertPushNotificationLog(
     return { ok: false, error: msg };
   }
 
-  const { error } = await supabaseAdmin.from('notification_logs').insert({
-    recipient: entry.recipient,
-    type: entry.type,
-    message: entry.message,
-    status: entry.status,
-    sent_at: new Date().toISOString(),
-    meta: entry.meta || null,
-  });
+  const { data, error } = await supabaseAdmin
+    .from('notification_logs')
+    .insert({
+      recipient: entry.recipient,
+      type: entry.type,
+      message: entry.message,
+      status: entry.status,
+      sent_at: new Date().toISOString(),
+      meta: entry.meta || null,
+    })
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     console.error('[push-log] Insert failed:', error.message, error.details);
     return { ok: false, error: error.message };
   }
 
-  return { ok: true };
+  return { ok: true, id: data?.id ? String(data.id) : undefined };
 }

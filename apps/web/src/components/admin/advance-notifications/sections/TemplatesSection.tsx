@@ -89,6 +89,7 @@ export default function PushTemplatesSection() {
   const [rulesByTemplate, setRulesByTemplate] = useState<Record<string, AutomationRule>>({});
   const [scheduleTpl, setScheduleTpl] = useState<TemplateRow | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
+    trigger_type: 'welcome_bonus_expiry',
     schedule_mode: 'once_at_days' as 'once_at_days' | 'daily_range',
     days_min: 15,
     days_max: 15,
@@ -136,13 +137,19 @@ export default function PushTemplatesSection() {
     setScheduleTpl(t);
     if (existing) {
       setScheduleForm({
+        trigger_type: existing.trigger_type || 'welcome_bonus_expiry',
         schedule_mode:
           existing.schedule_mode === 'daily_range' ? 'daily_range' : 'once_at_days',
         days_min: Number(existing.days_min) || 0,
         days_max: Number(existing.days_max) || 0,
       });
     } else {
-      setScheduleForm({ schedule_mode: 'once_at_days', days_min: 15, days_max: 15 });
+      setScheduleForm({
+        trigger_type: 'welcome_bonus_expiry',
+        schedule_mode: 'once_at_days',
+        days_min: 15,
+        days_max: 15,
+      });
     }
     setError('');
     setSuccess('');
@@ -158,7 +165,7 @@ export default function PushTemplatesSection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           template_id: scheduleTpl.id,
-          trigger_type: 'welcome_bonus_expiry',
+          trigger_type: scheduleForm.trigger_type || 'welcome_bonus_expiry',
           schedule_mode: scheduleForm.schedule_mode,
           days_min: scheduleForm.days_min,
           days_max:
@@ -708,17 +715,20 @@ export default function PushTemplatesSection() {
                   Trigger
                 </label>
                 <select
-                  disabled
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800"
-                  value="welcome_bonus_expiry"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-800"
+                  value={scheduleForm.trigger_type}
+                  onChange={(e) =>
+                    setScheduleForm((f) => ({ ...f, trigger_type: e.target.value }))
+                  }
                 >
-                  <option value="welcome_bonus_expiry">
-                    Welcome bonus wallet expiry
-                  </option>
+                  <option value="welcome_bonus_expiry">Welcome bonus wallet expiry</option>
+                  <option value="membership_expiry">Membership plan expiry</option>
+                  <option value="inactive_customer">Inactive customer (no booking)</option>
+                  <option value="booking_completed_followup">Booking completed follow-up</option>
                 </select>
                 <p className="mt-1 text-[11px] text-gray-500">
-                  Daily cron (~10:00 AM IST) checks customers whose welcome bonus is
-                  approaching expiry.
+                  Welcome bonus runs on daily cron (~10:00 AM IST). Other triggers use the same
+                  day window against membership / booking activity.
                 </p>
               </div>
 
@@ -835,7 +845,7 @@ export default function PushTemplatesSection() {
                   {scheduleLabel({
                     id: '',
                     template_id: scheduleTpl.id,
-                    trigger_type: 'welcome_bonus_expiry',
+                    trigger_type: scheduleForm.trigger_type || 'welcome_bonus_expiry',
                     schedule_mode: scheduleForm.schedule_mode,
                     days_min: scheduleForm.days_min,
                     days_max:

@@ -11,6 +11,7 @@ import {
 import { probeOpenAiAdminBillingAccess } from '@/lib/chatbot_v2/openAiOrgUsage';
 import { getMisaAiUsdInrRate } from '@/lib/chatbot_v2/misaAiBilling';
 import { getOpenAiCreditBalanceStatus } from '@/lib/chatbot_v2/openAiCreditBalance';
+import { checkFcmCredentials } from '@/lib/push/fcmHealthCheck';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -380,48 +381,436 @@ async function checkRazorpay(): Promise<HealthCheck> {
 
 async function checkFirebase(): Promise<HealthCheck> {
   const start = Date.now();
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-
-  if (!projectId) {
+  try {
+    const result = await checkWithTimeout(() => checkFcmCredentials(), 15000);
+    const responseTime = Date.now() - start;
+    if (!result.ok) {
+      return {
+        name: 'Firebase / FCM Admin',
+        category: 'Notifications',
+        status: 'down',
+        responseTime,
+        message: result.error || 'FCM credentials invalid',
+        reason:
+          result.error ||
+          'Firebase Admin credentials missing or invalid. Advance Push / scheduled campaigns will fail.',
+        quickFix: {
+          label: 'Open Firebase Settings',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/advance-notifications?section=firebase' },
+        },
+        lastChecked: new Date().toISOString(),
+        details: {
+          projectId: result.projectId,
+          credentialsSource: result.credentialsSource,
+          clientEmailMasked: result.clientEmailMasked,
+        },
+      };
+    }
     return {
-      name: 'Firebase (FCM)',
+      name: 'Firebase / FCM Admin',
+      category: 'Notifications',
+      status: responseTime > 8000 ? 'degraded' : 'healthy',
+      responseTime,
+      message: result.message || 'FCM Admin credentials valid',
+      reason: `Push credentials OK via ${result.credentialsSource}. Project: ${result.projectId || 'n/a'}.`,
+      lastChecked: new Date().toISOString(),
+      details: {
+        projectId: result.projectId,
+        credentialsSource: result.credentialsSource,
+        clientEmailMasked: result.clientEmailMasked,
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Firebase / FCM Admin',
       category: 'Notifications',
       status: 'down',
-      responseTime: 0,
-      message: 'Project ID missing',
-      reason: 'FIREBASE_PROJECT_ID or NEXT_PUBLIC_FIREBASE_PROJECT_ID not set. Push notifications will not work.',
-      quickFix: { label: 'Check Environment Variables', action: 'check-env', actionPayload: { vars: ['FIREBASE_PROJECT_ID', 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'] } },
+      responseTime: Date.now() - start,
+      message: e.message || 'FCM check failed',
+      reason: `Could not verify FCM Admin credentials: ${e.message}`,
+      quickFix: {
+        label: 'Open Firebase Settings',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/advance-notifications?section=firebase' },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkPushCampaigns(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Push Campaigns & Segments',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify push campaign tables: ${configError}`,
       lastChecked: new Date().toISOString(),
     };
   }
 
   try {
-    const response = await checkWithTimeout(() =>
-      fetch(`https://firebaseinstallations.googleapis.com/v1/projects/${projectId}`, { method: 'GET' })
-    );
+    const [segments, campaigns, dueStuck] = await Promise.all([
+      client.from('push_saved_segments').select('id', { count: 'exact', head: true }),
+      client.from('push_scheduled_campaigns').select('id', { count: 'exact', head: true }),
+      client
+        .from('push_scheduled_campaigns')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'scheduled')
+        .lt('scheduled_at', new Date(Date.now() - 30 * 60 * 1000).toISOString()),
+    ]);
     const responseTime = Date.now() - start;
+
+    if (segments.error || campaigns.error) {
+      const msg = segments.error?.message || campaigns.error?.message || 'Missing tables';
+      const missing = /does not exist|relation|42P01|PGRST205/i.test(msg);
+      return {
+        name: 'Push Campaigns & Segments',
+        category: 'Notifications',
+        status: 'down',
+        responseTime,
+        message: missing ? 'Migration not applied' : `Query failed: ${msg}`,
+        reason: missing
+          ? 'Tables push_saved_segments / push_scheduled_campaigns missing. Run database/294_push_campaigns_segments_schedule.sql'
+          : msg,
+        quickFix: {
+          label: 'Open Campaigns',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/advance-notifications?section=campaigns' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const stuck = dueStuck.count || 0;
     return {
-      name: 'Firebase (FCM)',
+      name: 'Push Campaigns & Segments',
       category: 'Notifications',
-      status: responseTime > 5000 ? 'degraded' : 'healthy',
+      status: stuck > 0 ? 'degraded' : 'healthy',
       responseTime,
-      message: 'Firebase services reachable',
-      reason: 'Firebase endpoint is responding. Push notification infrastructure is operational.',
+      message:
+        stuck > 0
+          ? `${stuck} scheduled campaign(s) overdue`
+          : `${campaigns.count || 0} campaigns · ${segments.count || 0} segments`,
+      reason:
+        stuck > 0
+          ? `${stuck} campaign(s) are still "scheduled" more than 30 minutes past due. Check /api/cron/scheduled-push and CRON_SECRET.`
+          : 'Push campaign + segment tables are available.',
+      quickFix:
+        stuck > 0
+          ? {
+              label: 'Open Campaigns',
+              action: 'internal-link',
+              actionPayload: { url: '/dashboard/super_admin/advance-notifications?section=campaigns' },
+            }
+          : null,
       lastChecked: new Date().toISOString(),
-      details: { projectId },
+      details: {
+        campaigns: campaigns.count || 0,
+        segments: segments.count || 0,
+        overdueScheduled: stuck,
+      },
     };
   } catch (e: any) {
     return {
-      name: 'Firebase (FCM)',
+      name: 'Push Campaigns & Segments',
       category: 'Notifications',
       status: 'down',
       responseTime: Date.now() - start,
-      message: e.message || 'Firebase unreachable',
-      reason: `Cannot reach Firebase servers: ${e.message}. Check internet or Firebase status at https://status.firebase.google.com`,
-      quickFix: { label: 'Check Firebase Status', action: 'external-link', actionPayload: { url: 'https://status.firebase.google.com' } },
+      message: e.message || 'Check failed',
+      reason: `Push campaigns health check failed: ${e.message}`,
       lastChecked: new Date().toISOString(),
     };
   }
+}
+
+async function checkPushDevices(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Push Device Registry',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify notification_devices: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { count, error } = await client
+      .from('notification_devices')
+      .select('id', { count: 'exact', head: true });
+    const responseTime = Date.now() - start;
+    if (error) {
+      return {
+        name: 'Push Device Registry',
+        category: 'Notifications',
+        status: 'down',
+        responseTime,
+        message: error.message,
+        reason: 'notification_devices table missing or inaccessible. Mobile push targeting will fail.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    const devices = count || 0;
+    return {
+      name: 'Push Device Registry',
+      category: 'Notifications',
+      status: devices === 0 ? 'degraded' : 'healthy',
+      responseTime,
+      message: devices === 0 ? 'No registered devices' : `${devices.toLocaleString('en-IN')} devices registered`,
+      reason:
+        devices === 0
+          ? 'No rows in notification_devices. App installs may not be registering FCM tokens.'
+          : 'Device registry is readable for Advance Push targeting.',
+      lastChecked: new Date().toISOString(),
+      details: { devices },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Push Device Registry',
+      category: 'Notifications',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Push devices check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkWalletSystem(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Wallet System',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify wallet tables: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { count, error } = await client
+      .from('wallet_transactions')
+      .select('id', { count: 'exact', head: true });
+    const responseTime = Date.now() - start;
+    if (error) {
+      return {
+        name: 'Wallet System',
+        category: 'Commerce',
+        status: 'down',
+        responseTime,
+        message: error.message,
+        reason: 'wallet_transactions table missing or inaccessible. Wallet credit/debit & welcome bonus will fail.',
+        quickFix: {
+          label: 'Open Wallet Credits',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/wallet-credits?section=history' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Wallet System',
+      category: 'Commerce',
+      status: 'healthy',
+      responseTime,
+      message: `${(count || 0).toLocaleString('en-IN')} wallet transactions`,
+      reason: 'Wallet ledger is accessible for credits, debits, referral rewards, and expiry push cron.',
+      lastChecked: new Date().toISOString(),
+      details: { transactions: count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Wallet System',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Wallet health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkAdvanceCoupons(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Advance Coupons',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify coupons table: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [all, active] = await Promise.all([
+      client.from('coupons').select('id', { count: 'exact', head: true }),
+      client.from('coupons').select('id', { count: 'exact', head: true }).eq('is_active', true),
+    ]);
+    const responseTime = Date.now() - start;
+    if (all.error) {
+      return {
+        name: 'Advance Coupons',
+        category: 'Commerce',
+        status: 'down',
+        responseTime,
+        message: all.error.message,
+        reason: 'coupons table missing or inaccessible. Advance Coupon Management will fail.',
+        quickFix: {
+          label: 'Open Coupons',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/advance-coupons' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Advance Coupons',
+      category: 'Commerce',
+      status: 'healthy',
+      responseTime,
+      message: `${active.count || 0} active / ${all.count || 0} total coupons`,
+      reason: 'Coupon catalog is readable for Advance Coupons, bookings, and push targeting.',
+      lastChecked: new Date().toISOString(),
+      details: { total: all.count || 0, active: active.count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Advance Coupons',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Coupons health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkRsaLeads(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'RSA Leads',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify rsa_leads: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [active, recentErr] = await Promise.all([
+      client
+        .from('rsa_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('delete_status', false)
+        .not('lead_status', 'in', '(completed,cancelled,closed)'),
+      client.from('rsa_leads').select('id', { count: 'exact', head: true }).limit(1),
+    ]);
+    const responseTime = Date.now() - start;
+    const err = active.error || recentErr.error;
+    if (err) {
+      return {
+        name: 'RSA Leads',
+        category: 'Operations',
+        status: 'down',
+        responseTime,
+        message: err.message,
+        reason: 'rsa_leads table missing or inaccessible. RSA dashboard / roadside ops will fail.',
+        quickFix: {
+          label: 'Open RSA',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/rsa' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'RSA Leads',
+      category: 'Operations',
+      status: 'healthy',
+      responseTime,
+      message: `${active.count || 0} active RSA leads`,
+      reason: 'RSA leads table is accessible for Super Admin RSA module.',
+      lastChecked: new Date().toISOString(),
+      details: { active: active.count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'RSA Leads',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `RSA health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkFeatureCrons(): Promise<HealthCheck> {
+  const start = Date.now();
+  const cronSecret = Boolean(process.env.CRON_SECRET || process.env.CRON_SECRET_TOKEN);
+  const knownCrons = [
+    '/api/cron/scheduled-push',
+    '/api/cron/wallet-welcome-expiry-push',
+    '/api/cron/whatsapp-agents',
+    '/api/cron/whatsapp-automation',
+    '/api/cron/telecrm-push',
+  ];
+
+  if (!cronSecret) {
+    return {
+      name: 'Feature Cron Secrets',
+      category: 'Background Jobs',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'CRON_SECRET not set',
+      reason:
+        'CRON_SECRET missing. Vercel crons for scheduled-push, wallet expiry push, WhatsApp agents may be rejected or insecure.',
+      quickFix: {
+        label: 'Check Environment Variables',
+        action: 'check-env',
+        actionPayload: { vars: ['CRON_SECRET'] },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { crons: knownCrons },
+    };
+  }
+
+  return {
+    name: 'Feature Cron Secrets',
+    category: 'Background Jobs',
+    status: 'healthy',
+    responseTime: Date.now() - start,
+    message: 'CRON_SECRET configured',
+    reason: `Cron auth present for feature jobs including scheduled-push and wallet-welcome-expiry-push (${knownCrons.length} tracked paths).`,
+    lastChecked: new Date().toISOString(),
+    details: { crons: knownCrons },
+  };
 }
 
 
@@ -973,15 +1362,17 @@ async function checkWhatsAppAgents(): Promise<HealthCheck> {
 function calculateHealthScore(checks: HealthCheck[]): number {
   if (checks.length === 0) return 100;
   const weights: Record<string, number> = {
-    'Database': 25,
-    'Authentication': 20,
-    'Payments': 15,
-    'Notifications': 10,
-    'AI': 10,
-    'Storage': 8,
-    'Third Party': 5,
+    Database: 22,
+    Authentication: 18,
+    Payments: 12,
+    Notifications: 12,
+    Commerce: 10,
+    AI: 8,
+    Operations: 6,
+    Storage: 5,
+    'Third Party': 4,
     'Background Jobs': 4,
-    'Security': 3,
+    Security: 3,
   };
 
   let totalWeight = 0;
@@ -1012,12 +1403,18 @@ export async function GET() {
       checkWhatsAppAPI(),
       checkRazorpay(),
       checkFirebase(),
+      checkPushCampaigns(),
+      checkPushDevices(),
       checkEmailService(),
+      checkWalletSystem(),
+      checkAdvanceCoupons(),
+      checkRsaLeads(),
       checkOpenAI(),
       checkMisaAiMonitoring(),
       checkWhatsAppAgents(),
       checkGoogleMaps(),
       checkCronJobs(),
+      checkFeatureCrons(),
       checkSSL(),
       checkSARVTelephony(),
     ]);
@@ -1047,6 +1444,7 @@ export async function GET() {
       RAZORPAY_KEY_ID: !!process.env.RAZORPAY_KEY_ID,
       RAZORPAY_KEY_SECRET: !!process.env.RAZORPAY_KEY_SECRET,
       FIREBASE_PROJECT_ID: !!(process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+      CRON_SECRET: !!(process.env.CRON_SECRET || process.env.CRON_SECRET_TOKEN),
       OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
       OPENAI_ADMIN_API_KEY: !!(process.env.OPENAI_ADMIN_API_KEY || process.env.OPENAI_ADMIN_KEY),
       GOOGLE_MAPS_API_KEY: !!(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),

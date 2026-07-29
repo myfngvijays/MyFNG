@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertCronAuth } from '@/lib/cron/assertCronAuth';
-import { runWelcomeBonusExpiryPush } from '@/lib/wallet/welcomeBonusExpiryPush';
-import { runMembershipExpiryPush } from '@/lib/push/runMembershipExpiryPush';
+import { runScheduledPushCampaigns } from '@/lib/push/runScheduledCampaigns';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-/**
- * Welcome bonus expiry pushes + membership expiry automation rules.
- * Auth: x-vercel-cron: 1 or Authorization: Bearer CRON_SECRET
- * Optional: ?dry_run=1&limit=100
- */
 async function handle(req: NextRequest) {
   const authError = await assertCronAuth(req);
   if (authError) {
@@ -20,24 +14,15 @@ async function handle(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const dryRun = searchParams.get('dry_run') === '1' || searchParams.get('dryRun') === '1';
-  const limit = Number(searchParams.get('limit') || 500);
+  const limit = Number(searchParams.get('limit') || 20);
 
-  const result = await runWelcomeBonusExpiryPush({
+  const result = await runScheduledPushCampaigns({
     dryRun,
-    limit: Number.isFinite(limit) ? limit : 500,
-  });
-  const membership = await runMembershipExpiryPush({
-    dryRun,
-    limit: Number.isFinite(limit) ? limit : 300,
+    limit: Number.isFinite(limit) ? limit : 20,
   });
 
   return NextResponse.json(
-    {
-      ...result,
-      membership_expiry: membership,
-      dry_run: dryRun,
-      timestamp: new Date().toISOString(),
-    },
+    { ...result, dry_run: dryRun, timestamp: new Date().toISOString() },
     { status: result.success ? 200 : 500 },
   );
 }

@@ -16,12 +16,14 @@ import {
   Globe,
   ChevronDown,
   ChevronUp,
+  CalendarClock,
+  FlaskConical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NotificationLivePreview, { TYPE_DOT } from '../components/NotificationLivePreview';
 import PushMediaUploadField from '../components/PushMediaUploadField';
 import TemplatePicker from '../components/TemplatePicker';
-import { PUSH_TEST_PHONE_PRESETS } from '@/lib/push/push-admin-constants';
+import { PUSH_ROLE_OPTIONS, PUSH_TEST_PHONE_PRESETS } from '@/lib/push/push-admin-constants';
 
 type PlatformChoice = 'both' | 'android' | 'ios';
 type AudienceChoice = 'all' | 'android' | 'ios';
@@ -75,9 +77,15 @@ export default function PushComposeSection() {
   const [priority, setPriority] = useState<'default' | 'high'>('high');
   const [platform, setPlatform] = useState<PlatformChoice>('both');
   const [audience, setAudience] = useState<AudienceChoice>('all');
+  const [targetRole, setTargetRole] = useState('CUSTOMER');
   const [sending, setSending] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [targetPhone, setTargetPhone] = useState('');
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [abEnabled, setAbEnabled] = useState(false);
+  const [titleB, setTitleB] = useState('');
+  const [messageB, setMessageB] = useState('');
   const [result, setResult] = useState<{
     success: boolean;
     sent?: number;
@@ -91,19 +99,83 @@ export default function PushComposeSection() {
     };
   } | null>(null);
 
+  const buildPayload = () => ({
+    title: title.trim(),
+    message: message.trim(),
+    target_role: targetRole,
+    target_phone: targetPhone.trim() ? targetPhone.replace(/\D/g, '').slice(-10) : undefined,
+    priority,
+    notification_type: notificationType,
+    image_url: imageUrl.trim() || undefined,
+    icon_url: iconUrl.trim() || undefined,
+    deep_link: deepLink.trim() || undefined,
+    cta_url: ctaUrl.trim() || undefined,
+    platform,
+    audience,
+  });
+
   const handleSend = async () => {
     if (!title.trim() || !message.trim()) {
       toast.error('Title and message are required');
       return;
     }
 
-    const audienceLabel =
-      audience === 'all' ? 'All Users' : audience === 'android' ? 'Android Users' : 'iPhone Users';
+    if (scheduleEnabled || abEnabled) {
+      if (scheduleEnabled && !scheduledAt) {
+        toast.error('Pick a schedule date/time');
+        return;
+      }
+      if (abEnabled && (!titleB.trim() || !messageB.trim())) {
+        toast.error('Variant B title and message are required');
+        return;
+      }
+      const when = scheduleEnabled ? new Date(scheduledAt) : new Date(Date.now() + 60_000);
+      if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 5_000) {
+        toast.error('Scheduled time must be in the future');
+        return;
+      }
+      if (!confirm(`Schedule campaign for ${when.toLocaleString('en-IN')}?`)) return;
+
+      setSending(true);
+      setResult(null);
+      try {
+        const res = await fetch('/api/super_admin/notifications/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: title.trim(),
+            scheduled_at: when.toISOString(),
+            payload: buildPayload(),
+            ab_enabled: abEnabled,
+            variant_b: abEnabled
+              ? { title: titleB.trim(), message: messageB.trim() }
+              : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to schedule');
+          setResult({ success: false, error: data.error || 'Failed to schedule' });
+        } else {
+          toast.success('Campaign scheduled — see Campaigns tab');
+          setResult({ success: true, hint: 'Scheduled successfully' });
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Network error';
+        setResult({ success: false, error: msg });
+        toast.error('Network error. Try again.');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    const roleLabel = PUSH_ROLE_OPTIONS.find((r) => r.value === targetRole)?.label || targetRole;
     const phoneHint = targetPhone.trim() ? `\nTest phone: ${targetPhone.trim()}` : '';
 
     if (
       !confirm(
-        `Send notification to "${audienceLabel}"?${phoneHint}\n\nTitle: ${title}\nMessage: ${message}\nPriority: ${priority === 'high' ? 'High' : 'Normal'}`,
+        `Send notification to "${roleLabel}"?${phoneHint}\n\nTitle: ${title}\nMessage: ${message}\nPriority: ${priority === 'high' ? 'High' : 'Normal'}`,
       )
     ) {
       return;
@@ -116,19 +188,7 @@ export default function PushComposeSection() {
       const res = await fetch('/api/super_admin/notifications/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(),
-          message: message.trim(),
-          target_role: 'CUSTOMER',
-          target_phone: targetPhone.trim() ? targetPhone.replace(/\D/g, '').slice(-10) : undefined,
-          priority,
-          notification_type: notificationType,
-          image_url: imageUrl.trim() || undefined,
-          deep_link: deepLink.trim() || undefined,
-          cta_url: ctaUrl.trim() || undefined,
-          platform,
-          audience,
-        }),
+        body: JSON.stringify(buildPayload()),
       });
 
       const data = await res.json();
@@ -174,6 +234,12 @@ export default function PushComposeSection() {
     setCtaUrl('');
     setResult(null);
     setTargetPhone('');
+    setScheduleEnabled(false);
+    setScheduledAt('');
+    setAbEnabled(false);
+    setTitleB('');
+    setMessageB('');
+    setTargetRole('CUSTOMER');
   };
 
   return (
@@ -255,8 +321,22 @@ export default function PushComposeSection() {
           </div>
         </div>
 
-        {/* Platform + Audience in one row */}
-        <div className="grid md:grid-cols-2 gap-4">
+        {/* Role + Platform + Audience */}
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="space-y-1.5">
+            <label className="push-label mb-0">Target role</label>
+            <select
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value)}
+              className="push-input appearance-none cursor-pointer"
+            >
+              {PUSH_ROLE_OPTIONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-1.5">
             <label className="push-label mb-0">Platform</label>
             <div className="grid grid-cols-3 gap-2">
@@ -266,13 +346,61 @@ export default function PushComposeSection() {
             </div>
           </div>
           <div className="space-y-1.5">
-            <label className="push-label mb-0">Audience</label>
+            <label className="push-label mb-0">OS audience</label>
             <div className="grid grid-cols-3 gap-2">
               <SelectCard active={audience === 'all'} onClick={() => setAudience('all')} icon={<Users className="w-4 h-4" />} title="All" subtitle="Everyone" />
               <SelectCard active={audience === 'android'} onClick={() => setAudience('android')} icon={<Smartphone className="w-4 h-4" />} title="Android" subtitle="Only" />
               <SelectCard active={audience === 'ios'} onClick={() => setAudience('ios')} icon={<Apple className="w-4 h-4" />} title="iPhone" subtitle="Only" />
             </div>
           </div>
+        </div>
+
+        <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <input
+              type="checkbox"
+              checked={scheduleEnabled}
+              onChange={(e) => setScheduleEnabled(e.target.checked)}
+            />
+            <CalendarClock className="w-4 h-4 text-blue-600" />
+            Schedule for later
+          </label>
+          {scheduleEnabled ? (
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="push-input bg-white"
+            />
+          ) : null}
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+            <input type="checkbox" checked={abEnabled} onChange={(e) => setAbEnabled(e.target.checked)} />
+            <FlaskConical className="w-4 h-4 text-violet-600" />
+            A/B test (Variant B)
+          </label>
+          {abEnabled ? (
+            <div className="grid md:grid-cols-2 gap-3">
+              <input
+                type="text"
+                value={titleB}
+                onChange={(e) => setTitleB(e.target.value.slice(0, TITLE_MAX))}
+                placeholder="Variant B title"
+                className="push-input bg-white"
+              />
+              <textarea
+                value={messageB}
+                onChange={(e) => setMessageB(e.target.value.slice(0, MESSAGE_MAX))}
+                placeholder="Variant B message"
+                rows={1}
+                className="push-input bg-white resize-none"
+              />
+            </div>
+          ) : null}
+          {(scheduleEnabled || abEnabled) && (
+            <p className="text-[11px] text-gray-500">
+              Scheduled/A-B campaigns are queued and processed by cron every 5 minutes. Manage them in the Campaigns tab.
+            </p>
+          )}
         </div>
 
         <div className="border-t border-gray-100 pt-4">
@@ -380,8 +508,12 @@ export default function PushComposeSection() {
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" />
-                Send Notification
+                {scheduleEnabled || abEnabled ? (
+                  <CalendarClock className="w-4 h-4" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {scheduleEnabled || abEnabled ? 'Schedule Campaign' : 'Send Notification'}
               </>
             )}
           </button>

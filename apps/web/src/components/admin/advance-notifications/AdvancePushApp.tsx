@@ -11,6 +11,7 @@ import {
   Search,
   Sparkles,
   FileText,
+  CalendarClock,
 } from 'lucide-react';
 import './push-admin-theme.css';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
@@ -20,8 +21,9 @@ import PushComposeSection from './sections/ComposeSection';
 import AdvancedComposeSection from './sections/AdvancedComposeSection';
 import PushHistorySection from './sections/HistorySection';
 import PushTemplatesSection from './sections/TemplatesSection';
+import PushCampaignsSection from './sections/CampaignsSection';
 
-type SectionId = 'dashboard' | 'firebase' | 'templates' | 'compose' | 'advanced' | 'history';
+type SectionId = 'dashboard' | 'firebase' | 'templates' | 'compose' | 'advanced' | 'campaigns' | 'history';
 
 type AdminProfile = {
   name: string;
@@ -38,6 +40,7 @@ const NAV: NavItem[] = [
   { id: 'templates', label: 'Templates', icon: FileText, description: 'Manual + automation push copy' },
   { id: 'compose', label: 'Send Notification', icon: Send, description: 'Compose & broadcast' },
   { id: 'advanced', label: 'Advanced Send', icon: Sparkles, description: 'Targeted by city, membership & phone list' },
+  { id: 'campaigns', label: 'Campaigns', icon: CalendarClock, description: 'Scheduled + A/B + engagement' },
   { id: 'history', label: 'Notification History', icon: History, description: 'Delivery logs' },
 ];
 
@@ -48,6 +51,7 @@ function sectionFromParam(value: string | null): SectionId {
     'templates',
     'compose',
     'advanced',
+    'campaigns',
     'history',
   ]);
   if (value && allowed.has(value as SectionId)) return value as SectionId;
@@ -64,10 +68,18 @@ function initialsFromName(name: string) {
 }
 
 export default function AdvancePushApp() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-gray-500">Loading push notifications…</div>}>
+      <AdvancePushAppInner />
+    </Suspense>
+  );
+}
+
+function AdvancePushAppInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const section = sectionFromParam(searchParams.get('section'));
-  const [headerSearch, setHeaderSearch] = useState('');
+  const [headerSearch, setHeaderSearch] = useState(searchParams.get('q') || '');
   const [refreshKey, setRefreshKey] = useState(0);
   const [admin, setAdmin] = useState<AdminProfile>({
     name: 'Super Admin',
@@ -96,11 +108,23 @@ export default function AdvancePushApp() {
   }, []);
 
   const setSection = useCallback(
-    (next: SectionId) => {
-      router.push(`/dashboard/super_admin/advance-notifications?section=${next}`);
+    (next: SectionId, extra?: Record<string, string>) => {
+      const params = new URLSearchParams();
+      params.set('section', next);
+      if (extra) {
+        Object.entries(extra).forEach(([k, v]) => {
+          if (v) params.set(k, v);
+        });
+      }
+      router.push(`/dashboard/super_admin/advance-notifications?${params.toString()}`);
     },
     [router],
   );
+
+  const applyHeaderSearch = useCallback(() => {
+    const q = headerSearch.trim();
+    setSection('history', q ? { q } : {});
+  }, [headerSearch, setSection]);
 
   const current = useMemo(() => NAV.find((n) => n.id === section) || NAV[0], [section]);
 
@@ -124,8 +148,10 @@ export default function AdvancePushApp() {
             <AdvancedComposeSection />
           </Suspense>
         );
+      case 'campaigns':
+        return <PushCampaignsSection />;
       case 'history':
-        return <PushHistorySection />;
+        return <PushHistorySection initialSearch={searchParams.get('q') || ''} />;
       default:
         return null;
     }
@@ -146,16 +172,22 @@ export default function AdvancePushApp() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <AdminPageRefresh onClick={() => setRefreshKey((key) => key + 1)} />
-            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 w-full sm:w-64">
+            <form
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 w-full sm:w-72"
+              onSubmit={(e) => {
+                e.preventDefault();
+                applyHeaderSearch();
+              }}
+            >
               <Search className="w-4 h-4 text-gray-400 shrink-0" />
               <input
                 type="search"
-                placeholder="Search notifications, IDs…"
+                placeholder="Search history by title, ID…"
                 value={headerSearch}
                 onChange={(e) => setHeaderSearch(e.target.value)}
                 className="bg-transparent text-sm outline-none w-full placeholder:text-gray-400"
               />
-            </div>
+            </form>
             <span className="push-badge-accent whitespace-nowrap">FCM HTTP v1</span>
           </div>
         </div>
@@ -183,7 +215,9 @@ export default function AdvancePushApp() {
         </div>
       </div>
 
-      <main className="px-4 sm:px-6 lg:px-8 py-6" key={refreshKey}>{renderSection()}</main>
+      <main className="px-4 sm:px-6 lg:px-8 py-6" key={refreshKey}>
+        {renderSection()}
+      </main>
     </div>
   );
 }

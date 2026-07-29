@@ -5,6 +5,7 @@ import { FileText, Search, Filter, Download, MapPin, Phone, Calendar, TrendingUp
 import { createClient } from '@/lib/supabase/client';
 import { formatDateDMY } from "@/lib/utils";
 import { resolveAdminBookingPayableAmount } from '@/lib/post-booking-membership-offer';
+import toast from 'react-hot-toast';
 
 export default function LeadsOverviewPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -122,6 +123,55 @@ export default function LeadsOverviewPage() {
     return colors[type] || 'bg-gray-100 text-gray-700';
   };
 
+  const handleExport = () => {
+    if (!filteredLeads.length) {
+      toast.error('No leads to export');
+      return;
+    }
+    const header = [
+      'Lead Number',
+      'Type',
+      'Status',
+      'Customer',
+      'Phone',
+      'Vehicle',
+      'Service',
+      'Workshop',
+      'Created',
+    ];
+    const rows = filteredLeads.map((lead) => [
+      lead.lead_number || '',
+      lead.lead_type || '',
+      lead.status || '',
+      lead.customer_name || '',
+      lead.customer_phone || '',
+      lead.vehicle_number || '',
+      lead.service_type || '',
+      lead.workshop_id?.name || '',
+      lead.created_at ? formatDateDMY(lead.created_at) : '',
+    ]);
+    const csv = [header, ...rows]
+      .map((r) =>
+        r
+          .map((cell) => {
+            const value = String(cell ?? '');
+            return value.includes(',') || value.includes('"') || value.includes('\n')
+              ? `"${value.replace(/"/g, '""')}"`
+              : value;
+          })
+          .join(','),
+      )
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `leads-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filteredLeads.length} leads`);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48 sm:h-64">
@@ -207,7 +257,11 @@ export default function LeadsOverviewPage() {
                 <option value="REJECTED">Rejected</option>
                 <option value="CANCELLED">Cancelled</option>
               </select>
-              <button className="btn btn-outline px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={handleExport}
+                className="btn btn-outline px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2"
+              >
                 <Download className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">Export</span>
                 <span className="sm:hidden">Export</span>

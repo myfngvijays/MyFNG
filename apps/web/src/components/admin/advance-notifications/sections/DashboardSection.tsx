@@ -146,7 +146,9 @@ export default function PushDashboardSection({
   onNavigate,
   admin,
 }: {
-  onNavigate: (section: 'dashboard' | 'firebase' | 'compose' | 'history') => void;
+  onNavigate: (
+    section: 'dashboard' | 'firebase' | 'templates' | 'compose' | 'advanced' | 'campaigns' | 'history',
+  ) => void;
   admin: AdminProfile;
 }) {
   const [data, setData] = useState<DashboardData | null>(null);

@@ -35,16 +35,21 @@ function audienceLabel(log: PushLogEntry) {
   return role?.label || log.recipient;
 }
 
-export default function PushHistorySection() {
+export default function PushHistorySection({ initialSearch = '' }: { initialSearch?: string }) {
   const [logs, setLogs] = useState<PushLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const limit = 25;
+
+  useEffect(() => {
+    setSearch(initialSearch);
+    setOffset(0);
+  }, [initialSearch]);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -214,7 +219,15 @@ export default function PushHistorySection() {
                           </p>
                           <p>
                             <strong>Attempted:</strong> {log.meta?.devices_attempted ?? '—'} ·{' '}
-                            <strong>Delivered:</strong> {log.meta?.devices ?? 0}
+                            <strong>Delivered:</strong> {log.meta?.devices ?? 0} ·{' '}
+                            <strong>Opens:</strong> {log.meta?.opens ?? 0} ·{' '}
+                            <strong>Clicks:</strong> {log.meta?.clicks ?? 0}
+                            {log.meta?.ab_variant ? (
+                              <>
+                                {' '}
+                                · <strong>Variant:</strong> {log.meta.ab_variant}
+                              </>
+                            ) : null}
                           </p>
                           {(log.meta?.fcm_errors || []).length > 0 ? (
                             <p className="text-rose-700">

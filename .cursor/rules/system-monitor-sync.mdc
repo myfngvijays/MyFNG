@@ -1,0 +1,47 @@
+---
+description: Auto-add System Monitor health checks when new website features need monitoring
+alwaysApply: true
+---
+
+# System Monitor Sync
+
+When implementing **new website/admin features** that depend on infra, credentials, cron, DB tables, or third-party APIs, also update System Monitor in the **same change** — do not wait for the user to ask.
+
+## Where to update
+
+- API checks: `apps/web/src/app/api/super_admin/system-monitor/route.ts`
+- UI icons/labels if new categories: `apps/web/src/app/dashboard/super_admin/system-monitor/page.tsx`
+- Wire new check into the `Promise.all([...])` in the GET handler
+- Add category weight in `calculateHealthScore` if introducing a new category
+- Add related env keys to `envStatus` when the feature needs env/config
+
+## Add a check when the feature involves any of
+
+- New env vars / API keys / service-account credentials
+- New cron jobs (`vercel.json` or `/api/cron/*`)
+- New critical DB tables/migrations required for the feature to work
+- New third-party integrations (WhatsApp, FCM, Razorpay, Maps, AI, telephony, etc.)
+- Background senders / queues / scheduled campaigns
+- Wallet, coupons, push, RSA, lead distribution, or similar ops modules
+
+## Skip monitor updates for
+
+- Pure UI polish, copy, or layout-only changes
+- Refactors with no new dependency or failure mode
+- One-off scripts that are not production runtime paths
+
+## Check quality bar
+
+- Return `healthy` | `degraded` | `down` with clear `message` + `reason`
+- Prefer real verification (table exists, credentials valid, overdue jobs) over “env var present”
+- Include `quickFix` with `internal-link` to the admin page that fixes it when useful
+- Keep checks fast; use timeouts; do not break the whole monitor if one optional table is missing (fail that check only)
+
+## Example
+
+If you add scheduled push campaigns + SQL migration `294_*.sql` + cron `/api/cron/scheduled-push`:
+
+1. Add `checkPushCampaigns()` (tables + overdue scheduled rows)
+2. Ensure FCM/cron secret checks cover the new path
+3. Register the check in GET `Promise.all`
+4. Quick-fix link to Advance Notifications / Campaigns
