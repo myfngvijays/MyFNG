@@ -266,9 +266,10 @@ export function mapLiveFileRow(row: Record<string, unknown> | null | undefined):
   };
 }
 
-async function fetchLiveFileOverrides(): Promise<Map<LiveFileKey, LiveFileRow>> {
+/** Plain object — `unstable_cache` cannot round-trip `Map` (`.get` breaks at build/prerender). */
+async function fetchLiveFileOverrides(): Promise<Partial<Record<LiveFileKey, LiveFileRow>>> {
   const { supabaseAdmin } = getSupabaseAdmin();
-  const map = new Map<LiveFileKey, LiveFileRow>();
+  const map: Partial<Record<LiveFileKey, LiveFileRow>> = {};
   if (!supabaseAdmin) return map;
 
   const { data, error } = await supabaseAdmin.from(SITE_SEO_LIVE_FILES_TABLE).select('*');
@@ -276,7 +277,7 @@ async function fetchLiveFileOverrides(): Promise<Map<LiveFileKey, LiveFileRow>> 
 
   for (const row of data) {
     const mapped = mapLiveFileRow(row);
-    if (mapped) map.set(mapped.file_key, mapped);
+    if (mapped) map[mapped.file_key] = mapped;
   }
   return map;
 }
@@ -288,22 +289,26 @@ export const getLiveFileOverrides = unstable_cache(fetchLiveFileOverrides, ['sit
 
 export async function getLiveFileOverride(key: LiveFileKey): Promise<LiveFileRow | null> {
   const overrides = await getLiveFileOverrides();
-  return overrides.get(key) || null;
+  return overrides?.[key] || null;
 }
 
 export async function resolveLiveFileContent(key: LiveFileKey): Promise<string> {
-  const override = await getLiveFileOverride(key);
-  if (override?.use_custom && override.content.trim()) return override.content;
+  try {
+    const override = await getLiveFileOverride(key);
+    if (override?.use_custom && override.content.trim()) return override.content;
+  } catch {
+    // Fall through to generated content if cache/DB fails during build.
+  }
   return generateLiveFileContent(key);
 }
 
 export async function buildLiveFileAdminViews(): Promise<LiveFileAdminView[]> {
-  const overrides = await getLiveFileOverrides();
+  const overrides = (await getLiveFileOverrides()) || {};
   const views: LiveFileAdminView[] = [];
 
   for (const key of LIVE_FILE_KEYS) {
     const meta = LIVE_FILE_META[key];
-    const override = overrides.get(key);
+    const override = overrides[key];
     const generated = await generateLiveFileContent(key);
     views.push({
       file_key: key,
