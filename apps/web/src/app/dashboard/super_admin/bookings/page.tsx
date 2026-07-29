@@ -850,8 +850,11 @@ export default function SuperAdminBookingsPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
-  const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [telecallers, setTelecallers] = useState<
+    Array<{ id: string; full_name: string; is_active: boolean }>
+  >([]);
   const [telecallersLoading, setTelecallersLoading] = useState(false);
+  const [showInactiveTelecallers, setShowInactiveTelecallers] = useState(false);
   const [assignTelecallerId, setAssignTelecallerId] = useState('');
   const [assigning, setAssigning] = useState(false);
   /** Quick assign modal from table Assignee column */
@@ -1174,6 +1177,7 @@ export default function SuperAdminBookingsPage() {
 
   const loadTelecallers = useCallback(async (forLead?: Record<string, any> | null) => {
     setTelecallersLoading(true);
+    setShowInactiveTelecallers(false);
     try {
       const res = await fetch('/api/super_admin/telecallers?role=TELECALLER', {
         credentials: 'include',
@@ -1184,12 +1188,16 @@ export default function SuperAdminBookingsPage() {
         .map((t: any) => ({
           id: String(t.id),
           full_name: String(t.full_name || t.phone || t.email || 'Telecaller').trim() || 'Telecaller',
+          is_active: t.is_active !== false,
         }))
         .filter((t: { id: string }) => t.id);
       const curId = String(forLead?.assigned_telecaller_id || '').trim();
       const curName = String(forLead?.assigned_telecaller_name || '').trim();
       if (curId && !list.some((t: { id: string }) => t.id === curId)) {
-        setTelecallers([{ id: curId, full_name: curName || 'Current assignee' }, ...list]);
+        setTelecallers([
+          { id: curId, full_name: curName || 'Current assignee', is_active: true },
+          ...list,
+        ]);
       } else {
         setTelecallers(list);
       }
@@ -1200,10 +1208,21 @@ export default function SuperAdminBookingsPage() {
     }
   }, []);
 
+  const inactiveTelecallerCount = useMemo(
+    () => telecallers.filter((t) => !t.is_active).length,
+    [telecallers],
+  );
+
+  const visibleTelecallers = useMemo(() => {
+    if (showInactiveTelecallers) return telecallers;
+    return telecallers.filter((t) => t.is_active || t.id === assignTelecallerId);
+  }, [telecallers, showInactiveTelecallers, assignTelecallerId]);
+
   const openDetail = (title: string, item: Record<string, any>) => {
     setDetailTitle(title);
     setDetailItem(item);
     setAssignTelecallerId(String(item?.assigned_telecaller_id || ''));
+    setShowInactiveTelecallers(false);
     setDetailOpen(true);
     void loadTelecallers(item);
   };
@@ -2537,7 +2556,7 @@ export default function SuperAdminBookingsPage() {
               </span>
             </p>
 
-            <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100 mb-3">
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
               <button
                 type="button"
                 disabled={assigning}
@@ -2553,7 +2572,7 @@ export default function SuperAdminBookingsPage() {
                   <Loader2 className="w-4 h-4 animate-spin" /> Loading…
                 </div>
               ) : (
-                telecallers.map((t) => (
+                visibleTelecallers.map((t) => (
                   <button
                     key={t.id}
                     type="button"
@@ -2566,10 +2585,26 @@ export default function SuperAdminBookingsPage() {
                     }`}
                   >
                     {t.full_name}
+                    {!t.is_active ? (
+                      <span className="ml-1 text-[11px] font-medium text-red-500">(inactive)</span>
+                    ) : null}
                   </button>
                 ))
               )}
             </div>
+            {inactiveTelecallerCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowInactiveTelecallers((v) => !v)}
+                className="mt-2 mb-3 text-xs font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+              >
+                {showInactiveTelecallers
+                  ? 'Hide inactive'
+                  : `Show inactive (${inactiveTelecallerCount})`}
+              </button>
+            ) : (
+              <div className="mb-3" />
+            )}
 
             <div className="flex gap-2">
               <button
@@ -2673,9 +2708,10 @@ export default function SuperAdminBookingsPage() {
                     className="flex-1 min-w-0 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   >
                     <option value="">Unassigned</option>
-                    {telecallers.map((t) => (
+                    {visibleTelecallers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.full_name}
+                        {!t.is_active ? ' (inactive)' : ''}
                       </option>
                     ))}
                   </select>
@@ -2697,6 +2733,17 @@ export default function SuperAdminBookingsPage() {
                     )}
                   </button>
                 </div>
+                {inactiveTelecallerCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowInactiveTelecallers((v) => !v)}
+                    className="mt-2 text-xs font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+                  >
+                    {showInactiveTelecallers
+                      ? 'Hide inactive'
+                      : `Show inactive (${inactiveTelecallerCount})`}
+                  </button>
+                ) : null}
               </div>
 
               <ServiceLeadDetailContent item={detailItem} />

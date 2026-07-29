@@ -31,14 +31,15 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: adminError }, { status: 500 });
 
-    // Return all allocation rows (not only is_active). Soft-deactivated rows must stay
-    // visible so Save does not drop telecallers from the config permanently.
+    // Only active allocation rows. Removed rows are soft-deactivated on Save and must
+    // not reappear in the admin UI (re-add via "+ Add Row" reactivates the same telecaller).
     const { data: allocations, error: allocErr } = await supabaseAdmin
       .from('enquiry_hub')
       .select(
         'id, telecaller_id, allocation_percent, allocation_status, daily_limit, is_active, meta, telecaller:users_login!telecaller_id(id, full_name, email, phone, is_active)'
       )
       .eq('kind', 'ALLOCATION')
+      .eq('is_active', true)
       .order('created_at', { ascending: true });
 
     if (allocErr) throw allocErr;
@@ -169,14 +170,22 @@ export async function PUT(request: NextRequest) {
       if (insertErr) throw insertErr;
     }
 
-    // Soft-deactivate allocations removed from payload (UUID list must be unquoted).
-    const ids = cleaned.map((r: any) => r.telecaller_id).filter(Boolean);
-    if (ids.length > 0) {
+    // Soft-deactivate allocations removed from the Save payload.
+    const keptIds = cleaned.map((r: any) => r.telecaller_id).filter(Boolean);
+    const removedIds = (existingAllocations || [])
+      .map((row: any) => String(row.telecaller_id))
+      .filter((id: string) => id && !keptIds.includes(id));
+
+    if (removedIds.length > 0) {
       const { error: deactivateErr } = await supabaseAdmin
         .from('enquiry_hub')
-        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .update({
+          is_active: false,
+          allocation_status: 'INACTIVE',
+          updated_at: new Date().toISOString(),
+        })
         .eq('kind', 'ALLOCATION')
-        .not('telecaller_id', 'in', `(${ids.join(',')})`);
+        .in('telecaller_id', removedIds);
 
       if (deactivateErr) throw deactivateErr;
     }

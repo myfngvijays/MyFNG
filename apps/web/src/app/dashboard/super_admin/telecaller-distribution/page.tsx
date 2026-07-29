@@ -114,32 +114,25 @@ export default function TelecallerDistributionPage() {
         phone: t.phone ? String(t.phone) : null,
         is_active: Boolean(t.is_active),
       }));
-      const allocs = (json.allocations || []).map((r: any) => {
-        const allowed = normalizeAllowedChannels(r?.meta?.allowed_channels);
-        return {
-          telecaller_id: String(r.telecaller_id),
-          allocation_percent: Number(r.allocation_percent || 0),
-          allocation_status:
-            String(r.allocation_status || 'ACTIVE').toUpperCase() === 'INACTIVE'
-              ? ('INACTIVE' as const)
-              : ('ACTIVE' as const),
-          daily_limit: r.daily_limit == null ? null : Number(r.daily_limit),
-          allowed_channels: allowed,
-        };
-      });
+      const allocs = (json.allocations || [])
+        .filter((r: any) => r?.is_active !== false)
+        .map((r: any) => {
+          const allowed = normalizeAllowedChannels(r?.meta?.allowed_channels);
+          return {
+            telecaller_id: String(r.telecaller_id),
+            allocation_percent: Number(r.allocation_percent || 0),
+            allocation_status:
+              String(r.allocation_status || 'ACTIVE').toUpperCase() === 'INACTIVE'
+                ? ('INACTIVE' as const)
+                : ('ACTIVE' as const),
+            daily_limit: r.daily_limit == null ? null : Number(r.daily_limit),
+            allowed_channels: allowed,
+          };
+        });
 
       setTelecallers(list);
-      setRows(
-        allocs.length > 0
-          ? allocs
-          : list.map((t: Telecaller) => ({
-              telecaller_id: t.id,
-              allocation_percent: 0,
-              allocation_status: 'INACTIVE' as const,
-              daily_limit: null,
-              allowed_channels: null,
-            })),
-      );
+      // Do not auto-fill every telecaller — only saved allocation rows (empty until Add Row).
+      setRows(allocs);
       setTriggers(Array.isArray(json.message_triggers) ? json.message_triggers : []);
     } catch (e) {
       console.error('Failed to load telecaller distribution settings:', e);

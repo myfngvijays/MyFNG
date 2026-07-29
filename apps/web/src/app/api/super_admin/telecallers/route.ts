@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     const { data: telecallers, error } = await supabaseAdmin
       .from('users_login')
-      .select('id, full_name, email, phone, roles!inner(role_code)')
+      .select('id, full_name, email, phone, is_active, roles!inner(role_code)')
       .eq('roles.role_code', role)
       .order('full_name', { ascending: true });
 
