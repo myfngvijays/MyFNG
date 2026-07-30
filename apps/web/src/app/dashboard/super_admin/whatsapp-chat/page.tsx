@@ -369,6 +369,7 @@ export default function SuperAdminWhatsAppChatPage() {
   const [selectedPhone, setSelectedPhone] = useState('');
   const [conversationLoading, setConversationLoading] = useState(false);
   const [conversationError, setConversationError] = useState('');
+  const [sendError, setSendError] = useState('');
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [callLoading, setCallLoading] = useState(false);
@@ -770,6 +771,7 @@ export default function SuperAdminWhatsAppChatPage() {
 
   useEffect(() => {
     if (!selectedPhone) return;
+    setSendError('');
     setUnreadByPhone((prev) => ({ ...prev, [selectedPhone]: 0 }));
     loadConversation(selectedPhone);
     loadCalls(selectedPhone);
@@ -1696,14 +1698,22 @@ export default function SuperAdminWhatsAppChatPage() {
 
   const handleSendText = useCallback(async () => {
     const text = draftMessage.trim();
-    if (!selectedPhone || sendingMessage) return;
+    if (!selectedPhone) {
+      setSendError('Select a chat first');
+      return;
+    }
+    if (sendingMessage) return;
     if (composerMode === 'template') {
-      if (!selectedTemplateName) return;
+      if (!selectedTemplateName) {
+        setSendError('Select a template first (or switch Back to text)');
+        return;
+      }
     } else if (!text && !selectedMediaFile) {
+      setSendError('Type a message or attach a file');
       return;
     }
     setSendingMessage(true);
-    setConversationError('');
+    setSendError('');
     try {
       let res: Response;
       if (composerMode === 'template') {
@@ -1750,7 +1760,7 @@ export default function SuperAdminWhatsAppChatPage() {
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
-        setConversationError(data?.error || 'Send failed');
+        setSendError(data?.error || `Send failed (HTTP ${res.status})`);
         return;
       }
       setDraftMessage('');
@@ -1760,9 +1770,11 @@ export default function SuperAdminWhatsAppChatPage() {
         setComposerMode('text');
       }
       if (mediaInputRef.current) mediaInputRef.current.value = '';
-      await Promise.all([loadConversation(selectedPhone), loadChats(true)]);
-    } catch {
-      setConversationError('Send failed');
+      // Reload conversation first so bubble appears immediately
+      await loadConversation(selectedPhone);
+      await loadChats(true);
+    } catch (e: unknown) {
+      setSendError(e instanceof Error ? e.message : 'Send failed');
     } finally {
       setSendingMessage(false);
     }
@@ -1994,7 +2006,9 @@ export default function SuperAdminWhatsAppChatPage() {
                 {selectedPhone ? (
                   <button
                     type="button"
-                    onClick={() => loadConversation(selectedPhone)}
+                    onClick={() => {
+                      void Promise.all([loadConversation(selectedPhone), loadChats(true)]);
+                    }}
                     className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
@@ -2029,17 +2043,25 @@ export default function SuperAdminWhatsAppChatPage() {
                 <div className="flex h-full items-center justify-center text-gray-600">
                   Select a chat from the center column.
                 </div>
-              ) : conversationLoading ? (
+              ) : conversationLoading && conversation.length === 0 ? (
                 <div className="flex h-full items-center justify-center gap-2 text-gray-600">
                   <Loader2 className="h-5 w-5 animate-spin" />
                   Loading conversation...
                 </div>
-              ) : conversationError ? (
-                <div className="p-6 text-sm text-red-600">{conversationError}</div>
               ) : conversation.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-gray-600">No messages yet.</div>
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-gray-600">
+                  <span>No messages yet.</span>
+                  {conversationError ? (
+                    <span className="text-sm text-red-600">{conversationError}</span>
+                  ) : null}
+                </div>
               ) : (
                 <div className="space-y-2">
+                  {conversationError ? (
+                    <div className="mx-auto w-fit rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
+                      {conversationError}
+                    </div>
+                  ) : null}
                   {callLoading ? (
                     <div className="mx-auto w-fit rounded-full bg-white/80 px-3 py-1 text-[11px] text-gray-600">
                       Loading calls...
@@ -2533,6 +2555,11 @@ export default function SuperAdminWhatsAppChatPage() {
             </div>
 
             <div className="border-t border-gray-200 bg-white p-3">
+              {sendError ? (
+                <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {sendError}
+                </div>
+              ) : null}
               {composerMode === 'template' ? (
                 <div className="mb-2 rounded-lg border border-[#d8dee3] bg-[#f8fafc] px-3 py-2">
                   <div className="mb-2 flex items-center justify-between">
