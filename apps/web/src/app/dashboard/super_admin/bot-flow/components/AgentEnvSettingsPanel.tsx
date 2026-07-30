@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 
 type EnvConfigView = {
   whatsapp_phone_number_id: string;
+  whatsapp_business_account_id: string;
   whatsapp_api_url: string;
   use_db_credentials: boolean;
   admin_notes: string;
@@ -22,6 +23,10 @@ type EnvConfigView = {
   openai_api_key_masked: string;
   whatsapp_access_token_set: boolean;
   whatsapp_access_token_masked: string;
+  whatsapp_app_secret_set: boolean;
+  whatsapp_app_secret_masked: string;
+  whatsapp_webhook_verify_token_set: boolean;
+  whatsapp_webhook_verify_token_masked: string;
   cron_secret_set: boolean;
   cron_secret_masked: string;
   telecrm_webhook_secret_set: boolean;
@@ -51,7 +56,10 @@ type FormState = {
   openai_api_key: string;
   whatsapp_access_token: string;
   whatsapp_phone_number_id: string;
+  whatsapp_business_account_id: string;
   whatsapp_api_url: string;
+  whatsapp_app_secret: string;
+  whatsapp_webhook_verify_token: string;
   cron_secret: string;
   telecrm_webhook_secret: string;
   use_db_credentials: boolean;
@@ -62,7 +70,10 @@ const EMPTY_FORM: FormState = {
   openai_api_key: '',
   whatsapp_access_token: '',
   whatsapp_phone_number_id: '',
-  whatsapp_api_url: 'https://graph.facebook.com/v21.0',
+  whatsapp_business_account_id: '',
+  whatsapp_api_url: 'https://graph.facebook.com/v25.0',
+  whatsapp_app_secret: '',
+  whatsapp_webhook_verify_token: '',
   cron_secret: '',
   telecrm_webhook_secret: '',
   use_db_credentials: false,
@@ -113,7 +124,10 @@ export default function AgentEnvSettingsPanel() {
         openai_api_key: '',
         whatsapp_access_token: '',
         whatsapp_phone_number_id: cfg.whatsapp_phone_number_id || '',
-        whatsapp_api_url: cfg.whatsapp_api_url || 'https://graph.facebook.com/v21.0',
+        whatsapp_business_account_id: cfg.whatsapp_business_account_id || '',
+        whatsapp_api_url: cfg.whatsapp_api_url || 'https://graph.facebook.com/v25.0',
+        whatsapp_app_secret: '',
+        whatsapp_webhook_verify_token: '',
         cron_secret: '',
         telecrm_webhook_secret: '',
         use_db_credentials: cfg.use_db_credentials,
@@ -171,7 +185,9 @@ export default function AgentEnvSettingsPanel() {
   const runBootstrap = async () => {
     setBootstrapping(true);
     try {
-      const res = await fetch('/api/super_admin/whatsapp-agents/env-settings/bootstrap', { method: 'POST' });
+      const res = await fetch('/api/super_admin/whatsapp-agents/env-settings/bootstrap', {
+        method: 'POST',
+      });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || 'Bootstrap failed');
@@ -204,13 +220,14 @@ export default function AgentEnvSettingsPanel() {
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold text-gray-900">API Credentials</h2>
+              <h2 className="text-lg font-bold text-gray-900">WhatsApp & API Credentials</h2>
               <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800">
                 Super Admin only
               </span>
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              OpenAI, WhatsApp, Cron aur TeleCRM keys yahan save karo — Firebase Settings jaisa. Redeploy ki zaroorat nahi.
+              WABA ID, Phone Number ID, Access Token, App Secret, Verify Token — Firebase Settings jaisa.
+              Change karo, Save dabao; redeploy ki zaroorat nahi (Use saved credentials ON rakho).
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -237,8 +254,8 @@ export default function AgentEnvSettingsPanel() {
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           <p className="font-semibold">Quick setup</p>
           <p className="mt-1 text-emerald-800">
-            <strong>Auto-fill from server</strong> click karo — server ke <code className="rounded bg-white/70 px-1 text-xs">.env</code> se
-            saari keys ek step mein save ho jayengi.
+            <strong>Auto-fill from server</strong> — server ke{' '}
+            <code className="rounded bg-white/70 px-1 text-xs">.env</code> se keys save.
           </p>
           {canEdit ? (
             <button
@@ -258,8 +275,8 @@ export default function AgentEnvSettingsPanel() {
           <div>
             <p className="font-semibold">Active source: {sourceLabel}</p>
             <p className="mt-0.5">
-              Secrets masked hain. Blank chhodoge to purani value rahegi.{' '}
-              <code className="text-xs">SUPABASE_SERVICE_ROLE_KEY</code> sirf server .env mein — yahan edit nahi hota.
+              Secrets masked. Blank = purani value. Webhook:{' '}
+              <code className="text-xs">https://myfng.in/api/webhooks/whatsapp</code>
             </p>
           </div>
         </div>
@@ -267,7 +284,7 @@ export default function AgentEnvSettingsPanel() {
         {!canEdit ? (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <Shield className="mt-0.5 h-4 w-4 shrink-0" />
-            Sub Admin dekh sakta hai; edit sirf <strong>Super Admin</strong> kar sakta hai.
+            Sub Admin dekh sakta hai; edit sirf <strong>Super Admin</strong>.
           </div>
         ) : null}
 
@@ -295,7 +312,10 @@ export default function AgentEnvSettingsPanel() {
             </div>
             <div className="rounded-lg border p-3">
               <div className="mb-1 text-xs font-semibold text-gray-500">Supabase Admin</div>
-              <StatusPill ok={health.supabase_admin.ok} label={health.supabase_admin.ok ? 'OK' : 'Check'} />
+              <StatusPill
+                ok={health.supabase_admin.ok}
+                label={health.supabase_admin.ok ? 'OK' : 'Check'}
+              />
               <p className="mt-1 text-[11px] text-gray-600">{health.supabase_admin.message}</p>
             </div>
           </div>
@@ -313,36 +333,85 @@ export default function AgentEnvSettingsPanel() {
             Use saved credentials (database overrides server .env)
           </label>
 
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-3 py-2">
+            <p className="text-xs font-bold uppercase tracking-wide text-indigo-800">
+              Meta WhatsApp Cloud API
+            </p>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-600">OPENAI_API_KEY</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">
+                WHATSAPP_BUSINESS_ACCOUNT_ID (WABA)
+              </label>
               <input
-                type="password"
                 className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
-                placeholder={configView?.openai_api_key_set ? configView.openai_api_key_masked : 'sk-...'}
-                value={form.openai_api_key}
-                onChange={(e) => update('openai_api_key', e.target.value)}
+                placeholder="WhatsApp Business Account ID"
+                value={form.whatsapp_business_account_id}
+                onChange={(e) => update('whatsapp_business_account_id', e.target.value)}
                 disabled={!canEdit}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-600">WHATSAPP_ACCESS_TOKEN</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">
+                WHATSAPP_PHONE_NUMBER_ID
+              </label>
+              <input
+                className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
+                placeholder="Meta Phone Number ID"
+                value={form.whatsapp_phone_number_id}
+                onChange={(e) => update('whatsapp_phone_number_id', e.target.value)}
+                disabled={!canEdit}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">
+                WHATSAPP_ACCESS_TOKEN
+              </label>
               <input
                 type="password"
                 className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
-                placeholder={configView?.whatsapp_access_token_set ? configView.whatsapp_access_token_masked : 'EAA...'}
+                placeholder={
+                  configView?.whatsapp_access_token_set
+                    ? configView.whatsapp_access_token_masked
+                    : 'EAA...'
+                }
                 value={form.whatsapp_access_token}
                 onChange={(e) => update('whatsapp_access_token', e.target.value)}
                 disabled={!canEdit}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-600">WHATSAPP_PHONE_NUMBER_ID</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">
+                WHATSAPP_APP_SECRET
+              </label>
               <input
+                type="password"
                 className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
-                placeholder="Meta Phone Number ID"
-                value={form.whatsapp_phone_number_id}
-                onChange={(e) => update('whatsapp_phone_number_id', e.target.value)}
+                placeholder={
+                  configView?.whatsapp_app_secret_set
+                    ? configView.whatsapp_app_secret_masked
+                    : 'App secret from Meta App settings'
+                }
+                value={form.whatsapp_app_secret}
+                onChange={(e) => update('whatsapp_app_secret', e.target.value)}
+                disabled={!canEdit}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">
+                WHATSAPP_WEBHOOK_VERIFY_TOKEN
+              </label>
+              <input
+                type="password"
+                className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
+                placeholder={
+                  configView?.whatsapp_webhook_verify_token_set
+                    ? configView.whatsapp_webhook_verify_token_masked
+                    : 'hub.verify_token'
+                }
+                value={form.whatsapp_webhook_verify_token}
+                onChange={(e) => update('whatsapp_webhook_verify_token', e.target.value)}
                 disabled={!canEdit}
               />
             </div>
@@ -355,23 +424,55 @@ export default function AgentEnvSettingsPanel() {
                 disabled={!canEdit}
               />
             </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-700">
+              OpenAI · Cron · TeleCRM
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">OPENAI_API_KEY</label>
+              <input
+                type="password"
+                className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
+                placeholder={
+                  configView?.openai_api_key_set ? configView.openai_api_key_masked : 'sk-...'
+                }
+                value={form.openai_api_key}
+                onChange={(e) => update('openai_api_key', e.target.value)}
+                disabled={!canEdit}
+              />
+            </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-gray-600">CRON_SECRET</label>
               <input
                 type="password"
                 className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
-                placeholder={configView?.cron_secret_set ? configView.cron_secret_masked : 'Bearer token for cron'}
+                placeholder={
+                  configView?.cron_secret_set
+                    ? configView.cron_secret_masked
+                    : 'Bearer token for cron'
+                }
                 value={form.cron_secret}
                 onChange={(e) => update('cron_secret', e.target.value)}
                 disabled={!canEdit}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-600">TELECRM_WEBHOOK_SECRET</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">
+                TELECRM_WEBHOOK_SECRET
+              </label>
               <input
                 type="password"
                 className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
-                placeholder={configView?.telecrm_webhook_secret_set ? configView.telecrm_webhook_secret_masked : 'x-webhook-secret header'}
+                placeholder={
+                  configView?.telecrm_webhook_secret_set
+                    ? configView.telecrm_webhook_secret_masked
+                    : 'x-webhook-secret header'
+                }
                 value={form.telecrm_webhook_secret}
                 onChange={(e) => update('telecrm_webhook_secret', e.target.value)}
                 disabled={!canEdit}

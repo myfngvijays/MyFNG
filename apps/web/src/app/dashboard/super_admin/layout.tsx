@@ -515,6 +515,12 @@ const navigationItems: NavItem[] = [
         description: 'Delivery & messaging overview',
       },
       {
+        name: 'WhatsApp Settings',
+        href: '/dashboard/super_admin/whatsapp-settings',
+        icon: Settings2,
+        description: 'WABA, token, app secret & webhook keys',
+      },
+      {
         name: 'Message Logs',
         href: '/dashboard/super_admin/whatsapp-messages',
         icon: ClipboardList,

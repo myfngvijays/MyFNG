@@ -5,7 +5,10 @@ export type WhatsAppAgentsEnvConfigRecord = {
   openai_api_key: string;
   whatsapp_access_token: string;
   whatsapp_phone_number_id: string;
+  whatsapp_business_account_id: string;
   whatsapp_api_url: string;
+  whatsapp_app_secret: string;
+  whatsapp_webhook_verify_token: string;
   cron_secret: string;
   telecrm_webhook_secret: string;
   use_db_credentials: boolean;
@@ -16,12 +19,21 @@ export type WhatsAppAgentsEnvConfigRecord = {
 
 export type WhatsAppAgentsEnvConfigView = Omit<
   WhatsAppAgentsEnvConfigRecord,
-  'openai_api_key' | 'whatsapp_access_token' | 'cron_secret' | 'telecrm_webhook_secret'
+  | 'openai_api_key'
+  | 'whatsapp_access_token'
+  | 'whatsapp_app_secret'
+  | 'whatsapp_webhook_verify_token'
+  | 'cron_secret'
+  | 'telecrm_webhook_secret'
 > & {
   openai_api_key_set: boolean;
   openai_api_key_masked: string;
   whatsapp_access_token_set: boolean;
   whatsapp_access_token_masked: string;
+  whatsapp_app_secret_set: boolean;
+  whatsapp_app_secret_masked: string;
+  whatsapp_webhook_verify_token_set: boolean;
+  whatsapp_webhook_verify_token_masked: string;
   cron_secret_set: boolean;
   cron_secret_masked: string;
   telecrm_webhook_secret_set: boolean;
@@ -41,7 +53,10 @@ export type ResolvedWhatsAppAgentsCredentials = {
   openai_api_key: string;
   whatsapp_access_token: string;
   whatsapp_phone_number_id: string;
+  whatsapp_business_account_id: string;
   whatsapp_api_url: string;
+  whatsapp_app_secret: string;
+  whatsapp_webhook_verify_token: string;
   cron_secret: string;
   telecrm_webhook_secret: string;
   source: 'database' | 'environment' | 'none';
@@ -60,12 +75,18 @@ export function getEnvWhatsAppAgentsDefaults() {
   const openaiKey = process.env.OPENAI_API_KEY || '';
   const waToken = process.env.WHATSAPP_ACCESS_TOKEN || '';
   const waPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+  const waWabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
+  const waAppSecret = process.env.WHATSAPP_APP_SECRET || '';
+  const waVerifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
 
   return {
     openai_api_key: openaiKey,
     whatsapp_access_token: waToken,
     whatsapp_phone_number_id: waPhoneId,
-    whatsapp_api_url: process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0',
+    whatsapp_business_account_id: waWabaId,
+    whatsapp_api_url: process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v25.0',
+    whatsapp_app_secret: waAppSecret,
+    whatsapp_webhook_verify_token: waVerifyToken,
     cron_secret: cronSecret,
     telecrm_webhook_secret: telecrmSecret,
     openai_configured: Boolean(openaiKey.trim()),
@@ -84,7 +105,12 @@ function mergeWithDefaults(row: Partial<WhatsAppAgentsEnvConfigRecord> | null): 
     openai_api_key: row?.openai_api_key || env.openai_api_key,
     whatsapp_access_token: row?.whatsapp_access_token || env.whatsapp_access_token,
     whatsapp_phone_number_id: row?.whatsapp_phone_number_id || env.whatsapp_phone_number_id,
+    whatsapp_business_account_id:
+      row?.whatsapp_business_account_id || env.whatsapp_business_account_id,
     whatsapp_api_url: row?.whatsapp_api_url || env.whatsapp_api_url,
+    whatsapp_app_secret: row?.whatsapp_app_secret || env.whatsapp_app_secret,
+    whatsapp_webhook_verify_token:
+      row?.whatsapp_webhook_verify_token || env.whatsapp_webhook_verify_token,
     cron_secret: row?.cron_secret || env.cron_secret,
     telecrm_webhook_secret: row?.telecrm_webhook_secret || env.telecrm_webhook_secret,
     use_db_credentials: row?.use_db_credentials ?? false,
@@ -103,21 +129,28 @@ export function invalidateWhatsAppAgentsCredentialsCache(): void {
   cacheAt = 0;
 }
 
+function fromEnv(env: ReturnType<typeof getEnvWhatsAppAgentsDefaults>): ResolvedWhatsAppAgentsCredentials {
+  return {
+    openai_api_key: env.openai_api_key,
+    whatsapp_access_token: env.whatsapp_access_token,
+    whatsapp_phone_number_id: env.whatsapp_phone_number_id,
+    whatsapp_business_account_id: env.whatsapp_business_account_id,
+    whatsapp_api_url: env.whatsapp_api_url,
+    whatsapp_app_secret: env.whatsapp_app_secret,
+    whatsapp_webhook_verify_token: env.whatsapp_webhook_verify_token,
+    cron_secret: env.cron_secret,
+    telecrm_webhook_secret: env.telecrm_webhook_secret || env.cron_secret,
+    source: env.openai_configured || env.whatsapp_configured ? 'environment' : 'none',
+  };
+}
+
 export function resolveActiveWhatsAppAgentsCredentials(
   config: WhatsAppAgentsEnvConfigRecord,
 ): ResolvedWhatsAppAgentsCredentials {
   const env = getEnvWhatsAppAgentsDefaults();
 
   if (process.env.NODE_ENV === 'development' && env.openai_configured && env.whatsapp_configured) {
-    return {
-      openai_api_key: env.openai_api_key,
-      whatsapp_access_token: env.whatsapp_access_token,
-      whatsapp_phone_number_id: env.whatsapp_phone_number_id,
-      whatsapp_api_url: env.whatsapp_api_url,
-      cron_secret: env.cron_secret,
-      telecrm_webhook_secret: env.telecrm_webhook_secret || env.cron_secret,
-      source: 'environment',
-    };
+    return fromEnv(env);
   }
 
   const dbHasCreds = Boolean(
@@ -131,31 +164,34 @@ export function resolveActiveWhatsAppAgentsCredentials(
       openai_api_key: config.openai_api_key.trim(),
       whatsapp_access_token: config.whatsapp_access_token.trim(),
       whatsapp_phone_number_id: config.whatsapp_phone_number_id.trim(),
+      whatsapp_business_account_id:
+        config.whatsapp_business_account_id?.trim() || env.whatsapp_business_account_id,
       whatsapp_api_url: config.whatsapp_api_url?.trim() || env.whatsapp_api_url,
+      whatsapp_app_secret: config.whatsapp_app_secret?.trim() || env.whatsapp_app_secret,
+      whatsapp_webhook_verify_token:
+        config.whatsapp_webhook_verify_token?.trim() || env.whatsapp_webhook_verify_token,
       cron_secret: config.cron_secret?.trim() || env.cron_secret,
       telecrm_webhook_secret:
-        config.telecrm_webhook_secret?.trim() || env.telecrm_webhook_secret || config.cron_secret?.trim() || env.cron_secret,
+        config.telecrm_webhook_secret?.trim() ||
+        env.telecrm_webhook_secret ||
+        config.cron_secret?.trim() ||
+        env.cron_secret,
       source: 'database',
     };
   }
 
   if (env.openai_configured || env.whatsapp_configured) {
-    return {
-      openai_api_key: env.openai_api_key,
-      whatsapp_access_token: env.whatsapp_access_token,
-      whatsapp_phone_number_id: env.whatsapp_phone_number_id,
-      whatsapp_api_url: env.whatsapp_api_url,
-      cron_secret: env.cron_secret,
-      telecrm_webhook_secret: env.telecrm_webhook_secret || env.cron_secret,
-      source: 'environment',
-    };
+    return fromEnv(env);
   }
 
   return {
     openai_api_key: '',
     whatsapp_access_token: '',
     whatsapp_phone_number_id: '',
+    whatsapp_business_account_id: env.whatsapp_business_account_id,
     whatsapp_api_url: env.whatsapp_api_url,
+    whatsapp_app_secret: env.whatsapp_app_secret,
+    whatsapp_webhook_verify_token: env.whatsapp_webhook_verify_token,
     cron_secret: env.cron_secret,
     telecrm_webhook_secret: env.telecrm_webhook_secret || env.cron_secret,
     source: 'none',
@@ -166,11 +202,27 @@ export async function loadWhatsAppAgentsEnvConfig(): Promise<WhatsAppAgentsEnvCo
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return mergeWithDefaults(null);
 
-  const { data } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from('whatsapp_agents_env_config')
     .select('*')
     .eq('config_key', 'default')
     .maybeSingle();
+
+  // Migration 269 not applied yet — fall back to legacy columns only.
+  if (error && /whatsapp_business_account_id|whatsapp_app_secret|whatsapp_webhook_verify_token|42703/i.test(error.message || '')) {
+    ({ data, error } = await supabaseAdmin
+      .from('whatsapp_agents_env_config')
+      .select(
+        'config_key, openai_api_key, whatsapp_access_token, whatsapp_phone_number_id, whatsapp_api_url, cron_secret, telecrm_webhook_secret, use_db_credentials, admin_notes, updated_at, updated_by',
+      )
+      .eq('config_key', 'default')
+      .maybeSingle());
+  }
+
+  if (error) {
+    console.warn('[whatsapp-env-config] load failed:', error.message);
+    return mergeWithDefaults(null);
+  }
 
   return mergeWithDefaults((data as WhatsAppAgentsEnvConfigRecord | null) || null);
 }
@@ -183,6 +235,8 @@ export async function loadWhatsAppAgentsEnvConfigView(): Promise<WhatsAppAgentsE
   const {
     openai_api_key,
     whatsapp_access_token,
+    whatsapp_app_secret,
+    whatsapp_webhook_verify_token,
     cron_secret,
     telecrm_webhook_secret,
     ...rest
@@ -194,6 +248,10 @@ export async function loadWhatsAppAgentsEnvConfigView(): Promise<WhatsAppAgentsE
     openai_api_key_masked: maskSecret(openai_api_key),
     whatsapp_access_token_set: Boolean(whatsapp_access_token?.trim()),
     whatsapp_access_token_masked: maskSecret(whatsapp_access_token),
+    whatsapp_app_secret_set: Boolean(whatsapp_app_secret?.trim()),
+    whatsapp_app_secret_masked: maskSecret(whatsapp_app_secret),
+    whatsapp_webhook_verify_token_set: Boolean(whatsapp_webhook_verify_token?.trim()),
+    whatsapp_webhook_verify_token_masked: maskSecret(whatsapp_webhook_verify_token),
     cron_secret_set: Boolean(cron_secret?.trim()),
     cron_secret_masked: maskSecret(cron_secret),
     telecrm_webhook_secret_set: Boolean(telecrm_webhook_secret?.trim()),
@@ -224,16 +282,7 @@ export async function getResolvedWhatsAppAgentsCredentials(
 
 export function getResolvedWhatsAppAgentsCredentialsSync(): ResolvedWhatsAppAgentsCredentials {
   if (cachedResolved) return cachedResolved;
-  const env = getEnvWhatsAppAgentsDefaults();
-  return {
-    openai_api_key: env.openai_api_key,
-    whatsapp_access_token: env.whatsapp_access_token,
-    whatsapp_phone_number_id: env.whatsapp_phone_number_id,
-    whatsapp_api_url: env.whatsapp_api_url,
-    cron_secret: env.cron_secret,
-    telecrm_webhook_secret: env.telecrm_webhook_secret || env.cron_secret,
-    source: env.openai_configured || env.whatsapp_configured ? 'environment' : 'none',
-  };
+  return fromEnv(getEnvWhatsAppAgentsDefaults());
 }
 
 export function buildWhatsAppAgentsBootstrapPayload(): WhatsAppAgentsEnvConfigRecord {
@@ -243,7 +292,10 @@ export function buildWhatsAppAgentsBootstrapPayload(): WhatsAppAgentsEnvConfigRe
     openai_api_key: env.openai_api_key,
     whatsapp_access_token: env.whatsapp_access_token,
     whatsapp_phone_number_id: env.whatsapp_phone_number_id,
+    whatsapp_business_account_id: env.whatsapp_business_account_id,
     whatsapp_api_url: env.whatsapp_api_url,
+    whatsapp_app_secret: env.whatsapp_app_secret,
+    whatsapp_webhook_verify_token: env.whatsapp_webhook_verify_token,
     cron_secret: env.cron_secret,
     telecrm_webhook_secret: env.telecrm_webhook_secret,
     use_db_credentials: true,
@@ -252,13 +304,16 @@ export function buildWhatsAppAgentsBootstrapPayload(): WhatsAppAgentsEnvConfigRe
   };
 }
 
+function keepOrReplaceSecret(
+  incoming: string | undefined,
+  existing: string,
+): string {
+  if (typeof incoming === 'string' && incoming.trim()) return incoming.trim();
+  return existing;
+}
+
 export async function saveWhatsAppAgentsEnvConfig(
-  input: Partial<WhatsAppAgentsEnvConfigRecord> & {
-    openai_api_key?: string;
-    whatsapp_access_token?: string;
-    cron_secret?: string;
-    telecrm_webhook_secret?: string;
-  },
+  input: Partial<WhatsAppAgentsEnvConfigRecord>,
   userId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { supabaseAdmin, error } = getSupabaseAdmin();
@@ -266,40 +321,78 @@ export async function saveWhatsAppAgentsEnvConfig(
 
   const existing = await loadWhatsAppAgentsEnvConfig();
 
-  const nextOpenAi =
-    typeof input.openai_api_key === 'string' && input.openai_api_key.trim()
-      ? input.openai_api_key.trim()
-      : existing.openai_api_key;
-  const nextWaToken =
-    typeof input.whatsapp_access_token === 'string' && input.whatsapp_access_token.trim()
-      ? input.whatsapp_access_token.trim()
-      : existing.whatsapp_access_token;
-  const nextCron =
-    typeof input.cron_secret === 'string' && input.cron_secret.trim()
-      ? input.cron_secret.trim()
-      : existing.cron_secret;
-  const nextTelecrm =
-    typeof input.telecrm_webhook_secret === 'string' && input.telecrm_webhook_secret.trim()
-      ? input.telecrm_webhook_secret.trim()
-      : existing.telecrm_webhook_secret;
-
   const payload = {
     config_key: 'default',
-    openai_api_key: nextOpenAi,
-    whatsapp_access_token: nextWaToken,
-    whatsapp_phone_number_id: String(input.whatsapp_phone_number_id ?? existing.whatsapp_phone_number_id).trim(),
-    whatsapp_api_url: String(input.whatsapp_api_url ?? existing.whatsapp_api_url).trim() || 'https://graph.facebook.com/v21.0',
-    cron_secret: nextCron,
-    telecrm_webhook_secret: nextTelecrm,
+    openai_api_key: keepOrReplaceSecret(input.openai_api_key, existing.openai_api_key),
+    whatsapp_access_token: keepOrReplaceSecret(
+      input.whatsapp_access_token,
+      existing.whatsapp_access_token,
+    ),
+    whatsapp_phone_number_id: String(
+      input.whatsapp_phone_number_id ?? existing.whatsapp_phone_number_id,
+    ).trim(),
+    whatsapp_business_account_id: String(
+      input.whatsapp_business_account_id ?? existing.whatsapp_business_account_id,
+    ).trim(),
+    whatsapp_api_url:
+      String(input.whatsapp_api_url ?? existing.whatsapp_api_url).trim() ||
+      'https://graph.facebook.com/v25.0',
+    whatsapp_app_secret: keepOrReplaceSecret(
+      input.whatsapp_app_secret,
+      existing.whatsapp_app_secret,
+    ),
+    whatsapp_webhook_verify_token: keepOrReplaceSecret(
+      input.whatsapp_webhook_verify_token,
+      existing.whatsapp_webhook_verify_token,
+    ),
+    cron_secret: keepOrReplaceSecret(input.cron_secret, existing.cron_secret),
+    telecrm_webhook_secret: keepOrReplaceSecret(
+      input.telecrm_webhook_secret,
+      existing.telecrm_webhook_secret,
+    ),
     use_db_credentials: input.use_db_credentials ?? existing.use_db_credentials,
     admin_notes: String(input.admin_notes ?? existing.admin_notes).trim(),
     updated_by: userId,
     updated_at: new Date().toISOString(),
   };
 
-  const { error: upsertError } = await supabaseAdmin
+  let { error: upsertError } = await supabaseAdmin
     .from('whatsapp_agents_env_config')
     .upsert(payload, { onConflict: 'config_key' });
+
+  // If migration 269 is missing, save legacy fields and ask admin to run SQL for Meta extras.
+  if (
+    upsertError &&
+    /whatsapp_business_account_id|whatsapp_app_secret|whatsapp_webhook_verify_token|42703/i.test(
+      upsertError.message || '',
+    )
+  ) {
+    const legacyPayload = {
+      config_key: 'default',
+      openai_api_key: payload.openai_api_key,
+      whatsapp_access_token: payload.whatsapp_access_token,
+      whatsapp_phone_number_id: payload.whatsapp_phone_number_id,
+      whatsapp_api_url: payload.whatsapp_api_url,
+      cron_secret: payload.cron_secret,
+      telecrm_webhook_secret: payload.telecrm_webhook_secret,
+      use_db_credentials: payload.use_db_credentials,
+      admin_notes: payload.admin_notes,
+      updated_by: payload.updated_by,
+      updated_at: payload.updated_at,
+    };
+    ({ error: upsertError } = await supabaseAdmin
+      .from('whatsapp_agents_env_config')
+      .upsert(legacyPayload, { onConflict: 'config_key' }));
+
+    if (!upsertError) {
+      invalidateWhatsAppAgentsCredentialsCache();
+      return {
+        ok: false,
+        error:
+          'Saved base WhatsApp keys, but WABA / App Secret / Verify Token columns are missing. Run database/269_whatsapp_env_meta_fields.sql in Supabase SQL Editor, then Save again.',
+      };
+    }
+  }
 
   if (upsertError) return { ok: false, error: upsertError.message };
 

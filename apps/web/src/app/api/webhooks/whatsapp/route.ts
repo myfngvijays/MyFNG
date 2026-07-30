@@ -16,9 +16,7 @@ import {
   ensureWhatsAppInboundServiceLead,
   extractWhatsAppReferral,
 } from '@/lib/whatsappAgents/inboundServiceLead';
-
-const WHATSAPP_WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
-const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
+import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 
 type WhatsAppStatus = {
   id?: string;
@@ -171,12 +169,16 @@ function extractSessionCandidates(call: WhatsAppCallEvent): any[] {
   return [...fromCall, ...fromSession].filter(Boolean);
 }
 
-function isSignatureValid(rawBody: string, signatureHeader: string | null): boolean {
-  if (!WHATSAPP_APP_SECRET) return true;
+function isSignatureValid(
+  rawBody: string,
+  signatureHeader: string | null,
+  appSecret: string,
+): boolean {
+  if (!appSecret) return true;
   if (!signatureHeader?.startsWith('sha256=')) return false;
 
   const expected = `sha256=${crypto
-    .createHmac('sha256', WHATSAPP_APP_SECRET)
+    .createHmac('sha256', appSecret)
     .update(rawBody, 'utf8')
     .digest('hex')}`;
 
@@ -192,11 +194,15 @@ export async function GET(request: NextRequest) {
   const verifyToken = request.nextUrl.searchParams.get('hub.verify_token');
   const challenge = request.nextUrl.searchParams.get('hub.challenge');
 
-  if (!WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const expectedVerify =
+    creds.whatsapp_webhook_verify_token || process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '';
+
+  if (!expectedVerify) {
     return NextResponse.json({ error: 'Webhook verify token is not configured' }, { status: 500 });
   }
 
-  if (mode === 'subscribe' && verifyToken === WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+  if (mode === 'subscribe' && verifyToken === expectedVerify) {
     return new NextResponse(challenge || '', { status: 200 });
   }
 
@@ -207,7 +213,10 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signatureHeader = request.headers.get('x-hub-signature-256');
 
-  if (!isSignatureValid(rawBody, signatureHeader)) {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const appSecret = creds.whatsapp_app_secret || process.env.WHATSAPP_APP_SECRET || '';
+
+  if (!isSignatureValid(rawBody, signatureHeader, appSecret)) {
     return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
   }
 

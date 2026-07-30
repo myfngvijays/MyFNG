@@ -54,7 +54,11 @@ export async function checkWhatsAppAgentsCredentials(): Promise<AgentsHealthResu
         headers: { Authorization: `Bearer ${creds.whatsapp_access_token}` },
       });
       if (response.ok) {
-        result.whatsapp = { ok: true, message: 'WhatsApp Cloud API reachable' };
+        const bits = ['Phone OK'];
+        if (creds.whatsapp_business_account_id.trim()) bits.push(`WABA ${creds.whatsapp_business_account_id}`);
+        if (creds.whatsapp_app_secret.trim()) bits.push('App secret set');
+        if (creds.whatsapp_webhook_verify_token.trim()) bits.push('Verify token set');
+        result.whatsapp = { ok: true, message: bits.join(' · ') };
       } else {
         const text = await response.text();
         result.whatsapp = { ok: false, message: `WhatsApp error (${response.status}): ${text.slice(0, 120)}` };
