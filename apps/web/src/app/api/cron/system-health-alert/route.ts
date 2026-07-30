@@ -4,11 +4,11 @@ import {
   buildHealthAlertContent,
   sendHealthAlertMessage,
 } from '@/lib/services/systemHealthAlertTemplate';
+import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
+import { isWhatsAppCronJobEnabled } from '@/lib/services/whatsappCronJobFlags';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const ADMIN_WHATSAPP_NUMBERS = (process.env.SYSTEM_ALERT_WHATSAPP_NUMBERS || '').split(',').filter(Boolean);
 
 function assertCronAuth(req: NextRequest): string | null {
   const secret = process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET;
@@ -144,14 +144,39 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: authError }, { status: 401 });
   }
 
-  if (ADMIN_WHATSAPP_NUMBERS.length === 0) {
-    return NextResponse.json({ error: 'SYSTEM_ALERT_WHATSAPP_NUMBERS not configured' }, { status: 400 });
+  const slot = String(request.nextUrl.searchParams.get('slot') || '').trim().toLowerCase();
+  const jobId =
+    slot === 'evening'
+      ? 'system-health-evening'
+      : slot === 'morning'
+        ? 'system-health-morning'
+        : null;
+
+  if (jobId && !(await isWhatsAppCronJobEnabled(jobId))) {
+    return NextResponse.json({
+      success: true,
+      skipped: true,
+      reason: 'job_disabled_in_admin',
+      slot: slot || null,
+      jobId,
+    });
+  }
+
+  const adminNumbers = await getEnabledSystemAlertWhatsAppNumbers();
+  if (adminNumbers.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          'No enabled alert WhatsApp numbers. Configure on WhatsApp Cron page or SYSTEM_ALERT_WHATSAPP_NUMBERS.',
+      },
+      { status: 400 },
+    );
   }
 
   const checks = await runAllChecks();
-  const downServices = checks.filter(c => c.status === 'down');
-  const degradedServices = checks.filter(c => c.status === 'degraded');
-  const healthyServices = checks.filter(c => c.status === 'healthy');
+  const downServices = checks.filter((c) => c.status === 'down');
+  const degradedServices = checks.filter((c) => c.status === 'degraded');
+  const healthyServices = checks.filter((c) => c.status === 'healthy');
   const total = checks.length;
 
   const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -167,7 +192,7 @@ export async function GET(request: NextRequest) {
   const alertContent = buildHealthAlertContent(summary);
 
   const sendResults = [];
-  for (const number of ADMIN_WHATSAPP_NUMBERS) {
+  for (const number of adminNumbers) {
     const result = await sendHealthAlertMessage(number.trim(), summary);
     sendResults.push({ number: number.trim(), ...result, preview: alertContent.statusLabel });
   }
@@ -175,7 +200,14 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     timestamp,
-    summary: { total, healthy: healthyServices.length, degraded: degradedServices.length, down: downServices.length },
+    slot: slot || null,
+    jobId,
+    summary: {
+      total,
+      healthy: healthyServices.length,
+      degraded: degradedServices.length,
+      down: downServices.length,
+    },
     checks,
     alertsSent: sendResults,
   });

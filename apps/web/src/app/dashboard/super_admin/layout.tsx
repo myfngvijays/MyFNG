@@ -58,6 +58,7 @@ import {
   Code2,
   List,
   Layers,
+  Clock3,
 } from 'lucide-react';
 
 type NavItem = {
@@ -543,6 +544,12 @@ const navigationItems: NavItem[] = [
         href: '/dashboard/super_admin/whatsapp-automation',
         icon: Send,
         description: 'Booking & lifecycle WhatsApp triggers',
+      },
+      {
+        name: 'WhatsApp Cron',
+        href: '/dashboard/super_admin/whatsapp-cron',
+        icon: Clock3,
+        description: 'Supabase cron jobs, times & run now',
       },
       {
         name: 'Bot Flow',

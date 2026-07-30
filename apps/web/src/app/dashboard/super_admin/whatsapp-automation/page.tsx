@@ -45,10 +45,11 @@ const CRON_TRIGGER_KEYS = new Set([
 ]);
 
 const CRON_SCHEDULE_HINTS: Record<string, string> = {
-  booking_incomplete: 'Daily scan — inactive drafts 24h+',
-  admin_daily_summary: 'Daily 9 AM IST',
-  service_due_reminder: 'Mondays IST — 6 months since last service',
-  membership_expiring: 'Daily — memberships expiring within 7 days',
+  booking_incomplete: 'Cron · Daily 10:00 AM IST',
+  admin_daily_summary: 'Cron · Daily 10:15 AM IST',
+  service_due_reminder: 'Cron · Mondays 10:45 AM IST',
+  membership_expiring: 'Cron · Daily 10:30 AM IST',
+  app_uninstalled: 'Cron · Daily 9:30 AM IST (FCM probe)',
 };
 
 function isCronTrigger(triggerKey: string) {
@@ -436,7 +437,13 @@ export default function WhatsAppAutomationPage() {
           <div>
             <p className="text-sm font-semibold text-gray-900">Scheduled cron jobs (master)</p>
             <p className="text-xs text-gray-500 mt-1">
-              Controls all cron-driven WhatsApp jobs: booking incomplete, admin daily summary, service due, membership expiring.
+              Controls all cron-driven WhatsApp jobs.{' '}
+              <a
+                href="/dashboard/super_admin/whatsapp-cron"
+                className="font-semibold text-violet-700 hover:underline"
+              >
+                See full schedule & times →
+              </a>
             </p>
           </div>
           <div className="flex items-center gap-3">

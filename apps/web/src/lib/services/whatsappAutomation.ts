@@ -24,6 +24,7 @@ export const WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS = [
   'admin_daily_summary',
   'service_due_reminder',
   'membership_expiring',
+  'app_uninstalled',
 ] as const;
 
 export type WhatsAppAutomationCronTriggerKey = (typeof WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS)[number];
@@ -37,10 +38,11 @@ export function isCronEligibleAutomationTrigger(
 }
 
 export const WHATSAPP_AUTOMATION_CRON_SCHEDULE_HINTS: Record<WhatsAppAutomationCronTriggerKey, string> = {
-  booking_incomplete: 'Daily scan — inactive drafts 24h+',
-  admin_daily_summary: 'Daily 9 AM IST',
-  service_due_reminder: 'Mondays IST — 6 months since last service',
-  membership_expiring: 'Daily — memberships expiring within 7 days',
+  booking_incomplete: 'Cron · Daily 10:00 AM IST',
+  admin_daily_summary: 'Cron · Daily 10:15 AM IST',
+  service_due_reminder: 'Cron · Mondays 10:45 AM IST',
+  membership_expiring: 'Cron · Daily 10:30 AM IST',
+  app_uninstalled: 'Cron · Daily 9:30 AM IST (FCM probe)',
 };
 
 export type WhatsAppAutomationTriggerKey = (typeof WHATSAPP_AUTOMATION_TRIGGER_KEYS)[number];

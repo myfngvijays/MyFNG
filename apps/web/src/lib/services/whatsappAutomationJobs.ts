@@ -6,11 +6,7 @@ import {
 } from '@/lib/services/whatsappAutomation';
 import { getAutomationTemplateExamples } from '@/lib/services/whatsappAutomationMeta';
 import { notifyMembershipPaymentFailedWhatsApp } from '@/lib/services/membershipPaymentWhatsApp';
-
-const ADMIN_WHATSAPP_NUMBERS = (process.env.SYSTEM_ALERT_WHATSAPP_NUMBERS || '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
+import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -88,8 +84,9 @@ export async function runAdminDailySummaryJob(force = false) {
 
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { sent: 0, error: 'Admin client unavailable' };
+  const ADMIN_WHATSAPP_NUMBERS = await getEnabledSystemAlertWhatsAppNumbers();
   if (ADMIN_WHATSAPP_NUMBERS.length === 0) {
-    return { sent: 0, error: 'SYSTEM_ALERT_WHATSAPP_NUMBERS not configured' };
+    return { sent: 0, error: 'No enabled system alert WhatsApp numbers' };
   }
 
   const now = new Date();

@@ -7,6 +7,7 @@ import {
 } from '@/lib/services/openAiBalanceAlertTemplate';
 import { getMisaAiUsdInrRate } from '@/lib/chatbot_v2/misaAiBilling';
 import { getOpenAiOrgSpendUsdInRange } from '@/lib/chatbot_v2/openAiOrgUsage';
+import { getEnabledSystemAlertWhatsAppNumbers } from '@/lib/services/systemAlertWhatsAppNumbers';
 
 const DEFAULT_ALERT_MILESTONES_USD = [5, 4, 3, 2, 1];
 
@@ -22,11 +23,6 @@ const SETTING_KEYS = {
   milestonesUsd: 'openai_credit_alert_milestones_usd',
   milestonesSent: 'openai_credit_alert_milestones_sent',
 } as const;
-
-const ADMIN_WHATSAPP_NUMBERS = (process.env.SYSTEM_ALERT_WHATSAPP_NUMBERS || '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
 
 export type OpenAiCreditBalanceSettings = {
   baseline_usd: number | null;
@@ -223,6 +219,8 @@ export async function getOpenAiCreditBalanceStatus(): Promise<OpenAiCreditBalanc
     process.env.OPENAI_ADMIN_API_KEY?.trim() || process.env.OPENAI_ADMIN_KEY?.trim(),
   );
   const settings = await getOpenAiCreditBalanceSettings();
+  const alertNumbers = await getEnabledSystemAlertWhatsAppNumbers();
+  const whatsappConfigured = alertNumbers.length > 0;
   const usdInr = getMisaAiUsdInrRate();
   const highestMilestone = settings.alert_milestones_usd[0] ?? settings.alert_threshold_usd;
 
@@ -237,7 +235,7 @@ export async function getOpenAiCreditBalanceStatus(): Promise<OpenAiCreditBalanc
       is_low: false,
       alert_ready: false,
       pending_milestones_usd: [],
-      whatsapp_configured: ADMIN_WHATSAPP_NUMBERS.length > 0,
+      whatsapp_configured: whatsappConfigured,
       note: 'Set your current OpenAI prepaid balance after each top-up. Alerts fire at $5, $4, $3, $2 and $1 milestones.',
     };
   }
@@ -253,7 +251,7 @@ export async function getOpenAiCreditBalanceStatus(): Promise<OpenAiCreditBalanc
       is_low: false,
       alert_ready: false,
       pending_milestones_usd: [],
-      whatsapp_configured: ADMIN_WHATSAPP_NUMBERS.length > 0,
+      whatsapp_configured: whatsappConfigured,
       error: 'OPENAI_ADMIN_API_KEY is not configured',
       note: 'Admin API key is required to fetch org costs since baseline date.',
     };
@@ -290,9 +288,9 @@ export async function getOpenAiCreditBalanceStatus(): Promise<OpenAiCreditBalanc
       estimated_remaining_inr: Math.round(estimatedRemaining * usdInr),
       is_low: isLow,
       alert_ready:
-        pendingMilestones.length > 0 && settings.alert_enabled && ADMIN_WHATSAPP_NUMBERS.length > 0,
+        pendingMilestones.length > 0 && settings.alert_enabled && whatsappConfigured,
       pending_milestones_usd: pendingMilestones,
-      whatsapp_configured: ADMIN_WHATSAPP_NUMBERS.length > 0,
+      whatsapp_configured: whatsappConfigured,
       note: `Alerts at $5, $4, $3, $2 and $1 — each milestone once per top-up cycle. Update baseline after manual top-ups.${trackingNote}`,
     };
   } catch (error: unknown) {
@@ -306,7 +304,7 @@ export async function getOpenAiCreditBalanceStatus(): Promise<OpenAiCreditBalanc
       is_low: false,
       alert_ready: false,
       pending_milestones_usd: [],
-      whatsapp_configured: ADMIN_WHATSAPP_NUMBERS.length > 0,
+      whatsapp_configured: whatsappConfigured,
       error: error instanceof Error ? error.message : String(error),
       note: 'Could not fetch OpenAI costs for balance estimate.',
     };
@@ -445,8 +443,9 @@ export async function runOpenAiCreditBalanceAlert(options?: {
       estimated_remaining_usd: status.estimated_remaining_usd ?? testMilestone,
       is_low: true,
     };
+    const alertNumbers = await getEnabledSystemAlertWhatsAppNumbers();
     const results = [];
-    for (const number of ADMIN_WHATSAPP_NUMBERS) {
+    for (const number of alertNumbers) {
       const result = await sendBalanceAlertToNumber(number, testStatus, testMilestone, { test: true });
       results.push({ number, milestone_usd: testMilestone, ...result });
     }
@@ -512,9 +511,10 @@ export async function runOpenAiCreditBalanceAlert(options?: {
   }> = [];
   const milestonesAlerted: number[] = [];
 
+  const alertNumbers = await getEnabledSystemAlertWhatsAppNumbers();
   for (const milestoneUsd of milestonesToSend) {
     let milestoneSent = false;
-    for (const number of ADMIN_WHATSAPP_NUMBERS) {
+    for (const number of alertNumbers) {
       const result = await sendBalanceAlertToNumber(number, status, milestoneUsd);
       results.push({ number, milestone_usd: milestoneUsd, ...result });
       if (result.success) milestoneSent = true;
