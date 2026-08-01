@@ -2,6 +2,7 @@ import { CHATBOT_TOOLS } from '@/lib/chatbot_v2/chatbot-tools';
 import { runMisaAgent } from '@/lib/chatbot_v2/runAgent';
 import { MISA_GREETING_EN, SYSTEM_PROMPT } from '@/lib/chatbot_v2/chatbot-system-prompt';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { shouldSkipBotsForHumanAssignment } from '@/lib/whatsappAgents/shared/memoryService';
 import {
   normalizePhoneNumber,
   sendListMessage,
@@ -105,18 +106,7 @@ function truncateForWhatsApp(text: string, max = 3900): string {
 }
 
 async function isChatAssignedToHuman(phone: string): Promise<boolean> {
-  const { supabaseAdmin } = getSupabaseAdmin();
-  if (!supabaseAdmin) return false;
-
-  const normalized = normalizePhoneNumber(phone);
-  const { data } = await supabaseAdmin
-    .from('whatsapp_chat_assignments')
-    .select('assigned_to_ids')
-    .eq('phone', normalized)
-    .maybeSingle();
-
-  const ids = Array.isArray(data?.assigned_to_ids) ? data.assigned_to_ids : [];
-  return ids.length > 0;
+  return shouldSkipBotsForHumanAssignment(phone);
 }
 
 async function archiveBrainOutboundMessage(
@@ -449,6 +439,7 @@ async function runFlowBrain(input: {
     profileName: input.profileName,
     dryRun: input.dryRun,
     config: input.config,
+    inboundReceivedAt: input.inboundReceivedAt,
   });
 
   if (!flowResult.handled) {
@@ -513,7 +504,13 @@ export async function processWhatsAppBrainMessage(input: BrainProcessInput): Pro
         started,
       });
 
-      if (flowResult.handled) return flowResult;
+      if (flowResult.handled && (flowResult.sent || input.dryRun)) return flowResult;
+
+      if (flowResult.handled && config.mode === 'HYBRID' && !flowResult.sent) {
+        // Flow composed a reply but WhatsApp send failed — fall through to MISA AI.
+      } else if (flowResult.handled) {
+        return flowResult;
+      }
 
       if (config.mode === 'FLOW_FIRST') {
         const fallback = truncateForWhatsApp(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDbWithAdmin } from '../../utils';
 import { processWhatsAppBrainMessage } from '@/lib/whatsappBotFlow/brain';
 import { fetchWhatsAppBrainConfig } from '@/lib/whatsappBotFlow/brainConfig';
+import { processInboundWhatsAppMessage, summarizeInboundWhatsAppResult } from '@/lib/whatsappAgents/router';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,17 +17,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'message is required' }, { status: 400 });
     }
 
+    const live = Boolean(body?.live);
     const config = await fetchWhatsAppBrainConfig(true);
-    const result = await processWhatsAppBrainMessage({
-      phone,
-      message,
-      profileName: body?.profile_name || 'Test User',
-      dryRun: true,
-    });
+    const result = live
+      ? await processInboundWhatsAppMessage({
+          phone,
+          message,
+          profileName: body?.profile_name || 'Test User',
+          dryRun: false,
+        })
+      : await processWhatsAppBrainMessage({
+          phone,
+          message,
+          profileName: body?.profile_name || 'Test User',
+          dryRun: true,
+        });
 
     return NextResponse.json({
       success: true,
+      live,
       config_enabled: config.enabled,
+      summary: live ? summarizeInboundWhatsAppResult(result) : undefined,
       result,
     });
   } catch (error: any) {

@@ -1,6 +1,7 @@
 import { CHATBOT_TOOLS, executeToolCall } from './chatbot-tools';
 import { logMisaAiUsage } from './misaAiUsageLog';
 import { getSession, saveSession, type SessionData } from './session';
+import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
 
 type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -57,16 +58,22 @@ type CompletionResult = {
   usage?: CompletionUsage;
 };
 
+async function resolveOpenAiApiKey(): Promise<string> {
+  const creds = await getResolvedWhatsAppAgentsCredentials();
+  const apiKey = String(creds.openai_api_key || process.env.OPENAI_API_KEY || '').trim();
+  if (!apiKey) {
+    throw new Error('OpenAI API key is missing');
+  }
+  return apiKey;
+}
+
 async function createCompletion(
   messages: ChatMessage[],
   model: string,
   tools: typeof CHATBOT_TOOLS,
   maxTokens: number,
 ): Promise<CompletionResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OpenAI API key is missing');
-  }
+  const apiKey = await resolveOpenAiApiKey();
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

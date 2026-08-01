@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendTemplateMessage } from '@/lib/services/whatsappService';
+import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
 import type { SessionData } from './session';
 
 const WINDOW_MINUTES = 15;
@@ -104,30 +104,7 @@ export async function sendBookingOtpForPhone(
     return { success: false, error: 'Failed to create OTP request' };
   }
 
-  const attempts: Array<{ languageCode: string; templateParams: string[]; buttonUrlParams?: string[] }> = [
-    { languageCode: 'en', templateParams: [otpCode], buttonUrlParams: [otpCode] },
-    { languageCode: 'en', templateParams: [otpCode] },
-    { languageCode: 'en', templateParams: [otpCode, otpCode] },
-    { languageCode: 'en_US', templateParams: [otpCode], buttonUrlParams: [otpCode] },
-    { languageCode: 'en_US', templateParams: [otpCode] },
-    { languageCode: 'en_US', templateParams: [otpCode, otpCode] },
-  ];
-
-  let waResult = { success: false, error: 'Unknown WhatsApp error' as string | undefined };
-  for (const attempt of attempts) {
-    const result = await sendTemplateMessage({
-      phoneNumber: normalized,
-      templateName: 'otp',
-      templateParams: attempt.templateParams,
-      buttonUrlParams: attempt.buttonUrlParams,
-      languageCode: attempt.languageCode,
-    });
-    if (result.success) {
-      waResult = result;
-      break;
-    }
-    waResult = result;
-  }
+  const waResult = await sendWhatsAppOtpMessage(normalized, otpCode);
 
   if (!waResult.success) {
     await supabaseAdmin

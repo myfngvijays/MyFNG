@@ -18,7 +18,7 @@ import {
   getActiveInstance,
   updateInstance,
 } from '../shared/instanceService';
-import { isChatAssignedToHuman, loadMemory, saveMemory } from '../shared/memoryService';
+import { isChatAssignedToHuman, loadMemory, saveMemory, shouldSkipBotsForHumanAssignment } from '../shared/memoryService';
 import { sendAgentTextMessage } from '../shared/outbound';
 import { hasBookingIntent } from './intent';
 import { bookingSessionId, buildBookingSystemPrompt } from './prompt';
@@ -68,7 +68,7 @@ export async function shouldRouteToBookingAgent(phone: string, message: string):
   const config = await fetchAgentConfig('BOOKING');
   if (!config.enabled) return false;
 
-  if (config.rules_json.skip_assigned_chats && (await isChatAssignedToHuman(phone))) {
+  if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
     return false;
   }
 
@@ -99,7 +99,7 @@ export async function processBookingAgentMessage(input: BookingAgentInput): Prom
     }
   }
 
-  if (config.rules_json.skip_assigned_chats && (await isChatAssignedToHuman(phone))) {
+  if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) {
     return { handled: false, skippedReason: 'assigned_to_human' };
   }
 

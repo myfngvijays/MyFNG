@@ -172,3 +172,23 @@ export async function endInstance(
     .eq('instance_id', instanceId)
     .eq('status', 'PENDING');
 }
+
+export async function endStaleAgentInstances(phone: string, maxIdleHours = 72): Promise<number> {
+  const instances = await getActiveInstancesByPhone(phone);
+  if (!instances.length) return 0;
+
+  const cutoffMs = Date.now() - maxIdleHours * 60 * 60 * 1000;
+  let ended = 0;
+
+  for (const instance of instances) {
+    const lastTouch = String(
+      instance.last_customer_reply_at || instance.last_action_at || instance.created_at || '',
+    ).trim();
+    const lastMs = Date.parse(lastTouch);
+    if (!Number.isFinite(lastMs) || lastMs >= cutoffMs) continue;
+    await endInstance(instance.id, 'MANUAL');
+    ended += 1;
+  }
+
+  return ended;
+}

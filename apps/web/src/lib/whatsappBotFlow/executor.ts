@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendTemplateMessage, sendTextMessage } from '@/lib/services/whatsappService';
+import { sendTemplateMessage } from '@/lib/services/whatsappService';
 import {
   normalizeBotFlowGraph,
   type BotFlowEdge,
@@ -10,6 +10,7 @@ import { upsertFlowSession, getFlowSession, type FlowSessionRecord } from './ses
 import type { WhatsAppBrainConfig } from './brainConfig';
 import { isRsaRelatedMessage } from './rsaIntent';
 import { performWhatsAppHandoff } from './handoff';
+import { sendBrainOutboundMessage } from './sessionWindow';
 
 export type FlowExecuteInput = {
   phone: string;
@@ -17,6 +18,7 @@ export type FlowExecuteInput = {
   profileName?: string | null;
   dryRun?: boolean;
   config: WhatsAppBrainConfig;
+  inboundReceivedAt?: string | null;
 };
 
 export type FlowExecuteResult = {
@@ -189,6 +191,17 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
   let steps = 0;
   let terminalStatus: 'ACTIVE' | 'COMPLETED' | 'HANDOFF' | null = null;
 
+  async function sendFlowText(body: string) {
+    if (input.dryRun) return true;
+    const result = await sendBrainOutboundMessage({
+      phone,
+      message: body,
+      config: input.config,
+      inboundAt: input.inboundReceivedAt,
+    });
+    return result.success;
+  }
+
   while (currentNodeId && steps < 12) {
     steps += 1;
     const node = graph.nodes.find((n) => n.id === currentNodeId);
@@ -206,10 +219,7 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
       const body = String(node.data?.messageBody || node.data?.text || node.data?.label || '').trim();
       if (body) {
         replies.push(body);
-        if (!input.dryRun) {
-          const res = await sendTextMessage(phone, body);
-          sent = sent || res.success;
-        }
+        sent = (await sendFlowText(body)) || sent;
       }
       currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;
       continue;
@@ -246,8 +256,7 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
           message,
           profileName: input.profileName,
         });
-        const res = await sendTextMessage(phone, replies[replies.length - 1]);
-        sent = sent || res.success;
+        sent = (await sendFlowText(replies[replies.length - 1])) || sent;
       }
       terminalStatus = 'HANDOFF';
       currentNodeId = null;
@@ -258,10 +267,7 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
       const body = String(node.data?.messageBody || node.data?.text || '').trim();
       if (body) {
         replies.push(body);
-        if (!input.dryRun) {
-          const res = await sendTextMessage(phone, body);
-          sent = sent || res.success;
-        }
+        sent = (await sendFlowText(body)) || sent;
       }
       terminalStatus = 'COMPLETED';
       currentNodeId = null;

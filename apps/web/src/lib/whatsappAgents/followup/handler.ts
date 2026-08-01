@@ -10,7 +10,7 @@ import {
   getActiveInstance,
   normalizeAgentPhone,
 } from '../shared/instanceService';
-import { isChatAssignedToHuman, loadMemory, loadRecentOutboundTextsForPhone, saveMemory } from '../shared/memoryService';
+import { loadMemory, loadRecentOutboundTextsForPhone, saveMemory, shouldSkipBotsForHumanAssignment } from '../shared/memoryService';
 import { hasBookingIntent } from '../booking/intent';
 import { activateBookingAgentFromChase } from '../booking/handler';
 import type { AgentEventType, AgentInstance } from '../shared/types';
@@ -110,7 +110,7 @@ export async function processFollowupAgentEvent(input: FollowupAgentInput): Prom
     return { handled: false, skippedReason: 'followup_agent_disabled' };
   }
 
-  if (config.rules_json.skip_assigned_chats && !input.dryRun && !input.force && (await isChatAssignedToHuman(phone))) {
+  if (config.rules_json.skip_assigned_chats && !input.dryRun && !input.force && (await shouldSkipBotsForHumanAssignment(phone))) {
     return { handled: false, skippedReason: 'chat_assigned_to_human' };
   }
 
@@ -544,7 +544,7 @@ export async function triggerManualFollowupForPhone(input: {
   if (
     !input.ignoreAssigned &&
     config.rules_json.skip_assigned_chats &&
-    (await isChatAssignedToHuman(phone))
+    (await shouldSkipBotsForHumanAssignment(phone))
   ) {
     return { handled: false, skippedReason: 'chat_assigned_to_human' };
   }

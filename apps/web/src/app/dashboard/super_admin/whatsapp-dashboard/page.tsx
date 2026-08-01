@@ -458,9 +458,16 @@ export default function SuperAdminWhatsAppDashboardPage() {
 
   const chartDailyVolume = chartData?.daily_volume || [];
 
-  const maxDailySent = useMemo(() => {
-    return Math.max(1, ...chartDailyVolume.map((row) => row.sent));
+  const maxDailyChartValue = useMemo(() => {
+    const values = chartDailyVolume.flatMap((row) => [row.sent, row.delivered, row.read, row.failed]);
+    return Math.max(1, ...values, 0);
   }, [chartDailyVolume]);
+
+  const dailyBarHeight = (value: number, minPx = 4) => {
+    if (value <= 0) return `${minPx}px`;
+    const pct = Math.min(100, Math.max(8, (value / maxDailyChartValue) * 100));
+    return `${pct}%`;
+  };
 
   const dailyVolumeTotal = chartData?.sent_total || 0;
 
@@ -741,25 +748,25 @@ export default function SuperAdminWhatsAppDashboardPage() {
             ) : (
               chartDailyVolume.map((row) => (
                 <div key={row.date} className="flex min-w-0 flex-col items-center gap-2">
-                  <div className="flex h-40 w-full max-w-[72px] items-end justify-center gap-1 rounded-lg bg-gray-50 p-2">
+                  <div className="flex h-40 w-full max-w-[72px] items-end justify-center gap-1 overflow-hidden rounded-lg bg-gray-50 p-2">
                     <div
                       className="w-2 rounded-t bg-blue-500 transition-all"
-                      style={{ height: row.sent > 0 ? `${Math.max(10, (row.sent / maxDailySent) * 100)}%` : '4px', opacity: row.sent > 0 ? 1 : 0.25 }}
+                      style={{ height: dailyBarHeight(row.sent), opacity: row.sent > 0 ? 1 : 0.25 }}
                       title={`Sent: ${row.sent}`}
                     />
                     <div
                       className="w-2 rounded-t bg-emerald-500 transition-all"
-                      style={{ height: row.delivered > 0 ? `${Math.max(8, (row.delivered / maxDailySent) * 100)}%` : '4px', opacity: row.delivered > 0 ? 1 : 0.25 }}
+                      style={{ height: dailyBarHeight(row.delivered), opacity: row.delivered > 0 ? 1 : 0.25 }}
                       title={`Delivered: ${row.delivered}`}
                     />
                     <div
                       className="w-2 rounded-t bg-violet-500 transition-all"
-                      style={{ height: row.read > 0 ? `${Math.max(8, (row.read / maxDailySent) * 100)}%` : '4px', opacity: row.read > 0 ? 1 : 0.25 }}
+                      style={{ height: dailyBarHeight(row.read), opacity: row.read > 0 ? 1 : 0.25 }}
                       title={`Read: ${row.read}`}
                     />
                     <div
                       className="w-2 rounded-t bg-red-400 transition-all"
-                      style={{ height: row.failed > 0 ? `${Math.max(8, (row.failed / maxDailySent) * 100)}%` : '4px', opacity: row.failed > 0 ? 1 : 0.25 }}
+                      style={{ height: dailyBarHeight(row.failed), opacity: row.failed > 0 ? 1 : 0.25 }}
                       title={`Failed: ${row.failed}`}
                     />
                   </div>

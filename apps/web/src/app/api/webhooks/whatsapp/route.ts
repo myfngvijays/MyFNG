@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { processInboundWhatsAppMessage } from '@/lib/whatsappAgents/router';
+import { processInboundWhatsAppMessage, summarizeInboundWhatsAppResult } from '@/lib/whatsappAgents/router';
 import {
   extractInboundBrainText,
   isBrainEligibleInboundType,
@@ -274,6 +274,7 @@ export async function POST(request: NextRequest) {
   let failedCount = 0;
   let callUpdatedCount = 0;
   let recordingUpdatedCount = 0;
+  const brainTasks: Array<Promise<{ phone: string; summary: string }>> = [];
 
   for (const entry of entries) {
     const changes = Array.isArray(entry?.changes) ? entry.changes : [];
@@ -428,17 +429,26 @@ export async function POST(request: NextRequest) {
           isBrainEligibleInboundType(messageType) &&
           !pricingPlanPointsHandled
         ) {
-          void processInboundWhatsAppMessage({
-            phone: senderPhone,
-            message: brainText,
-            profileName,
-            inboundReceivedAt: statusAt || now,
-          }).catch((brainError) => {
-            console.error('WhatsApp AI brain auto-reply failed:', {
-              senderPhone,
-              error: brainError?.message || brainError,
-            });
-          });
+          brainTasks.push(
+            processInboundWhatsAppMessage({
+              phone: senderPhone,
+              message: brainText,
+              profileName,
+              inboundReceivedAt: statusAt || now,
+            })
+              .then((result) => ({
+                phone: senderPhone,
+                summary: summarizeInboundWhatsAppResult(result),
+              }))
+              .catch((brainError) => {
+                const message = String(brainError?.message || brainError || 'brain_error');
+                console.error('WhatsApp AI brain auto-reply failed:', {
+                  senderPhone,
+                  error: message,
+                });
+                return { phone: senderPhone, summary: `error:${message.slice(0, 120)}` };
+              }),
+          );
         }
       }
 
@@ -879,13 +889,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let brainProcessNote = '';
+  if (brainTasks.length > 0) {
+    const brainResults = await Promise.allSettled(brainTasks);
+    brainProcessNote = brainResults
+      .map((entry) =>
+        entry.status === 'fulfilled' ? `${entry.value.phone}:${entry.value.summary}` : 'brain:rejected',
+      )
+      .join('; ');
+    brainProcessNote = brainProcessNote ? `brain[${brainProcessNote}]` : '';
+  }
+
   if (webhookEvent?.id) {
     const { error: webhookUpdateError } = await db
       .from('whatsapp_webhook_events')
       .update({
         processed_at: new Date().toISOString(),
         process_status: 'PROCESSED',
-        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, calls_updated:${callUpdatedCount}, recordings_updated:${recordingUpdatedCount}, skipped:${skippedCount}, failed:${failedCount}`,
+        process_note: `inbound:${inboundCount}, status_updated:${updatedCount}, invoice_updated:${invoiceUpdatedCount}, calls_updated:${callUpdatedCount}, recordings_updated:${recordingUpdatedCount}, skipped:${skippedCount}, failed:${failedCount}${brainProcessNote ? `, ${brainProcessNote}` : ''}`,
       })
       .eq('id', webhookEvent.id);
     if (webhookUpdateError) {

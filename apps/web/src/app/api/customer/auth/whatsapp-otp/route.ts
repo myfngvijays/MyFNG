@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendTemplateMessage } from '@/lib/services/whatsappService';
+import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,13 +70,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create OTP request' }, { status: 500 });
   }
 
-  const waResult = await sendTemplateMessage({
-    phoneNumber: phone,
-    templateName: 'otp',
-    templateParams: [otpCode],
-    buttonUrlParams: [otpCode],
-    languageCode: 'en',
-  });
+  const waResult = await sendWhatsAppOtpMessage(phone, otpCode);
 
   if (!waResult.success) {
     await supabaseAdmin

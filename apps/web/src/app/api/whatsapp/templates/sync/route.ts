@@ -304,6 +304,7 @@ export async function POST() {
             template_id: row.meta?.template_id || null,
             synced_at: new Date().toISOString(),
             meta_linked: true,
+            waba_missing: false,
           },
           is_active:
             metaStatus === 'APPROVED'
@@ -317,14 +318,37 @@ export async function POST() {
       if (!linkError) linkedProtected += 1;
     }
 
+    let markedMissing = 0;
+    for (const templateName of doNotOverwrite) {
+      if (metaTemplateNames.has(templateName)) continue;
+      const priorMeta = existingMetaByName.get(templateName) || {};
+      const { error: missingError } = await adminDb
+        .from('whatsapp_templates')
+        .update({
+          is_active: false,
+          meta: {
+            ...priorMeta,
+            status: 'NOT_ON_WABA',
+            template_id: null,
+            synced_at: new Date().toISOString(),
+            meta_linked: false,
+            waba_missing: true,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('template_name', templateName);
+      if (!missingError) markedMissing += 1;
+    }
+
     return NextResponse.json({
       success: true,
       fetched: metaTemplates.length,
       synced: rowsToUpsert.length,
       linkedProtected,
+      markedMissing,
       deleted: 0,
       protected: Array.from(doNotOverwrite),
-      message: `Synced ${rowsToUpsert.length} templates from Meta.${linkedProtected > 0 ? ` Linked ${linkedProtected} protected templates.` : ''} No templates were auto-deleted.`,
+      message: `Synced ${rowsToUpsert.length} templates from Meta.${linkedProtected > 0 ? ` Linked ${linkedProtected} protected templates.` : ''}${markedMissing > 0 ? ` Marked ${markedMissing} local-only templates as NOT_ON_WABA.` : ''} No templates were auto-deleted.`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

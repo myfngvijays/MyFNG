@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { sendTemplateMessage } from '@/lib/services/whatsappService';
+import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,41 +71,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create OTP request' }, { status: 500 });
   }
 
-  const attempts: Array<{ languageCode: string; templateParams: string[]; buttonUrlParams?: string[] }> = [
-    { languageCode: 'en', templateParams: [otpCode], buttonUrlParams: [otpCode] },
-    { languageCode: 'en', templateParams: [otpCode] },
-    { languageCode: 'en', templateParams: [otpCode, otpCode] },
-    { languageCode: 'en_US', templateParams: [otpCode], buttonUrlParams: [otpCode] },
-    { languageCode: 'en_US', templateParams: [otpCode] },
-    { languageCode: 'en_US', templateParams: [otpCode, otpCode] },
-  ];
-
-  let waResult = { success: false, error: 'Unknown WhatsApp error', raw: null as unknown, statusCode: undefined as number | undefined };
-  const attemptErrors: Array<{ languageCode: string; paramsCount: number; error?: string; statusCode?: number; raw?: unknown }> = [];
-
-  for (const attempt of attempts) {
-    const result = await sendTemplateMessage({
-      phoneNumber: phone,
-      templateName: 'otp',
-      templateParams: attempt.templateParams,
-      buttonUrlParams: attempt.buttonUrlParams,
-      languageCode: attempt.languageCode,
-    });
-    if (result.success) {
-      waResult = result;
-      break;
-    }
-
-    waResult = result;
-    attemptErrors.push({
-      languageCode: attempt.languageCode,
-      paramsCount: attempt.templateParams.length,
-      buttonParamsCount: attempt.buttonUrlParams?.length || 0,
-      error: result.error,
-      statusCode: result.statusCode,
-      raw: result.raw,
-    });
-  }
+  const waResult = await sendWhatsAppOtpMessage(phone, otpCode);
+  const attemptErrors = Array.isArray((waResult as { attempts?: unknown }).attempts)
+    ? (waResult as { attempts: Array<{ label?: string; error?: string; statusCode?: number }> }).attempts
+    : [];
 
   if (!waResult.success) {
     await supabaseAdmin

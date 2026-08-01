@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { normalizePhoneNumber } from '@/lib/services/whatsappService';
 import { emptyMemory } from './configStore';
 import type { AgentMemory, AgentType, BuyingIntent, Sentiment } from './types';
 
@@ -130,14 +131,54 @@ export async function countDailyOutboundMessages(instanceId: string): Promise<nu
 export async function isChatAssignedToHuman(phone: string): Promise<boolean> {
   const db = getAdminDb();
   const normalized = normalizePhoneNumber(phone);
+  const last10 = normalized.slice(-10);
   const { data } = await db
     .from('whatsapp_chat_assignments')
-    .select('assigned_to_ids')
-    .eq('phone', normalized)
+    .select('assigned_to_ids, phone')
+    .or(`phone.eq.${normalized},phone.eq.${last10},phone.eq.91${last10}`)
+    .limit(1)
     .maybeSingle();
 
   const ids = Array.isArray(data?.assigned_to_ids) ? data.assigned_to_ids : [];
-  return ids.length > 0;
+  return ids.filter(Boolean).length > 0;
+}
+
+function isManualHumanWhatsAppOutbound(row: {
+  message_type?: string | null;
+  meta?: Record<string, unknown> | null;
+  payload?: Record<string, unknown> | null;
+}): boolean {
+  const meta = (row.meta || {}) as Record<string, unknown>;
+  const payload = (row.payload || {}) as Record<string, unknown>;
+  if (meta.brain_auto_reply || meta.agent_auto_reply) return false;
+  if (meta.source === 'whatsapp_automation' || meta.trigger_key) return false;
+  if (payload.source === 'whatsapp_automation') return false;
+  if (String(row.message_type || '').toUpperCase() === 'TEMPLATE') return false;
+  return true;
+}
+
+/**
+ * Only pause bots when a human is assigned AND recently sent a manual (non-bot) WhatsApp message.
+ * Assignment alone (e.g. auto-map from admin panel) should not permanently silence MISA.
+ */
+export async function shouldSkipBotsForHumanAssignment(phone: string): Promise<boolean> {
+  if (!(await isChatAssignedToHuman(phone))) return false;
+
+  const db = getAdminDb();
+  const normalized = normalizePhoneNumber(phone);
+  const last10 = normalized.slice(-10);
+  const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+  const { data: outbound } = await db
+    .from('whatsapp_messages')
+    .select('message_type, meta, payload')
+    .eq('direction', 'OUTBOUND')
+    .or(`recipient_phone.eq.${normalized},recipient_phone.eq.${last10},recipient_phone.eq.91${last10}`)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  return (outbound || []).some((row) => isManualHumanWhatsAppOutbound(row as any));
 }
 
 export type MemoryContextBundle = {

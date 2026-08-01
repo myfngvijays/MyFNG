@@ -23,10 +23,11 @@ type TemplateRow = {
   updated_at: string;
 };
 
-/** Push is for drafts not yet linked / rejected by Meta. */
+/** Push is for drafts not yet linked / rejected by Meta / missing on current WABA. */
 function canPushTemplateToMeta(row: TemplateRow) {
   const status = String(row.meta?.status || '').toUpperCase();
   const source = String(row.meta?.source || '').toLowerCase();
+  if (status === 'NOT_ON_WABA') return true;
   if (['APPROVED', 'PENDING', 'IN_APPEAL', 'PAUSED', 'DISABLED'].includes(status)) {
     return false;
   }
@@ -102,6 +103,8 @@ export default function WhatsAppTemplateManager() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [repushing, setRepushing] = useState(false);
+  const [ensuringOtp, setEnsuringOtp] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createStep, setCreateStep] = useState<1 | 2 | 3>(1);
   const [search, setSearch] = useState('');
@@ -374,6 +377,58 @@ export default function WhatsAppTemplateManager() {
       toast.error(error?.message || 'Failed to sync templates');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleEnsureOtpTemplate = async () => {
+    const confirmed = window.confirm(
+      'Create/link the AUTHENTICATION template "otp" on the current WABA in Meta?\n\nThis is required for booking + app login OTP.'
+    );
+    if (!confirmed) return;
+
+    setEnsuringOtp(true);
+    try {
+      const res = await fetch('/api/whatsapp/templates/ensure-otp', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to create OTP template on Meta');
+      toast.success(data?.message || 'OTP template submitted to Meta');
+      await loadTemplates(true);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to create OTP template on Meta');
+    } finally {
+      setEnsuringOtp(false);
+    }
+  };
+
+  const handleRepushAllTemplates = async () => {
+    const confirmed = window.confirm(
+      'Repush all templates to Meta using current env credentials (WHATSAPP_BUSINESS_ACCOUNT_ID + WHATSAPP_ACCESS_TOKEN).\n\nUpdate env first, then run this. Templates go to the WABA in env — not the old account.\n\nContinue?'
+    );
+    if (!confirmed) return;
+
+    setRepushing(true);
+    try {
+      const res = await fetch('/api/whatsapp/templates/repush-all', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to repush templates');
+      toast.success(
+        data?.message ||
+          `Repush done: ${data?.created ?? 0} submitted, ${data?.linked ?? 0} linked, ${data?.failed ?? 0} failed.`
+      );
+      if (Number(data?.failed) > 0) {
+        const failedNames = (data?.results || [])
+          .filter((row: { ok?: boolean }) => !row.ok)
+          .map((row: { template_name?: string }) => row.template_name)
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(', ');
+        if (failedNames) toast.error(`Failed: ${failedNames}${Number(data?.failed) > 5 ? '…' : ''}`);
+      }
+      await loadTemplates(true);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to repush templates');
+    } finally {
+      setRepushing(false);
     }
   };
 
@@ -713,8 +768,30 @@ export default function WhatsAppTemplateManager() {
 
           <button
             type="button"
+            onClick={handleEnsureOtpTemplate}
+            disabled={ensuringOtp || repushing || syncing}
+            className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+            title="Create AUTHENTICATION otp template on current Meta WABA"
+          >
+            <RefreshCcw className="mr-1 h-4 w-4" />
+            {ensuringOtp ? 'Creating OTP...' : 'Fix OTP on Meta'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRepushAllTemplates}
+            disabled={repushing || syncing || ensuringOtp}
+            className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+            title="Push all local templates to the WABA in env (after updating credentials)"
+          >
+            <RefreshCcw className="mr-1 h-4 w-4" />
+            {repushing ? 'Repushing...' : 'Repush all'}
+          </button>
+
+          <button
+            type="button"
             onClick={handleSyncTemplates}
-            disabled={syncing}
+            disabled={syncing || repushing}
             className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             title="Sync templates from Meta"
           >
@@ -902,6 +979,8 @@ export default function WhatsAppTemplateManager() {
                         >
                           {String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'APPROVED'
                             ? 'Meta Approved'
+                            : String(row.meta?.status || 'NOT_SYNCED').toUpperCase() === 'NOT_ON_WABA'
+                              ? 'Missing on Meta WABA'
                             : `Meta: ${String(row.meta?.status || 'NOT_SYNCED').toUpperCase()}`}
                         </span>
                       </div>

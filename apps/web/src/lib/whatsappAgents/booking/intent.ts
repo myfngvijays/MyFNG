@@ -1,3 +1,5 @@
+const GREETING_KEYWORDS = ['hi', 'hii', 'hello', 'hey', 'namaste', 'good morning', 'good evening', 'good afternoon'];
+
 const BOOKING_KEYWORDS = [
   'book',
   'booking',
@@ -39,6 +41,8 @@ export function hasBookingIntent(message: string): boolean {
   if (!text) return false;
 
   if (NON_BOOKING_PREFIXES.some((kw) => text.includes(kw))) return false;
+
+  if (GREETING_KEYWORDS.some((kw) => text === kw || text.startsWith(`${kw} `))) return true;
 
   return BOOKING_KEYWORDS.some((kw) => text.includes(kw));
 }

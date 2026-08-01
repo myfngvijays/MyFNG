@@ -9,7 +9,7 @@ import {
   normalizeAgentPhone,
   updateInstance,
 } from '../shared/instanceService';
-import { isChatAssignedToHuman, loadMemory, saveMemory } from '../shared/memoryService';
+import { loadMemory, saveMemory, shouldSkipBotsForHumanAssignment } from '../shared/memoryService';
 import { hasBookingIntent } from '../booking/intent';
 import { activateBookingAgentFromChase } from '../booking/handler';
 import type { AgentEventType, AgentInstance } from '../shared/types';
@@ -41,7 +41,7 @@ export type ChaseAgentResult = {
 export async function shouldRouteToChaseAgent(phone: string, message: string): Promise<boolean> {
   const config = await fetchAgentConfig('CHASE');
   if (!config.enabled) return false;
-  if (config.rules_json.skip_assigned_chats && (await isChatAssignedToHuman(phone))) return false;
+  if (config.rules_json.skip_assigned_chats && (await shouldSkipBotsForHumanAssignment(phone))) return false;
   const active = await getActiveInstance('CHASE', phone);
   return Boolean(active);
 }

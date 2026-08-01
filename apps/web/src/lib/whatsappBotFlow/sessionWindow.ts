@@ -14,11 +14,12 @@ export async function getLastCustomerInboundAt(phone: string): Promise<string | 
   if (!supabaseAdmin) return null;
 
   const normalized = normalizePhoneNumber(phone);
+  const last10 = normalized.slice(-10);
   const { data } = await supabaseAdmin
     .from('whatsapp_messages')
-    .select('status_at, created_at')
+    .select('status_at, created_at, sender_phone')
     .eq('direction', 'INBOUND')
-    .eq('sender_phone', normalized)
+    .or(`sender_phone.eq.${normalized},sender_phone.eq.${last10},sender_phone.eq.91${last10}`)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();

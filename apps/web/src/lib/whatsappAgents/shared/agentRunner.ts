@@ -3,10 +3,10 @@ import { fetchAgentConfig } from './configStore';
 import { executeAction, logAgentAction } from './executeAction';
 import {
   countDailyOutboundMessages,
-  isChatAssignedToHuman,
   loadMemory,
   loadMemoryContext,
   saveMemory,
+  shouldSkipBotsForHumanAssignment,
 } from './memoryService';
 import { updateInstance } from './instanceService';
 import { validateRules } from './ruleEngine';
@@ -141,7 +141,7 @@ export async function runAgentCycle(input: AgentRunInput & { instance?: AgentIns
   }
 
   const dailyCount = instance ? await countDailyOutboundMessages(instance.id) : 0;
-  const isAssigned = input.force ? false : await isChatAssignedToHuman(phone);
+  const isAssigned = input.force ? false : await shouldSkipBotsForHumanAssignment(phone);
 
   const validation = validateRules({
     config,
