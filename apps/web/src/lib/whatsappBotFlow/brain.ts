@@ -152,12 +152,14 @@ async function sendBrainTextReply(input: {
   message: string;
   config: WhatsAppBrainConfig;
   inboundReceivedAt?: string | null;
+  profileName?: string | null;
 }) {
   return sendBrainOutboundMessage({
     phone: input.phone,
     message: input.message,
     config: input.config,
     inboundAt: input.inboundReceivedAt,
+    profileName: input.profileName,
   });
 }
 
@@ -196,6 +198,7 @@ async function tryPricingContextReply(input: {
     message: reply,
     config: input.config,
     inboundReceivedAt: input.inboundReceivedAt,
+    profileName: input.profileName,
   });
   await archiveBrainOutboundMessage(input.phone, reply, sendResult, {
     route: 'PRICING_CONTEXT',
@@ -256,6 +259,7 @@ async function tryRsaHandoffReply(input: {
     message: reply,
     config: input.config,
     inboundReceivedAt: input.inboundReceivedAt,
+    profileName: input.profileName,
   });
   await archiveBrainOutboundMessage(input.phone, reply, sendResult, {
     route: 'RSA_HANDOFF',
@@ -338,6 +342,7 @@ async function sendPeriodicPricingReply(input: {
     message: textReply,
     config: input.config,
     inboundReceivedAt: input.inboundReceivedAt,
+    profileName: input.profileName,
   });
   await archiveBrainOutboundMessage(input.phone, textReply, sendResult, {
     route: 'AI',
@@ -404,6 +409,7 @@ async function runAiBrain(input: {
         message: reply,
         config: input.config,
         inboundReceivedAt: input.inboundReceivedAt,
+        profileName: input.profileName,
       });
       await archiveBrainOutboundMessage(input.phone, reply, sendResult, {
         route: 'AI',
@@ -440,6 +446,7 @@ async function runFlowBrain(input: {
     dryRun: input.dryRun,
     config: input.config,
     inboundReceivedAt: input.inboundReceivedAt,
+    profileName: input.profileName,
   });
 
   if (!flowResult.handled) {
@@ -535,6 +542,7 @@ export async function processWhatsAppBrainMessage(input: BrainProcessInput): Pro
           message: fallback,
           config,
           inboundReceivedAt: input.inboundReceivedAt,
+          profileName: input.profileName,
         });
         await archiveBrainOutboundMessage(phone, fallback, sendResult, {
           route: 'FLOW_FALLBACK',
@@ -584,6 +592,7 @@ export async function processWhatsAppBrainMessage(input: BrainProcessInput): Pro
         message: fallback,
         config,
         inboundReceivedAt: input.inboundReceivedAt,
+        profileName: input.profileName,
       });
       await archiveBrainOutboundMessage(phone, fallback, sendResult, {
         used_template: sendResult.usedTemplate,

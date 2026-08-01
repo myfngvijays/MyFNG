@@ -75,6 +75,9 @@ export async function sendAgentOutboundMessage(input: {
       message,
       config: brainConfig,
       inboundAt: input.inboundAt,
+      profileName:
+        String(input.meta?.customer_name || input.meta?.customerName || input.meta?.profile_name || '')
+          .trim() || null,
     });
     if (brainSend.success) {
       await archiveAgentOutboundMessage({

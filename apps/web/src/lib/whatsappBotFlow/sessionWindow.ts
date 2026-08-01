@@ -5,7 +5,11 @@ import {
   sendTextMessage,
   type WhatsAppSendResult,
 } from '@/lib/services/whatsappService';
-import type { WhatsAppBrainConfig } from './brainConfig';
+import {
+  DEFAULT_BRAIN_REOPEN_TEMPLATE_LANGUAGE,
+  DEFAULT_BRAIN_REOPEN_TEMPLATE_NAME,
+  type WhatsAppBrainConfig,
+} from './brainConfig';
 
 const DEFAULT_WINDOW_HOURS = 24;
 
@@ -66,6 +70,7 @@ export async function sendBrainOutboundMessage(input: {
   message: string;
   config: WhatsAppBrainConfig;
   inboundAt?: string | null;
+  profileName?: string | null;
 }): Promise<WhatsAppSendResult & { usedTemplate?: boolean; sessionOpen?: boolean }> {
   const phone = normalizePhoneNumber(input.phone);
   const message = String(input.message || '').trim();
@@ -84,7 +89,9 @@ export async function sendBrainOutboundMessage(input: {
     }
   }
 
-  const templateName = String(input.config.reopen_template_name || '').trim();
+  const templateName = String(
+    input.config.reopen_template_name || DEFAULT_BRAIN_REOPEN_TEMPLATE_NAME,
+  ).trim();
   if (!templateName) {
     return {
       success: false,
@@ -96,6 +103,7 @@ export async function sendBrainOutboundMessage(input: {
     };
   }
 
+  const customerName = String(input.profileName || '').trim() || 'there';
   const templateParams = (input.config.reopen_template_params || [])
     .map((value) => String(value || '').trim())
     .filter(Boolean);
@@ -103,8 +111,9 @@ export async function sendBrainOutboundMessage(input: {
   const templateResult = await sendTemplateMessage({
     phoneNumber: phone,
     templateName,
-    templateParams: templateParams.length > 0 ? templateParams : [message.slice(0, 200)],
-    languageCode: input.config.reopen_template_language || 'en',
+    templateParams: templateParams.length > 0 ? templateParams : [customerName.slice(0, 50)],
+    languageCode:
+      input.config.reopen_template_language || DEFAULT_BRAIN_REOPEN_TEMPLATE_LANGUAGE,
   });
 
   return {

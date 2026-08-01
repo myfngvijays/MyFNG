@@ -198,6 +198,7 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
       message: body,
       config: input.config,
       inboundAt: input.inboundReceivedAt,
+      profileName: input.profileName,
     });
     return result.success;
   }

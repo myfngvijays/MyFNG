@@ -96,7 +96,7 @@ const DEFAULT_CONFIG: BrainConfig = {
     'Thanks for reaching out to MyFNG! Our team will get back to you shortly. For urgent help, call 9152307030.',
   skip_assigned_chats: true,
   session_window_hours: 24,
-  reopen_template_name: null,
+  reopen_template_name: 'lead_enquiry_account_update',
   reopen_template_language: 'en',
   reopen_template_params: [],
   tools: {
@@ -591,10 +591,12 @@ export default function SuperAdminBotFlowPage() {
                       reopen_template_name: e.target.value.trim() || null,
                     }))
                   }
-                  placeholder="e.g. customer_reply_reopen (Meta-approved UTILITY template)"
+                  placeholder="e.g. lead_enquiry_account_update (Meta-approved UTILITY template)"
                 />
                 <p className="text-[11px] text-gray-500">
-                  Used when free-text reply fails outside WhatsApp 24h session. Leave blank to skip send.
+                  Used when free-text reply fails outside WhatsApp 24h session. Default:{' '}
+                  <span className="font-mono">lead_enquiry_account_update</span> — customer name as {'{{1}}'}.
+                  Customer reply reopens the 24h window for MISA free text.
                 </p>
               </div>
 

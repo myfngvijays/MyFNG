@@ -26,6 +26,10 @@ export type WhatsAppBrainConfig = {
 
 export const WHATSAPP_BRAIN_SETTING_KEY = 'whatsapp_ai_brain_config';
 
+/** Meta UTILITY template for outbound when the 24h customer-care window is closed. */
+export const DEFAULT_BRAIN_REOPEN_TEMPLATE_NAME = 'lead_enquiry_account_update';
+export const DEFAULT_BRAIN_REOPEN_TEMPLATE_LANGUAGE = 'en';
+
 export const DEFAULT_WHATSAPP_BRAIN_CONFIG: WhatsAppBrainConfig = {
   enabled: false,
   mode: 'AI_FIRST',
@@ -37,8 +41,8 @@ export const DEFAULT_WHATSAPP_BRAIN_CONFIG: WhatsAppBrainConfig = {
     'Thanks for reaching out to MyFNG! Our team will get back to you shortly. For urgent help, call 9152307030.',
   skip_assigned_chats: true,
   session_window_hours: 24,
-  reopen_template_name: null,
-  reopen_template_language: 'en',
+  reopen_template_name: DEFAULT_BRAIN_REOPEN_TEMPLATE_NAME,
+  reopen_template_language: DEFAULT_BRAIN_REOPEN_TEMPLATE_LANGUAGE,
   reopen_template_params: [],
   tools: {
     pricing: true,
