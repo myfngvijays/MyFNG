@@ -10,6 +10,8 @@ import {
   enrichBookingLead,
   getLeadServiceLabel,
   getLeadDisplayAmount,
+  getLeadInboundWhatsAppMessage,
+  isWhatsAppEnquiryLead,
   getLeadUtmParams,
   resolveLeadSourceBadgeTheme,
   computeServiceLeadOverview,
@@ -280,6 +282,14 @@ function SourceCell({ lead }: { lead: Record<string, any> }) {
   return (
     <div className="inline-flex items-center gap-1.5 flex-nowrap">
       <SourceBadge lead={lead} />
+      {isWhatsAppEnquiryLead(lead) ? (
+        <span
+          className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200"
+          title="WhatsApp enquiry only — not a confirmed booking"
+        >
+          Enquiry
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -615,6 +625,10 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
           <DetailFieldCard label="Service" value={serviceLabel} />
         )}
         <DetailFieldCard label="Service Type" value={item.service_type} />
+        <DetailFieldCard
+          label="WhatsApp Message"
+          value={getLeadInboundWhatsAppMessage(item)}
+        />
         <DetailFieldCard label="Preferred Slot" value={formatDateTime(item.preferred_slot_start)} />
         <DetailFieldCard label="Preferred Date" value={item.preferred_date} />
         <DetailFieldCard label="Preferred Time" value={item.preferred_time_slot || item.preferred_service_slot} />
@@ -2021,7 +2035,10 @@ export default function SuperAdminBookingsPage() {
                       <th className="px-4 py-3 whitespace-nowrap min-w-[140px]">Assignee</th>
                       <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th>
                       <th className="px-4 py-3 whitespace-nowrap">Phone</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Bookings</th>
+                      <th className="px-4 py-3 min-w-[220px]">Message</th>
+                      <th className="px-4 py-3 whitespace-nowrap" title="How many lead rows exist for this phone (not confirmed bookings count)">
+                        Leads #
+                      </th>
                       <th className="px-4 py-3 whitespace-nowrap">Vehicle</th>
                       <th className="px-4 py-3 whitespace-nowrap">City</th>
                       <th className="px-4 py-3 min-w-[180px]">Service</th>
@@ -2085,6 +2102,11 @@ export default function SuperAdminBookingsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
+                          <span className="block truncate" title={getLeadInboundWhatsAppMessage(lead) || ''}>
+                            {getLeadInboundWhatsAppMessage(lead) || '—'}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-sm whitespace-nowrap">
                           {phoneBookingCount > 0 ? (
                             <button
@@ -2207,11 +2229,12 @@ export default function SuperAdminBookingsPage() {
                           <p className="font-medium text-gray-800">{item.city || '-'}</p>
                         </div>
                         <div>
-                          <p className="text-gray-500">Bookings</p>
+                          <p className="text-gray-500">Leads on phone</p>
                           <button
                             type="button"
                             onClick={(e) => openPhoneBookings(item.customer_phone, e)}
                             className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-800"
+                            title="Lead rows for this phone — not confirmed booking count"
                           >
                             <Hash className="h-3 w-3" />
                             {bookingsByPhone.get(normalizeLeadPhone(item.customer_phone))?.length || 1}

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerForLead } from '@/lib/enquiry/assignment';
 import {
   leadSourceLabelForWacaBusinessPhone,
+  sanitizeTelecrmInboundMessage,
   TELECRM_WACA_BUSINESS_PHONE,
   type ParsedTelecrmWebhookPayload,
 } from './parseTelecrmWebhookPayload';
@@ -11,9 +12,17 @@ import { resolveTelecallerUserId } from './resolveTelecallerUserId';
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
 function normalizePhone10(phone: string): string {
-  return String(phone || '')
-    .replace(/\D/g, '')
-    .slice(-10);
+  let digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length > 10) digits = digits.slice(-10);
+  return digits.slice(-10);
+}
+
+function wacaLeadSourceLabel(businessPhone: string): string {
+  const phone10 = normalizePhone10(businessPhone || TELECRM_WACA_BUSINESS_PHONE);
+  return leadSourceLabelForWacaBusinessPhone(
+    phone10 === TELECRM_WACA_BUSINESS_PHONE || !phone10 ? TELECRM_WACA_BUSINESS_PHONE : phone10,
+  );
 }
 
 export type TelecrmWhatsAppLeadInput = {
@@ -56,15 +65,16 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   if (!supabaseAdmin) return { ok: false, error: adminError || 'no_admin' };
 
   const nowIso = new Date().toISOString();
-  const msg = String(input.messageText || '').trim().slice(0, 1000) || null;
-  const businessPhone = normalizePhone10(input.businessPhone || '9167779696') || '9167779696';
+  const msg = sanitizeTelecrmInboundMessage(input.messageText);
+  const businessPhone = normalizePhone10(input.businessPhone || TELECRM_WACA_BUSINESS_PHONE) || TELECRM_WACA_BUSINESS_PHONE;
+  const wacaSource = wacaLeadSourceLabel(businessPhone);
   const name =
     String(input.name || '').trim() ||
     `WhatsApp ${phone10.slice(-4)}`;
 
   const { data: existingRows, error: findErr } = await supabaseAdmin
     .from('service_leads')
-    .select('id, status, coupon_meta, assigned_telecaller_id, customer_name, lead_source, created_from')
+    .select('id, status, coupon_meta, assigned_telecaller_id, customer_name, lead_source, created_from, problem_description')
     .or(
       `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`,
     )
@@ -81,7 +91,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   let triggerId: string | null = null;
   let triggerLabel: string | null = null;
   let createdFrom = 'WHATSAPP';
-  let leadSource = leadSourceLabelForWacaBusinessPhone(businessPhone);
+  let leadSource = wacaSource;
   const telecrmAssigneeId = await resolveTelecallerUserId({
     phone: input.assigneePhone,
     email: input.assigneeEmail,
@@ -136,7 +146,6 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
         : prevAssignee || assignedTo;
 
     const patch: Record<string, unknown> = {
-      problem_description: msg || undefined,
       updated_at: nowIso,
       coupon_meta: {
         ...prevMeta,
@@ -146,7 +155,6 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
         wa_business_phone: businessPhone,
         wa_inbox: businessPhone,
         last_inbound_at: nowIso,
-        last_inbound_message: msg,
         telecrm_id: input.telecrmId || prevMeta.telecrm_id || null,
         telecrm_disposition: input.disposition || prevMeta.telecrm_disposition || null,
         telecrm_lead_tag: telecrmLeadTag || prevMeta.telecrm_lead_tag || null,
@@ -169,11 +177,23 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
       },
     };
 
+    if (msg) {
+      patch.problem_description = msg;
+      (patch.coupon_meta as Record<string, unknown>).last_inbound_message = msg;
+    } else {
+      const prevMsg = sanitizeTelecrmInboundMessage(
+        prevMeta.last_inbound_message || prevMeta.first_message || existing.problem_description,
+      );
+      if (prevMsg) {
+        (patch.coupon_meta as Record<string, unknown>).last_inbound_message = prevMsg;
+      }
+    }
+
     if (assignmentMode === 'MESSAGE_TRIGGER' && triggerLabel) {
       patch.lead_source = leadSource;
       patch.created_from = createdFrom;
     } else {
-      patch.lead_source = leadSourceLabelForWacaBusinessPhone(businessPhone);
+      patch.lead_source = wacaSource;
       patch.created_from = 'WHATSAPP';
     }
 
@@ -220,7 +240,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   const payload: Record<string, unknown> = {
     lead_number: leadNumber,
     lead_type: 'NORMAL',
-    lead_source: leadSource,
+    lead_source: leadSource === wacaSource || !triggerLabel ? wacaSource : leadSource,
     created_from: createdFrom,
     status: 'NEW',
     customer_name: name,

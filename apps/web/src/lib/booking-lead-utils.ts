@@ -230,12 +230,24 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
 
   if (
     leadSource === 'WhatsApp' ||
+    /^WhatsApp \(\d{10}\)$/.test(leadSource) ||
     createdFrom === 'WHATSAPP' ||
     haystack.includes('whatsapp')
   ) {
+    const meta =
+      lead?.coupon_meta && typeof lead.coupon_meta === 'object'
+        ? (lead.coupon_meta as Record<string, unknown>)
+        : {};
+    const waBiz = String(meta.wa_business_phone || meta.wa_inbox || '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    let whatsappLabel = leadSource || 'WhatsApp';
+    if (whatsappLabel === 'WhatsApp' && waBiz === '9167779696') whatsappLabel = 'WhatsApp (9167779696)';
+    else if (whatsappLabel === 'WhatsApp' && waBiz === '9594996161') whatsappLabel = 'WhatsApp (9594996161)';
+
     return {
       source_badge_kind: 'whatsapp',
-      source_badge_label: leadSource || 'WhatsApp',
+      source_badge_label: whatsappLabel,
       source_badge_class: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-400',
     };
   }
@@ -654,4 +666,30 @@ export function filterBookingLeads(
 
     return true;
   });
+}
+
+function isInvalidStoredMessage(value: unknown): boolean {
+  const t = String(value ?? '').trim().toLowerCase();
+  return !t || t === 'undefined' || t === 'null';
+}
+
+/** Latest inbound WhatsApp text for TeleCRM / WACA enquiry rows. */
+export function getLeadInboundWhatsAppMessage(lead: Record<string, any>): string | null {
+  const meta =
+    lead?.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+  for (const value of [lead.problem_description, meta.last_inbound_message, meta.first_message]) {
+    if (!isInvalidStoredMessage(value)) return String(value).trim();
+  }
+  return null;
+}
+
+/** Incomplete WhatsApp chat lead — not a confirmed app/website booking. */
+export function isWhatsAppEnquiryLead(lead: Record<string, any>): boolean {
+  const meta =
+    lead?.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+  return Boolean(meta.whatsapp_enquiry || meta.telecrm_whatsapp) && lead.is_incomplete === true;
 }

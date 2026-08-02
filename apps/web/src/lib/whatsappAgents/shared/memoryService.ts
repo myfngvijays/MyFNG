@@ -58,8 +58,6 @@ export async function saveMemory(memory: AgentMemory): Promise<void> {
   if (error) throw new Error(error.message || 'Failed to save memory');
 }
 
-import { normalizePhoneNumber } from '@/lib/services/whatsappService';
-
 export async function loadConversationForPhone(phone: string, limit = 20): Promise<Array<{ direction: string; body: string; at: string }>> {
   const db = getAdminDb();
   const normalized = normalizePhoneNumber(phone);

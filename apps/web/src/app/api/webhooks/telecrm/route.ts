@@ -14,6 +14,7 @@ import {
   buildTelecrmWacaApiTemplateBody,
   mirrorTelecrmWacaInboundToBookings,
 } from '@/lib/telecrm/wacaBookingsMirror';
+import { summarizeTelecrmMessageDebug } from '@/lib/telecrm/parseTelecrmWebhookPayload';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -51,8 +52,10 @@ export async function GET() {
       body: buildTelecrmWacaApiTemplateBody(),
       timeout_seconds: 15,
       workflow_hint:
-        'Connect from whatsapp incoming trigger in parallel — keep existing tag/assign/status nodes unchanged.',
+        'Put Call API immediately after Incoming Whatsapp trigger (before tag/assign). Message Text is empty at workflow end.',
     },
+    message_debug_hint:
+      'POST response includes message_debug.parsed_message — must show real text in Test Template before Publish.',
   });
 }
 
@@ -63,6 +66,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const messageDebug = summarizeTelecrmMessageDebug(body);
     const mirror = await mirrorTelecrmWacaInboundToBookings(body);
     if (!mirror.parsed) {
       return NextResponse.json(
@@ -99,7 +103,11 @@ export async function POST(request: NextRequest) {
       leadId: bookingsLead.leadId,
       assignedTo: bookingsLead.assignedTo,
       telecrmApiId: telecrmRow.id,
+      messageCaptured: Boolean(parsed.messageText),
     });
+    if (!parsed.messageText) {
+      console.warn('[telecrm-webhook] inbound message missing — TeleCRM body.message is empty/undefined. Use Message Text variable, not ACTION_text at workflow end.');
+    }
     const chaseConfig = await fetchAgentConfig('CHASE');
     const followupConfig = await fetchAgentConfig('FOLLOWUP');
     if (!chaseConfig.enabled && !followupConfig.enabled) {
@@ -107,6 +115,7 @@ export async function POST(request: NextRequest) {
         success: true,
         skipped: true,
         reason: 'agents_disabled',
+        message_debug: messageDebug,
         telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
@@ -151,6 +160,7 @@ export async function POST(request: NextRequest) {
         message_mode: result.messageMode,
         instance_id: result.instanceId,
         skipped_reason: result.skippedReason,
+        message_debug: messageDebug,
         telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
@@ -161,6 +171,7 @@ export async function POST(request: NextRequest) {
         success: true,
         skipped: true,
         reason: 'disposition_not_eligible',
+        message_debug: messageDebug,
         telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
@@ -172,6 +183,7 @@ export async function POST(request: NextRequest) {
         success: true,
         skipped: true,
         reason: 'instance_not_created',
+        message_debug: messageDebug,
         telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
@@ -190,6 +202,7 @@ export async function POST(request: NextRequest) {
       instance_id: instance.id,
       handled: result.handled,
       decision: result.decision,
+      message_debug: messageDebug,
       telecrm_api: telecrmRow,
       bookings_lead: bookingsLead,
     });

@@ -18,13 +18,16 @@ export type TelecrmWacaMirrorResult = {
 
 export function buildTelecrmWacaApiTemplateBody() {
   return {
-    phone: '{{phone}}',
-    name: '{{name}}',
-    message: '{{message}}',
+    phone: '{{Phone}}',
+    name: '{{Name}}',
+    // Option A: Call API immediately after Incoming Whatsapp → use {{Message Text}}
+    // Option B: Call API at end → first save Message Text to lead field LAST_WA_MSG, then use {{LAST_WA_MSG}}
+    message: '{{LAST_WA_MSG}}',
+    last_wa_message: '{{LAST_WA_MSG}}',
     whatsapp_number: TELECRM_WACA_BUSINESS_PHONE,
     lead_tag: '{{LEADTAG}}',
-    lead_status: '{{LeadStatus}}',
-    assignee_name: '{{assignee.name}}',
+    lead_status: '{{Lead Status}}',
+    assignee_name: '{{Assignee}}',
     assignee_phone: '{{assignee.phone}}',
     assignee_email: '{{assignee.email}}',
   };
