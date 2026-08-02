@@ -20,6 +20,8 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import PublicPillNav, { type PublicPillNavTab } from '../components/PublicBottomNav';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { trackEvent } from '../lib/trackEvent';
+import { workshopPublicPageAddress, isMyFngBrandedWorkshop } from '../lib/workshopDisplay';
+import { ENV } from '../config/environment';
 
 type Props = {
   navigation: any;
@@ -37,6 +39,7 @@ type WorkshopRow = {
   city: string | null;
   address?: string | null;
   short_address?: string | null;
+  landmark?: string | null;
   pincode?: string | null;
   service_pincode?: string | null;
   mapping_pincodes?: unknown;
@@ -45,6 +48,7 @@ type WorkshopRow = {
   map_link: string | null;
   is_verified: boolean | null;
   phone?: string | null;
+  gmb_formatted_address?: string | null;
 };
 
 const MAX_SANE_KM = 150;
@@ -96,14 +100,6 @@ function workshopCenterName(w: WorkshopRow) {
   const center = String(w.name || '').trim();
   if (center && center !== area) return center;
   return null;
-}
-
-function workshopAddress(w: WorkshopRow) {
-  return (
-    String(w.short_address || '').trim() ||
-    String(w.address || '').trim() ||
-    null
-  );
 }
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -330,17 +326,63 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
   async function fetchWorkshops() {
     try {
       setLoading(true);
-      // Always fetch all verified workshops; distance sorting handles relevance
-      const { data, error } = await supabase
-        .from('workshops')
-        .select(
-          'id,name,workshop_name,workshop_area,near_famous_area,city,address,short_address,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,phone',
-        )
-        .eq('is_verified', true)
-        .order('created_at', { ascending: false })
-        .limit(250);
-      if (error) throw error;
-      setRows((data as any[]) || []);
+
+      let loaded: any[] = [];
+      try {
+        const res = await fetch(`${ENV.API_URL}/api/public/workshop-locator`);
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(json?.workshops)) {
+          loaded = json.workshops;
+        }
+      } catch {
+        /* fall through to direct Supabase */
+      }
+
+      if (!loaded.length) {
+        const [{ data, error }, { data: pageRows }] = await Promise.all([
+          supabase
+            .from('workshops')
+            .select(
+              'id,name,workshop_name,workshop_area,near_famous_area,city,state,address,short_address,landmark,pincode,service_pincode,mapping_pincodes,latitude,longitude,map_link,near_area_google_map,is_verified,phone',
+            )
+            .eq('is_verified', true)
+            .order('created_at', { ascending: false })
+            .limit(250),
+          supabase
+            .from('workshop_public_pages')
+            .select('workshop_id, gmb_data')
+            .eq('is_published', true),
+        ]);
+        if (error) throw error;
+
+        const gmbByWorkshop = new Map<string, Record<string, unknown>>();
+        for (const page of (pageRows as any[]) || []) {
+          const workshopId = String(page?.workshop_id || '').trim();
+          const gmb = page?.gmb_data;
+          if (workshopId && gmb && typeof gmb === 'object') {
+            gmbByWorkshop.set(workshopId, gmb as Record<string, unknown>);
+          }
+        }
+
+        loaded = ((data as any[]) || [])
+          .filter((w) =>
+            isMyFngBrandedWorkshop({
+              name: w.name,
+              workshop_name: w.workshop_name,
+              gmb_business_name: (gmbByWorkshop.get(String(w.id)) as any)?.business_name,
+            }),
+          )
+          .map((w) => {
+          const gmb = gmbByWorkshop.get(String(w.id)) || null;
+          return {
+            ...w,
+            gmb_formatted_address: String((gmb as any)?.formatted_address || '').trim() || null,
+            display_address: workshopPublicPageAddress(w, gmb),
+          };
+        });
+      }
+
+      setRows(loaded);
       setCityScoped(false);
     } catch {
       Alert.alert('Unable to load workshops', 'Please try again.');
@@ -400,8 +442,11 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
     const km = typeof item._km === 'number' && Number.isFinite(item._km) ? item._km : null;
     const isExpanded = expandedId === String(item.id);
     const title = workshopDisplayName(item);
-    const center = workshopCenterName(item);
-    const address = workshopAddress(item);
+    // Real garage name is telecaller-only; customers see MyFNG area brand only.
+    const center = embedded ? workshopCenterName(item) : null;
+    const address =
+      String(item.display_address || '').trim() ||
+      workshopPublicPageAddress(item, { formatted_address: item.gmb_formatted_address });
     return (
       <View style={[styles.sheetItem, isExpanded ? styles.sheetItemActive : null]}>
         <TouchableOpacity
@@ -440,9 +485,11 @@ export default function PublicWorkshopLocatorScreen({ navigation, route, embedde
                 {address}
               </Text>
             ) : null}
-            <Text style={styles.sheetSub} numberOfLines={1}>
-              {[item.city, item.pincode].filter(Boolean).join(' · ') || '—'}
-            </Text>
+            {!item.gmb_formatted_address && !item.display_address ? (
+              <Text style={styles.sheetSub} numberOfLines={1}>
+                {[item.city, item.pincode].filter(Boolean).join(' · ') || '—'}
+              </Text>
+            ) : null}
             {km != null ? (
               <View style={styles.kmPill}>
                 <Text style={styles.kmPillText}>

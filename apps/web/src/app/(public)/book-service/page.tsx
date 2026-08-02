@@ -95,6 +95,8 @@ export default function BookServicePage() {
   const [selectedOilType, setSelectedOilType] = useState<'semi' | 'full'>('semi');
   const [bookingPrefillApplied, setBookingPrefillApplied] = useState(false);
   const [bookingPrefillParams, setBookingPrefillParams] = useState<{ category?: string; query?: string } | null>(null);
+  const [carPrefillApplied, setCarPrefillApplied] = useState(false);
+  const [carPrefillParams, setCarPrefillParams] = useState<{ make?: string; model?: string; carId?: string } | null>(null);
   const [servicePricing, setServicePricing] = useState<Record<string, number>>({});
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [loadingServiceTypes, setLoadingServiceTypes] = useState(false);
@@ -242,7 +244,48 @@ export default function BookServicePage() {
     if (prefillCategory || prefillQuery) {
       setBookingPrefillParams({ category: prefillCategory, query: prefillQuery });
     }
+
+    const prefillMake = sp.get('prefill_make') || undefined;
+    const prefillModel = sp.get('prefill_model') || undefined;
+    const prefillCarId = sp.get('prefill_car_id') || undefined;
+    if (prefillMake || prefillModel || prefillCarId) {
+      setCarPrefillParams({ make: prefillMake, model: prefillModel, carId: prefillCarId });
+    }
   }, []);
+
+  // Prefill car model when coming from brand pages
+  useEffect(() => {
+    if (carPrefillApplied) return;
+    if (!carModels.length) return;
+    if (!carPrefillParams?.make && !carPrefillParams?.model && !carPrefillParams?.carId) return;
+
+    const makeWanted = carPrefillParams.make ? String(carPrefillParams.make).toLowerCase() : '';
+    const modelWanted = carPrefillParams.model ? String(carPrefillParams.model).toLowerCase() : '';
+    const carIdWanted = carPrefillParams.carId ? String(carPrefillParams.carId) : '';
+
+    const match =
+      (carIdWanted ? carModels.find((car: any) => String(car.id) === carIdWanted) : null) ||
+      carModels.find((car: any) => {
+        const make = String(car.make || '').toLowerCase();
+        const model = String(car.model_name || '').toLowerCase();
+        const makeMatch =
+          !makeWanted || make.includes(makeWanted) || makeWanted.includes(make) || make.includes('maruti');
+        const modelMatch =
+          !modelWanted ||
+          model === modelWanted ||
+          model.includes(modelWanted) ||
+          modelWanted.includes(model) ||
+          model.replace(/\s+/g, '') === modelWanted.replace(/\s+/g, '');
+        return makeMatch && modelMatch;
+      });
+
+    if (match) {
+      setFormData((prev) => ({ ...prev, carModel: match }));
+      setCarSearchQuery(`${match.make} ${match.model_name}`);
+      setShowCarSuggestions(false);
+      setCarPrefillApplied(true);
+    }
+  }, [carPrefillApplied, carModels, carPrefillParams]);
 
   // Prefill service selection when coming from /services "Book Now"
   useEffect(() => {

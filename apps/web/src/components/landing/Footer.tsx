@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import TrackedLink from '@/components/tracking/TrackedLink';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
+import { POPULAR_BRAND_PAGES } from '@/lib/popular-brands';
 
 const ctaTitles = [
   "Serious Car Owners Don't Postpone Maintenance.",
@@ -180,12 +181,7 @@ export default function Footer() {
                   'Porsche', 'Rolls Royce', 'Mitsubishi', 'Volvo',
                 ].map((brand) => (
                   <li key={brand} className="mb-0">
-                    <TrackedLink
-                      href={`/car-services`}
-                      className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
-                    >
-                      {brand}
-                    </TrackedLink>
+                    <span className="text-white text-[11px] font-bold">{brand}</span>
                   </li>
                 ))}
               </ul>
@@ -195,23 +191,13 @@ export default function Footer() {
             <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="popular-brands">Popular Brands</AccordionTitle>
               <ul className={listClass('popular-brands')}>
-                {[
-                  { label: 'Maruti Suzuki', slug: 'maruti' },
-                  { label: 'Hyundai', slug: 'hyundai' },
-                  { label: 'Honda', slug: 'honda' },
-                  { label: 'Tata', slug: 'tata' },
-                  { label: 'Mahindra', slug: 'mahindra' },
-                  { label: 'Toyota', slug: 'toyota' },
-                  { label: 'Kia', slug: 'kia' },
-                  { label: 'Skoda', slug: 'skoda' },
-                  { label: 'Volkswagen', slug: 'volkswagen' },
-                ].map((brand) => (
+                {POPULAR_BRAND_PAGES.map((brand) => (
                   <li key={brand.slug} className="mb-0">
                     <TrackedLink
-                      href={`/car-services`}
+                      href={brand.pagePath}
                       className="text-white text-[11px] font-bold no-underline hover:text-white hover:pl-1.5 transition-all duration-300"
                     >
-                      {brand.label}
+                      {brand.name}
                     </TrackedLink>
                   </li>
                 ))}
@@ -226,9 +212,7 @@ export default function Footer() {
                   { href: '/workshop/my-fng-best-car-service-and-repairs-in-thane', label: 'Car Service in Vartak Nagar' },
                   { href: '/workshop/my-fng-car-service-and-repairs-in-manpada-thane', label: 'Car Service in Manpada' },
                   { href: '/workshop/my-fng-best-car-service-and-repairs-in-majiwada-thane-west', label: 'Car Service in Majiwada' },
-                  { href: '/workshop/my-fng-best-car-service-and-repairs-kalyan-east', label: 'Car Service in Kalyan' },
                   { href: '/workshop/my-fng-car-service-and-repairs-in-dombivli', label: 'Car Service in Dombivli' },
-                  { href: '/workshop/my-fng-best-car-service-and-repairs-in-ambernath', label: 'Car Service in Ambernath' },
                 ].map((item) => (
                   <li key={item.href} className="mb-0">
                     <TrackedLink
@@ -252,7 +236,6 @@ export default function Footer() {
               className={`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 ${locationGridClass('all-locations')}`}
             >
               {[
-                { href: '/workshop/my-fng-multi-brand-car-servicing-and-repairs-india', label: 'MY FNG - Head Office' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-thane', label: 'Car Service in Vartak Nagar' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-manpada-thane', label: 'Car Service in Manpada' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-majiwada-thane-west', label: 'Car Service in Majiwada' },
@@ -260,14 +243,10 @@ export default function Footer() {
                 { href: '/workshop/my-fng-car-service-and-repairs-in-manpada-gb-road-thane-west', label: 'Car Service in Ghodbunder Road' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-dombivli', label: 'Car Service in Dombivli East' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-kolegaon-dombivli-east', label: 'Car Service in Kolegaon, Dombivli' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-kalyan-east', label: 'Car Service in Kalyan East' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-chikanghar-kalyan-west', label: 'Car Service in Kalyan West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-ambernath', label: 'Car Service in Ambernath' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-badlapur', label: 'Car Service in Badlapur' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-bhiwandi', label: 'Car Service in Bhiwandi' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-titwala', label: 'Car Service in Titwala' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-ramdev-park-mira-road-east', label: 'Car Service in Mira Road East' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-nerul', label: 'Car Service in Nerul' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-koparkhairane-navi-mumbai', label: 'Car Service in Koparkhairane' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-vasai-west', label: 'Car Service in Vasai West' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-vasai-east', label: 'Car Service in Vasai East' },
@@ -281,7 +260,6 @@ export default function Footer() {
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-vile-parle-west', label: 'Car Service in Vile Parle West' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-mahalaxmi-mumbai', label: 'Car Service in Mahalaxmi' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-milind-nagar-ghatkopar-west', label: 'Car Service in Ghatkopar West' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-plot-71-panvel', label: 'Car Service in HOC Colony, Panvel' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-sector-15-panvel', label: 'Car Service in Panvel' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-kalamboli', label: 'Car Service in Kalamboli' },
                 { href: '/workshop/my-fng-car-service-and-repairs-in-khopoli', label: 'Car Service in Khopoli' },
@@ -301,7 +279,6 @@ export default function Footer() {
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-wakad-pune', label: 'Car Service in Wakad, Pune' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-tathawade-pune', label: 'Car Service in Tathawade, Pune' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-hadapsar-pune', label: 'Car Service in Hadapsar, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-anand-nagar-suncity-pune', label: 'Car Service in Suncity, Pune' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-lohgaon-wagholi-road-pune', label: 'Car Service in Lohgaon-Wagholi, Pune' },
                 { href: '/workshop/my-fng-best-car-service-and-repairs-in-pathardi-phata-nashik', label: 'Car Service in Pathardi Phata, Nashik' },
               ].map((loc) => (

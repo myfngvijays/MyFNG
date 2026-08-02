@@ -20,6 +20,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { parseIds } from '../../../lib/parseIds';
@@ -959,19 +960,37 @@ export default function TelecallerLeadDetailScreen({
       );
       let list = Array.isArray(apiData?.workshops) ? apiData.workshops : [];
       if (list.length === 0) {
-        const { data: rows } = await supabase
-          .from('workshops')
-          .select('id, name, workshop_name, city, address, pincode, phone, is_verified')
-          .eq('is_verified', true)
-          .limit(80);
-        list = (rows || []).map((w: any) => ({
-          id: w.id,
-          name: w.name || w.workshop_name,
-          city: w.city,
-          address: w.address,
-          pincode: w.pincode,
-          phone: w.phone,
-        }));
+        const [{ data: rows }, { data: pageRows }] = await Promise.all([
+          supabase
+            .from('workshops')
+            .select('id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, phone, is_verified')
+            .eq('is_verified', true)
+            .limit(80),
+          supabase
+            .from('workshop_public_pages')
+            .select('workshop_id, gmb_data')
+            .eq('is_published', true),
+        ]);
+        const gmbByWorkshop = new Map<string, Record<string, unknown>>();
+        for (const page of (pageRows as any[]) || []) {
+          const workshopId = String(page?.workshop_id || '').trim();
+          const gmb = page?.gmb_data;
+          if (workshopId && gmb && typeof gmb === 'object') {
+            gmbByWorkshop.set(workshopId, gmb as Record<string, unknown>);
+          }
+        }
+        list = (rows || []).map((w: any) => {
+          const gmb = gmbByWorkshop.get(String(w.id)) || null;
+          return {
+            id: w.id,
+            name: w.name || w.workshop_name,
+            city: w.city,
+            address: workshopPublicPageAddress(w, gmb),
+            short_address: w.short_address,
+            pincode: w.pincode,
+            phone: w.phone,
+          };
+        });
         if (cityName) {
           list = list.filter((w: any) =>
             String(w.city || '').toLowerCase().includes(String(cityName).toLowerCase()),
@@ -1786,7 +1805,7 @@ export default function TelecallerLeadDetailScreen({
                       const active = editForm.workshop_id === w.id;
                       const areaName = w.workshop_name || w.name || 'Workshop';
                       const centerName = w.service_center_name || null;
-                      const address = w.address || w.short_address || null;
+                      const address = w.short_address || w.address || null;
                       return (
                         <TouchableOpacity
                           key={w.id}
@@ -2689,7 +2708,7 @@ export default function TelecallerLeadDetailScreen({
               const active = editForm.workshop_id === w.id;
               const areaName = w.workshop_name || w.name || 'Workshop';
               const centerName = w.service_center_name || null;
-              const address = w.address || w.short_address || null;
+              const address = w.short_address || w.address || null;
               return (
                 <TouchableOpacity
                   key={w.id}

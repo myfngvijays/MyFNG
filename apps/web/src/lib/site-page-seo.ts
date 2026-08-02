@@ -1,4 +1,5 @@
 import { buildCityPageSeoDefaults, isCityPagePath } from '@/lib/city-pages';
+import { buildPopularBrandSeoDefaults } from '@/lib/popular-brands';
 import { isServicePagePath } from '@/lib/service-page-seo';
 import { unstable_cache } from 'next/cache';
 import type { Metadata } from 'next';
@@ -209,6 +210,7 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
     noindex: true,
   },
   ...buildCityPageSeoDefaults(),
+  ...buildPopularBrandSeoDefaults(),
 ];
 
 export function normalizePagePath(path: string): string {

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { MapPin, Search, Star, Phone, ArrowRight, Sparkles, Loader2, SlidersHorizontal, X } from 'lucide-react';
 import WorkshopMap, { type WorkshopMapMarker } from '@/components/workshops/WorkshopMap';
+import { isMyFngBrandedWorkshop, workshopPublicPageAddress } from '@/lib/workshopDisplay';
 
 type WorkshopPublicPageRow = {
   id: string;
@@ -19,7 +20,13 @@ type WorkshopPublicPageRow = {
   views_count: number | null;
   workshop: {
     name: string;
+    workshop_name?: string | null;
+    is_verified?: boolean | null;
     address: string | null;
+    short_address?: string | null;
+    workshop_area?: string | null;
+    near_famous_area?: string | null;
+    landmark?: string | null;
     city: string | null;
     state: string | null;
     pincode: string | null;
@@ -167,17 +174,26 @@ export default function WorkshopsPage() {
             cover_image,
             views_count,
             gmb_data,
-            workshop:workshops(name,address,city,state,pincode,phone,latitude,longitude,map_link)
+            workshop:workshops(name,workshop_name,is_verified,address,short_address,workshop_area,near_famous_area,landmark,city,state,pincode,phone,latitude,longitude,map_link)
           `
           )
           .eq('is_published', true)
           .order('is_featured', { ascending: false })
           .order('views_count', { ascending: false })
-          .limit(60);
+          .limit(120);
 
         if (error) throw error;
         if (!mounted) return;
-        setRows((data as any) ?? []);
+        const list = ((data as any) ?? []).filter((row: any) => {
+          const w = row?.workshop;
+          if (w?.is_verified === false) return false;
+          return isMyFngBrandedWorkshop({
+            name: w?.name,
+            workshop_name: w?.workshop_name,
+            gmb_business_name: row?.gmb_data?.business_name,
+          });
+        });
+        setRows(list.slice(0, 60));
       } catch (e) {
         console.error('Error loading workshops:', e);
       } finally {
@@ -434,7 +450,9 @@ export default function WorkshopsPage() {
                     {filtered.map((r) => {
                       const w = r.workshop;
                       const title = shortGmbName(r);
-                      const location = (r as any).gmb_data?.formatted_address || [w?.city, w?.state].filter(Boolean).join(', ');
+                      const location =
+                        workshopPublicPageAddress(w || {}, (r as any).gmb_data) ||
+                        [w?.city, w?.state].filter(Boolean).join(', ');
                       const cover = r.cover_image || r.profile_image;
                       const selected = activeId === r.id;
                       const kmAway =
@@ -570,7 +588,8 @@ export default function WorkshopsPage() {
                                   {shortGmbName(activeRow)}
                                 </div>
                                 <div className="mt-1 text-xs text-gray-600 line-clamp-1">
-                                  {(activeRow as any).gmb_data?.formatted_address || [activeRow.workshop?.city, activeRow.workshop?.state].filter(Boolean).join(', ')}
+                                  {workshopPublicPageAddress(activeRow.workshop || {}, (activeRow as any).gmb_data) ||
+                                    [activeRow.workshop?.city, activeRow.workshop?.state].filter(Boolean).join(', ')}
                                 </div>
                               </div>
                               <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-900">

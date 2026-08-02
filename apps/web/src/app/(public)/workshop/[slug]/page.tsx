@@ -7,7 +7,7 @@ import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
 import WorkshopBrandsRow from '@/components/workshop/WorkshopBrandsRow';
 import WorkshopFaqs from '@/components/workshop/WorkshopFaqs';
-import WorkshopPackages from '@/components/workshop/WorkshopPackages';
+import PeriodicServicePackages from '@/components/workshop/PeriodicServicePackages';
 import { DEFAULT_SERVICES } from '@/lib/services/catalog';
 import type {
   Workshop,
@@ -943,7 +943,7 @@ export default function WorkshopPublicPage() {
       <WorkshopBrandsRow brands={brands} />
 
       {/* PERIODIC SERVICE PACKAGES */}
-      <WorkshopPackages packages={packages} />
+      <PeriodicServicePackages packages={packages} />
 
       {/* OTHER SERVICES */}
       <section className="py-10 bg-[#f2f4f8]">

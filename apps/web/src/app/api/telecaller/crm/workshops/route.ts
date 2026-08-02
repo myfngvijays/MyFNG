@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { filterWorkshopsForPincode } from '@/lib/whatsappBotFlow/workshopPincode';
+import { workshopPublicPageAddress, isMyFngBrandedWorkshop } from '@/lib/workshopDisplay';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     const { data: rows, error } = await db
       .from('workshops')
       .select(
-        'id, name, workshop_name, workshop_area, near_famous_area, city, address, short_address, landmark, pincode, service_pincode, mapping_pincodes, phone, is_verified, audit_score, one_day_capacity, latitude, longitude',
+        'id, name, workshop_name, workshop_area, near_famous_area, city, state, address, short_address, landmark, pincode, service_pincode, mapping_pincodes, phone, is_verified, audit_score, one_day_capacity, latitude, longitude',
       )
       .eq('is_verified', true)
       .order('audit_score', { ascending: false, nullsFirst: false })
@@ -45,7 +46,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message || 'Failed to load workshops' }, { status: 400 });
     }
 
-    let list = Array.isArray(rows) ? rows : [];
+    let list = (Array.isArray(rows) ? rows : []).filter((w: any) =>
+      isMyFngBrandedWorkshop({
+        name: w.name,
+        workshop_name: w.workshop_name,
+      }),
+    );
+
+    const workshopIds = list.map((w: any) => String(w.id || '').trim()).filter(Boolean);
+    const gmbByWorkshop = new Map<string, Record<string, unknown>>();
+    if (workshopIds.length > 0) {
+      const { data: pageRows } = await db
+        .from('workshop_public_pages')
+        .select('workshop_id, gmb_data')
+        .eq('is_published', true)
+        .in('workshop_id', workshopIds);
+      for (const page of pageRows || []) {
+        const workshopId = String((page as any)?.workshop_id || '').trim();
+        const gmb = (page as any)?.gmb_data;
+        if (workshopId && gmb && typeof gmb === 'object') {
+          gmbByWorkshop.set(workshopId, gmb as Record<string, unknown>);
+        }
+      }
+    }
 
     if (/^\d{6}$/.test(pincode)) {
       const nearby = filterWorkshopsForPincode(list, pincode);
@@ -73,11 +96,8 @@ export async function GET(request: NextRequest) {
         String(w.near_famous_area || '').trim() ||
         null;
       const serviceCenter = String(w.name || '').trim() || null;
-      const address =
-        String(w.short_address || '').trim() ||
-        String(w.address || '').trim() ||
-        String(w.landmark || '').trim() ||
-        null;
+      const gmb = gmbByWorkshop.get(String(w.id)) || null;
+      const address = workshopPublicPageAddress(w, gmb);
       return {
         id: w.id,
         /** MyFNG area brand name e.g. MyFNG Majiwada */

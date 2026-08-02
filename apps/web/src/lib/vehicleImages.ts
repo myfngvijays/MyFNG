@@ -68,6 +68,44 @@ export function getPublicUrlForStoragePath(storagePath: string): string {
   return `/media/${VEHICLE_IMAGE_BUCKET}/${encoded}`;
 }
 
+export function getVehicleImageCandidates(
+  make?: string,
+  model?: string,
+  extraModelSlugs?: string[],
+): string[] {
+  const makeSlug = resolveStorageMakeSlug(make || '');
+  const modelSlugs = new Set<string>();
+
+  for (const slug of extraModelSlugs || []) {
+    if (slug) modelSlugs.add(slug);
+  }
+  for (const slug of getModelSlugCandidates(model || '')) {
+    modelSlugs.add(slug);
+  }
+
+  const candidates: string[] = [];
+
+  if (modelSlugs.size && makeSlug) {
+    const makePart = makeSlug.split('-')[0];
+    for (const modelSlug of modelSlugs) {
+      candidates.push(
+        getPublicUrlForStoragePath(`${VEHICLE_IMAGE_PREFIX}/${makeSlug}-cars/${makePart}-${modelSlug}.png`),
+      );
+    }
+  }
+
+  if (makeSlug) {
+    candidates.push(getPublicUrlForStoragePath(`${VEHICLE_IMAGE_PREFIX}/${makeSlug}.png`));
+  }
+
+  candidates.push(getPublicUrlForStoragePath(`${VEHICLE_IMAGE_PREFIX}/default-car.png`));
+  return [...new Set(candidates)];
+}
+
+export function getVehicleImageUrl(make?: string, model?: string): string {
+  return getVehicleImageCandidates(make, model)[0];
+}
+
 export function parseModelImagePath(storagePath: string): { makeSlug: string; modelSlug: string } | null {
   const normalized = storagePath.replace(/^car-brands-images\//, '');
   const match = normalized.match(/^(.+)-cars\/([^/]+)-(.+)\.png$/i);
