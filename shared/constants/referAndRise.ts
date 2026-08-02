@@ -164,7 +164,7 @@ export function isLegacyReferAndRiseConfig(raw: unknown): boolean {
   return false;
 }
 
-export type ReferPushTrigger = 'milestone_unlocked';
+export type ReferPushTrigger = 'friend_joined' | 'friend_booked' | 'milestone_unlocked';
 
 export type ReferPushNotificationTemplate = {
   id: string;
@@ -177,44 +177,82 @@ export type ReferPushNotificationTemplate = {
 
 export const DEFAULT_PUSH_NOTIFICATIONS: ReferPushNotificationTemplate[] = [
   {
+    id: 'friend_joined',
+    label: 'Friend Joined App',
+    trigger: 'friend_joined',
+    title: 'Your friend joined MyFNG!',
+    body: '{{FRIEND_NAME}} installed and joined MyFNG using your referral. You\'ll earn rewards when they complete their first service.',
+    enabled: true,
+  },
+  {
+    id: 'friend_booked',
+    label: 'Friend Booked Service',
+    trigger: 'friend_booked',
+    title: 'Your referred friend booked!',
+    body: '{{FRIEND_NAME}} just booked a service on MyFNG. Complete their service to unlock your referral reward.',
+    enabled: true,
+  },
+  {
     id: 'milestone_unlocked',
     label: 'Referral Milestone Unlocked',
     trigger: 'milestone_unlocked',
-    title: 'MyFNG Referral Unlocked',
+    title: 'Your referral is unlocked!',
     body: '{{WALLET_PART}}Milestone #{{MILESTONE}} unlocked — claim your Refer & Rise reward now.',
     enabled: true,
   },
 ];
 
 export const REFER_PUSH_TRIGGER_LABELS: Record<ReferPushTrigger, string> = {
-  milestone_unlocked: 'Friend booking complete → milestone unlocks',
+  friend_joined: 'Friend installs & joins with your code',
+  friend_booked: 'Referred friend books a service',
+  milestone_unlocked: 'Friend service complete → milestone unlocks',
 };
+
+const VALID_PUSH_TRIGGERS = new Set<ReferPushTrigger>(['friend_joined', 'friend_booked', 'milestone_unlocked']);
+
+function normalizePushTrigger(raw: unknown): ReferPushTrigger {
+  const trigger = String(raw || '').trim() as ReferPushTrigger;
+  return VALID_PUSH_TRIGGERS.has(trigger) ? trigger : 'milestone_unlocked';
+}
 
 export function migratePushNotifications(content: unknown): ReferPushNotificationTemplate[] {
   const obj = content && typeof content === 'object' ? (content as Record<string, unknown>) : null;
+  let migrated: ReferPushNotificationTemplate[] = [];
 
   if (Array.isArray(obj?.pushNotifications) && obj.pushNotifications.length > 0) {
-    return obj.pushNotifications.map((item: any, idx: number) => ({
-      id: String(item?.id || `push_${idx + 1}`).trim() || `push_${idx + 1}`,
-      label: String(item?.label || 'Push Notification').trim() || 'Push Notification',
-      trigger: item?.trigger === 'milestone_unlocked' ? 'milestone_unlocked' : 'milestone_unlocked',
-      title: String(item?.title || DEFAULT_PUSH_NOTIFICATIONS[0].title).trim() || DEFAULT_PUSH_NOTIFICATIONS[0].title,
-      body: String(item?.body || DEFAULT_PUSH_NOTIFICATIONS[0].body).trim() || DEFAULT_PUSH_NOTIFICATIONS[0].body,
-      enabled: item?.enabled !== false,
-    }));
+    migrated = obj.pushNotifications.map((item: any, idx: number) => {
+      const trigger = normalizePushTrigger(item?.trigger);
+      const fallback = DEFAULT_PUSH_NOTIFICATIONS.find((d) => d.trigger === trigger) || DEFAULT_PUSH_NOTIFICATIONS[2];
+      return {
+        id: String(item?.id || fallback.id || `push_${idx + 1}`).trim() || fallback.id,
+        label: String(item?.label || fallback.label).trim() || fallback.label,
+        trigger,
+        title: String(item?.title || fallback.title).trim() || fallback.title,
+        body: String(item?.body || fallback.body).trim() || fallback.body,
+        enabled: item?.enabled !== false,
+      };
+    });
+  } else {
+    const legacyTitle = String((obj as any)?.pushMilestoneTitle || '').trim();
+    const legacyBody = String((obj as any)?.pushMilestoneBody || '').trim();
+    if (legacyTitle || legacyBody) {
+      migrated = DEFAULT_PUSH_NOTIFICATIONS.map((item) =>
+        item.trigger === 'milestone_unlocked'
+          ? { ...item, title: legacyTitle || item.title, body: legacyBody || item.body }
+          : { ...item },
+      );
+    } else {
+      migrated = DEFAULT_PUSH_NOTIFICATIONS.map((item) => ({ ...item }));
+    }
   }
 
-  const legacyTitle = String((obj as any)?.pushMilestoneTitle || '').trim();
-  const legacyBody = String((obj as any)?.pushMilestoneBody || '').trim();
-  if (legacyTitle || legacyBody) {
-    return [{
-      ...DEFAULT_PUSH_NOTIFICATIONS[0],
-      title: legacyTitle || DEFAULT_PUSH_NOTIFICATIONS[0].title,
-      body: legacyBody || DEFAULT_PUSH_NOTIFICATIONS[0].body,
-    }];
+  for (const def of DEFAULT_PUSH_NOTIFICATIONS) {
+    if (!migrated.some((item) => item.trigger === def.trigger || item.id === def.id)) {
+      migrated.push({ ...def });
+    }
   }
 
-  return DEFAULT_PUSH_NOTIFICATIONS.map((item) => ({ ...item }));
+  return migrated;
 }
 
 export function getReferPushTemplate(
@@ -224,12 +262,17 @@ export function getReferPushTemplate(
   const list = migratePushNotifications(content);
   const match = list.find((item) => item.enabled && item.trigger === trigger);
   if (match) return match;
-  const fallback = list.find((item) => item.id === 'milestone_unlocked') || DEFAULT_PUSH_NOTIFICATIONS[0];
+  const fallback =
+    list.find((item) => item.trigger === trigger) ||
+    DEFAULT_PUSH_NOTIFICATIONS.find((item) => item.trigger === trigger) ||
+    DEFAULT_PUSH_NOTIFICATIONS.find((item) => item.id === 'milestone_unlocked') ||
+    DEFAULT_PUSH_NOTIFICATIONS[0];
   return fallback;
 }
 
 export function previewReferPushBody(body: string): string {
   return String(body || '')
+    .replace(/\{\{FRIEND_NAME\}\}/g, 'Your friend')
     .replace(/\{\{WALLET_PART\}\}/g, '₹500 wallet bonus credited. ')
     .replace(/\{\{WALLET_AMOUNT\}\}/g, '₹500')
     .replace(/\{\{MILESTONE\}\}/g, '1');
@@ -367,8 +410,8 @@ export function getMilestoneByCount(count: number, milestones: Milestone[] = MIL
   return milestones.find((m) => m.referralCount === count);
 }
 
-/** Phones allowed to simulate referral invites instantly (QA / demo). */
-export const REFERRAL_TEST_REFERRER_PHONES = ['8652710389'];
+/** Phones allowed to simulate referral invites instantly (QA / demo). Empty = disabled. */
+export const REFERRAL_TEST_REFERRER_PHONES: string[] = [];
 
 export function normalizePhoneLast10(phone: string): string {
   return String(phone || '').replace(/\D/g, '').slice(-10);

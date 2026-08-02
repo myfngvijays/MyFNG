@@ -112,8 +112,7 @@ export default function WhatsAppTemplateManager() {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [languageFilter, setLanguageFilter] = useState('ALL');
   const [dateField, setDateField] = useState<DateField>('updated');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [filterDate, setFilterDate] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showViewOptions, setShowViewOptions] = useState(false);
   const [columns, setColumns] = useState<ColumnVisibility>(DEFAULT_COLUMNS);
@@ -201,11 +200,10 @@ export default function WhatsAppTemplateManager() {
       const matchesCategory = categoryFilter === 'ALL' || row.category === categoryFilter;
       const matchesLanguage = languageFilter === 'ALL' || row.language_code === languageFilter;
       const rowDate = parseRowDate(dateField === 'created' ? row.created_at : row.updated_at);
-      const matchesDateFrom = !dateFrom || (rowDate != null && rowDate >= dateFrom);
-      const matchesDateTo = !dateTo || (rowDate != null && rowDate <= dateTo);
-      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDateFrom && matchesDateTo;
+      const matchesDate = !filterDate || rowDate === filterDate;
+      return matchesSearch && matchesStatus && matchesCategory && matchesLanguage && matchesDate;
     });
-  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, dateFrom, dateTo]);
+  }, [templates, search, statusFilter, categoryFilter, languageFilter, dateField, filterDate]);
 
   const categories = useMemo(() => {
     const values = Array.from(new Set(templates.map((row) => row.category).filter(Boolean)));
@@ -257,8 +255,7 @@ export default function WhatsAppTemplateManager() {
   };
 
   const clearDateFilter = () => {
-    setDateFrom('');
-    setDateTo('');
+    setFilterDate('');
   };
 
   const handleCreate = async () => {
@@ -435,22 +432,54 @@ export default function WhatsAppTemplateManager() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Templates</h2>
-            <p className="text-xs text-gray-500">Click any template to open WhatsApp-style preview</p>
+            <p className="text-xs text-gray-500">Use Preview to see WhatsApp-style message on phone mockup</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setShowCreateForm((v) => !v);
-              setCreateStep(1);
-            }}
-            className="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            {showCreateForm ? 'Close Form' : 'New Template'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleEnsureOtpTemplate}
+              disabled={ensuringOtp || repushing || syncing}
+              className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+              title="Create AUTHENTICATION otp template on current Meta WABA"
+            >
+              <RefreshCcw className="mr-1 h-4 w-4" />
+              {ensuringOtp ? 'Creating OTP...' : 'Fix OTP on Meta'}
+            </button>
+            <button
+              type="button"
+              onClick={handleRepushAllTemplates}
+              disabled={repushing || syncing || ensuringOtp}
+              className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+              title="Push all local templates to the WABA in env (after updating credentials)"
+            >
+              <RefreshCcw className="mr-1 h-4 w-4" />
+              {repushing ? 'Repushing...' : 'Repush all'}
+            </button>
+            <button
+              type="button"
+              onClick={handleSyncTemplates}
+              disabled={syncing || repushing}
+              className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              title="Sync templates from Meta"
+            >
+              <RefreshCcw className="mr-1 h-4 w-4" />
+              {syncing ? 'Syncing...' : 'Sync'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateForm((v) => !v);
+                setCreateStep(1);
+              }}
+              className="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              {showCreateForm ? 'Close Form' : 'New Template'}
+            </button>
+          </div>
         </div>
 
         {showCreateForm ? (
@@ -743,19 +772,11 @@ export default function WhatsAppTemplateManager() {
             <input
               type="date"
               className="w-[130px] border-0 bg-transparent py-1 text-sm outline-none"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              title="From date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              title="Filter by date"
             />
-            <span className="text-xs text-gray-400">to</span>
-            <input
-              type="date"
-              className="w-[130px] border-0 bg-transparent py-1 text-sm outline-none"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              title="To date"
-            />
-            {(dateFrom || dateTo) && (
+            {filterDate ? (
               <button
                 type="button"
                 onClick={clearDateFilter}
@@ -763,41 +784,8 @@ export default function WhatsAppTemplateManager() {
               >
                 Clear
               </button>
-            )}
+            ) : null}
           </div>
-
-          <button
-            type="button"
-            onClick={handleEnsureOtpTemplate}
-            disabled={ensuringOtp || repushing || syncing}
-            className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-            title="Create AUTHENTICATION otp template on current Meta WABA"
-          >
-            <RefreshCcw className="mr-1 h-4 w-4" />
-            {ensuringOtp ? 'Creating OTP...' : 'Fix OTP on Meta'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleRepushAllTemplates}
-            disabled={repushing || syncing || ensuringOtp}
-            className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
-            title="Push all local templates to the WABA in env (after updating credentials)"
-          >
-            <RefreshCcw className="mr-1 h-4 w-4" />
-            {repushing ? 'Repushing...' : 'Repush all'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSyncTemplates}
-            disabled={syncing || repushing}
-            className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            title="Sync templates from Meta"
-          >
-            <RefreshCcw className="mr-1 h-4 w-4" />
-            {syncing ? 'Syncing...' : 'Sync'}
-          </button>
 
           <div className="relative" ref={viewOptionsRef}>
             <button
@@ -866,11 +854,9 @@ export default function WhatsAppTemplateManager() {
               </div>
             ) : (
               filteredTemplates.map((row) => (
-                <button
+                <div
                   key={row.id}
-                  type="button"
-                  onClick={() => openTemplatePreview(row)}
-                  className="rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md"
+                  className="rounded-xl border bg-white p-4 shadow-sm"
                 >
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div>
@@ -887,14 +873,21 @@ export default function WhatsAppTemplateManager() {
                         : String(row.meta?.status || 'NOT_SYNCED')}
                     </span>
                   </div>
-                  <WhatsAppTemplateBubble template={row} compact />
+                  <button
+                    type="button"
+                    onClick={() => openTemplatePreview(row)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Preview
+                  </button>
                   <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
                     <span>
                       {row.category} · {row.language_code.toUpperCase()}
                     </span>
                     <span>{new Date(row.updated_at).toLocaleDateString()}</span>
                   </div>
-                </button>
+                </div>
               ))
             )}
           </div>
@@ -928,11 +921,7 @@ export default function WhatsAppTemplateManager() {
                 </tr>
               ) : (
                 filteredTemplates.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="cursor-pointer border-t align-top hover:bg-emerald-50/40"
-                    onClick={() => openTemplatePreview(row)}
-                  >
+                  <tr key={row.id} className="border-t align-top hover:bg-gray-50/60">
                     <td className="px-3 py-3">
                       <p className="font-semibold text-gray-900">{row.display_name || row.template_name}</p>
                       <p className="mt-1 text-xs text-gray-500">{row.template_name}</p>
@@ -945,9 +934,14 @@ export default function WhatsAppTemplateManager() {
                     </td>
                     {columns.preview ? (
                       <td className="px-3 py-3">
-                        <div className="max-w-[220px]">
-                          <WhatsAppTemplateBubble template={row} compact />
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openTemplatePreview(row)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Preview
+                        </button>
                       </td>
                     ) : null}
                     {columns.waba ? (
@@ -1028,12 +1022,12 @@ export default function WhatsAppTemplateManager() {
 
         <div className="mt-3 text-xs text-gray-500">
           Showing {filteredTemplates.length} of {templates.length} templates
-          {(dateFrom || dateTo) && (
+          {filterDate ? (
             <span>
               {' '}
-              · Date filter ({dateField}): {dateFrom || '…'} to {dateTo || '…'}
+              · Date filter ({dateField}): {filterDate}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
 

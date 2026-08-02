@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import {
   ClipboardList,
+  ChevronDown,
   Gift,
   LayoutDashboard,
   LogOut,
@@ -16,12 +17,25 @@ import {
 
 const APP_OPS_ROLE = 'APP_OPERATIONS';
 
-type NavItem = {
+type NavChild = {
   name: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
   description: string;
 };
+
+type NavItem =
+  | {
+      name: string;
+      href: string;
+      icon: React.ComponentType<{ className?: string }>;
+      description: string;
+    }
+  | {
+      name: string;
+      icon: React.ComponentType<{ className?: string }>;
+      description: string;
+      children: NavChild[];
+    };
 
 const navigationItems: NavItem[] = [
   {
@@ -38,9 +52,20 @@ const navigationItems: NavItem[] = [
   },
   {
     name: 'App Customers',
-    href: '/dashboard/app_operations/customer-insights',
     icon: Smartphone,
-    description: 'App users, bookings & wallet',
+    description: 'App users & proximity alerts',
+    children: [
+      {
+        name: 'Customers',
+        href: '/dashboard/app_operations/customer-insights',
+        description: 'App users, bookings & wallet',
+      },
+      {
+        name: 'Workshop Proximity',
+        href: '/dashboard/app_operations/workshop-proximity',
+        description: 'Walk-in alerts near service centers',
+      },
+    ],
   },
   {
     name: 'Membership Customers',
@@ -56,6 +81,10 @@ const navigationItems: NavItem[] = [
   },
 ];
 
+function isNavLink(item: NavItem): item is Extract<NavItem, { href: string }> {
+  return 'href' in item;
+}
+
 export default function AppOperationsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -63,6 +92,7 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
   const [ready, setReady] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userName, setUserName] = useState('');
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ 'App Customers': true });
 
   useEffect(() => {
     let active = true;
@@ -90,6 +120,15 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
     return () => { active = false; };
   }, [router, supabase]);
 
+  useEffect(() => {
+    if (
+      pathname?.startsWith('/dashboard/app_operations/customer-insights') ||
+      pathname?.startsWith('/dashboard/app_operations/workshop-proximity')
+    ) {
+      setOpenGroups((prev) => ({ ...prev, 'App Customers': true }));
+    }
+  }, [pathname]);
+
   const handleLogout = async () => {
     if (!confirm('Are you sure you want to logout?')) return;
     await supabase.auth.signOut();
@@ -100,6 +139,9 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
     if (href === '/dashboard/app_operations') return pathname === href;
     return pathname?.startsWith(href);
   };
+
+  const isGroupActive = (item: Extract<NavItem, { children: NavChild[] }>) =>
+    item.children.some((child) => isActive(child.href));
 
   if (!ready) {
     return (
@@ -113,6 +155,53 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
     <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
       {navigationItems.map((item) => {
         const Icon = item.icon;
+
+        if (!isNavLink(item)) {
+          const isOpen = Boolean(openGroups[item.name]);
+          const groupActive = isGroupActive(item);
+          return (
+            <div key={item.name} className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setOpenGroups((prev) => ({ ...prev, [item.name]: !prev[item.name] }))}
+                className={`w-full flex items-start gap-3 px-3 py-3 rounded-xl text-left transition-colors ${
+                  groupActive ? 'bg-white/15 text-white shadow-sm' : 'text-blue-100 hover:bg-white/10'
+                }`}
+              >
+                <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${groupActive ? 'text-yellow-300' : ''}`} />
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold">{item.name}</span>
+                  <span className="block text-xs opacity-80 mt-0.5">{item.description}</span>
+                </span>
+                <ChevronDown className={`w-4 h-4 mt-1 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isOpen ? (
+                <div className="ml-4 pl-3 border-l border-white/15 space-y-1">
+                  {item.children.map((child) => {
+                    const active = isActive(child.href);
+                    return (
+                      <button
+                        key={child.href}
+                        type="button"
+                        onClick={() => {
+                          router.push(child.href);
+                          setMobileOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
+                          active ? 'bg-white/15 text-white' : 'text-blue-100 hover:bg-white/10'
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold">{child.name}</span>
+                        <span className="block text-xs opacity-75 mt-0.5">{child.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        }
+
         const active = isActive(item.href);
         return (
           <button

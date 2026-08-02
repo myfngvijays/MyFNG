@@ -78,10 +78,13 @@ import { initializeClarity } from './src/lib/clarity';
 import { preloadMobileAuthConfig } from './src/lib/mobileAuthConfig';
 import { initializeFirebaseAnalytics, refreshFirebaseAnalyticsEnabled } from './src/lib/firebaseAnalytics';
 import { trackScreen, trackEvent, setUserId } from './src/lib/trackEvent';
-import ForceUpdateModal from './src/components/ForceUpdateModal';
-import SoftUpdateModal from './src/components/SoftUpdateModal';
+import { reportForegroundWorkshopProximity, syncWorkshopGeofencingPreference } from './src/lib/workshopGeofencing';
+import { apiFetch } from './src/lib/api';
 
 const Stack = createNativeStackNavigator();
+
+const SPLASH_MAX_MS = 4500;
+const SPLASH_ANIMATION_MS = 4000;
 
 function AppContent() {
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
@@ -99,6 +102,19 @@ function AppContent() {
     Boolean(user && userProfile) &&
     (isCustomerSessionUser || userProfile?.role?.role_code === 'CUSTOMER');
   const appSessionStartedAtRef = useRef<number | null>(null);
+
+  const handleSplashComplete = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
+  useEffect(() => {
+    const capTimer = setTimeout(() => {
+      setShowSplash(false);
+      setAuthReady(true);
+      setUpdateCheckDone(true);
+    }, SPLASH_MAX_MS);
+    return () => clearTimeout(capTimer);
+  }, []);
 
   const syncCustomerPushToken = async (source = 'app') => {
     try {
@@ -161,6 +177,29 @@ function AppContent() {
   useEffect(() => {
     if (!isCustomerSessionUser) return;
     void syncCustomerPushToken();
+  }, [isCustomerSessionUser, user?.id]);
+
+  useEffect(() => {
+    if (!isCustomerSessionUser) return;
+
+    void (async () => {
+      try {
+        const pref = await apiFetch<{ enabled?: boolean }>('/api/customer/workshop-proximity/preferences');
+        if (pref?.enabled) {
+          await syncWorkshopGeofencingPreference(true);
+        }
+        await reportForegroundWorkshopProximity();
+      } catch {
+        // non-blocking
+      }
+    })();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void reportForegroundWorkshopProximity();
+      }
+    });
+    return () => subscription.remove();
   }, [isCustomerSessionUser, user?.id]);
 
   // Deep link handling — capture referral code from myfng.in/refer/CODE
@@ -275,16 +314,14 @@ function AppContent() {
   const checkUser = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (session?.user) {
         setUser(session.user);
-        await fetchUserProfile(session.user.id);
-      } else {
-        const hasCustomerSession = await fetchCustomerSessionProfile();
-        if (!hasCustomerSession) {
-          if (__DEV__) console.log('No authenticated user');
-        }
+        void fetchUserProfile(session.user.id);
+        return;
       }
+
+      await fetchCustomerSessionProfile();
     } catch (error) {
       if (__DEV__) console.error('Error checking user:', error);
     } finally {
@@ -373,7 +410,7 @@ function AppContent() {
   };
 
   if (showSplash || !authReady || !updateCheckDone) {
-    return <SplashScreen durationMs={5000} onComplete={() => setShowSplash(false)} />;
+    return <SplashScreen durationMs={SPLASH_ANIMATION_MS} onComplete={handleSplashComplete} />;
   }
 
   if (forceUpdate?.required) {

@@ -58,6 +58,15 @@ export async function GET() {
     .filter((r: any) => r.status === 'CREDITED')
     .reduce((sum: number, r: any) => sum + Number(r.reward_amount || 0), 0);
 
+  const { count: totalInvitesSent } = await supabaseAdmin
+    .from('customer_analytics_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('customer_id', customer.id)
+    .eq('event_name', 'referral_invite_sent');
+
+  const referredCount = totalReferred || 0;
+  const rewardedCount = totalRewarded || 0;
+
   // Fetch milestone claims (picks)
   let picks: Record<number, string> = {};
   const { data: claimsData } = await supabaseAdmin
@@ -93,8 +102,10 @@ export async function GET() {
     rewards: rewards || [],
     refer_and_rise: { picks },
     stats: {
-      total_referred: totalReferred || 0,
-      total_rewarded: totalRewarded || 0,
+      total_referred: referredCount,
+      total_rewarded: rewardedCount,
+      total_pending: Math.max(0, referredCount - rewardedCount),
+      total_invites_sent: totalInvitesSent || 0,
       total_earned: totalEarned,
     },
   });
@@ -187,6 +198,18 @@ export async function POST(request: NextRequest) {
   }
 
   await logCustomerEvent(supabaseAdmin, customer.id, 'referral_applied', 'referral', { referral_code: referredCode });
+
+  if (event.status !== 'REJECTED') {
+    try {
+      const { notifyReferralFriendJoined } = await import('@/lib/referral-push-notify');
+      await notifyReferralFriendJoined(supabaseAdmin, refCode.customer_id, {
+        friendName: customer.full_name || customer.phone,
+      });
+    } catch (pushErr) {
+      console.warn('[referral POST] friend_joined push failed:', pushErr);
+    }
+  }
+
   return NextResponse.json({ success: true, event });
 }
 

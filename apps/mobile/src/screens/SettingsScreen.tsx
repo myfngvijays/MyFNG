@@ -68,12 +68,23 @@ const ADDRESS_TYPE_OPTIONS = [
 ];
 import NotificationPreferenceSwitch from '../components/NotificationPreferenceSwitch';
 import {
+  syncWorkshopGeofencingPreference,
+  showWorkshopGeofencePermissionAlert,
+} from '../lib/workshopGeofencing';
+import {
   isExpoPushConfigured,
   isPushConfigured,
   showPushPermissionAlert,
   showPushRegistrationErrorAlert,
   syncPushPreferenceAfterSave,
 } from '../lib/pushPreferenceSync';
+import {
+  getContactsPermissionGranted,
+  isContactsNativeModuleAvailable,
+  requestContactsPermission,
+  showContactsPermissionAlert,
+  showContactsUnavailableAlert,
+} from '../lib/contactsPermission';
 import { fetchAppMembershipPlans, fetchPrimeMembershipConfig, type AppMembershipPlan, type PrimeMembershipDisplay } from '../lib/membershipPlan';
 import { normalizeMembershipType, isPlacementEnabled } from '../lib/membershipPlacements';
 import { PRIME_VALUE_ADDON, PRIME_VALUE_PRICE } from '../constants/primeMembershipValueCard';
@@ -412,6 +423,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
   });
   const [notifSaving, setNotifSaving] = useState(false);
   const [pushTokenRegistered, setPushTokenRegistered] = useState(false);
+  const [contactsPermissionGranted, setContactsPermissionGranted] = useState(false);
+  const [contactsPermissionLoading, setContactsPermissionLoading] = useState(false);
+  const [workshopProximityEnabled, setWorkshopProximityEnabled] = useState(false);
+  const [workshopProximityLoading, setWorkshopProximityLoading] = useState(false);
+  const [workshopProximityRadiusM, setWorkshopProximityRadiusM] = useState(750);
   const [selectedFaqCategory, setSelectedFaqCategory] = useState<string | null>(null);
   // Legal sections are now rendered inline (fully expanded). No modal state needed.
   const [faqModal, setFaqModal] = useState<{ question: string; answer: string } | null>(null);
@@ -938,6 +954,14 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
           referral_updates: Boolean(notifPrefsRes.preferences.referral_updates),
           support_updates: Boolean(notifPrefsRes.preferences.support_updates),
         }));
+        setWorkshopProximityEnabled(Boolean(notifPrefsRes.preferences.workshop_proximity_alerts));
+        try {
+          const proximityPref = await apiFetch<any>('/api/customer/workshop-proximity/preferences');
+          if (proximityPref?.enabled != null) setWorkshopProximityEnabled(Boolean(proximityPref.enabled));
+          if (proximityPref?.radius_m != null) setWorkshopProximityRadiusM(Number(proximityPref.radius_m) || 750);
+        } catch {
+          // optional
+        }
         if (pushOn) {
           const sessionToken = await getCustomerSessionToken();
           if (sessionToken) {
@@ -1015,6 +1039,79 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
     }
     return 'Allow notifications in phone settings to receive alerts on this device.';
   }, [notifPrefs.push_enabled, pushTokenRegistered]);
+
+  const refreshContactsPermission = useCallback(async () => {
+    const granted = await getContactsPermissionGranted().catch(() => false);
+    setContactsPermissionGranted(granted);
+    return granted;
+  }, []);
+
+  const handleContactsToggle = useCallback(async (val: boolean) => {
+    if (!isContactsNativeModuleAvailable()) {
+      showContactsUnavailableAlert();
+      return;
+    }
+    if (!val) {
+      showContactsPermissionAlert(false);
+      await refreshContactsPermission();
+      return;
+    }
+    setContactsPermissionLoading(true);
+    try {
+      const { granted, canAskAgain, moduleAvailable } = await requestContactsPermission();
+      if (!moduleAvailable) return;
+      setContactsPermissionGranted(granted);
+      if (!granted) {
+        showContactsPermissionAlert(canAskAgain);
+      }
+    } finally {
+      setContactsPermissionLoading(false);
+    }
+  }, [refreshContactsPermission]);
+
+  const contactsPreferenceHint = useMemo(() => {
+    if (!isContactsNativeModuleAvailable()) {
+      return 'Simulator purana build use kar raha hai — contacts ke liye npx expo run:ios se fresh build chalao.';
+    }
+    if (contactsPermissionGranted) return null;
+    return 'Phone settings se contacts allow karein.';
+  }, [contactsPermissionGranted]);
+
+  const handleWorkshopProximityToggle = useCallback(async (val: boolean) => {
+    const prev = workshopProximityEnabled;
+    setWorkshopProximityEnabled(val);
+    setWorkshopProximityLoading(true);
+    try {
+      await apiFetch('/api/customer/workshop-proximity/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: val }),
+      });
+      const sync = await syncWorkshopGeofencingPreference(val);
+      if (!sync.ok) {
+        setWorkshopProximityEnabled(prev);
+        await apiFetch('/api/customer/workshop-proximity/preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: prev }),
+        });
+        showWorkshopGeofencePermissionAlert(sync.reason);
+        return;
+      }
+    } catch (_err) {
+      setWorkshopProximityEnabled(prev);
+      Alert.alert('Nearby Workshop Alerts', 'Could not save your preference. Please try again.');
+    } finally {
+      setWorkshopProximityLoading(false);
+    }
+  }, [workshopProximityEnabled]);
+
+  const workshopProximityHint = useMemo(() => {
+    if (!workshopProximityEnabled) {
+      return `Optional. Detects when you are within ~${workshopProximityRadiusM}m of a MyFNG service center.`;
+    }
+    return `Active within ~${workshopProximityRadiusM}m of nearby MyFNG workshops. Requires Always location on iPhone.`;
+  }, [workshopProximityEnabled, workshopProximityRadiusM]);
 
   const membershipListPrice = useMemo(
     () => resolveMembershipListPrice(appMembershipPlans[0] || PRIME_MEMBERSHIP),
@@ -1680,6 +1777,11 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
 
     return () => clearTimeout(timer);
   }, [carSearch, activeSubPage]);
+
+  useEffect(() => {
+    if (activeSubPage !== 'Notifications') return;
+    void refreshContactsPermission();
+  }, [activeSubPage, refreshContactsPermission]);
 
   useEffect(() => {
     if (activeSubPage !== 'FNG Wallet') return;
@@ -5661,6 +5763,16 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
               disabled={notifSaving}
               loading={notifSaving}
               hint={pushPreferenceHint}
+              contactsValue={contactsPermissionGranted}
+              onContactsValueChange={(val) => void handleContactsToggle(val)}
+              contactsDisabled={contactsPermissionLoading}
+              contactsLoading={contactsPermissionLoading}
+              contactsHint={contactsPreferenceHint}
+              workshopProximityValue={workshopProximityEnabled}
+              onWorkshopProximityValueChange={(val) => void handleWorkshopProximityToggle(val)}
+              workshopProximityDisabled={workshopProximityLoading || notifSaving}
+              workshopProximityLoading={workshopProximityLoading}
+              workshopProximityHint={workshopProximityHint}
             />
           </View>
         );

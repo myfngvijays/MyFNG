@@ -37,10 +37,10 @@ const USP_ITEMS = [
 const ROAD_DASH_COUNT = 12;
 const SERVICE_SLOT = 62;
 const ACTIVE_SERVICE_INDEX = 2; // Periodic Service — fixed center
-const SPLASH_DURATION_MS = 5000;
-const USP_INITIAL_DELAY_MS = 500;
-const USP_STAGGER_MS = 520;
-const USP_ENTER_DURATION_MS = 400;
+const SPLASH_DURATION_MS = 4000;
+const USP_INITIAL_DELAY_MS = 280;
+const USP_STAGGER_MS = 340;
+const USP_ENTER_DURATION_MS = 320;
 
 /** Distance from screen edge — wider road (lower Y) keeps pills near the edges. */
 function roadSideOffset(roadY: number) {
@@ -53,6 +53,8 @@ export default function SplashScreen({
 }: SplashScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   const logoFade = useRef(new Animated.Value(0)).current;
   const logoY = useRef(new Animated.Value(-20)).current;
@@ -96,7 +98,7 @@ export default function SplashScreen({
       ]).start();
     });
 
-    Animated.timing(serviceFade, { toValue: 1, duration: 320, delay: 900, useNativeDriver: true }).start();
+    Animated.timing(serviceFade, { toValue: 1, duration: 280, delay: 620, useNativeDriver: true }).start();
     Animated.timing(badgeFade, {
       toValue: 1,
       duration: 300,
@@ -135,7 +137,7 @@ export default function SplashScreen({
     );
     dashLoop.start();
 
-    const timer = setTimeout(onComplete, durationMs);
+    const timer = setTimeout(() => onCompleteRef.current(), durationMs);
     return () => {
       clearTimeout(timer);
       driveLoop.stop();
@@ -144,7 +146,6 @@ export default function SplashScreen({
     };
   }, [
     durationMs,
-    onComplete,
     logoFade,
     logoY,
     sceneFade,

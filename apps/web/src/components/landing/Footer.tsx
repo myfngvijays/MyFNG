@@ -333,14 +333,14 @@ export default function Footer() {
                 <div className="text-center md:text-left">
                   <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Download MyFNG App</h4>
                   <div className="flex flex-row md:flex-col gap-2.5 justify-center md:justify-start items-center md:items-start flex-wrap">
-                    <a href="https://play.google.com/store/apps/details?id=com.myfng.app" target="_blank" rel="noopener noreferrer">
+                    <a href="/go/myfngapp">
                       <img
                         src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
                         alt="Download on Play Store"
                         className="w-[145px] sm:w-[160px] block"
                       />
                     </a>
-                    <a href="https://apps.apple.com/in/app/myfng-trusted-car-care/id6767495114" target="_blank" rel="noopener noreferrer">
+                    <a href="/go/myfngapp">
                       <img
                         src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
                         alt="Download on App Store"

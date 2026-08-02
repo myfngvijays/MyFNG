@@ -110,6 +110,23 @@ SELECT cron.schedule(
 );
 
 -- -----------------------------------------------------------------------------
+-- Cart abandoned WhatsApp (every 5 min — 5m / 3h / 12h sequence)
+-- -----------------------------------------------------------------------------
+SELECT cron.schedule(
+  'wa-auto-cart-abandoned',
+  '*/5 * * * *',
+  $$
+  SELECT net.http_get(
+    url := 'https://myfng.in/api/cron/cart-abandoned-reminders',
+    headers := jsonb_build_object(
+      'Authorization', 'Bearer YOUR_CRON_SECRET'
+    ),
+    timeout_milliseconds := 120000
+  );
+  $$
+);
+
+-- -----------------------------------------------------------------------------
 -- System health alert WhatsApp (09:00 & 21:00 IST)
 -- 03:30 UTC = 09:00 IST · 15:30 UTC = 21:00 IST
 -- -----------------------------------------------------------------------------

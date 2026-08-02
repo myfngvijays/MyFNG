@@ -37,6 +37,20 @@ export const WHATSAPP_AUTOMATION_TEMPLATE_EXAMPLES: Record<WhatsAppAutomationTri
   membership_claim_rejected: ['Rahul Sharma', 'Free Car Scanning', 'MH02FJ7371'],
   account_deleted: ['Rahul Sharma'],
   app_uninstalled: ['Rahul Sharma'],
+  workshop_proximity: ['Rahul Sharma', 'MyFNG Andheri West'],
+  cart_abandoned_5m: ['Rahul Sharma', 'Honda City', 'Periodic Service'],
+  cart_abandoned_3h: [
+    'Rahul Sharma',
+    'Honda City',
+    'Periodic Service',
+    'Use your wallet balance of ₹500 on this booking.',
+  ],
+  cart_abandoned_12h: [
+    'Rahul Sharma',
+    'Honda City',
+    'Periodic Service',
+    'Limited pickup slots today — complete booking to avoid reschedule.',
+  ],
 };
 
 async function resolveMembershipPrimePrice(): Promise<number> {

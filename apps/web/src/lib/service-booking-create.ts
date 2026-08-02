@@ -400,6 +400,13 @@ export async function createAuthenticatedServiceBooking(
     console.error('[service-booking-create] analytics event failed:', eventErr?.message || eventErr);
   }
 
+  try {
+    const { notifyReferrerOnRefereeBooking } = await import('@/lib/referral-push-notify');
+    await notifyReferrerOnRefereeBooking(supabaseAdmin, customer.id, serviceLead.id);
+  } catch (referralPushErr) {
+    console.warn('[service-booking-create] referral booked push failed:', referralPushErr);
+  }
+
   await saveBookedVehicleToProfile(supabaseAdmin, leadInsert, normalizedPhone);
 
   const telecrmLead = {

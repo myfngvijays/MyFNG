@@ -382,6 +382,15 @@ export async function POST(request: NextRequest) {
 
     await saveBookedVehicleToProfile(supabaseAdmin, serviceLead as Record<string, any>, customerPhone);
 
+    if (registeredCustomer?.id && serviceLead?.id) {
+      try {
+        const { notifyReferrerOnRefereeBooking } = await import('@/lib/referral-push-notify');
+        await notifyReferrerOnRefereeBooking(supabaseAdmin, registeredCustomer.id, String(serviceLead.id));
+      } catch (referralPushErr) {
+        console.warn('[bookings/create] referral booked push failed:', referralPushErr);
+      }
+    }
+
     const telecrmLead = {
       ...(serviceLead as Record<string, any>),
       meta: mergeLeadMetaWithUtm((serviceLead as Record<string, any>)?.meta, resolvedUtm),

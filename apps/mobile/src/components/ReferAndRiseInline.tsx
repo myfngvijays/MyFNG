@@ -9,10 +9,9 @@ import {
   Linking,
   Platform,
   TextInput,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   Alert,
-  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -30,6 +29,16 @@ import {
 } from '../constants/referAndRise';
 import { useReferAndRiseConfig } from '../hooks/useReferAndRiseConfig';
 import MembershipTermsCard from './MembershipTermsCard';
+import {
+  getContactsAccessState,
+  isContactsNativeModuleAvailable,
+  loadDeviceContacts,
+  openAddMoreContactsPicker,
+  requestContactsPermission,
+  showContactsPermissionAlert,
+  showContactsUnavailableAlert,
+  type ParsedContact,
+} from '../lib/contactsPermission';
 
 const BRAND = '#004AAD';
 const BRAND_LIGHT = '#E8F1FD';
@@ -61,12 +70,79 @@ const VIEW_TITLES: Record<ViewName, string> = {
 };
 
 type HistoryItem = {
+  id: string;
   name: string;
   date: string;
   reward: string;
   status: 'completed' | 'pending';
   statusLabel?: string;
 };
+
+type ReferralEventRow = {
+  id: string;
+  status: string;
+  created_at: string;
+  first_order_lead_id?: string | null;
+  referee?: { full_name?: string | null; phone?: string | null } | null;
+};
+
+type ReferralStats = {
+  total_referred: number;
+  total_rewarded: number;
+  total_pending: number;
+  total_invites_sent: number;
+  total_earned: number;
+};
+
+function formatReferralDate(value?: string | null) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function maskReferralPhone(phone: string | null | undefined) {
+  const digits = String(phone || '').replace(/\D/g, '').slice(-10);
+  if (digits.length < 10) return digits || 'Friend';
+  return `${digits.slice(0, 2)}****${digits.slice(-4)}`;
+}
+
+function mapReferralEventsToHistory(events: ReferralEventRow[]): HistoryItem[] {
+  return events.map((event) => {
+    const name = String(event.referee?.full_name || '').trim() || maskReferralPhone(event.referee?.phone);
+    const joinedDate = formatReferralDate(event.created_at);
+
+    if (event.status === 'REWARDED') {
+      return {
+        id: event.id,
+        name,
+        date: joinedDate ? `Completed on ${joinedDate}` : 'Completed',
+        reward: 'Reward earned',
+        status: 'completed',
+      };
+    }
+
+    if (event.status === 'REJECTED') {
+      return {
+        id: event.id,
+        name,
+        date: joinedDate ? `Rejected · ${joinedDate}` : 'Rejected',
+        reward: '',
+        status: 'pending',
+        statusLabel: 'Referral rejected',
+      };
+    }
+
+    return {
+      id: event.id,
+      name,
+      date: event.first_order_lead_id ? 'Booked service' : 'Joined MyFNG',
+      statusLabel: event.first_order_lead_id ? 'Waiting for service completion' : `Joined on ${joinedDate || '—'}`,
+      reward: '',
+      status: 'pending',
+    };
+  });
+}
 
 const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode, customerPhone, isLoggedIn, onLogin, onViewChange }: Props, ref: React.Ref<ReferAndRiseHandle>) {
   const [currentView, setCurrentView] = useState<ViewName>('home');
@@ -82,17 +158,31 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     onViewChange?.(VIEW_TITLES[view]);
   };
   const [referrals, setReferrals] = useState(0);
+  const [referralEvents, setReferralEvents] = useState<ReferralEventRow[]>([]);
+  const [referralStats, setReferralStats] = useState<ReferralStats>({
+    total_referred: 0,
+    total_rewarded: 0,
+    total_pending: 0,
+    total_invites_sent: 0,
+    total_earned: 0,
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [picks, setPicks] = useState<Record<number, FamilyKey>>({});
   const [pendingMilestone, setPendingMilestone] = useState<Milestone | null>(null);
   const [selectedReward, setSelectedReward] = useState<FamilyKey | null>(null);
   const [showCongrats, setShowCongrats] = useState(false);
   const [congratsData, setCongratsData] = useState<{ milestone: Milestone; family: FamilyKey } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
   const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null);
   const [historyTab, setHistoryTab] = useState<'completed' | 'pending'>('completed');
-  const [contactsList, setContactsList] = useState<{ id: string; name: string; phone: string; initials: string }[]>([]);
+  const [contactsList, setContactsList] = useState<ParsedContact[]>([]);
   const [contactsSearch, setContactsSearch] = useState('');
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsAccessDenied, setContactsAccessDenied] = useState(false);
+  const [contactsLimited, setContactsLimited] = useState(false);
+  const [contactsCanAskAgain, setContactsCanAskAgain] = useState(true);
   const [dismissedMilestones, setDismissedMilestones] = useState<Set<number>>(new Set());
   const isTestReferrer = isReferralTestReferrerPhone(customerPhone || '');
 
@@ -104,10 +194,21 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     setSelectedReward(null);
   };
 
-  const refreshReferralStats = async () => {
+  const refreshReferralStats = async (opts?: { historyOnly?: boolean }) => {
+    if (opts?.historyOnly) setHistoryLoading(true);
     try {
       const res = await apiFetch<any>('/api/customer/referral');
       if (res?.stats?.total_rewarded != null) setReferrals(Number(res.stats.total_rewarded) || 0);
+      if (res?.stats) {
+        setReferralStats({
+          total_referred: Number(res.stats.total_referred) || 0,
+          total_rewarded: Number(res.stats.total_rewarded) || 0,
+          total_pending: Number(res.stats.total_pending) || 0,
+          total_invites_sent: Number(res.stats.total_invites_sent) || 0,
+          total_earned: Number(res.stats.total_earned) || 0,
+        });
+      }
+      if (Array.isArray(res?.events)) setReferralEvents(res.events);
       if (res?.refer_and_rise?.picks) {
         const normalized: Record<number, FamilyKey> = {};
         for (const [k, v] of Object.entries(res.refer_and_rise.picks)) {
@@ -119,6 +220,32 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       return res;
     } catch {
       return null;
+    } finally {
+      if (opts?.historyOnly) setHistoryLoading(false);
+    }
+  };
+
+  const logInviteSent = async (channel: string, friend?: { name?: string; phone?: string }) => {
+    if (!isLoggedIn) return;
+    try {
+      const res = await apiFetch<any>('/api/customer/referral/log-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel,
+          friend_name: friend?.name || null,
+          friend_phone: friend?.phone || null,
+          referral_code: referralCode,
+        }),
+      });
+      if (res?.stats?.total_invites_sent != null) {
+        setReferralStats((prev) => ({
+          ...prev,
+          total_invites_sent: Number(res.stats.total_invites_sent) || prev.total_invites_sent,
+        }));
+      }
+    } catch {
+      // Non-blocking
     }
   };
 
@@ -161,6 +288,13 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   }, [isLoggedIn]);
 
   useEffect(() => {
+    if (!isLoggedIn) return;
+    if (currentView === 'history' || currentView === 'dashboard') {
+      refreshReferralStats({ historyOnly: currentView === 'history' });
+    }
+  }, [currentView, isLoggedIn]);
+
+  useEffect(() => {
     if (!isLoggedIn || referrals <= 0) return;
     const unclaimed = MILESTONES.find(
       (m) =>
@@ -178,13 +312,15 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   const progressPct = (referrals / activeMaxReferrals) * 100;
   const referralsToNext = nextMilestone ? nextMilestone.referralCount - referrals : 0;
 
-  const referralLink = `https://play.google.com/store/apps/details?id=com.myfng.app&referrer=${encodeURIComponent(`referral_code=${referralCode || 'MYFNG'}`)}`;
+  const inviteLink = `${ENV.REFERRAL_LINK_BASE}/${encodeURIComponent(referralCode || 'MYFNG')}`;
+  const appDownloadLink = ENV.APP_DOWNLOAD_URL || (Platform.OS === 'ios' ? ENV.APPSTORE_URL : ENV.PLAYSTORE_URL);
+  const referralLink = inviteLink;
 
   const shareMessage = remoteConfig.content.shareMessage
     ? remoteConfig.content.shareMessage
         .replace(/\{\{CODE\}\}/g, referralCode || 'MYFNG')
-        .replace(/\{\{LINK\}\}/g, referralLink)
-    : `🚗 Great cars deserve great care!\n\nJoin MyFNG and let's keep your car always performing at its best.\n\nUse my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n👉 ${referralLink}`;
+        .replace(/\{\{LINK\}\}/g, inviteLink)
+    : `🚗 Great cars deserve great care!\n\nJoin MyFNG and let's keep your car always performing at its best.\n\nUse my referral code *${referralCode || 'MYFNG'}* to get ₹1,500 wallet bonus instantly.\n\n👉 ${inviteLink}\n\nDownload: ${appDownloadLink}`;
 
   const simulateReferral = () => {
     if (pendingMilestone || referrals >= activeMaxReferrals) return;
@@ -196,7 +332,72 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
     }
   };
 
-  const shareOnWhatsApp = () => Share.share({ message: shareMessage });
+  const shareOnWhatsApp = () => {
+    void logInviteSent('whatsapp');
+    Linking.openURL(`whatsapp://send?text=${encodeURIComponent(shareMessage)}`).catch(() => {
+      Share.share({ message: shareMessage, url: inviteLink });
+    });
+  };
+
+  const shareInviteLink = () => {
+    void logInviteSent('share');
+    Share.share({ message: shareMessage, url: inviteLink });
+  };
+
+  const copyInviteLink = async () => {
+    await Clipboard.setStringAsync(inviteLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const copyShareMessage = async () => {
+    await Clipboard.setStringAsync(shareMessage);
+    setCopiedMessage(true);
+    setTimeout(() => setCopiedMessage(false), 2000);
+  };
+
+  const refreshContactsScreen = async (promptPermission = false) => {
+    if (!isContactsNativeModuleAvailable()) {
+      showContactsUnavailableAlert();
+      return;
+    }
+
+    setContactsLoading(true);
+    try {
+      let access = await getContactsAccessState();
+      if (promptPermission && !access.granted) {
+        access = await requestContactsPermission();
+      }
+
+      setContactsAccessDenied(!access.granted);
+      setContactsLimited(access.limited);
+      setContactsCanAskAgain(access.canAskAgain);
+
+      if (!access.granted) {
+        setContactsList([]);
+        if (promptPermission) {
+          showContactsPermissionAlert(access.canAskAgain);
+        }
+        return;
+      }
+
+      const parsed = await loadDeviceContacts();
+      setContactsList(parsed);
+    } catch {
+      setContactsAccessDenied(true);
+      setContactsList([]);
+      Alert.alert(
+        'Contacts unavailable',
+        'Could not load contacts. Please allow contacts access and try again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+    } finally {
+      setContactsLoading(false);
+    }
+  };
 
   const inviteFromContacts = async () => {
     if (isTestReferrer) {
@@ -204,47 +405,24 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       return;
     }
 
-    // Check if ExpoContacts native module is available in this build
-    const { NativeModules } = require('react-native');
-    if (!NativeModules.ExpoContacts && !(global as any).expo?.modules?.ExpoContacts) {
-      Share.share({ message: shareMessage });
-      return;
-    }
-
-    const Contacts = require('expo-contacts');
     changeView('contacts');
-    setContactsLoading(true);
-    try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to contacts to invite friends.', [
-          { text: 'Cancel', style: 'cancel', onPress: () => changeView('home') },
-          { text: 'Open Settings', onPress: () => { Linking.openSettings(); changeView('home'); } },
-        ]);
-        setContactsLoading(false);
-        return;
-      }
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
-        sort: Contacts.SortTypes.FirstName,
-      });
-      const parsed = (data || [])
-        .filter((c: any) => c.phoneNumbers && c.phoneNumbers.length > 0)
-        .map((c: any) => {
-          const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.name || 'Unknown';
-          const phone = c.phoneNumbers[0]?.number || '';
-          const initials = name.split(' ').map((w: string) => w[0]?.toUpperCase() || '').slice(0, 2).join('');
-          return { id: c.id || phone, name, phone, initials };
-        });
-      setContactsList(parsed);
-    } catch (err: any) {
-      changeView('home');
-      Share.share({ message: shareMessage });
-    }
-    setContactsLoading(false);
+    setContactsSearch('');
+    await refreshContactsScreen(true);
   };
 
-  const inviteContact = (phone: string, _name?: string) => {
+  const handleAllowContactsPress = async () => {
+    await refreshContactsScreen(true);
+  };
+
+  const handleAddMoreContacts = async () => {
+    const added = await openAddMoreContactsPicker();
+    if (added) {
+      await refreshContactsScreen(false);
+    }
+  };
+
+  const inviteContact = (phone: string, name?: string) => {
+    void logInviteSent('contacts', { name, phone });
     const cleanPhone = phone.replace(/[\s\-()]/g, '');
     const whatsappUrl = `whatsapp://send?phone=91${cleanPhone.slice(-10)}&text=${encodeURIComponent(shareMessage)}`;
     Linking.openURL(whatsappUrl).catch(() => {
@@ -309,16 +487,9 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
 
   const closeCongrats = () => { setShowCongrats(false); setCongratsData(null); };
 
-  const dummyHistory: HistoryItem[] = [
-    ...Object.entries(picks).map(([count, fam]) => ({
-      name: `Referral #${count}`,
-      date: `Completed on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`,
-      reward: FAMILIES[fam].name,
-      status: 'completed' as const,
-    })),
-    { name: 'Vikas Singh', date: 'Booked Service', statusLabel: 'Service on 17 May 2025', reward: '', status: 'pending' },
-    { name: 'Karan Patel', date: 'Invitation Sent', statusLabel: 'Waiting for booking', reward: '', status: 'pending' },
-  ];
+  const referralHistory = mapReferralEventsToHistory(referralEvents);
+  const completedHistory = referralHistory.filter((h) => h.status === 'completed');
+  const pendingHistory = referralHistory.filter((h) => h.status === 'pending');
 
   const categoryCounts = FAMILY_ORDER.reduce((acc, key) => {
     acc[key] = Object.values(picks).filter((p) => p === key).length;
@@ -790,19 +961,26 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
 
   // ═══════════════ HISTORY ═══════════════
   const renderHistory = () => {
-    const filtered = dummyHistory.filter((h) => h.status === historyTab);
+    const filtered = historyTab === 'completed' ? completedHistory : pendingHistory;
     return (
       <View>
         <View style={ht.tabs}>
           {(['completed', 'pending'] as const).map((tab) => (
             <TouchableOpacity key={tab} style={[ht.tab, historyTab === tab && ht.tabActive]} onPress={() => setHistoryTab(tab)} activeOpacity={0.8}>
-              <Text style={[ht.tabText, historyTab === tab && ht.tabTextActive]}>{tab === 'completed' ? 'Completed' : 'Pending'}</Text>
+              <Text style={[ht.tabText, historyTab === tab && ht.tabTextActive]}>
+                {tab === 'completed' ? `Completed (${completedHistory.length})` : `Pending (${pendingHistory.length})`}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {filtered.length > 0 ? filtered.map((item, i) => (
-          <View key={i} style={ht.row}>
+        {historyLoading ? (
+          <View style={ht.empty}>
+            <ActivityIndicator size="small" color={BRAND} />
+            <Text style={ht.emptyText}>Loading referral history…</Text>
+          </View>
+        ) : filtered.length > 0 ? filtered.map((item) => (
+          <View key={item.id} style={ht.row}>
             <View style={ht.avatar}>
               <Ionicons name="person" size={16} color="#4DA6FF" />
             </View>
@@ -881,12 +1059,24 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       <Text style={db.subtitle}>Overview of your journey</Text>
       <View style={db.statsGrid}>
         {[
-          { num: referrals, label: 'Total Invited' },
-          { num: totalPicks, label: 'Successful\nReferrals' },
-          { num: totalPicks, label: 'Rewards\nEarned' },
-          { num: `₹${totalPicks * 300}+`, label: 'Total Value\nEarned' },
+          { num: referralStats.total_invites_sent, label: 'Invites\nSent' },
+          { num: referralStats.total_referred, label: 'Friends\nJoined' },
+          { num: referralStats.total_pending, label: 'Pending\nReferrals' },
+          { num: referralStats.total_rewarded, label: 'Successful\nReferrals' },
         ].map((stat, i) => (
           <View key={i} style={db.statBox}>
+            <Text style={db.statNum}>{stat.num}</Text>
+            <Text style={db.statLabel}>{stat.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={db.statsGrid}>
+        {[
+          { num: totalPicks, label: 'Rewards\nChosen' },
+          { num: referralStats.total_earned > 0 ? `₹${Math.round(referralStats.total_earned)}` : '₹0', label: 'Wallet\nEarned' },
+        ].map((stat, i) => (
+          <View key={`extra-${i}`} style={[db.statBox, { flex: 1 }]}>
             <Text style={db.statNum}>{stat.num}</Text>
             <Text style={db.statLabel}>{stat.label}</Text>
           </View>
@@ -921,8 +1111,85 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   );
 
   // ═══════════════ CONTACTS ═══════════════
+  const renderContactsInviteHeader = () => (
+    <View style={ct.wrap}>
+      <Text style={ct.sectionTitle}>Share Your Invite</Text>
+      <Text style={ct.sectionSub}>Copy link or message and send manually — or pick a contact below.</Text>
+
+      <View style={ct.card}>
+        <Text style={ct.label}>YOUR REFERRAL CODE</Text>
+        <View style={ct.valueRow}>
+          <Text style={ct.codeValue} numberOfLines={1}>{referralCode || 'MYFNG'}</Text>
+          <TouchableOpacity style={ct.copyChip} onPress={copyCode} activeOpacity={0.8}>
+            <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={BRAND} />
+            <Text style={ct.copyChipText}>{copied ? 'Copied' : 'Copy'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={ct.card}>
+        <Text style={ct.label}>INVITE LINK</Text>
+        <Text style={ct.linkValue} numberOfLines={2}>{inviteLink}</Text>
+        <TouchableOpacity style={ct.copyChipWide} onPress={copyInviteLink} activeOpacity={0.8}>
+          <Ionicons name={copiedLink ? 'checkmark' : 'link-outline'} size={14} color={BRAND} />
+          <Text style={ct.copyChipText}>{copiedLink ? 'Link Copied!' : 'Copy Invite Link'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={ct.actionsRow}>
+        <TouchableOpacity style={ct.actionBtn} onPress={copyShareMessage} activeOpacity={0.85}>
+          <Ionicons name={copiedMessage ? 'checkmark-circle' : 'document-text-outline'} size={16} color={BRAND} />
+          <Text style={ct.actionBtnText}>{copiedMessage ? 'Copied!' : 'Copy Message'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={ct.actionBtn} onPress={shareInviteLink} activeOpacity={0.85}>
+          <Ionicons name="share-social-outline" size={16} color={BRAND} />
+          <Text style={ct.actionBtnText}>Share Link</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[ct.actionBtn, ct.actionBtnWhatsapp]} onPress={shareOnWhatsApp} activeOpacity={0.85}>
+          <Ionicons name="logo-whatsapp" size={16} color="#FFFFFF" />
+          <Text style={[ct.actionBtnText, ct.actionBtnTextLight]}>WhatsApp</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={ct.divider} />
+      <View style={ct.contactsHeadingRow}>
+        <Text style={ct.contactsHeading}>Invite From Contacts</Text>
+        {!contactsAccessDenied && !contactsLoading ? (
+          <TouchableOpacity style={ct.refreshChip} onPress={() => void refreshContactsScreen(false)} activeOpacity={0.8}>
+            <Ionicons name="refresh-outline" size={14} color={BRAND} />
+            <Text style={ct.refreshChipText}>Refresh</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {contactsAccessDenied ? (
+        <View style={ct.deniedCard}>
+          <Ionicons name="people-outline" size={28} color={BRAND} />
+          <Text style={ct.deniedTitle}>Contacts access needed</Text>
+          <Text style={ct.deniedSub}>
+            Allow contacts to pick friends and send invites. Settings → Notifications toggle alag hai — yahan se bhi permission de sakte ho.
+          </Text>
+          <TouchableOpacity style={ct.allowBtn} onPress={() => void handleAllowContactsPress()} activeOpacity={0.85}>
+            <Text style={ct.allowBtnText}>Allow Contacts</Text>
+          </TouchableOpacity>
+          {!contactsCanAskAgain ? (
+            <TouchableOpacity style={ct.settingsLink} onPress={() => Linking.openSettings()} activeOpacity={0.8}>
+              <Text style={ct.settingsLinkText}>Open Phone Settings</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : (
+        <TouchableOpacity style={ct.addMoreBtn} onPress={() => void handleAddMoreContacts()} activeOpacity={0.85}>
+          <Ionicons name="person-add-outline" size={16} color={BRAND} />
+          <Text style={ct.addMoreBtnText}>
+            {contactsLimited ? 'Add More Contacts' : 'Select More Contacts'}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   const renderContacts = () => (
-    <View style={{ flex: 1 }}>
+    <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 }}>
           <Ionicons name="search-outline" size={18} color="#9CA3AF" />
@@ -935,29 +1202,25 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
           />
         </View>
       </View>
+
+      {renderContactsInviteHeader()}
+
       {contactsLoading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
+        <View style={{ justifyContent: 'center', alignItems: 'center', paddingTop: 40, paddingBottom: 40 }}>
           <ActivityIndicator size="large" color={BRAND} />
           <Text style={{ marginTop: 12, color: '#6B7280', fontSize: 14 }}>Loading contacts...</Text>
         </View>
+      ) : contactsAccessDenied ? null : filteredContacts.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingTop: 24, paddingBottom: 40, paddingHorizontal: 16 }}>
+          <Ionicons name="people-outline" size={40} color="#D1D5DB" />
+          <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center' }}>
+            No contacts with phone numbers yet. Tap &quot;Add More Contacts&quot; to allow more.
+          </Text>
+        </View>
       ) : (
-        <FlatList
-          data={filteredContacts}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
-          ListHeaderComponent={
-            <Text style={{ fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 12 }}>
-              Invite Friends And Earn Rewards
-            </Text>
-          }
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingTop: 40 }}>
-              <Ionicons name="people-outline" size={40} color="#D1D5DB" />
-              <Text style={{ marginTop: 8, color: '#6B7280' }}>No contacts found</Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+          {filteredContacts.map((item) => (
+            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
               <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND_LIGHT, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>{item.initials}</Text>
               </View>
@@ -974,10 +1237,10 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
                 <Ionicons name="logo-whatsapp" size={14} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-          )}
-        />
+          ))}
+        </View>
       )}
-    </View>
+    </ScrollView>
   );
 
   // ═══════════════ RENDER ═══════════════
@@ -1219,6 +1482,108 @@ const db = StyleSheet.create({
   catBar: { flex: 1, height: 6, backgroundColor: '#1A3A6B', borderRadius: 3, overflow: 'hidden' },
   catBarFill: { height: '100%', borderRadius: 3 },
   catPct: { fontSize: 11, fontWeight: '700', color: '#93B4E0', width: 32, textAlign: 'right' },
+});
+
+const ct = StyleSheet.create({
+  wrap: { marginBottom: 8, paddingHorizontal: 16 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: '#111827', marginBottom: 4 },
+  sectionSub: { fontSize: 12, color: '#6B7280', lineHeight: 17, marginBottom: 14 },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D6E8FA',
+    padding: 14,
+    marginBottom: 10,
+  },
+  label: { fontSize: 10, fontWeight: '700', color: '#4A6FA5', letterSpacing: 0.8, marginBottom: 8 },
+  valueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  codeValue: { flex: 1, fontSize: 22, fontWeight: '900', color: '#0A1A3A', letterSpacing: 1 },
+  linkValue: { fontSize: 13, fontWeight: '600', color: BRAND, lineHeight: 18, marginBottom: 10 },
+  copyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: BRAND_LIGHT,
+  },
+  copyChipWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: BRAND_LIGHT,
+  },
+  copyChipText: { fontSize: 12, fontWeight: '700', color: BRAND },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  actionBtn: {
+    flexGrow: 1,
+    minWidth: '30%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D6E8FA',
+  },
+  actionBtnWhatsapp: { backgroundColor: '#25D366', borderColor: '#25D366' },
+  actionBtnText: { fontSize: 12, fontWeight: '700', color: BRAND },
+  actionBtnTextLight: { color: '#FFFFFF' },
+  divider: { height: 1, backgroundColor: '#E5E7EB', marginBottom: 14 },
+  contactsHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  contactsHeading: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  refreshChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: BRAND_LIGHT,
+  },
+  refreshChipText: { fontSize: 11, fontWeight: '700', color: BRAND },
+  addMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D6E8FA',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+  },
+  addMoreBtnText: { fontSize: 13, fontWeight: '700', color: BRAND },
+  deniedCard: {
+    alignItems: 'center',
+    padding: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D6E8FA',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+  },
+  deniedTitle: { marginTop: 10, fontSize: 15, fontWeight: '800', color: '#111827' },
+  deniedSub: { marginTop: 6, fontSize: 12, lineHeight: 17, color: '#6B7280', textAlign: 'center' },
+  allowBtn: {
+    marginTop: 14,
+    backgroundColor: BRAND,
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  allowBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  settingsLink: { marginTop: 10, paddingVertical: 6 },
+  settingsLinkText: { fontSize: 12, fontWeight: '700', color: BRAND },
 });
 
 export default ReferAndRiseInline;

@@ -171,6 +171,12 @@ const navigationItems: NavItem[] = [
         description: 'App users, bookings & wallet',
       },
       {
+        name: 'Workshop Proximity',
+        href: '/dashboard/super_admin/workshop-proximity',
+        icon: MapPin,
+        description: 'Walk-in alerts near service centers',
+      },
+      {
         name: 'Membership Customers',
         href: '/dashboard/super_admin/membership-customers',
         icon: Crown,
@@ -696,6 +702,7 @@ function SuperAdminLayoutInner({
   React.useEffect(() => {
     if (
       pathname?.startsWith('/dashboard/super_admin/customer-insights') ||
+      pathname?.startsWith('/dashboard/super_admin/workshop-proximity') ||
       pathname?.startsWith('/dashboard/super_admin/membership-customers')
     ) {
       setOpenGroups((prev) => ({ ...prev, 'App Customers': true }));

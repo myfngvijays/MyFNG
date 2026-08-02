@@ -117,6 +117,19 @@ export const WHATSAPP_CRON_JOBS: WhatsAppCronJobDef[] = [
     category: 'automation',
   },
   {
+    id: 'cart-abandoned-reminders',
+    jobName: 'wa-auto-cart-abandoned',
+    title: 'Cart abandoned reminders',
+    description:
+      'WhatsApp sequence after cart add / booking draft: 5 min → 3h (personalized offer) → 12h (final).',
+    scheduleUtc: '*/5 * * * *',
+    scheduleIst: 'Every 5 minutes',
+    endpointPath: '/api/cron/cart-abandoned-reminders',
+    triggerKeys: ['cart_abandoned_5m', 'cart_abandoned_3h', 'cart_abandoned_12h'],
+    cadence: 'daily',
+    category: 'automation',
+  },
+  {
     id: 'system-health-evening',
     jobName: 'sys-health-alert-evening',
     title: 'System health alert · Evening',

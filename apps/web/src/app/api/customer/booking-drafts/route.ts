@@ -35,6 +35,9 @@ export async function POST(request: NextRequest) {
     step: Number(body?.step || payload.step || 1) || 1,
     status: 'ACTIVE',
     last_activity_at: now,
+    wa_reminder_1_sent_at: null,
+    wa_reminder_2_sent_at: null,
+    wa_reminder_3_sent_at: null,
     updated_at: now,
   };
 

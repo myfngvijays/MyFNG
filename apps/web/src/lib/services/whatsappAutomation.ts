@@ -16,6 +16,10 @@ export const WHATSAPP_AUTOMATION_TRIGGER_KEYS = [
   'membership_claim_rejected',
   'account_deleted',
   'app_uninstalled',
+  'workshop_proximity',
+  'cart_abandoned_5m',
+  'cart_abandoned_3h',
+  'cart_abandoned_12h',
 ] as const;
 
 /** Triggers picked up by /api/cron/whatsapp-automation */
@@ -25,6 +29,9 @@ export const WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS = [
   'service_due_reminder',
   'membership_expiring',
   'app_uninstalled',
+  'cart_abandoned_5m',
+  'cart_abandoned_3h',
+  'cart_abandoned_12h',
 ] as const;
 
 export type WhatsAppAutomationCronTriggerKey = (typeof WHATSAPP_AUTOMATION_CRON_TRIGGER_KEYS)[number];
@@ -43,6 +50,9 @@ export const WHATSAPP_AUTOMATION_CRON_SCHEDULE_HINTS: Record<WhatsAppAutomationC
   service_due_reminder: 'Cron · Mondays 10:45 AM IST',
   membership_expiring: 'Cron · Daily 10:30 AM IST',
   app_uninstalled: 'Cron · Daily 9:30 AM IST (FCM probe)',
+  cart_abandoned_5m: 'Cron · Every 5 min (cart-abandoned-reminders)',
+  cart_abandoned_3h: 'Cron · Every 5 min (cart-abandoned-reminders)',
+  cart_abandoned_12h: 'Cron · Every 5 min (cart-abandoned-reminders)',
 };
 
 export type WhatsAppAutomationTriggerKey = (typeof WHATSAPP_AUTOMATION_TRIGGER_KEYS)[number];

@@ -59,6 +59,17 @@ export async function POST(request: NextRequest) {
     metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
   });
   await recalcCart(supabaseAdmin, cart.id);
+  const now = new Date().toISOString();
+  await supabaseAdmin
+    .from('carts')
+    .update({
+      abandonment_anchor_at: now,
+      wa_cart_reminder_1_sent_at: null,
+      wa_cart_reminder_2_sent_at: null,
+      wa_cart_reminder_3_sent_at: null,
+      updated_at: now,
+    })
+    .eq('id', cart.id);
   await logCustomerEvent(supabaseAdmin, customer.id, 'cart_item_added', 'cart', { serviceType, quantity, unitPrice });
   return NextResponse.json({ success: true });
 }

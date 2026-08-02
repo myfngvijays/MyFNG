@@ -5,6 +5,12 @@ import { getBrowserClient } from '@/lib/supabase/browserClient';
 import { Settings, Save, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+import {
+  DEFAULT_WORKSHOP_GEOFENCE_RADIUS_M,
+  MAX_WORKSHOP_GEOFENCE_RADIUS_M,
+  MIN_WORKSHOP_GEOFENCE_RADIUS_M,
+} from '@/shared/constants/workshopGeofence';
+
 const SLA_KEYS = [
   'sla_lead_assignment_minutes',
   'sla_workshop_acceptance_minutes',
@@ -13,6 +19,7 @@ const SLA_KEYS = [
 ];
 const SLA_MIN = 1;
 const SLA_MAX = 99999;
+const GEOFENCE_RADIUS_KEY = 'workshop_geofence_radius_m';
 
 export default function SystemSettingsPage() {
   const supabase = getBrowserClient();
@@ -92,12 +99,25 @@ export default function SystemSettingsPage() {
     return true;
   };
 
+  const validateGeofenceRadius = (): boolean => {
+    const v = settings[GEOFENCE_RADIUS_KEY]?.value;
+    if (v === undefined || v === '') return true;
+    const n = parseInt(String(v), 10);
+    if (Number.isNaN(n) || n < MIN_WORKSHOP_GEOFENCE_RADIUS_M || n > MAX_WORKSHOP_GEOFENCE_RADIUS_M) {
+      toast.error(
+        `Workshop geofence radius must be between ${MIN_WORKSHOP_GEOFENCE_RADIUS_M}m and ${MAX_WORKSHOP_GEOFENCE_RADIUS_M}m`,
+      );
+      return false;
+    }
+    return true;
+  };
+
   const handleSave = async () => {
     if (Object.keys(settings).length === 0) {
       toast.error('No settings to save');
       return;
     }
-    if (!validateSla()) return;
+    if (!validateSla() || !validateGeofenceRadius()) return;
 
     setSaving(true);
     setError(null);
@@ -515,6 +535,40 @@ export default function SystemSettingsPage() {
                 onChange={(e) => handleChange('mobile_app_force_update_message', e.target.value)}
                 className="w-full px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Workshop Proximity Geofence */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="border-b px-4 sm:px-5 md:px-6 py-3 sm:py-4">
+            <h2 className="font-semibold text-base sm:text-lg">📍 Workshop Proximity Geofence</h2>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+              Radius around verified workshops where app users (with Nearby Workshop Alerts on) trigger ops alerts
+              when they have no active booking.
+            </p>
+          </div>
+          <div className="p-4 sm:p-5 md:p-6 space-y-4">
+            <div className="max-w-xs">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
+                Geofence radius (meters)
+              </label>
+              <input
+                type="number"
+                min={MIN_WORKSHOP_GEOFENCE_RADIUS_M}
+                max={MAX_WORKSHOP_GEOFENCE_RADIUS_M}
+                step={50}
+                value={
+                  settings[GEOFENCE_RADIUS_KEY]?.value ?? String(DEFAULT_WORKSHOP_GEOFENCE_RADIUS_M)
+                }
+                onChange={(e) => handleChange(GEOFENCE_RADIUS_KEY, e.target.value)}
+                className="w-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Allowed: {MIN_WORKSHOP_GEOFENCE_RADIUS_M}m–{MAX_WORKSHOP_GEOFENCE_RADIUS_M}m. Default{' '}
+                {DEFAULT_WORKSHOP_GEOFENCE_RADIUS_M}m (~7–8 min walk). Users need to toggle alerts off/on or
+                reopen the app to pick up a new radius.
+              </p>
             </div>
           </div>
         </div>

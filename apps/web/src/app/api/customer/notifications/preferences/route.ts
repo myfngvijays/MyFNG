@@ -34,6 +34,7 @@ const PREF_FIELDS = [
   'wallet_credits',
   'referral_updates',
   'support_updates',
+  'workshop_proximity_alerts',
 ] as const;
 
 const PREF_DEFAULTS: Record<(typeof PREF_FIELDS)[number], boolean> = {
@@ -45,6 +46,7 @@ const PREF_DEFAULTS: Record<(typeof PREF_FIELDS)[number], boolean> = {
   wallet_credits: true,
   referral_updates: true,
   support_updates: true,
+  workshop_proximity_alerts: false,
 };
 
 export async function PUT(request: NextRequest) {

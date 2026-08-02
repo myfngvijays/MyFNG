@@ -65,6 +65,8 @@ export async function checkForceUpdate(): Promise<ForceUpdateResult> {
   });
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2800);
     const response = await fetch(`${ENV.API_URL}/api/public/mobile-app/version?${query.toString()}`, {
       headers: {
         'x-mobile-client': 'true',
@@ -72,7 +74,9 @@ export async function checkForceUpdate(): Promise<ForceUpdateResult> {
         'x-app-version': version,
         'x-app-build': String(build),
       },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       return { required: false, softAvailable: false };

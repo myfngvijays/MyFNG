@@ -73,14 +73,19 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>MyFNG needs access to your camera to take photos of your vehicle for service inspections, before/after service documentation, and incident reports during pickup and delivery.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>MyFNG needs access to your contacts so you can invite friends and share your referral code with them.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>MyFNG uses your location to show nearby workshops, calculate accurate ETAs for vehicle pickup, track your service request, and help drivers reach your location.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>MyFNG uses your location in the background to notify you when you are near a MyFNG service center when you opt in to nearby workshop alerts.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>MyFNG needs access to your photo library so you can attach existing photos of your vehicle for service requests, complaints, and inspection records.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>MyFNG needs permission to save photos to your library, such as service invoices, inspection reports, and vehicle documentation.</string>
     <key>UIBackgroundModes</key>
     <array>
+      <string>location</string>
       <string>remote-notification</string>
       <string>fetch</string>
     </array>

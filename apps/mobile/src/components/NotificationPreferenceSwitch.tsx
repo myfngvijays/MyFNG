@@ -16,7 +16,57 @@ type Props = {
   disabled?: boolean;
   loading?: boolean;
   hint?: string | null;
+  contactsValue?: boolean;
+  onContactsValueChange?: (val: boolean) => void;
+  contactsDisabled?: boolean;
+  contactsLoading?: boolean;
+  contactsHint?: string | null;
+  workshopProximityValue?: boolean;
+  onWorkshopProximityValueChange?: (val: boolean) => void;
+  workshopProximityDisabled?: boolean;
+  workshopProximityLoading?: boolean;
+  workshopProximityHint?: string | null;
 };
+
+function SwitchRow({
+  label,
+  sub,
+  value,
+  onValueChange,
+  disabled,
+  loading,
+}: {
+  label: string;
+  sub: string;
+  value: boolean;
+  onValueChange: (val: boolean) => void;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <View style={styles.switchRow}>
+      <View style={styles.switchTextWrap}>
+        <Text style={styles.switchLabel}>{label}</Text>
+        <Text style={styles.switchSub}>{sub}</Text>
+      </View>
+      <View style={styles.switchControlWrap}>
+        {loading ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <Switch
+            style={Platform.OS === 'ios' ? styles.switchIos : styles.switchAndroid}
+            value={value}
+            onValueChange={onValueChange}
+            disabled={disabled || loading}
+            trackColor={{ false: '#D1D5DB', true: '#34D399' }}
+            thumbColor="#FFFFFF"
+            ios_backgroundColor="#D1D5DB"
+          />
+        )}
+      </View>
+    </View>
+  );
+}
 
 export default function NotificationPreferenceSwitch({
   value,
@@ -24,7 +74,20 @@ export default function NotificationPreferenceSwitch({
   disabled = false,
   loading = false,
   hint,
+  contactsValue,
+  onContactsValueChange,
+  contactsDisabled = false,
+  contactsLoading = false,
+  contactsHint,
+  workshopProximityValue,
+  onWorkshopProximityValueChange,
+  workshopProximityDisabled = false,
+  workshopProximityLoading = false,
+  workshopProximityHint,
 }: Props) {
+  const showContacts = onContactsValueChange != null;
+  const showWorkshopProximity = onWorkshopProximityValueChange != null;
+
   return (
     <View style={styles.card}>
       <View style={styles.heroRow}>
@@ -39,29 +102,46 @@ export default function NotificationPreferenceSwitch({
 
       <View style={styles.divider} />
 
-      <View style={styles.switchRow}>
-        <View style={styles.switchTextWrap}>
-          <Text style={styles.switchLabel}>Push Notifications</Text>
-          <Text style={styles.switchSub}>Booking updates, offers and wallet alerts</Text>
-        </View>
-        <View style={styles.switchControlWrap}>
-          {loading ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
-          ) : (
-            <Switch
-              style={Platform.OS === 'ios' ? styles.switchIos : styles.switchAndroid}
-              value={value}
-              onValueChange={onValueChange}
-              disabled={disabled || loading}
-              trackColor={{ false: '#D1D5DB', true: '#34D399' }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor="#D1D5DB"
-            />
-          )}
-        </View>
-      </View>
+      <SwitchRow
+        label="Push Notifications"
+        sub="Booking updates, offers and wallet alerts"
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        loading={loading}
+      />
 
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+
+      {showContacts ? (
+        <>
+          <View style={styles.rowDivider} />
+          <SwitchRow
+            label="Allow Contacts"
+            sub="For Refer & Rise invites from your phonebook"
+            value={Boolean(contactsValue)}
+            onValueChange={onContactsValueChange!}
+            disabled={contactsDisabled}
+            loading={contactsLoading}
+          />
+          {contactsHint ? <Text style={styles.hint}>{contactsHint}</Text> : null}
+        </>
+      ) : null}
+
+      {showWorkshopProximity ? (
+        <>
+          <View style={styles.rowDivider} />
+          <SwitchRow
+            label="Nearby Workshop Alerts"
+            sub="Opt in to detect when you're near a MyFNG service center"
+            value={Boolean(workshopProximityValue)}
+            onValueChange={onWorkshopProximityValueChange!}
+            disabled={workshopProximityDisabled}
+            loading={workshopProximityLoading}
+          />
+          {workshopProximityHint ? <Text style={styles.hint}>{workshopProximityHint}</Text> : null}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -93,6 +173,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   divider: { height: 1, backgroundColor: '#EEF2F7' },
+  rowDivider: { height: 1, backgroundColor: '#EEF2F7', marginHorizontal: 16 },
   switchRow: {
     minHeight: 56,
     paddingHorizontal: 16,
