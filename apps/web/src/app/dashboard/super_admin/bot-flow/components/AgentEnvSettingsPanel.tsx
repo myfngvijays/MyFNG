@@ -477,6 +477,13 @@ export default function AgentEnvSettingsPanel() {
                 onChange={(e) => update('telecrm_webhook_secret', e.target.value)}
                 disabled={!canEdit}
               />
+              <p className="mt-1 text-[11px] text-gray-500">
+                TeleCRM workflow (9167779696 WACA): Automations → WhatsApp → On WhatsApp Received →
+                Custom Action POST to{' '}
+                <span className="font-mono">https://www.myfng.in/api/webhooks/telecrm</span> with header{' '}
+                <span className="font-mono">x-webhook-secret</span>. Body: phone, name, message,
+                whatsapp_number=9167779696.
+              </p>
             </div>
           </div>
 

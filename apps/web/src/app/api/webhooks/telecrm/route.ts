@@ -11,7 +11,14 @@ import {
   processChaseAgentEvent,
 } from '@/lib/whatsappAgents/chase/handler';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { upsertServiceLeadFromTelecrmWhatsApp } from '@/lib/telecrm/upsertServiceLeadFromTelecrm';
+import {
+  ensureTelecrmApiRowForInbound,
+  upsertServiceLeadFromTelecrmWhatsApp,
+} from '@/lib/telecrm/upsertServiceLeadFromTelecrm';
+import {
+  parseTelecrmWebhookPayload,
+  TELECRM_WACA_BUSINESS_PHONE,
+} from '@/lib/telecrm/parseTelecrmWebhookPayload';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,24 +33,25 @@ async function assertWebhookAuth(req: NextRequest): Promise<boolean> {
   return header === secret || bearer === secret;
 }
 
-function extractTelecrmMessage(body: Record<string, any>): string | null {
-  const candidates = [
-    body?.message,
-    body?.message_text,
-    body?.text,
-    body?.whatsapp_message,
-    body?.last_message,
-    body?.msg,
-    body?.note,
-    body?.fields?.message,
-    body?.fields?.Message,
-    body?.fields?.['Last Message'],
-  ];
-  for (const c of candidates) {
-    const s = String(c || '').trim();
-    if (s) return s.slice(0, 1000);
-  }
-  return null;
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: '/api/webhooks/telecrm',
+    purpose: 'Mirror TeleCRM / WACA WhatsApp (9167779696) into Bookings & Leads admin',
+    auth: 'Header x-webhook-secret or Authorization: Bearer <TELECRM_WEBHOOK_SECRET>',
+    telecrm_workflow: {
+      event: 'WhatsApp → On WhatsApp Received Notification',
+      action: 'Custom Action / API Template → HTTP POST to this URL',
+      note: 'Without this workflow, 9167779696 chats stay only inside TeleCRM and never reach MyFNG admin.',
+    },
+    sample_body: {
+      phone: '9876543210',
+      name: 'Customer Name',
+      message: 'Hi, need car service',
+      whatsapp_number: TELECRM_WACA_BUSINESS_PHONE,
+      disposition: 'New',
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -52,48 +60,62 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const phone = normalizeAgentPhone(body?.phone || body?.mobile || body?.Phone || '');
-    if (!phone) {
-      return NextResponse.json({ error: 'phone/mobile required' }, { status: 400 });
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = parseTelecrmWebhookPayload(body);
+    if (!parsed) {
+      return NextResponse.json(
+        {
+          error: 'phone/mobile required',
+          hint: 'Send phone, mobile, or lead.phone in JSON body',
+          received_keys: Object.keys(body || {}),
+        },
+        { status: 400 },
+      );
     }
 
-    // Always mirror TeleCRM / WACA (9167779696) WhatsApp activity into Bookings admin.
-    const messageText = extractTelecrmMessage(body);
-    const businessPhone = String(
-      body?.whatsapp_number ||
-        body?.waca_number ||
-        body?.business_phone ||
-        body?.inbox_phone ||
-        '9167779696',
-    ).replace(/\D/g, '');
+    const telecrmRow = await ensureTelecrmApiRowForInbound(parsed);
 
-    let bookingsLead: Awaited<ReturnType<typeof upsertServiceLeadFromTelecrmWhatsApp>> | null =
-      null;
+    let bookingsLead: Awaited<ReturnType<typeof upsertServiceLeadFromTelecrmWhatsApp>> | null = null;
     try {
       bookingsLead = await upsertServiceLeadFromTelecrmWhatsApp({
-        phone,
-        name: body?.name || body?.Name || null,
-        messageText,
-        businessPhone: businessPhone || '9167779696',
-        city: body?.city || body?.City || null,
-        pincode: body?.pincode || body?.Pincode || null,
-        telecrmId: body?.telecrm_id || body?.id || null,
-        disposition: body?.disposition || body?.LeadStatus || body?.status || null,
+        phone: parsed.phone,
+        name: parsed.name,
+        messageText: parsed.messageText,
+        businessPhone: parsed.businessPhone || TELECRM_WACA_BUSINESS_PHONE,
+        city: parsed.city,
+        pincode: parsed.pincode,
+        telecrmId: telecrmRow.id || parsed.telecrmId,
+        disposition: parsed.disposition,
       });
       console.log('[telecrm-webhook] bookings lead sync', {
-        phone,
+        phone: parsed.phone,
+        businessPhone: parsed.businessPhone,
         created: bookingsLead.created,
         leadId: bookingsLead.leadId,
         assignedTo: bookingsLead.assignedTo,
         skipped: bookingsLead.skipped,
         error: bookingsLead.error,
+        telecrmApiId: telecrmRow.id,
       });
     } catch (syncErr: unknown) {
       const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
       console.error('[telecrm-webhook] bookings lead sync failed:', msg);
+      bookingsLead = { ok: false, error: msg };
     }
 
+    if (!bookingsLead?.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: bookingsLead?.error || bookingsLead?.skipped || 'bookings_sync_failed',
+          telecrm_api: telecrmRow,
+          bookings_lead: bookingsLead,
+        },
+        { status: 422 },
+      );
+    }
+
+    const phone = parsed.phone;
     const chaseConfig = await fetchAgentConfig('CHASE');
     const followupConfig = await fetchAgentConfig('FOLLOWUP');
     if (!chaseConfig.enabled && !followupConfig.enabled) {
@@ -101,19 +123,20 @@ export async function POST(request: NextRequest) {
         success: true,
         skipped: true,
         reason: 'agents_disabled',
+        telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
     }
 
     const lead: TelecrmLeadCandidate = {
-      id: String(body?.telecrm_id || body?.id || ''),
-      name: body?.name ? String(body.name) : null,
+      id: String(telecrmRow.id || parsed.telecrmId || ''),
+      name: parsed.name,
       mobile: phone,
-      city: body?.city ? String(body.city) : null,
-      pincode: body?.pincode ? String(body.pincode) : null,
-      disposition: body?.disposition ? String(body.disposition) : 'New',
-      service_type: body?.service_type ? String(body.service_type) : null,
-      vehicle_model: body?.vehicle_model ? String(body.vehicle_model) : null,
+      city: parsed.city,
+      pincode: parsed.pincode,
+      disposition: parsed.disposition || 'New',
+      service_type: parsed.serviceType,
+      vehicle_model: parsed.vehicleModel,
       created_at: new Date().toISOString(),
     };
 
@@ -144,6 +167,7 @@ export async function POST(request: NextRequest) {
         message_mode: result.messageMode,
         instance_id: result.instanceId,
         skipped_reason: result.skippedReason,
+        telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
     }
@@ -153,6 +177,7 @@ export async function POST(request: NextRequest) {
         success: true,
         skipped: true,
         reason: 'disposition_not_eligible',
+        telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
     }
@@ -163,6 +188,7 @@ export async function POST(request: NextRequest) {
         success: true,
         skipped: true,
         reason: 'instance_not_created',
+        telecrm_api: telecrmRow,
         bookings_lead: bookingsLead,
       });
     }
@@ -180,6 +206,7 @@ export async function POST(request: NextRequest) {
       instance_id: instance.id,
       handled: result.handled,
       decision: result.decision,
+      telecrm_api: telecrmRow,
       bookings_lead: bookingsLead,
     });
   } catch (error: unknown) {

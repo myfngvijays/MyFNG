@@ -118,6 +118,7 @@ export function resolveBookingSource(lead: Record<string, any>): {
     rawSource === 'Google Ads' ||
     rawSource === 'Instagram Ads' ||
     rawSource === 'WhatsApp' ||
+    /^WhatsApp \(\d{10}\)$/.test(rawSource) ||
     rawSource === 'Partner' ||
     rawSource === 'Reference' ||
     rawSource === 'Banner/Offline'
@@ -585,7 +586,11 @@ export function matchesBookingSourceFilter(lead: Record<string, any>, sourceFilt
     case 'MISA':
       return bookingSource === 'MISA' || kind === 'misa' || /misa ai/i.test(leadSource);
     case 'WHATSAPP':
-      return kind === 'whatsapp' || leadSource === 'WhatsApp';
+      return (
+        kind === 'whatsapp' ||
+        leadSource === 'WhatsApp' ||
+        /^WhatsApp \(\d{10}\)$/.test(leadSource)
+      );
     case 'GOOGLE':
       return kind === 'google' || leadSource === 'Google Ads';
     case 'META':

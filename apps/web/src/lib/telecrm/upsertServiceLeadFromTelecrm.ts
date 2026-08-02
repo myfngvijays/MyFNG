@@ -1,6 +1,11 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerForLead } from '@/lib/enquiry/assignment';
+import {
+  leadSourceLabelForWacaBusinessPhone,
+  TELECRM_WACA_BUSINESS_PHONE,
+  type ParsedTelecrmWebhookPayload,
+} from './parseTelecrmWebhookPayload';
 
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
@@ -68,7 +73,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   let triggerId: string | null = null;
   let triggerLabel: string | null = null;
   let createdFrom = 'WHATSAPP';
-  let leadSource = 'WhatsApp';
+  let leadSource = leadSourceLabelForWacaBusinessPhone(businessPhone);
 
   try {
     const picked = await pickTelecallerForLead({
@@ -142,6 +147,9 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
     if (assignmentMode === 'MESSAGE_TRIGGER' && triggerLabel) {
       patch.lead_source = leadSource;
       patch.created_from = createdFrom;
+    } else {
+      patch.lead_source = leadSourceLabelForWacaBusinessPhone(businessPhone);
+      patch.created_from = 'WHATSAPP';
     }
 
     if (nextAssignee && nextAssignee !== prevAssignee) {
@@ -247,4 +255,90 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
     leadId: inserted?.id ? String(inserted.id) : null,
     assignedTo,
   };
+}
+
+/** Keep a telecrm_api audit row for WACA / TeleCRM WhatsApp events. */
+export async function ensureTelecrmApiRowForInbound(
+  input: ParsedTelecrmWebhookPayload,
+): Promise<{ id: string | null; created: boolean }> {
+  const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    console.warn('[telecrm→telecrm_api] admin unavailable:', adminError);
+    return { id: null, created: false };
+  }
+
+  const nowIso = new Date().toISOString();
+  const phone10 = normalizePhone10(input.phone);
+  const noteParts = [
+    `WACA ${input.businessPhone || TELECRM_WACA_BUSINESS_PHONE}`,
+    input.messageText ? `Msg: ${input.messageText.slice(0, 240)}` : null,
+  ].filter(Boolean);
+
+  if (input.telecrmId) {
+    const { data: existing } = await supabaseAdmin
+      .from('telecrm_api')
+      .select('id')
+      .eq('id', input.telecrmId)
+      .maybeSingle();
+    if (existing?.id) {
+      await supabaseAdmin
+        .from('telecrm_api')
+        .update({
+          name: input.name || undefined,
+          mobile: phone10,
+          city: input.city || undefined,
+          pincode: input.pincode || undefined,
+          disposition: input.disposition || undefined,
+          service_type: input.serviceType || undefined,
+          vehicle_model: input.vehicleModel || undefined,
+          disposition_note: noteParts.join(' · ') || undefined,
+          updated_at: nowIso,
+        })
+        .eq('id', existing.id);
+      return { id: String(existing.id), created: false };
+    }
+  }
+
+  const { data: latest } = await supabaseAdmin
+    .from('telecrm_api')
+    .select('id')
+    .or(`mobile.eq.${phone10},mobile.eq.91${phone10}`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latest?.id && input.messageText) {
+    await supabaseAdmin
+      .from('telecrm_api')
+      .update({
+        disposition_note: noteParts.join(' · '),
+        updated_at: nowIso,
+      })
+      .eq('id', latest.id);
+    return { id: String(latest.id), created: false };
+  }
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from('telecrm_api')
+    .insert({
+      name: input.name || `WhatsApp ${phone10.slice(-4)}`,
+      mobile: phone10,
+      city: input.city,
+      pincode: input.pincode,
+      disposition: input.disposition || 'New',
+      disposition_category: 'WhatsApp',
+      service_type: input.serviceType || 'WhatsApp Enquiry',
+      vehicle_model: input.vehicleModel,
+      disposition_note: noteParts.join(' · '),
+      updated_at: nowIso,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[telecrm→telecrm_api] insert failed:', error.message);
+    return { id: null, created: false };
+  }
+
+  return { id: inserted?.id ? String(inserted.id) : null, created: true };
 }

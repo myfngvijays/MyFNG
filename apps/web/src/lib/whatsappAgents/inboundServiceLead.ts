@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerForLead } from '@/lib/enquiry/assignment';
 import { channelFromWhatsAppLabels } from '@/lib/enquiry/leadChannels';
 import { findCustomerByPhone } from '@/lib/customer-service-leads';
+import { leadSourceLabelForWacaBusinessPhone } from '@/lib/telecrm/parseTelecrmWebhookPayload';
 
 export type WhatsAppReferral = {
   source_url?: string | null;
@@ -101,11 +102,17 @@ export function extractWhatsAppReferral(inbound: any): WhatsAppReferral | null {
   };
 }
 
-function resolveLeadLabels(referral: WhatsAppReferral | null | undefined) {
+function resolveLeadLabels(
+  referral: WhatsAppReferral | null | undefined,
+  businessPhone?: string | null,
+) {
   if (!referral) {
+    const business10 = normalizePhone10(businessPhone || '');
     return {
       created_from: 'WHATSAPP',
-      lead_source: 'WhatsApp',
+      lead_source: business10
+        ? leadSourceLabelForWacaBusinessPhone(business10)
+        : 'WhatsApp',
     };
   }
 
@@ -287,7 +294,7 @@ export async function ensureWhatsAppInboundServiceLead(
     return { created: false, leadId: null, skipped: 'no_admin' };
   }
 
-  let labels = resolveLeadLabels(input.referral);
+  let labels = resolveLeadLabels(input.referral, input.businessPhone);
   const nowIso = input.inboundReceivedAt || new Date().toISOString();
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const known = await lookupKnownCustomerFill(supabaseAdmin, phone10);
