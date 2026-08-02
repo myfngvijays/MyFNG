@@ -74,8 +74,9 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       switch (activeFilter) {
         case 'new':
           query = query
-            .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+            .eq('assigned_telecaller_id', teleCallerId)
             .eq('status', 'NEW')
+            .eq('is_incomplete', false)
             .is('last_call_at', null);
           break;
         case 'callback':
@@ -86,7 +87,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           break;
         case 'incomplete':
           query = query
-            .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+            .eq('assigned_telecaller_id', teleCallerId)
             .eq('is_incomplete', true);
           break;
         case 'follow_up':
@@ -110,7 +111,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
             .eq('status', 'REJECTED');
           break;
         default:
-          query = query.or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId},created_by_id.eq.${teleCallerId}`);
+          query = query.or(`assigned_telecaller_id.eq.${teleCallerId},created_by_id.eq.${teleCallerId}`);
       }
 
       const { data, error } = await query

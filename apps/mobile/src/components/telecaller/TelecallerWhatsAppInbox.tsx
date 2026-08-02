@@ -20,6 +20,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  customer_name?: string | null;
 };
 
 type Props = {
@@ -67,7 +68,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
-  const [mode, setMode] = useState<'assigned' | 'unassigned'>('assigned');
+  const [leadCount, setLeadCount] = useState(0);
   const [activePhone, setActivePhone] = useState<string | null>(null);
 
   const fetchChats = useCallback(async () => {
@@ -76,20 +77,21 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
       const params = new URLSearchParams({
         limit: '250',
         scan: '50000',
-        mode,
+        mode: 'assigned',
       });
       if (search.trim()) params.set('search', search.trim());
-      const data = await apiFetch<{ success?: boolean; chats?: ChatRow[] }>(
+      const data = await apiFetch<{ success?: boolean; chats?: ChatRow[]; lead_count?: number }>(
         `/api/whatsapp/chats?${params.toString()}`
       );
       setRows(Array.isArray(data.chats) ? data.chats : []);
+      setLeadCount(Number(data.lead_count ?? data.chats?.length ?? 0));
     } catch (e) {
       console.error('WhatsApp chats failed', e);
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [mode, search]);
+  }, [search]);
 
   useEffect(() => {
     if (!visible) return;
@@ -101,10 +103,14 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
     if (!visible) setActivePhone(null);
   }, [visible]);
 
-  const unreadCount = useMemo(
+  const inboundCount = useMemo(
     () => rows.filter((r) => String(r.last_direction || '').toUpperCase() === 'INBOUND').length,
     [rows]
   );
+
+  const subtitle = useMemo(() => {
+    return `${leadCount} assigned lead${leadCount === 1 ? '' : 's'}${inboundCount > 0 ? ` · ${inboundCount} unread` : ''}`;
+  }, [leadCount, inboundCount]);
 
   const handleClose = () => {
     setActivePhone(null);
@@ -127,27 +133,11 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>WhatsApp Inbox</Text>
-            <Text style={styles.subtitle}>
-              {unreadCount > 0 ? `${unreadCount} inbound` : 'Assigned chats'}
-            </Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
           <TouchableOpacity onPress={fetchChats} style={styles.closeBtn}>
             <Ionicons name="refresh" size={20} color={COLORS.white} />
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.modeRow}>
-          {(['assigned', 'unassigned'] as const).map((m) => (
-            <TouchableOpacity
-              key={m}
-              style={[styles.modeChip, mode === m && styles.modeChipActive]}
-              onPress={() => setMode(m)}
-            >
-              <Text style={[styles.modeText, mode === m && styles.modeTextActive]}>
-                {m === 'assigned' ? 'Assigned' : 'Unassigned'}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
 
         <View style={styles.searchRow}>
@@ -188,7 +178,10 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={styles.cardTop}>
-                      <Text style={styles.phone}>{formatPhone(item.phone)}</Text>
+                      <Text style={styles.phone}>
+                        {item.customer_name ? `${item.customer_name} · ` : ''}
+                        {formatPhone(item.phone)}
+                      </Text>
                       <Text style={styles.time}>{formatTime(item.last_message_at)}</Text>
                     </View>
                     <Text style={styles.preview} numberOfLines={2}>

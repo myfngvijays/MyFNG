@@ -101,7 +101,8 @@ export async function GET(request: NextRequest) {
     const wg = (t: string) => weekStartParts.find((p) => p.type === t)?.value || '';
     const weekStart = `${wg('year')}-${wg('month')}-${wg('day')}`;
 
-    const mineOrUnassigned = `assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`;
+    // Telecallers only see leads explicitly assigned to them (not the global unassigned pool).
+    const assignedToMe = teleCallerId;
 
     const applyCreatedRange = (q: any) => {
       if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
@@ -138,15 +139,16 @@ export async function GET(request: NextRequest) {
         db
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
-          .or(mineOrUnassigned)
+          .eq('assigned_telecaller_id', assignedToMe)
           .is('deleted_at', null),
       ),
       applyCreatedRange(
         db
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
-          .or(mineOrUnassigned)
+          .eq('assigned_telecaller_id', assignedToMe)
           .eq('status', 'NEW')
+          .eq('is_incomplete', false)
           .is('deleted_at', null),
       ),
       applyFuRange(
@@ -168,7 +170,7 @@ export async function GET(request: NextRequest) {
         db
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
-          .or(mineOrUnassigned)
+          .eq('assigned_telecaller_id', assignedToMe)
           .in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'VALIDATED'])
           .is('deleted_at', null),
       ),
@@ -176,7 +178,7 @@ export async function GET(request: NextRequest) {
         db
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
-          .or(mineOrUnassigned)
+          .eq('assigned_telecaller_id', assignedToMe)
           .eq('is_incomplete', true)
           .is('deleted_at', null),
       ),

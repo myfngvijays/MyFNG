@@ -155,15 +155,8 @@ export async function GET(request: NextRequest) {
         assigned_telecaller_id,
         workshop:workshops(id, name, city)
       `)
-      // Unassigned + own + OTP-verified incomplete (website/app abandon) for every telecaller
-      .or(
-        [
-          `assigned_telecaller_id.is.null`,
-          `assigned_telecaller_id.eq.${teleCallerId}`,
-          `coupon_meta->>last_call_result.eq.OTP_VERIFIED`,
-          `coupon_meta->>website_otp_verified.eq.true`,
-        ].join(','),
-      )
+      // Only leads explicitly assigned to this telecaller (distribution / admin assignment).
+      .eq('assigned_telecaller_id', teleCallerId)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -184,7 +177,7 @@ export async function GET(request: NextRequest) {
     if (to) query = query.lte('created_at', to);
 
     if (filter === 'new') {
-      query = query.eq('status', 'NEW');
+      query = query.eq('status', 'NEW').eq('is_incomplete', false);
     } else if (filter === 'interested') {
       query = query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
     } else if (filter === 'will_visit') {
@@ -211,10 +204,8 @@ export async function GET(request: NextRequest) {
     } else if (filter === 'callback') {
       query = query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
     } else if (filter === 'incomplete') {
-      // Incomplete booking stubs + website/app OTP-verified (not yet booked)
-      query = query.or(
-        'is_incomplete.eq.true,coupon_meta->>last_call_result.eq.OTP_VERIFIED,coupon_meta->>website_otp_verified.eq.true',
-      );
+      // Only this telecaller's incomplete booking stubs (matches dashboard KPI).
+      query = query.eq('is_incomplete', true);
     } else if (filter === 'follow_up') {
       query = query.eq('follow_up_required', true);
     }
@@ -239,14 +230,7 @@ export async function GET(request: NextRequest) {
           assigned_telecaller_id,
           workshop:workshops(id, name, city)
         `)
-        .or(
-          [
-            `assigned_telecaller_id.is.null`,
-            `assigned_telecaller_id.eq.${teleCallerId}`,
-            `coupon_meta->>last_call_result.eq.OTP_VERIFIED`,
-            `coupon_meta->>website_otp_verified.eq.true`,
-          ].join(','),
-        )
+        .eq('assigned_telecaller_id', teleCallerId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -259,7 +243,7 @@ export async function GET(request: NextRequest) {
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       if (from) retry = retry.gte('created_at', from);
       if (to) retry = retry.lte('created_at', to);
-      if (filter === 'new') retry = retry.eq('status', 'NEW');
+      if (filter === 'new') retry = retry.eq('status', 'NEW').eq('is_incomplete', false);
       else if (filter === 'interested') {
         retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
       } else if (filter === 'will_visit') {
@@ -284,9 +268,7 @@ export async function GET(request: NextRequest) {
       } else if (filter === 'callback') {
         retry = retry.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
       } else if (filter === 'incomplete') {
-        retry = retry.or(
-          'is_incomplete.eq.true,coupon_meta->>last_call_result.eq.OTP_VERIFIED,coupon_meta->>website_otp_verified.eq.true',
-        );
+        retry = retry.eq('is_incomplete', true);
       } else if (filter === 'follow_up') retry = retry.eq('follow_up_required', true);
       if (q) {
         retry = retry.or(

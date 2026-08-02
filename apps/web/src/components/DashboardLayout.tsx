@@ -1044,6 +1044,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             isOpen={waListOpen}
             title="WhatsApp Chats"
             refreshSignal={waRefreshSignal}
+            hideLeadPool={role?.toUpperCase() === 'TELECALLER'}
             onClose={() => setWaListOpen(false)}
             onOpenChat={(phone, preview) => {
               setWaListOpen(false);

@@ -17,6 +17,8 @@ type Props = {
   onOpenChat: (phone: string, preview?: string) => void;
   title?: string;
   refreshSignal?: number;
+  /** Telecallers only see assigned leads; hide the unassigned pool tab. */
+  hideLeadPool?: boolean;
 };
 
 function formatPhone(phone: string): string {
@@ -46,7 +48,7 @@ function formatTime(value?: string | null): string {
 type FilterTab = 'all' | 'unread' | 'read';
 type ModeTab = 'assigned' | 'unassigned';
 
-export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, title, refreshSignal }: Props) {
+export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, title, refreshSignal, hideLeadPool = false }: Props) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
@@ -98,7 +100,10 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
   }, [isOpen, debouncedSearch, fetchChats]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || hideLeadPool) {
+      setUnassignedRows([]);
+      return;
+    }
     let cancelled = false;
     const load = async () => {
       setUnassignedLoading(true);
@@ -114,19 +119,19 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
     };
     void load();
     return () => { cancelled = true; };
-  }, [isOpen, debouncedSearch, fetchChats]);
+  }, [isOpen, debouncedSearch, fetchChats, hideLeadPool]);
 
   useEffect(() => {
     if (refreshSignal != null && prevRefreshRef.current != null && refreshSignal !== prevRefreshRef.current && isOpen) {
       setHasNewMessages(true);
       const refreshAll = async () => {
         try {
-          const [assigned, unassigned] = await Promise.all([
-            fetchChats('assigned', debouncedSearch),
-            fetchChats('unassigned', debouncedSearch),
-          ]);
+          const assigned = await fetchChats('assigned', debouncedSearch);
           setRows(assigned);
-          setUnassignedRows(unassigned);
+          if (!hideLeadPool) {
+            const unassigned = await fetchChats('unassigned', debouncedSearch);
+            setUnassignedRows(unassigned);
+          }
         } catch { /* ignore */ }
       };
       void refreshAll();
@@ -135,7 +140,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
       return () => clearTimeout(t);
     }
     prevRefreshRef.current = refreshSignal;
-  }, [refreshSignal, isOpen, debouncedSearch, fetchChats]);
+  }, [refreshSignal, isOpen, debouncedSearch, fetchChats, hideLeadPool]);
 
   const unassignedInboundCount = useMemo(
     () => unassignedRows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND').length,
@@ -175,7 +180,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
             />
           </div>
 
-          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5">
+          <div className={`flex gap-1 rounded-lg bg-gray-100 p-0.5 ${hideLeadPool ? 'hidden' : ''}`}>
             <button
               type="button"
               onClick={() => setMode('assigned')}
@@ -185,6 +190,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
             >
               Assigned
             </button>
+            {!hideLeadPool ? (
             <button
               type="button"
               onClick={() => setMode('unassigned')}
@@ -199,6 +205,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                 </span>
               )}
             </button>
+            ) : null}
           </div>
 
           <div className="flex gap-1.5">

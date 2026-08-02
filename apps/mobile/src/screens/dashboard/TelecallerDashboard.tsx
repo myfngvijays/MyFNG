@@ -105,8 +105,9 @@ export default function TelecallerDashboard() {
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
-          .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+          .eq('assigned_telecaller_id', teleCallerId)
           .eq('status', 'NEW')
+          .eq('is_incomplete', false)
           .is('last_call_at', null),
 
         // Pending callbacks
@@ -130,7 +131,7 @@ export default function TelecallerDashboard() {
         supabase
           .from('service_leads')
           .select('id', { count: 'exact', head: true })
-          .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+          .eq('assigned_telecaller_id', teleCallerId)
           .eq('is_incomplete', true),
 
         // Booked leads
@@ -159,7 +160,7 @@ export default function TelecallerDashboard() {
         supabase
           .from('service_leads')
           .select('id, lead_number, customer_name, customer_phone, status, created_at')
-          .or(`assigned_telecaller_id.is.null,assigned_telecaller_id.eq.${teleCallerId}`)
+          .eq('assigned_telecaller_id', teleCallerId)
           .order('created_at', { ascending: false })
           .limit(5),
 
