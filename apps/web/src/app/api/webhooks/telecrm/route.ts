@@ -3,7 +3,6 @@ import { fetchAgentConfig } from '@/lib/whatsappAgents/shared/configStore';
 import { getDispositionRulesConfig } from '@/lib/whatsappAgents/shared/dispositionRules';
 import { handleTelecrmDispositionEvent } from '@/lib/whatsappAgents/shared/telecrmDispositionHandler';
 import { getResolvedWhatsAppAgentsCredentials } from '@/lib/whatsappAgents/shared/envConfigStore';
-import { normalizeAgentPhone } from '@/lib/whatsappAgents/shared/instanceService';
 import type { TelecrmLeadCandidate } from '@/lib/whatsappAgents/chase/telecrmTriggers';
 import { shouldChaseTelecrmLead } from '@/lib/whatsappAgents/chase/telecrmTriggers';
 import {
@@ -12,13 +11,9 @@ import {
 } from '@/lib/whatsappAgents/chase/handler';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
-  ensureTelecrmApiRowForInbound,
-  upsertServiceLeadFromTelecrmWhatsApp,
-} from '@/lib/telecrm/upsertServiceLeadFromTelecrm';
-import {
-  parseTelecrmWebhookPayload,
-  TELECRM_WACA_BUSINESS_PHONE,
-} from '@/lib/telecrm/parseTelecrmWebhookPayload';
+  buildTelecrmWacaApiTemplateBody,
+  mirrorTelecrmWacaInboundToBookings,
+} from '@/lib/telecrm/wacaBookingsMirror';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,12 +39,19 @@ export async function GET() {
       action: 'Custom Action / API Template → HTTP POST to this URL',
       note: 'Without this workflow, 9167779696 chats stay only inside TeleCRM and never reach MyFNG admin.',
     },
-    sample_body: {
-      phone: '9876543210',
-      name: 'Customer Name',
-      message: 'Hi, need car service',
-      whatsapp_number: TELECRM_WACA_BUSINESS_PHONE,
-      disposition: 'New',
+    sample_body: buildTelecrmWacaApiTemplateBody(),
+    telecrm_template: {
+      name: 'Whatsapp_Admin_Panel_Trigger',
+      method: 'POST',
+      url: 'https://www.myfng.in/api/webhooks/telecrm',
+      headers: {
+        'Content-type': 'application/json',
+        'x-webhook-secret': '<TELECRM_WEBHOOK_SECRET from Bot Flow Env Settings>',
+      },
+      body: buildTelecrmWacaApiTemplateBody(),
+      timeout_seconds: 15,
+      workflow_hint:
+        'Connect from whatsapp incoming trigger in parallel — keep existing tag/assign/status nodes unchanged.',
     },
   });
 }
@@ -61,8 +63,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const parsed = parseTelecrmWebhookPayload(body);
-    if (!parsed) {
+    const mirror = await mirrorTelecrmWacaInboundToBookings(body);
+    if (!mirror.parsed) {
       return NextResponse.json(
         {
           error: 'phone/mobile required',
@@ -73,41 +75,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const telecrmRow = await ensureTelecrmApiRowForInbound(parsed);
+    const parsed = mirror.parsed;
+    const phone = parsed.phone;
+    const telecrmRow = mirror.telecrmApi;
+    const bookingsLead = mirror.bookingsLead;
 
-    let bookingsLead: Awaited<ReturnType<typeof upsertServiceLeadFromTelecrmWhatsApp>> | null = null;
-    try {
-      bookingsLead = await upsertServiceLeadFromTelecrmWhatsApp({
-        phone: parsed.phone,
-        name: parsed.name,
-        messageText: parsed.messageText,
-        businessPhone: parsed.businessPhone || TELECRM_WACA_BUSINESS_PHONE,
-        city: parsed.city,
-        pincode: parsed.pincode,
-        telecrmId: telecrmRow.id || parsed.telecrmId,
-        disposition: parsed.disposition,
-      });
-      console.log('[telecrm-webhook] bookings lead sync', {
-        phone: parsed.phone,
-        businessPhone: parsed.businessPhone,
-        created: bookingsLead.created,
-        leadId: bookingsLead.leadId,
-        assignedTo: bookingsLead.assignedTo,
-        skipped: bookingsLead.skipped,
-        error: bookingsLead.error,
-        telecrmApiId: telecrmRow.id,
-      });
-    } catch (syncErr: unknown) {
-      const msg = syncErr instanceof Error ? syncErr.message : String(syncErr);
-      console.error('[telecrm-webhook] bookings lead sync failed:', msg);
-      bookingsLead = { ok: false, error: msg };
-    }
-
-    if (!bookingsLead?.ok) {
+    if (!bookingsLead.ok) {
       return NextResponse.json(
         {
           success: false,
-          error: bookingsLead?.error || bookingsLead?.skipped || 'bookings_sync_failed',
+          error: bookingsLead.error || bookingsLead.skipped || 'bookings_sync_failed',
           telecrm_api: telecrmRow,
           bookings_lead: bookingsLead,
         },
@@ -115,7 +92,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const phone = parsed.phone;
+    console.log('[telecrm-webhook] bookings lead sync', {
+      phone,
+      businessPhone: parsed.businessPhone,
+      created: bookingsLead.created,
+      leadId: bookingsLead.leadId,
+      assignedTo: bookingsLead.assignedTo,
+      telecrmApiId: telecrmRow.id,
+    });
     const chaseConfig = await fetchAgentConfig('CHASE');
     const followupConfig = await fetchAgentConfig('FOLLOWUP');
     if (!chaseConfig.enabled && !followupConfig.enabled) {

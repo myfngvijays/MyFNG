@@ -13,6 +13,11 @@ export type ParsedTelecrmWebhookPayload = {
   disposition: string | null;
   serviceType: string | null;
   vehicleModel: string | null;
+  leadTag: string | null;
+  leadStatus: string | null;
+  assigneePhone: string | null;
+  assigneeEmail: string | null;
+  assigneeName: string | null;
 };
 
 function pickString(...values: unknown[]): string | null {
@@ -130,6 +135,34 @@ export function parseTelecrmWebhookPayload(body: Record<string, unknown>): Parse
     ),
     serviceType: pickString(body.service_type, body.serviceType, dig(fields, 'service_type'), lead?.service_type),
     vehicleModel: pickString(body.vehicle_model, body.vehicleModel, dig(fields, 'vehicle_model'), lead?.vehicle_model),
+    leadTag: pickString(
+      body.lead_tag,
+      body.LEADTAG,
+      body.leadTag,
+      dig(fields, 'LEADTAG', 'lead_tag', 'Lead Tag'),
+      dig(data, 'LEADTAG', 'lead_tag'),
+    ),
+    leadStatus: pickString(
+      body.lead_status,
+      body.LeadStatus,
+      body.disposition,
+      dig(fields, 'LeadStatus', 'lead_status'),
+    ),
+    assigneePhone: pickString(
+      body.assignee_phone,
+      body.assignee_mobile,
+      body.telecaller_phone,
+      dig(fields, 'assignee_phone', 'Assignee Phone'),
+      dig(body, 'assignee.phone'),
+    ),
+    assigneeEmail: pickString(body.assignee_email, body.assigneeEmail, dig(fields, 'assignee_email')),
+    assigneeName: pickString(
+      body.assignee_name,
+      body.assignee,
+      body.telecaller_name,
+      dig(fields, 'assignee_name', 'Assignee'),
+      dig(body, 'assignee.name'),
+    ),
   };
 }
 

@@ -478,11 +478,10 @@ export default function AgentEnvSettingsPanel() {
                 disabled={!canEdit}
               />
               <p className="mt-1 text-[11px] text-gray-500">
-                TeleCRM workflow (9167779696 WACA): Automations → WhatsApp → On WhatsApp Received →
-                Custom Action POST to{' '}
-                <span className="font-mono">https://www.myfng.in/api/webhooks/telecrm</span> with header{' '}
-                <span className="font-mono">x-webhook-secret</span>. Body: phone, name, message,
-                whatsapp_number=9167779696.
+                TeleCRM WACA ({'9167779696'}) → Bookings admin: workflow mein Call API POST{' '}
+                <span className="font-mono">/api/webhooks/telecrm</span> with header{' '}
+                <span className="font-mono">x-webhook-secret</span>. Full JSON template:{' '}
+                <span className="font-mono">GET /api/webhooks/telecrm</span>
               </p>
             </div>
           </div>

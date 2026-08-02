@@ -6,6 +6,7 @@ import {
   TELECRM_WACA_BUSINESS_PHONE,
   type ParsedTelecrmWebhookPayload,
 } from './parseTelecrmWebhookPayload';
+import { resolveTelecallerUserId } from './resolveTelecallerUserId';
 
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
@@ -25,6 +26,13 @@ export type TelecrmWhatsAppLeadInput = {
   pincode?: string | null;
   telecrmId?: string | null;
   disposition?: string | null;
+  leadTag?: string | null;
+  leadStatus?: string | null;
+  assigneePhone?: string | null;
+  assigneeEmail?: string | null;
+  assigneeName?: string | null;
+  /** When true, TeleCRM assignee overrides message-trigger assignee. */
+  preferTelecrmAssignee?: boolean;
 };
 
 /**
@@ -74,6 +82,11 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   let triggerLabel: string | null = null;
   let createdFrom = 'WHATSAPP';
   let leadSource = leadSourceLabelForWacaBusinessPhone(businessPhone);
+  const telecrmAssigneeId = await resolveTelecallerUserId({
+    phone: input.assigneePhone,
+    email: input.assigneeEmail,
+    name: input.assigneeName,
+  });
 
   try {
     const picked = await pickTelecallerForLead({
@@ -95,6 +108,15 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   } catch (e) {
     console.warn('[telecrm→service_leads] assignment failed', e);
   }
+
+  if (telecrmAssigneeId && (input.preferTelecrmAssignee !== false || !assignedTo)) {
+    assignedTo = telecrmAssigneeId;
+    assignmentMode = 'TELECRM_WORKFLOW';
+  }
+
+  const telecrmLeadStatus =
+    String(input.leadStatus || input.disposition || '').trim() || null;
+  const telecrmLeadTag = String(input.leadTag || '').trim() || null;
 
   const existing = existingRows?.[0] || null;
 
@@ -127,6 +149,9 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
         last_inbound_message: msg,
         telecrm_id: input.telecrmId || prevMeta.telecrm_id || null,
         telecrm_disposition: input.disposition || prevMeta.telecrm_disposition || null,
+        telecrm_lead_tag: telecrmLeadTag || prevMeta.telecrm_lead_tag || null,
+        telecrm_lead_status: telecrmLeadStatus || prevMeta.telecrm_lead_status || null,
+        telecrm_assignee_name: input.assigneeName || prevMeta.telecrm_assignee_name || null,
         ...(triggerId
           ? {
               message_trigger_id: triggerId,
@@ -221,6 +246,9 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
       last_inbound_at: nowIso,
       telecrm_id: input.telecrmId || null,
       telecrm_disposition: input.disposition || null,
+      telecrm_lead_tag: telecrmLeadTag,
+      telecrm_lead_status: telecrmLeadStatus,
+      telecrm_assignee_name: input.assigneeName || null,
       message_trigger_id: triggerId,
       message_trigger_label: triggerLabel,
       assignment_mode: assignmentMode,
