@@ -15,7 +15,7 @@ INSERT INTO public.site_page_seo (
   keyphrase,
   canonical_path,
   city,
-  no_index,
+  noindex,
   display_order
 )
 SELECT
@@ -23,7 +23,7 @@ SELECT
   'Roadside Assistance',
   'Roadside Assistance (RSA) - 24x7 Emergency Help | MyFNG',
   'MYFNG Roadside Assistance - 24x7 emergency dispatch for towing, jumpstart, puncture repair, fuel delivery & on-road help across Mumbai & Pune.',
-  ARRAY['roadside assistance', 'car breakdown help', 'emergency towing', 'RSA Mumbai', 'RSA Pune'],
+  'roadside assistance, car breakdown help, emergency towing, RSA Mumbai, RSA Pune',
   'roadside assistance near me',
   '/car-roadside-assistance',
   'Mumbai',

@@ -1,5 +1,7 @@
 import { FileText, Mail, Phone } from 'lucide-react';
 import { AccordionCard } from '@/components/shared/PolicyAccordion';
+import Navbar from '@/components/landing/Navbar';
+import Footer from '@/components/landing/Footer';
 
 import { buildManagedPageMetadata } from '@/lib/site-page-seo';
 
@@ -53,7 +55,9 @@ function DefinitionItem({ number, term, desc }: { number: string; term: string; 
 
 export default function TermsAndConditionsPage() {
   return (
-    <main className="bg-gradient-to-b from-gray-50 to-white min-h-screen">
+    <>
+      <Navbar />
+      <main className="bg-gradient-to-b from-gray-50 to-white min-h-screen pt-20 sm:pt-24">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12 sm:px-6">
         {/* Header */}
         <div className="text-center mb-8">
@@ -1005,5 +1009,7 @@ These Terms constitute an electronic contract under applicable Indian laws, incl
         <div className="h-8" />
       </div>
     </main>
+      <Footer />
+    </>
   );
 }
