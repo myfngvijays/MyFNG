@@ -911,7 +911,7 @@ function AIBookingPageInner() {
                 {[
                   { label: 'Home', href: '/' },
                   { label: 'Services', href: '/services' },
-                  { label: 'Roadside', href: '/car-roadside-assitance' },
+                  { label: 'Roadside', href: '/car-roadside-assistance' },
                   { label: 'Contact', href: '/contact' },
                   { label: 'Book Service', href: '/book-service' },
                 ].map((item) => (

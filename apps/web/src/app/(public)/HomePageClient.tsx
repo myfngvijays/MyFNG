@@ -1579,7 +1579,7 @@ export default function HomePage() {
                 {/* CTA */}
                 <div className="flex flex-col items-center lg:items-start gap-3 animate-fade-in-up" style={{ animationDelay: '0.35s' }}>
                   <Link
-                    href="/car-roadside-assitance"
+                    href="/car-roadside-assistance"
                     className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-orange-500 to-red-600 text-white text-sm sm:text-lg font-bold px-7 sm:px-10 py-3.5 sm:py-4 rounded-2xl shadow-2xl shadow-red-500/40 transition-all transform hover:-translate-y-0.5 animate-pulse"
                   >
                     <Radio className="w-5 h-5 animate-pulse" />
@@ -1646,7 +1646,7 @@ export default function HomePage() {
 
                 {/* Mobile only: compact “View all” */}
                 <div className="sm:hidden mt-3 flex justify-center">
-                  <Link href="/car-roadside-assitance" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
+                  <Link href="/car-roadside-assistance" className="text-sm font-semibold text-orange-200 hover:text-white underline underline-offset-4">
                     View all roadside services →
               </Link>
                 </div>

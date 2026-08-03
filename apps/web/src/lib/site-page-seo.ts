@@ -152,7 +152,7 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
     city: 'Mumbai',
   },
   {
-    page_path: '/car-roadside-assitance',
+    page_path: '/car-roadside-assistance',
     page_label: 'Roadside Assistance',
     display_order: 9,
     title: 'Roadside Assistance (RSA) - 24x7 Emergency Help | MyFNG',
@@ -160,7 +160,7 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
       'MYFNG Roadside Assistance - 24x7 emergency dispatch for towing, jumpstart, puncture repair, fuel delivery & on-road help across Mumbai & Pune.',
     keywords: ['roadside assistance', 'car breakdown help', 'emergency towing', 'RSA Mumbai', 'RSA Pune'],
     keyphrase: 'roadside assistance near me',
-    canonicalPath: '/car-roadside-assitance',
+    canonicalPath: '/car-roadside-assistance',
     city: 'Mumbai',
   },
   {

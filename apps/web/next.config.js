@@ -112,8 +112,9 @@ const nextConfig = {
       { source: '/services/electrical-battery-service', destination: '/car-services/car-electrical-battery-service', permanent: true },
       { source: '/services/suspension-steering-service', destination: '/car-services/car-suspension-steering-service', permanent: true },
       // RSA canonical URL
-      { source: '/rsa_landing', destination: '/car-roadside-assitance', permanent: true },
-      { source: '/roadside-assistance', destination: '/car-roadside-assitance', permanent: true },
+      { source: '/rsa_landing', destination: '/car-roadside-assistance', permanent: true },
+      { source: '/roadside-assistance', destination: '/car-roadside-assistance', permanent: true },
+      { source: '/car-roadside-assitance', destination: '/car-roadside-assistance', permanent: true },
       // Legacy PHP URLs
       { source: '/ai-booking', destination: '/misa-ai', permanent: true },
       { source: '/ai-experience', destination: '/misa-ai', permanent: true },

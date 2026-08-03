@@ -1,5 +1,5 @@
 import RsaLandingPage from '../rsa_landing/page';
 
-export default function CarRoadsideAssitancePage() {
+export default function CarRoadsideAssistancePage() {
   return <RsaLandingPage />;
 }

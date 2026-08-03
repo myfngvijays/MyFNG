@@ -36,9 +36,9 @@ const navItems: NavItem[] = [
   { label: 'MISA AI', href: '/misa-ai', icon: Bot, matchPrefixes: ['/misa-ai'] },
   {
     label: 'Roadside',
-    href: '/car-roadside-assitance',
+    href: '/car-roadside-assistance',
     icon: LifeBuoy,
-    matchPrefixes: ['/car-roadside-assitance', '/roadside-assistance', '/rsa_landing'],
+    matchPrefixes: ['/car-roadside-assistance', '/roadside-assistance', '/rsa_landing'],
   },
   { label: 'Contact', href: '/contact', icon: Phone, matchPrefixes: ['/contact', '/customer/login', '/login'] },
 ];
@@ -54,7 +54,7 @@ function isItemActive(pathname: string, item: NavItem): boolean {
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [isEmbed, setIsEmbed] = useState(false);
-  const isRsaPage = pathname === '/car-roadside-assitance' || pathname.startsWith('/car-roadside-assitance/');
+  const isRsaPage = pathname === '/car-roadside-assistance' || pathname.startsWith('/car-roadside-assistance/');
   const isServicesListPage = pathname === '/services' || pathname.startsWith('/services/');
   const isCarServiceSlugPage = pathname.startsWith('/car-services/') && pathname.split('/').length >= 3 && pathname.split('/')[2] !== '';
   const carServiceSlug = isCarServiceSlugPage ? pathname.split('/')[2] : null;
