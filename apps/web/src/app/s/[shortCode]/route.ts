@@ -6,10 +6,10 @@ import { parseUtmParams } from '@/lib/utm';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { shortCode: string } },
+  { params }: { params: Promise<{ shortCode: string }> },
 ) {
   try {
-    const shortCode = params.shortCode;
+    const { shortCode } = await params;
     if (!shortCode || shortCode.length < 3) {
       return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
     }
