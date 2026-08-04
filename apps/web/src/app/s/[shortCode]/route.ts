@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLongUrl } from '@/lib/services/urlShortener';
 import { resolveManagedShortLinkRedirect } from '@/lib/link-manager/service';
+import { parseUtmParams } from '@/lib/utm';
 
 export async function GET(
   request: NextRequest,
@@ -23,6 +24,7 @@ export async function GET(
       ip,
       userAgent,
       referrer,
+      queryUtm: parseUtmParams(request.nextUrl.search),
     });
     if (managedUrl) {
       return NextResponse.redirect(new URL(managedUrl, request.url));

@@ -11,6 +11,46 @@ import {
 } from '@/lib/link-manager/utils';
 import { generateBrandedQrDataUrl } from '@/lib/link-manager/qr-generator';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
+import { mergeUtmParams, type UtmParams } from '@/lib/utm';
+
+function buildEffectiveLinkUtm(
+  link: {
+    utm_source?: string | null;
+    utm_medium?: string | null;
+    utm_campaign?: string | null;
+    utm_term?: string | null;
+    utm_content?: string | null;
+  },
+  queryUtm?: UtmParams,
+) {
+  const merged = mergeUtmParams(
+    {
+      utm_source: link.utm_source,
+      utm_medium: link.utm_medium,
+      utm_campaign: link.utm_campaign,
+      utm_term: link.utm_term,
+      utm_content: link.utm_content,
+    },
+    queryUtm || {},
+  );
+  return {
+    source: merged.utm_source || null,
+    medium: merged.utm_medium || null,
+    campaign: merged.utm_campaign || null,
+    term: merged.utm_term || null,
+    content: merged.utm_content || null,
+  };
+}
+
+function utmMetaSnapshot(utm: ReturnType<typeof buildEffectiveLinkUtm>) {
+  return {
+    utm_source: utm.source,
+    utm_medium: utm.medium,
+    utm_campaign: utm.campaign,
+    utm_term: utm.term,
+    utm_content: utm.content,
+  };
+}
 
 export type ManagedShortLink = {
   id: string;
@@ -56,7 +96,12 @@ export async function generateQrDataUrl(data: string, qrStyle?: QrStyleOptions |
 
 export async function resolveManagedShortLinkRedirect(
   shortCode: string,
-  request?: { ip?: string | null; userAgent?: string | null; referrer?: string | null },
+  request?: {
+    ip?: string | null;
+    userAgent?: string | null;
+    referrer?: string | null;
+    queryUtm?: UtmParams;
+  },
 ): Promise<string | null> {
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return null;
@@ -71,13 +116,9 @@ export async function resolveManagedShortLinkRedirect(
   if (error || !link) return null;
   if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) return null;
 
-  const destination = appendUtmParams(link.long_url, {
-    source: link.utm_source,
-    medium: link.utm_medium,
-    campaign: link.utm_campaign,
-    term: link.utm_term,
-    content: link.utm_content,
-  });
+  const effectiveUtm = buildEffectiveLinkUtm(link, request?.queryUtm);
+
+  const destination = appendUtmParams(link.long_url, effectiveUtm);
 
   const ip = request?.ip || null;
   const fingerprint = ip ? `${ip}:${String(request?.userAgent || '').slice(0, 120)}` : null;
@@ -101,7 +142,10 @@ export async function resolveManagedShortLinkRedirect(
     ip_address: ip,
     user_agent: request?.userAgent || null,
     referrer: request?.referrer || null,
-    meta: fingerprint ? { fingerprint } : {},
+    meta: {
+      ...(fingerprint ? { fingerprint } : {}),
+      ...utmMetaSnapshot(effectiveUtm),
+    },
   });
 
   await supabaseAdmin
@@ -123,15 +167,18 @@ export async function recordManagedLinkQrScan(shortCode: string) {
 
   const { data: link } = await supabaseAdmin
     .from('managed_short_links')
-    .select('id, qr_scans')
+    .select('id, qr_scans, utm_source, utm_medium, utm_campaign, utm_term, utm_content')
     .eq('short_code', shortCode)
     .eq('is_active', true)
     .maybeSingle();
   if (!link) return;
 
+  const effectiveUtm = buildEffectiveLinkUtm(link);
+
   await supabaseAdmin.from('managed_short_link_clicks').insert({
     link_id: link.id,
     event_type: 'qr_scan',
+    meta: utmMetaSnapshot(effectiveUtm),
   });
 
   await supabaseAdmin
