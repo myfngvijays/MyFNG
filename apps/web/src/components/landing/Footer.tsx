@@ -8,6 +8,7 @@ import {
   DEFAULT_APP_STORE_URL,
   DEFAULT_PLAY_STORE_URL,
 } from '@/lib/mobile-app-version-config';
+import type { FooterWorkshopLink } from '@/lib/workshop/footer-locations';
 
 const ctaTitles = [
   "Serious Car Owners Don't Postpone Maintenance.",
@@ -22,6 +23,8 @@ export default function Footer() {
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
   const [footerPhone, setFooterPhone] = useState('');
+  const [popularWorkshopLinks, setPopularWorkshopLinks] = useState<FooterWorkshopLink[]>([]);
+  const [allWorkshopLinks, setAllWorkshopLinks] = useState<FooterWorkshopLink[]>([]);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -29,6 +32,28 @@ export default function Footer() {
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch('/api/public/workshop-footer-locations')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setPopularWorkshopLinks(Array.isArray(data.popular) ? data.popular : []);
+        setAllWorkshopLinks(Array.isArray(data.locations) ? data.locations : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPopularWorkshopLinks([]);
+          setAllWorkshopLinks([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -212,12 +237,7 @@ export default function Footer() {
             <div className={isMobile ? 'border-b border-white/[0.08] py-0 mb-[15px]' : ''}>
               <AccordionTitle id="service-areas">Popular Service Areas</AccordionTitle>
               <ul className={listClass('service-areas')}>
-                {[
-                  { href: '/workshop/my-fng-best-car-service-and-repairs-in-thane', label: 'Car Service in Vartak Nagar' },
-                  { href: '/workshop/my-fng-car-service-and-repairs-in-manpada-thane', label: 'Car Service in Manpada' },
-                  { href: '/workshop/my-fng-best-car-service-and-repairs-in-majiwada-thane-west', label: 'Car Service in Majiwada' },
-                  { href: '/workshop/my-fng-car-service-and-repairs-in-dombivli', label: 'Car Service in Dombivli' },
-                ].map((item) => (
+                {popularWorkshopLinks.map((item) => (
                   <li key={item.href} className="mb-0">
                     <TrackedLink
                       href={item.href}
@@ -239,53 +259,7 @@ export default function Footer() {
             <div
               className={`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 ${locationGridClass('all-locations')}`}
             >
-              {[
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-thane', label: 'Car Service in Vartak Nagar' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-manpada-thane', label: 'Car Service in Manpada' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-majiwada-thane-west', label: 'Car Service in Majiwada' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-kasarvadavali-thane-west', label: 'Car Service in Kasarvadavali' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-manpada-gb-road-thane-west', label: 'Car Service in Ghodbunder Road' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-dombivli', label: 'Car Service in Dombivli East' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-kolegaon-dombivli-east', label: 'Car Service in Kolegaon, Dombivli' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-chikanghar-kalyan-west', label: 'Car Service in Kalyan West' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-badlapur', label: 'Car Service in Badlapur' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-titwala', label: 'Car Service in Titwala' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-ramdev-park-mira-road-east', label: 'Car Service in Mira Road East' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-koparkhairane-navi-mumbai', label: 'Car Service in Koparkhairane' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-vasai-west', label: 'Car Service in Vasai West' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-vasai-east', label: 'Car Service in Vasai East' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-virar-west', label: 'Car Service in Virar West' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-boisar', label: 'Car Service in Boisar' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-palghar', label: 'Car Service in Palghar' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-marol-andheri-east', label: 'Car Service in Andheri East' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-jankalyan-nagar-malad-west', label: 'Car Service in Malad West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-moti-nagar-mulund-west', label: 'Car Service in Mulund West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-ambedkar-nagar-dadar-west', label: 'Car Service in Dadar West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-vile-parle-west', label: 'Car Service in Vile Parle West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-mahalaxmi-mumbai', label: 'Car Service in Mahalaxmi' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-milind-nagar-ghatkopar-west', label: 'Car Service in Ghatkopar West' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-sector-15-panvel', label: 'Car Service in Panvel' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-kalamboli', label: 'Car Service in Kalamboli' },
-                { href: '/workshop/my-fng-car-service-and-repairs-in-khopoli', label: 'Car Service in Khopoli' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-kandarpada-dahisar-west', label: 'Car Service in Dahisar West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-charkop-kandivali-west', label: 'Car Service in Kandivali West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-borivali-west', label: 'Car Service in Borivali West' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-mahul-chembur', label: 'Car Service in Chembur' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-mira-road-east', label: 'Car Service in Miragaon, Mira Road' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-shiravane-nerul', label: 'Car Service in Shiravane, Nerul' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-ashoka-nagar-kharadi-pune', label: 'Car Service in Kharadi, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-saswad-pune', label: 'Car Service in Saswad, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-pimple-saudagar-pimpri-chinchwad', label: 'Car Service in Pimple Saudagar' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-baner-pune', label: 'Car Service in Baner, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-wagholi-pune', label: 'Car Service in Wagholi, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-katraj-pune', label: 'Car Service in Katraj, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-vimanagar-pune', label: 'Car Service in Vimanagar, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-wakad-pune', label: 'Car Service in Wakad, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-tathawade-pune', label: 'Car Service in Tathawade, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-hadapsar-pune', label: 'Car Service in Hadapsar, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-lohgaon-wagholi-road-pune', label: 'Car Service in Lohgaon-Wagholi, Pune' },
-                { href: '/workshop/my-fng-best-car-service-and-repairs-in-pathardi-phata-nashik', label: 'Car Service in Pathardi Phata, Nashik' },
-              ].map((loc) => (
+              {allWorkshopLinks.map((loc) => (
                 <TrackedLink
                   key={loc.href + loc.label}
                   href={loc.href}
