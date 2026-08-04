@@ -160,8 +160,8 @@ export default function AnalyticsSection() {
 
       <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-900">Click events</h3>
-          <p className="text-sm text-gray-500">Every redirect through /s/{'{code}'} is tracked here with UTM</p>
+          <h3 className="font-semibold text-gray-900">Recent opens</h3>
+          <p className="text-sm text-gray-500">Every hit on /s/{'{code}'} is logged here</p>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -169,8 +169,8 @@ export default function AnalyticsSection() {
               <tr>
                 <th className="px-4 py-3 font-semibold">Date</th>
                 <th className="px-4 py-3 font-semibold">Time</th>
-                <th className="px-4 py-3 font-semibold">Event</th>
-                <th className="px-4 py-3 font-semibold">Link</th>
+                <th className="px-4 py-3 font-semibold">Platform</th>
+                <th className="px-4 py-3 font-semibold">Source</th>
                 <th className="px-4 py-3 font-semibold">UTM Source</th>
                 <th className="px-4 py-3 font-semibold">UTM Medium</th>
                 <th className="px-4 py-3 font-semibold">UTM Campaign</th>
@@ -191,13 +191,8 @@ export default function AnalyticsSection() {
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700">
                       {ev.created_at ? formatEventTime(ev.created_at) : '—'}
                     </td>
-                    <td className="px-4 py-3 capitalize text-gray-800">
-                      {String(ev.event_type || 'click').replace(/_/g, ' ')}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{ev.link_title || ev.short_code || '—'}</div>
-                      {ev.short_code ? <div className="text-xs text-gray-500">/s/{ev.short_code}</div> : null}
-                    </td>
+                    <td className="px-4 py-3 capitalize text-gray-800">{ev.platform || '—'}</td>
+                    <td className="px-4 py-3 text-gray-700">{ev.source || '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{ev.utm_source || '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{ev.utm_medium || '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{ev.utm_campaign || '—'}</td>

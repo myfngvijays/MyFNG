@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { createManagedShortLink, ensureLinkQrUsesPublicUrl } from '@/lib/link-manager/service';
-import { buildShortUrl, getRequestBaseUrl } from '@/lib/link-manager/utils';
+import { createManagedShortLink, ensureLinkDestinationIsPublic, ensureLinkQrUsesPublicUrl } from '@/lib/link-manager/service';
+import { buildShortUrl } from '@/lib/link-manager/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +56,13 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query.range(fromIdx, fromIdx + pageSize - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const baseUrl = getRequestBaseUrl(request);
     const links = await Promise.all(
       (data || []).map(async (row: any) => {
-        const fixed = await ensureLinkQrUsesPublicUrl(supabaseAdmin, row, baseUrl);
+        const withDestination = await ensureLinkDestinationIsPublic(supabaseAdmin, row);
+        const fixed = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, null);
         return {
           ...fixed,
-          short_url: buildShortUrl(fixed.short_code, baseUrl),
+          short_url: buildShortUrl(fixed.short_code),
         };
       }),
     );
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         createMode === 'qr_only' && body?.qr_style && typeof body.qr_style === 'object'
           ? body.qr_style
           : null,
-      baseUrl: getRequestBaseUrl(request),
+      baseUrl: null,
       create_mode: createMode,
     });
 

@@ -1,9 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { detectLinkPlatform, linkEventSourceLabel } from '@/lib/link-manager/utils';
 
 export type LinkManagerClickEvent = {
   id: string;
   created_at: string;
   event_type: string;
+  platform: string;
+  source: string;
   referrer: string | null;
   short_code: string | null;
   link_title: string | null;
@@ -19,6 +22,7 @@ type RawClickRow = {
   created_at: string;
   event_type: string;
   referrer: string | null;
+  user_agent?: string | null;
   meta: Record<string, unknown> | null;
   link: {
     short_code?: string | null;
@@ -45,10 +49,16 @@ function pickUtm(
 function normalizeClick(row: RawClickRow): LinkManagerClickEvent {
   const meta = row.meta || {};
   const link = row.link || null;
+  const platform = meta.platform
+    ? String(meta.platform)
+    : detectLinkPlatform(row.user_agent);
+
   return {
     id: row.id,
     created_at: row.created_at,
     event_type: row.event_type,
+    platform,
+    source: meta.source ? String(meta.source).replace(/_/g, ' ') : linkEventSourceLabel(row.event_type),
     referrer: row.referrer,
     short_code: link?.short_code ? String(link.short_code) : null,
     link_title: link?.title ? String(link.title) : null,
@@ -96,7 +106,7 @@ export async function getLinkManagerStats(
     client
       .from('managed_short_link_clicks')
       .select(
-        'id,event_type,created_at,referrer,meta,link:managed_short_links(short_code,title,utm_source,utm_medium,utm_campaign,utm_term,utm_content)',
+        'id,event_type,created_at,referrer,user_agent,meta,link:managed_short_links(short_code,title,utm_source,utm_medium,utm_campaign,utm_term,utm_content)',
       )
       .gte('created_at', range.start)
       .lte('created_at', range.end)

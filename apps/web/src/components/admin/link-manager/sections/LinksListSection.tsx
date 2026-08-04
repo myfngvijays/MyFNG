@@ -218,8 +218,8 @@ export default function LinksListSection() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
-                            <button type="button" title="Copy" onClick={() => copyText(link.short_url || `/s/${link.short_code}`)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><Copy className="w-3.5 h-3.5" /></button>
-                            <a href={link.short_url || `/s/${link.short_code}`} target="_blank" rel="noreferrer" title="Open" className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 inline-flex"><ExternalLink className="w-3.5 h-3.5" /></a>
+                            <button type="button" title="Copy" onClick={() => copyText(link.short_url || buildProductionShortUrl(link.short_code))} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><Copy className="w-3.5 h-3.5" /></button>
+                            <a href={link.short_url || buildProductionShortUrl(link.short_code)} target="_blank" rel="noreferrer" title="Open" className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 inline-flex"><ExternalLink className="w-3.5 h-3.5" /></a>
                             <button type="button" title={link.is_active ? 'Pause' : 'Activate'} disabled={workingId === link.id} onClick={() => toggleActive(link)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
                               {link.is_active ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
                             </button>
@@ -286,7 +286,7 @@ export default function LinksListSection() {
                 <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">QR scans</div><div className="font-bold">{selected.qr_scans || 0}</div></div>
                 <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Created</div><div className="font-bold text-xs">{selected.created_at ? new Date(selected.created_at).toLocaleDateString('en-IN') : '-'}</div></div>
               </div>
-              <button type="button" onClick={() => copyText(selected.short_url || `/s/${selected.short_code}`)} className="w-full rounded-xl border py-2 text-sm font-semibold">
+              <button type="button" onClick={() => copyText(selected.short_url || buildProductionShortUrl(selected.short_code))} className="w-full rounded-xl border py-2 text-sm font-semibold">
                 Copy short URL
               </button>
               <button

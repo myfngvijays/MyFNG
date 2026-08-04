@@ -65,8 +65,49 @@ export function buildProductionShortUrl(shortCode: string) {
   return `${SITE_URL.replace(/\/$/, '')}/s/${code}`;
 }
 
+export function normalizeStoredDestinationUrl(raw: string | null | undefined): string {
+  return sanitizePublicRedirectUrl(String(raw || SITE_URL)).toString();
+}
+
+/** Always return an absolute public URL — never localhost / 0.0.0.0. */
+export function sanitizePublicRedirectUrl(raw: string): URL {
+  const site = SITE_URL.replace(/\/$/, '');
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return new URL(`${site}/`);
+
+  try {
+    let url: URL;
+    if (/^https?:\/\//i.test(trimmed)) {
+      url = new URL(trimmed);
+    } else {
+      url = new URL(trimmed.startsWith('/') ? trimmed : `/${trimmed}`, `${site}/`);
+    }
+
+    if (LOCAL_HOSTS.has(url.hostname.toLowerCase())) {
+      return new URL(`${url.pathname}${url.search}${url.hash}`, `${site}/`);
+    }
+    return url;
+  } catch {
+    return new URL(`${site}/`);
+  }
+}
+
+export function detectLinkPlatform(userAgent: string | null | undefined): 'ios' | 'android' | 'desktop' {
+  const ua = String(userAgent || '').toLowerCase();
+  if (/iphone|ipad|ipod/.test(ua)) return 'ios';
+  if (/android/.test(ua)) return 'android';
+  return 'desktop';
+}
+
+export function linkEventSourceLabel(eventType: string): string {
+  if (eventType === 'qr_scan') return 'qr scan';
+  if (eventType === 'click') return 'short link redirect';
+  return String(eventType || 'click').replace(/_/g, ' ');
+}
+
 export function buildShortUrl(shortCode: string, baseUrl?: string | null) {
-  return `${appBaseUrl(baseUrl)}/s/${shortCode}`;
+  void baseUrl;
+  return buildProductionShortUrl(shortCode);
 }
 
 /** Read encoded URL from legacy qrserver.com image links stored in DB. */

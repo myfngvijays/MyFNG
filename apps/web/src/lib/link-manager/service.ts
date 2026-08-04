@@ -4,9 +4,12 @@ import {
   appendUtmParams,
   buildProductionShortUrl,
   buildShortUrl,
+  detectLinkPlatform,
   isBrokenStoredQrUrl,
   isLocalOrPrivateUrl,
   isValidHttpUrl,
+  normalizeLongUrl,
+  normalizeStoredDestinationUrl,
   sanitizeCustomCode,
 } from '@/lib/link-manager/utils';
 import { generateBrandedQrDataUrl } from '@/lib/link-manager/qr-generator';
@@ -118,7 +121,12 @@ export async function resolveManagedShortLinkRedirect(
 
   const effectiveUtm = buildEffectiveLinkUtm(link, request?.queryUtm);
 
-  const destination = appendUtmParams(link.long_url, effectiveUtm);
+  const destination = appendUtmParams(
+    normalizeStoredDestinationUrl(link.long_url),
+    effectiveUtm,
+  );
+
+  const platform = detectLinkPlatform(request?.userAgent);
 
   const ip = request?.ip || null;
   const fingerprint = ip ? `${ip}:${String(request?.userAgent || '').slice(0, 120)}` : null;
@@ -145,6 +153,8 @@ export async function resolveManagedShortLinkRedirect(
     meta: {
       ...(fingerprint ? { fingerprint } : {}),
       ...utmMetaSnapshot(effectiveUtm),
+      platform,
+      source: 'short_link_redirect',
     },
   });
 
@@ -178,7 +188,11 @@ export async function recordManagedLinkQrScan(shortCode: string) {
   await supabaseAdmin.from('managed_short_link_clicks').insert({
     link_id: link.id,
     event_type: 'qr_scan',
-    meta: utmMetaSnapshot(effectiveUtm),
+    meta: {
+      ...utmMetaSnapshot(effectiveUtm),
+      platform: 'desktop',
+      source: 'qr_scan',
+    },
   });
 
   await supabaseAdmin
@@ -216,6 +230,24 @@ export async function ensureUniqueShortCode(
   }
 
   throw new Error('Could not generate unique short code');
+}
+
+export async function ensureLinkDestinationIsPublic(
+  supabaseAdmin: any,
+  link: ManagedShortLink,
+): Promise<ManagedShortLink> {
+  const normalized = normalizeStoredDestinationUrl(link.long_url);
+  if (normalized === link.long_url) return link;
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('managed_short_links')
+    .update({ long_url: normalized, updated_at: new Date().toISOString() })
+    .eq('id', link.id)
+    .select('*')
+    .single();
+
+  if (error || !updated) return { ...link, long_url: normalized };
+  return updated as ManagedShortLink;
 }
 
 export type ManagedShortLinkCreateMode = 'link_only' | 'qr_only';
@@ -291,7 +323,7 @@ export async function createManagedShortLink(
     create_mode?: ManagedShortLinkCreateMode;
   },
 ) {
-  const longUrl = String(input.long_url || '').trim();
+  const longUrl = normalizeStoredDestinationUrl(normalizeLongUrl(input.long_url));
   if (!isValidHttpUrl(longUrl)) throw new Error('Enter a valid http/https URL');
 
   const createMode: ManagedShortLinkCreateMode = input.create_mode === 'qr_only' ? 'qr_only' : 'link_only';

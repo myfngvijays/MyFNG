@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { ensureLinkQrUsesPublicUrl, generateQrDataUrl } from '@/lib/link-manager/service';
-import { buildProductionShortUrl, buildShortUrl, getRequestBaseUrl } from '@/lib/link-manager/utils';
+import { ensureLinkDestinationIsPublic, ensureLinkQrUsesPublicUrl, generateQrDataUrl } from '@/lib/link-manager/service';
+import {
+  buildProductionShortUrl,
+  buildShortUrl,
+  normalizeLongUrl,
+  normalizeStoredDestinationUrl,
+} from '@/lib/link-manager/utils';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
 
 export const dynamic = 'force-dynamic';
@@ -44,8 +49,8 @@ export async function GET(
     const { data: link, error } = await supabaseAdmin.from('managed_short_links').select('*').eq('id', id).single();
     if (error || !link) return NextResponse.json({ error: 'Link not found' }, { status: 404 });
 
-    const baseUrl = getRequestBaseUrl(request);
-    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, link, baseUrl);
+    const withDestination = await ensureLinkDestinationIsPublic(supabaseAdmin, link);
+    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, null);
 
     const { data: clicks } = await supabaseAdmin
       .from('managed_short_link_clicks')
@@ -55,7 +60,7 @@ export async function GET(
       .limit(100);
 
     return NextResponse.json({
-      link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code, baseUrl) },
+      link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code) },
       clicks: clicks || [],
     });
   } catch (e: any) {
@@ -81,7 +86,9 @@ export async function PATCH(
     if (typeof body?.is_active === 'boolean') patch.is_active = body.is_active;
     if (body?.title !== undefined) patch.title = String(body.title || '').trim() || null;
     if (body?.description !== undefined) patch.description = String(body.description || '').trim() || null;
-    if (body?.long_url !== undefined) patch.long_url = String(body.long_url || '').trim();
+    if (body?.long_url !== undefined) {
+      patch.long_url = normalizeStoredDestinationUrl(normalizeLongUrl(String(body.long_url || '')));
+    }
 
     const { data: link, error } = await supabaseAdmin
       .from('managed_short_links')
@@ -91,10 +98,8 @@ export async function PATCH(
       .single();
     if (error || !link) return NextResponse.json({ error: error?.message || 'Update failed' }, { status: 500 });
 
-    const baseUrl = getRequestBaseUrl(request);
-
     if (body?.regenerate_qr) {
-      const shortUrl = buildShortUrl(link.short_code, baseUrl);
+      const shortUrl = buildShortUrl(link.short_code);
       const qrPayload = buildProductionShortUrl(link.short_code);
       const savedStyle = (link.meta as any)?.qr_style as QrStyleOptions | undefined;
       const qrStyle = body?.qr_style && typeof body.qr_style === 'object' ? body.qr_style : savedStyle;
@@ -114,8 +119,9 @@ export async function PATCH(
       return NextResponse.json({ link: { ...(updated || link), short_url: shortUrl } });
     }
 
-    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, link, baseUrl);
-    return NextResponse.json({ link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code, baseUrl) } });
+    const withDestination = await ensureLinkDestinationIsPublic(supabaseAdmin, link);
+    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, withDestination, null);
+    return NextResponse.json({ link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code) } });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
   }

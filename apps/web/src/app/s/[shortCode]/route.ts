@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLongUrl } from '@/lib/services/urlShortener';
 import { resolveManagedShortLinkRedirect } from '@/lib/link-manager/service';
+import { sanitizePublicRedirectUrl } from '@/lib/link-manager/utils';
 import { parseUtmParams } from '@/lib/utm';
 
 export async function GET(
@@ -10,7 +11,7 @@ export async function GET(
   try {
     const shortCode = params.shortCode;
     if (!shortCode || shortCode.length < 3) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
     }
 
     const ip =
@@ -27,17 +28,17 @@ export async function GET(
       queryUtm: parseUtmParams(request.nextUrl.search),
     });
     if (managedUrl) {
-      return NextResponse.redirect(new URL(managedUrl, request.url));
+      return NextResponse.redirect(sanitizePublicRedirectUrl(managedUrl));
     }
 
     const legacyUrl = await getLongUrl(shortCode);
     if (legacyUrl) {
-      return NextResponse.redirect(new URL(legacyUrl, request.url));
+      return NextResponse.redirect(sanitizePublicRedirectUrl(legacyUrl));
     }
 
-    return NextResponse.redirect(new URL('/', request.url));
+    return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
   } catch (error) {
     console.error('Error in short URL redirect:', error);
-    return NextResponse.redirect(new URL('/', request.url));
+    return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
   }
 }
