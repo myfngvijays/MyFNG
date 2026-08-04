@@ -1,13 +1,23 @@
-import { buildQrPreviewUrl } from '@/lib/link-manager/utils';
 import { normalizeQrStyle, resolveErrorCorrection, type QrStyleOptions } from '@/lib/link-manager/qr-types';
 
 let QRCode: any = null;
 let sharp: any = null;
 
-try {
-  QRCode = require('qrcode');
-} catch {
-  // optional
+async function getQrCodeLib() {
+  if (QRCode) return QRCode;
+  try {
+    QRCode = require('qrcode');
+    return QRCode;
+  } catch {
+    /* fall through */
+  }
+  try {
+    const mod = await import('qrcode');
+    QRCode = mod.default || mod;
+    return QRCode;
+  } catch {
+    return null;
+  }
 }
 
 try {
@@ -45,13 +55,14 @@ export async function generateBrandedQrDataUrl(data: string, rawStyle?: QrStyleO
   const light = style.light_color || '#FFFFFF';
   const margin = Math.min(4, Math.max(1, Number(style.margin || 2)));
   const errorCorrectionLevel = resolveErrorCorrection(style);
+  const QR = await getQrCodeLib();
 
-  if (!QRCode) {
-    return buildQrPreviewUrl(data, width);
+  if (!QR) {
+    throw new Error('QR library unavailable on server');
   }
 
   try {
-    const qrBuffer: Buffer = await QRCode.toBuffer(data, {
+    const qrBuffer: Buffer = await QR.toBuffer(data, {
       type: 'png',
       width,
       margin,
@@ -97,7 +108,7 @@ export async function generateBrandedQrDataUrl(data: string, rawStyle?: QrStyleO
     return `data:image/png;base64,${qrBuffer.toString('base64')}`;
   } catch (e) {
     console.error('Branded QR generation failed:', e);
-    return buildQrPreviewUrl(data, width);
+    throw e instanceof Error ? e : new Error('Branded QR generation failed');
   }
 }
 

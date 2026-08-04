@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { ensureLinkQrUsesPublicUrl, generateQrDataUrl } from '@/lib/link-manager/service';
-import { buildShortUrl, getRequestBaseUrl } from '@/lib/link-manager/utils';
+import { buildProductionShortUrl, buildShortUrl, getRequestBaseUrl } from '@/lib/link-manager/utils';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
 
 export const dynamic = 'force-dynamic';
@@ -95,12 +95,14 @@ export async function PATCH(
 
     if (body?.regenerate_qr) {
       const shortUrl = buildShortUrl(link.short_code, baseUrl);
+      const qrPayload = buildProductionShortUrl(link.short_code);
       const savedStyle = (link.meta as any)?.qr_style as QrStyleOptions | undefined;
       const qrStyle = body?.qr_style && typeof body.qr_style === 'object' ? body.qr_style : savedStyle;
-      const qrCodeUrl = await generateQrDataUrl(shortUrl, qrStyle || null);
+      const qrCodeUrl = await generateQrDataUrl(qrPayload, qrStyle || null);
       const meta = {
         ...(link.meta || {}),
         public_short_url: shortUrl,
+        qr_payload: qrPayload,
         create_mode: 'qr_only',
       };
       const { data: updated } = await supabaseAdmin

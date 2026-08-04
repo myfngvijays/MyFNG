@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, Download, ExternalLink, Loader2, PauseCircle, PlayCircle, QrCode, Trash2 } from 'lucide-react';
+import { Copy, Download, ExternalLink, Loader2, PauseCircle, PlayCircle, Trash2 } from 'lucide-react';
+import LinkQrPreview, { getLinkQrDownloadUrl } from '../LinkQrPreview';
 import { downloadDataUrl } from '../QrLivePreview';
+import { buildProductionShortUrl } from '@/lib/link-manager/utils';
 
 type LinkRow = {
   id: string;
@@ -109,6 +111,18 @@ export default function LinksListSection() {
       toast.error(e?.message || 'Update failed');
     } finally {
       setWorkingId(null);
+    }
+  }
+
+  async function downloadSelectedQr() {
+    if (!selected) return;
+    try {
+      const shortUrl = selected.short_url || buildProductionShortUrl(selected.short_code);
+      const dataUrl = await getLinkQrDownloadUrl(selected.short_code, shortUrl);
+      downloadDataUrl(dataUrl, `qr-${selected.short_code}.png`);
+      toast.success('QR downloaded (myfng.in link encoded)');
+    } catch {
+      toast.error('QR download failed');
     }
   }
 
@@ -235,9 +249,11 @@ export default function LinksListSection() {
             <div className="space-y-4">
               <div>
                 <h3 className="font-bold text-lg text-gray-900">/s/{selected.short_code}</h3>
-                <p className="text-xs text-blue-700 mt-1 break-all">{selected.short_url || `https://myfng.in/s/${selected.short_code}`}</p>
+                <p className="text-xs text-blue-700 mt-1 break-all">
+                  {selected.short_url || buildProductionShortUrl(selected.short_code)}
+                </p>
                 <p className="text-xs text-emerald-700 mt-1 leading-5">
-                  QR is tied to this short URL. Change destination below — printed QR stays valid.
+                  QR always encodes the myfng.in short link above — not localhost.
                 </p>
               </div>
               <label className="block space-y-1.5">
@@ -257,11 +273,13 @@ export default function LinksListSection() {
               >
                 Save destination
               </button>
-              {selected.qr_code_url ? (
-                <img src={selected.qr_code_url} alt="QR" className="w-full max-w-[220px] mx-auto border rounded-xl bg-white p-2" />
-              ) : (
-                <div className="text-center text-gray-400 text-sm inline-flex items-center gap-2"><QrCode className="w-4 h-4" /> No QR</div>
-              )}
+              <LinkQrPreview
+                shortCode={selected.short_code}
+                shortUrl={selected.short_url || buildProductionShortUrl(selected.short_code)}
+              />
+              <p className="text-[11px] text-center text-gray-500 leading-4">
+                Preview generated live from <span className="font-mono">{buildProductionShortUrl(selected.short_code)}</span>
+              </p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Clicks</div><div className="font-bold">{selected.clicks || 0}</div></div>
                 <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Unique</div><div className="font-bold">{selected.unique_clicks || 0}</div></div>
@@ -271,22 +289,20 @@ export default function LinksListSection() {
               <button type="button" onClick={() => copyText(selected.short_url || `/s/${selected.short_code}`)} className="w-full rounded-xl border py-2 text-sm font-semibold">
                 Copy short URL
               </button>
-              {selected.qr_code_url ? (
-                <button
-                  type="button"
-                  onClick={() => downloadDataUrl(selected.qr_code_url!, `qr-${selected.short_code}.png`)}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 py-2 text-sm font-semibold text-blue-700"
-                >
-                  <Download className="w-4 h-4" /> Download QR PNG
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={downloadSelectedQr}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 py-2 text-sm font-semibold text-blue-700"
+              >
+                <Download className="w-4 h-4" /> Download QR PNG
+              </button>
               <button
                 type="button"
                 disabled={workingId === selected.id}
                 onClick={regenerateQr}
                 className="w-full rounded-xl border border-amber-200 bg-amber-50 py-2 text-sm font-semibold text-amber-800 disabled:opacity-50"
               >
-                Regenerate QR (fix localhost)
+                Save fixed QR to database
               </button>
             </div>
           )}

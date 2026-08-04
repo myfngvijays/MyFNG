@@ -4,6 +4,7 @@ import { Copy, Download, ExternalLink, Link2, QrCode } from 'lucide-react';
 import {
   appendUtmParams,
   buildPreviewShortCode,
+  buildProductionShortUrl,
   buildShortUrl,
   clientAppBaseUrl,
   isValidHttpUrl,
@@ -11,6 +12,7 @@ import {
 } from '@/lib/link-manager/utils';
 import { DEFAULT_QR_STYLE, type QrStyleOptions } from '@/lib/link-manager/qr-types';
 import QrLivePreview, { downloadDataUrl, renderBrandedQrCanvas } from './QrLivePreview';
+import LinkQrPreview from './LinkQrPreview';
 
 type PreviewForm = {
   long_url: string;
@@ -39,6 +41,7 @@ export default function LinkPreviewPanel({
 }) {
   const previewCode = buildPreviewShortCode(form.custom_code);
   const shortUrl = buildShortUrl(previewCode, clientAppBaseUrl());
+  const qrPreviewUrl = buildProductionShortUrl(previewCode);
   const style = qrStyle || DEFAULT_QR_STYLE;
   const createdMode = created?.create_mode === 'qr_only' || created?.meta?.create_mode === 'qr_only'
     ? 'qr'
@@ -63,14 +66,24 @@ export default function LinkPreviewPanel({
           </div>
         ) : null}
 
-        {createdMode === 'qr' && created.qr_code_url ? (
-          <div className="flex flex-col items-center">
-            <img src={created.qr_code_url} alt="QR" className="w-48 h-48 border rounded-xl bg-white p-2 shadow-sm" />
-            <p className="text-xs text-gray-500 mt-2 text-center">Scan opens short link → your destination</p>
+        {createdMode === 'qr' ? (
+          <div className="flex flex-col items-center gap-2">
+            <LinkQrPreview
+              shortCode={created.short_code}
+              shortUrl={created.short_url || buildProductionShortUrl(created.short_code)}
+              className="w-48 h-48 border rounded-xl bg-white p-2 shadow-sm"
+            />
             <button
               type="button"
-              onClick={() => downloadDataUrl(created.qr_code_url, `qr-${created.short_code}.png`)}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600"
+              onClick={async () => {
+                const dataUrl = await renderBrandedQrCanvas(
+                  buildProductionShortUrl(created.short_code),
+                  style,
+                  512,
+                );
+                downloadDataUrl(dataUrl, `qr-${created.short_code}.png`);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600"
             >
               <Download className="w-3.5 h-3.5" /> Download PNG
             </button>
@@ -108,7 +121,7 @@ export default function LinkPreviewPanel({
     : '';
 
   async function handleDownloadPreview() {
-    const url = await renderBrandedQrCanvas(shortUrl, style, 512);
+    const url = await renderBrandedQrCanvas(qrPreviewUrl, style, 512);
     downloadDataUrl(url, `qr-preview-${previewCode}.png`);
   }
 
@@ -130,8 +143,8 @@ export default function LinkPreviewPanel({
           </div>
         ) : (
           <div className="flex flex-col items-center py-1">
-            <QrLivePreview text={shortUrl} qrStyle={style} />
-            <p className="text-xs text-gray-500 mt-2 text-center">QR encodes short link for tracking</p>
+            <QrLivePreview text={qrPreviewUrl} qrStyle={style} />
+            <p className="text-xs text-gray-500 mt-2 text-center">QR encodes {qrPreviewUrl}</p>
             <button
               type="button"
               onClick={handleDownloadPreview}

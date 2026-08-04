@@ -60,8 +60,33 @@ export function clientAppBaseUrl(): string {
   return appBaseUrl();
 }
 
+export function buildProductionShortUrl(shortCode: string) {
+  const code = String(shortCode || '').trim();
+  return `${SITE_URL.replace(/\/$/, '')}/s/${code}`;
+}
+
 export function buildShortUrl(shortCode: string, baseUrl?: string | null) {
   return `${appBaseUrl(baseUrl)}/s/${shortCode}`;
+}
+
+/** Read encoded URL from legacy qrserver.com image links stored in DB. */
+export function extractQrEncodedUrl(qrCodeUrl: string | null | undefined): string | null {
+  const raw = String(qrCodeUrl || '').trim();
+  if (!raw.startsWith('https://api.qrserver.com/')) return null;
+  try {
+    return new URL(raw).searchParams.get('data');
+  } catch {
+    return null;
+  }
+}
+
+export function isBrokenStoredQrUrl(
+  qrCodeUrl: string | null | undefined,
+  expectedPayload: string,
+): boolean {
+  const encoded = extractQrEncodedUrl(qrCodeUrl);
+  if (!encoded) return false;
+  return encoded !== expectedPayload || isLocalOrPrivateUrl(encoded);
 }
 
 export function isLocalOrPrivateUrl(url: string | null | undefined): boolean {

@@ -2,7 +2,9 @@ import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   appendUtmParams,
+  buildProductionShortUrl,
   buildShortUrl,
+  isBrokenStoredQrUrl,
   isLocalOrPrivateUrl,
   isValidHttpUrl,
   sanitizeCustomCode,
@@ -177,6 +179,7 @@ export async function ensureLinkQrUsesPublicUrl(
   baseUrl?: string | null,
 ): Promise<ManagedShortLink> {
   const expectedShortUrl = buildShortUrl(link.short_code, baseUrl);
+  const expectedQrPayload = buildProductionShortUrl(link.short_code);
   const meta = (link.meta || {}) as Record<string, unknown>;
   const createMode = String(meta.create_mode || '');
   const isLinkOnly = createMode === 'link_only' || (!createMode && !link.qr_code_url);
@@ -185,21 +188,26 @@ export async function ensureLinkQrUsesPublicUrl(
     return { ...link, short_url: expectedShortUrl };
   }
 
-  const stored = String(meta.public_short_url || '');
+  const qrPayload = String(meta.qr_payload || meta.public_short_url || '');
 
   const needsRegenerate =
     !link.qr_code_url ||
-    !stored ||
-    stored !== expectedShortUrl ||
-    isLocalOrPrivateUrl(stored);
+    !qrPayload ||
+    qrPayload !== expectedQrPayload ||
+    isLocalOrPrivateUrl(qrPayload) ||
+    isBrokenStoredQrUrl(link.qr_code_url, expectedQrPayload);
 
   if (!needsRegenerate) {
     return { ...link, short_url: expectedShortUrl };
   }
 
   const savedStyle = meta.qr_style as QrStyleOptions | undefined;
-  const qrCodeUrl = await generateBrandedQrDataUrl(expectedShortUrl, savedStyle || null);
-  const nextMeta = { ...meta, public_short_url: expectedShortUrl };
+  const qrCodeUrl = await generateBrandedQrDataUrl(expectedQrPayload, savedStyle || null);
+  const nextMeta = {
+    ...meta,
+    public_short_url: expectedShortUrl,
+    qr_payload: expectedQrPayload,
+  };
 
   const { data: updated, error } = await supabaseAdmin
     .from('managed_short_links')
@@ -242,12 +250,14 @@ export async function createManagedShortLink(
   const createMode: ManagedShortLinkCreateMode = input.create_mode === 'qr_only' ? 'qr_only' : 'link_only';
   const shortCode = await ensureUniqueShortCode(supabaseAdmin, input.custom_code);
   const shortUrl = buildShortUrl(shortCode, input.baseUrl);
+  const qrPayload = buildProductionShortUrl(shortCode);
   const qrStyle = input.qr_style || null;
   const qrCodeUrl =
-    createMode === 'qr_only' ? await generateBrandedQrDataUrl(shortUrl, qrStyle) : null;
+    createMode === 'qr_only' ? await generateBrandedQrDataUrl(qrPayload, qrStyle) : null;
 
   const meta: Record<string, unknown> = {
     public_short_url: shortUrl,
+    qr_payload: createMode === 'qr_only' ? qrPayload : null,
     create_mode: createMode,
   };
   if (createMode === 'qr_only' && qrStyle) {
