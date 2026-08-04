@@ -27,6 +27,11 @@ export default function LinksListSection() {
   const [totalPages, setTotalPages] = useState(1);
   const [selected, setSelected] = useState<LinkRow | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [editLongUrl, setEditLongUrl] = useState('');
+
+  useEffect(() => {
+    setEditLongUrl(selected?.long_url || '');
+  }, [selected?.id, selected?.long_url]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,6 +74,32 @@ export default function LinksListSection() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Update failed');
       toast.success(link.is_active ? 'Link paused' : 'Link activated');
+      load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Update failed');
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  async function saveDestination() {
+    if (!selected) return;
+    const nextUrl = editLongUrl.trim();
+    if (!nextUrl) {
+      toast.error('Enter a destination URL');
+      return;
+    }
+    setWorkingId(selected.id);
+    try {
+      const res = await fetch(`/api/super_admin/link-manager/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ long_url: nextUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Update failed');
+      toast.success('Destination updated — same QR & short link still work');
+      setSelected({ ...selected, long_url: json.link?.long_url || nextUrl });
       load();
     } catch (e: any) {
       toast.error(e?.message || 'Update failed');
@@ -179,8 +210,27 @@ export default function LinksListSection() {
             <div className="space-y-4">
               <div>
                 <h3 className="font-bold text-lg text-gray-900">/s/{selected.short_code}</h3>
-                <p className="text-sm text-gray-500 break-all">{selected.long_url}</p>
+                <p className="text-xs text-emerald-700 mt-1 leading-5">
+                  QR is tied to this short URL. Change destination below — printed QR stays valid.
+                </p>
               </div>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-gray-600">Destination URL</span>
+                <input
+                  value={editLongUrl}
+                  onChange={(e) => setEditLongUrl(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="https://..."
+                />
+              </label>
+              <button
+                type="button"
+                disabled={workingId === selected.id || editLongUrl.trim() === selected.long_url}
+                onClick={saveDestination}
+                className="w-full rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Save destination
+              </button>
               {selected.qr_code_url ? (
                 <img src={selected.qr_code_url} alt="QR" className="w-full max-w-[220px] mx-auto border rounded-xl bg-white p-2" />
               ) : (
