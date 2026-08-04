@@ -49,6 +49,33 @@ function normalizeEvent(row: RawEventRow): UniversalLinkEvent {
   };
 }
 
+function dedupeEvents(events: UniversalLinkEvent[]): UniversalLinkEvent[] {
+  const kept: UniversalLinkEvent[] = [];
+
+  for (const event of events) {
+    const ts = new Date(event.created_at).getTime();
+    const isDuplicate = kept.some((existing) => {
+      const existingTs = new Date(existing.created_at).getTime();
+      if (Math.abs(ts - existingTs) > 3000) return false;
+      return (
+        existing.platform === event.platform &&
+        existing.source === event.source &&
+        existing.utm_source === event.utm_source &&
+        existing.utm_medium === event.utm_medium &&
+        existing.utm_campaign === event.utm_campaign &&
+        existing.referer === event.referer
+      );
+    });
+    if (!isDuplicate) kept.push(event);
+  }
+
+  return kept;
+}
+
+function countEventsByPlatform(events: UniversalLinkEvent[], platform: UniversalLinkPlatform): number {
+  return events.filter((event) => event.platform === platform).length;
+}
+
 async function countPlatformClicks(
   client: SupabaseClient,
   platform: UniversalLinkPlatform,
@@ -131,19 +158,18 @@ export async function getUniversalLinkStats(
 ) {
   const stores = await getAppStoreUrls();
 
-  const [iosInRange, androidInRange, desktopInRange, iosAllTime, androidAllTime, desktopAllTime, rawEvents] =
-    await Promise.all([
-      countPlatformClicks(client, 'ios', range.start, range.end),
-      countPlatformClicks(client, 'android', range.start, range.end),
-      countPlatformClicks(client, 'desktop', range.start, range.end),
-      countPlatformClicks(client, 'ios'),
-      countPlatformClicks(client, 'android'),
-      countPlatformClicks(client, 'desktop'),
-      fetchEventsInRange(client, range),
-    ]);
+  const [iosAllTime, androidAllTime, desktopAllTime, rawEvents] = await Promise.all([
+    countPlatformClicks(client, 'ios'),
+    countPlatformClicks(client, 'android'),
+    countPlatformClicks(client, 'desktop'),
+    fetchEventsInRange(client, range),
+  ]);
 
-  const events = rawEvents.map((row) => normalizeEvent(row));
-  const clicksInRange = iosInRange + androidInRange + desktopInRange;
+  const events = dedupeEvents(rawEvents.map((row) => normalizeEvent(row)));
+  const iosInRange = countEventsByPlatform(events, 'ios');
+  const androidInRange = countEventsByPlatform(events, 'android');
+  const desktopInRange = countEventsByPlatform(events, 'desktop');
+  const clicksInRange = events.length;
   const totalAllTime = iosAllTime + androidAllTime + desktopAllTime;
 
   return {

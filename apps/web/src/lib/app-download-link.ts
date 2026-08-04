@@ -80,6 +80,48 @@ export async function buildAppDownloadRedirectUrl(
   return appendPlayStoreReferrer(stores.android, utm);
 }
 
+function buildClickDedupeKey(input: {
+  slug: string;
+  platform: AppDownloadPlatform;
+  utm?: UtmParams;
+  userAgent?: string | null;
+  referer?: string | null;
+  source?: string | null;
+}): string {
+  return [
+    input.slug,
+    input.platform,
+    input.source || 'go_redirect',
+    input.utm?.utm_source || '',
+    input.utm?.utm_medium || '',
+    input.utm?.utm_campaign || '',
+    input.utm?.utm_term || '',
+    input.utm?.utm_content || '',
+    String(input.userAgent || '').slice(0, 120),
+    String(input.referer || '').slice(0, 200),
+  ].join('|');
+}
+
+async function hasRecentDuplicateClick(
+  supabaseAdmin: NonNullable<ReturnType<typeof getSupabaseAdmin>['supabaseAdmin']>,
+  dedupeKey: string,
+  windowMs = 5000,
+): Promise<boolean> {
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { count, error } = await supabaseAdmin
+    .from('customer_analytics_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_name', 'app_download_link_click')
+    .gte('created_at', since)
+    .filter('properties->>dedupe_key', 'eq', dedupeKey);
+
+  if (error) {
+    console.warn('[app-download-link] dedupe check failed:', error.message);
+    return false;
+  }
+  return (count || 0) > 0;
+}
+
 export async function logAppDownloadLinkClick(input: {
   slug: string;
   platform: AppDownloadPlatform;
@@ -93,6 +135,9 @@ export async function logAppDownloadLinkClick(input: {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return;
 
+    const dedupeKey = buildClickDedupeKey(input);
+    if (await hasRecentDuplicateClick(supabaseAdmin, dedupeKey)) return;
+
     await supabaseAdmin.from('customer_analytics_events').insert({
       customer_id: null,
       event_name: 'app_download_link_click',
@@ -102,6 +147,7 @@ export async function logAppDownloadLinkClick(input: {
         platform: input.platform,
         redirect_url: input.redirectUrl || null,
         source: input.source || 'go_redirect',
+        dedupe_key: dedupeKey,
         user_agent: input.userAgent ? String(input.userAgent).slice(0, 500) : null,
         referer: input.referer ? String(input.referer).slice(0, 500) : null,
         ...mergeUtmParams(input.utm),

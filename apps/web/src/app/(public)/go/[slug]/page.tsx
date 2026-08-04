@@ -45,16 +45,6 @@ export default async function AppDownloadGoPage({ params, searchParams }: Props)
     redirect(redirectUrl);
   }
 
-  await logAppDownloadLinkClick({
-    slug: normalizedSlug,
-    platform: 'desktop',
-    utm,
-    userAgent,
-    referer,
-    redirectUrl: null,
-    source: 'go_fallback_page',
-  });
-
   const stores = await getAppStoreUrls();
   return (
     <AppDownloadGoFallback

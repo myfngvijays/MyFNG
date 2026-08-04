@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { buildShortUrl, generateQrDataUrl } from '@/lib/link-manager/service';
+import { ensureLinkQrUsesPublicUrl, generateQrDataUrl } from '@/lib/link-manager/service';
+import { buildShortUrl, getRequestBaseUrl } from '@/lib/link-manager/utils';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,9 @@ export async function GET(
     const { data: link, error } = await supabaseAdmin.from('managed_short_links').select('*').eq('id', id).single();
     if (error || !link) return NextResponse.json({ error: 'Link not found' }, { status: 404 });
 
+    const baseUrl = getRequestBaseUrl(request);
+    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, link, baseUrl);
+
     const { data: clicks } = await supabaseAdmin
       .from('managed_short_link_clicks')
       .select('*')
@@ -51,7 +55,7 @@ export async function GET(
       .limit(100);
 
     return NextResponse.json({
-      link: { ...link, short_url: buildShortUrl(link.short_code) },
+      link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code, baseUrl) },
       clicks: clicks || [],
     });
   } catch (e: any) {
@@ -87,21 +91,29 @@ export async function PATCH(
       .single();
     if (error || !link) return NextResponse.json({ error: error?.message || 'Update failed' }, { status: 500 });
 
+    const baseUrl = getRequestBaseUrl(request);
+
     if (body?.regenerate_qr) {
-      const shortUrl = buildShortUrl(link.short_code);
+      const shortUrl = buildShortUrl(link.short_code, baseUrl);
       const savedStyle = (link.meta as any)?.qr_style as QrStyleOptions | undefined;
       const qrStyle = body?.qr_style && typeof body.qr_style === 'object' ? body.qr_style : savedStyle;
       const qrCodeUrl = await generateQrDataUrl(shortUrl, qrStyle || null);
+      const meta = {
+        ...(link.meta || {}),
+        public_short_url: shortUrl,
+        create_mode: 'qr_only',
+      };
       const { data: updated } = await supabaseAdmin
         .from('managed_short_links')
-        .update({ qr_code_url: qrCodeUrl, updated_at: new Date().toISOString() })
+        .update({ qr_code_url: qrCodeUrl, meta, updated_at: new Date().toISOString() })
         .eq('id', id)
         .select('*')
         .single();
       return NextResponse.json({ link: { ...(updated || link), short_url: shortUrl } });
     }
 
-    return NextResponse.json({ link: { ...link, short_url: buildShortUrl(link.short_code) } });
+    const fixedLink = await ensureLinkQrUsesPublicUrl(supabaseAdmin, link, baseUrl);
+    return NextResponse.json({ link: { ...fixedLink, short_url: buildShortUrl(fixedLink.short_code, baseUrl) } });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
   }

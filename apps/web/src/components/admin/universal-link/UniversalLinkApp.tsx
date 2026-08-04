@@ -76,6 +76,23 @@ export default function UniversalLinkApp() {
   );
 }
 
+function formatEventDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatEventTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+}
+
 function UniversalLinkAppInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -378,17 +395,20 @@ function UniversalLinkAppInner() {
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50 text-left text-gray-600">
                         <tr>
+                          <th className="px-4 py-3 font-semibold">Date</th>
                           <th className="px-4 py-3 font-semibold">Time</th>
                           <th className="px-4 py-3 font-semibold">Platform</th>
                           <th className="px-4 py-3 font-semibold">Source</th>
-                          <th className="px-4 py-3 font-semibold">UTM</th>
+                          <th className="px-4 py-3 font-semibold">UTM Source</th>
+                          <th className="px-4 py-3 font-semibold">UTM Medium</th>
+                          <th className="px-4 py-3 font-semibold">UTM Campaign</th>
                           <th className="px-4 py-3 font-semibold">Referrer</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(data?.recent_events || []).length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                            <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                               No events in this period
                             </td>
                           </tr>
@@ -396,13 +416,16 @@ function UniversalLinkAppInner() {
                           (data?.recent_events || []).map((ev) => (
                             <tr key={ev.id} className="border-t border-gray-100">
                               <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-                                {ev.created_at ? new Date(ev.created_at).toLocaleString('en-IN') : '-'}
+                                {ev.created_at ? formatEventDate(ev.created_at) : '—'}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-gray-700">
+                                {ev.created_at ? formatEventTime(ev.created_at) : '—'}
                               </td>
                               <td className="px-4 py-3 capitalize">{ev.platform}</td>
                               <td className="px-4 py-3 text-gray-700">{ev.source.replace(/_/g, ' ')}</td>
-                              <td className="px-4 py-3 text-gray-600">
-                                {[ev.utm_source, ev.utm_medium, ev.utm_campaign].filter(Boolean).join(' / ') || '—'}
-                              </td>
+                              <td className="px-4 py-3 text-gray-700">{ev.utm_source || '—'}</td>
+                              <td className="px-4 py-3 text-gray-700">{ev.utm_medium || '—'}</td>
+                              <td className="px-4 py-3 text-gray-700">{ev.utm_campaign || '—'}</td>
                               <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{ev.referer || '—'}</td>
                             </tr>
                           ))

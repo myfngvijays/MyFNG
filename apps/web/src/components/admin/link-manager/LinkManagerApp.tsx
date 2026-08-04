@@ -15,7 +15,7 @@ type NavItem = { id: SectionId; label: string; icon: any; description: string };
 
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, description: 'Stats & top links' },
-  { id: 'create', label: 'Create Link', icon: Link2, description: 'Short link + QR' },
+  { id: 'create', label: 'Create Link', icon: Link2, description: 'Short link or QR only' },
   { id: 'links', label: 'My Links', icon: Link2, description: 'Manage all links' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, description: 'Clicks & tracking' },
 ];

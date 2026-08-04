@@ -25,6 +25,24 @@ export default function AppDownloadGoFallback({ slug, iosUrl, androidUrl, utm }:
     if (utm) setStoredUtmParams(utm);
   }, [utm]);
 
+  useEffect(() => {
+    const utmKey = JSON.stringify(utm || {});
+    const storageKey = `go_page_logged:${slug}:${utmKey}`;
+    if (sessionStorage.getItem(storageKey)) return;
+    sessionStorage.setItem(storageKey, '1');
+
+    void fetch('/api/public/app-download-click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug,
+        platform: 'desktop',
+        utm: utm || {},
+        source: 'go_fallback_page',
+      }),
+    }).catch(() => {});
+  }, [slug, utm]);
+
   const trackClick = (platform: 'ios' | 'android') => {
     void fetch('/api/public/app-download-click', {
       method: 'POST',

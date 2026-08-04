@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { buildShortUrl, createManagedShortLink } from '@/lib/link-manager/service';
+import { createManagedShortLink, ensureLinkQrUsesPublicUrl } from '@/lib/link-manager/service';
+import { buildShortUrl, getRequestBaseUrl } from '@/lib/link-manager/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,10 +56,16 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query.range(fromIdx, fromIdx + pageSize - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const links = (data || []).map((row: any) => ({
-      ...row,
-      short_url: buildShortUrl(row.short_code),
-    }));
+    const baseUrl = getRequestBaseUrl(request);
+    const links = await Promise.all(
+      (data || []).map(async (row: any) => {
+        const fixed = await ensureLinkQrUsesPublicUrl(supabaseAdmin, row, baseUrl);
+        return {
+          ...fixed,
+          short_url: buildShortUrl(fixed.short_code, baseUrl),
+        };
+      }),
+    );
 
     return NextResponse.json({
       links,
@@ -94,6 +101,8 @@ export async function POST(request: NextRequest) {
       expiresAt = dt.toISOString();
     }
 
+    const createMode = body?.create_mode === 'qr_only' ? 'qr_only' : 'link_only';
+
     const link = await createManagedShortLink(supabaseAdmin, {
       long_url: body?.long_url,
       title: body?.title,
@@ -107,7 +116,12 @@ export async function POST(request: NextRequest) {
       utm_content: body?.utm_content,
       expires_at: expiresAt,
       created_by: gate.userId,
-      qr_style: body?.qr_style && typeof body.qr_style === 'object' ? body.qr_style : null,
+      qr_style:
+        createMode === 'qr_only' && body?.qr_style && typeof body.qr_style === 'object'
+          ? body.qr_style
+          : null,
+      baseUrl: getRequestBaseUrl(request),
+      create_mode: createMode,
     });
 
     return NextResponse.json({ link }, { status: 201 });

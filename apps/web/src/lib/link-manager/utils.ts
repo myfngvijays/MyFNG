@@ -8,12 +8,71 @@ export type UtmParams = {
   content?: string | null;
 };
 
-export function appBaseUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || SITE_URL;
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
+
+function normalizeBaseUrl(raw: string | null | undefined): string | null {
+  const value = String(raw || '').trim().replace(/\/$/, '');
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (LOCAL_HOSTS.has(url.hostname.toLowerCase())) return null;
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
 }
 
-export function buildShortUrl(shortCode: string) {
-  return `${appBaseUrl()}/s/${shortCode}`;
+/** Public site base URL — never returns localhost / 0.0.0.0. */
+export function appBaseUrl(preferred?: string | null): string {
+  const candidates = [
+    preferred,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    SITE_URL,
+  ];
+  for (const raw of candidates) {
+    const normalized = normalizeBaseUrl(raw);
+    if (normalized) return normalized;
+  }
+  return SITE_URL;
+}
+
+/** Prefer the incoming request host on server (e.g. myfng.in). */
+export function getRequestBaseUrl(request?: { headers?: { get?: (name: string) => string | null } }): string {
+  const host = request?.headers?.get?.('x-forwarded-host') || request?.headers?.get?.('host');
+  const proto = request?.headers?.get?.('x-forwarded-proto') || 'https';
+  if (host) {
+    const hostname = host.split(':')[0].toLowerCase();
+    if (!LOCAL_HOSTS.has(hostname)) {
+      return appBaseUrl(`${proto}://${host}`);
+    }
+  }
+  return appBaseUrl();
+}
+
+/** Browser admin UI — use current origin when not local dev. */
+export function clientAppBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const normalized = normalizeBaseUrl(window.location.origin);
+    if (normalized) return normalized;
+  }
+  return appBaseUrl();
+}
+
+export function buildShortUrl(shortCode: string, baseUrl?: string | null) {
+  return `${appBaseUrl(baseUrl)}/s/${shortCode}`;
+}
+
+export function isLocalOrPrivateUrl(url: string | null | undefined): boolean {
+  return !normalizeBaseUrl(url);
+}
+
+export function normalizeLongUrl(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }
 
 export function sanitizeCustomCode(raw: string): string {

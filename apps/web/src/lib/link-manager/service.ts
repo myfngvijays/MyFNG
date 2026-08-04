@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   appendUtmParams,
   buildShortUrl,
+  isLocalOrPrivateUrl,
   isValidHttpUrl,
   sanitizeCustomCode,
 } from '@/lib/link-manager/utils';
@@ -168,6 +169,53 @@ export async function ensureUniqueShortCode(
   throw new Error('Could not generate unique short code');
 }
 
+export type ManagedShortLinkCreateMode = 'link_only' | 'qr_only';
+
+export async function ensureLinkQrUsesPublicUrl(
+  supabaseAdmin: any,
+  link: ManagedShortLink,
+  baseUrl?: string | null,
+): Promise<ManagedShortLink> {
+  const expectedShortUrl = buildShortUrl(link.short_code, baseUrl);
+  const meta = (link.meta || {}) as Record<string, unknown>;
+  const createMode = String(meta.create_mode || '');
+  const isLinkOnly = createMode === 'link_only' || (!createMode && !link.qr_code_url);
+
+  if (isLinkOnly) {
+    return { ...link, short_url: expectedShortUrl };
+  }
+
+  const stored = String(meta.public_short_url || '');
+
+  const needsRegenerate =
+    !link.qr_code_url ||
+    !stored ||
+    stored !== expectedShortUrl ||
+    isLocalOrPrivateUrl(stored);
+
+  if (!needsRegenerate) {
+    return { ...link, short_url: expectedShortUrl };
+  }
+
+  const savedStyle = meta.qr_style as QrStyleOptions | undefined;
+  const qrCodeUrl = await generateBrandedQrDataUrl(expectedShortUrl, savedStyle || null);
+  const nextMeta = { ...meta, public_short_url: expectedShortUrl };
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('managed_short_links')
+    .update({
+      qr_code_url: qrCodeUrl,
+      meta: nextMeta,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', link.id)
+    .select('*')
+    .single();
+
+  if (error || !updated) return { ...link, short_url: expectedShortUrl };
+  return { ...updated, short_url: expectedShortUrl };
+}
+
 export async function createManagedShortLink(
   supabaseAdmin: any,
   input: {
@@ -184,18 +232,25 @@ export async function createManagedShortLink(
     expires_at?: string | null;
     created_by?: string;
     qr_style?: QrStyleOptions | null;
+    baseUrl?: string | null;
+    create_mode?: ManagedShortLinkCreateMode;
   },
 ) {
   const longUrl = String(input.long_url || '').trim();
   if (!isValidHttpUrl(longUrl)) throw new Error('Enter a valid http/https URL');
 
+  const createMode: ManagedShortLinkCreateMode = input.create_mode === 'qr_only' ? 'qr_only' : 'link_only';
   const shortCode = await ensureUniqueShortCode(supabaseAdmin, input.custom_code);
-  const shortUrl = buildShortUrl(shortCode);
+  const shortUrl = buildShortUrl(shortCode, input.baseUrl);
   const qrStyle = input.qr_style || null;
-  const qrCodeUrl = await generateBrandedQrDataUrl(shortUrl, qrStyle);
+  const qrCodeUrl =
+    createMode === 'qr_only' ? await generateBrandedQrDataUrl(shortUrl, qrStyle) : null;
 
-  const meta: Record<string, unknown> = {};
-  if (qrStyle) {
+  const meta: Record<string, unknown> = {
+    public_short_url: shortUrl,
+    create_mode: createMode,
+  };
+  if (createMode === 'qr_only' && qrStyle) {
     meta.qr_style = {
       ...qrStyle,
       logo_data_url: qrStyle.logo_data_url ? '[stored]' : null,

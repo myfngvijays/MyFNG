@@ -43,6 +43,10 @@ export default function LinksListSection() {
       if (!res.ok) throw new Error(json?.error || 'Failed to load links');
       setLinks(json.links || []);
       setTotalPages(json.totalPages || 1);
+      setSelected((prev) => {
+        if (!prev) return prev;
+        return (json.links || []).find((l: LinkRow) => l.id === prev.id) || prev;
+      });
     } catch (e: any) {
       toast.error(e?.message || 'Load failed');
     } finally {
@@ -103,6 +107,27 @@ export default function LinksListSection() {
       load();
     } catch (e: any) {
       toast.error(e?.message || 'Update failed');
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  async function regenerateQr() {
+    if (!selected) return;
+    setWorkingId(selected.id);
+    try {
+      const res = await fetch(`/api/super_admin/link-manager/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerate_qr: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'QR regenerate failed');
+      toast.success('QR regenerated with live URL');
+      setSelected(json.link || selected);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message || 'QR regenerate failed');
     } finally {
       setWorkingId(null);
     }
@@ -210,6 +235,7 @@ export default function LinksListSection() {
             <div className="space-y-4">
               <div>
                 <h3 className="font-bold text-lg text-gray-900">/s/{selected.short_code}</h3>
+                <p className="text-xs text-blue-700 mt-1 break-all">{selected.short_url || `https://myfng.in/s/${selected.short_code}`}</p>
                 <p className="text-xs text-emerald-700 mt-1 leading-5">
                   QR is tied to this short URL. Change destination below — printed QR stays valid.
                 </p>
@@ -254,6 +280,14 @@ export default function LinksListSection() {
                   <Download className="w-4 h-4" /> Download QR PNG
                 </button>
               ) : null}
+              <button
+                type="button"
+                disabled={workingId === selected.id}
+                onClick={regenerateQr}
+                className="w-full rounded-xl border border-amber-200 bg-amber-50 py-2 text-sm font-semibold text-amber-800 disabled:opacity-50"
+              >
+                Regenerate QR (fix localhost)
+              </button>
             </div>
           )}
         </div>

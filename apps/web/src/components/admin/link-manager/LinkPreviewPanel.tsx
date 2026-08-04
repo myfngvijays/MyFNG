@@ -5,7 +5,9 @@ import {
   appendUtmParams,
   buildPreviewShortCode,
   buildShortUrl,
+  clientAppBaseUrl,
   isValidHttpUrl,
+  normalizeLongUrl,
 } from '@/lib/link-manager/utils';
 import { DEFAULT_QR_STYLE, type QrStyleOptions } from '@/lib/link-manager/qr-types';
 import QrLivePreview, { downloadDataUrl, renderBrandedQrCanvas } from './QrLivePreview';
@@ -36,24 +38,35 @@ export default function LinkPreviewPanel({
   onCopy?: (text: string, label: string) => void;
 }) {
   const previewCode = buildPreviewShortCode(form.custom_code);
-  const shortUrl = buildShortUrl(previewCode);
+  const shortUrl = buildShortUrl(previewCode, clientAppBaseUrl());
   const style = qrStyle || DEFAULT_QR_STYLE;
+  const createdMode = created?.create_mode === 'qr_only' || created?.meta?.create_mode === 'qr_only'
+    ? 'qr'
+    : created?.create_mode === 'link_only' || created?.meta?.create_mode === 'link_only'
+      ? 'link'
+      : mode;
 
   if (created) {
     return (
       <div className="rounded-2xl border border-green-200 bg-green-50 p-5 space-y-4 h-full">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-green-700">Live link ready</p>
-          <h3 className="text-lg font-bold text-gray-900 mt-1">{created.title || 'Untitled link'}</h3>
+          <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+            {createdMode === 'qr' ? 'QR ready' : 'Short link ready'}
+          </p>
+          <h3 className="text-lg font-bold text-gray-900 mt-1">{created.title || 'Untitled'}</h3>
         </div>
-        <div className="rounded-xl bg-white border p-3">
-          <p className="text-xs text-gray-500 mb-1">Short URL</p>
-          <p className="text-sm font-semibold text-blue-700 break-all">{created.short_url}</p>
-        </div>
-        {created.qr_code_url ? (
+
+        {createdMode === 'link' ? (
+          <div className="rounded-xl bg-white border p-3">
+            <p className="text-xs text-gray-500 mb-1">Your short URL</p>
+            <p className="text-sm font-semibold text-blue-700 break-all">{created.short_url}</p>
+          </div>
+        ) : null}
+
+        {createdMode === 'qr' && created.qr_code_url ? (
           <div className="flex flex-col items-center">
             <img src={created.qr_code_url} alt="QR" className="w-48 h-48 border rounded-xl bg-white p-2 shadow-sm" />
-            <p className="text-xs text-gray-500 mt-2">Branded QR — scan to open short link</p>
+            <p className="text-xs text-gray-500 mt-2 text-center">Scan opens short link → your destination</p>
             <button
               type="button"
               onClick={() => downloadDataUrl(created.qr_code_url, `qr-${created.short_code}.png`)}
@@ -63,19 +76,29 @@ export default function LinkPreviewPanel({
             </button>
           </div>
         ) : null}
-        <button
-          type="button"
-          onClick={() => onCopy?.(created.short_url, 'Short URL')}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold"
-        >
-          <Copy className="w-4 h-4" /> Copy short URL
-        </button>
+
+        {createdMode === 'qr' && created.short_url ? (
+          <div className="rounded-xl bg-white/80 border border-green-100 p-3">
+            <p className="text-xs text-gray-500 mb-1">Tracking short link (for edits)</p>
+            <p className="text-xs font-medium text-blue-700 break-all">{created.short_url}</p>
+          </div>
+        ) : null}
+
+        {createdMode === 'link' ? (
+          <button
+            type="button"
+            onClick={() => onCopy?.(created.short_url, 'Short URL')}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold"
+          >
+            <Copy className="w-4 h-4" /> Copy short URL
+          </button>
+        ) : null}
       </div>
     );
   }
 
-  const destination = form.long_url && isValidHttpUrl(form.long_url)
-    ? appendUtmParams(form.long_url, {
+  const destination = form.long_url && isValidHttpUrl(normalizeLongUrl(form.long_url))
+    ? appendUtmParams(normalizeLongUrl(form.long_url), {
         source: form.utm_source,
         medium: form.utm_medium,
         campaign: form.utm_campaign,
@@ -97,17 +120,18 @@ export default function LinkPreviewPanel({
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
-          <p className="text-xs font-semibold text-blue-700 mb-1">Short link</p>
-          <p className="text-base font-bold text-blue-800 break-all">{shortUrl}</p>
-          {!form.custom_code ? (
-            <p className="text-xs text-blue-600 mt-1">Random code on create</p>
-          ) : null}
-        </div>
-
-        {mode === 'qr' ? (
+        {mode === 'link' ? (
+          <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
+            <p className="text-xs font-semibold text-blue-700 mb-1">Short URL preview</p>
+            <p className="text-base font-bold text-blue-800 break-all">{shortUrl}</p>
+            {!form.custom_code ? (
+              <p className="text-xs text-blue-600 mt-1">Random code assigned on shorten</p>
+            ) : null}
+          </div>
+        ) : (
           <div className="flex flex-col items-center py-1">
             <QrLivePreview text={shortUrl} qrStyle={style} />
+            <p className="text-xs text-gray-500 mt-2 text-center">QR encodes short link for tracking</p>
             <button
               type="button"
               onClick={handleDownloadPreview}
@@ -116,12 +140,14 @@ export default function LinkPreviewPanel({
               <Download className="w-3.5 h-3.5" /> Download preview PNG
             </button>
           </div>
-        ) : null}
+        )}
 
         <div>
-          <p className="text-xs font-semibold text-gray-500 mb-1">Destination URL</p>
+          <p className="text-xs font-semibold text-gray-500 mb-1">
+            {mode === 'link' ? 'Long URL (destination)' : 'Destination URL'}
+          </p>
           <p className="text-sm text-gray-800 break-all rounded-lg bg-gray-50 border px-3 py-2 min-h-[48px]">
-            {destination || 'Paste a valid long URL to preview destination'}
+            {destination || 'Paste a valid long URL above'}
           </p>
         </div>
 

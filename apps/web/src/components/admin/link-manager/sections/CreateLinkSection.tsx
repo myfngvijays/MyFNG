@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link2, Loader2, QrCode } from 'lucide-react';
+import { ArrowRight, Link2, Loader2, QrCode } from 'lucide-react';
 import LinkPreviewPanel from '../LinkPreviewPanel';
 import QrCustomizer from '../QrCustomizer';
 import { DEFAULT_QR_STYLE, type QrStyleOptions } from '@/lib/link-manager/qr-types';
+import { isValidHttpUrl, normalizeLongUrl } from '@/lib/link-manager/utils';
 
 type Mode = 'link' | 'qr';
 
@@ -35,6 +36,8 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
   });
 
   const expiresLabel = EXPIRY_OPTIONS.find((o) => o.value === form.expires_option)?.label || 'Never expires';
+  const normalizedUrl = useMemo(() => normalizeLongUrl(form.long_url), [form.long_url]);
+  const urlReady = Boolean(normalizedUrl && isValidHttpUrl(normalizedUrl));
 
   async function copyText(text: string, label: string) {
     try {
@@ -46,10 +49,16 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
   }
 
   async function handleCreate() {
-    if (!form.long_url.trim()) {
+    const longUrl = normalizeLongUrl(form.long_url);
+    if (!longUrl) {
       toast.error('Paste a long URL first');
       return;
     }
+    if (!isValidHttpUrl(longUrl)) {
+      toast.error('Enter a valid http/https URL');
+      return;
+    }
+
     setCreating(true);
     try {
       const res = await fetch('/api/super_admin/link-manager', {
@@ -57,13 +66,15 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
-          qr_style: mode === 'qr' || qrStyle.logo_data_url || qrStyle.logo_url ? qrStyle : null,
+          long_url: longUrl,
+          create_mode: mode === 'qr' ? 'qr_only' : 'link_only',
+          qr_style: mode === 'qr' ? qrStyle : null,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed to create link');
-      setCreated(json.link);
-      toast.success(mode === 'qr' ? 'Branded QR link created' : 'Short link created');
+      setCreated({ ...json.link, create_mode: mode === 'qr' ? 'qr_only' : 'link_only' });
+      toast.success(mode === 'qr' ? 'QR code created' : 'Short link created');
     } catch (e: any) {
       toast.error(e?.message || 'Create failed');
     } finally {
@@ -87,11 +98,22 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
     });
   }
 
+  function switchMode(next: Mode) {
+    setMode(next);
+    setCreated(null);
+  }
+
   return (
     <div className="w-full space-y-6">
       <div>
-        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Shorten a long link</h2>
-        <p className="text-gray-600 mt-1">Create short URLs and branded QR codes with full click tracking.</p>
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
+          {mode === 'link' ? 'Shorten a long URL' : 'Create a QR code'}
+        </h2>
+        <p className="text-gray-600 mt-1">
+          {mode === 'link'
+            ? 'Paste any long link and get a short myfng.in/s/… URL with click tracking.'
+            : 'Generate a branded QR code. Scans go through your short link so destination stays editable.'}
+        </p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -99,33 +121,70 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
           <div className="inline-flex rounded-xl bg-gray-100 p-1 mb-5">
             <button
               type="button"
-              onClick={() => setMode('link')}
+              onClick={() => switchMode('link')}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
                 mode === 'link' ? 'bg-white shadow text-gray-900' : 'text-gray-500'
               }`}
             >
-              <Link2 className="w-4 h-4" /> Short Link
+              <Link2 className="w-4 h-4" /> Only Short Link
             </button>
             <button
               type="button"
-              onClick={() => setMode('qr')}
+              onClick={() => switchMode('qr')}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
                 mode === 'qr' ? 'bg-white shadow text-gray-900' : 'text-gray-500'
               }`}
             >
-              <QrCode className="w-4 h-4" /> QR Code
+              <QrCode className="w-4 h-4" /> Only QR Code
             </button>
           </div>
 
-          <label className="block text-sm font-semibold text-gray-800 mb-2">Paste your long link here</label>
+          <label className="block text-sm font-semibold text-gray-800 mb-2">
+            {mode === 'link' ? 'Long URL to shorten' : 'Destination URL (where QR should send users)'}
+          </label>
           <input
             value={form.long_url}
             onChange={(e) => setForm((p) => ({ ...p, long_url: e.target.value }))}
-            placeholder="https://example.com/my-long-url"
+            placeholder="https://example.com/my-very-long-url-with-many-parameters"
             className="w-full rounded-xl border border-gray-300 px-4 py-3.5 text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
           />
+          {form.long_url.trim() && !urlReady ? (
+            <p className="text-xs text-amber-700 mt-2">Add a valid URL starting with http:// or https://</p>
+          ) : null}
+          {urlReady && normalizedUrl !== form.long_url.trim() ? (
+            <p className="text-xs text-gray-500 mt-2 break-all">Will use: {normalizedUrl}</p>
+          ) : null}
 
-          <div className="grid sm:grid-cols-2 gap-3 mt-4">
+          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+            <p className="text-sm font-semibold text-blue-900 mb-3">
+              {mode === 'link'
+                ? 'Ready to shorten?'
+                : 'Ready to generate QR?'}
+            </p>
+            <button
+              type="button"
+              disabled={creating || !urlReady}
+              onClick={handleCreate}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold disabled:opacity-50"
+            >
+              {creating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : mode === 'qr' ? (
+                <QrCode className="w-4 h-4" />
+              ) : (
+                <Link2 className="w-4 h-4" />
+              )}
+              {mode === 'qr' ? 'Generate QR code' : 'Shorten URL'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <p className="text-xs text-blue-800/80 mt-2 leading-5">
+              {mode === 'link'
+                ? 'Creates only a short link — no QR image.'
+                : 'Creates a QR PNG plus a hidden short link for tracking and future edits.'}
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-5">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Title (optional)</label>
               <input
@@ -186,27 +245,20 @@ export default function CreateLinkSection({ onCreated }: { onCreated?: () => voi
 
           {mode === 'qr' ? <QrCustomizer value={qrStyle} onChange={setQrStyle} /> : null}
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={creating}
-              onClick={handleCreate}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold disabled:opacity-60"
-            >
-              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : mode === 'qr' ? <QrCode className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
-              {mode === 'qr' ? 'Create branded QR link' : 'Create short link'}
-            </button>
-            {created ? (
-              <>
-                <button type="button" onClick={resetForm} className="px-4 py-3 rounded-xl border font-semibold text-sm">
-                  Create another
-                </button>
-                <button type="button" onClick={() => onCreated?.()} className="px-4 py-3 rounded-xl border border-blue-200 text-blue-700 font-semibold text-sm">
-                  View all links
-                </button>
-              </>
-            ) : null}
-          </div>
+          {created ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button type="button" onClick={resetForm} className="px-4 py-3 rounded-xl border font-semibold text-sm">
+                Create another
+              </button>
+              <button
+                type="button"
+                onClick={() => onCreated?.()}
+                className="px-4 py-3 rounded-xl border border-blue-200 text-blue-700 font-semibold text-sm"
+              >
+                View all links
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <aside className="w-full md:w-[360px] md:shrink-0 md:sticky md:top-4 self-start">
