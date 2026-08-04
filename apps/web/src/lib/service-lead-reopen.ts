@@ -152,7 +152,10 @@ export async function upsertBookingServiceLead(
     const payload: Record<string, unknown> = { ...input.leadPayload };
     if (!payload.assigned_telecaller_id) {
       try {
-        const picked = await pickTelecallerWeightedRoundRobin(bookingDistChannel(payload));
+        const picked = await pickTelecallerWeightedRoundRobin(
+          bookingDistChannel(payload),
+          payload.pincode ? String(payload.pincode) : null,
+        );
         if (picked.telecallerId) {
           payload.assigned_telecaller_id = picked.telecallerId;
           payload.assigned_at = nowIso;
@@ -251,6 +254,28 @@ export async function upsertBookingServiceLead(
     updated_at: nowIso,
     deleted_at: null,
   };
+
+  const bookingPincode =
+    input.leadPayload.pincode != null
+      ? String(input.leadPayload.pincode)
+      : existing.pincode
+        ? String(existing.pincode)
+        : null;
+  if (bookingPincode && !input.leadPayload.assigned_telecaller_id) {
+    try {
+      const picked = await pickTelecallerWeightedRoundRobin(
+        bookingDistChannel(input.leadPayload),
+        bookingPincode,
+      );
+      if (picked.telecallerId) {
+        patch.assigned_telecaller_id = picked.telecallerId;
+        patch.assigned_at = nowIso;
+        patch.assignment_mode = 'AUTO';
+      }
+    } catch {
+      /* distribution optional */
+    }
+  }
 
   const { data: updated, error: updateError } = await supabaseAdmin
     .from('service_leads')

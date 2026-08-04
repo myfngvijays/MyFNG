@@ -59,6 +59,7 @@ import {
   List,
   Layers,
   Clock3,
+  Link2,
 } from 'lucide-react';
 
 type NavItem = {
@@ -114,6 +115,18 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/manual-invoices',
     icon: FileText,
     description: 'CSV upload & manual invoices'
+  },
+  {
+    name: 'Link Manager',
+    href: '/dashboard/super_admin/link-manager',
+    icon: Link2,
+    description: 'Bitly-style short links, QR & tracking'
+  },
+  {
+    name: 'Universal Link',
+    href: '/dashboard/super_admin/universal-link',
+    icon: Smartphone,
+    description: 'App download smart link & iOS/Android analytics'
   },
   {
     name: 'Catalog & Pricing',

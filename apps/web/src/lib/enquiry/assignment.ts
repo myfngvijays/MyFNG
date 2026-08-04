@@ -5,6 +5,12 @@ import {
   type LeadDistributionChannelId,
 } from '@/lib/enquiry/leadChannels';
 import {
+  filterAllocationsForLeadPincode,
+  normalizeAllowedPincodes,
+  normalizePincodeMode,
+  type PincodeRoutingMode,
+} from '@/lib/enquiry/pincodeAllocation';
+import {
   findMatchingMessageTrigger,
   normalizeMessageTriggers,
   type MessageTrigger,
@@ -20,6 +26,8 @@ export type AllocationRow = {
   daily_limit: number | null;
   meta?: Record<string, unknown> | null;
   allowed_channels?: LeadDistributionChannelId[] | null;
+  allowed_pincodes?: string[] | null;
+  pincode_mode?: PincodeRoutingMode | null;
 };
 
 type AllocatorState = {
@@ -50,6 +58,15 @@ export async function fetchActiveAllocations(): Promise<AllocationRow[]> {
       meta: r.meta && typeof r.meta === 'object' ? r.meta : {},
       allowed_channels: normalizeAllowedChannels(
         r.meta && typeof r.meta === 'object' ? (r.meta as any).allowed_channels : null,
+      ),
+      allowed_pincodes: normalizeAllowedPincodes(
+        r.meta && typeof r.meta === 'object' ? (r.meta as any).allowed_pincodes : null,
+      ),
+      pincode_mode: normalizePincodeMode(
+        r.meta && typeof r.meta === 'object' ? (r.meta as any).pincode_mode : null,
+        normalizeAllowedPincodes(
+          r.meta && typeof r.meta === 'object' ? (r.meta as any).allowed_pincodes : null,
+        ),
       ),
     }));
 }
@@ -190,6 +207,7 @@ export type PickTelecallerResult = {
  */
 export async function pickTelecallerWeightedRoundRobin(
   channel?: string | null,
+  pincode?: string | null,
 ): Promise<PickTelecallerResult> {
   const rows = await fetchActiveAllocations();
   const { active, total } = normalizeAllocations(rows);
@@ -198,7 +216,12 @@ export async function pickTelecallerWeightedRoundRobin(
     return { telecallerId: null, reason: 'allocation_total_not_100', total };
   }
 
-  const channelFiltered = active.filter((r) =>
+  const pincodeFiltered = filterAllocationsForLeadPincode(active, pincode);
+  if (pincodeFiltered.length === 0) {
+    return { telecallerId: null, reason: 'no_telecaller_for_pincode', channel: channel || null };
+  }
+
+  const channelFiltered = pincodeFiltered.filter((r) =>
     telecallerAllowsChannel(r.allowed_channels, channel || null),
   );
   if (channelFiltered.length === 0) {
@@ -256,9 +279,11 @@ export async function pickTelecallerWeightedRoundRobin(
 export async function pickTelecallerForLead(opts?: {
   channel?: string | null;
   messageText?: string | null;
+  pincode?: string | null;
 }): Promise<PickTelecallerResult> {
   const channel = opts?.channel || null;
   const messageText = opts?.messageText || null;
+  const pincode = opts?.pincode || null;
 
   if (messageText) {
     const triggers = await fetchMessageTriggers();
@@ -276,5 +301,5 @@ export async function pickTelecallerForLead(opts?: {
     }
   }
 
-  return pickTelecallerWeightedRoundRobin(channel);
+  return pickTelecallerWeightedRoundRobin(channel, pincode);
 }

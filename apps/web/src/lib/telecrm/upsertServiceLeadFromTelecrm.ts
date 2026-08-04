@@ -102,6 +102,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
     const picked = await pickTelecallerForLead({
       channel: 'WHATSAPP',
       messageText: msg,
+      pincode: input.pincode || null,
     });
     if (picked.telecallerId) {
       assignedTo = picked.telecallerId;

@@ -12,7 +12,7 @@ import {
   Percent,
   Trash2,
   Sparkles,
-  ChevronDown,
+  MapPin,
 } from 'lucide-react';
 import {
   ALL_LEAD_CHANNEL_IDS,
@@ -20,6 +20,14 @@ import {
   normalizeAllowedChannels,
   type LeadDistributionChannelId,
 } from '@/lib/enquiry/leadChannels';
+import {
+  normalizeAllowedPincodes,
+  normalizePincodeMode,
+  type PincodeRoutingMode,
+} from '@/lib/enquiry/pincodeAllocation';
+import TelecallerPincodeEditor, {
+  telecallerPincodeBadge,
+} from '@/components/admin/telecaller-distribution/TelecallerPincodeEditor';
 import {
   newTriggerId,
   type MessageTrigger,
@@ -40,6 +48,8 @@ type AllocationRow = {
   allocation_status: 'ACTIVE' | 'INACTIVE';
   daily_limit: number | null;
   allowed_channels: LeadDistributionChannelId[] | null;
+  allowed_pincodes: string[] | null;
+  pincode_mode: PincodeRoutingMode;
 };
 
 type TabId = 'allocation' | 'triggers' | 'api';
@@ -60,8 +70,8 @@ export default function TelecallerDistributionPage() {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [selectedOptionalFields, setSelectedOptionalFields] = useState<string[]>([]);
   const [selectedSourceSlug, setSelectedSourceSlug] = useState('google-ads');
+  const [routingPanel, setRoutingPanel] = useState<Record<number, 'pincodes' | 'sources' | null>>({});
   const [testMessage, setTestMessage] = useState('');
-  const [sourcesOpen, setSourcesOpen] = useState<Record<number, boolean>>({});
 
   const leadSourceApis = [
     { label: 'Google Ads', slug: 'google-ads' },
@@ -118,6 +128,8 @@ export default function TelecallerDistributionPage() {
         .filter((r: any) => r?.is_active !== false)
         .map((r: any) => {
           const allowed = normalizeAllowedChannels(r?.meta?.allowed_channels);
+          const allowedPincodes = normalizeAllowedPincodes(r?.meta?.allowed_pincodes);
+          const pincodeMode = normalizePincodeMode(r?.meta?.pincode_mode, allowedPincodes);
           return {
             telecaller_id: String(r.telecaller_id),
             allocation_percent: Number(r.allocation_percent || 0),
@@ -127,6 +139,8 @@ export default function TelecallerDistributionPage() {
                 : ('ACTIVE' as const),
             daily_limit: r.daily_limit == null ? null : Number(r.daily_limit),
             allowed_channels: allowed,
+            allowed_pincodes: allowedPincodes,
+            pincode_mode: pincodeMode,
           };
         });
 
@@ -185,12 +199,21 @@ export default function TelecallerDistributionPage() {
         allocation_status: 'INACTIVE',
         daily_limit: null,
         allowed_channels: null,
+        allowed_pincodes: null,
+        pincode_mode: 'all',
       },
     ]);
   }
 
   function removeRow(index: number) {
     setRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function toggleRoutingPanel(index: number, panel: 'pincodes' | 'sources') {
+    setRoutingPanel((prev) => ({
+      ...prev,
+      [index]: prev[index] === panel ? null : panel,
+    }));
   }
 
   function channelOn(row: AllocationRow, id: LeadDistributionChannelId) {
@@ -309,6 +332,8 @@ export default function TelecallerDistributionPage() {
             allocation_status: r.allocation_status,
             daily_limit: r.daily_limit,
             allowed_channels: r.allowed_channels,
+            allowed_pincodes: r.allowed_pincodes,
+            pincode_mode: r.pincode_mode,
           })),
           message_triggers: triggers,
         }),
@@ -363,8 +388,8 @@ export default function TelecallerDistributionPage() {
             Telecaller Distribution
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1 max-w-2xl">
-            Source filters, % allocation, daily caps, and Meta WhatsApp message triggers (campaign
-            prefill → telecaller).
+            Source filters, pincode mapping, % allocation, daily caps, and Meta WhatsApp message
+            triggers (campaign prefill → telecaller).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -423,7 +448,7 @@ export default function TelecallerDistributionPage() {
             Priority order
           </div>
           <div className="text-[11px] font-semibold text-slate-700 leading-snug mt-0.5">
-            1) Message trigger → 2) Source filter → 3) % RR
+            1) Message trigger → 2) Pincode map → 3) Source filter → 4) % RR
           </div>
         </div>
       </div>
@@ -471,8 +496,8 @@ export default function TelecallerDistributionPage() {
             <div>
               <div className="font-semibold text-sm sm:text-base">Telecaller allocation</div>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Turn sources ON/OFF per telecaller. Example: WhatsApp only → website bookings skip
-                them.
+                Turn sources ON/OFF and map pincodes per telecaller. Example: Thane pincodes → Telecaller
+                A; website bookings skip WhatsApp-only rows.
               </p>
             </div>
             <button
@@ -487,7 +512,8 @@ export default function TelecallerDistributionPage() {
           <div className="px-4 py-3 border-b flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs sm:text-sm bg-slate-50/80">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
-              Active rows % total must = 100. Channel filters apply when no message trigger matches.
+              Active rows % total must = 100. Pincode + channel filters apply when no message trigger
+              matches.
             </div>
             <div
               className={`font-semibold ${Math.abs(activeTotal - 100) < 0.001 ? 'text-green-600' : 'text-red-600'}`}
@@ -505,95 +531,150 @@ export default function TelecallerDistributionPage() {
               const name = telecallerLabel(
                 telecallers.find((t) => t.id === row.telecaller_id),
               );
+              const pinBadge = telecallerPincodeBadge(row.pincode_mode, row.allowed_pincodes);
+              const openPanel = routingPanel[index] || null;
               return (
-                <div key={`${row.telecaller_id}-${index}`} className="px-3 sm:px-4 py-3 space-y-2">
-                  <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
-                    <select
-                      className="border rounded-md px-2 py-1.5 text-sm min-w-[150px] flex-1"
-                      value={row.telecaller_id}
-                      onChange={(e) => updateRow(index, { telecaller_id: e.target.value })}
-                    >
-                      <option value="">Select telecaller</option>
-                      {telecallers.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {telecallerLabel(t)}
-                          {!t.is_active ? ' (inactive login)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      className="border rounded-md px-2 py-1.5 text-sm w-[72px] shrink-0"
-                      value={row.allocation_percent}
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      title="% Allocation"
-                      placeholder="%"
-                      onChange={(e) =>
-                        updateRow(index, { allocation_percent: Number(e.target.value) })
-                      }
-                    />
-                    <select
-                      className="border rounded-md px-2 py-1.5 text-sm w-[104px] shrink-0"
-                      value={row.allocation_status}
-                      onChange={(e) =>
-                        updateRow(index, {
-                          allocation_status: e.target.value === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
-                        })
-                      }
-                    >
-                      <option value="ACTIVE">Active</option>
-                      <option value="INACTIVE">Inactive</option>
-                    </select>
-                    <input
-                      type="number"
-                      className="border rounded-md px-2 py-1.5 text-sm w-[88px] shrink-0"
-                      placeholder="Limit"
-                      value={row.daily_limit ?? ''}
-                      min={0}
-                      title="Daily limit"
-                      onChange={(e) =>
-                        updateRow(index, {
-                          daily_limit: e.target.value ? Number(e.target.value) : null,
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSourcesOpen((prev) => ({ ...prev, [index]: !prev[index] }))
-                      }
-                      className={`inline-flex items-center justify-between gap-1.5 border rounded-md px-2.5 py-1.5 text-xs font-semibold w-[118px] shrink-0 transition ${
-                        sourcesOpen[index]
-                          ? 'border-blue-300 bg-blue-50 text-blue-800'
-                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <span>
-                        Sources {onCount}/{ALL_LEAD_CHANNEL_IDS.length}
-                      </span>
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 shrink-0 transition ${sourcesOpen[index] ? 'rotate-180' : ''}`}
+                <div
+                  key={`${row.telecaller_id}-${index}`}
+                  className="px-3 sm:px-4 py-4 space-y-3 bg-white even:bg-slate-50/40"
+                >
+                  <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+                    <div className="flex flex-nowrap items-center gap-2 overflow-x-auto min-w-0 flex-1">
+                      <select
+                        className="border rounded-lg px-2.5 py-2 text-sm min-w-[160px] flex-1 bg-white"
+                        value={row.telecaller_id}
+                        onChange={(e) => updateRow(index, { telecaller_id: e.target.value })}
+                      >
+                        <option value="">Select telecaller</option>
+                        {telecallers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {telecallerLabel(t)}
+                            {!t.is_active ? ' (inactive login)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        className="border rounded-lg px-2.5 py-2 text-sm w-[76px] shrink-0 bg-white"
+                        value={row.allocation_percent}
+                        min={0}
+                        max={100}
+                        step="0.01"
+                        title="% Allocation"
+                        placeholder="%"
+                        onChange={(e) =>
+                          updateRow(index, { allocation_percent: Number(e.target.value) })
+                        }
                       />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeRow(index)}
-                      className="text-rose-600 text-xs font-semibold inline-flex items-center gap-1 shrink-0 px-1"
-                      title="Remove row"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Remove</span>
-                    </button>
+                      <select
+                        className="border rounded-lg px-2.5 py-2 text-sm w-[108px] shrink-0 bg-white"
+                        value={row.allocation_status}
+                        onChange={(e) =>
+                          updateRow(index, {
+                            allocation_status: e.target.value === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+                          })
+                        }
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                      </select>
+                      <input
+                        type="number"
+                        className="border rounded-lg px-2.5 py-2 text-sm w-[92px] shrink-0 bg-white"
+                        placeholder="Limit"
+                        value={row.daily_limit ?? ''}
+                        min={0}
+                        title="Daily limit"
+                        onChange={(e) =>
+                          updateRow(index, {
+                            daily_limit: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => toggleRoutingPanel(index, 'pincodes')}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                            openPanel === 'pincodes'
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'text-gray-700 hover:bg-emerald-50'
+                          }`}
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          Pincodes
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                              openPanel === 'pincodes'
+                                ? 'bg-white/20 text-white'
+                                : pinBadge.tone === 'mapped'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : pinBadge.tone === 'none'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {pinBadge.label}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleRoutingPanel(index, 'sources')}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                            openPanel === 'sources'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'text-gray-700 hover:bg-blue-50'
+                          }`}
+                        >
+                          Sources
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                              openPanel === 'sources'
+                                ? 'bg-white/20 text-white'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {onCount}/{ALL_LEAD_CHANNEL_IDS.length}
+                          </span>
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeRow(index)}
+                        className="text-rose-600 text-xs font-semibold inline-flex items-center gap-1 shrink-0 px-2 py-2 rounded-lg hover:bg-rose-50"
+                        title="Remove row"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
-                  {sourcesOpen[index] ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                        <p className="text-xs font-semibold text-slate-700">
-                          Lead sources for {name}
-                        </p>
+                  {openPanel === 'pincodes' ? (
+                    <TelecallerPincodeEditor
+                      telecallerName={name}
+                      pincodeMode={row.pincode_mode}
+                      allowedPincodes={row.allowed_pincodes}
+                      onChange={(next) =>
+                        updateRow(index, {
+                          pincode_mode: next.pincode_mode,
+                          allowed_pincodes: next.allowed_pincodes,
+                        })
+                      }
+                    />
+                  ) : null}
+
+                  {openPanel === 'sources' ? (
+                    <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50/70 p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-800">
+                            Lead sources
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900 mt-2">{name}</p>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -793,7 +874,7 @@ export default function TelecallerDistributionPage() {
                 </div>
               ) : (
                 <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
-                  No trigger match — falls back to source filter + % allocation.
+                  No trigger match — falls back to pincode map, source filter, then % allocation.
                 </div>
               )
             ) : null}

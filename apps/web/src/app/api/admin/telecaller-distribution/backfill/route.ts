@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import { channelFromEnquiryLeadSource } from '@/lib/enquiry/leadChannels';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     while (processed < maxTotal) {
       const { data: leads, error } = await supabaseAdmin
         .from('enquiry_hub')
-        .select('id, history')
+        .select('id, history, customer_pincode, lead_source')
         .eq('kind', 'LEAD')
         .is('assigned_telecaller_id', null)
         .order('created_at', { ascending: true })
@@ -49,7 +50,10 @@ export async function POST(request: NextRequest) {
       if (!leads || leads.length === 0) break;
 
       for (const lead of leads) {
-        const { telecallerId, reason } = await pickTelecallerWeightedRoundRobin();
+        const { telecallerId, reason } = await pickTelecallerWeightedRoundRobin(
+          channelFromEnquiryLeadSource((lead as any).lead_source),
+          (lead as any).customer_pincode ? String((lead as any).customer_pincode) : null,
+        );
         const now = new Date().toISOString();
 
         if (!telecallerId) {

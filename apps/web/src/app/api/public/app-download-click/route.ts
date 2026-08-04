@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     userAgent: request.headers.get('user-agent'),
     referer: request.headers.get('referer'),
     redirectUrl: body.redirect_url ? String(body.redirect_url) : null,
+    source: body.source ? String(body.source) : 'api',
   });
 
   return NextResponse.json({ success: true });

@@ -1,6 +1,7 @@
 'use client';
 
-import type { UtmParams } from '@/lib/utm';
+import { useEffect } from 'react';
+import { setStoredUtmParams, type UtmParams } from '@/lib/utm';
 
 type Props = {
   slug: string;
@@ -20,6 +21,10 @@ function appendUtmToPath(path: string, utm?: UtmParams): string {
 }
 
 export default function AppDownloadGoFallback({ slug, iosUrl, androidUrl, utm }: Props) {
+  useEffect(() => {
+    if (utm) setStoredUtmParams(utm);
+  }, [utm]);
+
   const trackClick = (platform: 'ios' | 'android') => {
     void fetch('/api/public/app-download-click', {
       method: 'POST',

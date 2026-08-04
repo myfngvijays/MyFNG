@@ -87,6 +87,7 @@ export async function logAppDownloadLinkClick(input: {
   userAgent?: string | null;
   referer?: string | null;
   redirectUrl?: string | null;
+  source?: string | null;
 }): Promise<void> {
   try {
     const { supabaseAdmin } = getSupabaseAdmin();
@@ -100,6 +101,7 @@ export async function logAppDownloadLinkClick(input: {
         slug: input.slug,
         platform: input.platform,
         redirect_url: input.redirectUrl || null,
+        source: input.source || 'go_redirect',
         user_agent: input.userAgent ? String(input.userAgent).slice(0, 500) : null,
         referer: input.referer ? String(input.referer).slice(0, 500) : null,
         ...mergeUtmParams(input.utm),

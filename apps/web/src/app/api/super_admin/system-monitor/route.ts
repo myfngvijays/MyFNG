@@ -706,6 +706,170 @@ async function checkAdvanceCoupons(): Promise<HealthCheck> {
   }
 }
 
+async function checkLinkManager(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Link Manager',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify managed_short_links table: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [links, clicks] = await Promise.all([
+      client.from('managed_short_links').select('id', { count: 'exact', head: true }),
+      client.from('managed_short_link_clicks').select('id', { count: 'exact', head: true }),
+    ]);
+    const responseTime = Date.now() - start;
+    if (links.error) {
+      return {
+        name: 'Link Manager',
+        category: 'Commerce',
+        status: 'down',
+        responseTime,
+        message: links.error.message,
+        reason: 'managed_short_links table missing. Run migration 303_managed_short_links.sql.',
+        quickFix: {
+          label: 'Open Link Manager',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/link-manager' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    if (clicks.error) {
+      return {
+        name: 'Link Manager',
+        category: 'Commerce',
+        status: 'degraded',
+        responseTime,
+        message: 'Links OK, click events table issue',
+        reason: clicks.error.message,
+        quickFix: {
+          label: 'Open Link Manager',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/link-manager' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Link Manager',
+      category: 'Commerce',
+      status: 'healthy',
+      responseTime,
+      message: `${links.count || 0} links · ${clicks.count || 0} click events`,
+      reason: 'Bitly-style short links with QR codes and /s/{code} redirect tracking.',
+      lastChecked: new Date().toISOString(),
+      details: { links: links.count || 0, clicks: clicks.count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Link Manager',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Link Manager health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkUniversalLink(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Universal Link',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify app download tracking: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [tableCheck, recentEvents] = await Promise.all([
+      client.from('customer_analytics_events').select('id', { count: 'exact', head: true }),
+      client
+        .from('customer_analytics_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_name', 'app_download_link_click')
+        .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+    const responseTime = Date.now() - start;
+
+    if (tableCheck.error) {
+      return {
+        name: 'Universal Link',
+        category: 'Commerce',
+        status: 'down',
+        responseTime,
+        message: tableCheck.error.message,
+        reason: 'customer_analytics_events table missing. Run migration 141_customer_profile_modules.sql.',
+        quickFix: {
+          label: 'Open Universal Link',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/universal-link' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    if (recentEvents.error) {
+      return {
+        name: 'Universal Link',
+        category: 'Commerce',
+        status: 'degraded',
+        responseTime,
+        message: 'Analytics table OK, event query issue',
+        reason: recentEvents.error.message,
+        quickFix: {
+          label: 'Open Universal Link',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/universal-link' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    return {
+      name: 'Universal Link',
+      category: 'Commerce',
+      status: 'healthy',
+      responseTime,
+      message: `${recentEvents.count || 0} app download opens in last 30 days`,
+      reason: '/go/myfngapp smart redirect with iOS/Android tracking via customer_analytics_events.',
+      quickFix: {
+        label: 'Open Universal Link',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/universal-link' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { events_30d: recentEvents.count || 0 },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Universal Link',
+      category: 'Commerce',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Universal Link health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkRsaLeads(): Promise<HealthCheck> {
   const start = Date.now();
   const { client, configError } = getAdminClient();
@@ -1408,6 +1572,8 @@ export async function GET() {
       checkEmailService(),
       checkWalletSystem(),
       checkAdvanceCoupons(),
+      checkLinkManager(),
+      checkUniversalLink(),
       checkRsaLeads(),
       checkOpenAI(),
       checkMisaAiMonitoring(),

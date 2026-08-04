@@ -386,6 +386,7 @@ export async function ensureWhatsAppInboundServiceLead(
       const picked = await pickTelecallerForLead({
         channel,
         messageText: firstMsgForRoute,
+        pincode: known.pincode || existing?.pincode || null,
       });
       const isTriggerRoute =
         picked.assignment_mode === 'MESSAGE_TRIGGER' && Boolean(picked.telecallerId);
@@ -467,6 +468,7 @@ export async function ensureWhatsAppInboundServiceLead(
     const picked = await pickTelecallerForLead({
       channel,
       messageText: firstMsgForRoute,
+      pincode: known.pincode || null,
     });
     assignedTelecallerId = picked.telecallerId || null;
     assignmentMode = picked.assignment_mode || null;

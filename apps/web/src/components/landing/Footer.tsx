@@ -4,6 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import TrackedLink from '@/components/tracking/TrackedLink';
 import { DEFAULT_SERVICES, INTERNAL_SLUG_TO_MARKETING } from '@/lib/services/catalog';
 import { POPULAR_BRAND_PAGES } from '@/lib/popular-brands';
+import {
+  DEFAULT_APP_STORE_URL,
+  DEFAULT_PLAY_STORE_URL,
+} from '@/lib/mobile-app-version-config';
 
 const ctaTitles = [
   "Serious Car Owners Don't Postpone Maintenance.",
@@ -333,14 +337,14 @@ export default function Footer() {
                 <div className="text-center md:text-left">
                   <h4 className="text-gray-900 text-[11px] font-semibold mb-3">Download MyFNG App</h4>
                   <div className="flex flex-row md:flex-col gap-2.5 justify-center md:justify-start items-center md:items-start flex-wrap">
-                    <a href="/go/myfngapp">
+                    <a href={DEFAULT_PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">
                       <img
                         src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
                         alt="Download on Play Store"
                         className="w-[145px] sm:w-[160px] block"
                       />
                     </a>
-                    <a href="/go/myfngapp">
+                    <a href={DEFAULT_APP_STORE_URL} target="_blank" rel="noopener noreferrer">
                       <img
                         src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
                         alt="Download on App Store"

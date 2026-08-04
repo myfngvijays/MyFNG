@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { fetchMessageTriggers, saveMessageTriggers } from '@/lib/enquiry/assignment';
 import { normalizeMessageTriggers } from '@/lib/enquiry/messageTriggers';
+import { normalizeAllowedPincodes, normalizePincodeMode, pincodePayloadFromMode } from '@/lib/enquiry/pincodeAllocation';
 
 async function requireSuperAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -94,6 +95,13 @@ export async function PUT(request: NextRequest) {
         const channels = hasAllowlist
           ? r.allowed_channels.map((c: any) => String(c || '').trim().toUpperCase()).filter(Boolean)
           : null;
+        const hasPinlist = Array.isArray(r.allowed_pincodes);
+        const pincodes = hasPinlist ? normalizeAllowedPincodes(r.allowed_pincodes) : null;
+        const pincodeMode = normalizePincodeMode(r.pincode_mode, pincodes);
+        const pincodePayload = pincodePayloadFromMode(
+          pincodeMode,
+          pincodeMode === 'mapped' ? pincodes || [] : pincodes,
+        );
         return {
           telecaller_id: String(r.telecaller_id || '').trim(),
           allocation_percent: Number(r.allocation_percent ?? 0),
@@ -102,6 +110,8 @@ export async function PUT(request: NextRequest) {
           meta: {
             ...(r.meta && typeof r.meta === 'object' ? r.meta : {}),
             allowed_channels: hasAllowlist ? channels : null,
+            allowed_pincodes: pincodePayload.allowed_pincodes,
+            pincode_mode: pincodePayload.pincode_mode,
           },
         };
       })

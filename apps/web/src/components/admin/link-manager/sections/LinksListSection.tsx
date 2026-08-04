@@ -1,0 +1,213 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Copy, Download, ExternalLink, Loader2, PauseCircle, PlayCircle, QrCode, Trash2 } from 'lucide-react';
+import { downloadDataUrl } from '../QrLivePreview';
+
+type LinkRow = {
+  id: string;
+  short_code: string;
+  short_url?: string;
+  long_url: string;
+  title?: string | null;
+  clicks?: number;
+  unique_clicks?: number;
+  qr_scans?: number;
+  is_active?: boolean;
+  created_at?: string;
+  qr_code_url?: string | null;
+};
+
+export default function LinksListSection() {
+  const [loading, setLoading] = useState(true);
+  const [links, setLinks] = useState<LinkRow[]>([]);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selected, setSelected] = useState<LinkRow | null>(null);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: '25' });
+      if (q.trim()) params.set('q', q.trim());
+      const res = await fetch(`/api/super_admin/link-manager?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to load links');
+      setLinks(json.links || []);
+      setTotalPages(json.totalPages || 1);
+    } catch (e: any) {
+      toast.error(e?.message || 'Load failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, q]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Copied');
+    } catch {
+      toast.error('Copy failed');
+    }
+  }
+
+  async function toggleActive(link: LinkRow) {
+    setWorkingId(link.id);
+    try {
+      const res = await fetch(`/api/super_admin/link-manager/${link.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !link.is_active }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Update failed');
+      toast.success(link.is_active ? 'Link paused' : 'Link activated');
+      load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Update failed');
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  async function deleteLink(id: string) {
+    if (!confirm('Delete this link permanently?')) return;
+    setWorkingId(id);
+    try {
+      const res = await fetch(`/api/super_admin/link-manager/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Delete failed');
+      toast.success('Link deleted');
+      if (selected?.id === id) setSelected(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Delete failed');
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search title, code or URL..."
+          className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm min-w-[260px]"
+        />
+        <button type="button" onClick={() => { setPage(1); load(); }} className="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold text-sm">
+          Search
+        </button>
+      </div>
+
+      <div className="grid xl:grid-cols-[1fr_320px] gap-4">
+        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+          {loading ? (
+            <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-600">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Link</th>
+                    <th className="px-4 py-3 font-semibold">Destination</th>
+                    <th className="px-4 py-3 font-semibold">Clicks</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {links.length === 0 ? (
+                    <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">No links yet — create your first short link</td></tr>
+                  ) : (
+                    links.map((link) => (
+                      <tr key={link.id} className={`border-t border-gray-100 ${selected?.id === link.id ? 'bg-blue-50/60' : ''}`}>
+                        <td className="px-4 py-3">
+                          <button type="button" onClick={() => setSelected(link)} className="text-left">
+                            <div className="font-semibold text-blue-700">/s/{link.short_code}</div>
+                            <div className="text-xs text-gray-500">{link.title || 'Untitled'}</div>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 max-w-xs truncate text-gray-600">{link.long_url}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{link.clicks || 0}</div>
+                          <div className="text-xs text-gray-500">{link.unique_clicks || 0} unique · {link.qr_scans || 0} QR</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${link.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {link.is_active ? 'Active' : 'Paused'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            <button type="button" title="Copy" onClick={() => copyText(link.short_url || `/s/${link.short_code}`)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><Copy className="w-3.5 h-3.5" /></button>
+                            <a href={link.short_url || `/s/${link.short_code}`} target="_blank" rel="noreferrer" title="Open" className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 inline-flex"><ExternalLink className="w-3.5 h-3.5" /></a>
+                            <button type="button" title={link.is_active ? 'Pause' : 'Activate'} disabled={workingId === link.id} onClick={() => toggleActive(link)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+                              {link.is_active ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                            </button>
+                            <button type="button" title="Delete" disabled={workingId === link.id} onClick={() => deleteLink(link.id)} className="p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm text-gray-600">
+            <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1 rounded-lg border disabled:opacity-40">Prev</button>
+            <span>Page {page} / {totalPages}</span>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="px-3 py-1 rounded-lg border disabled:opacity-40">Next</button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 h-fit sticky top-4 shadow-sm">
+          {!selected ? (
+            <p className="text-sm text-gray-500">Select a link to preview QR and stats.</p>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">/s/{selected.short_code}</h3>
+                <p className="text-sm text-gray-500 break-all">{selected.long_url}</p>
+              </div>
+              {selected.qr_code_url ? (
+                <img src={selected.qr_code_url} alt="QR" className="w-full max-w-[220px] mx-auto border rounded-xl bg-white p-2" />
+              ) : (
+                <div className="text-center text-gray-400 text-sm inline-flex items-center gap-2"><QrCode className="w-4 h-4" /> No QR</div>
+              )}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Clicks</div><div className="font-bold">{selected.clicks || 0}</div></div>
+                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Unique</div><div className="font-bold">{selected.unique_clicks || 0}</div></div>
+                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">QR scans</div><div className="font-bold">{selected.qr_scans || 0}</div></div>
+                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Created</div><div className="font-bold text-xs">{selected.created_at ? new Date(selected.created_at).toLocaleDateString('en-IN') : '-'}</div></div>
+              </div>
+              <button type="button" onClick={() => copyText(selected.short_url || `/s/${selected.short_code}`)} className="w-full rounded-xl border py-2 text-sm font-semibold">
+                Copy short URL
+              </button>
+              {selected.qr_code_url ? (
+                <button
+                  type="button"
+                  onClick={() => downloadDataUrl(selected.qr_code_url!, `qr-${selected.short_code}.png`)}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 py-2 text-sm font-semibold text-blue-700"
+                >
+                  <Download className="w-4 h-4" /> Download QR PNG
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

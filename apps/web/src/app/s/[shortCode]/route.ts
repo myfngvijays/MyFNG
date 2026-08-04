@@ -1,36 +1,41 @@
-/**
- * Short URL Redirect Route
- * Phase 1.2 - Invoice Sharing
- * Purpose: Redirect short URLs to actual invoice/payment pages
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getLongUrl } from '@/lib/services/urlShortener';
+import { resolveManagedShortLinkRedirect } from '@/lib/link-manager/service';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { shortCode: string } }
+  { params }: { params: { shortCode: string } },
 ) {
   try {
     const shortCode = params.shortCode;
-    
-    if (!shortCode || shortCode.length < 4) {
+    if (!shortCode || shortCode.length < 3) {
       return NextResponse.redirect(new URL('/', request.url));
     }
 
-    const longUrl = await getLongUrl(shortCode);
+    const ip =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      request.headers.get('x-real-ip') ||
+      null;
+    const userAgent = request.headers.get('user-agent');
+    const referrer = request.headers.get('referer');
 
-    if (!longUrl) {
-      // Short URL not found, redirect to home
-      return NextResponse.redirect(new URL('/', request.url));
+    const managedUrl = await resolveManagedShortLinkRedirect(shortCode, {
+      ip,
+      userAgent,
+      referrer,
+    });
+    if (managedUrl) {
+      return NextResponse.redirect(new URL(managedUrl, request.url));
     }
 
-    // Redirect to long URL
-    return NextResponse.redirect(new URL(longUrl, request.url));
+    const legacyUrl = await getLongUrl(shortCode);
+    if (legacyUrl) {
+      return NextResponse.redirect(new URL(legacyUrl, request.url));
+    }
+
+    return NextResponse.redirect(new URL('/', request.url));
   } catch (error) {
     console.error('Error in short URL redirect:', error);
-    // On error, redirect to home
     return NextResponse.redirect(new URL('/', request.url));
   }
 }
-
