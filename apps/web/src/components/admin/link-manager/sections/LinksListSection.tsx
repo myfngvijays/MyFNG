@@ -245,14 +245,15 @@ export default function LinksListSection() {
                   <tr>
                     <th className="px-4 py-3 font-semibold">Link</th>
                     <th className="px-4 py-3 font-semibold">Destination</th>
-                    <th className="px-4 py-3 font-semibold">Traffic</th>
+                    <th className="px-4 py-3 font-semibold">Link clicks</th>
+                    <th className="px-4 py-3 font-semibold">QR scans</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {links.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">No links yet — create your first short link</td></tr>
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500">No links yet — create your first short link</td></tr>
                   ) : (
                     links.map((link) => (
                       <tr key={link.id} className={`border-t border-gray-100 ${selected?.id === link.id ? 'bg-blue-50/60' : ''}`}>
@@ -264,8 +265,12 @@ export default function LinksListSection() {
                         </td>
                         <td className="px-4 py-3 max-w-xs truncate text-gray-600">{link.long_url}</td>
                         <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{link.clicks || 0} link</div>
-                          <div className="text-xs text-gray-500">{link.unique_clicks || 0} unique · {link.qr_scans || 0} QR</div>
+                          <div className="font-semibold text-blue-700">{link.clicks || 0}</div>
+                          <div className="text-xs text-gray-500">{link.unique_clicks || 0} unique</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-purple-700">{link.qr_scans || 0}</div>
+                          <div className="text-xs text-gray-500">scans</div>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-semibold ${link.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
