@@ -589,6 +589,12 @@ const navigationItems: NavItem[] = [
     description: 'Real-time health check & alerts'
   },
   {
+    name: 'API Services Map',
+    href: '/dashboard/super_admin/api-services',
+    icon: Layers,
+    description: 'Free vs paid APIs & admin menu dependencies'
+  },
+  {
     name: 'Audit Logs',
     href: '/dashboard/super_admin/audit-logs',
     icon: Activity,
