@@ -5,6 +5,7 @@ import {
   appendUtmParams,
   buildPreviewShortCode,
   buildProductionShortUrl,
+  buildQrShortUrl,
   buildShortUrl,
   clientAppBaseUrl,
   isValidHttpUrl,
@@ -41,7 +42,7 @@ export default function LinkPreviewPanel({
 }) {
   const previewCode = buildPreviewShortCode(form.custom_code);
   const shortUrl = buildShortUrl(previewCode, clientAppBaseUrl());
-  const qrPreviewUrl = buildProductionShortUrl(previewCode);
+  const qrPreviewUrl = buildQrShortUrl(previewCode);
   const style = qrStyle || DEFAULT_QR_STYLE;
   const createdMode = created?.create_mode === 'qr_only' || created?.meta?.create_mode === 'qr_only'
     ? 'qr'
@@ -77,7 +78,7 @@ export default function LinkPreviewPanel({
               type="button"
               onClick={async () => {
                 const dataUrl = await renderBrandedQrCanvas(
-                  buildProductionShortUrl(created.short_code),
+                  buildQrShortUrl(created.short_code),
                   style,
                   512,
                 );

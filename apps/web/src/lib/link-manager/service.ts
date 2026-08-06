@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   appendUtmParams,
-  buildProductionShortUrl,
+  buildQrShortUrl,
   buildShortUrl,
   detectLinkPlatform,
   isBrokenStoredQrUrl,
@@ -104,6 +104,7 @@ export async function resolveManagedShortLinkRedirect(
     userAgent?: string | null;
     referrer?: string | null;
     queryUtm?: UtmParams;
+    isQrScan?: boolean;
   },
 ): Promise<string | null> {
   const { supabaseAdmin } = getSupabaseAdmin();
@@ -127,12 +128,14 @@ export async function resolveManagedShortLinkRedirect(
   );
 
   const platform = detectLinkPlatform(request?.userAgent);
+  const isQrScan = Boolean(request?.isQrScan);
 
   const ip = request?.ip || null;
   const fingerprint = ip ? `${ip}:${String(request?.userAgent || '').slice(0, 120)}` : null;
+  const eventType = isQrScan ? 'qr_scan' : 'click';
 
   let isUnique = true;
-  if (fingerprint) {
+  if (fingerprint && !isQrScan) {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count } = await supabaseAdmin
       .from('managed_short_link_clicks')
@@ -146,7 +149,7 @@ export async function resolveManagedShortLinkRedirect(
 
   await supabaseAdmin.from('managed_short_link_clicks').insert({
     link_id: link.id,
-    event_type: 'click',
+    event_type: eventType,
     ip_address: ip,
     user_agent: request?.userAgent || null,
     referrer: request?.referrer || null,
@@ -154,54 +157,33 @@ export async function resolveManagedShortLinkRedirect(
       ...(fingerprint ? { fingerprint } : {}),
       ...utmMetaSnapshot(effectiveUtm),
       platform,
-      source: 'short_link_redirect',
+      source: isQrScan ? 'qr_scan' : 'short_link_redirect',
     },
+  }).then(({ error: clickError }) => {
+    if (clickError) {
+      console.error('[link-manager] failed to log click event:', clickError.message, { shortCode, eventType });
+    }
   });
 
-  await supabaseAdmin
+  const { error: updateError } = await supabaseAdmin
     .from('managed_short_links')
     .update({
-      clicks: Number(link.clicks || 0) + 1,
-      unique_clicks: Number(link.unique_clicks || 0) + (isUnique ? 1 : 0),
-      last_clicked_at: new Date().toISOString(),
+      ...(isQrScan
+        ? { qr_scans: Number(link.qr_scans || 0) + 1 }
+        : {
+            clicks: Number(link.clicks || 0) + 1,
+            unique_clicks: Number(link.unique_clicks || 0) + (isUnique ? 1 : 0),
+            last_clicked_at: new Date().toISOString(),
+          }),
       updated_at: new Date().toISOString(),
     })
     .eq('id', link.id);
+
+  if (updateError) {
+    console.error('[link-manager] failed to update link counters:', updateError.message, { shortCode, eventType });
+  }
 
   return destination;
-}
-
-export async function recordManagedLinkQrScan(shortCode: string) {
-  const { supabaseAdmin } = getSupabaseAdmin();
-  if (!supabaseAdmin) return;
-
-  const { data: link } = await supabaseAdmin
-    .from('managed_short_links')
-    .select('id, qr_scans, utm_source, utm_medium, utm_campaign, utm_term, utm_content')
-    .eq('short_code', shortCode)
-    .eq('is_active', true)
-    .maybeSingle();
-  if (!link) return;
-
-  const effectiveUtm = buildEffectiveLinkUtm(link);
-
-  await supabaseAdmin.from('managed_short_link_clicks').insert({
-    link_id: link.id,
-    event_type: 'qr_scan',
-    meta: {
-      ...utmMetaSnapshot(effectiveUtm),
-      platform: 'desktop',
-      source: 'qr_scan',
-    },
-  });
-
-  await supabaseAdmin
-    .from('managed_short_links')
-    .update({
-      qr_scans: Number(link.qr_scans || 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', link.id);
 }
 
 export async function ensureUniqueShortCode(
@@ -258,7 +240,7 @@ export async function ensureLinkQrUsesPublicUrl(
   baseUrl?: string | null,
 ): Promise<ManagedShortLink> {
   const expectedShortUrl = buildShortUrl(link.short_code, baseUrl);
-  const expectedQrPayload = buildProductionShortUrl(link.short_code);
+  const expectedQrPayload = buildQrShortUrl(link.short_code);
   const meta = (link.meta || {}) as Record<string, unknown>;
   const createMode = String(meta.create_mode || '');
   const isLinkOnly = createMode === 'link_only' || (!createMode && !link.qr_code_url);
@@ -329,7 +311,7 @@ export async function createManagedShortLink(
   const createMode: ManagedShortLinkCreateMode = input.create_mode === 'qr_only' ? 'qr_only' : 'link_only';
   const shortCode = await ensureUniqueShortCode(supabaseAdmin, input.custom_code);
   const shortUrl = buildShortUrl(shortCode, input.baseUrl);
-  const qrPayload = buildProductionShortUrl(shortCode);
+  const qrPayload = buildQrShortUrl(shortCode);
   const qrStyle = input.qr_style || null;
   const qrCodeUrl =
     createMode === 'qr_only' ? await generateBrandedQrDataUrl(qrPayload, qrStyle) : null;

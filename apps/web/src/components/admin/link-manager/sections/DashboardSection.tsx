@@ -8,6 +8,7 @@ import AdminGradientBanner, {
   AdminGradientBannerTitle,
 } from '@/components/admin/AdminGradientBanner';
 import { BarChart3, Link2, MousePointerClick, QrCode } from 'lucide-react';
+import { buildProductionShortUrl } from '@/lib/link-manager/utils';
 
 type Stats = {
   range?: { label: string };
@@ -17,8 +18,9 @@ type Stats = {
     unique_clicks: number;
     qr_scans: number;
     clicks_in_range: number;
+    qr_scans_in_range: number;
   };
-  top_links: Array<{ id: string; short_code: string; title?: string; clicks: number; unique_clicks: number }>;
+  top_links: Array<{ id: string; short_code: string; title?: string; clicks: number; unique_clicks: number; qr_scans?: number }>;
 };
 
 export default function DashboardSection({ onNavigate }: { onNavigate: (section: any) => void }) {
@@ -77,7 +79,7 @@ export default function DashboardSection({ onNavigate }: { onNavigate: (section:
           onChange={setDateRange}
         />
         {data?.range?.label ? (
-          <p className="text-xs text-gray-500 mt-2">Showing clicks for: {data.range.label}</p>
+          <p className="text-xs text-gray-500 mt-2">Showing stats for: {data.range.label}</p>
         ) : null}
       </div>
 
@@ -87,9 +89,9 @@ export default function DashboardSection({ onNavigate }: { onNavigate: (section:
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: 'Total links', value: k?.total_links || 0, icon: Link2 },
-            { label: 'Clicks in range', value: k?.clicks_in_range || 0, icon: MousePointerClick },
-            { label: 'All-time clicks', value: k?.total_clicks || 0, icon: BarChart3 },
-            { label: 'QR scans', value: k?.qr_scans || 0, icon: QrCode },
+            { label: 'Link clicks in range', value: k?.clicks_in_range || 0, icon: MousePointerClick },
+            { label: 'QR scans in range', value: k?.qr_scans_in_range || 0, icon: QrCode },
+            { label: 'All-time link clicks', value: k?.total_clicks || 0, icon: BarChart3 },
           ].map((card) => {
             const Icon = card.icon;
             return (
@@ -115,11 +117,11 @@ export default function DashboardSection({ onNavigate }: { onNavigate: (section:
               <div key={link.id} className="flex items-center justify-between py-3 text-sm">
                 <div>
                   <div className="font-semibold text-gray-900">{link.title || link.short_code}</div>
-                  <div className="text-gray-500">/s/{link.short_code}</div>
+                  <div className="text-gray-500 break-all text-xs">{buildProductionShortUrl(link.short_code)}</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold text-gray-900">{link.clicks} clicks</div>
-                  <div className="text-gray-500">{link.unique_clicks} unique</div>
+                  <div className="font-bold text-gray-900">{link.clicks || 0} link · {link.qr_scans || 0} QR</div>
+                  <div className="text-gray-500">{link.unique_clicks || 0} unique</div>
                 </div>
               </div>
             ))}

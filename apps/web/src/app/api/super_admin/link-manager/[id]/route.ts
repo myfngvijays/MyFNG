@@ -3,7 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { ensureLinkDestinationIsPublic, ensureLinkQrUsesPublicUrl, generateQrDataUrl } from '@/lib/link-manager/service';
 import {
-  buildProductionShortUrl,
+  buildQrShortUrl,
   buildShortUrl,
   normalizeLongUrl,
   normalizeStoredDestinationUrl,
@@ -89,6 +89,11 @@ export async function PATCH(
     if (body?.long_url !== undefined) {
       patch.long_url = normalizeStoredDestinationUrl(normalizeLongUrl(String(body.long_url || '')));
     }
+    for (const field of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const) {
+      if (body?.[field] !== undefined) {
+        patch[field] = String(body[field] || '').trim() || null;
+      }
+    }
 
     const { data: link, error } = await supabaseAdmin
       .from('managed_short_links')
@@ -100,7 +105,7 @@ export async function PATCH(
 
     if (body?.regenerate_qr) {
       const shortUrl = buildShortUrl(link.short_code);
-      const qrPayload = buildProductionShortUrl(link.short_code);
+      const qrPayload = buildQrShortUrl(link.short_code);
       const savedStyle = (link.meta as any)?.qr_style as QrStyleOptions | undefined;
       const qrStyle = body?.qr_style && typeof body.qr_style === 'object' ? body.qr_style : savedStyle;
       const qrCodeUrl = await generateQrDataUrl(qrPayload, qrStyle || null);

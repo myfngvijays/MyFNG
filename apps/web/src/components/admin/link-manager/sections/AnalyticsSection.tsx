@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import ReportDateRangeFilter, { type ReportDateRangeValue } from '@/components/admin/ReportDateRangeFilter';
 import type { ReportDatePreset } from '@/lib/report-date-range';
+import { buildProductionShortUrl } from '@/lib/link-manager/utils';
 
 function formatEventDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', {
@@ -81,10 +82,10 @@ export default function AnalyticsSection() {
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Clicks in period', value: kpis?.clicks_in_range || 0 },
+            { label: 'Link clicks in period', value: kpis?.clicks_in_range || 0 },
             { label: 'QR scans in period', value: kpis?.qr_scans_in_range || 0 },
-            { label: 'All-time clicks', value: kpis?.total_clicks || 0 },
-            { label: 'Unique clicks', value: kpis?.unique_clicks || 0 },
+            { label: 'All-time link clicks', value: kpis?.total_clicks || 0 },
+            { label: 'All-time QR scans', value: kpis?.qr_scans || 0 },
           ].map((card) => (
             <div key={card.label} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium text-gray-500">{card.label}</p>
@@ -97,9 +98,9 @@ export default function AnalyticsSection() {
       {!loading ? (
         <div className="grid lg:grid-cols-3 gap-4">
           {[
-            { title: 'Top UTM sources', rows: utmSources },
-            { title: 'Top UTM mediums', rows: utmMediums },
-            { title: 'Top UTM campaigns', rows: utmCampaigns },
+            { title: 'Top UTM sources (link clicks)', rows: utmSources },
+            { title: 'Top UTM mediums (link clicks)', rows: utmMediums },
+            { title: 'Top UTM campaigns (link clicks)', rows: utmCampaigns },
           ].map((block) => (
             <div key={block.title} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <h3 className="font-semibold text-gray-900 mb-3">{block.title}</h3>
@@ -143,7 +144,7 @@ export default function AnalyticsSection() {
                   <tr key={link.id} className="border-t border-gray-100">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">{link.title || 'Untitled'}</div>
-                      <div className="text-xs text-blue-700">/s/{link.short_code}</div>
+                      <div className="text-xs text-blue-700 break-all">{buildProductionShortUrl(link.short_code)}</div>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{link.utm_source || '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{link.utm_medium || '—'}</td>
@@ -161,12 +162,13 @@ export default function AnalyticsSection() {
       <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-gray-100">
           <h3 className="font-semibold text-gray-900">Recent opens</h3>
-          <p className="text-sm text-gray-500">Every hit on /s/{'{code}'} is logged here</p>
+          <p className="text-sm text-gray-500">Link clicks and QR scans logged separately</p>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-gray-600">
               <tr>
+                <th className="px-4 py-3 font-semibold">Type</th>
                 <th className="px-4 py-3 font-semibold">Date</th>
                 <th className="px-4 py-3 font-semibold">Time</th>
                 <th className="px-4 py-3 font-semibold">Platform</th>
@@ -179,12 +181,21 @@ export default function AnalyticsSection() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
               ) : events.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No click events in this period</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No events in this period</td></tr>
               ) : (
                 events.map((ev) => (
                   <tr key={ev.id} className="border-t border-gray-100">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        ev.event_type === 'qr_scan'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {ev.event_type === 'qr_scan' ? 'QR scan' : 'Link click'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700">
                       {ev.created_at ? formatEventDate(ev.created_at) : '—'}
                     </td>

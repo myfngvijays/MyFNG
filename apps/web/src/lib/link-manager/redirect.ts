@@ -1,0 +1,47 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getLongUrl } from '@/lib/services/urlShortener';
+import { resolveManagedShortLinkRedirect } from '@/lib/link-manager/service';
+import { isQrScanTrackingParam, sanitizePublicRedirectUrl } from '@/lib/link-manager/utils';
+import { parseUtmParams } from '@/lib/utm';
+
+export async function handleManagedShortLinkRequest(
+  request: NextRequest,
+  shortCode: string,
+  options?: { isQrScan?: boolean },
+) {
+  try {
+    if (!shortCode || shortCode.length < 3) {
+      return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
+    }
+
+    const ip =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      request.headers.get('x-real-ip') ||
+      null;
+    const userAgent = request.headers.get('user-agent');
+    const referrer = request.headers.get('referer');
+
+    const isQrScan = Boolean(options?.isQrScan) || isQrScanTrackingParam(request.nextUrl.searchParams);
+
+    const managedUrl = await resolveManagedShortLinkRedirect(shortCode, {
+      ip,
+      userAgent,
+      referrer,
+      queryUtm: parseUtmParams(request.nextUrl.search),
+      isQrScan,
+    });
+    if (managedUrl) {
+      return NextResponse.redirect(sanitizePublicRedirectUrl(managedUrl));
+    }
+
+    const legacyUrl = await getLongUrl(shortCode);
+    if (legacyUrl) {
+      return NextResponse.redirect(sanitizePublicRedirectUrl(legacyUrl));
+    }
+
+    return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
+  } catch (error) {
+    console.error('Error in short URL redirect:', error);
+    return NextResponse.redirect(sanitizePublicRedirectUrl('/'));
+  }
+}

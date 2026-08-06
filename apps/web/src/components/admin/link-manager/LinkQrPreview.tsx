@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, QrCode } from 'lucide-react';
-import { buildProductionShortUrl } from '@/lib/link-manager/utils';
+import { buildClientQrShortUrl, buildQrShortUrl } from '@/lib/link-manager/utils';
 import { DEFAULT_QR_STYLE } from '@/lib/link-manager/qr-types';
 import { renderBrandedQrCanvas } from './QrLivePreview';
 
 export default function LinkQrPreview({
   shortCode,
-  shortUrl,
+  shortUrl: _shortUrl,
   className = 'w-full max-w-[220px] mx-auto border rounded-xl bg-white p-2',
 }: {
   shortCode: string;
@@ -18,7 +18,7 @@ export default function LinkQrPreview({
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const qrText = shortUrl || buildProductionShortUrl(shortCode);
+  const qrText = buildClientQrShortUrl(shortCode);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +57,7 @@ export default function LinkQrPreview({
   return <img src={dataUrl} alt="QR code" className={className} data-qr-download={dataUrl} />;
 }
 
-export function getLinkQrDownloadUrl(shortCode: string, shortUrl?: string | null) {
-  const qrText = shortUrl || buildProductionShortUrl(shortCode);
+export function getLinkQrDownloadUrl(shortCode: string, _shortUrl?: string | null) {
+  const qrText = typeof window !== 'undefined' ? buildClientQrShortUrl(shortCode) : buildQrShortUrl(shortCode);
   return renderBrandedQrCanvas(qrText, DEFAULT_QR_STYLE, 512);
 }

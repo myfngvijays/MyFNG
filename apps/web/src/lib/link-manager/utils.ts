@@ -60,9 +60,44 @@ export function clientAppBaseUrl(): string {
   return appBaseUrl();
 }
 
+export const QR_TRACKING_PARAM = 'via';
+export const QR_TRACKING_VALUE = 'qr';
+
 export function buildProductionShortUrl(shortCode: string) {
   const code = String(shortCode || '').trim();
   return `${SITE_URL.replace(/\/$/, '')}/s/${code}`;
+}
+
+/** Short URL encoded inside QR codes — dedicated /qr path so scanners never drop tracking params. */
+export function buildQrShortUrl(shortCode: string) {
+  return `${buildProductionShortUrl(shortCode)}/qr`;
+}
+
+/** Client-side QR encode URL — uses current host on LAN dev so phone scans hit your local server. */
+export function buildClientQrShortUrl(shortCode: string) {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname.toLowerCase();
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return `${window.location.origin.replace(/\/$/, '')}/s/${String(shortCode || '').trim()}/qr`;
+    }
+    const devOrigin = String(process.env.NEXT_PUBLIC_DEV_QR_ORIGIN || '').trim().replace(/\/$/, '');
+    if (devOrigin) {
+      return `${devOrigin}/s/${String(shortCode || '').trim()}/qr`;
+    }
+  }
+  return buildQrShortUrl(shortCode);
+}
+
+export function isQrScanTrackingParam(search: URLSearchParams | string | null | undefined): boolean {
+  if (!search) return false;
+  if (typeof search === 'string') {
+    try {
+      return new URLSearchParams(search).get(QR_TRACKING_PARAM) === QR_TRACKING_VALUE;
+    } catch {
+      return false;
+    }
+  }
+  return search.get(QR_TRACKING_PARAM) === QR_TRACKING_VALUE;
 }
 
 export function normalizeStoredDestinationUrl(raw: string | null | undefined): string {

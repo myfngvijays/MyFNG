@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { Copy, Download, ExternalLink, Loader2, PauseCircle, PlayCircle, Trash2 } from 'lucide-react';
 import LinkQrPreview, { getLinkQrDownloadUrl } from '../LinkQrPreview';
 import { downloadDataUrl } from '../QrLivePreview';
-import { buildProductionShortUrl } from '@/lib/link-manager/utils';
+import { buildClientQrShortUrl, buildProductionShortUrl, buildQrShortUrl } from '@/lib/link-manager/utils';
 
 type LinkRow = {
   id: string;
@@ -13,6 +13,12 @@ type LinkRow = {
   short_url?: string;
   long_url: string;
   title?: string | null;
+  description?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
   clicks?: number;
   unique_clicks?: number;
   qr_scans?: number;
@@ -20,6 +26,17 @@ type LinkRow = {
   created_at?: string;
   qr_code_url?: string | null;
 };
+
+function shortUrlFor(link: Pick<LinkRow, 'short_code' | 'short_url'>) {
+  return link.short_url || buildProductionShortUrl(link.short_code);
+}
+
+function qrScanUrlFor(link: Pick<LinkRow, 'short_code'>) {
+  if (typeof window !== 'undefined') {
+    return buildClientQrShortUrl(link.short_code);
+  }
+  return buildQrShortUrl(link.short_code);
+}
 
 export default function LinksListSection() {
   const [loading, setLoading] = useState(true);
@@ -30,10 +47,35 @@ export default function LinksListSection() {
   const [selected, setSelected] = useState<LinkRow | null>(null);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [editLongUrl, setEditLongUrl] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editUtm, setEditUtm] = useState({
+    utm_source: '',
+    utm_medium: '',
+    utm_campaign: '',
+    utm_term: '',
+    utm_content: '',
+  });
 
   useEffect(() => {
     setEditLongUrl(selected?.long_url || '');
-  }, [selected?.id, selected?.long_url]);
+    setEditTitle(selected?.title || '');
+    setEditUtm({
+      utm_source: selected?.utm_source || '',
+      utm_medium: selected?.utm_medium || '',
+      utm_campaign: selected?.utm_campaign || '',
+      utm_term: selected?.utm_term || '',
+      utm_content: selected?.utm_content || '',
+    });
+  }, [
+    selected?.id,
+    selected?.long_url,
+    selected?.title,
+    selected?.utm_source,
+    selected?.utm_medium,
+    selected?.utm_campaign,
+    selected?.utm_term,
+    selected?.utm_content,
+  ]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,7 +130,7 @@ export default function LinksListSection() {
     }
   }
 
-  async function saveDestination() {
+  async function saveLinkDetails() {
     if (!selected) return;
     const nextUrl = editLongUrl.trim();
     if (!nextUrl) {
@@ -100,12 +142,16 @@ export default function LinksListSection() {
       const res = await fetch(`/api/super_admin/link-manager/${selected.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ long_url: nextUrl }),
+        body: JSON.stringify({
+          long_url: nextUrl,
+          title: editTitle.trim() || null,
+          ...editUtm,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Update failed');
-      toast.success('Destination updated — same QR & short link still work');
-      setSelected({ ...selected, long_url: json.link?.long_url || nextUrl });
+      toast.success('Link details updated — same QR & short link still work');
+      setSelected(json.link || selected);
       load();
     } catch (e: any) {
       toast.error(e?.message || 'Update failed');
@@ -113,6 +159,16 @@ export default function LinksListSection() {
       setWorkingId(null);
     }
   }
+
+  const linkDetailsDirty = selected
+    ? editLongUrl.trim() !== selected.long_url
+      || editTitle.trim() !== (selected.title || '')
+      || editUtm.utm_source.trim() !== (selected.utm_source || '')
+      || editUtm.utm_medium.trim() !== (selected.utm_medium || '')
+      || editUtm.utm_campaign.trim() !== (selected.utm_campaign || '')
+      || editUtm.utm_term.trim() !== (selected.utm_term || '')
+      || editUtm.utm_content.trim() !== (selected.utm_content || '')
+    : false;
 
   async function downloadSelectedQr() {
     if (!selected) return;
@@ -189,7 +245,7 @@ export default function LinksListSection() {
                   <tr>
                     <th className="px-4 py-3 font-semibold">Link</th>
                     <th className="px-4 py-3 font-semibold">Destination</th>
-                    <th className="px-4 py-3 font-semibold">Clicks</th>
+                    <th className="px-4 py-3 font-semibold">Traffic</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Actions</th>
                   </tr>
@@ -202,13 +258,13 @@ export default function LinksListSection() {
                       <tr key={link.id} className={`border-t border-gray-100 ${selected?.id === link.id ? 'bg-blue-50/60' : ''}`}>
                         <td className="px-4 py-3">
                           <button type="button" onClick={() => setSelected(link)} className="text-left">
-                            <div className="font-semibold text-blue-700">/s/{link.short_code}</div>
+                            <div className="font-semibold text-blue-700 break-all">{shortUrlFor(link)}</div>
                             <div className="text-xs text-gray-500">{link.title || 'Untitled'}</div>
                           </button>
                         </td>
                         <td className="px-4 py-3 max-w-xs truncate text-gray-600">{link.long_url}</td>
                         <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{link.clicks || 0}</div>
+                          <div className="font-medium text-gray-900">{link.clicks || 0} link</div>
                           <div className="text-xs text-gray-500">{link.unique_clicks || 0} unique · {link.qr_scans || 0} QR</div>
                         </td>
                         <td className="px-4 py-3">
@@ -218,8 +274,8 @@ export default function LinksListSection() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
-                            <button type="button" title="Copy" onClick={() => copyText(link.short_url || buildProductionShortUrl(link.short_code))} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><Copy className="w-3.5 h-3.5" /></button>
-                            <a href={link.short_url || buildProductionShortUrl(link.short_code)} target="_blank" rel="noreferrer" title="Open" className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 inline-flex"><ExternalLink className="w-3.5 h-3.5" /></a>
+                            <button type="button" title="Copy" onClick={() => copyText(shortUrlFor(link))} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><Copy className="w-3.5 h-3.5" /></button>
+                            <a href={shortUrlFor(link)} target="_blank" rel="noreferrer" title="Open" className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 inline-flex"><ExternalLink className="w-3.5 h-3.5" /></a>
                             <button type="button" title={link.is_active ? 'Pause' : 'Activate'} disabled={workingId === link.id} onClick={() => toggleActive(link)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
                               {link.is_active ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
                             </button>
@@ -248,14 +304,20 @@ export default function LinksListSection() {
           ) : (
             <div className="space-y-4">
               <div>
-                <h3 className="font-bold text-lg text-gray-900">/s/{selected.short_code}</h3>
-                <p className="text-xs text-blue-700 mt-1 break-all">
-                  {selected.short_url || buildProductionShortUrl(selected.short_code)}
-                </p>
+                <h3 className="font-bold text-lg text-gray-900 break-all">{shortUrlFor(selected)}</h3>
                 <p className="text-xs text-emerald-700 mt-1 leading-5">
-                  QR always encodes the myfng.in short link above — not localhost.
+                  QR encodes a tracked scan URL — link shares use the clean URL above.
                 </p>
               </div>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-gray-600">Title</span>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="Link title"
+                />
+              </label>
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold text-gray-600">Destination URL</span>
                 <input
@@ -265,29 +327,62 @@ export default function LinksListSection() {
                   placeholder="https://..."
                 />
               </label>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-600">UTM tags</p>
+                {([
+                  ['utm_source', 'Source'],
+                  ['utm_medium', 'Medium'],
+                  ['utm_campaign', 'Campaign'],
+                  ['utm_term', 'Term'],
+                  ['utm_content', 'Content'],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="block space-y-1">
+                    <span className="text-xs text-gray-500">{label}</span>
+                    <input
+                      value={editUtm[key]}
+                      onChange={(e) => setEditUtm((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm"
+                      placeholder={label}
+                    />
+                  </label>
+                ))}
+              </div>
               <button
                 type="button"
-                disabled={workingId === selected.id || editLongUrl.trim() === selected.long_url}
-                onClick={saveDestination}
+                disabled={workingId === selected.id || !linkDetailsDirty}
+                onClick={saveLinkDetails}
                 className="w-full rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                Save destination
+                Save link details
               </button>
-              <LinkQrPreview
-                shortCode={selected.short_code}
-                shortUrl={selected.short_url || buildProductionShortUrl(selected.short_code)}
-              />
+              <LinkQrPreview shortCode={selected.short_code} />
               <p className="text-[11px] text-center text-gray-500 leading-4">
-                Preview generated live from <span className="font-mono">{buildProductionShortUrl(selected.short_code)}</span>
+                QR encodes <span className="font-mono break-all">{qrScanUrlFor(selected)}</span>
               </p>
+              {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? (
+                <p className="text-[11px] text-center text-amber-700 leading-4">
+                  Localhost admin: phone scans need your LAN URL. Open admin via <span className="font-mono">http://192.168.x.x:3000</span> or deploy to myfng.in.
+                </p>
+              ) : null}
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Clicks</div><div className="font-bold">{selected.clicks || 0}</div></div>
-                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Unique</div><div className="font-bold">{selected.unique_clicks || 0}</div></div>
+                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Link clicks</div><div className="font-bold">{selected.clicks || 0}</div></div>
+                <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Unique clicks</div><div className="font-bold">{selected.unique_clicks || 0}</div></div>
                 <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">QR scans</div><div className="font-bold">{selected.qr_scans || 0}</div></div>
                 <div className="rounded-xl border p-2"><div className="text-gray-500 text-xs">Created</div><div className="font-bold text-xs">{selected.created_at ? new Date(selected.created_at).toLocaleDateString('en-IN') : '-'}</div></div>
               </div>
-              <button type="button" onClick={() => copyText(selected.short_url || buildProductionShortUrl(selected.short_code))} className="w-full rounded-xl border py-2 text-sm font-semibold">
+              <button type="button" onClick={() => copyText(shortUrlFor(selected))} className="w-full rounded-xl border py-2 text-sm font-semibold">
                 Copy short URL
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(qrScanUrlFor(selected), '_blank', 'noopener,noreferrer');
+                  toast.success('Opened QR scan URL — refresh to see updated QR count');
+                  setTimeout(() => load(), 1200);
+                }}
+                className="w-full rounded-xl border border-purple-200 bg-purple-50 py-2 text-sm font-semibold text-purple-800"
+              >
+                Test QR scan (opens /qr URL)
               </button>
               <button
                 type="button"

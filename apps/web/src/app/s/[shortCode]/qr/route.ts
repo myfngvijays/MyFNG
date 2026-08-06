@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { handleManagedShortLinkRequest } from '@/lib/link-manager/redirect';
 
 export async function GET(
@@ -6,5 +6,5 @@ export async function GET(
   { params }: { params: Promise<{ shortCode: string }> },
 ) {
   const { shortCode } = await params;
-  return handleManagedShortLinkRequest(request, shortCode);
+  return handleManagedShortLinkRequest(request, shortCode, { isQrScan: true });
 }
