@@ -35,6 +35,10 @@ import {
   resolveVehicleClass,
   resolveVehicleClassByMakeModel,
 } from '../../../lib/servicePricing';
+import {
+  extractInboundCustomerMessage,
+  redactLeadSourceForTelecaller,
+} from '../../../lib/redactLeadSource';
 
 const EDITABLE_LEAD_STATUSES = new Set([
   'NEW',
@@ -914,9 +918,12 @@ export default function TelecallerLeadDetailScreen({
 
   const customerMessage = React.useMemo(() => {
     const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
-    return String(
-      meta.last_inbound_message || meta.first_message || lead?.problem_description || '',
-    ).trim();
+    return (
+      extractInboundCustomerMessage(meta.last_inbound_message as string) ||
+      extractInboundCustomerMessage(meta.first_message as string) ||
+      extractInboundCustomerMessage(lead?.problem_description) ||
+      ''
+    );
   }, [lead]);
 
   const loadWorkshopsForPincode = async (pin: string, cityName?: string) => {
@@ -1078,10 +1085,11 @@ export default function TelecallerLeadDetailScreen({
         .single();
 
       if (leadError) throw leadError;
-      setLead(leadData);
+      const safeLead = redactLeadSourceForTelecaller(leadData as Record<string, any>);
+      setLead(safeLead);
       const meta =
-        leadData?.coupon_meta && typeof leadData.coupon_meta === 'object'
-          ? leadData.coupon_meta
+        safeLead?.coupon_meta && typeof safeLead.coupon_meta === 'object'
+          ? safeLead.coupon_meta
           : {};
       setCouponMeta(meta);
       setProfileHistory(Array.isArray(meta.profile_history) ? meta.profile_history : []);
@@ -1655,12 +1663,12 @@ export default function TelecallerLeadDetailScreen({
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <View style={[styles.statIconWrap, { backgroundColor: COLORS.blue + '15' }]}>
-            <Icon name="source-branch" size={18} color={COLORS.blue} />
+            <Icon name="location-on" size={18} color={COLORS.blue} />
           </View>
           <Text style={styles.statValue} numberOfLines={2}>
-            {formatLeadSource(lead.lead_source || lead.created_from)}
+            {lead.city || '—'}
           </Text>
-          <Text style={styles.statLabel}>Source</Text>
+          <Text style={styles.statLabel}>City</Text>
         </View>
       </View>
 
@@ -2931,17 +2939,6 @@ function formatCallLogLabel(
   if (out === 'INFO_COLLECTED') return 'Interested';
   if (status === 'ANSWERED') return 'Connected';
   return formatStatusLabel(callStatus);
-}
-
-function formatLeadSource(raw: string | null | undefined): string {
-  const v = String(raw || 'N/A').trim();
-  if (/whatsapp_meta|instagram ads|facebook ads|meta ads/i.test(v)) return v.replace(/_/g, ' ');
-  if (/whatsapp/i.test(v)) return 'WhatsApp';
-  if (/telecaller_crm/i.test(v)) return 'CRM Book';
-  if (/telecaller/i.test(v)) return 'Telecaller';
-  if (/mobile_app|app booking/i.test(v)) return 'App';
-  if (/^web$/i.test(v) || /website/i.test(v)) return 'Website';
-  return v.replace(/_/g, ' ');
 }
 
 function formatPaymentMode(raw: string | null | undefined): string {

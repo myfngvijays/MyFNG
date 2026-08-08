@@ -180,7 +180,7 @@ export default function EnquiryLeadDetailPage() {
               {lead.lead_number || 'Enquiry Lead'}
             </h1>
             <p className="text-xs sm:text-sm text-gray-600">
-              {lead.lead_type} • {lead.lead_status} • {lead.lead_source}
+              {lead.lead_type} • {lead.lead_status}
             </p>
           </div>
         </div>

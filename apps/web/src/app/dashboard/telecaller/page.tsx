@@ -8,8 +8,11 @@ import {
   CRM_DATE_PRESETS,
   resolveCrmDateRange,
   type CrmDatePreset,
-  istYmd,
 } from '@/lib/telecaller/crmDateRange';
+import {
+  loadTelecallerCrmFilterPrefs,
+  saveTelecallerCrmFilterPrefs,
+} from '@/lib/telecaller/crmFilterPrefs';
 import {
   Phone,
   Calendar,
@@ -24,10 +27,16 @@ import {
 
 type Kpis = {
   new_leads?: number;
+  incomplete?: number;
+  interested?: number;
+  will_visit?: number;
+  booking_confirmed?: number;
+  in_service?: number;
+  service_done?: number;
+  lost?: number;
   callbacks?: number;
   followups_today?: number;
   booked?: number;
-  incomplete?: number;
   rejected?: number;
   today_calls?: number;
   answered_calls?: number;
@@ -86,10 +95,25 @@ export default function TelecallerCrmHomePage() {
   const [trend, setTrend] = useState<TrendRow[]>([]);
   const [profileName, setProfileName] = useState('Telecaller');
   const [punchedIn, setPunchedIn] = useState(false);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>(
+    () => loadTelecallerCrmFilterPrefs().datePreset,
+  );
+  const [customStart, setCustomStart] = useState(
+    () => loadTelecallerCrmFilterPrefs().customStart,
+  );
+  const [customEnd, setCustomEnd] = useState(() => loadTelecallerCrmFilterPrefs().customEnd);
   const [dateOpen, setDateOpen] = useState(false);
+
+  const persistDate = (next: {
+    datePreset?: CrmDatePreset;
+    customStart?: string;
+    customEnd?: string;
+  }) => {
+    if (next.datePreset) setDatePreset(next.datePreset);
+    if (next.customStart) setCustomStart(next.customStart);
+    if (next.customEnd) setCustomEnd(next.customEnd);
+    saveTelecallerCrmFilterPrefs(next);
+  };
 
   const dateRange = useMemo(
     () => resolveCrmDateRange(datePreset, customStart, customEnd),
@@ -124,13 +148,16 @@ export default function TelecallerCrmHomePage() {
     void load();
   }, [load]);
 
+  // Same labels / filters as Leads status dropdown (no "Rejected")
   const kpiCards = [
-    { label: 'New', value: kpis.new_leads, color: '#004AAD', filter: 'new' },
-    { label: 'Callbacks', value: kpis.callbacks, color: '#F59E0B', filter: 'callback' },
-    { label: 'Follow-ups', value: kpis.followups_today, color: '#6366F1', filter: 'follow_up' },
-    { label: 'Booked', value: kpis.booked, color: '#10B981', filter: 'booked' },
-    { label: 'Incomplete', value: kpis.incomplete, color: '#F59E0B', filter: 'incomplete' },
-    { label: 'Rejected', value: kpis.rejected, color: '#EF4444', filter: 'rejected' },
+    { label: 'New', value: kpis.new_leads, color: '#475569', filter: 'new' },
+    { label: 'Incomplete', value: kpis.incomplete, color: '#B45309', filter: 'incomplete' },
+    { label: 'Interested', value: kpis.interested, color: '#C2410C', filter: 'interested' },
+    { label: 'He will visit', value: kpis.will_visit, color: '#6D28D9', filter: 'will_visit' },
+    { label: 'Booking confirmed', value: kpis.booking_confirmed ?? kpis.booked, color: '#047857', filter: 'booking_confirmed' },
+    { label: 'In Service', value: kpis.in_service, color: '#1D4ED8', filter: 'in_service' },
+    { label: 'Service Done', value: kpis.service_done, color: '#059669', filter: 'service_done' },
+    { label: 'Lost', value: kpis.lost ?? kpis.rejected, color: '#B91C1C', filter: 'lost' },
   ];
 
   const callTrend = trend.map((t) => ({
@@ -144,12 +171,12 @@ export default function TelecallerCrmHomePage() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="mx-auto max-w-lg space-y-3 pb-8">
-        {/* Header — exact mobile hero */}
+      <div className="w-full max-w-7xl mx-auto space-y-3 sm:space-y-4 pb-8">
+        {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[13px] font-semibold text-slate-500">Advanced CRM</p>
-            <h1 className="text-[22px] font-extrabold text-[#023D95] leading-tight mt-0.5">
+            <h1 className="text-[22px] sm:text-2xl md:text-3xl font-extrabold text-[#023D95] leading-tight mt-0.5">
               {profileName}
             </h1>
           </div>
@@ -165,7 +192,8 @@ export default function TelecallerCrmHomePage() {
           </span>
         </div>
 
-        {/* Date dropdown — mobile style */}
+        {/* Date + Aansh row on desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,280px)_1fr] gap-3 items-start">
         <div className="relative z-20">
           <button
             type="button"
@@ -189,7 +217,7 @@ export default function TelecallerCrmHomePage() {
                   key={p.value}
                   type="button"
                   onClick={() => {
-                    setDatePreset(p.value);
+                    persistDate({ datePreset: p.value });
                     if (p.value !== 'custom') setDateOpen(false);
                   }}
                   className={`w-full flex items-center justify-between px-3.5 py-3 text-[13px] font-semibold border-b border-slate-100 last:border-0 ${
@@ -206,18 +234,19 @@ export default function TelecallerCrmHomePage() {
                     type="date"
                     className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
                     value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
+                    onChange={(e) => persistDate({ customStart: e.target.value, datePreset: 'custom' })}
                   />
                   <span className="text-xs text-slate-400">→</span>
                   <input
                     type="date"
                     className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
                     value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
+                    onChange={(e) => persistDate({ customEnd: e.target.value, datePreset: 'custom' })}
                   />
                   <button
                     type="button"
                     onClick={() => {
+                      persistDate({ datePreset: 'custom', customStart, customEnd });
                       setDateOpen(false);
                       setRefreshing(true);
                       void load();
@@ -232,13 +261,13 @@ export default function TelecallerCrmHomePage() {
           ) : null}
         </div>
 
-        {/* Aansh dialer — same as mobile */}
         <TelecallerAanshBar
           onClaimed={() => {
             setRefreshing(true);
             void load();
           }}
         />
+        </div>
 
         {loading && !refreshing ? (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-slate-500">
@@ -247,50 +276,57 @@ export default function TelecallerCrmHomePage() {
           </div>
         ) : (
           <>
-            {/* KPI grid 2×3 */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* KPI grid — matches CRM lead statuses */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-3">
               {kpiCards.map((k) => (
                 <Link
                   key={k.label}
                   href={`/dashboard/telecaller/leads?filter=${k.filter}`}
-                  className="rounded-xl bg-white py-3 text-center shadow-sm border border-slate-100 hover:border-blue-200 transition"
+                  onClick={() => saveTelecallerCrmFilterPrefs({ statusFilter: k.filter })}
+                  className="rounded-xl bg-white py-3 sm:py-4 text-center shadow-sm border border-slate-100 hover:border-blue-200 transition"
                 >
-                  <div className="text-xl font-extrabold" style={{ color: k.color }}>
+                  <div className="text-xl sm:text-2xl font-extrabold" style={{ color: k.color }}>
                     {k.value ?? 0}
                   </div>
-                  <div className="mt-0.5 text-[11px] font-semibold text-slate-500">{k.label}</div>
+                  <div className="mt-0.5 text-[11px] sm:text-xs font-semibold text-slate-500 leading-tight px-1">
+                    {k.label}
+                  </div>
                 </Link>
               ))}
             </div>
 
-            {/* Calls in range — single card */}
-            <div className="rounded-2xl bg-white p-3.5 shadow-sm border border-slate-100">
-              <h2 className="text-[15px] font-bold text-[#023D95] mb-2.5">Calls in range</h2>
-              <div className="grid grid-cols-3">
-                <div className="text-center">
-                  <div className="text-xl font-extrabold text-[#004AAD]">{kpis.today_calls ?? 0}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xl font-extrabold text-[#004AAD]">
-                    {kpis.answered_calls ?? 0}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+              {/* Calls in range */}
+              <div className="rounded-2xl bg-white p-3.5 sm:p-5 shadow-sm border border-slate-100">
+                <h2 className="text-[15px] font-bold text-[#023D95] mb-2.5">Calls in range</h2>
+                <div className="grid grid-cols-3">
+                  <div className="text-center">
+                    <div className="text-xl sm:text-2xl font-extrabold text-[#004AAD]">
+                      {kpis.today_calls ?? 0}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">Total</div>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Answered</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xl font-extrabold text-emerald-600">
-                    {kpis.answer_rate ?? 0}%
+                  <div className="text-center">
+                    <div className="text-xl sm:text-2xl font-extrabold text-[#004AAD]">
+                      {kpis.answered_calls ?? 0}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">Answered</div>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Answer Rate</div>
+                  <div className="text-center">
+                    <div className="text-xl sm:text-2xl font-extrabold text-emerald-600">
+                      {kpis.answer_rate ?? 0}%
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">Answer Rate</div>
+                  </div>
                 </div>
               </div>
+
+              <SimpleBarChart title="7-Day Call Trend" data={callTrend} color="#004AAD" />
+              <SimpleBarChart title="7-Day Bookings Created" data={bookingTrend} color="#10B981" />
             </div>
 
-            <SimpleBarChart title="7-Day Call Trend" data={callTrend} color="#004AAD" />
-            <SimpleBarChart title="7-Day Bookings Created" data={bookingTrend} color="#10B981" />
-
             <h2 className="text-[15px] font-bold text-[#023D95] pt-1">Quick Actions</h2>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
               {[
                 {
                   href: '/dashboard/telecaller/book?mode=book',

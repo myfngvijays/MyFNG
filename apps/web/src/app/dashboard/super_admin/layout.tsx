@@ -688,6 +688,10 @@ function SuperAdminLayoutInner({
   });
 
   React.useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  React.useEffect(() => {
     let active = true;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -867,14 +871,40 @@ function SuperAdminLayoutInner({
   }
 
   return (
-    <div className={`flex h-screen ${isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : 'bg-gray-50'}`}>
-      {/* Mobile Menu Button */}
-      <button
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg"
+    <div
+      className={`flex min-h-[100dvh] h-[100dvh] overflow-hidden ${
+        isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : 'bg-gray-50'
+      }`}
+      style={{
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+      }}
+    >
+      {/* Mobile top bar */}
+      <header
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-      </button>
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+          <img src="/logo.png" alt="MyFNG" className="h-8 w-auto object-contain" />
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+            aria-label="Logout"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
 
       {/* Sidebar - Desktop */}
       <aside
@@ -889,16 +919,19 @@ function SuperAdminLayoutInner({
         `}
       >
         {/* Header */}
-        <div className="p-6 border-b border-blue-400/30">
-          <div className="flex items-center justify-between">
+        <div className="p-4 border-b border-blue-400/30">
+          <div className="flex items-center justify-between gap-2">
             {sidebarOpen ? (
               <>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-8 h-8 text-yellow-300" />
-                    <h1 className="text-xl font-bold text-white">MyFNG</h1>
+                <div className="min-w-0 flex-1">
+                  <div className="inline-flex items-center rounded-xl bg-white px-3 py-2 shadow-sm">
+                    <img
+                      src="/logo.png"
+                      alt="MyFNG"
+                      className="h-9 w-auto max-w-[140px] object-contain"
+                    />
                   </div>
-                  <p className="text-yellow-200 text-sm mt-1 font-semibold">Super Admin Control Panel</p>
+                  <p className="text-yellow-200 text-sm mt-2 font-semibold">Super Admin Control Panel</p>
                 </div>
                 <button
                   onClick={() => {
@@ -910,14 +943,16 @@ function SuperAdminLayoutInner({
                       setSidebarOpen(true);
                     }
                   }}
-                  className="p-1.5 rounded-lg hover:bg-blue-500/40 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-blue-500/40 transition-colors shrink-0"
                   title={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
                 >
                   {sidebarPinned ? <PanelLeftClose className="w-5 h-5 text-blue-200" /> : <PanelLeftOpen className="w-5 h-5 text-blue-200" />}
                 </button>
               </>
             ) : (
-              <Shield className="w-8 h-8 mx-auto text-yellow-300" />
+              <div className="mx-auto rounded-xl bg-white p-1.5 shadow-sm">
+                <img src="/logo.png" alt="MyFNG" className="h-8 w-8 object-contain" />
+              </div>
             )}
           </div>
         </div>
@@ -1147,14 +1182,18 @@ function SuperAdminLayoutInner({
           />
 
           {/* Mobile Menu */}
-          <aside className="lg:hidden fixed inset-y-0 left-0 w-72 flex flex-col bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white z-40 shadow-2xl">
+          <aside className="lg:hidden fixed inset-y-0 left-0 w-[min(18rem,88vw)] flex flex-col bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white z-40 shadow-2xl overflow-hidden">
             {/* Header */}
-            <div className="p-6 border-b border-blue-400/30">
+            <div
+              className="p-4 sm:p-6 border-b border-blue-400/30"
+              style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
+            >
               <div className="flex items-center gap-2">
-                <Shield className="w-8 h-8 text-yellow-300" />
-                <div>
-                  <h1 className="text-xl font-bold text-white">MyFNG</h1>
-                  <p className="text-yellow-200 text-sm font-semibold">Super Admin Control Panel</p>
+                <div className="inline-flex items-center rounded-xl bg-white px-2.5 py-1.5 shadow-sm">
+                  <img src="/logo.png" alt="MyFNG" className="h-9 w-auto max-w-[130px] object-contain" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-yellow-200 text-sm font-semibold">Super Admin</p>
                 </div>
               </div>
             </div>
@@ -1348,8 +1387,19 @@ function SuperAdminLayoutInner({
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 overflow-auto ${isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : ''}`}>
-        {children}
+      <main
+        className={`flex-1 min-w-0 overflow-x-clip overflow-y-auto ${
+          isSiteSeoPage ? 'bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50/40' : ''
+        }`}
+      >
+        <div
+          className="lg:hidden"
+          style={{ height: 'calc(3.25rem + env(safe-area-inset-top))' }}
+          aria-hidden
+        />
+        <div className="min-w-0 max-w-[100vw] overflow-x-clip pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </main>
     </div>
   );

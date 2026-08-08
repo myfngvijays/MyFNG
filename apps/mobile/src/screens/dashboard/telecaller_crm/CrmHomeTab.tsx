@@ -44,7 +44,7 @@ export default function CrmHomeTab({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<any>(null);
-  const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('today');
+  const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('last_7_days');
   const [customStartLocal, setCustomStartLocal] = useState(istYmd());
   const [customEndLocal, setCustomEndLocal] = useState(istYmd());
   const [dateOpen, setDateOpen] = useState(false);
@@ -206,12 +206,19 @@ export default function CrmHomeTab({
 
       <View style={styles.kpiGrid}>
         {[
-          { label: 'New', value: kpis.new_leads, color: COLORS.primary, filter: 'new' },
-          { label: 'Callbacks', value: kpis.callbacks, color: COLORS.orange, filter: 'callback' },
-          { label: 'Follow-ups', value: kpis.followups_today, color: COLORS.indigo, filter: 'follow_up' },
-          { label: 'Booked', value: kpis.booked, color: COLORS.green, filter: 'booked' },
-          { label: 'Incomplete', value: kpis.incomplete, color: COLORS.warning, filter: 'incomplete' },
-          { label: 'Rejected', value: kpis.rejected, color: COLORS.red, filter: 'rejected' },
+          { label: 'New', value: kpis.new_leads, color: '#475569', filter: 'new' },
+          { label: 'Incomplete', value: kpis.incomplete, color: '#B45309', filter: 'incomplete' },
+          { label: 'Interested', value: kpis.interested, color: '#C2410C', filter: 'interested' },
+          { label: 'He will visit', value: kpis.will_visit, color: '#6D28D9', filter: 'will_visit' },
+          {
+            label: 'Booking confirmed',
+            value: kpis.booking_confirmed ?? kpis.booked,
+            color: '#047857',
+            filter: 'booking_confirmed',
+          },
+          { label: 'In Service', value: kpis.in_service, color: '#1D4ED8', filter: 'in_service' },
+          { label: 'Service Done', value: kpis.service_done, color: '#059669', filter: 'service_done' },
+          { label: 'Lost', value: kpis.lost ?? kpis.rejected, color: '#B91C1C', filter: 'lost' },
         ].map((k) => (
           <TouchableOpacity
             key={k.label}

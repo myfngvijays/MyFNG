@@ -141,6 +141,30 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     checkAuth();
   }, []);
 
+  // Mobile / WebView: drawer overlays content — close on navigate; never push main aside
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setSidebarOpen(false);
+      }
+    } catch {
+      setSidebarOpen(false);
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    const onResize = () => {
+      try {
+        if (window.innerWidth >= 1024) setSidebarOpen(true);
+        else setSidebarOpen(false);
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => {
     if (!eligibleForAansh || loading) return;
     const stored = getStoredAanshSession();
@@ -818,11 +842,16 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
   const menuItems = getMenuItems();
 
+  const headerOffsetClass =
+    'top-[calc(3.5rem+env(safe-area-inset-top))] sm:top-[calc(4rem+env(safe-area-inset-top))]';
+  const mainPadTopClass =
+    'pt-[calc(3.5rem+env(safe-area-inset-top))] sm:pt-[calc(4rem+env(safe-area-inset-top))]';
+
   return (
-    <div className="min-h-screen bg-background-grey">
+    <div className="admin-shell">
       {/* Header */}
-      <header className="bg-white shadow-sm fixed top-0 w-full z-40">
-        <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-2 sm:py-3">
+      <header className="admin-header">
+        <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-2 sm:py-3 gap-2">
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -832,16 +861,16 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
               {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
 
-            <Link href="/" className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <Wrench className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-brand-fng flex-shrink-0" />
-              <span className="text-lg sm:text-xl md:text-2xl font-bold whitespace-nowrap">
-                <span className="text-brand-my">My</span>
-                <span className="text-brand-fng">FNG</span>
-              </span>
+            <Link href={`/dashboard/${role.toLowerCase()}`} className="flex items-center min-w-0">
+              <img
+                src="/logo.png"
+                alt="MyFNG"
+                className="h-8 sm:h-9 md:h-10 w-auto max-w-[140px] sm:max-w-none object-contain"
+              />
             </Link>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4 flex-shrink-0">
             {eligibleForAansh && (
               <button
                 type="button"
@@ -854,7 +883,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             )}
             <NotificationBell />
             
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <div className="text-right hidden md:block">
                 <p className="font-medium text-xs sm:text-sm truncate max-w-[120px]">{userProfile?.full_name}</p>
                 <p className="text-xs text-gray-500 truncate max-w-[120px]">{userProfile?.role?.role_name}</p>
@@ -873,7 +902,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         </div>
       </header>
 
-      {/* Sidebar */}
+      {/* Sidebar — overlay on mobile/WebView; docked on lg+ */}
       <aside
         onMouseEnter={() => {
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(false);
@@ -881,7 +910,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         onMouseLeave={() => {
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(true);
         }}
-        className={`fixed left-0 top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-all duration-700 ease-in-out lg:translate-x-0 w-56 sm:w-64 ${
+        className={`fixed left-0 ${headerOffsetClass} h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] sm:h-[calc(100dvh-4rem-env(safe-area-inset-top))] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-all duration-300 ease-in-out lg:translate-x-0 w-[min(18rem,85vw)] sm:w-64 ${
           sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
         } z-30 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -912,6 +941,13 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                           active={pathname === child.href}
                           collapsed={false}
                           label={child.label}
+                          onNavigate={() => {
+                            try {
+                              if (window.innerWidth < 1024) setSidebarOpen(false);
+                            } catch {
+                              setSidebarOpen(false);
+                            }
+                          }}
                         >
                           {child.label}
                         </NavLink>
@@ -929,6 +965,13 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                   active={pathname === item.href}
                   collapsed={sidebarCollapsed}
                   label={item.label}
+                  onNavigate={() => {
+                    try {
+                      if (window.innerWidth < 1024) setSidebarOpen(false);
+                    } catch {
+                      setSidebarOpen(false);
+                    }
+                  }}
                 >
                   {item.label}
                 </NavLink>
@@ -949,15 +992,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content — fixed icon-rail margin on desktop; expanded labels overlay (no content shift) */}
       <main
-        className={`${
-          sidebarOpen ? 'ml-56 sm:ml-64' : 'ml-0'
-        } ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} pt-14 sm:pt-16 min-h-screen transition-all duration-700`}
+        className={`admin-main ml-0 lg:ml-20 ${mainPadTopClass} min-h-[100dvh] pb-[env(safe-area-inset-bottom)]`}
       >
-        <div className="p-3 sm:p-4 md:p-6">
-          {children}
-        </div>
+        <div className="admin-page">{children}</div>
       </main>
 
       {/* Overlay */}
@@ -965,6 +1004,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         <div
           className="fixed inset-0 bg-black/50 z-20 lg:hidden"
           onClick={() => setSidebarOpen(false)}
+          aria-hidden
         />
       )}
 
@@ -1031,7 +1071,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             type="button"
             onClick={handleOpenWaList}
             title="Open WhatsApp chats"
-            className="fixed bottom-6 right-6 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:scale-[1.03] hover:bg-[#1ebe5c]"
+            className="fixed z-40 inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:scale-[1.03] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))]"
           >
             <MessageCircle className="h-6 w-6" />
             {waUnreadCount > 0 && (
@@ -1073,10 +1113,27 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   );
 }
 
-function NavLink({ href, icon, children, active, collapsed, label }: { href: string; icon: React.ReactNode; children: React.ReactNode; active?: boolean; collapsed?: boolean; label?: string }) {
+function NavLink({
+  href,
+  icon,
+  children,
+  active,
+  collapsed,
+  label,
+  onNavigate,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  active?: boolean;
+  collapsed?: boolean;
+  label?: string;
+  onNavigate?: () => void;
+}) {
   return (
     <Link
       href={href}
+      onClick={() => onNavigate?.()}
       title={collapsed ? (label || (typeof children === 'string' ? children : '')) : undefined}
       aria-label={collapsed ? (label || (typeof children === 'string' ? children : undefined)) : undefined}
       className={`flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${

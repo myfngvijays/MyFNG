@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
@@ -20,6 +20,7 @@ import {
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
+import { leadStatusCardColors } from '@/lib/telecaller/leadDisplayStatus';
 
 type ServiceLead = Record<string, any>;
 type CsvRow = Record<string, string>;
@@ -48,6 +49,95 @@ const EDIT_LEAD_SOURCES = [
   'WhatsApp MISA AI',
   'AI Chatbot',
 ] as const;
+
+/** Core list cols default on; detail-only fields default off — toggle via Columns menu. */
+const BOOKINGS_TABLE_COLUMNS = [
+  { key: 'leadNumber', label: 'Lead #', group: 'Core', onByDefault: true, width: 100 },
+  { key: 'source', label: 'Source', group: 'Core', onByDefault: true, width: 150 },
+  { key: 'assignee', label: 'Assignee', group: 'Core', onByDefault: true, width: 140 },
+  { key: 'tcUpdate', label: 'TC Update', group: 'Core', onByDefault: true, width: 180 },
+  { key: 'customer', label: 'Customer', group: 'Core', onByDefault: true, width: 180 },
+  { key: 'phone', label: 'Phone', group: 'Core', onByDefault: true, width: 120 },
+  { key: 'message', label: 'Message', group: 'Core', onByDefault: true, width: 220 },
+  { key: 'leadsCount', label: 'Leads #', group: 'Core', onByDefault: true, width: 90 },
+  { key: 'vehicle', label: 'Vehicle', group: 'Core', onByDefault: true, width: 110 },
+  { key: 'city', label: 'City', group: 'Core', onByDefault: true, width: 100 },
+  { key: 'service', label: 'Service', group: 'Core', onByDefault: true, width: 180 },
+  { key: 'utmCampaign', label: 'UTM Campaign', group: 'Core', onByDefault: true, width: 130 },
+  { key: 'discount', label: 'Discount', group: 'Core', onByDefault: true, width: 100 },
+  { key: 'status', label: 'Status', group: 'Core', onByDefault: true, width: 140 },
+  { key: 'amount', label: 'Amount', group: 'Core', onByDefault: true, width: 100 },
+  { key: 'date', label: 'Date', group: 'Core', onByDefault: true, width: 150 },
+  // Detail-panel fields (optional)
+  { key: 'leadType', label: 'Lead Type', group: 'Lead', onByDefault: false, width: 110 },
+  { key: 'priority', label: 'Priority', group: 'Lead', onByDefault: false, width: 100 },
+  { key: 'createdFrom', label: 'Created From', group: 'Lead', onByDefault: false, width: 130 },
+  { key: 'email', label: 'Email', group: 'Customer', onByDefault: false, width: 180 },
+  { key: 'address', label: 'Address', group: 'Customer', onByDefault: false, width: 220 },
+  { key: 'pickupRequired', label: 'Pickup Required', group: 'Customer', onByDefault: false, width: 120 },
+  { key: 'make', label: 'Make', group: 'Vehicle', onByDefault: false, width: 110 },
+  { key: 'model', label: 'Model', group: 'Vehicle', onByDefault: false, width: 120 },
+  { key: 'variant', label: 'Variant', group: 'Vehicle', onByDefault: false, width: 120 },
+  { key: 'year', label: 'Year', group: 'Vehicle', onByDefault: false, width: 80 },
+  { key: 'fuelType', label: 'Fuel Type', group: 'Vehicle', onByDefault: false, width: 100 },
+  { key: 'odometer', label: 'Odometer', group: 'Vehicle', onByDefault: false, width: 100 },
+  { key: 'serviceType', label: 'Service Type', group: 'Service', onByDefault: false, width: 130 },
+  { key: 'preferredDate', label: 'Preferred Date', group: 'Service', onByDefault: false, width: 120 },
+  { key: 'preferredTime', label: 'Preferred Time', group: 'Service', onByDefault: false, width: 120 },
+  { key: 'preferredSlot', label: 'Preferred Slot', group: 'Service', onByDefault: false, width: 150 },
+  { key: 'problemDescription', label: 'Problem', group: 'Service', onByDefault: false, width: 200 },
+  { key: 'notes', label: 'Notes', group: 'Service', onByDefault: false, width: 200 },
+  { key: 'utmSource', label: 'UTM Source', group: 'Campaign', onByDefault: false, width: 120 },
+  { key: 'utmMedium', label: 'UTM Medium', group: 'Campaign', onByDefault: false, width: 120 },
+  { key: 'utmTerm', label: 'UTM Term', group: 'Campaign', onByDefault: false, width: 120 },
+  { key: 'utmContent', label: 'UTM Content', group: 'Campaign', onByDefault: false, width: 120 },
+  { key: 'estimatedAmount', label: 'Estimated Amt', group: 'Payment', onByDefault: false, width: 110 },
+  { key: 'actualAmount', label: 'Actual Amt', group: 'Payment', onByDefault: false, width: 110 },
+  { key: 'paymentMode', label: 'Payment Mode', group: 'Payment', onByDefault: false, width: 120 },
+  { key: 'paymentStatus', label: 'Payment Status', group: 'Payment', onByDefault: false, width: 130 },
+] as const;
+
+type BookingsTableColumnKey = (typeof BOOKINGS_TABLE_COLUMNS)[number]['key'];
+type BookingsColumnVisibility = Record<BookingsTableColumnKey, boolean>;
+
+const BOOKINGS_COLUMN_GROUPS = ['Core', 'Lead', 'Customer', 'Vehicle', 'Service', 'Campaign', 'Payment'] as const;
+
+const DEFAULT_BOOKINGS_COLUMNS: BookingsColumnVisibility = BOOKINGS_TABLE_COLUMNS.reduce((acc, col) => {
+  acc[col.key] = col.onByDefault;
+  return acc;
+}, {} as BookingsColumnVisibility);
+
+const BOOKINGS_COLUMNS_STORAGE_KEY = 'super_admin_bookings_visible_columns_v2';
+
+function loadBookingsColumnVisibility(): BookingsColumnVisibility {
+  if (typeof window === 'undefined') return { ...DEFAULT_BOOKINGS_COLUMNS };
+  try {
+    const raw =
+      window.localStorage.getItem(BOOKINGS_COLUMNS_STORAGE_KEY) ||
+      window.localStorage.getItem('super_admin_bookings_visible_columns_v1');
+    if (!raw) return { ...DEFAULT_BOOKINGS_COLUMNS };
+    const parsed = JSON.parse(raw) as Partial<BookingsColumnVisibility>;
+    const next = { ...DEFAULT_BOOKINGS_COLUMNS };
+    for (const col of BOOKINGS_TABLE_COLUMNS) {
+      if (typeof parsed[col.key] === 'boolean') next[col.key] = parsed[col.key]!;
+    }
+    // Keep at least one data column visible
+    if (!BOOKINGS_TABLE_COLUMNS.some((c) => next[c.key])) {
+      next.leadNumber = true;
+    }
+    return next;
+  } catch {
+    return { ...DEFAULT_BOOKINGS_COLUMNS };
+  }
+}
+
+function leadAddressText(lead: Record<string, any>) {
+  return String(lead.customer_address || lead.address || lead.pickup_address || '').trim();
+}
+
+function leadUtmValue(lead: Record<string, any>, key: (typeof UTM_KEYS)[number]) {
+  return String(getLeadUtmParams(lead)[key] || '').trim();
+}
 
 function leadStatusSelectClass(status?: string | null) {
   const s = String(status || 'NEW').toUpperCase();
@@ -174,13 +264,15 @@ function SourceBadge({ lead }: { lead: Record<string, any> }) {
 
   const kind = theme.source_badge_kind;
   const label = theme.source_badge_label || lead.lead_source || lead.booking_source_label || 'Other';
+  const title = theme.source_badge_title || label;
   const styles = theme.source_badge_class || 'bg-gray-100 text-gray-700';
-  const inline = SOURCE_KIND_INLINE[kind] || SOURCE_KIND_INLINE.other;
+  const inline = theme.source_badge_style || SOURCE_KIND_INLINE[kind] || SOURCE_KIND_INLINE.other;
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${styles}`}
       style={inline}
+      title={title}
     >
       <SourceBadgeIcon kind={kind} />
       {label}
@@ -513,6 +605,264 @@ function formatDetailScalar(value: unknown): React.ReactNode {
   return String(value);
 }
 
+type ProfileHistoryItem = {
+  at?: string;
+  summary?: string;
+  remark?: string | null;
+  status?: string | null;
+  event?: string | null;
+  previous_status?: string | null;
+  previous_label?: string | null;
+  workshop_name?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+  lost_reason?: string | null;
+};
+
+function getLeadCouponMeta(lead: Record<string, any>) {
+  return lead?.coupon_meta && typeof lead.coupon_meta === 'object' && !Array.isArray(lead.coupon_meta)
+    ? (lead.coupon_meta as Record<string, unknown>)
+    : {};
+}
+
+function getProfileHistory(lead: Record<string, any>): ProfileHistoryItem[] {
+  const meta = getLeadCouponMeta(lead);
+  return Array.isArray(meta.profile_history) ? (meta.profile_history as ProfileHistoryItem[]) : [];
+}
+
+function prettifyDisposition(value?: string | null) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  return text.replace(/_/g, ' ');
+}
+
+/** Disposition chip colors — same palette as telecaller CRM (Lost red, Will visit violet, …). */
+function dispositionBadgeStyle(statusLabel?: string | null) {
+  const c = leadStatusCardColors(String(statusLabel || ''));
+  return {
+    backgroundColor: c.badgeBg,
+    color: c.badgeText,
+    boxShadow: `inset 0 0 0 1px ${c.border}`,
+  } as React.CSSProperties;
+}
+
+function getLatestTelecallerUpdate(lead: Record<string, any>) {
+  const meta = getLeadCouponMeta(lead);
+  const history = getProfileHistory(lead);
+  const latest = history[0];
+  const status =
+    prettifyDisposition(
+      (latest?.status as string) ||
+        (meta.last_call_label as string) ||
+        (meta.last_call_result as string) ||
+        null,
+    ) || null;
+  const remark = String(latest?.remark || meta.telecaller_remarks || '').trim() || null;
+  const at = String(latest?.at || meta.last_call_at || '').trim() || null;
+  const summary = String(latest?.summary || '').trim() || null;
+  return { status, remark, at, summary, count: history.length };
+}
+
+function TelecallerUpdateCell({ lead }: { lead: Record<string, any> }) {
+  const latest = getLatestTelecallerUpdate(lead);
+  if (!latest.status && !latest.remark && latest.count === 0) {
+    return <span className="text-gray-300">—</span>;
+  }
+  return (
+    <div className="min-w-[160px] max-w-[220px]" title={[latest.status, latest.remark, latest.at ? formatDateTime(latest.at) : ''].filter(Boolean).join(' · ')}>
+      {latest.status ? (
+        <span
+          className="inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          style={dispositionBadgeStyle(latest.status)}
+        >
+          {latest.status}
+        </span>
+      ) : null}
+      {latest.remark ? (
+        <p className="mt-1 truncate text-xs text-gray-600">{latest.remark}</p>
+      ) : latest.summary ? (
+        <p className="mt-1 truncate text-xs text-gray-500">{latest.summary}</p>
+      ) : null}
+      {latest.count > 1 ? (
+        <p className="mt-0.5 text-[10px] font-medium text-gray-400">{latest.count} updates</p>
+      ) : null}
+    </div>
+  );
+}
+
+function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
+  const leadId = String(item?.id || '').trim();
+  const couponMeta = getLeadCouponMeta(item);
+  const profileHistory = getProfileHistory(item);
+  const [callLogs, setCallLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    setLoadingLogs(true);
+    fetch(`/api/telecaller/calls/${encodeURIComponent(leadId)}`)
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && Array.isArray(json?.call_logs)) {
+          setCallLogs(json.call_logs);
+        }
+      })
+      .catch(() => {
+        /* ignore — profile_history still shows */
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLogs(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
+
+  const latestLabel = prettifyDisposition(
+    (couponMeta.last_call_label as string) || (couponMeta.last_call_result as string) || null,
+  );
+  const latestRemark = String(couponMeta.telecaller_remarks || '').trim() || null;
+  const hasAny =
+    profileHistory.length > 0 ||
+    callLogs.length > 0 ||
+    Boolean(latestLabel) ||
+    Boolean(latestRemark);
+
+  return (
+    <section className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
+      <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-teal-900">
+        <History className="h-4 w-4 shrink-0" />
+        Telecaller History
+        {profileHistory.length > 0 ? (
+          <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
+            {profileHistory.length}
+          </span>
+        ) : null}
+      </p>
+
+      {(latestLabel || latestRemark || couponMeta.last_call_at) && (
+        <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+          <DetailFieldCard label="Latest Status" value={latestLabel || '-'} />
+          <DetailFieldCard label="Latest Remark" value={latestRemark || '-'} />
+          <DetailFieldCard
+            label="Last Activity"
+            value={formatDateTime(String(couponMeta.last_call_at || profileHistory[0]?.at || '') || null)}
+          />
+        </div>
+      )}
+
+      {!hasAny && !loadingLogs ? (
+        <p className="text-sm text-gray-500">No telecaller status or remarks logged for this lead yet.</p>
+      ) : null}
+
+      {profileHistory.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">Update timeline</p>
+          <ol className="space-y-2">
+            {profileHistory.map((entry, index) => {
+              const status = prettifyDisposition(entry.status || entry.previous_label || null);
+              const key = `${entry.at || 'row'}-${index}`;
+              return (
+                <li
+                  key={key}
+                  className="rounded-lg border border-teal-100 bg-white px-3 py-2.5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    {status ? (
+                      <span
+                        className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={dispositionBadgeStyle(status)}
+                      >
+                        {status}
+                      </span>
+                    ) : null}
+                    {entry.event ? (
+                      <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                        {String(entry.event).replace(/_/g, ' ')}
+                      </span>
+                    ) : null}
+                    <span className="text-[11px] text-gray-400">{formatDateTime(entry.at || null)}</span>
+                  </div>
+                  {entry.summary ? (
+                    <p className="mt-1 text-sm font-medium text-gray-900">{entry.summary}</p>
+                  ) : null}
+                  {entry.remark ? (
+                    <p className="mt-1 text-sm text-gray-700">
+                      <span className="font-semibold text-gray-500">Remark:</span> {entry.remark}
+                    </p>
+                  ) : null}
+                  {(entry.workshop_name || entry.city || entry.pincode || entry.lost_reason) && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      {[
+                        entry.workshop_name ? `Workshop: ${entry.workshop_name}` : null,
+                        entry.city ? `City: ${entry.city}` : null,
+                        entry.pincode ? `Pincode: ${entry.pincode}` : null,
+                        entry.lost_reason ? `Lost reason: ${entry.lost_reason}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ) : null}
+
+      <div className="mt-4">
+        <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-teal-800">
+          Call logs
+          {loadingLogs ? <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" /> : null}
+          {!loadingLogs && callLogs.length > 0 ? (
+            <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
+              {callLogs.length}
+            </span>
+          ) : null}
+        </p>
+        {!loadingLogs && callLogs.length === 0 ? (
+          <p className="text-sm text-gray-500">No call logs for this lead.</p>
+        ) : (
+          <ol className="space-y-2">
+            {callLogs.map((log) => {
+              const telecallerName =
+                log?.telecaller?.full_name || log?.telecaller_name || null;
+              return (
+                <li
+                  key={String(log.id || `${log.created_at}-${log.notes}`)}
+                  className="rounded-lg border border-teal-100 bg-white px-3 py-2.5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    {log.call_status ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                        {String(log.call_status).replace(/_/g, ' ')}
+                      </span>
+                    ) : null}
+                    {log.outcome ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">
+                        {String(log.outcome).replace(/_/g, ' ')}
+                      </span>
+                    ) : null}
+                    {telecallerName ? (
+                      <span className="font-medium text-teal-800">{telecallerName}</span>
+                    ) : null}
+                    <span className="text-gray-400">{formatDateTime(log.created_at)}</span>
+                  </div>
+                  {log.notes ? <p className="mt-1 text-sm text-gray-700">{log.notes}</p> : null}
+                  {log.customer_response ? (
+                    <p className="mt-1 text-xs text-gray-500">Response: {log.customer_response}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
   const meta = item.meta && typeof item.meta === 'object' ? (item.meta as Record<string, unknown>) : {};
   const serviceLabel = getServiceLabel(item);
@@ -561,6 +911,8 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
   return (
     <div className="space-y-4">
       <LeadTrackingSection item={item} />
+
+      <TelecallerHistorySection item={item} />
 
       <DetailSection title="Lead Overview" icon={Hash} className="border-slate-200 bg-slate-50/80">
         <DetailFieldCard label="Lead Number" value={item.lead_number} />
@@ -878,6 +1230,9 @@ export default function SuperAdminBookingsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [visibleColumns, setVisibleColumns] = useState<BookingsColumnVisibility>(DEFAULT_BOOKINGS_COLUMNS);
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const columnsMenuRef = useRef<HTMLDivElement>(null);
 
   // CSV upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1106,6 +1461,48 @@ export default function SuperAdminBookingsPage() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    setVisibleColumns(loadBookingsColumnVisibility());
+  }, []);
+
+  useEffect(() => {
+    if (!columnsMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!columnsMenuRef.current?.contains(event.target as Node)) {
+        setColumnsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [columnsMenuOpen]);
+
+  const toggleTableColumn = (key: BookingsTableColumnKey) => {
+    setVisibleColumns((prev) => {
+      const turningOff = prev[key];
+      if (turningOff && BOOKINGS_TABLE_COLUMNS.filter((c) => prev[c.key]).length <= 1) {
+        toast.error('Keep at least one column visible');
+        return prev;
+      }
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(BOOKINGS_COLUMNS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+  };
+
+  const showCol = (key: BookingsTableColumnKey) => visibleColumns[key];
+
+  const tableMinWidthPx = useMemo(() => {
+    const dataWidth = BOOKINGS_TABLE_COLUMNS.reduce(
+      (sum, col) => sum + (visibleColumns[col.key] ? col.width : 0),
+      0,
+    );
+    return Math.max(640, 120 + dataWidth); // select + actions always present
+  }, [visibleColumns]);
 
   const hasActiveLeadFilters =
     sourceFilter !== 'ALL' ||
@@ -1563,15 +1960,104 @@ export default function SuperAdminBookingsPage() {
               )}
 
               {!showUploadCrm ? (
-                <button
-                  type="button"
-                  onClick={() => void handleExport()}
-                  disabled={loading || exporting || (datePreset === 'custom' && (!customStart || !customEnd))}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 shrink-0"
-                >
-                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {exporting ? 'Exporting...' : 'Export CSV'}
-                </button>
+                <>
+                  <div className="relative shrink-0" ref={columnsMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setColumnsMenuOpen((open) => !open)}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                      aria-expanded={columnsMenuOpen}
+                      aria-haspopup="true"
+                    >
+                      <Columns3 className="h-4 w-4" />
+                      Columns
+                      <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {columnsMenuOpen ? (
+                      <div className="absolute right-0 z-40 mt-2 w-72 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Show columns</p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="text-[11px] font-semibold text-gray-500 hover:text-gray-800"
+                              onClick={() => {
+                                const next = { ...visibleColumns };
+                                for (const col of BOOKINGS_TABLE_COLUMNS) {
+                                  if (!col.onByDefault) next[col.key] = true;
+                                }
+                                setVisibleColumns(next);
+                                try {
+                                  window.localStorage.setItem(BOOKINGS_COLUMNS_STORAGE_KEY, JSON.stringify(next));
+                                } catch {
+                                  /* ignore */
+                                }
+                              }}
+                            >
+                              All detail
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] font-semibold text-blue-600 hover:text-blue-800"
+                              onClick={() => {
+                                const next = { ...DEFAULT_BOOKINGS_COLUMNS };
+                                setVisibleColumns(next);
+                                try {
+                                  window.localStorage.setItem(BOOKINGS_COLUMNS_STORAGE_KEY, JSON.stringify(next));
+                                } catch {
+                                  /* ignore */
+                                }
+                              }}
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                        <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                          {BOOKINGS_COLUMN_GROUPS.map((group) => {
+                            const cols = BOOKINGS_TABLE_COLUMNS.filter((col) => col.group === group);
+                            if (cols.length === 0) return null;
+                            return (
+                              <div key={group}>
+                                <p className="mb-1 px-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                                  {group === 'Core' ? 'Table' : group}
+                                </p>
+                                <div className="space-y-0.5">
+                                  {cols.map((col) => (
+                                    <label
+                                      key={col.key}
+                                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={visibleColumns[col.key]}
+                                        onChange={() => toggleTableColumn(col.key)}
+                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      {col.label}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-[10px] text-gray-400">
+                          Detail fields match lead click view. Select + Actions always stay visible.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleExport()}
+                    disabled={loading || exporting || (datePreset === 'custom' && (!customStart || !customEnd))}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+                  >
+                    {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {exporting ? 'Exporting...' : 'Export CSV'}
+                  </button>
+                </>
               ) : null}
 
               <AdminPageRefresh
@@ -2016,7 +2502,7 @@ export default function SuperAdminBookingsPage() {
         ) : (
           <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
-                <table className="w-full min-w-[1680px]">
+                <table className="w-full" style={{ minWidth: tableMinWidthPx }}>
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
                       <th className="px-3 py-3 w-10">
@@ -2030,23 +2516,52 @@ export default function SuperAdminBookingsPage() {
                           )}
                         </button>
                       </th>
-                      <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Source</th>
-                      <th className="px-4 py-3 whitespace-nowrap min-w-[140px]">Assignee</th>
-                      <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Phone</th>
-                      <th className="px-4 py-3 min-w-[220px]">Message</th>
-                      <th className="px-4 py-3 whitespace-nowrap" title="How many lead rows exist for this phone (not confirmed bookings count)">
-                        Leads #
-                      </th>
-                      <th className="px-4 py-3 whitespace-nowrap">Vehicle</th>
-                      <th className="px-4 py-3 whitespace-nowrap">City</th>
-                      <th className="px-4 py-3 min-w-[180px]">Service</th>
-                      <th className="px-4 py-3 whitespace-nowrap min-w-[120px]">UTM Campaign</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Discount</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Amount</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Date</th>
+                      {showCol('leadNumber') ? <th className="px-4 py-3 whitespace-nowrap">Lead #</th> : null}
+                      {showCol('source') ? <th className="px-4 py-3 whitespace-nowrap">Source</th> : null}
+                      {showCol('assignee') ? <th className="px-4 py-3 whitespace-nowrap min-w-[140px]">Assignee</th> : null}
+                      {showCol('tcUpdate') ? <th className="px-4 py-3 whitespace-nowrap min-w-[180px]">TC Update</th> : null}
+                      {showCol('customer') ? <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th> : null}
+                      {showCol('phone') ? <th className="px-4 py-3 whitespace-nowrap">Phone</th> : null}
+                      {showCol('message') ? <th className="px-4 py-3 min-w-[220px]">Message</th> : null}
+                      {showCol('leadsCount') ? (
+                        <th className="px-4 py-3 whitespace-nowrap" title="How many lead rows exist for this phone (not confirmed bookings count)">
+                          Leads #
+                        </th>
+                      ) : null}
+                      {showCol('vehicle') ? <th className="px-4 py-3 whitespace-nowrap">Vehicle</th> : null}
+                      {showCol('city') ? <th className="px-4 py-3 whitespace-nowrap">City</th> : null}
+                      {showCol('service') ? <th className="px-4 py-3 min-w-[180px]">Service</th> : null}
+                      {showCol('utmCampaign') ? <th className="px-4 py-3 whitespace-nowrap min-w-[120px]">UTM Campaign</th> : null}
+                      {showCol('discount') ? <th className="px-4 py-3 whitespace-nowrap">Discount</th> : null}
+                      {showCol('status') ? <th className="px-4 py-3 whitespace-nowrap">Status</th> : null}
+                      {showCol('amount') ? <th className="px-4 py-3 whitespace-nowrap">Amount</th> : null}
+                      {showCol('date') ? <th className="px-4 py-3 whitespace-nowrap">Date</th> : null}
+                      {showCol('leadType') ? <th className="px-4 py-3 whitespace-nowrap">Lead Type</th> : null}
+                      {showCol('priority') ? <th className="px-4 py-3 whitespace-nowrap">Priority</th> : null}
+                      {showCol('createdFrom') ? <th className="px-4 py-3 whitespace-nowrap">Created From</th> : null}
+                      {showCol('email') ? <th className="px-4 py-3 whitespace-nowrap">Email</th> : null}
+                      {showCol('address') ? <th className="px-4 py-3 min-w-[180px]">Address</th> : null}
+                      {showCol('pickupRequired') ? <th className="px-4 py-3 whitespace-nowrap">Pickup</th> : null}
+                      {showCol('make') ? <th className="px-4 py-3 whitespace-nowrap">Make</th> : null}
+                      {showCol('model') ? <th className="px-4 py-3 whitespace-nowrap">Model</th> : null}
+                      {showCol('variant') ? <th className="px-4 py-3 whitespace-nowrap">Variant</th> : null}
+                      {showCol('year') ? <th className="px-4 py-3 whitespace-nowrap">Year</th> : null}
+                      {showCol('fuelType') ? <th className="px-4 py-3 whitespace-nowrap">Fuel</th> : null}
+                      {showCol('odometer') ? <th className="px-4 py-3 whitespace-nowrap">Odometer</th> : null}
+                      {showCol('serviceType') ? <th className="px-4 py-3 whitespace-nowrap">Service Type</th> : null}
+                      {showCol('preferredDate') ? <th className="px-4 py-3 whitespace-nowrap">Pref. Date</th> : null}
+                      {showCol('preferredTime') ? <th className="px-4 py-3 whitespace-nowrap">Pref. Time</th> : null}
+                      {showCol('preferredSlot') ? <th className="px-4 py-3 whitespace-nowrap">Pref. Slot</th> : null}
+                      {showCol('problemDescription') ? <th className="px-4 py-3 min-w-[160px]">Problem</th> : null}
+                      {showCol('notes') ? <th className="px-4 py-3 min-w-[160px]">Notes</th> : null}
+                      {showCol('utmSource') ? <th className="px-4 py-3 whitespace-nowrap">UTM Source</th> : null}
+                      {showCol('utmMedium') ? <th className="px-4 py-3 whitespace-nowrap">UTM Medium</th> : null}
+                      {showCol('utmTerm') ? <th className="px-4 py-3 whitespace-nowrap">UTM Term</th> : null}
+                      {showCol('utmContent') ? <th className="px-4 py-3 whitespace-nowrap">UTM Content</th> : null}
+                      {showCol('estimatedAmount') ? <th className="px-4 py-3 whitespace-nowrap">Est. Amt</th> : null}
+                      {showCol('actualAmount') ? <th className="px-4 py-3 whitespace-nowrap">Actual Amt</th> : null}
+                      {showCol('paymentMode') ? <th className="px-4 py-3 whitespace-nowrap">Pay Mode</th> : null}
+                      {showCol('paymentStatus') ? <th className="px-4 py-3 whitespace-nowrap">Pay Status</th> : null}
                       <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
@@ -2086,72 +2601,205 @@ export default function SuperAdminBookingsPage() {
                             </button>
                           ) : null}
                         </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <SourceCell lead={lead} />
-                        </td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">
-                          <AssigneeBadge
-                            name={lead.assigned_telecaller_name}
-                            onClick={(e) => openQuickAssign(lead, e)}
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
-                          <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
-                            {lead.customer_name || '-'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
-                          <span className="block truncate" title={getLeadInboundWhatsAppMessage(lead) || ''}>
-                            {getLeadInboundWhatsAppMessage(lead) || '—'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          {phoneBookingCount > 0 ? (
-                            <button
-                              type="button"
-                              title="View all bookings for this number"
-                              onClick={(e) => openPhoneBookings(lead.customer_phone, e)}
-                              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800 ring-1 ring-slate-200 hover:bg-blue-50 hover:text-blue-800 hover:ring-blue-200 transition"
-                            >
-                              <Hash className="h-3 w-3" />
-                              {phoneBookingCount}
-                            </button>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
-                          {misaServices.length > 1 ? (
-                            <div className="space-y-0.5" title={serviceLabel}>
-                              {misaServices.map((service, index) => (
-                                <div key={`${service.name}-${index}`} className="truncate text-xs leading-4">
-                                  {service.name}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <UtmCampaignCell lead={lead} />
-                        </td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <LeadDiscountBadge lead={lead} />
-                        </td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                          <LeadStatusSelect
-                            value={String(lead.status || 'NEW')}
-                            updating={statusUpdatingId === leadId}
-                            onChange={(status, ev) => void updateLeadStatus(lead, status, ev)}
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(getLeadDisplayAmount(lead))}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(lead.created_at)}</td>
+                        {showCol('leadNumber') ? (
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
+                        ) : null}
+                        {showCol('source') ? (
+                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                            <SourceCell lead={lead} />
+                          </td>
+                        ) : null}
+                        {showCol('assignee') ? (
+                          <td className="px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">
+                            <AssigneeBadge
+                              name={lead.assigned_telecaller_name}
+                              onClick={(e) => openQuickAssign(lead, e)}
+                            />
+                          </td>
+                        ) : null}
+                        {showCol('tcUpdate') ? (
+                          <td className="px-4 py-3 text-sm">
+                            <TelecallerUpdateCell lead={lead} />
+                          </td>
+                        ) : null}
+                        {showCol('customer') ? (
+                          <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
+                            <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
+                              {lead.customer_name || '-'}
+                            </span>
+                          </td>
+                        ) : null}
+                        {showCol('phone') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
+                        ) : null}
+                        {showCol('message') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
+                            <span className="block truncate" title={getLeadInboundWhatsAppMessage(lead) || ''}>
+                              {getLeadInboundWhatsAppMessage(lead) || '—'}
+                            </span>
+                          </td>
+                        ) : null}
+                        {showCol('leadsCount') ? (
+                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                            {phoneBookingCount > 0 ? (
+                              <button
+                                type="button"
+                                title="View all bookings for this number"
+                                onClick={(e) => openPhoneBookings(lead.customer_phone, e)}
+                                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800 ring-1 ring-slate-200 hover:bg-blue-50 hover:text-blue-800 hover:ring-blue-200 transition"
+                              >
+                                <Hash className="h-3 w-3" />
+                                {phoneBookingCount}
+                              </button>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        ) : null}
+                        {showCol('vehicle') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
+                        ) : null}
+                        {showCol('city') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
+                        ) : null}
+                        {showCol('service') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
+                            {misaServices.length > 1 ? (
+                              <div className="space-y-0.5" title={serviceLabel}>
+                                {misaServices.map((service, index) => (
+                                  <div key={`${service.name}-${index}`} className="truncate text-xs leading-4">
+                                    {service.name}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
+                            )}
+                          </td>
+                        ) : null}
+                        {showCol('utmCampaign') ? (
+                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                            <UtmCampaignCell lead={lead} />
+                          </td>
+                        ) : null}
+                        {showCol('discount') ? (
+                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                            <LeadDiscountBadge lead={lead} />
+                          </td>
+                        ) : null}
+                        {showCol('status') ? (
+                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                            <LeadStatusSelect
+                              value={String(lead.status || 'NEW')}
+                              updating={statusUpdatingId === leadId}
+                              onChange={(status, ev) => void updateLeadStatus(lead, status, ev)}
+                            />
+                          </td>
+                        ) : null}
+                        {showCol('amount') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(getLeadDisplayAmount(lead))}</td>
+                        ) : null}
+                        {showCol('date') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(lead.created_at)}</td>
+                        ) : null}
+                        {showCol('leadType') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.lead_type)}</td>
+                        ) : null}
+                        {showCol('priority') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.lead_priority)}</td>
+                        ) : null}
+                        {showCol('createdFrom') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.created_from)}</td>
+                        ) : null}
+                        {showCol('email') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.customer_email)}</td>
+                        ) : null}
+                        {showCol('address') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[240px]">
+                            <span className="block truncate" title={leadAddressText(lead) || ''}>
+                              {leadAddressText(lead) || '—'}
+                            </span>
+                          </td>
+                        ) : null}
+                        {showCol('pickupRequired') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.pickup_required)}</td>
+                        ) : null}
+                        {showCol('make') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_make)}</td>
+                        ) : null}
+                        {showCol('model') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_model)}</td>
+                        ) : null}
+                        {showCol('variant') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_variant)}</td>
+                        ) : null}
+                        {showCol('year') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_year)}</td>
+                        ) : null}
+                        {showCol('fuelType') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                            {formatDetailScalar(lead.vehicle_fuel_type || lead.fuel_type)}
+                          </td>
+                        ) : null}
+                        {showCol('odometer') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                            {formatDetailScalar(lead.odometer_km ?? lead.odometer_reading)}
+                          </td>
+                        ) : null}
+                        {showCol('serviceType') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.service_type)}</td>
+                        ) : null}
+                        {showCol('preferredDate') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.preferred_date)}</td>
+                        ) : null}
+                        {showCol('preferredTime') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                            {formatDetailScalar(lead.preferred_time_slot || lead.preferred_service_slot)}
+                          </td>
+                        ) : null}
+                        {showCol('preferredSlot') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                            {lead.preferred_slot_start ? formatDateTime(lead.preferred_slot_start) : '—'}
+                          </td>
+                        ) : null}
+                        {showCol('problemDescription') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
+                            <span className="block truncate" title={String(lead.problem_description || '')}>
+                              {String(lead.problem_description || '').trim() || '—'}
+                            </span>
+                          </td>
+                        ) : null}
+                        {showCol('notes') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
+                            <span className="block truncate" title={String(lead.description || '')}>
+                              {String(lead.description || '').trim() || '—'}
+                            </span>
+                          </td>
+                        ) : null}
+                        {showCol('utmSource') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_source') || '—'}</td>
+                        ) : null}
+                        {showCol('utmMedium') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_medium') || '—'}</td>
+                        ) : null}
+                        {showCol('utmTerm') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_term') || '—'}</td>
+                        ) : null}
+                        {showCol('utmContent') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_content') || '—'}</td>
+                        ) : null}
+                        {showCol('estimatedAmount') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(lead.estimated_amount)}</td>
+                        ) : null}
+                        {showCol('actualAmount') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(lead.actual_amount)}</td>
+                        ) : null}
+                        {showCol('paymentMode') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.payment_mode)}</td>
+                        ) : null}
+                        {showCol('paymentStatus') ? (
+                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.payment_status)}</td>
+                        ) : null}
                         <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1">
                             <button
@@ -2276,6 +2924,10 @@ export default function SuperAdminBookingsPage() {
                       name={item.assigned_telecaller_name}
                       onClick={(e) => openQuickAssign(item, e)}
                     />
+                  </div>
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-1">Telecaller update</p>
+                    <TelecallerUpdateCell lead={item} />
                   </div>
                   {item.id ? (
                     <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">

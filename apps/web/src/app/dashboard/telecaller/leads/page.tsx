@@ -8,13 +8,16 @@ import {
   CRM_DATE_PRESETS,
   resolveCrmDateRange,
   type CrmDatePreset,
-  istYmd,
 } from '@/lib/telecaller/crmDateRange';
+import {
+  loadTelecallerCrmFilterPrefs,
+  saveTelecallerCrmFilterPrefs,
+} from '@/lib/telecaller/crmFilterPrefs';
 import {
   LEAD_STATUS_FILTERS,
   LOST_REASON_FILTERS,
   leadDisplayStatus,
-  leadStatusPillClass,
+  leadStatusCardColors,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -23,20 +26,11 @@ import {
   Filter,
   Eye,
   Share2,
+  Pencil,
+  Bell,
   Loader2,
   X,
 } from 'lucide-react';
-
-const SOURCE_OPTIONS = [
-  { value: '', label: 'All sources' },
-  { value: 'WHATSAPP', label: 'WhatsApp' },
-  { value: 'WHATSAPP_META', label: 'Meta Ads (WA)' },
-  { value: 'MOBILE_APP', label: 'App' },
-  { value: 'WEB', label: 'Website' },
-  { value: 'TELECALLER_CRM', label: 'CRM Book' },
-  { value: 'TELECALLER', label: 'Telecaller' },
-  { value: 'ENQUIRY', label: 'Enquiry' },
-];
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -48,27 +42,44 @@ const PRIORITY_OPTIONS = [
 function TelecallerCrmLeadsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const filterParam = searchParams?.get('filter') || 'all';
+  const filterParam = searchParams?.get('filter');
+  const initialPrefs = loadTelecallerCrmFilterPrefs();
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState(filterParam);
+  const [filter, setFilter] = useState(filterParam || initialPrefs.statusFilter || 'all');
   const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
-  const [source, setSource] = useState('');
   const [priority, setPriority] = useState('');
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>(initialPrefs.datePreset);
+  const [customStart, setCustomStart] = useState(initialPrefs.customStart);
+  const [customEnd, setCustomEnd] = useState(initialPrefs.customEnd);
   const [cities, setCities] = useState<string[]>([]);
   const [shareLead, setShareLead] = useState<any>(null);
   const [peers, setPeers] = useState<any[]>([]);
   const [sharing, setSharing] = useState(false);
 
+  const persistDate = (next: {
+    datePreset?: CrmDatePreset;
+    customStart?: string;
+    customEnd?: string;
+  }) => {
+    if (next.datePreset) setDatePreset(next.datePreset);
+    if (next.customStart) setCustomStart(next.customStart);
+    if (next.customEnd) setCustomEnd(next.customEnd);
+    saveTelecallerCrmFilterPrefs(next);
+  };
+
   useEffect(() => {
-    setFilter(filterParam);
+    if (filterParam) {
+      setFilter(filterParam);
+      saveTelecallerCrmFilterPrefs({ statusFilter: filterParam });
+      return;
+    }
+    const saved = loadTelecallerCrmFilterPrefs().statusFilter || 'all';
+    setFilter(saved);
   }, [filterParam]);
 
   useEffect(() => {
@@ -100,7 +111,6 @@ function TelecallerCrmLeadsContent() {
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (q.trim()) params.set('q', q.trim());
       if (city.trim()) params.set('city', city.trim());
-      if (source.trim()) params.set('source', source.trim());
       if (priority.trim()) params.set('priority', priority.trim());
       params.set('from', range.start);
       params.set('to', range.end);
@@ -114,7 +124,7 @@ function TelecallerCrmLeadsContent() {
     } finally {
       setLoading(false);
     }
-  }, [filter, lostReason, q, city, source, priority, datePreset, customStart, customEnd]);
+  }, [filter, lostReason, q, city, priority, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     load();
@@ -158,6 +168,7 @@ function TelecallerCrmLeadsContent() {
 
   const setFilterAndUrl = (id: string) => {
     setFilter(id);
+    saveTelecallerCrmFilterPrefs({ statusFilter: id });
     if (id !== 'lost') setLostReason('');
     const next = new URLSearchParams(searchParams?.toString() || '');
     if (id === 'all') next.delete('filter');
@@ -167,11 +178,11 @@ function TelecallerCrmLeadsContent() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="space-y-5">
+      <div className="w-full max-w-7xl mx-auto space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
-            <h1 className="text-2xl font-extrabold text-[#023D95]">Leads</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
           </div>
           <Link
             href="/dashboard/telecaller/book"
@@ -181,8 +192,8 @@ function TelecallerCrmLeadsContent() {
           </Link>
         </div>
 
-        <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="min-w-[200px] flex-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+          <div className="min-w-0">
             <label className="mb-1 block text-xs font-bold text-slate-500">Status</label>
             <select
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
@@ -196,14 +207,14 @@ function TelecallerCrmLeadsContent() {
               ))}
             </select>
           </div>
-          <div className="min-w-[180px] flex-1">
+          <div className="min-w-0">
             <label className="mb-1 block text-xs font-bold text-slate-500">Date</label>
             <select
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
               value={datePreset}
               onChange={(e) => {
                 const v = e.target.value as CrmDatePreset;
-                setDatePreset(v);
+                persistDate({ datePreset: v });
                 if (v === 'custom') setShowFilters(true);
               }}
             >
@@ -215,7 +226,7 @@ function TelecallerCrmLeadsContent() {
             </select>
           </div>
           {filter === 'lost' ? (
-            <div className="min-w-[220px] flex-1">
+            <div className="min-w-0 sm:col-span-2 lg:col-span-1">
               <label className="mb-1 block text-xs font-bold text-slate-500">Lost reason</label>
               <select
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
@@ -232,8 +243,8 @@ function TelecallerCrmLeadsContent() {
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="relative min-w-[220px] flex-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+          <div className="relative min-w-0 flex-1 max-w-xl">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
@@ -243,20 +254,22 @@ function TelecallerCrmLeadsContent() {
               onKeyDown={(e) => e.key === 'Enter' && load()}
             />
           </div>
-          <button
-            type="button"
-            onClick={() => setShowFilters((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-          >
-            <Filter className="h-4 w-4" /> Filters
-          </button>
-          <button
-            type="button"
-            onClick={load}
-            className="rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
-          >
-            Search
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowFilters((v) => !v)}
+              className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+            >
+              <Filter className="h-4 w-4" /> Filters
+            </button>
+            <button
+              type="button"
+              onClick={load}
+              className="flex-1 sm:flex-none rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
+            >
+              Search
+            </button>
+          </div>
         </div>
 
         {showFilters ? (
@@ -269,7 +282,7 @@ function TelecallerCrmLeadsContent() {
                     type="date"
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                     value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
+                    onChange={(e) => persistDate({ customStart: e.target.value, datePreset: 'custom' })}
                   />
                 </div>
                 <div>
@@ -278,7 +291,7 @@ function TelecallerCrmLeadsContent() {
                     type="date"
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                     value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
+                    onChange={(e) => persistDate({ customEnd: e.target.value, datePreset: 'custom' })}
                   />
                 </div>
               </>
@@ -294,20 +307,6 @@ function TelecallerCrmLeadsContent() {
                 {cities.map((c) => (
                   <option key={c} value={c}>
                     {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-500">Source</label>
-              <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-              >
-                {SOURCE_OPTIONS.map((o) => (
-                  <option key={o.value || 'all'} value={o.value}>
-                    {o.label}
                   </option>
                 ))}
               </select>
@@ -338,25 +337,35 @@ function TelecallerCrmLeadsContent() {
             No leads in this filter / date range
           </div>
         ) : (
-          <div className="space-y-3">
-            {leads.map((lead) => (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {leads.map((lead) => {
+              const tint = leadStatusCardColors(lead);
+              const statusLabel = leadDisplayStatus(lead);
+              const reminder = lead.reminder || null;
+              const reminderAt = reminder?.at || lead.next_follow_up_at || null;
+              const reminderOverdue =
+                Boolean(reminder?.overdue) ||
+                (reminderAt ? new Date(reminderAt).getTime() < Date.now() : false);
+              return (
               <div
                 key={lead.id}
-                className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:border-blue-100"
+                className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md"
+                style={{ backgroundColor: tint.cardBg, borderColor: tint.border }}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-extrabold text-[#023D95]">
                         {lead.lead_number || lead.id?.slice(0, 8)}
                       </span>
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${leadStatusPillClass(lead)}`}
+                        className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                        style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
                       >
-                        {leadDisplayStatus(lead)}
+                        {statusLabel}
                       </span>
                       {lead.lead_priority ? (
-                        <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold text-orange-700 ring-1 ring-orange-200">
                           {lead.lead_priority}
                         </span>
                       ) : null}
@@ -364,44 +373,72 @@ function TelecallerCrmLeadsContent() {
                     <p className="mt-1 text-base font-bold text-slate-900">
                       {lead.customer_name || 'Unknown'}
                     </p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-600">
                       {[lead.vehicle_make, lead.vehicle_model, lead.city]
                         .filter(Boolean)
                         .join(' · ') || '—'}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {lead.created_from || lead.lead_source || '—'}
+                    <p className="mt-1 text-xs text-slate-500">
                       {lead.created_at
-                        ? ` · ${new Date(lead.created_at).toLocaleString('en-IN')}`
-                        : ''}
+                        ? new Date(lead.created_at).toLocaleString('en-IN')
+                        : '—'}
                     </p>
+                    {reminderAt ? (
+                      <div
+                        className={`mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ${
+                          reminderOverdue
+                            ? 'bg-red-50 text-red-700 ring-red-200'
+                            : 'bg-violet-50 text-violet-800 ring-violet-200'
+                        }`}
+                      >
+                        <Bell className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="font-bold">
+                            {reminderOverdue ? 'Overdue reminder' : 'Reminder'}
+                            {reminder?.type ? ` · ${String(reminder.type).replace(/_/g, ' ')}` : ''}
+                          </span>
+                          <span className="block text-[10px] font-medium opacity-90">
+                            {new Date(reminderAt).toLocaleString('en-IN')}
+                            {reminder?.reason ? ` — ${reminder.reason}` : ''}
+                          </span>
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 sm:justify-end shrink-0">
                     {lead.customer_phone ? (
                       <a
                         href={`tel:${lead.customer_phone}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
                       >
                         <Phone className="h-3.5 w-3.5" /> Call
                       </a>
                     ) : null}
                     <Link
                       href={`/dashboard/telecaller/leads/${lead.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-[#004AAD]"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-[#004AAD] ring-1 ring-blue-200"
                     >
                       <Eye className="h-3.5 w-3.5" /> View
+                    </Link>
+                    <Link
+                      href={`/dashboard/telecaller/leads/${lead.id}/edit`}
+                      title="Edit lead"
+                      className="inline-flex items-center justify-center rounded-xl bg-white/80 p-2 text-[#004AAD] ring-1 ring-blue-200"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
                     </Link>
                     <button
                       type="button"
                       onClick={() => openShare(lead)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
                     >
                       <Share2 className="h-3.5 w-3.5" /> Share
                     </button>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

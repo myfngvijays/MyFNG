@@ -1,11 +1,12 @@
 /**
  * Log Telecaller Call API
- * Purpose: Log telecaller call interactions
+ * Purpose: Log telecaller call interactions + sync lead disposition/status
  */
 
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { NextRequest, NextResponse } from 'next/server';
+import { parseCallDisposition } from '@/lib/telecaller/callDisposition';
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       call_status, // ANSWERED, MISSED, BUSY, NO_ANSWER, REJECTED
       call_duration,
       outcome, // LEAD_CREATED, FOLLOW_UP_SCHEDULED, NOT_INTERESTED, etc.
+      activity, // INTERESTED | LOST | BOOKING_CONFIRMED | …
       customer_response,
       notes,
       next_action,
@@ -104,25 +106,99 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to log call' }, { status: 500 });
     }
 
+    // Sync disposition onto service_leads (status + coupon_meta) so UI badge matches call history
+    const disposition = parseCallDisposition({
+      notes,
+      outcome,
+      activity,
+      call_status,
+    });
+    let leadPatch: Record<string, unknown> | null = null;
+    try {
+      const { data: leadRow } = await db
+        .from('service_leads')
+        .select('id, status, total_calls, coupon_meta, customer_phone')
+        .eq('id', lead_id)
+        .maybeSingle();
+
+      if (leadRow) {
+        const prevMeta =
+          leadRow.coupon_meta && typeof leadRow.coupon_meta === 'object'
+            ? (leadRow.coupon_meta as Record<string, unknown>)
+            : {};
+        const totalCalls = Number(leadRow.total_calls || 0) + 1;
+        const patch: Record<string, unknown> = {
+          total_calls: totalCalls,
+          updated_at: now,
+        };
+
+        if (disposition && disposition.result !== 'RINGING') {
+          const historyEntry = {
+            at: now,
+            summary: `Call: ${disposition.label}`,
+            remark: String(notes || '').replace(/^\[[^\]]+\]\s*/, '').trim() || null,
+            status: disposition.result,
+          };
+          const prevHistory = Array.isArray(prevMeta.profile_history)
+            ? prevMeta.profile_history
+            : [];
+          patch.coupon_meta = {
+            ...prevMeta,
+            last_call_status: call_status,
+            last_call_result: disposition.result,
+            last_call_label: disposition.label,
+            last_call_at: now,
+            last_lost_reason: disposition.lostReason,
+            telecaller_remarks:
+              String(notes || '').replace(/^\[[^\]]+\]\s*/, '').trim() ||
+              prevMeta.telecaller_remarks ||
+              null,
+            profile_history: [historyEntry, ...prevHistory].slice(0, 50),
+          };
+          if (disposition.leadStatus) {
+            const current = String(leadRow.status || '').toUpperCase();
+            // Advance from early pipeline statuses; always allow Lost
+            if (
+              disposition.leadStatus === 'REJECTED' ||
+              ['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'ASSIGNED'].includes(current)
+            ) {
+              patch.status = disposition.leadStatus;
+            }
+          }
+        }
+
+        const { error: leadErr } = await db.from('service_leads').update(patch).eq('id', lead_id);
+        if (leadErr) {
+          console.warn('[calls/log] lead disposition sync failed:', leadErr.message);
+        } else {
+          leadPatch = patch;
+        }
+      }
+    } catch (syncErr) {
+      console.warn('[calls/log] lead disposition sync error:', syncErr);
+    }
+
     // Lost / not interested → stop WhatsApp bot mid-flow (no more location/service prompts)
     const outcomeUpper = String(outcome || '').toUpperCase();
     const notesUpper = String(notes || '').toUpperCase();
-    if (
+    const isLost =
+      disposition?.result === 'LOST' ||
       outcomeUpper === 'NOT_INTERESTED' ||
       notesUpper.includes('[LOST') ||
-      notesUpper.includes('LOST ·')
-    ) {
+      notesUpper.includes('LOST ·') ||
+      notesUpper.includes('LOST -');
+    if (isLost) {
       try {
         const { stopWhatsAppBotForLostLead } = await import('@/lib/whatsappAgents/lostLeadGuard');
-        const phone =
-          phone_number ||
-          (
-            await db
-              .from('service_leads')
-              .select('customer_phone')
-              .eq('id', lead_id)
-              .maybeSingle()
-          ).data?.customer_phone;
+        let phone = phone_number || null;
+        if (!phone) {
+          const { data: phoneRow } = await db
+            .from('service_leads')
+            .select('customer_phone')
+            .eq('id', lead_id)
+            .maybeSingle();
+          phone = phoneRow?.customer_phone || null;
+        }
         await stopWhatsAppBotForLostLead(phone);
       } catch (stopErr) {
         console.warn('[calls/log] stop WhatsApp bot on Lost failed:', stopErr);
@@ -133,6 +209,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Call logged successfully',
       call_log: callLog,
+      lead_updated: Boolean(leadPatch),
+      disposition: disposition || null,
     }, { status: 201 });
 
   } catch (error) {

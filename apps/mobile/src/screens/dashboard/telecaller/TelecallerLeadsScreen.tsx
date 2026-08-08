@@ -19,6 +19,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
 import { parseIds } from '../../../lib/parseIds';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
+import { redactLeadSourceForTelecaller } from '../../../lib/redactLeadSource';
 
 export default function TelecallerLeadsScreen({ navigation, route }: any) {
   const { user } = useAuth();
@@ -143,10 +144,10 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         const names = parseIds(lead.service_type_ids)
           .map((id) => map[String(id)])
           .filter(Boolean);
-        return {
+        return redactLeadSourceForTelecaller({
           ...lead,
           service_type_names: names.length > 0 ? names.join(', ') : lead.service_type,
-        };
+        });
       });
 
       setLeads(leadsWithNames);
@@ -297,7 +298,6 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       {item.total_calls > 0 && (
         <View style={styles.footer}>
           <Text style={styles.footerText}>Total Calls: {item.total_calls}</Text>
-          <Text style={styles.footerText}>Source: {item.created_from || 'Unknown'}</Text>
         </View>
       )}
     </View>

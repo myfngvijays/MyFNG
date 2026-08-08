@@ -5,22 +5,94 @@ const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
 const WHATSAPP_BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
 
+/**
+ * Fixed service order (matches System Monitor checks).
+ * Names stay static in the Meta body so each service is on its own line;
+ * variables only carry short status values (Meta forbids newlines in vars and
+ * rejects templates with too many variables vs words — error 2388293).
+ */
+export const HEALTH_ALERT_SERVICE_NAMES = [
+  'PostgreSQL Database',
+  'Supabase Auth',
+  'Supabase Storage',
+  'WhatsApp Business API',
+  'Razorpay Payment Gateway',
+  'Firebase / FCM Admin',
+  'Push Campaigns & Segments',
+  'Push Device Registry',
+  'Email (SMTP)',
+  'Wallet System',
+  'Advance Coupons',
+  'Link Manager',
+  'Universal Link',
+  'RSA Leads',
+  'OpenAI / AI Services',
+  'MISA AI Monitoring',
+  'WhatsApp AI Agents',
+  'Google Maps',
+  'Scheduled Jobs (Cron)',
+  'Feature Cron Secrets',
+  'SSL Certificate',
+  'SARV / Deepcall Telephony',
+] as const;
+
+export const HEALTH_ALERT_SERVICE_SLOTS = HEALTH_ALERT_SERVICE_NAMES.length;
+
+function metaServiceLabel(name: string) {
+  // Keep labels Meta-safe and readable in the approved body text
+  return name.replace(/&/g, 'and');
+}
+
+function buildLinedHealthAlertBody(names: readonly string[]) {
+  const serviceLines = names.map((name, i) => `${metaServiceLabel(name)}: {{${i + 3}}}`);
+  const healthyVar = names.length + 3;
+  const totalVar = names.length + 4;
+  return [
+    'MyFNG System Health Report',
+    '',
+    'Time: {{1}}',
+    'Status: {{2}}',
+    '',
+    'Per-service health status below:',
+    ...serviceLines,
+    '',
+    `Healthy services count: {{${healthyVar}}} of {{${totalVar}}}.`,
+    'Next automated check runs in 3 hours.',
+  ].join('\n');
+}
+
+function buildHealthAlertExampleValues(slotCount: number) {
+  const serviceExamples = Array.from({ length: slotCount }, (_, i) =>
+    i === 8 ? 'DOWN - SMTP not configured' : 'OK'
+  );
+  return ['08/08/2026 4:10 PM', 'CRITICAL', ...serviceExamples, '21', '22'];
+}
+
+function buildHealthAlertVariableKeys(names: readonly string[]) {
+  return [
+    'timestamp',
+    'status',
+    ...names.map((_, i) => `service_${i + 1}`),
+    'healthy_count',
+    'total_count',
+  ];
+}
+
 export const SYSTEM_HEALTH_ALERT_TEMPLATE = {
-  template_name: 'system_health_alert',
-  display_name: 'System Health Alert',
+  template_name: 'system_health_alert_v2',
+  display_name: 'System Health Alert V2',
   language_code: 'en',
   category: 'UTILITY',
-  body_text:
-    'MyFNG System Health Report\n\nTime: {{1}}\nStatus: {{2}}\n\n{{3}}\n\nHealthy: {{4}}/{{5}}\nNext check in 3 hours.',
-  variable_keys: ['timestamp', 'status', 'details', 'healthy_count', 'total_count'],
-  example_values: [
-    '13/07/2026 1:25 AM',
-    'ALL SYSTEMS OPERATIONAL',
-    'All 10 services are healthy.',
-    '10',
-    '10',
-  ],
+  body_text: buildLinedHealthAlertBody(HEALTH_ALERT_SERVICE_NAMES),
+  variable_keys: buildHealthAlertVariableKeys(HEALTH_ALERT_SERVICE_NAMES),
+  example_values: buildHealthAlertExampleValues(HEALTH_ALERT_SERVICE_SLOTS),
 } as const;
+
+export type HealthAlertServiceLine = {
+  name: string;
+  status: 'healthy' | 'degraded' | 'down';
+  message?: string;
+};
 
 export type HealthAlertSummary = {
   timestamp: string;
@@ -28,6 +100,8 @@ export type HealthAlertSummary = {
   healthy: number;
   degraded: number;
   down: number;
+  /** Full per-service list for WhatsApp body (preferred). */
+  services?: HealthAlertServiceLine[];
   downServices: Array<{ name: string; message?: string }>;
   degradedServices: Array<{ name: string }>;
 };
@@ -47,56 +121,109 @@ function truncate(value: string, max = 900) {
   return `${text.slice(0, max - 3)}...`;
 }
 
-export function buildHealthAlertContent(summary: HealthAlertSummary) {
-  const { timestamp, total, healthy, downServices, degradedServices } = summary;
+/** Meta rejects newlines/tabs/>4 spaces inside template body variables (#132018). */
+function sanitizeTemplateParam(value: string, max = 900) {
+  const cleaned = String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/ {5,}/g, '    ')
+    .trim();
+  return truncate(cleaned, max) || '-';
+}
 
-  let statusLabel = 'ALL SYSTEMS OPERATIONAL';
-  let details = `All ${total} services are healthy.`;
+function statusMark(status: HealthAlertServiceLine['status']) {
+  if (status === 'down') return 'DOWN';
+  if (status === 'degraded') return 'WARN';
+  return 'OK';
+}
 
-  if (downServices.length > 0) {
-    statusLabel = 'CRITICAL';
-    details = truncate(
-      `${downServices.length} service(s) DOWN out of ${total}\n` +
-        downServices.map((service, index) => `${index + 1}. ${service.name} — ${service.message || 'Down'}`).join('\n') +
-        (degradedServices.length > 0 ? `\n\nDegraded: ${degradedServices.map((service) => service.name).join(', ')}` : '')
-    );
-  } else if (degradedServices.length > 0) {
-    statusLabel = 'WARNING';
-    details = truncate(
-      `${degradedServices.length} service(s) degraded\nDegraded: ${degradedServices.map((service) => service.name).join(', ')}`
-    );
+/** Short status for Meta vars (service name is already static in template body). */
+function formatServiceStatusOnly(service?: HealthAlertServiceLine) {
+  if (!service) return 'NOT CHECKED';
+  const mark = statusMark(service.status);
+  if (service.status === 'healthy') return mark;
+  const msg = service.message ? ` - ${sanitizeTemplateParam(service.message, 50)}` : '';
+  return sanitizeTemplateParam(`${mark}${msg}`, 80);
+}
+
+function formatServiceLine(service: HealthAlertServiceLine, index: number) {
+  const mark = statusMark(service.status);
+  const name = sanitizeTemplateParam(service.name, 60);
+  const shortMessage =
+    service.status === 'healthy'
+      ? ''
+      : service.message
+        ? ` - ${sanitizeTemplateParam(service.message, 70)}`
+        : '';
+  return `${index + 1}. ${mark} ${name}${shortMessage}`;
+}
+
+function resolveServices(summary: HealthAlertSummary): HealthAlertServiceLine[] {
+  if (Array.isArray(summary.services) && summary.services.length > 0) {
+    return summary.services;
   }
 
+  // Fallback when callers only send down/degraded arrays
+  return [
+    ...summary.downServices.map((service) => ({
+      name: service.name,
+      status: 'down' as const,
+      message: service.message,
+    })),
+    ...summary.degradedServices.map((service) => ({
+      name: service.name,
+      status: 'degraded' as const,
+    })),
+  ];
+}
+
+function buildMultilineServiceDetails(services: HealthAlertServiceLine[]) {
+  if (services.length === 0) return 'No services reported.';
+  return services.map((service, index) => formatServiceLine(service, index)).join('\n');
+}
+
+/** One status param per fixed service name slot (no newlines — Meta #132018). */
+function buildTemplateServiceParams(services: HealthAlertServiceLine[]) {
+  const byName = new Map(services.map((service) => [service.name, service]));
+  return HEALTH_ALERT_SERVICE_NAMES.map((name) => formatServiceStatusOnly(byName.get(name)));
+}
+
+export function buildHealthAlertContent(summary: HealthAlertSummary) {
+  const { timestamp, total, healthy, downServices, degradedServices } = summary;
+  const services = resolveServices(summary);
+
+  let statusLabel = 'ALL SYSTEMS OPERATIONAL';
+  if (downServices.length > 0) statusLabel = 'CRITICAL';
+  else if (degradedServices.length > 0) statusLabel = 'WARNING';
+
+  const detailsMultiline =
+    services.length > 0
+      ? buildMultilineServiceDetails(services)
+      : healthy === total && total > 0
+        ? `All ${total} services are healthy.`
+        : 'No services reported.';
+
   const textMessage =
-    downServices.length > 0
-      ? `*MyFNG SYSTEM HEALTH REPORT*\n` +
-        `_${timestamp}_\n\n` +
-        `*Status: CRITICAL*\n` +
-        `${downServices.length} service(s) DOWN out of ${total}\n\n` +
-        `*DOWN Services:*\n` +
-        downServices.map((service, index) => `${index + 1}. ${service.name} — ${service.message || 'Down'}`).join('\n') +
-        (degradedServices.length > 0 ? `\n\n*Degraded:* ${degradedServices.map((service) => service.name).join(', ')}` : '') +
-        `\n\n*Healthy:* ${healthy}/${total}` +
-        `\n\n_Next check in 3 hours_`
-      : degradedServices.length > 0
-        ? `*MyFNG SYSTEM HEALTH REPORT*\n` +
-          `_${timestamp}_\n\n` +
-          `*Status: WARNING*\n` +
-          `${degradedServices.length} service(s) degraded\n\n` +
-          `*Degraded:* ${degradedServices.map((service) => service.name).join(', ')}\n` +
-          `*Healthy:* ${healthy}/${total}` +
-          `\n\n_Next check in 3 hours_`
-        : `*MyFNG SYSTEM HEALTH REPORT*\n` +
-          `_${timestamp}_\n\n` +
-          `*Status: ALL SYSTEMS OPERATIONAL*\n` +
-          `All ${total} services are healthy.\n\n` +
-          `_Next check in 3 hours_`;
+    `*MyFNG SYSTEM HEALTH REPORT*\n` +
+    `_${timestamp}_\n\n` +
+    `*Status: ${statusLabel}*\n\n` +
+    `*Services:*\n` +
+    detailsMultiline +
+    `\n\n*Healthy:* ${healthy}/${total}` +
+    `\n\n_Next check in 3 hours_`;
+
+  const templateParams = [
+    sanitizeTemplateParam(timestamp, 80),
+    sanitizeTemplateParam(statusLabel, 80),
+    ...buildTemplateServiceParams(services),
+    sanitizeTemplateParam(String(healthy), 20),
+    sanitizeTemplateParam(String(total), 20),
+  ];
 
   return {
     statusLabel,
-    details,
+    details: detailsMultiline,
     textMessage,
-    templateParams: [timestamp, statusLabel, details, String(healthy), String(total)],
+    templateParams,
   };
 }
 
@@ -210,9 +337,14 @@ export async function createHealthAlertTemplate(actorId?: string) {
 
   const metaResult = await response.json().catch(() => ({}));
   if (!response.ok) {
+    console.error('Meta health template create failed:', metaResult);
     const msg =
-      String(metaResult?.error?.error_user_msg || metaResult?.error?.message || '').trim() ||
-      'Failed to create template on Meta';
+      String(
+        metaResult?.error?.error_user_msg ||
+          metaResult?.error?.error_user_title ||
+          metaResult?.error?.message ||
+          ''
+      ).trim() || 'Failed to create template on Meta';
     throw new Error(msg);
   }
 
@@ -285,10 +417,11 @@ export async function sendHealthAlertMessage(
 ) {
   const content = buildHealthAlertContent(summary);
   const textMessage = options?.test
-    ? `*MyFNG SYSTEM ALERT - TEST*\n\nThis is a test alert from your System Monitor.\nIf you received this, WhatsApp alerts are working correctly.\n\n_Sent at: ${summary.timestamp}_`
+    ? `*MyFNG SYSTEM ALERT - TEST*\n\n${content.textMessage}`
     : content.textMessage;
 
-  if (options?.forceText || options?.test) {
+  // forceText: plain WhatsApp text (supports real line breaks). Template path is separate.
+  if (options?.forceText) {
     return sendTextMessage(phoneNumber, textMessage);
   }
 

@@ -4,104 +4,26 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { syncRecentWhatsAppInboundLeads } from '@/lib/whatsappAgents/inboundServiceLead';
 import { dedupeLeadsByPhone } from '@/lib/service-lead-reopen';
+import {
+  extractInboundCustomerMessage,
+  redactLeadSourceForTelecaller,
+} from '@/lib/telecaller/redactLeadSource';
+import { healLeadDispositions } from '@/lib/telecaller/healLeadDispositions';
 
 export const dynamic = 'force-dynamic';
 
 function leadMessagePreview(lead: Record<string, any>): string | null {
   const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
-  const fromMeta =
-    String(meta.last_inbound_message || meta.first_message || '').trim() ||
-    String(meta.meta_referral?.headline || '').trim();
+  // Do not use meta_referral / ad headlines — telecallers must not see lead source creatives
+  const fromMeta = extractInboundCustomerMessage(
+    String(meta.last_inbound_message || meta.first_message || '').trim(),
+  );
   if (fromMeta) return fromMeta.slice(0, 180);
-  const fromProblem = String(lead?.problem_description || '').trim();
+  const fromProblem = extractInboundCustomerMessage(lead?.problem_description);
   if (fromProblem) return fromProblem.slice(0, 180);
-  const fromDesc = String(lead?.description || '').trim();
+  const fromDesc = extractInboundCustomerMessage(lead?.description);
   if (fromDesc) return fromDesc.slice(0, 180);
   return null;
-}
-
-const DISPOSITION_TO_LEAD_STATUS: Record<string, string> = {
-  BOOKING_CONFIRMED: 'VALIDATED',
-  IN_SERVICE: 'IN_PROGRESS',
-  SERVICE_DONE: 'COMPLETED',
-  LOST: 'REJECTED',
-};
-
-const DISPOSITION_LABEL: Record<string, string> = {
-  INTERESTED: 'Interested',
-  WILL_VISIT: 'He will visit',
-  BOOKING_CONFIRMED: 'Booking confirmed',
-  IN_SERVICE: 'In Service',
-  SERVICE_DONE: 'Service Done',
-  LOST: 'Lost',
-  RINGING: 'Ringing',
-};
-
-function latestDisposition(meta: any): string | null {
-  const fromResult = String(meta?.last_call_result || '').toUpperCase();
-  if (fromResult && fromResult !== 'RINGING') return fromResult;
-  const hist = Array.isArray(meta?.profile_history) ? meta.profile_history : [];
-  for (const entry of hist) {
-    const s = String(entry?.status || '').toUpperCase();
-    if (s && s !== 'RINGING') return s;
-  }
-  return null;
-}
-
-/** Fix leads where booking/activity was saved in history but status column stayed NEW. */
-async function healLeadStatuses(db: any, rows: any[]) {
-  const patches: Promise<any>[] = [];
-  for (const row of rows || []) {
-    const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
-    const disposition = latestDisposition(meta);
-    if (!disposition) continue;
-    const nextStatus = DISPOSITION_TO_LEAD_STATUS[disposition];
-    if (!nextStatus) continue;
-    const current = String(row?.status || '').toUpperCase();
-    if (current === nextStatus) {
-      // Still ensure display label exists for list badge
-      if (!meta.last_call_result || !meta.last_call_label) {
-        const nextMeta = {
-          ...meta,
-          last_call_result: meta.last_call_result || disposition,
-          last_call_label: meta.last_call_label || DISPOSITION_LABEL[disposition] || disposition,
-        };
-        row.coupon_meta = nextMeta;
-        patches.push(
-          db
-            .from('service_leads')
-            .update({ coupon_meta: nextMeta, updated_at: new Date().toISOString() })
-            .eq('id', row.id),
-        );
-      }
-      continue;
-    }
-    // Only advance from early statuses — don't overwrite ASSIGNED/ACCEPTED etc.
-    if (!['NEW', 'CONTACTED', 'INCOMPLETE', 'PENDING', 'VALIDATED'].includes(current)) continue;
-    if (current === 'VALIDATED' && nextStatus === 'VALIDATED') continue;
-
-    const nextMeta = {
-      ...meta,
-      last_call_result: meta.last_call_result || disposition,
-      last_call_label: meta.last_call_label || DISPOSITION_LABEL[disposition] || disposition,
-      last_call_status: meta.last_call_status || 'ANSWERED',
-    };
-    row.status = nextStatus;
-    row.coupon_meta = nextMeta;
-    patches.push(
-      db
-        .from('service_leads')
-        .update({
-          status: nextStatus,
-          coupon_meta: nextMeta,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id),
-    );
-  }
-  if (patches.length) {
-    await Promise.allSettled(patches);
-  }
 }
 
 /**
@@ -135,7 +57,6 @@ export async function GET(request: NextRequest) {
     const sp = request.nextUrl.searchParams;
     const status = sp.get('status');
     const city = sp.get('city');
-    const source = sp.get('source');
     const priority = sp.get('priority');
     const workshopId = sp.get('workshop_id');
     const from = sp.get('from');
@@ -165,12 +86,7 @@ export async function GET(request: NextRequest) {
 
     if (status) query = query.eq('status', status.toUpperCase());
     if (city) query = query.ilike('city', `%${city}%`);
-    if (source) {
-      // Match either created_from channel or human lead_source label
-      query = query.or(
-        `created_from.ilike.%${source}%,lead_source.ilike.%${source}%`,
-      );
-    }
+    // Intentionally ignore `source` filter — telecallers must not segment by lead origin
     if (priority) query = query.eq('lead_priority', priority.toUpperCase());
     if (workshopId) query = query.eq('workshop_id', workshopId);
     if (from) query = query.gte('created_at', from);
@@ -236,9 +152,6 @@ export async function GET(request: NextRequest) {
 
       if (status) retry = retry.eq('status', status.toUpperCase());
       if (city) retry = retry.ilike('city', `%${city}%`);
-      if (source) {
-        retry = retry.or(`created_from.ilike.%${source}%,lead_source.ilike.%${source}%`);
-      }
       if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       if (from) retry = retry.gte('created_at', from);
@@ -282,26 +195,65 @@ export async function GET(request: NextRequest) {
 
     const rows = data || [];
     try {
-      await healLeadStatuses(db, rows);
+      // Sync Lost/Interested/etc. from coupon_meta + call logs so list badges match reality
+      await healLeadDispositions(db, rows);
     } catch (healErr) {
       console.warn('[crm/leads] status heal skipped', healErr);
     }
 
     const deduped = dedupeLeadsByPhone(rows);
 
+    // Attach next pending reminder / follow-up per lead (for list cards)
+    const reminderByLead = new Map<
+      string,
+      { at: string; reason: string | null; type: string | null }
+    >();
+    try {
+      const ids = deduped.map((r: any) => r.id).filter(Boolean);
+      if (ids.length) {
+        const { data: fus } = await db
+          .from('telecaller_follow_ups')
+          .select('lead_id, scheduled_time, reason, follow_up_type, status')
+          .in('lead_id', ids)
+          .eq('status', 'PENDING')
+          .order('scheduled_time', { ascending: true })
+          .limit(Math.min(ids.length * 3, 400));
+        for (const fu of fus || []) {
+          const lid = String(fu.lead_id || '');
+          if (!lid || reminderByLead.has(lid)) continue;
+          reminderByLead.set(lid, {
+            at: String(fu.scheduled_time || ''),
+            reason: fu.reason ? String(fu.reason) : null,
+            type: fu.follow_up_type ? String(fu.follow_up_type) : null,
+          });
+        }
+      }
+    } catch (remErr) {
+      console.warn('[crm/leads] reminder attach skipped', remErr);
+    }
+
     const leads = deduped.map((row: any) => {
       const hist = Array.isArray(row?.coupon_meta?.profile_history)
         ? row.coupon_meta.profile_history
         : [];
-      return {
+      const preview = leadMessagePreview(row);
+      const isWhatsappInbound = Boolean(row?.coupon_meta?.whatsapp_inbound);
+      const fromFu = reminderByLead.get(String(row.id));
+      const nextAt = fromFu?.at || row.next_follow_up_at || null;
+      return redactLeadSourceForTelecaller({
         ...row,
-        message_preview: leadMessagePreview(row),
+        message_preview: preview,
         history_preview: hist.slice(0, 3),
-        is_whatsapp_lead:
-          /whatsapp|meta|instagram|facebook/i.test(
-            `${row?.created_from || ''} ${row?.lead_source || ''}`,
-          ) || Boolean(row?.coupon_meta?.whatsapp_inbound),
-      };
+        is_whatsapp_lead: isWhatsappInbound,
+        reminder: nextAt
+          ? {
+              at: nextAt,
+              reason: fromFu?.reason || null,
+              type: fromFu?.type || null,
+              overdue: new Date(nextAt).getTime() < Date.now(),
+            }
+          : null,
+      });
     });
 
     return NextResponse.json({ success: true, leads, total: leads.length });

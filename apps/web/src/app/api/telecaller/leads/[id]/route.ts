@@ -10,6 +10,7 @@ import {
   resolveServiceTypeNames,
   serviceLabelFromQuote,
 } from '@/lib/telecaller/crmQuote';
+import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 
 const EDITABLE_STATUSES = new Set([
   'NEW',
@@ -268,8 +269,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           ? body.service_type
           : (existingLead as any).service_type) ||
         null,
-      problem_description: body?.problem_description ?? null,
-      description: body?.description ?? null,
+      // Persist customer text only — strip WhatsApp / Trigger wrappers if present
+      problem_description:
+        body?.problem_description != null
+          ? extractInboundCustomerMessage(body.problem_description) ||
+            String(body.problem_description || '').trim() ||
+            null
+          : null,
+      description:
+        body?.description != null
+          ? extractInboundCustomerMessage(body.description) ||
+            String(body.description || '').trim() ||
+            null
+          : null,
 
       pickup_required: Boolean(body?.pickup_required),
       pickup_address: body?.pickup_address ?? null,

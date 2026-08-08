@@ -37,7 +37,17 @@ export default function RootLayout({
           {children}
           <MobileBottomNav />
         </NotificationProvider>
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-center"
+          containerStyle={{
+            top: 'max(0.75rem, env(safe-area-inset-top))',
+            left: 'env(safe-area-inset-left)',
+            right: 'env(safe-area-inset-right)',
+          }}
+          toastOptions={{
+            className: 'text-sm !max-w-[min(24rem,calc(100vw-2rem))]',
+          }}
+        />
       </body>
     </html>
   );

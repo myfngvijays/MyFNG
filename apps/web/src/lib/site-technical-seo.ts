@@ -274,6 +274,8 @@ export function buildSiteViewportFromSettings(settings: SiteTechnicalSeoRow): Vi
   return {
     width: 'device-width',
     initialScale: 1,
+    maximumScale: 5,
+    viewportFit: 'cover',
     themeColor: settings.theme_color || '#dc2626',
   };
 }

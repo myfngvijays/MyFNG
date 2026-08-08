@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDateDMY } from "@/lib/dateFormat";
+import { formatDateDMY, formatDateTime } from "@/lib/dateFormat";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
+import { apiFetch } from '../../../lib/api';
 import { COLORS } from '../../../constants/theme';
 
 interface UserProfile {
@@ -36,6 +37,9 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loginTotal, setLoginTotal] = useState(0);
+  const [loginRecent, setLoginRecent] = useState<any[]>([]);
+  const [loginLoading, setLoginLoading] = useState(true);
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -45,7 +49,23 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
 
   useEffect(() => {
     fetchProfile();
+    fetchLoginHistory();
   }, []);
+
+  const fetchLoginHistory = async () => {
+    setLoginLoading(true);
+    try {
+      const data = await apiFetch<any>('/api/profile/login-history');
+      setLoginTotal(Number(data?.total || 0));
+      setLoginRecent(Array.isArray(data?.recent) ? data.recent : []);
+    } catch (e) {
+      console.warn('Login history load failed', e);
+      setLoginTotal(0);
+      setLoginRecent([]);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
 
   // Handle hardware back button
   useEffect(() => {
@@ -333,6 +353,27 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
         </View>
       </View>
 
+      <View style={styles.section}>
+        <View style={styles.loginHeader}>
+          <Text style={styles.sectionTitle}>Login History</Text>
+          <Text style={styles.loginTotal}>{loginLoading ? '…' : `${loginTotal} total`}</Text>
+        </View>
+        {loginLoading ? (
+          <ActivityIndicator color={COLORS.primary} />
+        ) : loginRecent.length === 0 ? (
+          <Text style={styles.statsHint}>
+            No login history yet. Run DB migration 305 and login again.
+          </Text>
+        ) : (
+          loginRecent.slice(0, 20).map((row) => (
+            <View key={String(row.id)} style={styles.loginRow}>
+              <Text style={styles.loginTime}>{formatDateTime(row.logged_in_at)}</Text>
+              <Text style={styles.loginPlatform}>{String(row.platform || 'web')}</Text>
+            </View>
+          ))
+        )}
+      </View>
+
       {/* Performance Stats Placeholder */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Stats</Text>
@@ -598,6 +639,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
     fontStyle: 'italic',
+  },
+  loginHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  loginTotal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  loginRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  loginTime: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    flex: 1,
+    paddingRight: 8,
+  },
+  loginPlatform: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textTransform: 'capitalize',
   },
 });
 

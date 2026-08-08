@@ -121,6 +121,10 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
   }, [router, supabase]);
 
   useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     if (
       pathname?.startsWith('/dashboard/app_operations/customer-insights') ||
       pathname?.startsWith('/dashboard/app_operations/workshop-proximity')
@@ -227,20 +231,48 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <button
-        type="button"
-        onClick={() => setMobileOpen(!mobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow"
+    <div
+      className="flex min-h-[100dvh] h-[100dvh] overflow-hidden bg-gray-50"
+      style={{
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+      }}
+    >
+      <header
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          <img src="/logo.png" alt="MyFNG" className="h-8 w-auto object-contain" />
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+            aria-label="Logout"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
 
       <aside className="hidden lg:flex w-72 flex-col bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white shadow-xl">
         <div className="p-6 border-b border-blue-400/30">
+          <img
+            src="/logo.png"
+            alt="MyFNG"
+            className="h-9 w-auto max-w-[140px] object-contain brightness-0 invert mb-2"
+          />
           <p className="text-xs uppercase tracking-wider text-blue-200">MyFNG Admin</p>
           <h1 className="text-xl font-bold mt-1">App Operations</h1>
-          <p className="text-sm text-blue-100 mt-2">{userName}</p>
+          <p className="text-sm text-blue-100 mt-2 truncate">{userName}</p>
         </div>
         {nav}
         <div className="p-4 border-t border-blue-400/30">
@@ -258,12 +290,16 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
       {mobileOpen ? (
         <div className="lg:hidden fixed inset-0 z-40">
           <button type="button" className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-72 h-full flex flex-col bg-gradient-to-b from-blue-600 to-blue-900 text-white shadow-xl">
-            <div className="p-6 border-b border-blue-400/30">
+          <aside
+            className="relative w-[min(18rem,88vw)] h-full flex flex-col bg-gradient-to-b from-blue-600 to-blue-900 text-white shadow-xl overflow-y-auto"
+            style={{ paddingTop: 'env(safe-area-inset-top)' }}
+          >
+            <div className="p-5 border-b border-blue-400/30">
+              <img src="/logo.png" alt="MyFNG" className="h-8 w-auto object-contain brightness-0 invert mb-2" />
               <h1 className="text-lg font-bold">App Operations</h1>
             </div>
             {nav}
-            <div className="p-4 border-t border-blue-400/30">
+            <div className="p-4 border-t border-blue-400/30 mt-auto">
               <button type="button" onClick={handleLogout} className="w-full py-2.5 rounded-lg bg-white/10 text-sm font-semibold">
                 Logout
               </button>
@@ -272,9 +308,15 @@ export default function AppOperationsLayout({ children }: { children: React.Reac
         </div>
       ) : null}
 
-      <main className="flex-1 min-w-0 overflow-auto">
-        <div className="lg:hidden h-14" />
-        {children}
+      <main className="flex-1 min-w-0 overflow-x-clip overflow-y-auto">
+        <div
+          className="lg:hidden"
+          style={{ height: 'calc(3.25rem + env(safe-area-inset-top))' }}
+          aria-hidden
+        />
+        <div className="min-w-0 max-w-[100vw] pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </main>
     </div>
   );

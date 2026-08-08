@@ -170,6 +170,10 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
   source_badge_kind: LeadSourceBadgeKind;
   source_badge_label: string;
   source_badge_class: string;
+  /** Full detail for hover (e.g. WhatsApp business number) — keep badge label short. */
+  source_badge_title?: string;
+  /** Inline colors when Tailwind alone is not enough (e.g. WA line split by inbox). */
+  source_badge_style?: { backgroundColor: string; color: string; boxShadow?: string };
 } {
   const utm = getLeadUtmParams(lead);
   const leadSource = String(lead.lead_source || '').trim();
@@ -238,17 +242,49 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
       lead?.coupon_meta && typeof lead.coupon_meta === 'object'
         ? (lead.coupon_meta as Record<string, unknown>)
         : {};
-    const waBiz = String(meta.wa_business_phone || meta.wa_inbox || '')
-      .replace(/\D/g, '')
-      .slice(-10);
-    let whatsappLabel = leadSource || 'WhatsApp';
-    if (whatsappLabel === 'WhatsApp' && waBiz === '9167779696') whatsappLabel = 'WhatsApp (9167779696)';
-    else if (whatsappLabel === 'WhatsApp' && waBiz === '9594996161') whatsappLabel = 'WhatsApp (9594996161)';
+    const fromLabel = leadSource.match(/^WhatsApp \((\d{10})\)$/)?.[1] || '';
+    const waBiz =
+      fromLabel ||
+      String(meta.wa_business_phone || meta.wa_inbox || '')
+        .replace(/\D/g, '')
+        .slice(-10);
+
+    // Compact: last 4 digits identify the inbox (9696 vs 6161) without a full 10-digit chip.
+    const shortTail = waBiz ? waBiz.slice(-4) : '';
+    // Distinct colors per inbox so 9696 vs 6161 are obvious at a glance.
+    const waTheme =
+      waBiz === '9594996161'
+        ? {
+            source_badge_class: 'bg-sky-100 text-sky-900 ring-1 ring-sky-400',
+            source_badge_style: {
+              backgroundColor: '#E0F2FE',
+              color: '#0C4A6E',
+              boxShadow: 'inset 0 0 0 1px #38BDF8',
+            },
+          }
+        : waBiz === '9167779696'
+          ? {
+              source_badge_class: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-400',
+              source_badge_style: {
+                backgroundColor: '#D1FAE5',
+                color: '#065F46',
+                boxShadow: 'inset 0 0 0 1px #34D399',
+              },
+            }
+          : {
+              source_badge_class: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-400',
+              source_badge_style: {
+                backgroundColor: '#D1FAE5',
+                color: '#065F46',
+                boxShadow: 'inset 0 0 0 1px #34D399',
+              },
+            };
 
     return {
       source_badge_kind: 'whatsapp',
-      source_badge_label: whatsappLabel,
-      source_badge_class: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-400',
+      source_badge_label: shortTail ? `WA · ${shortTail}` : 'WhatsApp',
+      source_badge_title: waBiz ? `WhatsApp (${waBiz})` : 'WhatsApp',
+      ...waTheme,
     };
   }
 

@@ -38,12 +38,34 @@ export default function TelecallerCrmMePage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: row } = await supabase
-        .from('users_login')
-        .select('id, name, email, phone, role')
-        .eq('email', user.email)
-        .maybeSingle();
-      setProfile(row || { email: user.email, name: user.user_metadata?.name });
+      const email = (user.email || '').trim();
+      const phone = (user.phone || '').trim();
+      const select = 'id, full_name, email, phone, roles!role_id(role_code, role_name)';
+
+      let row: any = null;
+      if (email) {
+        const { data } = await supabase.from('users_login').select(select).ilike('email', email).maybeSingle();
+        row = data;
+      }
+      if (!row && phone) {
+        const { data } = await supabase.from('users_login').select(select).eq('phone', phone).maybeSingle();
+        row = data;
+      }
+      if (!row) {
+        const { data } = await supabase.from('users_login').select(select).eq('id', user.id).maybeSingle();
+        row = data;
+      }
+
+      setProfile({
+        full_name:
+          row?.full_name ||
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          '',
+        email: row?.email || email || '',
+        phone: row?.phone || phone || '',
+        role: (row?.roles as any)?.role_code || (row?.roles as any)?.role_name || 'TELECALLER',
+      });
     } catch {
       setProfile(null);
     }
@@ -236,7 +258,7 @@ export default function TelecallerCrmMePage() {
               <dl className="space-y-3 text-sm">
                 <div>
                   <dt className="text-xs font-bold text-slate-500">Name</dt>
-                  <dd className="font-bold text-slate-900">{profile.name || '—'}</dd>
+                  <dd className="font-bold text-slate-900">{profile.full_name || '—'}</dd>
                 </div>
                 <div>
                   <dt className="text-xs font-bold text-slate-500">Email</dt>

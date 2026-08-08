@@ -723,7 +723,7 @@ function TelecallerCrmBookContent() {
   if (!mode) {
     return (
       <DashboardLayout role="telecaller">
-        <div className="mx-auto max-w-lg pb-8">
+        <div className="mx-auto w-full max-w-2xl pb-8">
           <h1 className="text-2xl font-extrabold text-gray-900">Book / Lead</h1>
           <p className="mt-1 text-sm text-gray-500">Choose what you want to do</p>
 
@@ -785,7 +785,7 @@ function TelecallerCrmBookContent() {
 
   return (
     <DashboardLayout role="telecaller">
-      <div className="mx-auto max-w-3xl pb-8">
+      <div className="mx-auto w-full max-w-4xl pb-8">
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           {mode === 'book' ? (
             <>

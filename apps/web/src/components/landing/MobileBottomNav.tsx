@@ -67,6 +67,9 @@ export default function MobileBottomNav() {
   }, [pathname]);
 
   if (isEmbed) return null;
+  // Admin / staff dashboards (including mobile WebView login) — never show public bottom nav
+  if (pathname.startsWith('/dashboard')) return null;
+  if (pathname === '/login' || pathname.startsWith('/login/')) return null;
   if (pathname === '/book-service' || pathname.startsWith('/book-service/')) return null;
   if (pathname === '/misa-ai' || pathname.startsWith('/misa-ai/')) return null;
   // Pricing share links: hamburger already covers nav

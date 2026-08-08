@@ -393,6 +393,19 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
 
       if (profileError) throw profileError;
 
+      try {
+        const now = new Date().toISOString();
+        await supabase.from('users_login').update({ last_login: now }).eq('id', authData.user.id);
+        await supabase.from('user_login_history').insert({
+          user_id: authData.user.id,
+          logged_in_at: now,
+          platform: 'mobile',
+          user_agent: 'MyFNG Mobile App',
+        });
+      } catch (histErr) {
+        console.warn('Login history write skipped', histErr);
+      }
+
       // Success: AuthContext will react to the new session. If a callback is provided, call it.
       if (typeof onLoginSuccess === 'function') {
         onLoginSuccess(authData.user, profile);

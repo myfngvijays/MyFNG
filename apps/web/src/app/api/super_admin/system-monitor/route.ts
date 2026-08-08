@@ -1552,6 +1552,34 @@ function calculateHealthScore(checks: HealthCheck[]): number {
   return totalWeight > 0 ? Math.round((weightedScore / totalWeight) * 100) : 100;
 }
 
+/** Shared by System Monitor UI and cron WhatsApp health alerts. */
+export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
+  return Promise.all([
+    checkDatabase(),
+    checkSupabaseAuth(),
+    checkSupabaseStorage(),
+    checkWhatsAppAPI(),
+    checkRazorpay(),
+    checkFirebase(),
+    checkPushCampaigns(),
+    checkPushDevices(),
+    checkEmailService(),
+    checkWalletSystem(),
+    checkAdvanceCoupons(),
+    checkLinkManager(),
+    checkUniversalLink(),
+    checkRsaLeads(),
+    checkOpenAI(),
+    checkMisaAiMonitoring(),
+    checkWhatsAppAgents(),
+    checkGoogleMaps(),
+    checkCronJobs(),
+    checkFeatureCrons(),
+    checkSSL(),
+    checkSARVTelephony(),
+  ]);
+}
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -1560,30 +1588,7 @@ export async function GET() {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const checks = await Promise.all([
-      checkDatabase(),
-      checkSupabaseAuth(),
-      checkSupabaseStorage(),
-      checkWhatsAppAPI(),
-      checkRazorpay(),
-      checkFirebase(),
-      checkPushCampaigns(),
-      checkPushDevices(),
-      checkEmailService(),
-      checkWalletSystem(),
-      checkAdvanceCoupons(),
-      checkLinkManager(),
-      checkUniversalLink(),
-      checkRsaLeads(),
-      checkOpenAI(),
-      checkMisaAiMonitoring(),
-      checkWhatsAppAgents(),
-      checkGoogleMaps(),
-      checkCronJobs(),
-      checkFeatureCrons(),
-      checkSSL(),
-      checkSARVTelephony(),
-    ]);
+    const checks = await runSystemMonitorChecks();
 
     const healthScore = calculateHealthScore(checks);
     const downServices = checks.filter(c => c.status === 'down');
@@ -1686,20 +1691,30 @@ export async function POST(request: Request) {
       const templateStatus = await getHealthAlertTemplateStatus();
       const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       const useTemplate = Boolean(body.useTemplate) && templateStatus.canSendTemplate;
+      const checks = await runSystemMonitorChecks();
+      const downServices = checks.filter((c) => c.status === 'down');
+      const degradedServices = checks.filter((c) => c.status === 'degraded');
+      const healthyServices = checks.filter((c) => c.status === 'healthy');
       const summary = {
         timestamp,
-        total: 10,
-        healthy: 10,
-        degraded: 0,
-        down: 0,
-        downServices: [],
-        degradedServices: [],
+        total: checks.length,
+        healthy: healthyServices.length,
+        degraded: degradedServices.length,
+        down: downServices.length,
+        services: checks.map((service) => ({
+          name: service.name,
+          status: service.status,
+          message: service.message,
+        })),
+        downServices: downServices.map((service) => ({ name: service.name, message: service.message })),
+        degradedServices: degradedServices.map((service) => ({ name: service.name })),
       };
       
       const results = [];
       for (const number of targetNumbers) {
         const result = await sendHealthAlertMessage(number.trim(), summary, {
-          test: !useTemplate,
+          test: true,
+          // Until v2 template is approved, send full lined report as plain text
           forceText: !useTemplate,
         });
         results.push({ number: number.trim(), deliveryMode: useTemplate ? 'template' : 'text', ...result });
@@ -1733,6 +1748,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ error: 'Internal server error', message: error.message }, { status: 500 });
+    console.error('System monitor POST error:', error);
+    const message = String(error?.message || 'Internal server error');
+    return NextResponse.json({ error: message, message }, { status: 500 });
   }
 }

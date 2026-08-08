@@ -25,30 +25,6 @@ import {
   istYmd,
 } from '../../../lib/crmDateRange';
 
-const SOURCE_OPTIONS = [
-  { value: '', label: 'All sources' },
-  { value: 'WHATSAPP', label: 'WhatsApp' },
-  { value: 'WHATSAPP_META', label: 'Meta Ads (WA)' },
-  { value: 'MOBILE_APP', label: 'App' },
-  { value: 'WEB', label: 'Website' },
-  { value: 'TELECALLER_CRM', label: 'CRM' },
-  { value: 'TELECALLER', label: 'Telecaller' },
-  { value: 'ENQUIRY', label: 'Enquiry' },
-];
-
-function formatCrmSource(lead: any): string {
-  const from = String(lead?.created_from || '').toUpperCase();
-  const src = String(lead?.lead_source || '').trim();
-  if (from.includes('META') || /instagram|facebook|meta ads/i.test(src)) {
-    return src || 'Meta Ads';
-  }
-  if (from.includes('WHATSAPP') || /whatsapp/i.test(src)) return src || 'WhatsApp';
-  if (from.includes('TELECALLER_CRM')) return 'CRM';
-  if (from.includes('MOBILE') || from.includes('APP')) return 'App';
-  if (from === 'WEB' || from.includes('WEBSITE')) return 'Website';
-  return src || lead?.created_from || '—';
-}
-
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
   { value: 'NORMAL', label: 'NORMAL' },
@@ -60,6 +36,7 @@ type Props = {
   initialFilter?: string;
   onOpenLead: (leadId: string) => void;
   onEditLead?: (leadId: string) => void;
+  onFilterChange?: (filter: string) => void;
   datePreset?: CrmDatePreset;
   customStart?: string;
   customEnd?: string;
@@ -68,7 +45,7 @@ type Props = {
   onCustomEndChange?: (v: string) => void;
 };
 
-type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'source' | 'priority' | null;
+type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'priority' | null;
 
 /** Match lead detail "Select status" + All / New */
 const STATUS_FILTERS = [
@@ -176,6 +153,7 @@ export default function CrmQueueTab({
   initialFilter = 'all',
   onOpenLead,
   onEditLead,
+  onFilterChange,
   datePreset: datePresetProp,
   customStart: customStartProp,
   customEnd: customEndProp,
@@ -191,9 +169,8 @@ export default function CrmQueueTab({
   const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
-  const [source, setSource] = useState('');
   const [priority, setPriority] = useState('');
-  const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('today');
+  const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('last_7_days');
   const [customStartLocal, setCustomStartLocal] = useState(istYmd());
   const [customEndLocal, setCustomEndLocal] = useState(istYmd());
   const [cities, setCities] = useState<string[]>([]);
@@ -241,7 +218,6 @@ export default function CrmQueueTab({
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (q.trim()) params.set('q', q.trim());
       if (city.trim()) params.set('city', city.trim());
-      if (source.trim()) params.set('source', source.trim());
       if (priority.trim()) params.set('priority', priority.trim());
       if (!range.allTime) {
         params.set('from', range.start);
@@ -255,7 +231,7 @@ export default function CrmQueueTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filter, lostReason, q, city, source, priority, datePreset, customStart, customEnd]);
+  }, [filter, lostReason, q, city, priority, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     setLoading(true);
@@ -415,6 +391,7 @@ export default function CrmQueueTab({
                       style={[styles.selectItem, filter === c.id && styles.selectItemActive]}
                       onPress={() => {
                         setFilter(c.id);
+                        onFilterChange?.(c.id);
                         if (c.id !== 'lost') setLostReason('');
                         setOpenDropdown(null);
                       }}
@@ -590,7 +567,7 @@ export default function CrmQueueTab({
                 </View>
                 <Text style={styles.meta}>#{item.lead_number} · {item.customer_phone}</Text>
                 <Text style={styles.meta}>
-                  {item.city || '—'} · {item.workshop?.name || 'No workshop'} · {formatCrmSource(item)}
+                  {item.city || '—'} · {item.workshop?.name || 'No workshop'}
                 </Text>
                 {item.vehicle_number && String(item.vehicle_number).toUpperCase() !== 'NA' ? (
                   <Text style={styles.meta}>
@@ -713,7 +690,6 @@ export default function CrmQueueTab({
               ) : null}
 
               {renderSelect('city', 'City', city, cityOptions, setCity)}
-              {renderSelect('source', 'Source', source, SOURCE_OPTIONS, setSource)}
               {renderSelect('priority', 'Priority', priority, PRIORITY_OPTIONS, setPriority)}
 
               <View style={styles.sheetActions}>
@@ -721,7 +697,6 @@ export default function CrmQueueTab({
                   style={styles.secondary}
                   onPress={() => {
                     setCity('');
-                    setSource('');
                     setPriority('');
                     setDatePreset('today');
                     setCustomStart(istYmd());

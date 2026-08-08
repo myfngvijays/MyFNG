@@ -16,6 +16,8 @@ import {
   leadDisplayStatus,
   leadStatusBannerClass,
 } from '@/lib/telecaller/leadDisplayStatus';
+import { redactLeadSourceForTelecaller } from '@/lib/telecaller/redactLeadSource';
+import { parseCallDisposition } from '@/lib/telecaller/callDisposition';
 
 export default function LeadDetailPage() {
   const params = useParams();
@@ -30,9 +32,20 @@ export default function LeadDetailPage() {
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
-  const [serviceTypeNames, setServiceTypeNames] = useState<string[]>([]);
+  const [serviceGroups, setServiceGroups] = useState<Array<{ category: string; names: string[] }>>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const SHOW_SERVICE_ADDONS = false;
+
+  function titleCaseCat(c: string) {
+    return String(c || '')
+      .replace(/^CAR\s+/i, '')
+      .replace(/\s+SERVICE$/i, '')
+      .replace(/\s+SERVICES$/i, '')
+      .split(' ')
+      .map((w) => (w ? w.charAt(0) + w.slice(1).toLowerCase() : ''))
+      .join(' ')
+      .trim() || 'Other';
+  }
 
   function parseIds(raw: any): string[] {
     if (raw == null) return [];
@@ -61,6 +74,7 @@ export default function LeadDetailPage() {
     call_duration: '',
     outcome: 'INFO_COLLECTED',
     activity: 'INTERESTED',
+    lost_reason: '',
     notes: ''
   });
 
@@ -72,6 +86,16 @@ export default function LeadDetailPage() {
     { id: 'SERVICE_DONE', label: 'Service Done', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'COMPLETED' },
     { id: 'LOST', label: 'Lost', call_status: 'ANSWERED', outcome: 'NOT_INTERESTED', lead_status: 'REJECTED' },
     { id: 'RINGING', label: 'Ringing / No answer', call_status: 'NO_ANSWER', outcome: null, lead_status: null },
+  ];
+
+  const LOST_REASONS = [
+    'Not Interested',
+    'Unqualified Lead',
+    'No-Response to Calls',
+    'Already Service Done',
+    'Under Warranty',
+    'Looking For Authorised Service Center',
+    'Other Reasons',
   ];
 
   const [followUpData, setFollowUpData] = useState({
@@ -105,21 +129,49 @@ export default function LeadDetailPage() {
         .single();
 
       if (leadError) throw leadError;
-      setLead(leadData);
+      setLead(redactLeadSourceForTelecaller(leadData as Record<string, any>));
 
-      // Fetch service type names if service_type_ids exists
+      // Fetch service types grouped by category (Periodic / AC / Brake / Engine …)
       if (leadData.service_type_ids) {
         const serviceIds = parseIds(leadData.service_type_ids);
         if (serviceIds.length > 0) {
-          const { data: serviceTypesData } = await supabase
-            .from('service_types')
-            .select('id, name')
-            .in('id', serviceIds);
-
-          if (serviceTypesData) {
-            setServiceTypeNames(serviceTypesData.map((st) => st.name));
-          }
+          const [{ data: cats }, { data: serviceTypesData }] = await Promise.all([
+            supabase.from('categories').select('uuid, category'),
+            supabase
+              .from('service_types')
+              .select('id, name, category_uuid')
+              .in('id', serviceIds),
+          ]);
+          const categoryMap: Record<string, string> = {};
+          (cats || []).forEach((c: any) => {
+            if (c.uuid && c.category) categoryMap[String(c.uuid)] = String(c.category);
+          });
+          const order = [
+            'PERIODIC', 'ENGINE', 'AC', 'BATTERY', 'BRAKE', 'CLUTCH', 'TYRE', 'WHEEL',
+            'DETAILING', 'DENTING', 'PAINTING', 'ELECTRICAL', 'SUSPENSION', 'STEERING',
+          ];
+          const grouped = new Map<string, string[]>();
+          (serviceTypesData || []).forEach((st: any) => {
+            const cat = st.category_uuid
+              ? categoryMap[String(st.category_uuid)] || 'Other Services'
+              : 'Other Services';
+            const arr = grouped.get(cat) || [];
+            arr.push(String(st.name || ''));
+            grouped.set(cat, arr);
+          });
+          const groups = Array.from(grouped.entries())
+            .map(([category, names]) => ({ category, names: names.filter(Boolean) }))
+            .sort((a, b) => {
+              const ia = order.findIndex((o) => a.category.toUpperCase().includes(o));
+              const ib = order.findIndex((o) => b.category.toUpperCase().includes(o));
+              return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+            });
+          setServiceGroups(groups);
+        } else {
+          setServiceGroups([]);
         }
+      } else {
+        setServiceGroups([]);
       }
 
       // Fetch subservice names if subservice_ids exists
@@ -137,17 +189,71 @@ export default function LeadDetailPage() {
         }
       }
 
-      // Fetch call logs
+      // Fetch call logs + heal status if telecaller already logged Lost/etc. but lead stayed NEW
+      let logs: any[] = [];
       try {
         const res = await fetch(`/api/telecaller/calls/${leadId}`, { method: 'GET' });
         const json = await res.json().catch(() => ({}));
-        if (res.ok && json?.call_logs) {
-          setCallLogs(json.call_logs || []);
-        } else {
-          setCallLogs([]);
-        }
+        logs = res.ok && Array.isArray(json?.call_logs) ? json.call_logs : [];
+        setCallLogs(logs);
       } catch {
         setCallLogs([]);
+      }
+
+      const safeLead = redactLeadSourceForTelecaller(leadData as Record<string, any>);
+      const meta =
+        safeLead?.coupon_meta && typeof safeLead.coupon_meta === 'object'
+          ? safeLead.coupon_meta
+          : {};
+      const hasDisposition = Boolean(meta.last_call_result || meta.last_call_label);
+      if (!hasDisposition && logs.length > 0) {
+        for (const log of logs) {
+          const disp = parseCallDisposition({
+            notes: log?.notes,
+            outcome: log?.outcome,
+            call_status: log?.call_status,
+          });
+          if (!disp || disp.result === 'RINGING') continue;
+          try {
+            const healRes = await fetch(`/api/telecaller/leads/${leadId}/heal-disposition`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                last_call_result: disp.result,
+                last_call_label: disp.label,
+                last_lost_reason: disp.lostReason,
+                last_call_status: log?.call_status || 'ANSWERED',
+                status: disp.leadStatus,
+                telecaller_remarks: String(log?.notes || '')
+                  .replace(/^\[[^\]]+\]\s*/, '')
+                  .trim() || null,
+                total_calls: Math.max(Number(leadData?.total_calls || 0), logs.length),
+              }),
+            });
+            if (healRes.ok) {
+              const healed = await healRes.json().catch(() => ({}));
+              if (healed?.lead) {
+                setLead(redactLeadSourceForTelecaller(healed.lead as Record<string, any>));
+              } else {
+                setLead({
+                  ...safeLead,
+                  status: disp.leadStatus || safeLead.status,
+                  total_calls: Math.max(Number(leadData?.total_calls || 0), logs.length),
+                  coupon_meta: {
+                    ...meta,
+                    last_call_result: disp.result,
+                    last_call_label: disp.label,
+                    last_lost_reason: disp.lostReason,
+                    last_call_status: log?.call_status || 'ANSWERED',
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('heal disposition from call logs failed', e);
+          }
+          break;
+        }
       }
 
       // Fetch follow-ups
@@ -170,7 +276,14 @@ export default function LeadDetailPage() {
     try {
       const selected =
         ACTIVITY_OPTIONS.find((o) => o.id === callLogData.activity) || ACTIVITY_OPTIONS[0];
-      const statusLabel = selected.label;
+      if (selected.id === 'LOST' && !callLogData.lost_reason.trim()) {
+        alert('Please select a lost reason');
+        return;
+      }
+      const statusLabel =
+        selected.id === 'LOST' && callLogData.lost_reason
+          ? `Lost · ${callLogData.lost_reason}`
+          : selected.label;
       const notesParts = [`[${statusLabel}]`, callLogData.notes.trim() || null].filter(Boolean);
 
       const res = await fetch('/api/telecaller/calls/log', {
@@ -182,55 +295,19 @@ export default function LeadDetailPage() {
           call_status: selected.call_status,
           call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
           outcome: selected.outcome,
+          activity: selected.id,
           notes: notesParts.join(' '),
           phone_number: lead?.customer_phone,
         }),
       });
 
       if (res.ok) {
-        // Persist activity on lead (status + coupon_meta) via PATCH
-        try {
-          const prevMeta =
-            lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
-          const nextMeta = {
-            ...prevMeta,
-            last_call_status: selected.call_status,
-            last_call_result: selected.id,
-            last_call_label: statusLabel,
-            last_call_at: new Date().toISOString(),
-          };
-          await fetch(`/api/telecaller/leads/${leadId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              coupon_meta: nextMeta,
-              ...(selected.lead_status ? { status: selected.lead_status } : {}),
-              customer_name: lead?.customer_name,
-              customer_phone: lead?.customer_phone,
-              city: lead?.city,
-              city_id: lead?.city_id,
-              pincode: lead?.pincode,
-              vehicle_number: lead?.vehicle_number,
-              vehicle_make: lead?.vehicle_make,
-              vehicle_model: lead?.vehicle_model,
-              model_id: lead?.model_id,
-              workshop_id: lead?.workshop_id,
-              pickup_required: lead?.pickup_required,
-              pickup_address: lead?.pickup_address,
-              problem_description: lead?.problem_description,
-              service_types: parseIds(lead?.service_type_ids),
-              service_addons: parseIds(lead?.subservice_ids),
-            }),
-          });
-        } catch (e) {
-          console.warn('lead status update after call log failed', e);
-        }
-
         setCallLogData({
           call_status: 'ANSWERED',
           call_duration: '',
           outcome: 'INFO_COLLECTED',
           activity: 'INTERESTED',
+          lost_reason: '',
           notes: ''
         });
         setShowCallLogForm(false);
@@ -447,23 +524,30 @@ export default function LeadDetailPage() {
                 Service Details
               </h2>
               <div className="space-y-2 sm:space-y-3">
-                {/* Service Types - Show names instead of UUIDs */}
+                {/* Service Types — grouped by category (Periodic / AC / Brake / Engine …) */}
                 <div>
                   <div className="flex items-start gap-1.5 sm:gap-2">
                     <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1">Service Types:</p>
-                      {serviceTypeNames.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                          {serviceTypeNames.map((name, idx) => (
-                            <span 
-                              key={idx}
-                              className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-medium"
-                            >
-                              {name}
-                            </span>
-                          ))}
-                        </div>
+                    <div className="flex-1 min-w-0 space-y-2.5">
+                      <p className="text-xs sm:text-sm font-medium text-gray-500">Service Types:</p>
+                      {serviceGroups.length > 0 ? (
+                        serviceGroups.map((group) => (
+                          <div key={group.category}>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-800/80 mb-1">
+                              {titleCaseCat(group.category)}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                              {group.names.map((name, idx) => (
+                                <span
+                                  key={`${group.category}-${idx}`}
+                                  className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-medium"
+                                >
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))
                       ) : (
                         <p className="text-sm sm:text-base text-gray-700">Not specified</p>
                       )}
@@ -493,16 +577,12 @@ export default function LeadDetailPage() {
                   </div>
                 )}
 
-                {lead.description && (
+                {(lead.problem_description || lead.description) && (
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">Description:</p>
-                    <p className="text-gray-700">{lead.description}</p>
-                  </div>
-                )}
-                {lead.problem_description && (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Problem Description:</p>
-                    <p className="text-gray-700 italic">"{lead.problem_description}"</p>
+                    <p className="text-sm text-gray-500 mb-1">Customer Message:</p>
+                    <p className="text-gray-700 italic">
+                      &ldquo;{lead.problem_description || lead.description}&rdquo;
+                    </p>
                   </div>
                 )}
                 {lead.payment_mode && (
@@ -601,7 +681,13 @@ export default function LeadDetailPage() {
                 <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg space-y-2 sm:space-y-3">
                   <select
                     value={callLogData.activity}
-                    onChange={(e) => setCallLogData({ ...callLogData, activity: e.target.value })}
+                    onChange={(e) =>
+                      setCallLogData({
+                        ...callLogData,
+                        activity: e.target.value,
+                        lost_reason: e.target.value === 'LOST' ? callLogData.lost_reason : '',
+                      })
+                    }
                     className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
                   >
                     {ACTIVITY_OPTIONS.map((o) => (
@@ -610,6 +696,23 @@ export default function LeadDetailPage() {
                       </option>
                     ))}
                   </select>
+
+                  {callLogData.activity === 'LOST' && (
+                    <select
+                      value={callLogData.lost_reason}
+                      onChange={(e) =>
+                        setCallLogData({ ...callLogData, lost_reason: e.target.value })
+                      }
+                      className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
+                    >
+                      <option value="">Select lost reason</option>
+                      {LOST_REASONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  )}
 
                   <input
                     type="number"
@@ -620,7 +723,7 @@ export default function LeadDetailPage() {
                   />
 
                   <textarea
-                    placeholder="Call notes..."
+                    placeholder="Call notes / remarks..."
                     value={callLogData.notes}
                     onChange={(e) => setCallLogData({...callLogData, notes: e.target.value})}
                     className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg"
@@ -686,9 +789,12 @@ export default function LeadDetailPage() {
             <div className="card p-3 sm:p-4 md:p-5">
               <h3 className="font-bold mb-2 sm:mb-3 text-base sm:text-lg">Quick Stats</h3>
               <div className="space-y-2 sm:space-y-3">
-                <StatItem label="Total Calls" value={lead.total_calls || 0} icon={<PhoneCall />} />
+                <StatItem
+                  label="Total Calls"
+                  value={Math.max(Number(lead.total_calls || 0), callLogs.length)}
+                  icon={<PhoneCall />}
+                />
                 <StatItem label="Priority" value={lead.lead_priority || 'NORMAL'} icon={<TrendingUp />} />
-                <StatItem label="Source" value={lead.created_from || 'Unknown'} icon={<FileText />} />
                 {lead.last_call_at && (
                   <div>
                     <p className="text-xs sm:text-sm text-gray-500">Last Call:</p>

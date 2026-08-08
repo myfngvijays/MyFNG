@@ -47,11 +47,13 @@ export default function LoginPage() {
         throw new Error('Your account is inactive. Please contact support.');
       }
 
-      // Update last login
-      await supabase
-        .from('users_login')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', authData.user.id);
+      const { recordLoginHistory } = await import('@/lib/auth/recordLoginHistory');
+      await recordLoginHistory({
+        supabase,
+        userId: authData.user.id,
+        platform: 'web',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      });
 
       // Redirect based on role
       const roleCode = userProfile.role.role_code;
@@ -65,12 +67,20 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-my/10 via-white to-brand-fng/10 flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-md">
+    <div
+      className="min-h-[100dvh] min-h-screen bg-gradient-to-br from-brand-my/10 via-white to-brand-fng/10 flex items-center justify-center p-3 sm:p-4 overflow-x-clip"
+      style={{
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+      }}
+    >
+      <div className="w-full max-w-md min-w-0">
         {/* Logo */}
         <div className="text-center mb-6 sm:mb-7 md:mb-8">
           <Link href="/" className="inline-block mb-3 sm:mb-4">
-            <img src="/logo.png" alt="MyFNG Logo" className="h-14 sm:h-16 md:h-20 w-auto mx-auto" />
+            <img src="/logo.png" alt="MyFNG Logo" className="h-14 sm:h-16 md:h-20 w-auto max-w-[220px] mx-auto object-contain" />
           </Link>
           <p className="text-text-body text-sm sm:text-base">Login to your account</p>
         </div>

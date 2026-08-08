@@ -59,7 +59,6 @@ export default function TelecallerEnquiryLeadsPage() {
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Coupon</th>
                 <th className="px-4 py-3">Calls</th>
                 <th className="px-4 py-3">Next Follow-up</th>
@@ -96,7 +95,6 @@ export default function TelecallerEnquiryLeadsPage() {
                   </td>
                   <td className="px-4 py-3">{lead.lead_type}</td>
                   <td className="px-4 py-3">{lead.lead_status}</td>
-                  <td className="px-4 py-3">{lead.lead_source || '—'}</td>
                   <td className="px-4 py-3">
                     {lead?.meta?.coupon?.code || '—'}
                   </td>

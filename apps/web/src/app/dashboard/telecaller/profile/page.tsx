@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { User, Mail, Phone, Building, Calendar, Edit2, Save, X, Camera, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, Building, Calendar, Edit2, Save, X, Camera, Loader2, History } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import { formatDateDMY, formatDateTime } from "@/lib/utils";
@@ -27,11 +27,21 @@ interface UserProfile {
   } | null;
 }
 
+type LoginHistoryRow = {
+  id: string;
+  logged_in_at: string;
+  platform?: string | null;
+  user_agent?: string | null;
+};
+
 export default function TelecallerProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loginTotal, setLoginTotal] = useState(0);
+  const [loginRecent, setLoginRecent] = useState<LoginHistoryRow[]>([]);
+  const [loginLoading, setLoginLoading] = useState(true);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -43,7 +53,24 @@ export default function TelecallerProfilePage() {
 
   useEffect(() => {
     fetchProfile();
+    fetchLoginHistory();
   }, []);
+
+  const fetchLoginHistory = async () => {
+    setLoginLoading(true);
+    try {
+      const response = await fetch('/api/profile/login-history');
+      const data = await response.json();
+      if (response.ok) {
+        setLoginTotal(Number(data.total || 0));
+        setLoginRecent(Array.isArray(data.recent) ? data.recent : []);
+      }
+    } catch (error) {
+      console.error('Error fetching login history:', error);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -350,6 +377,46 @@ export default function TelecallerProfilePage() {
               <p className="text-xs sm:text-sm text-text-body">{profile.workshop.city}</p>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Login History */}
+      <div className="card p-4 sm:p-5 md:p-6">
+        <div className="mb-3 sm:mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg sm:text-xl font-bold text-text-heading flex items-center gap-2">
+            <History className="w-5 h-5 text-[#004AAD]" />
+            Login History
+          </h2>
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#004AAD]">
+            {loginLoading ? '…' : `${loginTotal} total`}
+          </span>
+        </div>
+        {loginLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading login history…
+          </div>
+        ) : loginRecent.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No login history yet. After you run the DB migration and log in again, entries will appear here.
+          </p>
+        ) : (
+          <ol className="space-y-2 max-h-80 overflow-y-auto">
+            {loginRecent.map((row) => (
+              <li
+                key={row.id}
+                className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {formatDateTime(row.logged_in_at)}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Platform: {String(row.platform || 'web').replace(/_/g, ' ')}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
         )}
       </div>
 

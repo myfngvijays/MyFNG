@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNav from '../../../components/BottomNav';
@@ -15,22 +15,62 @@ import CrmWorkshopLocatorTab from './CrmWorkshopLocatorTab';
 import CrmMeTab from './CrmMeTab';
 import { COLORS } from '../../../constants/theme';
 import { istYmd, type CrmDatePreset } from '../../../lib/crmDateRange';
+import {
+  defaultTelecallerCrmFilterPrefs,
+  loadTelecallerCrmFilterPrefs,
+  saveTelecallerCrmFilterPrefs,
+} from '../../../lib/crmFilterPrefs';
 
 /**
  * Advanced Telecaller CRM — Home | Leads | Book | Workshops | Me
- * Date filter is shared between Home and Leads.
+ * Date + status filters are shared between Home and Leads and persisted.
  */
 export default function TelecallerAdvancedCRM() {
+  const defaults = defaultTelecallerCrmFilterPrefs();
   const [tab, setTab] = useState('home');
-  const [queueFilter, setQueueFilter] = useState('all');
+  const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
   const [engageSegment, setEngageSegment] = useState('followups');
   const [bookMode, setBookMode] = useState<'book' | 'lead' | null>(null);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>('today');
-  const [customStart, setCustomStart] = useState(istYmd());
-  const [customEnd, setCustomEnd] = useState(istYmd());
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>(defaults.datePreset);
+  const [customStart, setCustomStart] = useState(defaults.customStart || istYmd());
+  const [customEnd, setCustomEnd] = useState(defaults.customEnd || istYmd());
+  const [prefsReady, setPrefsReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const prefs = await loadTelecallerCrmFilterPrefs();
+      if (cancelled) return;
+      setDatePreset(prefs.datePreset);
+      setCustomStart(prefs.customStart);
+      setCustomEnd(prefs.customEnd);
+      setQueueFilter(prefs.statusFilter || 'all');
+      setPrefsReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistDatePreset = (value: CrmDatePreset) => {
+    setDatePreset(value);
+    void saveTelecallerCrmFilterPrefs({ datePreset: value });
+  };
+  const persistCustomStart = (value: string) => {
+    setCustomStart(value);
+    void saveTelecallerCrmFilterPrefs({ customStart: value, datePreset: 'custom' });
+  };
+  const persistCustomEnd = (value: string) => {
+    setCustomEnd(value);
+    void saveTelecallerCrmFilterPrefs({ customEnd: value, datePreset: 'custom' });
+  };
+  const persistQueueFilter = (value: string) => {
+    setQueueFilter(value);
+    void saveTelecallerCrmFilterPrefs({ statusFilter: value });
+  };
 
   const openLead = (leadId: string, editing = false) => {
     setDetailEditing(editing);
@@ -41,9 +81,9 @@ export default function TelecallerAdvancedCRM() {
     datePreset,
     customStart,
     customEnd,
-    onDatePresetChange: setDatePreset,
-    onCustomStartChange: setCustomStart,
-    onCustomEndChange: setCustomEnd,
+    onDatePresetChange: persistDatePreset,
+    onCustomStartChange: persistCustomStart,
+    onCustomEndChange: persistCustomEnd,
   };
 
   const navigation = {
@@ -77,11 +117,17 @@ export default function TelecallerAdvancedCRM() {
       }
       if (screen === 'queue' || screen === 'leads' || screen === 'TelecallerLeads') {
         setTab('queue');
-        if (params?.filter) setQueueFilter(params.filter);
+        if (params?.filter) persistQueueFilter(params.filter);
         return;
       }
       if (screen === 'book' || screen === 'createLead' || screen === 'TelecallerCreateLead') {
-        setBookMode(params?.mode === 'lead' || screen === 'createLead' ? 'lead' : params?.mode === 'book' ? 'book' : null);
+        setBookMode(
+          params?.mode === 'lead' || screen === 'createLead'
+            ? 'lead'
+            : params?.mode === 'book'
+              ? 'book'
+              : null,
+        );
         setTab('book');
         return;
       }
@@ -108,13 +154,9 @@ export default function TelecallerAdvancedCRM() {
   const handleTabChange = (id: string) => {
     setDetailLeadId(null);
     setDetailEditing(false);
-    if (id === 'book') {
-      setBookMode(null);
-    } else {
-      setBookMode(null);
-    }
+    setBookMode(null);
     setTab(id);
-    if (id === 'queue') setQueueFilter('all');
+    // Do not reset queueFilter — keep Home/Leads selection in sync
   };
 
   if (detailLeadId) {
@@ -139,12 +181,12 @@ export default function TelecallerAdvancedCRM() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.body}>
-        {tab === 'home' && (
+        {prefsReady && tab === 'home' && (
           <CrmHomeTab
             {...dateProps}
             onNavigate={(screen, params) => {
               if (screen === 'queue') {
-                setQueueFilter(params?.filter || 'all');
+                persistQueueFilter(params?.filter || 'all');
                 setTab('queue');
                 return;
               }
@@ -169,10 +211,11 @@ export default function TelecallerAdvancedCRM() {
             onOpenWhatsApp={() => setWhatsAppOpen(true)}
           />
         )}
-        {tab === 'queue' && (
+        {prefsReady && tab === 'queue' && (
           <CrmQueueTab
             {...dateProps}
             initialFilter={queueFilter}
+            onFilterChange={persistQueueFilter}
             onOpenLead={(id) => openLead(id, false)}
             onEditLead={(id) => openLead(id, true)}
           />

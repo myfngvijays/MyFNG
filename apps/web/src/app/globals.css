@@ -12,17 +12,28 @@
   * {
     @apply border-gray-200;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   body {
-    @apply bg-[#F5F7FA] text-[#3A3F45] font-['Poppins',sans-serif];
+    @apply bg-[#F5F7FA] text-[#3A3F45] font-['Poppins',sans-serif] overflow-x-clip;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply text-[#023D95] font-semibold;
+  }
+  /* Prevent accidental horizontal pan in admin WebViews */
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
   }
 }
 
 @layer components {
   .btn {
-    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2;
+    @apply px-4 py-2.5 sm:px-6 sm:py-3 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2 text-sm sm:text-base;
   }
   
   .btn-primary {
@@ -38,15 +49,39 @@
   }
   
   .card {
-    @apply bg-white rounded-xl shadow-md p-6;
+    @apply bg-white rounded-xl shadow-md p-3 sm:p-4 md:p-6;
   }
   
   .input {
-    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent;
+    @apply w-full px-3 py-2.5 sm:px-4 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent;
   }
   
   .label {
     @apply block text-sm font-medium text-text-heading mb-2;
+  }
+
+  /* Shared admin / dashboard shell — works in browser + mobile app WebView */
+  .admin-shell {
+    @apply min-h-[100dvh] min-h-screen bg-background-grey overflow-x-clip;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .admin-header {
+    @apply bg-white shadow-sm fixed top-0 left-0 right-0 z-40;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .admin-main {
+    @apply min-w-0 w-full overflow-x-clip;
+  }
+
+  .admin-page {
+    @apply p-3 sm:p-4 md:p-6 min-w-0 w-full max-w-full;
+  }
+
+  .admin-scroll-x {
+    @apply -mx-3 sm:mx-0 overflow-x-auto overscroll-x-contain;
   }
 
   /* Rich blog HTML (admin preview + editors) — Tailwind preflight removes list bullets by default. */

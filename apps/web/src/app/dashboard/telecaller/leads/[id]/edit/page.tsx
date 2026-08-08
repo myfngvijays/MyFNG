@@ -9,6 +9,28 @@ import {
   ArrowLeft, Save, X, AlertCircle
 } from 'lucide-react';
 import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
+import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
+import CrmServicePlanPicker from '@/components/telecaller/crm/CrmServicePlanPicker';
+
+const ACTIVITY_OPTIONS = [
+  { id: 'INTERESTED', label: 'Interested', lead_status: null as string | null },
+  { id: 'WILL_VISIT', label: 'He will visit', lead_status: null },
+  { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', lead_status: 'VALIDATED' },
+  { id: 'IN_SERVICE', label: 'In Service', lead_status: 'IN_PROGRESS' },
+  { id: 'SERVICE_DONE', label: 'Service Done', lead_status: 'COMPLETED' },
+  { id: 'LOST', label: 'Lost', lead_status: 'REJECTED' },
+  { id: 'RINGING', label: 'Ringing / No answer', lead_status: null },
+] as const;
+
+const LOST_REASONS = [
+  'Not Interested',
+  'Unqualified Lead',
+  'No-Response to Calls',
+  'Already Service Done',
+  'Under Warranty',
+  'Looking For Authorised Service Center',
+  'Other Reasons',
+];
 
 export default function EditLeadPage() {
   const params = useParams();
@@ -21,8 +43,7 @@ export default function EditLeadPage() {
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Service types and add-ons
-  const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+  // Service add-ons (optional; catalog picker handles service types)
   const [serviceAddons, setServiceAddons] = useState<any[]>([]);
   const SHOW_SERVICE_ADDONS = false;
 
@@ -69,12 +90,14 @@ export default function EditLeadPage() {
     pickup_address: '',
     
     notes: '',
-    lead_priority: 'NORMAL'
+    lead_priority: 'NORMAL',
+    activity_result: 'INTERESTED',
+    lost_reason: '',
+    activity_notes: '',
   });
 
   useEffect(() => {
     fetchLeadDetails();
-    fetchServiceTypes();
     if (SHOW_SERVICE_ADDONS) fetchServiceAddons();
     fetchCities();
     fetchMakes();
@@ -226,21 +249,6 @@ export default function EditLeadPage() {
     }
   }
 
-  async function fetchServiceTypes() {
-    const supabase = createClient();
-    try {
-      const { data, error } = await supabase
-        .from('service_types')
-        .select('id, name, description')
-        .eq('is_active', true);
-      
-      if (error) throw error;
-      setServiceTypes(data || []);
-    } catch (error) {
-      console.error('Error fetching service types:', error);
-    }
-  }
-
   async function fetchServiceAddons() {
     const supabase = createClient();
     try {
@@ -330,14 +338,23 @@ export default function EditLeadPage() {
         service_types: serviceTypeIds || [],
         service_addons: subserviceIds || [],
         service_type: leadData.service_type || '',
-        problem_description: leadData.problem_description || '',
-        description: leadData.description || '',
+        problem_description:
+          extractInboundCustomerMessage(leadData.problem_description) ||
+          extractInboundCustomerMessage(leadData.description) ||
+          '',
+        description:
+          extractInboundCustomerMessage(leadData.description) ||
+          extractInboundCustomerMessage(leadData.problem_description) ||
+          '',
         
         pickup_required: leadData.pickup_required || false,
         pickup_address: leadData.pickup_address || '',
         
         notes: leadData.notes || '',
-        lead_priority: leadData.lead_priority || 'NORMAL'
+        lead_priority: leadData.lead_priority || 'NORMAL',
+        activity_result: String(leadData?.coupon_meta?.last_call_result || 'INTERESTED').toUpperCase() || 'INTERESTED',
+        lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
+        activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
       });
 
       // Initialize coupons from stored data (best-effort)
@@ -454,6 +471,38 @@ export default function EditLeadPage() {
       const applied = String(appliedCoupon || '').trim().toUpperCase();
       const nextApplied = applied && selectedCodes.includes(applied) ? applied : (selectedCodes[0] || '');
 
+      const customerMessage =
+        extractInboundCustomerMessage(formData.problem_description) ||
+        String(formData.problem_description || '').trim() ||
+        null;
+      const selectedActivity =
+        ACTIVITY_OPTIONS.find((o) => o.id === formData.activity_result) || ACTIVITY_OPTIONS[0];
+      const prevMeta =
+        lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
+      const statusLabel =
+        selectedActivity.id === 'LOST' && formData.lost_reason
+          ? `Lost · ${formData.lost_reason}`
+          : selectedActivity.label;
+      const historyEntry = {
+        at: new Date().toISOString(),
+        summary: `Updated ${statusLabel}`,
+        remark: formData.activity_notes.trim() || null,
+        status: selectedActivity.id,
+      };
+      const prevHistory = Array.isArray((prevMeta as any).profile_history)
+        ? (prevMeta as any).profile_history
+        : [];
+      const nextMeta = {
+        ...prevMeta,
+        last_call_result: selectedActivity.id,
+        last_call_label: statusLabel,
+        last_call_at: new Date().toISOString(),
+        telecaller_remarks: formData.activity_notes.trim() || null,
+        last_lost_reason:
+          selectedActivity.id === 'LOST' ? formData.lost_reason || null : (prevMeta as any).last_lost_reason || null,
+        profile_history: [historyEntry, ...prevHistory].slice(0, 50),
+      };
+
       const payload: any = {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone,
@@ -476,14 +525,17 @@ export default function EditLeadPage() {
         service_types: formData.service_types,
         service_addons: formData.service_addons,
         service_type: formData.service_type,
-        problem_description: formData.problem_description || null,
-        description: formData.description || null,
+        // Only customer message — never re-save WhatsApp/Trigger wrappers
+        problem_description: customerMessage,
+        description: customerMessage,
 
         pickup_required: formData.pickup_required,
         pickup_address: formData.pickup_address || null,
 
         notes: formData.notes || null,
         lead_priority: formData.lead_priority,
+        ...(selectedActivity.lead_status ? { status: selectedActivity.lead_status } : {}),
+        coupon_meta: nextMeta,
 
         coupon_codes: selectedCodes,
         applied_coupon: nextApplied || null,
@@ -852,33 +904,25 @@ export default function EditLeadPage() {
               <span>Service Details</span>
             </h2>
             <div className="space-y-4 sm:space-y-5 md:space-y-6">
-              {/* Service Types */}
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
-                  Service Types <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                  {serviceTypes.map(service => (
-                    <label key={service.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.service_types.includes(service.id)}
-                        onChange={(e) => handleMultiSelect('service_types', service.id, e.target.checked)}
-                        className="mt-0.5 sm:mt-1 flex-shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium text-xs sm:text-sm text-text-heading">{service.name}</div>
-                        {service.description && (
-                          <div className="text-xs sm:text-sm text-text-body mt-0.5">{service.description}</div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-                {errors.service_types && (
-                  <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-red-500">{errors.service_types}</p>
-                )}
-              </div>
+              {/* Category tabs: Periodic / Engine / AC / Brake / … (mobile parity) */}
+              <CrmServicePlanPicker
+                selectedIds={formData.service_types}
+                onChange={(ids) => {
+                  setFormData((prev) => ({ ...prev, service_types: ids }));
+                  if (errors.service_types) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.service_types;
+                      return next;
+                    });
+                  }
+                }}
+                title="Service Types"
+                subtitle="Segregated by category — Periodic, Engine, AC, Brake, Battery…"
+              />
+              {errors.service_types && (
+                <p className="text-xs sm:text-sm text-red-500">{errors.service_types}</p>
+              )}
 
               {/* Service Add-ons */}
               {SHOW_SERVICE_ADDONS && (
@@ -1022,10 +1066,10 @@ export default function EditLeadPage() {
                 )}
               </div>
 
-              {/* Problem Description */}
+              {/* Customer message only — WhatsApp / Trigger / number never shown */}
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Problem Description
+                  Customer Message
                 </label>
                 <textarea
                   name="problem_description"
@@ -1033,21 +1077,71 @@ export default function EditLeadPage() {
                   onChange={handleChange}
                   className="input text-xs sm:text-sm"
                   rows={3}
-                  placeholder="Describe the problem or service needed"
+                  placeholder="Customer enquiry message"
                 />
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Only the customer message is shown — WhatsApp number and trigger are hidden.
+                </p>
               </div>
+            </div>
+          </div>
 
-              {/* Additional Description */}
+          {/* Lead Status / Activity (parity with mobile) */}
+          <div className="border-t pt-4 sm:pt-5 md:pt-6">
+            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">
+              Lead Status
+            </h2>
+            <div className="space-y-3 sm:space-y-4">
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Additional Description
+                  Activity / Disposition
                 </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
+                <select
+                  name="activity_result"
+                  value={formData.activity_result}
                   onChange={handleChange}
                   className="input text-xs sm:text-sm"
-                  rows={2}
+                >
+                  {ACTIVITY_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.activity_result === 'LOST' && (
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
+                    Lost Reason
+                  </label>
+                  <select
+                    name="lost_reason"
+                    value={formData.lost_reason}
+                    onChange={handleChange}
+                    className="input text-xs sm:text-sm"
+                  >
+                    <option value="">Select reason</option>
+                    {LOST_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
+                  Remarks
+                </label>
+                <textarea
+                  name="activity_notes"
+                  value={formData.activity_notes}
+                  onChange={handleChange}
+                  className="input text-xs sm:text-sm"
+                  rows={3}
+                  placeholder="Call notes / remarks for this lead"
                 />
               </div>
             </div>

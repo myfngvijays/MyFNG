@@ -73,7 +73,7 @@ export default function TelecallerEnquiryLeadsScreen({ navigation }: any) {
       <Text style={styles.cardTitle}>{item.lead_number || 'Lead'}</Text>
       <Text style={styles.cardMeta}>{item.customer_name || 'Customer'} • {item.customer_phone || '—'}</Text>
       <Text style={styles.cardMeta}>Type: {item.lead_type} • Priority: {item.lead_priority || 'NORMAL'}</Text>
-      <Text style={styles.cardMeta}>Status: {item.lead_status} • Source: {item.lead_source || '—'}</Text>
+      <Text style={styles.cardMeta}>Status: {item.lead_status}</Text>
       <Text style={styles.cardMeta}>Coupon: {item?.meta?.coupon?.code || '—'}</Text>
       <Text style={styles.cardMeta}>Calls: {item.total_calls ?? 0}</Text>
       <Text style={styles.cardMeta}>

@@ -230,7 +230,7 @@ export default function SystemMonitorPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setTemplateActionResult(json.error || 'Template action failed');
+        setTemplateActionResult(json.message || json.error || 'Template action failed');
         return;
       }
 
@@ -639,7 +639,8 @@ export default function SystemMonitorPage() {
                   <h2 className="text-lg font-semibold text-gray-900">WhatsApp Alert Template</h2>
                 </div>
                 <p className="text-sm text-gray-500 mt-1">
-                  Create the approved Meta template once from here. After approval, health alerts work 24/7 without needing a &quot;Hi&quot; message first.
+                  New lined template (<code className="bg-gray-100 px-1 rounded">system_health_alert_v2</code>) lists each service on its own line.
+                  Create &amp; submit once — after Meta approval, 24/7 alerts work without a &quot;Hi&quot; first.
                 </p>
               </div>
               <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${templateStatusClass}`}>
@@ -654,7 +655,7 @@ export default function SystemMonitorPage() {
                   <p className="text-sm font-medium text-gray-900">Template Preview</p>
                 </div>
                 <p className="text-xs text-gray-500 mb-2">
-                  Name: <code className="bg-white px-1 py-0.5 rounded">{templatePreview?.template_name || 'system_health_alert'}</code>
+                  Name: <code className="bg-white px-1 py-0.5 rounded">{templatePreview?.template_name || 'system_health_alert_v2'}</code>
                   {' · '}
                   Category: {templatePreview?.category || 'UTILITY'}
                 </p>

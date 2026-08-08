@@ -123,34 +123,39 @@ export async function GET(request: NextRequest) {
       return q;
     };
 
+    const leadBase = () =>
+      db
+        .from('service_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_telecaller_id', assignedToMe)
+        .is('deleted_at', null);
+
     const [
       totalLeads,
       newLeads,
+      incomplete,
+      interested,
+      willVisit,
+      bookingConfirmed,
+      inService,
+      serviceDone,
+      lost,
       callbacks,
       followUps,
-      booked,
-      incomplete,
-      rejected,
       rangeCalls,
       metrics,
       attendance,
     ] = await Promise.all([
-      applyCreatedRange(
-        db
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_telecaller_id', assignedToMe)
-          .is('deleted_at', null),
-      ),
-      applyCreatedRange(
-        db
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_telecaller_id', assignedToMe)
-          .eq('status', 'NEW')
-          .eq('is_incomplete', false)
-          .is('deleted_at', null),
-      ),
+      applyCreatedRange(leadBase()),
+      // Same filters as /api/telecaller/crm/leads?filter=…
+      applyCreatedRange(leadBase().eq('status', 'NEW').eq('is_incomplete', false)),
+      applyCreatedRange(leadBase().eq('is_incomplete', true)),
+      applyCreatedRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED')),
+      applyCreatedRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT')),
+      applyCreatedRange(leadBase().eq('status', 'VALIDATED')),
+      applyCreatedRange(leadBase().eq('status', 'IN_PROGRESS')),
+      applyCreatedRange(leadBase().eq('status', 'COMPLETED')),
+      applyCreatedRange(leadBase().eq('status', 'REJECTED')),
       applyFuRange(
         db
           .from('service_leads')
@@ -165,30 +170,6 @@ export async function GET(request: NextRequest) {
           .select('id', { count: 'exact', head: true })
           .eq('telecaller_id', teleCallerId)
           .eq('status', 'PENDING'),
-      ),
-      applyCreatedRange(
-        db
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_telecaller_id', assignedToMe)
-          .in('status', ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'VALIDATED'])
-          .is('deleted_at', null),
-      ),
-      applyCreatedRange(
-        db
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_telecaller_id', assignedToMe)
-          .eq('is_incomplete', true)
-          .is('deleted_at', null),
-      ),
-      applyCreatedRange(
-        db
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_telecaller_id', teleCallerId)
-          .eq('status', 'REJECTED')
-          .is('deleted_at', null),
       ),
       applyCallRange(
         db.from('telecaller_call_logs').select('call_status').eq('telecaller_id', teleCallerId),
@@ -262,11 +243,18 @@ export async function GET(request: NextRequest) {
       kpis: {
         total_leads: totalLeads.count || 0,
         new_leads: newLeads.count || 0,
+        incomplete: incomplete.count || 0,
+        interested: interested.count || 0,
+        will_visit: willVisit.count || 0,
+        booking_confirmed: bookingConfirmed.count || 0,
+        in_service: inService.count || 0,
+        service_done: serviceDone.count || 0,
+        lost: lost.count || 0,
+        // aliases / ops queues (still useful elsewhere)
+        booked: bookingConfirmed.count || 0,
+        rejected: lost.count || 0,
         callbacks: callbacks.count || 0,
         followups_today: followUps.count || 0,
-        booked: booked.count || 0,
-        incomplete: incomplete.count || 0,
-        rejected: rejected.count || 0,
         today_calls: calls.length,
         answered_calls: answered,
         answer_rate: calls.length ? Math.round((answered / calls.length) * 100) : 0,

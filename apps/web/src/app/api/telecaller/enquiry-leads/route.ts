@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
+import { redactLeadSourceListForTelecaller } from '@/lib/telecaller/redactLeadSource';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from('enquiry_hub')
       .select(
-        'id, lead_number, lead_type, lead_status, lead_priority, lead_source, customer_name, customer_phone, assigned_at, next_follow_up_at, total_calls, meta'
+        'id, lead_number, lead_type, lead_status, lead_priority, customer_name, customer_phone, assigned_at, next_follow_up_at, total_calls, meta'
       )
       .eq('kind', 'LEAD')
       .eq('assigned_telecaller_id', userProfile?.id)
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ leads: data || [] });
+    return NextResponse.json({ leads: redactLeadSourceListForTelecaller(data || []) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
