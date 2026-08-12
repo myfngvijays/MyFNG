@@ -4759,7 +4759,15 @@ export default function SettingsScreen({ navigation, route, onCustomerLogout }: 
             coupons={myCoupons}
             loading={myCouponsLoading}
             onLogin={() => navigation.navigate('Login' as never)}
-            onUseInCart={(code) => {
+            onUseInCart={(code, coupon) => {
+              if (coupon?.locked || coupon?.can_use === false) {
+                if (coupon?.lock_reason === 'profile') {
+                  setActiveSubPage('My Profile');
+                  return;
+                }
+                // Service lock: stay on coupons; alert already shown
+                return;
+              }
               setCoupon(code);
               setActiveSubPage('Cart');
             }}

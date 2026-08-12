@@ -32,6 +32,7 @@ import {
   MisaNamePanel,
   MisaOtherServicesGrid,
   MisaPincodePanel,
+  MisaPrimePanel,
   MisaProfileCarPicker,
   MisaServiceCategories,
   MisaVehicleNumberPanel,
@@ -113,12 +114,28 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function navigateToMembership(navigation: any, isLoggedIn: boolean) {
-  if (isLoggedIn) {
-    navigation.navigate('Dashboard', { screen: 'CustomerMembership' });
+function navigateToMembership(navigation: any) {
+  // AIBooking is a fullScreenModal — nested Dashboard nav fails silently.
+  // Dismiss modal first, then open consumer Membership under Settings.
+  const openMembership = () => {
+    const root = navigation.getParent?.() || navigation;
+    try {
+      root.navigate('Settings', { subPage: 'Membership' });
+    } catch {
+      try {
+        navigation.navigate('Settings', { subPage: 'Membership' });
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  if (typeof navigation.canGoBack === 'function' && navigation.canGoBack()) {
+    navigation.goBack();
+    setTimeout(openMembership, 320);
     return;
   }
-  navigation.navigate('Settings', { subPage: 'Membership' });
+  openMembership();
 }
 
 export default function AIBookingScreen({ navigation, route }: Props) {
@@ -154,6 +171,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
     locationConfirmed: Boolean(city),
   });
   const [showOtherServices, setShowOtherServices] = useState(false);
+  const [showPrimePanel, setShowPrimePanel] = useState(false);
   const [forceFreeTextCar, setForceFreeTextCar] = useState(false);
   const [forceNewAddress, setForceNewAddress] = useState(false);
   const [dismissedPricingIds, setDismissedPricingIds] = useState<Set<string>>(() => new Set());
@@ -191,6 +209,7 @@ export default function AIBookingScreen({ navigation, route }: Props) {
   const showCategoryPicker =
     !chatLoading &&
     !showOtherServices &&
+    !showPrimePanel &&
     (messages.length <= 1 || Boolean(lastAssistant && assistantMessageShowsServiceList(lastAssistant.text)));
 
   const showGuestOtp =
@@ -789,9 +808,19 @@ export default function AIBookingScreen({ navigation, route }: Props) {
 
             {showCategoryPicker && (
               <MisaServiceCategories
-                onPrime={() => navigateToMembership(navigation, customerCtx.isLoggedIn)}
+                onPrime={() => setShowPrimePanel(true)}
                 onPeriodic={() => submitFromPanel('Car Periodic Service', 'Periodic Service')}
                 onOther={() => setShowOtherServices(true)}
+              />
+            )}
+
+            {showPrimePanel && (
+              <MisaPrimePanel
+                onBack={() => setShowPrimePanel(false)}
+                onActivate={() => {
+                  setShowPrimePanel(false);
+                  navigateToMembership(navigation);
+                }}
               />
             )}
 

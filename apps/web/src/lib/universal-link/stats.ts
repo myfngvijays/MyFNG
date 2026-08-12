@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { MYFNG_APP_DOWNLOAD_URL } from '@/shared/constants/appDownload';
 import { getAppStoreUrls } from '@/lib/app-download-link';
+import { mergeUtmParams, parseUtmParams } from '@/lib/utm';
 
 export type UniversalLinkPlatform = 'ios' | 'android' | 'desktop';
 
@@ -31,21 +32,56 @@ function asPlatform(value: unknown): UniversalLinkPlatform {
   return 'desktop';
 }
 
+function utmFromUrlish(value: unknown) {
+  const raw = String(value || '').trim();
+  if (!raw) return {};
+  try {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return parseUtmParams(new URL(raw).search);
+    }
+    if (raw.includes('utm_') || raw.startsWith('?') || raw.includes('=')) {
+      return parseUtmParams(raw.startsWith('?') ? raw : `?${raw}`);
+    }
+  } catch {
+    // ignore bad URLs
+  }
+  return {};
+}
+
 function normalizeEvent(row: RawEventRow): UniversalLinkEvent {
   const props = row.properties || {};
+  const referer = props.referer ? String(props.referer) : null;
+  const redirectUrl = props.redirect_url ? String(props.redirect_url) : null;
+
+  // Prefer stored utm_* ; else pull from referer / redirect URL query (common when
+  // user lands from myfng.in/?utm_… then taps /go/myfngapp without query).
+  const utm = mergeUtmParams(
+    utmFromUrlish(referer),
+    utmFromUrlish(redirectUrl),
+    utmFromUrlish(props.request_url),
+    utmFromUrlish(props.page_url),
+    {
+      utm_source: props.utm_source,
+      utm_medium: props.utm_medium,
+      utm_campaign: props.utm_campaign,
+      utm_term: props.utm_term,
+      utm_content: props.utm_content,
+    },
+  );
+
   return {
     id: row.id,
     created_at: row.created_at,
     slug: String(props.slug || 'myfngapp'),
     platform: asPlatform(props.platform),
     source: String(props.source || 'go_redirect'),
-    referer: props.referer ? String(props.referer) : null,
-    redirect_url: props.redirect_url ? String(props.redirect_url) : null,
-    utm_source: props.utm_source ? String(props.utm_source) : null,
-    utm_medium: props.utm_medium ? String(props.utm_medium) : null,
-    utm_campaign: props.utm_campaign ? String(props.utm_campaign) : null,
-    utm_term: props.utm_term ? String(props.utm_term) : null,
-    utm_content: props.utm_content ? String(props.utm_content) : null,
+    referer,
+    redirect_url: redirectUrl,
+    utm_source: utm.utm_source || null,
+    utm_medium: utm.utm_medium || null,
+    utm_campaign: utm.utm_campaign || null,
+    utm_term: utm.utm_term || null,
+    utm_content: utm.utm_content || null,
   };
 }
 
@@ -191,10 +227,68 @@ export async function getUniversalLinkStats(
       { platform: 'android' as const, label: 'Android / Play Store', count: androidInRange, all_time: androidAllTime },
       { platform: 'desktop' as const, label: 'Desktop fallback', count: desktopInRange, all_time: desktopAllTime },
     ],
-    daily: aggregateDaily(events.slice().reverse()),
+    daily: aggregateDaily(events.slice().reverse()).slice(-20),
     utm_sources: aggregateUtmField(events, 'utm_source'),
     utm_mediums: aggregateUtmField(events, 'utm_medium'),
     utm_campaigns: aggregateUtmField(events, 'utm_campaign'),
-    recent_events: events.slice(0, 100),
+    recent_events: events.slice(0, 20),
+  };
+}
+
+export async function listUniversalLinkEvents(
+  client: SupabaseClient,
+  opts: {
+    start: string;
+    end: string;
+    page?: number;
+    pageSize?: number;
+    platform?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    q?: string;
+  },
+) {
+  const page = Math.max(1, Number(opts.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(opts.pageSize) || 25));
+  const fromIdx = (page - 1) * pageSize;
+
+  const raw = await fetchEventsInRange(client, { start: opts.start, end: opts.end });
+  let events = dedupeEvents(raw.map((row) => normalizeEvent(row)));
+
+  const platform = String(opts.platform || '').trim().toLowerCase();
+  const utmSource = String(opts.utmSource || '').trim().toLowerCase();
+  const utmMedium = String(opts.utmMedium || '').trim().toLowerCase();
+  const utmCampaign = String(opts.utmCampaign || '').trim().toLowerCase();
+  const q = String(opts.q || '').trim().toLowerCase();
+
+  if (platform === 'ios' || platform === 'android' || platform === 'desktop') {
+    events = events.filter((ev) => ev.platform === platform);
+  }
+  if (utmSource) {
+    events = events.filter((ev) => (ev.utm_source || '').toLowerCase().includes(utmSource));
+  }
+  if (utmMedium) {
+    events = events.filter((ev) => (ev.utm_medium || '').toLowerCase().includes(utmMedium));
+  }
+  if (utmCampaign) {
+    events = events.filter((ev) => (ev.utm_campaign || '').toLowerCase().includes(utmCampaign));
+  }
+  if (q) {
+    events = events.filter(
+      (ev) =>
+        (ev.source || '').toLowerCase().includes(q) ||
+        (ev.referer || '').toLowerCase().includes(q) ||
+        (ev.redirect_url || '').toLowerCase().includes(q),
+    );
+  }
+
+  const total = events.length;
+  return {
+    events: events.slice(fromIdx, fromIdx + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
 }

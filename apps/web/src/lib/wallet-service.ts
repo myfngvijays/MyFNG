@@ -4,6 +4,8 @@ import {
   getWalletLogicSettings,
   parseWalletPlatform,
   resolveServiceWalletConfig,
+  resolveWelcomeBonusAmountForPhone,
+  welcomeOverrideUsageToRuntimePatch,
   WALLET_SOURCE_GROUPS,
   type WalletLogicFullSettings,
   type WalletPlatform,
@@ -607,11 +609,41 @@ export async function creditWelcomeBonus(
   const config = await getWalletConfig(supabaseAdmin, platform);
   const idempotencyKey = welcomeBonusIdempotencyKey(customerId);
 
+  const { data: customerRow } = await supabaseAdmin
+    .from('customers')
+    .select('phone')
+    .eq('id', customerId)
+    .maybeSingle();
+  const phoneLast10 = String(customerRow?.phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+  const usedPhoneOverride = (config.WELCOME_BONUS_PHONE_OVERRIDES || []).some(
+    (row) => row.phone === phoneLast10,
+  );
+
+  const maybeAssignOverrideCoupon = async () => {
+    if (!usedPhoneOverride) return;
+    try {
+      const { ensureWelcomeOverrideCouponForCustomer } = await import(
+        '@/lib/welcome-override-coupon'
+      );
+      await ensureWelcomeOverrideCouponForCustomer(
+        supabaseAdmin,
+        customerId,
+        customerRow?.phone || phoneLast10,
+      );
+    } catch (e) {
+      console.warn('[creditWelcomeBonus] override coupon assign failed:', e);
+    }
+  };
+
   if (!config.WELCOME_BONUS_ENABLED) {
+    await maybeAssignOverrideCoupon();
     return { credited: false, reason: 'disabled' as const };
   }
 
   if (await isWelcomeBonusSuppressed(supabaseAdmin, customerId)) {
+    await maybeAssignOverrideCoupon();
     return { credited: false, reason: 'suppressed' as const };
   }
 
@@ -621,13 +653,24 @@ export async function creditWelcomeBonus(
     .eq('customer_id', customerId)
     .eq('idempotency_key', idempotencyKey)
     .maybeSingle();
-  if (existing) return { credited: false, reason: 'already_credited' as const };
+
+  if (existing) {
+    await maybeAssignOverrideCoupon();
+    return { credited: false, reason: 'already_credited' as const };
+  }
 
   const eligible = await isWelcomeBonusEligible(supabaseAdmin, customerId, options);
-  if (!eligible) return { credited: false, reason: 'not_eligible' as const };
+  if (!eligible) {
+    await maybeAssignOverrideCoupon();
+    return { credited: false, reason: 'not_eligible' as const };
+  }
 
   const wallet = await ensureWalletAccountFull(supabaseAdmin, customerId);
-  let amount = Number(config.WELCOME_BONUS_AMOUNT);
+  let amount = resolveWelcomeBonusAmountForPhone(
+    Number(config.WELCOME_BONUS_AMOUNT),
+    customerRow?.phone,
+    config.WELCOME_BONUS_PHONE_OVERRIDES,
+  );
   if (!Number.isFinite(amount) || amount <= 0) {
     amount = DEFAULT_WALLET_CONFIG.WELCOME_BONUS_AMOUNT;
   }
@@ -649,7 +692,11 @@ export async function creditWelcomeBonus(
     expires_at: expiresAt.toISOString(),
     metadata: {
       label: 'Welcome Bonus Credited',
-      description: 'New app install welcome bonus',
+      description: usedPhoneOverride
+        ? 'New app install welcome bonus (phone override)'
+        : 'New app install welcome bonus',
+      phone_override: usedPhoneOverride,
+      base_amount: Number(config.WELCOME_BONUS_AMOUNT) || null,
     },
   });
   if (error) {
@@ -667,6 +714,8 @@ export async function creditWelcomeBonus(
       updated_at: new Date().toISOString(),
     })
     .eq('id', wallet.id);
+
+  await maybeAssignOverrideCoupon();
 
   return { credited: true, amount, expires_at: expiresAt.toISOString() };
 }
@@ -734,42 +783,90 @@ export async function resolveWalletDeduction(
 
   let deduction = 0;
   const balanceBySource = await getWalletBalanceBySource(supabaseAdmin, customerId);
-  const hasActiveCombinationRules =
-    settings.source_combination_enabled && getActiveCombinationRules(settings.source_combination_rules || []).length > 0;
 
-  if (hasActiveCombinationRules) {
-    deduction = calculateMaxWalletUsageWithCombinations(
-      payableAmount,
-      balanceBySource,
-      channel,
-      settings,
-      config,
-    );
-    deduction = roundMoney(Math.min(deduction, summary.spendable_balance));
-  } else if (settings.per_source_limits_enabled) {
-    deduction = calculateMaxWalletUsagePerSource(
-      payableAmount,
-      balanceBySource,
-      channel,
-      settings.source_limits,
-      config,
-    );
-    deduction = roundMoney(Math.min(deduction, summary.spendable_balance));
-  } else if (channel === 'SERVICE' && serviceLines?.length) {
-    deduction = calculateWalletDeductionForServiceLines(
-      serviceLines,
-      summary.spendable_balance,
-      channel,
-      config,
-      settings,
-    );
+  // Special welcome (phone override) spend rules — highest priority when enabled.
+  const overrideUsage = settings.welcome_bonus_override_usage;
+  const { data: customerPhoneRow } = await supabaseAdmin
+    .from('customers')
+    .select('phone')
+    .eq('id', customerId)
+    .maybeSingle();
+  const phoneLast10 = String(customerPhoneRow?.phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+  const onWelcomeOverrideList =
+    phoneLast10.length === 10 &&
+    (settings.welcome_bonus_phone_overrides || []).some((row) => row.phone === phoneLast10);
+
+  if (overrideUsage?.enabled && onWelcomeOverrideList) {
+    if (channel === 'SERVICE' && serviceLines?.length) {
+      let remaining = summary.spendable_balance;
+      let totalDeduction = 0;
+      for (const line of serviceLines) {
+        const amount = roundMoney(Number(line.amount || 0));
+        if (amount <= 0) continue;
+        const patch = welcomeOverrideUsageToRuntimePatch(
+          overrideUsage,
+          'SERVICE',
+          line.service_type_id,
+        );
+        const lineConfig = { ...config, ...patch };
+        const lineDeduction = calculateMaxWalletUsageWithConfig(amount, remaining, channel, lineConfig);
+        totalDeduction = roundMoney(totalDeduction + lineDeduction);
+        remaining = roundMoney(remaining - lineDeduction);
+        if (remaining <= 0) break;
+      }
+      if (config.MAX_ABSOLUTE_DEDUCTION > 0) {
+        totalDeduction = roundMoney(Math.min(totalDeduction, config.MAX_ABSOLUTE_DEDUCTION));
+      }
+      deduction = roundMoney(Math.min(totalDeduction, summary.spendable_balance));
+    } else {
+      const patch = welcomeOverrideUsageToRuntimePatch(overrideUsage, channel);
+      deduction = calculateMaxWalletUsageWithConfig(
+        payableAmount,
+        summary.spendable_balance,
+        channel,
+        { ...config, ...patch },
+      );
+    }
   } else {
-    deduction = calculateMaxWalletUsageWithConfig(
-      payableAmount,
-      summary.spendable_balance,
-      channel,
-      config,
-    );
+    const hasActiveCombinationRules =
+      settings.source_combination_enabled && getActiveCombinationRules(settings.source_combination_rules || []).length > 0;
+
+    if (hasActiveCombinationRules) {
+      deduction = calculateMaxWalletUsageWithCombinations(
+        payableAmount,
+        balanceBySource,
+        channel,
+        settings,
+        config,
+      );
+      deduction = roundMoney(Math.min(deduction, summary.spendable_balance));
+    } else if (settings.per_source_limits_enabled) {
+      deduction = calculateMaxWalletUsagePerSource(
+        payableAmount,
+        balanceBySource,
+        channel,
+        settings.source_limits,
+        config,
+      );
+      deduction = roundMoney(Math.min(deduction, summary.spendable_balance));
+    } else if (channel === 'SERVICE' && serviceLines?.length) {
+      deduction = calculateWalletDeductionForServiceLines(
+        serviceLines,
+        summary.spendable_balance,
+        channel,
+        config,
+        settings,
+      );
+    } else {
+      deduction = calculateMaxWalletUsageWithConfig(
+        payableAmount,
+        summary.spendable_balance,
+        channel,
+        config,
+      );
+    }
   }
 
   return {

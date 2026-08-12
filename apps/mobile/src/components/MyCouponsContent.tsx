@@ -23,6 +23,13 @@ export type MyCouponItem = {
   coupon_kind?: string;
   valid_until?: string;
   ends_at?: string;
+  end_at?: string;
+  locked?: boolean;
+  lock_reason?: 'profile' | 'service' | null;
+  unlock_message?: string | null;
+  can_use?: boolean;
+  profile_ok?: boolean;
+  service_unlocked?: boolean;
 };
 
 function describeCouponOffer(c: MyCouponItem): string {
@@ -38,7 +45,7 @@ function describeCouponOffer(c: MyCouponItem): string {
 }
 
 function formatExpiry(c: MyCouponItem): string | null {
-  const raw = c.valid_until || c.ends_at;
+  const raw = c.valid_until || c.ends_at || c.end_at;
   if (!raw) return null;
   const dt = new Date(raw);
   if (Number.isNaN(dt.getTime())) return null;
@@ -48,7 +55,7 @@ function formatExpiry(c: MyCouponItem): string | null {
 type Props = {
   coupons: MyCouponItem[];
   loading: boolean;
-  onUseInCart: (code: string) => void;
+  onUseInCart: (code: string, coupon?: MyCouponItem) => void;
   onLogin?: () => void;
   isLoggedIn: boolean;
 };
@@ -58,16 +65,17 @@ function CouponTicket({
   onUseInCart,
 }: {
   coupon: MyCouponItem;
-  onUseInCart: (code: string) => void;
+  onUseInCart: (code: string, coupon?: MyCouponItem) => void;
 }) {
   const code = String(coupon?.code || '').trim();
   const displayCode = code.toUpperCase();
   const offer = describeCouponOffer(coupon);
   const isAssigned = Boolean(coupon?.assigned);
+  const isLocked = Boolean(coupon?.locked) || coupon?.can_use === false;
   const expiry = formatExpiry(coupon);
-  const accent = isAssigned ? '#B45309' : COLORS.primary;
-  const accentSoft = isAssigned ? '#FFFBEB' : '#EFF6FF';
-  const accentBorder = isAssigned ? '#FDE68A' : '#BFDBFE';
+  const accent = isLocked ? '#64748B' : isAssigned ? '#B45309' : COLORS.primary;
+  const accentSoft = isLocked ? '#F8FAFC' : isAssigned ? '#FFFBEB' : '#EFF6FF';
+  const accentBorder = isLocked ? '#E2E8F0' : isAssigned ? '#FDE68A' : '#BFDBFE';
 
   const copyCode = async () => {
     if (!code) return;
@@ -75,12 +83,32 @@ function CouponTicket({
     Alert.alert('Copied', `${displayCode} copied to clipboard.`);
   };
 
+  const handleUse = () => {
+    if (!code) return;
+    if (isLocked) {
+      Alert.alert(
+        coupon.lock_reason === 'profile' ? 'Profile incomplete' : 'Coupon not active yet',
+        String(
+          coupon.unlock_message ||
+            'Pehle profile complete karo aur ek service complete hone ke baad ye coupon active hoga.',
+        ),
+      );
+      onUseInCart(displayCode, coupon);
+      return;
+    }
+    onUseInCart(displayCode, coupon);
+  };
+
   return (
     <View style={styles.ticketShadow}>
       <View style={styles.ticket}>
         <View style={[styles.ticketAccent, { backgroundColor: accent }]}>
           <View style={styles.ticketAccentInner}>
-            <Ionicons name={isAssigned ? 'star' : 'pricetag'} size={18} color="#FFFFFF" />
+            <Ionicons
+              name={isLocked ? 'lock-closed' : isAssigned ? 'star' : 'pricetag'}
+              size={18}
+              color="#FFFFFF"
+            />
             <Text style={styles.ticketOffer} numberOfLines={3}>{offer}</Text>
           </View>
         </View>
@@ -91,7 +119,14 @@ function CouponTicket({
 
         <View style={styles.ticketBody}>
           <View style={styles.ticketTopRow}>
-            {isAssigned ? (
+            {isLocked ? (
+              <View style={[styles.forYouBadge, { backgroundColor: '#F1F5F9' }]}>
+                <Ionicons name="lock-closed" size={11} color="#475569" />
+                <Text style={[styles.forYouText, { color: '#475569' }]}>
+                  {coupon.lock_reason === 'profile' ? 'PROFILE NEEDED' : 'UNLOCKED · INACTIVE'}
+                </Text>
+              </View>
+            ) : isAssigned ? (
               <View style={styles.forYouBadge}>
                 <Ionicons name="diamond-outline" size={11} color="#92400E" />
                 <Text style={styles.forYouText}>EXCLUSIVE</Text>
@@ -107,15 +142,21 @@ function CouponTicket({
           </View>
 
           <TouchableOpacity style={[styles.codePill, { backgroundColor: accentSoft, borderColor: accentBorder }]} onPress={copyCode} activeOpacity={0.8}>
-            <Text style={[styles.codeText, { color: isAssigned ? '#92400E' : COLORS.primaryDark }]}>{displayCode || '—'}</Text>
+            <Text style={[styles.codeText, { color: isAssigned || isLocked ? '#92400E' : COLORS.primaryDark }]}>{displayCode || '—'}</Text>
             <View style={styles.copyChip}>
-              <Ionicons name="copy-outline" size={14} color={isAssigned ? '#92400E' : COLORS.primary} />
-              <Text style={[styles.copyChipText, { color: isAssigned ? '#92400E' : COLORS.primary }]}>Copy</Text>
+              <Ionicons name="copy-outline" size={14} color={isAssigned || isLocked ? '#92400E' : COLORS.primary} />
+              <Text style={[styles.copyChipText, { color: isAssigned || isLocked ? '#92400E' : COLORS.primary }]}>Copy</Text>
             </View>
           </TouchableOpacity>
 
           {coupon.description && offer !== String(coupon.description) ? (
             <Text style={styles.description} numberOfLines={2}>{String(coupon.description)}</Text>
+          ) : null}
+
+          {isLocked && coupon.unlock_message ? (
+            <Text style={[styles.description, { color: '#64748B' }]} numberOfLines={4}>
+              {String(coupon.unlock_message)}
+            </Text>
           ) : null}
 
           {coupon.min_order_value ? (
@@ -128,14 +169,22 @@ function CouponTicket({
           ) : null}
 
           <TouchableOpacity
-            style={[styles.useBtn, { backgroundColor: accent }]}
-            onPress={() => {
-              if (code) onUseInCart(displayCode);
-            }}
+            style={[styles.useBtn, { backgroundColor: accent, opacity: isLocked ? 0.92 : 1 }]}
+            onPress={handleUse}
             activeOpacity={0.88}
           >
-            <Text style={styles.useBtnText}>Use in Cart</Text>
-            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+            <Text style={styles.useBtnText}>
+              {isLocked
+                ? coupon.lock_reason === 'profile'
+                  ? 'Complete Profile'
+                  : 'Locked till 1st service'
+                : 'Use in Cart'}
+            </Text>
+            <Ionicons
+              name={isLocked ? 'lock-closed' : 'arrow-forward'}
+              size={16}
+              color="#FFFFFF"
+            />
           </TouchableOpacity>
         </View>
       </View>

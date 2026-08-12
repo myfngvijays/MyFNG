@@ -135,7 +135,15 @@ export async function logAppDownloadLinkClick(input: {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return;
 
-    const dedupeKey = buildClickDedupeKey(input);
+    let refererUtm: UtmParams = {};
+    try {
+      if (input.referer) refererUtm = parseUtmParams(new URL(String(input.referer)).search);
+    } catch {
+      refererUtm = {};
+    }
+    const utm = mergeUtmParams(refererUtm, input.utm);
+
+    const dedupeKey = buildClickDedupeKey({ ...input, utm });
     if (await hasRecentDuplicateClick(supabaseAdmin, dedupeKey)) return;
 
     await supabaseAdmin.from('customer_analytics_events').insert({
@@ -150,7 +158,7 @@ export async function logAppDownloadLinkClick(input: {
         dedupe_key: dedupeKey,
         user_agent: input.userAgent ? String(input.userAgent).slice(0, 500) : null,
         referer: input.referer ? String(input.referer).slice(0, 500) : null,
-        ...mergeUtmParams(input.utm),
+        ...utm,
       },
     });
   } catch (err) {

@@ -76,6 +76,20 @@ export async function PATCH(request: NextRequest) {
 
     const saved = await saveWalletLogicSettings(supabaseAdmin, payload, auth.user?.id || null);
 
+    // Best-effort: assign auto coupon to override phones (registered + pending).
+    // Keep this out of wallet-config — that module is also imported by client components.
+    if (
+      saved.welcome_bonus_auto_coupon_id &&
+      (saved.welcome_bonus_phone_overrides || []).length > 0
+    ) {
+      try {
+        const { backfillWelcomeOverrideCoupons } = await import('@/lib/welcome-override-coupon');
+        await backfillWelcomeOverrideCoupons(supabaseAdmin);
+      } catch (e) {
+        console.warn('[wallet-logic] welcome override coupon backfill failed:', e);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       settings: saved,

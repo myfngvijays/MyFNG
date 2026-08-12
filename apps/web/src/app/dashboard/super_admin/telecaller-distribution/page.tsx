@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Save,
   Plus,
@@ -13,6 +13,9 @@ import {
   Trash2,
   Sparkles,
   MapPin,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   ALL_LEAD_CHANNEL_IDS,
@@ -53,6 +56,9 @@ type AllocationRow = {
 };
 
 type TabId = 'allocation' | 'triggers' | 'api';
+type TriggerStatusFilter = 'active' | 'inactive' | 'all';
+
+const TRIGGER_PAGE_SIZE = 10;
 
 function telecallerLabel(t: Telecaller | undefined) {
   if (!t) return 'Telecaller';
@@ -72,6 +78,11 @@ export default function TelecallerDistributionPage() {
   const [selectedSourceSlug, setSelectedSourceSlug] = useState('google-ads');
   const [routingPanel, setRoutingPanel] = useState<Record<number, 'pincodes' | 'sources' | null>>({});
   const [testMessage, setTestMessage] = useState('');
+  const [triggerFilterTelecallerId, setTriggerFilterTelecallerId] = useState('');
+  const [triggerFilterStatus, setTriggerFilterStatus] = useState<TriggerStatusFilter>('active');
+  const [triggerPage, setTriggerPage] = useState(1);
+  const [highlightTriggerId, setHighlightTriggerId] = useState<string | null>(null);
+  const newTriggerRef = useRef<HTMLDivElement | null>(null);
 
   const leadSourceApis = [
     { label: 'Google Ads', slug: 'google-ads' },
@@ -166,6 +177,61 @@ export default function TelecallerDistributionPage() {
     [triggers],
   );
 
+  /** Assign dropdown: all login-active telecallers (users_login.is_active). */
+  const activeTelecallers = useMemo(
+    () => telecallers.filter((t) => t.is_active),
+    [telecallers],
+  );
+
+  const statusFilteredTriggers = useMemo(() => {
+    return triggers
+      .map((trigger, index) => ({ trigger, index }))
+      .filter(({ trigger }) => {
+        if (triggerFilterStatus === 'active') return trigger.is_active;
+        if (triggerFilterStatus === 'inactive') return !trigger.is_active;
+        return true;
+      });
+  }, [triggers, triggerFilterStatus]);
+
+  const filteredTriggers = useMemo(() => {
+    if (!triggerFilterTelecallerId) return statusFilteredTriggers;
+    return statusFilteredTriggers.filter(
+      ({ trigger }) => trigger.telecaller_id === triggerFilterTelecallerId,
+    );
+  }, [statusFilteredTriggers, triggerFilterTelecallerId]);
+
+  const triggerTotalPages = Math.max(1, Math.ceil(filteredTriggers.length / TRIGGER_PAGE_SIZE));
+
+  const pagedTriggers = useMemo(() => {
+    const page = Math.min(Math.max(triggerPage, 1), triggerTotalPages);
+    const start = (page - 1) * TRIGGER_PAGE_SIZE;
+    return filteredTriggers.slice(start, start + TRIGGER_PAGE_SIZE);
+  }, [filteredTriggers, triggerPage, triggerTotalPages]);
+
+  const triggerFilterOptions = useMemo(() => {
+    const ids = new Set(
+      statusFilteredTriggers.map(({ trigger }) => trigger.telecaller_id).filter(Boolean),
+    );
+    return telecallers.filter((t) => ids.has(t.id) || t.is_active);
+  }, [telecallers, statusFilteredTriggers]);
+
+  useEffect(() => {
+    setTriggerPage(1);
+  }, [triggerFilterTelecallerId, triggerFilterStatus]);
+
+  useEffect(() => {
+    if (triggerPage > triggerTotalPages) setTriggerPage(triggerTotalPages);
+  }, [triggerPage, triggerTotalPages]);
+
+  useEffect(() => {
+    if (!highlightTriggerId || tab !== 'triggers') return;
+    const el = newTriggerRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timer = window.setTimeout(() => setHighlightTriggerId(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightTriggerId, tab, triggers.length]);
+
   const testMatch = useMemo(() => {
     const msg = testMessage.trim().toLowerCase().replace(/\s+/g, ' ');
     if (!msg) return null;
@@ -242,19 +308,33 @@ export default function TelecallerDistributionPage() {
   }
 
   function addTrigger() {
+    const id = newTriggerId();
+    const defaultTelecallerId = activeTelecallers[0]?.id || '';
     setTriggers((prev) => [
-      ...prev,
       {
-        id: newTriggerId(),
+        id,
         label: '',
         phrase: '',
         match: 'exact',
-        telecaller_id: telecallers[0]?.id || '',
+        telecaller_id: defaultTelecallerId,
         mark_as_meta: true,
         is_active: true,
       },
+      ...prev,
     ]);
+    setTriggerFilterTelecallerId('');
+    setTriggerFilterStatus('active');
+    setTriggerPage(1);
+    setHighlightTriggerId(id);
     setTab('triggers');
+  }
+
+  function telecallerOptionsForTrigger(selectedId: string) {
+    const selected = telecallers.find((t) => t.id === selectedId);
+    if (selected && !selected.is_active) {
+      return [selected, ...activeTelecallers.filter((t) => t.id !== selected.id)];
+    }
+    return activeTelecallers;
   }
 
   function updateTrigger(index: number, patch: Partial<MessageTrigger>) {
@@ -741,113 +821,231 @@ export default function TelecallerDistributionPage() {
           </div>
 
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <div className="font-semibold text-sm sm:text-base">Message → Telecaller rules</div>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Longer / Exact matches win if multiple rules match the same message.
-                </p>
+            <div className="px-4 py-3 border-b flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <div className="font-semibold text-sm sm:text-base">Message → Telecaller rules</div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Longer / Exact matches win if multiple rules match the same message. New triggers
+                    appear at the top.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addTrigger}
+                  className="btn btn-primary flex items-center gap-1 text-xs sm:text-sm self-start"
+                  style={{ backgroundColor: '#5B6CFF', color: '#fff' }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Trigger
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={addTrigger}
-                className="btn btn-primary flex items-center gap-1 text-xs sm:text-sm self-start"
-                style={{ backgroundColor: '#5B6CFF', color: '#fff' }}
-              >
-                <Plus className="w-4 h-4" />
-                Add Trigger
-              </button>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
+                  <Filter className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                  <span className="shrink-0">Status</span>
+                  <select
+                    className="border rounded-md px-2 py-1.5 text-sm font-normal bg-white"
+                    value={triggerFilterStatus}
+                    onChange={(e) =>
+                      setTriggerFilterStatus(e.target.value as TriggerStatusFilter)
+                    }
+                  >
+                    <option value="active">
+                      Active ({triggers.filter((t) => t.is_active).length})
+                    </option>
+                    <option value="inactive">
+                      Inactive ({triggers.filter((t) => !t.is_active).length})
+                    </option>
+                    <option value="all">All ({triggers.length})</option>
+                  </select>
+                </label>
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600 min-w-0 flex-1 sm:max-w-xs">
+                  <span className="shrink-0">Telecaller</span>
+                  <select
+                    className="border rounded-md px-2 py-1.5 text-sm font-normal flex-1 min-w-0 bg-white"
+                    value={triggerFilterTelecallerId}
+                    onChange={(e) => setTriggerFilterTelecallerId(e.target.value)}
+                  >
+                    <option value="">All telecallers ({statusFilteredTriggers.length})</option>
+                    {triggerFilterOptions.map((tc) => {
+                      const count = statusFilteredTriggers.filter(
+                        ({ trigger }) => trigger.telecaller_id === tc.id,
+                      ).length;
+                      return (
+                        <option key={tc.id} value={tc.id}>
+                          {telecallerLabel(tc)}
+                          {!tc.is_active ? ' (inactive)' : ''} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+                {(triggerFilterTelecallerId || triggerFilterStatus !== 'active') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTriggerFilterTelecallerId('');
+                      setTriggerFilterStatus('active');
+                    }}
+                    className="text-xs font-semibold text-indigo-700 hover:underline self-start sm:self-center"
+                  >
+                    Reset filters
+                  </button>
+                )}
+                <span className="text-[11px] text-gray-500 sm:ml-auto">
+                  {filteredTriggers.length === 0
+                    ? 'No matches'
+                    : `Showing ${Math.min((Math.min(triggerPage, triggerTotalPages) - 1) * TRIGGER_PAGE_SIZE + 1, filteredTriggers.length)}–${Math.min(triggerPage * TRIGGER_PAGE_SIZE, filteredTriggers.length)} of ${filteredTriggers.length}`}
+                </span>
+              </div>
             </div>
 
-            <div className="divide-y">
-              {triggers.map((t, index) => (
-                <div key={t.id} className="px-4 py-4 space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="block text-xs font-semibold text-gray-600">
-                      Campaign label
-                      <input
-                        className="mt-1 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
-                        placeholder="e.g. IG Service Interest Jul"
-                        value={t.label}
-                        onChange={(e) => updateTrigger(index, { label: e.target.value })}
-                      />
-                    </label>
-                    <label className="block text-xs font-semibold text-gray-600">
-                      Assign telecaller
-                      <select
-                        className="mt-1 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
-                        value={t.telecaller_id}
-                        onChange={(e) => updateTrigger(index, { telecaller_id: e.target.value })}
+            <div className="p-3 sm:p-4 space-y-3 bg-slate-50/70">
+              {pagedTriggers.map(({ trigger: t, index }) => {
+                const assignOptions = telecallerOptionsForTrigger(t.telecaller_id);
+                const isNew = highlightTriggerId === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    ref={isNew ? newTriggerRef : undefined}
+                    className={`rounded-xl border bg-white px-3 sm:px-4 py-3 space-y-2 shadow-sm transition ${
+                      isNew
+                        ? 'border-indigo-400 ring-2 ring-indigo-200'
+                        : t.is_active
+                          ? 'border-slate-200'
+                          : 'border-dashed border-slate-300 opacity-80'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="block text-[11px] font-semibold text-gray-600 min-w-[120px] flex-1 basis-[140px]">
+                        Campaign label
+                        <input
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
+                          placeholder="e.g. Campaign A"
+                          value={t.label}
+                          onChange={(e) => updateTrigger(index, { label: e.target.value })}
+                        />
+                      </label>
+                      <label className="block text-[11px] font-semibold text-gray-600 w-[120px] shrink-0">
+                        Match
+                        <select
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
+                          value={t.match}
+                          onChange={(e) =>
+                            updateTrigger(index, {
+                              match: e.target.value as MessageTriggerMatch,
+                            })
+                          }
+                        >
+                          <option value="exact">Exact</option>
+                          <option value="starts_with">Starts with</option>
+                          <option value="contains">Contains</option>
+                        </select>
+                      </label>
+                      <label className="block text-[11px] font-semibold text-gray-600 min-w-[150px] flex-1 basis-[160px]">
+                        Assign telecaller
+                        <select
+                          className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal"
+                          value={t.telecaller_id}
+                          onChange={(e) => updateTrigger(index, { telecaller_id: e.target.value })}
+                        >
+                          <option value="">Select telecaller</option>
+                          {assignOptions.map((tc) => (
+                            <option key={tc.id} value={tc.id}>
+                              {telecallerLabel(tc)}
+                              {!tc.is_active ? ' (inactive login)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700 pb-2 shrink-0"
+                        title="Match hone pe lead ko Meta Ads (WHATSAPP_META) source mark karta hai"
                       >
-                        <option value="">Select telecaller</option>
-                        {telecallers.map((tc) => (
-                          <option key={tc.id} value={tc.id}>
-                            {telecallerLabel(tc)}
-                          </option>
-                        ))}
-                      </select>
+                        <input
+                          type="checkbox"
+                          checked={t.mark_as_meta}
+                          onChange={(e) =>
+                            updateTrigger(index, { mark_as_meta: e.target.checked })
+                          }
+                        />
+                        Meta lead
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700 pb-2 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={t.is_active}
+                          onChange={(e) => updateTrigger(index, { is_active: e.target.checked })}
+                        />
+                        Active
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeTrigger(index)}
+                        className="text-rose-600 text-xs font-semibold inline-flex items-center gap-1 pb-2 shrink-0 ml-auto"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <label className="block text-[11px] font-semibold text-gray-600">
+                      Prefill message
+                      <textarea
+                        className="mt-0.5 w-full border rounded-md px-2 py-1.5 text-sm font-normal min-h-[52px] resize-y"
+                        placeholder="Hi! I am interested in service!"
+                        value={t.phrase}
+                        onChange={(e) => updateTrigger(index, { phrase: e.target.value })}
+                        rows={2}
+                      />
                     </label>
                   </div>
-
-                  <label className="block text-xs font-semibold text-gray-600">
-                    Prefill / first message (from Meta ad)
-                    <textarea
-                      className="mt-1 w-full border rounded-md px-2 py-1.5 text-sm font-normal min-h-[64px]"
-                      placeholder='Hi! I am interested in service!'
-                      value={t.phrase}
-                      onChange={(e) => updateTrigger(index, { phrase: e.target.value })}
-                    />
-                  </label>
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label className="text-xs font-semibold text-gray-600 inline-flex items-center gap-2">
-                      Match
-                      <select
-                        className="border rounded-md px-2 py-1.5 text-sm font-normal"
-                        value={t.match}
-                        onChange={(e) =>
-                          updateTrigger(index, {
-                            match: e.target.value as MessageTriggerMatch,
-                          })
-                        }
-                      >
-                        <option value="exact">Exact</option>
-                        <option value="starts_with">Starts with</option>
-                        <option value="contains">Contains</option>
-                      </select>
-                    </label>
-                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={t.mark_as_meta}
-                        onChange={(e) =>
-                          updateTrigger(index, { mark_as_meta: e.target.checked })
-                        }
-                      />
-                      Mark as Meta lead
-                    </label>
-                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={t.is_active}
-                        onChange={(e) => updateTrigger(index, { is_active: e.target.checked })}
-                      />
-                      Active
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeTrigger(index)}
-                      className="ml-auto text-rose-600 text-xs font-semibold inline-flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {triggers.length === 0 && (
-                <div className="px-4 py-10 text-center text-sm text-gray-500">
+                <div className="px-4 py-10 text-center text-sm text-gray-500 bg-white rounded-xl border border-dashed">
                   No message triggers yet. Add one for each Meta campaign prefill message.
+                </div>
+              )}
+              {triggers.length > 0 && filteredTriggers.length === 0 && (
+                <div className="px-4 py-10 text-center text-sm text-gray-500 bg-white rounded-xl border border-dashed">
+                  No triggers match these filters.{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTriggerFilterTelecallerId('');
+                      setTriggerFilterStatus('all');
+                    }}
+                    className="text-indigo-700 font-semibold hover:underline"
+                  >
+                    Show all
+                  </button>
+                </div>
+              )}
+              {filteredTriggers.length > TRIGGER_PAGE_SIZE && (
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={triggerPage <= 1}
+                    onClick={() => setTriggerPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    Prev
+                  </button>
+                  <span className="text-xs font-semibold text-gray-600 tabular-nums">
+                    Page {Math.min(triggerPage, triggerTotalPages)} / {triggerTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={triggerPage >= triggerTotalPages}
+                    onClick={() => setTriggerPage((p) => Math.min(triggerTotalPages, p + 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    Next
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
             </div>

@@ -115,7 +115,8 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           setDeepLinkReferralCode(pendingCode);
           void clearPendingReferralCode();
         }
-        setReferralModalVisible(true);
+        // Slight delay so prior Modal (welcome) fully unmounts first.
+        setTimeout(() => setReferralModalVisible(true), 350);
       });
       return;
     }
@@ -699,7 +700,9 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
           }
           if (pendingHomeNavigationRef.current) {
             pendingHomeNavigationRef.current = false;
-            finishLoginNavigation();
+            // Wait for Modal dismiss animation — opening next Modal/nav in the same tick
+            // can leave an invisible iOS touch blocker (home swipe/scroll dies).
+            setTimeout(() => finishLoginNavigation(), 400);
           }
         }}
       />
@@ -708,7 +711,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         initialCode={deepLinkReferralCode}
         onClose={() => {
           setReferralModalVisible(false);
-          navigation?.navigate?.('PublicHome');
+          setTimeout(() => navigation?.navigate?.('PublicHome'), 400);
         }}
       />
     </KeyboardAvoidingView>

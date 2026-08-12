@@ -108,7 +108,8 @@ export default function DynamicPopupManager({ screen }: Props) {
       if (p.display_rule === 'ONCE_PER_SESSION' && DISMISSED_SESSION.has(p.id)) continue;
 
       setPopup(p);
-      setTimeout(() => setVisible(true), 500);
+      // Longer delay so welcome/soft-update modals don't stack and block home scroll.
+      setTimeout(() => setVisible(true), 1800);
       return;
     }
   }, [screen]);

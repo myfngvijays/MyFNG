@@ -9,7 +9,7 @@ import {
   logAppDownloadLinkClick,
   parseUtmFromSearchParams,
 } from '@/lib/app-download-link';
-import { mergeUtmParams } from '@/lib/utm';
+import { mergeUtmParams, parseUtmParams } from '@/lib/utm';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +27,14 @@ export default async function AppDownloadGoPage({ params, searchParams }: Props)
   const headerStore = await headers();
   const userAgent = headerStore.get('user-agent') || '';
   const referer = headerStore.get('referer') || '';
-  const utm = parseUtmFromSearchParams(query);
+  // Query UTMs win; if /go has none, inherit from referer page (e.g. myfng.in/?utm_…)
+  let refererUtm = {};
+  try {
+    if (referer) refererUtm = parseUtmParams(new URL(referer).search);
+  } catch {
+    refererUtm = {};
+  }
+  const utm = mergeUtmParams(refererUtm, parseUtmFromSearchParams(query));
 
   const platform = detectAppDownloadPlatform(userAgent);
 

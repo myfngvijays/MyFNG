@@ -274,7 +274,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
                 ? String(meJson.customer.phone)
                 : null;
               setCreditedWelcomeAmount(decision.amount);
-              setCreditedWelcomeVisible(true);
+              // Delay so login/referral modals finish unmounting first (scroll blocker fix).
+              popupTimer = setTimeout(() => {
+                if (active) setCreditedWelcomeVisible(true);
+              }, 600);
             }
           } catch {
             // ignore welcome popup errors
@@ -569,8 +572,12 @@ export default function PublicHomeScreen({ navigation }: Props) {
         />
 
         <ScrollView
+          style={styles.homeScroll}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1201,7 +1208,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  homeScroll: {
+    flex: 1,
+  },
   content: {
+    flexGrow: 1,
     paddingBottom: 132,
   },
   membershipOfferWrap: {

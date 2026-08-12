@@ -184,6 +184,12 @@ const navigationItems: NavItem[] = [
         description: 'App users, bookings & wallet',
       },
       {
+        name: 'Special Welcome Bonus',
+        href: '/dashboard/super_admin/welcome-bonus-overrides',
+        icon: Gift,
+        description: '₹1500 override list — login & credit status',
+      },
+      {
         name: 'Workshop Proximity',
         href: '/dashboard/super_admin/workshop-proximity',
         icon: MapPin,
@@ -725,6 +731,7 @@ function SuperAdminLayoutInner({
   React.useEffect(() => {
     if (
       pathname?.startsWith('/dashboard/super_admin/customer-insights') ||
+      pathname?.startsWith('/dashboard/super_admin/welcome-bonus-overrides') ||
       pathname?.startsWith('/dashboard/super_admin/workshop-proximity') ||
       pathname?.startsWith('/dashboard/super_admin/membership-customers')
     ) {

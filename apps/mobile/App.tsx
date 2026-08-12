@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, Linking, Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
+import {
+  ActivityIndicator,
+  AppState,
+  Linking,
+  Platform,
+  Text as RNText,
+  TextInput as RNTextInput,
+  View,
+} from 'react-native';
 
 const TextInputWithDefaults = RNTextInput as typeof RNTextInput & {
   defaultProps?: Partial<React.ComponentProps<typeof RNTextInput>>;
@@ -83,6 +91,7 @@ import { apiFetch } from './src/lib/api';
 
 const Stack = createNativeStackNavigator();
 
+/** Hard cap so splash never exceeds ~4–5s even if auth/update is slow. */
 const SPLASH_MAX_MS = 4500;
 const SPLASH_ANIMATION_MS = 4000;
 
@@ -93,6 +102,7 @@ function AppContent() {
   const [updateCheckDone, setUpdateCheckDone] = useState(__DEV__);
   const [forceUpdate, setForceUpdate] = useState<ForceUpdateResult | null>(null);
   const [softUpdate, setSoftUpdate] = useState<ForceUpdateResult | null>(null);
+  const [softUpdateVisible, setSoftUpdateVisible] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loginScreenKey, setLoginScreenKey] = useState(0);
@@ -253,6 +263,17 @@ function AppContent() {
     void runForceUpdateCheck();
   }, [runForceUpdateCheck]);
 
+  // Delay soft-update modal so it never stacks with splash / welcome / home popups
+  // (stacked RN Modals can leave an invisible touch blocker — swipe/scroll dies).
+  useEffect(() => {
+    if (!softUpdate?.softAvailable || showSplash || !authReady) {
+      setSoftUpdateVisible(false);
+      return;
+    }
+    const timer = setTimeout(() => setSoftUpdateVisible(true), 2200);
+    return () => clearTimeout(timer);
+  }, [softUpdate?.softAvailable, showSplash, authReady]);
+
   useEffect(() => {
     if (__DEV__) return;
 
@@ -409,8 +430,17 @@ function AppContent() {
     }
   };
 
-  if (showSplash || !authReady || !updateCheckDone) {
+  // Animated splash only — do not keep the full splash UI while auth/update finish.
+  if (showSplash) {
     return <SplashScreen durationMs={SPLASH_ANIMATION_MS} onComplete={handleSplashComplete} />;
+  }
+
+  if (!authReady || !updateCheckDone) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#004AAD" />
+      </View>
+    );
   }
 
   if (forceUpdate?.required) {
@@ -523,7 +553,7 @@ function AppContent() {
         </Stack.Navigator>
       </NavigationContainer>
 
-      {softUpdate?.softAvailable ? (
+      {softUpdate?.softAvailable && softUpdateVisible ? (
         <SoftUpdateModal
           visible
           message={softUpdate.message || ''}
@@ -534,6 +564,7 @@ function AppContent() {
               latest_version: softUpdate.latestVersion || '',
             });
             void dismissSoftUpdate(softUpdate.latestVersion || '');
+            setSoftUpdateVisible(false);
             setSoftUpdate(null);
           }}
         />

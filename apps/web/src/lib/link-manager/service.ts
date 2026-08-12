@@ -1,10 +1,7 @@
 import { randomBytes } from 'crypto';
-import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
-  appendUtmParams,
   buildQrShortUrl,
   buildShortUrl,
-  detectLinkPlatform,
   isBrokenStoredQrUrl,
   isLocalOrPrivateUrl,
   isValidHttpUrl,
@@ -14,46 +11,7 @@ import {
 } from '@/lib/link-manager/utils';
 import { generateBrandedQrDataUrl } from '@/lib/link-manager/qr-generator';
 import type { QrStyleOptions } from '@/lib/link-manager/qr-types';
-import { mergeUtmParams, type UtmParams } from '@/lib/utm';
-
-function buildEffectiveLinkUtm(
-  link: {
-    utm_source?: string | null;
-    utm_medium?: string | null;
-    utm_campaign?: string | null;
-    utm_term?: string | null;
-    utm_content?: string | null;
-  },
-  queryUtm?: UtmParams,
-) {
-  const merged = mergeUtmParams(
-    {
-      utm_source: link.utm_source,
-      utm_medium: link.utm_medium,
-      utm_campaign: link.utm_campaign,
-      utm_term: link.utm_term,
-      utm_content: link.utm_content,
-    },
-    queryUtm || {},
-  );
-  return {
-    source: merged.utm_source || null,
-    medium: merged.utm_medium || null,
-    campaign: merged.utm_campaign || null,
-    term: merged.utm_term || null,
-    content: merged.utm_content || null,
-  };
-}
-
-function utmMetaSnapshot(utm: ReturnType<typeof buildEffectiveLinkUtm>) {
-  return {
-    utm_source: utm.source,
-    utm_medium: utm.medium,
-    utm_campaign: utm.campaign,
-    utm_term: utm.term,
-    utm_content: utm.content,
-  };
-}
+import type { UtmParams } from '@/lib/utm';
 
 export type ManagedShortLink = {
   id: string;
@@ -97,6 +55,7 @@ export async function generateQrDataUrl(data: string, qrStyle?: QrStyleOptions |
   return generateBrandedQrDataUrl(data, qrStyle);
 }
 
+/** @deprecated Prefer resolveManagedShortLink from resolve.ts */
 export async function resolveManagedShortLinkRedirect(
   shortCode: string,
   request?: {
@@ -105,85 +64,16 @@ export async function resolveManagedShortLinkRedirect(
     referrer?: string | null;
     queryUtm?: UtmParams;
     isQrScan?: boolean;
+    headers?: { get?: (name: string) => string | null } | null;
+    passwordUnlocked?: boolean;
+    forceRedirect?: boolean;
   },
 ): Promise<string | null> {
-  const { supabaseAdmin } = getSupabaseAdmin();
-  if (!supabaseAdmin) return null;
-
-  const { data: link, error } = await supabaseAdmin
-    .from('managed_short_links')
-    .select('*')
-    .eq('short_code', shortCode)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (error || !link) return null;
-  if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) return null;
-
-  const effectiveUtm = buildEffectiveLinkUtm(link, request?.queryUtm);
-
-  const destination = appendUtmParams(
-    normalizeStoredDestinationUrl(link.long_url),
-    effectiveUtm,
-  );
-
-  const platform = detectLinkPlatform(request?.userAgent);
-  const isQrScan = Boolean(request?.isQrScan);
-
-  const ip = request?.ip || null;
-  const fingerprint = ip ? `${ip}:${String(request?.userAgent || '').slice(0, 120)}` : null;
-  const eventType = isQrScan ? 'qr_scan' : 'click';
-
-  let isUnique = true;
-  if (fingerprint && !isQrScan) {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count } = await supabaseAdmin
-      .from('managed_short_link_clicks')
-      .select('id', { count: 'exact', head: true })
-      .eq('link_id', link.id)
-      .eq('event_type', 'click')
-      .gte('created_at', since)
-      .contains('meta', { fingerprint });
-    isUnique = !count;
-  }
-
-  await supabaseAdmin.from('managed_short_link_clicks').insert({
-    link_id: link.id,
-    event_type: eventType,
-    ip_address: ip,
-    user_agent: request?.userAgent || null,
-    referrer: request?.referrer || null,
-    meta: {
-      ...(fingerprint ? { fingerprint } : {}),
-      ...utmMetaSnapshot(effectiveUtm),
-      platform,
-      source: isQrScan ? 'qr_scan' : 'short_link_redirect',
-    },
-  }).then(({ error: clickError }) => {
-    if (clickError) {
-      console.error('[link-manager] failed to log click event:', clickError.message, { shortCode, eventType });
-    }
-  });
-
-  const { error: updateError } = await supabaseAdmin
-    .from('managed_short_links')
-    .update({
-      ...(isQrScan
-        ? { qr_scans: Number(link.qr_scans || 0) + 1 }
-        : {
-            clicks: Number(link.clicks || 0) + 1,
-            unique_clicks: Number(link.unique_clicks || 0) + (isUnique ? 1 : 0),
-            last_clicked_at: new Date().toISOString(),
-          }),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', link.id);
-
-  if (updateError) {
-    console.error('[link-manager] failed to update link counters:', updateError.message, { shortCode, eventType });
-  }
-
-  return destination;
+  const { resolveManagedShortLink } = await import('@/lib/link-manager/resolve');
+  const result = await resolveManagedShortLink(shortCode, request);
+  if (!result) return null;
+  if (result.kind === 'redirect' || result.kind === 'gone') return result.url;
+  return null;
 }
 
 export async function ensureUniqueShortCode(
@@ -232,7 +122,7 @@ export async function ensureLinkDestinationIsPublic(
   return updated as ManagedShortLink;
 }
 
-export type ManagedShortLinkCreateMode = 'link_only' | 'qr_only';
+export type ManagedShortLinkCreateMode = 'link_only' | 'qr_only' | 'both';
 
 export async function ensureLinkQrUsesPublicUrl(
   supabaseAdmin: any,
@@ -303,31 +193,65 @@ export async function createManagedShortLink(
     qr_style?: QrStyleOptions | null;
     baseUrl?: string | null;
     create_mode?: ManagedShortLinkCreateMode;
+    password?: string | null;
+    max_clicks?: number | null;
+    expired_redirect_url?: string | null;
+    folder?: string | null;
+    ios_url?: string | null;
+    android_url?: string | null;
+    desktop_url?: string | null;
+    app_deep_link?: string | null;
+    og_title?: string | null;
+    og_description?: string | null;
+    og_image_url?: string | null;
+    enable_landing?: boolean;
+    webhook_url?: string | null;
+    pixel_meta_id?: string | null;
+    pixel_google_id?: string | null;
+    ab_variants?: unknown;
+    geo_rules?: unknown;
   },
 ) {
+  const { hashLinkPassword, parseAbVariants, parseGeoRules } = await import('@/lib/link-manager/advanced');
+
   const longUrl = normalizeStoredDestinationUrl(normalizeLongUrl(input.long_url));
   if (!isValidHttpUrl(longUrl)) throw new Error('Enter a valid http/https URL');
 
-  const createMode: ManagedShortLinkCreateMode = input.create_mode === 'qr_only' ? 'qr_only' : 'link_only';
+  const createMode: ManagedShortLinkCreateMode =
+    input.create_mode === 'qr_only' ? 'qr_only' : input.create_mode === 'both' ? 'both' : 'link_only';
   const shortCode = await ensureUniqueShortCode(supabaseAdmin, input.custom_code);
   const shortUrl = buildShortUrl(shortCode, input.baseUrl);
   const qrPayload = buildQrShortUrl(shortCode);
   const qrStyle = input.qr_style || null;
-  const qrCodeUrl =
-    createMode === 'qr_only' ? await generateBrandedQrDataUrl(qrPayload, qrStyle) : null;
+  const wantsQr = createMode === 'qr_only' || createMode === 'both';
+  const qrCodeUrl = wantsQr ? await generateBrandedQrDataUrl(qrPayload, qrStyle) : null;
+
+  const abVariants = parseAbVariants(input.ab_variants);
+  const geoRules = parseGeoRules(input.geo_rules);
 
   const meta: Record<string, unknown> = {
     public_short_url: shortUrl,
-    qr_payload: createMode === 'qr_only' ? qrPayload : null,
+    qr_payload: wantsQr ? qrPayload : null,
     create_mode: createMode,
+    ab_variants: abVariants,
+    geo_rules: geoRules,
   };
-  if (createMode === 'qr_only' && qrStyle) {
+  if (wantsQr && qrStyle) {
     meta.qr_style = {
       ...qrStyle,
       logo_data_url: qrStyle.logo_data_url ? '[stored]' : null,
     };
   }
 
+  const optionalUrl = (raw: unknown) => {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+    const normalized = normalizeLongUrl(value);
+    return isValidHttpUrl(normalized) ? normalizeStoredDestinationUrl(normalized) : null;
+  };
+
+  const password = String(input.password || '').trim();
+  const maxClicks = Number(input.max_clicks);
   const { data, error } = await supabaseAdmin
     .from('managed_short_links')
     .insert({
@@ -335,7 +259,7 @@ export async function createManagedShortLink(
       long_url: longUrl,
       title: String(input.title || '').trim() || null,
       description: String(input.description || '').trim() || null,
-      tags: Array.isArray(input.tags) ? input.tags.filter(Boolean).slice(0, 10) : [],
+      tags: Array.isArray(input.tags) ? input.tags.filter(Boolean).slice(0, 20) : [],
       utm_source: String(input.utm_source || '').trim() || null,
       utm_medium: String(input.utm_medium || '').trim() || null,
       utm_campaign: String(input.utm_campaign || '').trim() || null,
@@ -345,6 +269,21 @@ export async function createManagedShortLink(
       expires_at: input.expires_at || null,
       created_by: input.created_by || null,
       meta,
+      password_hash: password ? hashLinkPassword(password) : null,
+      max_clicks: Number.isFinite(maxClicks) && maxClicks > 0 ? Math.round(maxClicks) : null,
+      expired_redirect_url: optionalUrl(input.expired_redirect_url),
+      folder: String(input.folder || '').trim().slice(0, 100) || null,
+      ios_url: optionalUrl(input.ios_url),
+      android_url: optionalUrl(input.android_url),
+      desktop_url: optionalUrl(input.desktop_url),
+      app_deep_link: String(input.app_deep_link || '').trim() || null,
+      og_title: String(input.og_title || '').trim() || null,
+      og_description: String(input.og_description || '').trim() || null,
+      og_image_url: optionalUrl(input.og_image_url),
+      enable_landing: Boolean(input.enable_landing),
+      webhook_url: optionalUrl(input.webhook_url),
+      pixel_meta_id: String(input.pixel_meta_id || '').trim() || null,
+      pixel_google_id: String(input.pixel_google_id || '').trim() || null,
     })
     .select('*')
     .single();

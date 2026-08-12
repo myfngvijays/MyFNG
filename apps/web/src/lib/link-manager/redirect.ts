@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLongUrl } from '@/lib/services/urlShortener';
-import { resolveManagedShortLinkRedirect } from '@/lib/link-manager/service';
-import { isQrScanTrackingParam, sanitizePublicRedirectUrl } from '@/lib/link-manager/utils';
+import { resolveManagedShortLink } from '@/lib/link-manager/resolve';
+import { appBaseUrl, isQrScanTrackingParam, sanitizePublicRedirectUrl } from '@/lib/link-manager/utils';
 import { parseUtmParams } from '@/lib/utm';
+
+function readUnlockCookie(request: NextRequest, shortCode: string): boolean {
+  const raw = request.cookies.get(`sl_unlock_${shortCode}`)?.value;
+  return raw === '1';
+}
 
 export async function handleManagedShortLinkRequest(
   request: NextRequest,
@@ -20,18 +25,34 @@ export async function handleManagedShortLinkRequest(
       null;
     const userAgent = request.headers.get('user-agent');
     const referrer = request.headers.get('referer');
-
     const isQrScan = Boolean(options?.isQrScan) || isQrScanTrackingParam(request.nextUrl.searchParams);
 
-    const managedUrl = await resolveManagedShortLinkRedirect(shortCode, {
+    const result = await resolveManagedShortLink(shortCode, {
       ip,
       userAgent,
       referrer,
       queryUtm: parseUtmParams(request.nextUrl.search),
       isQrScan,
+      headers: request.headers,
+      passwordUnlocked: readUnlockCookie(request, shortCode),
     });
-    if (managedUrl) {
-      return NextResponse.redirect(sanitizePublicRedirectUrl(managedUrl));
+
+    if (result?.kind === 'redirect') {
+      return NextResponse.redirect(sanitizePublicRedirectUrl(result.url));
+    }
+
+    if (result?.kind === 'gone') {
+      return NextResponse.redirect(sanitizePublicRedirectUrl(result.url));
+    }
+
+    if (result?.kind === 'gate') {
+      const url = new URL(`/l/${encodeURIComponent(shortCode)}`, appBaseUrl());
+      if (isQrScan) url.searchParams.set('via', 'qr');
+      if (result.unlocked) url.searchParams.set('unlocked', '1');
+      request.nextUrl.searchParams.forEach((value, key) => {
+        if (key.startsWith('utm_')) url.searchParams.set(key, value);
+      });
+      return NextResponse.redirect(url);
     }
 
     const legacyUrl = await getLongUrl(shortCode);

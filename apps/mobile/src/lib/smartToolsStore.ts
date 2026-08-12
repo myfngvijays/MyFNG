@@ -15,6 +15,7 @@ type SmartToolsStoreState = {
 const DEFAULT_CONTEXT: SmartToolsDisplayContext = {
   isLoggedIn: false,
   activeMembershipPlanId: null,
+  customerPhoneLast10: null,
 };
 
 let store: SmartToolsStoreState = {

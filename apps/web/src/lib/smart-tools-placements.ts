@@ -150,6 +150,32 @@ export function normalizeAllowedPlanIds(raw: unknown): string[] {
   return [...new Set(raw.map((id) => String(id || '').trim()).filter(Boolean))];
 }
 
+/** Normalize to unique 10-digit phones (last 10 digits). Accepts array or free text. */
+export function normalizeAllowedPhones(raw: unknown): string[] {
+  const chunks: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const item of raw) chunks.push(String(item || ''));
+  } else if (typeof raw === 'string') {
+    chunks.push(...raw.split(/[\s,;]+/));
+  } else if (raw == null) {
+    return [];
+  } else {
+    chunks.push(String(raw));
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const chunk of chunks) {
+    const digits = chunk.replace(/\D/g, '');
+    if (digits.length < 10) continue;
+    const phone = digits.slice(-10);
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    out.push(phone);
+  }
+  return out;
+}
+
 export function toolHasMembershipRestriction(
   membershipOnly: boolean,
   allowedPlanIds: string[],

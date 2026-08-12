@@ -1,9 +1,16 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
+export type WelcomeBonusPhoneOverride = {
+  /** 10-digit phone */
+  phone: string;
+  amount: number;
+};
+
 export const DEFAULT_WALLET_CONFIG = {
   WELCOME_BONUS_AMOUNT: 1000,
   WELCOME_BONUS_ENABLED: true,
   WELCOME_EXPIRY_DAYS: 90,
+  WELCOME_BONUS_PHONE_OVERRIDES: [] as WelcomeBonusPhoneOverride[],
   SERVICE_USAGE_MODE: 'PERCENT' as const,
   SERVICE_USAGE_PERCENT: 0.1,
   SERVICE_USAGE_AMOUNT: 500,
@@ -21,16 +28,44 @@ export const DEFAULT_WALLET_CONFIG = {
   REFERRAL_REPEAT_REWARD: 250,
   REFERRAL_FRIEND_BONUS: 500,
   REFERRAL_EXPIRY_DAYS: 90,
-} as const;
+};
 
 export type WalletPlatform = 'web' | 'android' | 'ios';
 
 export type WalletUsageMode = 'PERCENT' | 'AMOUNT';
 
+/** Per-service wallet spend rule for special-welcome (phone override) users. */
+export type WelcomeOverrideServiceUsageRule = {
+  id: string;
+  service_type_id: string;
+  service_name: string;
+  active: boolean;
+  usage_mode: WalletUsageMode;
+  usage_percent: number;
+  usage_amount: number;
+};
+
+/**
+ * Wallet usage caps for phones on the welcome override list.
+ * Percent = % of payable; Amount = max ₹ per booking (e.g. ₹500 of ₹1500).
+ */
+export type WelcomeBonusOverrideUsageRules = {
+  enabled: boolean;
+  service_usage_mode: WalletUsageMode;
+  service_usage_percent: number;
+  service_usage_amount: number;
+  membership_usage_mode: WalletUsageMode;
+  membership_usage_percent: number;
+  membership_usage_amount: number;
+  service_type_rules: WelcomeOverrideServiceUsageRule[];
+};
+
 export type WalletRuntimeConfig = {
   WELCOME_BONUS_AMOUNT: number;
   WELCOME_BONUS_ENABLED: boolean;
   WELCOME_EXPIRY_DAYS: number;
+  /** Phone-specific welcome amounts (last-10 → amount). Global amount is fallback. */
+  WELCOME_BONUS_PHONE_OVERRIDES: WelcomeBonusPhoneOverride[];
   SERVICE_USAGE_MODE: WalletUsageMode;
   SERVICE_USAGE_PERCENT: number;
   SERVICE_USAGE_AMOUNT: number;
@@ -130,6 +165,12 @@ export type WalletLogicFullSettings = {
   referral_expiry_days: number;
   min_payable_for_wallet: number;
   max_absolute_deduction: number;
+  /** Specific phones get a different welcome bonus amount (others use global/platform amount). */
+  welcome_bonus_phone_overrides: WelcomeBonusPhoneOverride[];
+  /** Coupon auto-assigned to My Coupons for override-list phones (e.g. Car Inspection ₹1000). */
+  welcome_bonus_auto_coupon_id: string | null;
+  /** Spend rules for override-list phones (percent and/or fixed ₹, plus per-service). */
+  welcome_bonus_override_usage: WelcomeBonusOverrideUsageRules;
   roadmap_ideas: WalletRoadmapIdea[];
   advanced_enabled: boolean;
   service_overrides: WalletServiceOverride[];
@@ -200,6 +241,20 @@ const PER_SOURCE_LIMITS_ENABLED_KEY = 'wallet_per_source_limits_enabled';
 const SOURCE_LIMITS_KEY = 'wallet_source_limits';
 const SOURCE_COMBINATION_ENABLED_KEY = 'wallet_source_combination_enabled';
 const SOURCE_COMBINATION_RULES_KEY = 'wallet_source_combination_rules';
+const WELCOME_BONUS_PHONE_OVERRIDES_KEY = 'wallet_welcome_bonus_phone_overrides';
+const WELCOME_BONUS_AUTO_COUPON_ID_KEY = 'wallet_welcome_bonus_auto_coupon_id';
+const WELCOME_BONUS_OVERRIDE_USAGE_KEY = 'wallet_welcome_bonus_override_usage';
+
+export const DEFAULT_WELCOME_OVERRIDE_USAGE: WelcomeBonusOverrideUsageRules = {
+  enabled: false,
+  service_usage_mode: 'AMOUNT',
+  service_usage_percent: 10,
+  service_usage_amount: 500,
+  membership_usage_mode: 'PERCENT',
+  membership_usage_percent: 30,
+  membership_usage_amount: 210,
+  service_type_rules: [],
+};
 
 const DEFAULT_SOURCE_LIMITS: WalletSourceUsageLimits = {
   welcome_bonus: { service_percent: 10, membership_percent: 30 },
@@ -237,6 +292,9 @@ const DEFAULT_FULL_SETTINGS: WalletLogicFullSettings = {
   referral_expiry_days: 90,
   min_payable_for_wallet: 0,
   max_absolute_deduction: 0,
+  welcome_bonus_phone_overrides: [],
+  welcome_bonus_auto_coupon_id: null,
+  welcome_bonus_override_usage: { ...DEFAULT_WELCOME_OVERRIDE_USAGE, service_type_rules: [] },
   roadmap_ideas: DEFAULT_WALLET_ROADMAP.map((item) => ({ ...item })),
   advanced_enabled: false,
   service_overrides: [],
@@ -349,12 +407,25 @@ export function walletConfigToAdminPayload(config: WalletRuntimeConfig): WalletC
 
 export function coreRulesToRuntimeConfig(
   rules: WalletCoreRules,
-  extras?: Partial<Pick<WalletRuntimeConfig, 'WALLET_ENABLED' | 'MIN_PAYABLE_FOR_WALLET' | 'MAX_ABSOLUTE_DEDUCTION' | 'REFERRAL_FIRST_REWARD' | 'REFERRAL_REPEAT_REWARD' | 'REFERRAL_FRIEND_BONUS' | 'REFERRAL_EXPIRY_DAYS'>>,
+  extras?: Partial<
+    Pick<
+      WalletRuntimeConfig,
+      | 'WALLET_ENABLED'
+      | 'MIN_PAYABLE_FOR_WALLET'
+      | 'MAX_ABSOLUTE_DEDUCTION'
+      | 'REFERRAL_FIRST_REWARD'
+      | 'REFERRAL_REPEAT_REWARD'
+      | 'REFERRAL_FRIEND_BONUS'
+      | 'REFERRAL_EXPIRY_DAYS'
+      | 'WELCOME_BONUS_PHONE_OVERRIDES'
+    >
+  >,
 ): WalletRuntimeConfig {
   return {
     WELCOME_BONUS_AMOUNT: rules.welcome_bonus_amount,
     WELCOME_BONUS_ENABLED: rules.welcome_bonus_enabled !== false,
     WELCOME_EXPIRY_DAYS: rules.welcome_expiry_days,
+    WELCOME_BONUS_PHONE_OVERRIDES: extras?.WELCOME_BONUS_PHONE_OVERRIDES || [],
     SERVICE_USAGE_MODE: rules.service_usage_mode,
     SERVICE_USAGE_PERCENT: percentToDecimal(rules.service_usage_percent),
     SERVICE_USAGE_AMOUNT: rules.service_usage_amount,
@@ -444,7 +515,145 @@ function allSettingKeys(): string[] {
     SOURCE_LIMITS_KEY,
     SOURCE_COMBINATION_ENABLED_KEY,
     SOURCE_COMBINATION_RULES_KEY,
+    WELCOME_BONUS_PHONE_OVERRIDES_KEY,
+    WELCOME_BONUS_AUTO_COUPON_ID_KEY,
+    WELCOME_BONUS_OVERRIDE_USAGE_KEY,
   ];
+}
+
+export function parseWelcomeBonusOverrideUsage(raw: unknown): WelcomeBonusOverrideUsageRules {
+  let obj: any = raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return JSON.parse(JSON.stringify(DEFAULT_WELCOME_OVERRIDE_USAGE));
+    }
+  }
+  if (!obj || typeof obj !== 'object') {
+    return JSON.parse(JSON.stringify(DEFAULT_WELCOME_OVERRIDE_USAGE));
+  }
+
+  const serviceMode = String(obj.service_usage_mode || 'AMOUNT').toUpperCase() === 'PERCENT' ? 'PERCENT' : 'AMOUNT';
+  const membershipMode =
+    String(obj.membership_usage_mode || 'PERCENT').toUpperCase() === 'AMOUNT' ? 'AMOUNT' : 'PERCENT';
+
+  const rulesRaw = Array.isArray(obj.service_type_rules) ? obj.service_type_rules : [];
+  const service_type_rules: WelcomeOverrideServiceUsageRule[] = [];
+  const seen = new Set<string>();
+  for (const row of rulesRaw) {
+    const service_type_id = String(row?.service_type_id || '').trim();
+    if (!service_type_id || seen.has(service_type_id)) continue;
+    seen.add(service_type_id);
+    const usage_mode = String(row?.usage_mode || 'AMOUNT').toUpperCase() === 'PERCENT' ? 'PERCENT' : 'AMOUNT';
+    service_type_rules.push({
+      id: String(row?.id || service_type_id),
+      service_type_id,
+      service_name: String(row?.service_name || 'Service').trim() || 'Service',
+      active: row?.active !== false,
+      usage_mode,
+      usage_percent: Math.min(100, Math.max(0, Number(row?.usage_percent) || 0)),
+      usage_amount: Math.min(100000, Math.max(0, Number(row?.usage_amount) || 0)),
+    });
+  }
+
+  return {
+    enabled: Boolean(obj.enabled),
+    service_usage_mode: serviceMode,
+    service_usage_percent: Math.min(100, Math.max(0, Number(obj.service_usage_percent) || 0)),
+    service_usage_amount: Math.min(100000, Math.max(0, Number(obj.service_usage_amount) || 0)),
+    membership_usage_mode: membershipMode,
+    membership_usage_percent: Math.min(100, Math.max(0, Number(obj.membership_usage_percent) || 0)),
+    membership_usage_amount: Math.min(100000, Math.max(0, Number(obj.membership_usage_amount) || 0)),
+    service_type_rules,
+  };
+}
+
+/** Build a runtime config fragment that applies override-list spend rules. */
+export function welcomeOverrideUsageToRuntimePatch(
+  usage: WelcomeBonusOverrideUsageRules,
+  channel: 'SERVICE' | 'MEMBERSHIP',
+  serviceTypeId?: string | null,
+): Pick<
+  WalletRuntimeConfig,
+  | 'SERVICE_USAGE_MODE'
+  | 'SERVICE_USAGE_PERCENT'
+  | 'SERVICE_USAGE_AMOUNT'
+  | 'MEMBERSHIP_USAGE_MODE'
+  | 'MEMBERSHIP_USAGE_PERCENT'
+  | 'MEMBERSHIP_USAGE_AMOUNT'
+> {
+  const sid = String(serviceTypeId || '').trim();
+  if (channel === 'SERVICE' && sid) {
+    const hit = (usage.service_type_rules || []).find(
+      (row) => row.active && row.service_type_id === sid,
+    );
+    if (hit) {
+      return {
+        SERVICE_USAGE_MODE: hit.usage_mode,
+        SERVICE_USAGE_PERCENT: hit.usage_percent / 100,
+        SERVICE_USAGE_AMOUNT: hit.usage_amount,
+        MEMBERSHIP_USAGE_MODE: usage.membership_usage_mode,
+        MEMBERSHIP_USAGE_PERCENT: usage.membership_usage_percent / 100,
+        MEMBERSHIP_USAGE_AMOUNT: usage.membership_usage_amount,
+      };
+    }
+  }
+
+  return {
+    SERVICE_USAGE_MODE: usage.service_usage_mode,
+    SERVICE_USAGE_PERCENT: usage.service_usage_percent / 100,
+    SERVICE_USAGE_AMOUNT: usage.service_usage_amount,
+    MEMBERSHIP_USAGE_MODE: usage.membership_usage_mode,
+    MEMBERSHIP_USAGE_PERCENT: usage.membership_usage_percent / 100,
+    MEMBERSHIP_USAGE_AMOUNT: usage.membership_usage_amount,
+  };
+}
+
+export function parseWelcomeBonusPhoneOverrides(raw: unknown): WelcomeBonusPhoneOverride[] {
+  let list: unknown = raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+
+  const out: WelcomeBonusPhoneOverride[] = [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    const phone = String((item as any)?.phone || '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    const amount = Number((item as any)?.amount);
+    if (phone.length !== 10 || !Number.isFinite(amount) || amount <= 0) continue;
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    out.push({ phone, amount: Math.round(amount * 100) / 100 });
+  }
+  return out;
+}
+
+/** Use phone override amount when present; otherwise the platform/global base amount. */
+export function resolveWelcomeBonusAmountForPhone(
+  baseAmount: number,
+  phone: string | null | undefined,
+  overrides: WelcomeBonusPhoneOverride[] | null | undefined,
+): number {
+  const fallback =
+    Number.isFinite(baseAmount) && baseAmount > 0
+      ? baseAmount
+      : DEFAULT_WALLET_CONFIG.WELCOME_BONUS_AMOUNT;
+  const last10 = String(phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+  if (last10.length !== 10 || !overrides?.length) return fallback;
+  const hit = overrides.find((row) => row.phone === last10);
+  if (!hit) return fallback;
+  const amount = Number(hit.amount);
+  return Number.isFinite(amount) && amount > 0 ? amount : fallback;
 }
 
 export function parseSourceLimits(raw: unknown): WalletSourceUsageLimits {
@@ -603,6 +812,16 @@ export async function getWalletLogicSettings(supabaseAdmin?: any): Promise<Walle
     referral_expiry_days: toNumber(map.get(EXTRA_KEYS.referral_expiry_days), 90),
     min_payable_for_wallet: toNumber(map.get(EXTRA_KEYS.min_payable_for_wallet), 0),
     max_absolute_deduction: toNumber(map.get(EXTRA_KEYS.max_absolute_deduction), 0),
+    welcome_bonus_phone_overrides: parseWelcomeBonusPhoneOverrides(
+      map.get(WELCOME_BONUS_PHONE_OVERRIDES_KEY),
+    ),
+    welcome_bonus_auto_coupon_id: (() => {
+      const raw = String(map.get(WELCOME_BONUS_AUTO_COUPON_ID_KEY) || '').trim();
+      return raw || null;
+    })(),
+    welcome_bonus_override_usage: parseWelcomeBonusOverrideUsage(
+      map.get(WELCOME_BONUS_OVERRIDE_USAGE_KEY),
+    ),
     roadmap_ideas: parseRoadmapIdeas(map.get(ROADMAP_KEY)),
     advanced_enabled: toBool(map.get(ADVANCED_ENABLED_KEY), false),
     service_overrides: parseServiceOverrides(map.get(SERVICE_OVERRIDES_KEY)),
@@ -633,6 +852,7 @@ export async function getWalletConfig(
     REFERRAL_REPEAT_REWARD: settings.referral_repeat_reward,
     REFERRAL_FRIEND_BONUS: settings.referral_friend_bonus,
     REFERRAL_EXPIRY_DAYS: settings.referral_expiry_days,
+    WELCOME_BONUS_PHONE_OVERRIDES: settings.welcome_bonus_phone_overrides || [],
   });
 
   cached = { config, at: Date.now(), platform };
@@ -778,6 +998,35 @@ export function validateWalletLogicFullSettings(input: Partial<WalletLogicFullSe
     }
   }
 
+  const phoneOverrides = parseWelcomeBonusPhoneOverrides(input.welcome_bonus_phone_overrides);
+  if ((input.welcome_bonus_phone_overrides || []).length > 0 && phoneOverrides.length === 0) {
+    return 'Welcome bonus phone overrides need valid 10-digit phones and amounts > 0';
+  }
+  for (const row of phoneOverrides) {
+    if (row.amount > 100000) {
+      return `Welcome override for ${row.phone}: amount must be ≤ 100000`;
+    }
+  }
+
+  const overrideUsage = parseWelcomeBonusOverrideUsage(input.welcome_bonus_override_usage);
+  if (overrideUsage.enabled) {
+    if (overrideUsage.service_usage_mode === 'PERCENT') {
+      if (overrideUsage.service_usage_percent < 0 || overrideUsage.service_usage_percent > 100) {
+        return 'Special welcome service usage % must be 0–100';
+      }
+    } else if (overrideUsage.service_usage_amount < 0 || overrideUsage.service_usage_amount > 100000) {
+      return 'Special welcome service usage amount must be 0–100000';
+    }
+    for (const row of overrideUsage.service_type_rules) {
+      if (row.usage_mode === 'PERCENT' && (row.usage_percent < 0 || row.usage_percent > 100)) {
+        return `${row.service_name}: special welcome usage % must be 0–100`;
+      }
+      if (row.usage_mode === 'AMOUNT' && (row.usage_amount < 0 || row.usage_amount > 100000)) {
+        return `${row.service_name}: special welcome usage amount must be 0–100000`;
+      }
+    }
+  }
+
   return null;
 }
 
@@ -810,6 +1059,14 @@ export async function saveWalletLogicSettings(
 ) {
   const error = validateWalletLogicFullSettings(payload);
   if (error) throw new Error(error);
+
+  const normalizedOverrides = parseWelcomeBonusPhoneOverrides(payload.welcome_bonus_phone_overrides);
+  const normalizedOverrideUsage = parseWelcomeBonusOverrideUsage(payload.welcome_bonus_override_usage);
+  payload = {
+    ...payload,
+    welcome_bonus_phone_overrides: normalizedOverrides,
+    welcome_bonus_override_usage: normalizedOverrideUsage,
+  };
 
   const modeFields = new Set(['service_usage_mode', 'membership_usage_mode']);
   const booleanFields = new Set(['welcome_bonus_enabled']);
@@ -897,6 +1154,32 @@ export async function saveWalletLogicSettings(
     supabaseAdmin,
     SOURCE_COMBINATION_RULES_KEY,
     JSON.stringify(payload.source_combination_rules || DEFAULT_SOURCE_COMBINATION_RULES),
+    'JSON',
+    updatedBy,
+  );
+
+  await upsertSetting(
+    supabaseAdmin,
+    WELCOME_BONUS_PHONE_OVERRIDES_KEY,
+    JSON.stringify(normalizedOverrides),
+    'JSON',
+    updatedBy,
+  );
+
+  const autoCouponId = String(payload.welcome_bonus_auto_coupon_id || '').trim() || '';
+  await upsertSetting(
+    supabaseAdmin,
+    WELCOME_BONUS_AUTO_COUPON_ID_KEY,
+    autoCouponId,
+    'STRING',
+    updatedBy,
+  );
+  payload = { ...payload, welcome_bonus_auto_coupon_id: autoCouponId || null };
+
+  await upsertSetting(
+    supabaseAdmin,
+    WELCOME_BONUS_OVERRIDE_USAGE_KEY,
+    JSON.stringify(normalizedOverrideUsage),
     'JSON',
     updatedBy,
   );

@@ -12,6 +12,7 @@ import {
   isSmartToolPlacementEnabled,
   legacyPlacementsFromFlags,
   mergeSmartToolPlacements,
+  normalizeAllowedPhones,
   normalizeAllowedPlanIds,
   parseSmartToolPlacements,
   type SmartToolPlacements,
@@ -32,6 +33,7 @@ export type SmartToolConfigRow = {
   enabled: boolean;
   membership_only: boolean;
   allowed_membership_plan_ids: string[];
+  allowed_phones: string[];
   requires_login: boolean;
   show_on_home: boolean;
   show_on_search: boolean;
@@ -57,6 +59,7 @@ export type ResolvedSmartTool = SmartToolItem & {
   requires_login: boolean;
   membership_only: boolean;
   allowed_membership_plan_ids: string[];
+  allowed_phones: string[];
   placements: SmartToolPlacements;
   webUrl?: string;
   locked?: boolean;
@@ -65,6 +68,8 @@ export type ResolvedSmartTool = SmartToolItem & {
 export type SmartToolsDisplayContext = {
   isLoggedIn: boolean;
   activeMembershipPlanId: string | null;
+  /** Last 10 digits of logged-in customer phone, when available. */
+  customerPhoneLast10: string | null;
 };
 
 const DEFAULT_SECTION: SmartToolsSectionConfig = {
@@ -83,6 +88,7 @@ const DEFAULT_TOOLS: SmartToolConfigRow[] = SMART_TOOLS.map((tool, index) => ({
   enabled: true,
   membership_only: false,
   allowed_membership_plan_ids: [],
+  allowed_phones: [],
   requires_login: false,
   show_on_home: true,
   show_on_search: true,
@@ -113,6 +119,9 @@ function normalizeToolRow(raw: Partial<SmartToolConfigRow>, fallback: SmartToolC
     fallback.placements,
   );
   const allowedPlanIds = normalizeAllowedPlanIds(raw.allowed_membership_plan_ids ?? fallback.allowed_membership_plan_ids);
+  const allowedPhones = normalizeAllowedPhones(
+    raw.allowed_phones !== undefined ? raw.allowed_phones : fallback.allowed_phones,
+  );
 
   return {
     tool_id: String(raw.tool_id || fallback.tool_id) as SmartToolId,
@@ -129,6 +138,7 @@ function normalizeToolRow(raw: Partial<SmartToolConfigRow>, fallback: SmartToolC
           ? Boolean(raw.membership_only)
           : fallback.membership_only,
     allowed_membership_plan_ids: allowedPlanIds,
+    allowed_phones: allowedPhones,
     requires_login: raw.requires_login !== undefined ? Boolean(raw.requires_login) : fallback.requires_login,
     show_on_home: raw.show_on_home !== undefined ? Boolean(raw.show_on_home) : fallback.show_on_home,
     show_on_search: raw.show_on_search !== undefined ? Boolean(raw.show_on_search) : fallback.show_on_search,
@@ -175,12 +185,25 @@ function mergeSmartToolItem(base: SmartToolItem, row: SmartToolConfigRow): Resol
     requires_login: row.requires_login,
     membership_only: row.membership_only,
     allowed_membership_plan_ids: row.allowed_membership_plan_ids,
+    allowed_phones: row.allowed_phones,
     placements: row.placements,
     webUrl,
   };
 }
 
-export function canUserSeeSmartTool(tool: Pick<SmartToolConfigRow, 'membership_only' | 'allowed_membership_plan_ids'>, context: SmartToolsDisplayContext): boolean {
+export function canUserSeeSmartTool(
+  tool: Pick<SmartToolConfigRow, 'membership_only' | 'allowed_membership_plan_ids' | 'allowed_phones'>,
+  context: SmartToolsDisplayContext,
+): boolean {
+  const allowlist = normalizeAllowedPhones(tool.allowed_phones);
+  if (
+    allowlist.length > 0 &&
+    context.customerPhoneLast10 &&
+    allowlist.includes(context.customerPhoneLast10)
+  ) {
+    return true;
+  }
+
   const planIds = normalizeAllowedPlanIds(tool.allowed_membership_plan_ids);
   const restricted = tool.membership_only || planIds.length > 0;
   if (!restricted) return true;
@@ -312,29 +335,53 @@ function toolNeedsMembershipLookup(tool: SmartToolConfigRow): boolean {
   return tool.membership_only || normalizeAllowedPlanIds(tool.allowed_membership_plan_ids).length > 0;
 }
 
+function toolNeedsPhoneLookup(tool: SmartToolConfigRow): boolean {
+  if (!tool.enabled) return false;
+  return normalizeAllowedPhones(tool.allowed_phones).length > 0;
+}
+
+function phoneLast10(raw: unknown): string | null {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  return digits.slice(-10);
+}
+
 export async function loadSmartToolsDisplayContext(config: SmartToolsHandlerConfig): Promise<SmartToolsDisplayContext> {
   const sessionToken = await getCustomerSessionToken();
   const isLoggedIn = Boolean(sessionToken);
   if (!isLoggedIn) {
-    return { isLoggedIn: false, activeMembershipPlanId: null };
+    return { isLoggedIn: false, activeMembershipPlanId: null, customerPhoneLast10: null };
   }
 
   const needsMembership = config.tools.some(toolNeedsMembershipLookup);
-  if (!needsMembership) {
-    return { isLoggedIn: true, activeMembershipPlanId: null };
+  const needsPhone = config.tools.some(toolNeedsPhoneLookup);
+
+  let customerPhoneLast10: string | null = null;
+  let activeMembershipPlanId: string | null = null;
+
+  if (needsPhone) {
+    try {
+      const profileRes = await apiFetch<any>('/api/customer/profile');
+      customerPhoneLast10 =
+        phoneLast10(profileRes?.customer?.phone) ||
+        phoneLast10(profileRes?.profile?.phone) ||
+        phoneLast10(profileRes?.phone);
+    } catch {
+      customerPhoneLast10 = null;
+    }
   }
 
-  try {
-    const memRes = await apiFetch<any>('/api/customer/membership');
-    const membership = memRes?.membership;
-    if (!isMembershipActive(membership)) {
-      return { isLoggedIn: true, activeMembershipPlanId: null };
+  if (needsMembership) {
+    try {
+      const memRes = await apiFetch<any>('/api/customer/membership');
+      const membership = memRes?.membership;
+      if (isMembershipActive(membership)) {
+        activeMembershipPlanId = membership?.plan_id ? String(membership.plan_id) : null;
+      }
+    } catch {
+      activeMembershipPlanId = null;
     }
-    return {
-      isLoggedIn: true,
-      activeMembershipPlanId: membership?.plan_id ? String(membership.plan_id) : null,
-    };
-  } catch {
-    return { isLoggedIn: true, activeMembershipPlanId: null };
   }
+
+  return { isLoggedIn: true, activeMembershipPlanId, customerPhoneLast10 };
 }

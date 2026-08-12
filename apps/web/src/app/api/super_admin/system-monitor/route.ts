@@ -603,9 +603,25 @@ async function checkWalletSystem(): Promise<HealthCheck> {
   }
 
   try {
-    const { count, error } = await client
-      .from('wallet_transactions')
-      .select('id', { count: 'exact', head: true });
+    const [{ count, error }, overrideSetting, autoCouponSetting, overrideUsageSetting] =
+      await Promise.all([
+      client.from('wallet_transactions').select('id', { count: 'exact', head: true }),
+      client
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'wallet_welcome_bonus_phone_overrides')
+        .maybeSingle(),
+      client
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'wallet_welcome_bonus_auto_coupon_id')
+        .maybeSingle(),
+      client
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'wallet_welcome_bonus_override_usage')
+        .maybeSingle(),
+    ]);
     const responseTime = Date.now() - start;
     if (error) {
       return {
@@ -623,15 +639,70 @@ async function checkWalletSystem(): Promise<HealthCheck> {
         lastChecked: new Date().toISOString(),
       };
     }
+
+    let phoneOverrides = 0;
+    try {
+      const parsed = JSON.parse(String(overrideSetting.data?.setting_value || '[]'));
+      phoneOverrides = Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      phoneOverrides = 0;
+    }
+
+    const autoCouponId = String(autoCouponSetting.data?.setting_value || '').trim();
+    let autoCouponOk = !autoCouponId;
+    let autoCouponLabel = 'no auto coupon';
+    if (autoCouponId) {
+      const { data: couponRow, error: couponErr } = await client
+        .from('coupons')
+        .select('id, code, is_active')
+        .eq('id', autoCouponId)
+        .maybeSingle();
+      if (couponErr || !couponRow?.id) {
+        autoCouponOk = false;
+        autoCouponLabel = 'auto coupon missing';
+      } else if (couponRow.is_active === false) {
+        autoCouponOk = false;
+        autoCouponLabel = `${couponRow.code || 'coupon'} inactive`;
+      } else {
+        autoCouponOk = true;
+        autoCouponLabel = `auto ${couponRow.code || 'coupon'}`;
+      }
+    }
+
+    let overrideUsageEnabled = false;
+    try {
+      const parsed = JSON.parse(String(overrideUsageSetting.data?.setting_value || '{}'));
+      overrideUsageEnabled = Boolean(parsed?.enabled);
+    } catch {
+      overrideUsageEnabled = false;
+    }
+
+    const status =
+      phoneOverrides > 0 && autoCouponId && !autoCouponOk ? 'degraded' : 'healthy';
+
     return {
       name: 'Wallet System',
       category: 'Commerce',
-      status: 'healthy',
+      status,
       responseTime,
-      message: `${(count || 0).toLocaleString('en-IN')} wallet transactions`,
-      reason: 'Wallet ledger is accessible for credits, debits, referral rewards, and expiry push cron.',
+      message: `${(count || 0).toLocaleString('en-IN')} txns · ${phoneOverrides} welcome phone overrides · ${autoCouponLabel}${overrideUsageEnabled ? ' · special usage ON' : ''}`,
+      reason:
+        status === 'degraded'
+          ? 'Welcome override auto-coupon is configured but missing/inactive — My Coupons assign will fail for listed phones.'
+          : 'Wallet ledger is accessible for credits, debits, referral rewards, and expiry push cron.',
+      quickFix: {
+        label: 'Open Wallet Logic',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/wallet-logic' },
+      },
       lastChecked: new Date().toISOString(),
-      details: { transactions: count || 0 },
+      details: {
+        transactions: count || 0,
+        welcomePhoneOverrides: phoneOverrides,
+        welcomeAutoCouponId: autoCouponId || null,
+        welcomeAutoCouponOk: autoCouponOk,
+        welcomeOverrideUsageEnabled: overrideUsageEnabled,
+      },
     };
   } catch (e: any) {
     return {
@@ -722,9 +793,15 @@ async function checkLinkManager(): Promise<HealthCheck> {
   }
 
   try {
-    const [links, clicks] = await Promise.all([
+    const [links, clicks, advancedCol, apiKeySetting] = await Promise.all([
       client.from('managed_short_links').select('id', { count: 'exact', head: true }),
       client.from('managed_short_link_clicks').select('id', { count: 'exact', head: true }),
+      client.from('managed_short_links').select('id, enable_landing, password_hash').limit(1),
+      client
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'link_manager_api_key')
+        .maybeSingle(),
     ]);
     const responseTime = Date.now() - start;
     if (links.error) {
@@ -759,15 +836,30 @@ async function checkLinkManager(): Promise<HealthCheck> {
         lastChecked: new Date().toISOString(),
       };
     }
+    const advancedReady = !advancedCol.error;
+    const apiKeyConfigured = Boolean(String(apiKeySetting.data?.setting_value || '').trim());
+    const status = advancedReady ? 'healthy' : 'degraded';
     return {
       name: 'Link Manager',
       category: 'Commerce',
-      status: 'healthy',
+      status,
       responseTime,
-      message: `${links.count || 0} links · ${clicks.count || 0} click events`,
-      reason: 'Bitly-style short links with QR codes and /s/{code} redirect tracking.',
+      message: `${links.count || 0} links · ${clicks.count || 0} clicks · advanced ${advancedReady ? 'ON' : 'needs 312'} · API key ${apiKeyConfigured ? 'set' : 'off'}`,
+      reason: advancedReady
+        ? 'Advanced short links: device/geo/AB, password, landing, OG, webhooks, /s/{code} + /l/{code}.'
+        : 'Base Link Manager OK. Run database/312_managed_short_links_advanced.sql for advanced fields.',
+      quickFix: {
+        label: 'Open Link Manager',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/link-manager' },
+      },
       lastChecked: new Date().toISOString(),
-      details: { links: links.count || 0, clicks: clicks.count || 0 },
+      details: {
+        links: links.count || 0,
+        clicks: clicks.count || 0,
+        advancedReady,
+        apiKeyConfigured,
+      },
     };
   } catch (e: any) {
     return {
@@ -777,6 +869,85 @@ async function checkLinkManager(): Promise<HealthCheck> {
       responseTime: Date.now() - start,
       message: e.message || 'Check failed',
       reason: `Link Manager health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSmartTools(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Smart Tools',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify smart_tools table: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data, error, count } = await client
+      .from('smart_tools')
+      .select('tool_id, allowed_phones', { count: 'exact' })
+      .limit(20);
+    const responseTime = Date.now() - start;
+
+    if (error) {
+      const msg = String(error.message || '');
+      const missingPhones = /allowed_phones/i.test(msg);
+      const missingTable = /does not exist|42P01|PGRST205/i.test(msg);
+      return {
+        name: 'Smart Tools',
+        category: 'Operations',
+        status: 'down',
+        responseTime,
+        message: msg || 'smart_tools query failed',
+        reason: missingPhones
+          ? 'allowed_phones column missing. Run migration 306_smart_tools_allowed_phones.sql.'
+          : missingTable
+            ? 'smart_tools table missing. Run migration 235_smart_tools_handler.sql (+ 236, 306).'
+            : msg,
+        quickFix: {
+          label: 'Open Smart Tools',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/smart-tools' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const phoneUnlocks = (data || []).reduce((sum: number, row: any) => {
+      const phones = Array.isArray(row?.allowed_phones) ? row.allowed_phones.length : 0;
+      return sum + phones;
+    }, 0);
+
+    return {
+      name: 'Smart Tools',
+      category: 'Operations',
+      status: 'healthy',
+      responseTime,
+      message: `${count || 0} tools · ${phoneUnlocks} phone unlocks`,
+      reason: 'Mobile Smart Tools config with membership + manual phone unlock.',
+      quickFix: {
+        label: 'Open Smart Tools',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/smart-tools' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { tools: count || 0, phoneUnlocks },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Smart Tools',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `Smart Tools health check failed: ${e.message}`,
       lastChecked: new Date().toISOString(),
     };
   }
@@ -1567,6 +1738,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkWalletSystem(),
     checkAdvanceCoupons(),
     checkLinkManager(),
+    checkSmartTools(),
     checkUniversalLink(),
     checkRsaLeads(),
     checkOpenAI(),

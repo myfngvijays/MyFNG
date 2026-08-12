@@ -101,7 +101,8 @@ export async function POST(request: NextRequest) {
       expiresAt = dt.toISOString();
     }
 
-    const createMode = body?.create_mode === 'qr_only' ? 'qr_only' : 'link_only';
+    const createMode =
+      body?.create_mode === 'qr_only' ? 'qr_only' : body?.create_mode === 'both' ? 'both' : 'link_only';
 
     const link = await createManagedShortLink(supabaseAdmin, {
       long_url: body?.long_url,
@@ -117,11 +118,28 @@ export async function POST(request: NextRequest) {
       expires_at: expiresAt,
       created_by: gate.userId,
       qr_style:
-        createMode === 'qr_only' && body?.qr_style && typeof body.qr_style === 'object'
+        (createMode === 'qr_only' || createMode === 'both') && body?.qr_style && typeof body.qr_style === 'object'
           ? body.qr_style
           : null,
       baseUrl: null,
       create_mode: createMode,
+      password: body?.password,
+      max_clicks: body?.max_clicks,
+      expired_redirect_url: body?.expired_redirect_url,
+      folder: body?.folder,
+      ios_url: body?.ios_url,
+      android_url: body?.android_url,
+      desktop_url: body?.desktop_url,
+      app_deep_link: body?.app_deep_link,
+      og_title: body?.og_title,
+      og_description: body?.og_description,
+      og_image_url: body?.og_image_url,
+      enable_landing: Boolean(body?.enable_landing),
+      webhook_url: body?.webhook_url,
+      pixel_meta_id: body?.pixel_meta_id,
+      pixel_google_id: body?.pixel_google_id,
+      ab_variants: body?.ab_variants,
+      geo_rules: body?.geo_rules,
     });
 
     return NextResponse.json({ link }, { status: 201 });

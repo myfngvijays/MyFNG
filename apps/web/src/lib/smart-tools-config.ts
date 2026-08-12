@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   defaultSmartToolPlacements,
   legacyPlacementsFromFlags,
+  normalizeAllowedPhones,
   normalizeAllowedPlanIds,
   mergeSmartToolPlacements,
   parseSmartToolPlacements,
@@ -24,6 +25,8 @@ export type SmartToolRow = {
   enabled: boolean;
   membership_only: boolean;
   allowed_membership_plan_ids: string[];
+  /** Logged-in customers on this list can see the tool even without membership. */
+  allowed_phones: string[];
   requires_login: boolean;
   show_on_home: boolean;
   show_on_search: boolean;
@@ -45,14 +48,14 @@ export type SmartToolsHandlerConfig = {
 };
 
 export const DEFAULT_SMART_TOOLS: SmartToolRow[] = [
-  { tool_id: 'car_health', title: 'Smart Health Checkup', subtitle: 'AI vehicle health score', tool_type: 'native', screen_name: 'CarHealthCheck', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 1 },
-  { tool_id: 'fuel_calculator', title: 'Fuel Cost Calculator', subtitle: 'Trip fuel estimate', tool_type: 'native', screen_name: 'FuelCostCalculator', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 2 },
-  { tool_id: 'price_compare', title: 'Compare Service Cost', subtitle: 'Workshop price comparison', tool_type: 'native', screen_name: 'AuthorisedPricing', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 3 },
-  { tool_id: 'car_loan', title: 'Loan Against Car', subtitle: 'Instant loan options', tool_type: 'webview', screen_name: 'SmartToolWeb', default_web_url: 'https://myfng.in/car-loan?embed=1', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 4 },
-  { tool_id: 'resale_value', title: 'Car Resale Value', subtitle: 'Market resale estimate', tool_type: 'native', screen_name: 'ResaleValue', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 5 },
-  { tool_id: 'car_quiz', title: 'Car Quiz', subtitle: 'Daily car trivia', tool_type: 'native', screen_name: 'CarQuizGame', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 6 },
-  { tool_id: 'parking_finder', title: 'Nearby Parking', subtitle: 'Find parking near you', tool_type: 'webview', screen_name: 'SmartToolWeb', default_web_url: 'https://www.google.com/maps/search/parking+near+me', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 7 },
-  { tool_id: 'parts_price', title: 'Check Parts Price', subtitle: 'OEM parts price check', tool_type: 'native', screen_name: 'CarPartsPrice', enabled: true, membership_only: false, allowed_membership_plan_ids: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 8 },
+  { tool_id: 'car_health', title: 'Smart Health Checkup', subtitle: 'AI vehicle health score', tool_type: 'native', screen_name: 'CarHealthCheck', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 1 },
+  { tool_id: 'fuel_calculator', title: 'Fuel Cost Calculator', subtitle: 'Trip fuel estimate', tool_type: 'native', screen_name: 'FuelCostCalculator', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 2 },
+  { tool_id: 'price_compare', title: 'Compare Service Cost', subtitle: 'Workshop price comparison', tool_type: 'native', screen_name: 'AuthorisedPricing', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 3 },
+  { tool_id: 'car_loan', title: 'Loan Against Car', subtitle: 'Instant loan options', tool_type: 'webview', screen_name: 'SmartToolWeb', default_web_url: 'https://myfng.in/car-loan?embed=1', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 4 },
+  { tool_id: 'resale_value', title: 'Car Resale Value', subtitle: 'Market resale estimate', tool_type: 'native', screen_name: 'ResaleValue', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 5 },
+  { tool_id: 'car_quiz', title: 'Car Quiz', subtitle: 'Daily car trivia', tool_type: 'native', screen_name: 'CarQuizGame', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 6 },
+  { tool_id: 'parking_finder', title: 'Nearby Parking', subtitle: 'Find parking near you', tool_type: 'webview', screen_name: 'SmartToolWeb', default_web_url: 'https://www.google.com/maps/search/parking+near+me', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 7 },
+  { tool_id: 'parts_price', title: 'Check Parts Price', subtitle: 'OEM parts price check', tool_type: 'native', screen_name: 'CarPartsPrice', enabled: true, membership_only: false, allowed_membership_plan_ids: [], allowed_phones: [], requires_login: false, show_on_home: true, show_on_search: true, placements: freshDefaultPlacements(), display_order: 8 },
 ];
 
 export const DEFAULT_SMART_TOOLS_HANDLER: SmartToolsHandlerConfig = {
@@ -99,6 +102,9 @@ function normalizeToolRow(raw: Partial<SmartToolRow>, fallback?: SmartToolRow): 
   placements = mergeSmartToolPlacements(placements, base.placements);
   const legacyFlags = syncLegacyVisibilityFlags(placements);
   const allowedPlanIds = normalizeAllowedPlanIds(raw.allowed_membership_plan_ids ?? base.allowed_membership_plan_ids);
+  const allowedPhones = normalizeAllowedPhones(
+    raw.allowed_phones !== undefined ? raw.allowed_phones : base.allowed_phones,
+  );
   const membershipOnly =
     allowedPlanIds.length > 0
       ? true
@@ -117,6 +123,7 @@ function normalizeToolRow(raw: Partial<SmartToolRow>, fallback?: SmartToolRow): 
     enabled: raw.enabled !== undefined ? Boolean(raw.enabled) : base.enabled,
     membership_only: membershipOnly,
     allowed_membership_plan_ids: allowedPlanIds,
+    allowed_phones: allowedPhones,
     requires_login: raw.requires_login !== undefined ? Boolean(raw.requires_login) : base.requires_login,
     show_on_home: legacyFlags.show_on_home,
     show_on_search: legacyFlags.show_on_search,
@@ -178,6 +185,9 @@ export function migrationHintForSmartToolsError(message: string): string | null 
   if (lower.includes('allowed_membership_plan_ids') && lower.includes('does not exist')) {
     return 'Run database migration 236_smart_tools_placements_membership.sql in Supabase SQL Editor.';
   }
+  if (lower.includes('allowed_phones') && lower.includes('does not exist')) {
+    return 'Run database migration 306_smart_tools_allowed_phones.sql in Supabase SQL Editor.';
+  }
   if (lower.includes('get_public_smart_tools_config') && lower.includes('does not exist')) {
     return 'Run database migration 235_smart_tools_handler.sql in Supabase SQL Editor.';
   }
@@ -234,6 +244,7 @@ export async function saveSmartToolsHandlerConfig(
       enabled: tool.enabled,
       membership_only: tool.membership_only,
       allowed_membership_plan_ids: tool.allowed_membership_plan_ids,
+      allowed_phones: tool.allowed_phones,
       requires_login: tool.requires_login,
       show_on_home: legacyFlags.show_on_home,
       show_on_search: legacyFlags.show_on_search,

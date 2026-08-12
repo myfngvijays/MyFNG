@@ -22,6 +22,9 @@ import {
   Clock,
   Plus,
   Trash2,
+  Upload,
+  FileSpreadsheet,
+  Loader2,
   Layers,
   ArrowDown,
   Calculator,
@@ -32,9 +35,34 @@ import {
   Info,
   Link2,
 } from 'lucide-react';
-import type { WalletCoreRules, WalletLogicFullSettings, WalletPlatformSettings, WalletRoadmapIdea, WalletSourceCombinationRule, WalletSourceGroup, WalletSourceUsageLimits, WalletUsageMode } from '@/lib/wallet-config';
-import { computeUsageCapFromRules, createDefaultWalletLogicSettings, formatUsageLimitLabel, resolvePlatformCoreRules, WALLET_SOURCE_GROUPS, WALLET_SOURCE_LABELS } from '@/lib/wallet-config';
+import { toast } from 'react-hot-toast';
+import type {
+  WalletCoreRules,
+  WalletLogicFullSettings,
+  WalletPlatformSettings,
+  WalletRoadmapIdea,
+  WalletSourceCombinationRule,
+  WalletSourceGroup,
+  WalletSourceUsageLimits,
+  WalletUsageMode,
+  WelcomeBonusOverrideUsageRules,
+  WelcomeBonusPhoneOverride,
+  WelcomeOverrideServiceUsageRule,
+} from '@/lib/wallet-config';
+import {
+  computeUsageCapFromRules,
+  createDefaultWalletLogicSettings,
+  DEFAULT_WELCOME_OVERRIDE_USAGE,
+  formatUsageLimitLabel,
+  parseWelcomeBonusOverrideUsage,
+  parseWelcomeBonusPhoneOverrides,
+  resolvePlatformCoreRules,
+  WALLET_SOURCE_GROUPS,
+  WALLET_SOURCE_LABELS,
+} from '@/lib/wallet-config';
 import WalletLogicAdvancedSection from './WalletLogicAdvancedSection';
+
+type WelcomeOverrideInputMode = 'paste' | 'csv' | 'sheet';
 
 type PlatformTab = 'global' | 'android' | 'ios' | 'advanced';
 
@@ -348,7 +376,7 @@ function RulesForm({
       />
       <div className={`grid gap-5 md:grid-cols-2 ${!welcomeEnabled ? 'opacity-50' : ''}`}>
         <MoneyField
-          label="Welcome bonus amount"
+          label="Welcome bonus amount (default)"
           value={rules.welcome_bonus_amount}
           onChange={(v) => onPatch('welcome_bonus_amount', v)}
           disabled={disabled || !welcomeEnabled}
@@ -376,6 +404,620 @@ function RulesForm({
           disabled={disabled}
         />
       </div>
+    </div>
+  );
+}
+
+function WelcomeBonusPhoneOverridesSection({
+  overrides,
+  defaultAmount,
+  disabled,
+  onChange,
+}: {
+  overrides: WelcomeBonusPhoneOverride[];
+  defaultAmount: number;
+  disabled?: boolean;
+  onChange: (next: WelcomeBonusPhoneOverride[]) => void;
+}) {
+  const [inputMode, setInputMode] = useState<WelcomeOverrideInputMode>('paste');
+  const [bulkPhones, setBulkPhones] = useState('');
+  const [bulkAmount, setBulkAmount] = useState('1500');
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetLoading, setSheetLoading] = useState(false);
+
+  const rows = overrides || [];
+
+  const mergePhones = (phones: string[], amount: number) => {
+    if (!phones.length || !Number.isFinite(amount) || amount <= 0) return 0;
+    const before = new Set(rows.map((r) => r.phone));
+    const merged = parseWelcomeBonusPhoneOverrides([
+      ...rows,
+      ...phones.map((phone) => ({ phone, amount })),
+    ]);
+    onChange(merged);
+    return phones.filter((p) => !before.has(p)).length || phones.length;
+  };
+
+  const updateRow = (index: number, patch: Partial<WelcomeBonusPhoneOverride>) => {
+    const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row));
+    onChange(parseWelcomeBonusPhoneOverrides(next));
+  };
+
+  const removeRow = (index: number) => {
+    onChange(rows.filter((_, i) => i !== index));
+  };
+
+  const addBulk = () => {
+    const amount = Number(bulkAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid override amount');
+      return;
+    }
+    const phones = bulkPhones
+      .split(/[\n,;]+/)
+      .map((p) => p.replace(/\D/g, '').slice(-10))
+      .filter((p) => p.length === 10);
+    if (!phones.length) {
+      toast.error('No valid 10-digit phones found');
+      return;
+    }
+    const added = mergePhones(phones, amount);
+    setBulkPhones('');
+    toast.success(`${added} phone${added === 1 ? '' : 's'} added at ₹${amount}`);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const amount = Number(bulkAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Set override amount first');
+      e.target.value = '';
+      return;
+    }
+    const name = file.name.toLowerCase();
+
+    if (name.endsWith('.csv') || name.endsWith('.txt')) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = String(ev.target?.result || '');
+        const phones = text
+          .split(/[\n\r,;|\t]+/)
+          .map((p) => p.replace(/\D/g, '').slice(-10))
+          .filter((p) => p.length === 10);
+        const unique = [...new Set(phones)];
+        if (!unique.length) {
+          toast.error('No phone numbers found in file');
+          return;
+        }
+        mergePhones(unique, amount);
+        toast.success(`${unique.length} phone${unique.length === 1 ? '' : 's'} loaded from ${file.name}`);
+      };
+      reader.readAsText(file);
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const XLSX = await import('xlsx');
+          const wb = XLSX.read(ev.target?.result, { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+          const phones: string[] = [];
+          for (const row of sheetRows) {
+            for (const cell of row || []) {
+              const val = String(cell || '').replace(/\D/g, '').slice(-10);
+              if (val.length === 10) phones.push(val);
+            }
+          }
+          const unique = [...new Set(phones)];
+          if (!unique.length) {
+            toast.error('No phone numbers found in file');
+            return;
+          }
+          mergePhones(unique, amount);
+          toast.success(`${unique.length} phone${unique.length === 1 ? '' : 's'} loaded from ${file.name}`);
+        } catch {
+          toast.error('Could not read Excel file. Try CSV instead.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      toast.error('Unsupported file type. Use .csv, .xlsx, .xls or .txt');
+    }
+    e.target.value = '';
+  };
+
+  const handleSheetFetch = async () => {
+    const url = sheetUrl.trim();
+    if (!url) return;
+    const amount = Number(bulkAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Set override amount first');
+      return;
+    }
+    setSheetLoading(true);
+    try {
+      const res = await fetch('/api/super_admin/notifications/import-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to fetch sheet');
+        return;
+      }
+      const phones: string[] = Array.isArray(data.phones) ? data.phones : [];
+      const unique = [
+        ...new Set(phones.map((p) => String(p).replace(/\D/g, '').slice(-10)).filter((p) => p.length === 10)),
+      ];
+      if (!unique.length) {
+        toast.error('No phone numbers found in sheet');
+        return;
+      }
+      mergePhones(unique, amount);
+      toast.success(`${unique.length} phone${unique.length === 1 ? '' : 's'} imported from Google Sheet`);
+      setSheetUrl('');
+    } catch {
+      toast.error('Failed to fetch Google Sheet');
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
+  const modes: Array<{ id: WelcomeOverrideInputMode; label: string }> = [
+    { id: 'paste', label: 'Paste numbers' },
+    { id: 'csv', label: 'Upload CSV' },
+    { id: 'sheet', label: 'Google Sheet' },
+  ];
+
+  return (
+    <div className={`space-y-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div>
+        <p className="text-sm text-gray-600">
+          Default welcome bonus <strong>₹{Math.round(defaultAmount).toLocaleString('en-IN')}</strong> rehta hai.
+          Neeche listed phones ko alag amount milega (jaise ₹1500) — baaki sabko default.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="block text-xs font-semibold text-gray-600 sm:w-40">
+          Override amount (₹)
+          <input
+            type="number"
+            min={1}
+            className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-normal"
+            value={bulkAmount}
+            onChange={(e) => setBulkAmount(e.target.value)}
+            disabled={disabled}
+          />
+        </label>
+        <div className="inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1">
+          {modes.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setInputMode(mode.id)}
+              disabled={disabled}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                inputMode === mode.id
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {inputMode === 'paste' ? (
+        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+          <textarea
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-mono"
+            rows={3}
+            placeholder={'9876543210\n9123456789'}
+            value={bulkPhones}
+            onChange={(e) => setBulkPhones(e.target.value)}
+            disabled={disabled}
+          />
+          <button
+            type="button"
+            onClick={addBulk}
+            disabled={disabled}
+            className="inline-flex h-fit items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            Add phones
+          </button>
+        </div>
+      ) : null}
+
+      {inputMode === 'csv' ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-5">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-blue-400 hover:text-blue-700">
+            <Upload className="h-4 w-4" />
+            Choose CSV / Excel
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls,.txt"
+              className="hidden"
+              onChange={handleFileUpload}
+              disabled={disabled}
+            />
+          </label>
+          <p className="mt-2 text-xs text-gray-500">
+            File se phones nikal kar upar wale amount (₹{bulkAmount || '…'}) pe merge honge.
+          </p>
+        </div>
+      ) : null}
+
+      {inputMode === 'sheet' ? (
+        <div className="space-y-2">
+          <div className="relative">
+            <input
+              type="url"
+              value={sheetUrl}
+              onChange={(e) => setSheetUrl(e.target.value)}
+              placeholder="https://docs.google.com/spreadsheets/d/... (public sheet URL)"
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 pr-24 text-sm"
+              disabled={disabled}
+            />
+            <button
+              type="button"
+              disabled={disabled || !sheetUrl.trim() || sheetLoading}
+              onClick={() => void handleSheetFetch()}
+              className="absolute right-1.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+            >
+              {sheetLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+              )}
+              Fetch
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">
+            Sheet Anyone with the link → Viewer hona chahiye. Phones amount ₹{bulkAmount || '…'} pe add honge.
+          </p>
+        </div>
+      ) : null}
+
+      {rows.length > 0 ? (
+        <div className="overflow-hidden rounded-xl border border-gray-200">
+          <div className="grid grid-cols-[1fr_120px_40px] gap-2 bg-gray-50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+            <span>Phone</span>
+            <span>Amount</span>
+            <span />
+          </div>
+          <div className="divide-y">
+            {rows.map((row, index) => (
+              <div key={`${row.phone}-${index}`} className="grid grid-cols-[1fr_120px_40px] items-center gap-2 px-3 py-2">
+                <input
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                  value={row.phone}
+                  onChange={(e) =>
+                    updateRow(index, { phone: e.target.value.replace(/\D/g, '').slice(0, 10) })
+                  }
+                  disabled={disabled}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                  value={row.amount}
+                  onChange={(e) => updateRow(index, { amount: Number(e.target.value) })}
+                  disabled={disabled}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50"
+                  title="Remove"
+                  disabled={disabled}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-gray-500">No phone overrides yet — sabko default welcome amount milega.</p>
+      )}
+
+      {rows.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-xs font-semibold text-emerald-700">
+            {rows.length} phone{rows.length === 1 ? '' : 's'} with custom welcome amount
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            disabled={disabled}
+            className="text-xs font-semibold text-rose-600 hover:underline"
+          >
+            Clear all
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type CouponOption = {
+  id: string;
+  code: string;
+  title?: string | null;
+  description?: string | null;
+  discount_type?: string | null;
+  discount_value?: number | null;
+  is_active?: boolean;
+};
+
+function WelcomeOverrideUsageSection({
+  usage,
+  disabled,
+  onChange,
+}: {
+  usage: WelcomeBonusOverrideUsageRules;
+  disabled?: boolean;
+  onChange: (next: WelcomeBonusOverrideUsageRules) => void;
+}) {
+  const [services, setServices] = useState<Array<{ id: string; name: string }>>([]);
+  const [pickId, setPickId] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/super_admin/wallet-logic/service-types', { cache: 'no-store' });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const list = (json.services || []).map((s: any) => ({
+          id: String(s.id),
+          name: String(s.name || 'Service'),
+        }));
+        setServices(list);
+      } catch {
+        if (!cancelled) setServices([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const rules = usage.service_type_rules || [];
+  const used = new Set(rules.map((r) => r.service_type_id));
+  const available = services.filter((s) => !used.has(s.id));
+
+  const patch = (partial: Partial<WelcomeBonusOverrideUsageRules>) => {
+    onChange(parseWelcomeBonusOverrideUsage({ ...usage, ...partial }));
+  };
+
+  const addServiceRule = () => {
+    const svc = available.find((s) => s.id === pickId) || available[0];
+    if (!svc) {
+      toast.error('Pehle service select karo');
+      return;
+    }
+    const next: WelcomeOverrideServiceUsageRule = {
+      id: svc.id,
+      service_type_id: svc.id,
+      service_name: svc.name,
+      active: true,
+      usage_mode: usage.service_usage_mode || 'AMOUNT',
+      usage_percent: usage.service_usage_percent || 10,
+      usage_amount: usage.service_usage_amount || 500,
+    };
+    patch({ service_type_rules: [...rules, next] });
+    setPickId('');
+  };
+
+  const updateRule = (index: number, partial: Partial<WelcomeOverrideServiceUsageRule>) => {
+    const next = rules.map((row, i) => (i === index ? { ...row, ...partial } : row));
+    patch({ service_type_rules: next });
+  };
+
+  return (
+    <div className={`space-y-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+        <input
+          type="checkbox"
+          checked={Boolean(usage.enabled)}
+          onChange={(e) => patch({ enabled: e.target.checked })}
+          disabled={disabled}
+        />
+        Special welcome users ke liye alag wallet usage rules ON
+      </label>
+      <p className="text-sm text-gray-600">
+        Phone override list wale users (jaise ₹1500) booking pe kitna wallet use kar sakte hain —{' '}
+        <strong>%</strong> ya <strong>fixed ₹</strong> (jaise ₹500). Neeche specific services
+        (Periodic / Basic / General) ke alag limits bhi set kar sakte ho.
+      </p>
+
+      {usage.enabled ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <UsageLimitField
+              label="Default service booking"
+              mode={usage.service_usage_mode}
+              percent={usage.service_usage_percent}
+              amount={usage.service_usage_amount}
+              onModeChange={(m) => patch({ service_usage_mode: m })}
+              onPercentChange={(v) => patch({ service_usage_percent: Number(v) || 0 })}
+              onAmountChange={(v) => patch({ service_usage_amount: Number(v) || 0 })}
+              disabled={disabled}
+            />
+            <UsageLimitField
+              label="Membership purchase"
+              mode={usage.membership_usage_mode}
+              percent={usage.membership_usage_percent}
+              amount={usage.membership_usage_amount}
+              onModeChange={(m) => patch({ membership_usage_mode: m })}
+              onPercentChange={(v) => patch({ membership_usage_percent: Number(v) || 0 })}
+              onAmountChange={(v) => patch({ membership_usage_amount: Number(v) || 0 })}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/80 p-4">
+            <div className="mb-3 flex flex-wrap items-end gap-2">
+              <label className="block min-w-[220px] flex-1 text-xs font-semibold text-gray-600">
+                Per-service rule (Periodic / Basic / General…)
+                <select
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                  value={pickId}
+                  onChange={(e) => setPickId(e.target.value)}
+                  disabled={disabled || !available.length}
+                >
+                  <option value="">Select service…</option>
+                  {available.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={addServiceRule}
+                disabled={disabled || !available.length}
+                className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                Add service rule
+              </button>
+            </div>
+
+            {rules.length === 0 ? (
+              <p className="text-xs text-gray-500">
+                Abhi koi per-service rule nahi — default upar wala sab services pe lagega.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {rules.map((row, index) => (
+                  <div
+                    key={row.id || row.service_type_id}
+                    className="rounded-xl border border-gray-200 bg-white p-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-gray-900">{row.service_name}</p>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-rose-600 hover:underline"
+                        onClick={() =>
+                          patch({ service_type_rules: rules.filter((_, i) => i !== index) })
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <UsageLimitField
+                      label="Wallet use on this service"
+                      mode={row.usage_mode}
+                      percent={row.usage_percent}
+                      amount={row.usage_amount}
+                      onModeChange={(m) => updateRule(index, { usage_mode: m })}
+                      onPercentChange={(v) => updateRule(index, { usage_percent: Number(v) || 0 })}
+                      onAmountChange={(v) => updateRule(index, { usage_amount: Number(v) || 0 })}
+                      disabled={disabled}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-gray-500">
+          OFF hone pe normal Wallet Logic rules lagenge (sab users jaisi).
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WelcomeBonusAutoCouponSection({
+  couponId,
+  disabled,
+  onChange,
+}: {
+  couponId: string | null;
+  disabled?: boolean;
+  onChange: (next: string | null) => void;
+}) {
+  const [coupons, setCoupons] = useState<CouponOption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/admin/coupons', { cache: 'no-store' });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || 'Failed to load coupons');
+        const list = (Array.isArray(json.coupons) ? json.coupons : Array.isArray(json) ? json : []) as CouponOption[];
+        if (!cancelled) {
+          setCoupons(
+            list
+              .filter((c) => c?.id && c.is_active !== false)
+              .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''))),
+          );
+        }
+      } catch {
+        if (!cancelled) setCoupons([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selected = coupons.find((c) => c.id === couponId) || null;
+
+  return (
+    <div className={`space-y-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <p className="text-sm text-gray-600">
+        Override list wale phones ko login / welcome pe ye coupon <strong>auto</strong> My Coupons me mil jayega.
+        Default: <strong>WELCOME_CI1000</strong> (Car Inspection ₹1000, private — sab users ko list me nahi dikhega).
+      </p>
+      <label className="block text-xs font-semibold text-gray-600">
+        Auto coupon for override phones
+        <select
+          className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-900"
+          value={couponId || ''}
+          disabled={disabled || loading}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+        >
+          <option value="">{loading ? 'Loading coupons…' : '— None (amount override only) —'}</option>
+          {coupons.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.code}
+              {c.title ? ` · ${c.title}` : ''}
+              {c.discount_value != null
+                ? ` · ${c.discount_type === 'PERCENT' ? `${c.discount_value}%` : `₹${c.discount_value}`}`
+                : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selected ? (
+        <p className="text-xs text-emerald-700">
+          Selected: <span className="font-semibold">{selected.code}</span>
+          {selected.title ? ` — ${selected.title}` : ''}. Save ke baad listed phones ko assign / pending ho jayega.
+        </p>
+      ) : (
+        <p className="text-xs text-gray-500">Coupon select nahi hai — sirf special wallet amount chalega.</p>
+      )}
+      {!loading && coupons.length === 0 ? (
+        <p className="text-xs text-amber-700">
+          Koi active coupon nahi mila. Supabase me migration 309 chalao (WELCOME_CI1000 create hota hai).
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1727,6 +2369,64 @@ export default function WalletLogicApp() {
               {/* Global extras */}
               {tab === 'global' ? (
                 <>
+                  <section className="rounded-3xl border bg-white p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Gift className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold !text-gray-900">Welcome bonus — phone overrides</h2>
+                        <p className="text-xs text-gray-500">
+                          Selected numbers get a custom amount; everyone else gets the default
+                        </p>
+                      </div>
+                    </div>
+                    <WelcomeBonusPhoneOverridesSection
+                      overrides={settings.welcome_bonus_phone_overrides || []}
+                      defaultAmount={settings.global.welcome_bonus_amount}
+                      disabled={settings.global.welcome_bonus_enabled === false}
+                      onChange={(next) => {
+                        setSettings((prev) => ({ ...prev, welcome_bonus_phone_overrides: next }));
+                        setDirty(true);
+                      }}
+                    />
+                    <div className="mt-6 border-t border-gray-100 pt-5">
+                      <div className="mb-3 flex items-center gap-2">
+                        <BadgeCheck className="h-4 w-4 text-violet-600" />
+                        <h3 className="text-sm font-bold text-gray-900">Auto coupon (My Coupons)</h3>
+                      </div>
+                      <WelcomeBonusAutoCouponSection
+                        couponId={settings.welcome_bonus_auto_coupon_id}
+                        disabled={settings.global.welcome_bonus_enabled === false}
+                        onChange={(next) => {
+                          setSettings((prev) => ({ ...prev, welcome_bonus_auto_coupon_id: next }));
+                          setDirty(true);
+                        }}
+                      />
+                    </div>
+                    <div className="mt-6 border-t border-gray-100 pt-5">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Percent className="h-4 w-4 text-emerald-600" />
+                        <h3 className="text-sm font-bold text-gray-900">
+                          Special welcome — wallet usage (₹ / %)
+                        </h3>
+                      </div>
+                      <WelcomeOverrideUsageSection
+                        usage={
+                          settings.welcome_bonus_override_usage || {
+                            ...DEFAULT_WELCOME_OVERRIDE_USAGE,
+                            service_type_rules: [],
+                          }
+                        }
+                        disabled={settings.global.welcome_bonus_enabled === false}
+                        onChange={(next) => {
+                          setSettings((prev) => ({ ...prev, welcome_bonus_override_usage: next }));
+                          setDirty(true);
+                        }}
+                      />
+                    </div>
+                  </section>
+
                   <section className="rounded-3xl border bg-white p-5 sm:p-6 shadow-sm">
                     <div className="mb-5 flex items-center gap-2">
                       <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">

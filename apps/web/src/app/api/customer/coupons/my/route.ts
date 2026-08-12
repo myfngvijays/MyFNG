@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/customer-api';
-import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { couponAppliesToChannel } from '@/lib/coupon-rules';
 import { parseReferralAssignmentNotes } from '@/lib/referral-reward-coupon';
+import { evaluateWelcomeCiCouponGate } from '@/lib/welcome-ci-coupon-gate';
 
 export const dynamic = 'force-dynamic';
+
+const COUPON_SELECT =
+  'id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_public, is_active, coupon_type_slug';
 
 export async function GET() {
   const ctx = await requireCustomer();
@@ -18,27 +21,23 @@ export async function GET() {
   const queries: Promise<any>[] = [
     supabaseAdmin
       .from('coupons')
-      .select('id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_public')
+      .select(COUPON_SELECT)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
       .from('customer_coupon_assignments')
-      .select('id, expires_at, redeemed_at, notes, coupon:coupons(id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_active, is_public)')
+      .select(`id, expires_at, redeemed_at, notes, coupon:coupons(${COUPON_SELECT})`)
       .eq('customer_id', customer.id)
       .is('redeemed_at', null),
-    supabaseAdmin
-      .from('customer_coupon_assignments')
-      .select('coupon_id')
-      .limit(500),
+    supabaseAdmin.from('customer_coupon_assignments').select('coupon_id').limit(500),
   ];
 
-  // Also fetch pending phone-based assignments
   if (customerPhone.length === 10) {
     queries.push(
       supabaseAdmin
         .from('customer_coupon_assignments')
-        .select('id, expires_at, redeemed_at, notes, coupon:coupons(id, code, coupon_kind, discount_mode, discount_value, min_order_value, description, start_at, end_at, campaign_name, applicable_channels, is_active, is_public)')
+        .select(`id, expires_at, redeemed_at, notes, coupon:coupons(${COUPON_SELECT})`)
         .eq('pending_phone', customerPhone)
         .is('customer_id', null)
         .is('redeemed_at', null),
@@ -55,24 +54,41 @@ export async function GET() {
     (allAssignments || []).map((row: any) => String(row.coupon_id)),
   );
 
-  const assignedCoupons = [...(assignments || []), ...pendingAssignments]
-    .filter((row: any) => {
-      if (row.redeemed_at) return false;
-      if (row.expires_at && String(row.expires_at) < nowIso) return false;
-      return Boolean(row.coupon);
-    })
-    .map((row: any) => {
-      const notes = parseReferralAssignmentNotes(row.notes);
-      return {
-        ...row.coupon,
-        assigned: true,
-        assignment_expires_at: row.expires_at || null,
-        is_referral_reward: Boolean(notes?.referral_claim_id),
-        referral_claim_id: notes?.referral_claim_id || null,
-        referral_reward_label: row.coupon?.description || null,
-      };
-    })
-    .filter((coupon: any) => coupon.is_active !== false);
+  const assignedCoupons = await Promise.all(
+    [...(assignments || []), ...pendingAssignments]
+      .filter((row: any) => {
+        if (row.redeemed_at) return false;
+        if (row.expires_at && String(row.expires_at) < nowIso) return false;
+        return Boolean(row.coupon);
+      })
+      .map(async (row: any) => {
+        const notes = parseReferralAssignmentNotes(row.notes);
+        const assignmentExpires = row.expires_at || null;
+        const gate = await evaluateWelcomeCiCouponGate(
+          supabaseAdmin,
+          { id: customer.id, phone: customer.phone },
+          row.coupon,
+          row.notes,
+        );
+        return {
+          ...row.coupon,
+          end_at: assignmentExpires || row.coupon?.end_at || null,
+          assigned: true,
+          assignment_expires_at: assignmentExpires,
+          is_referral_reward: Boolean(notes?.referral_claim_id),
+          referral_claim_id: notes?.referral_claim_id || null,
+          referral_reward_label: row.coupon?.description || null,
+          locked: gate.gated ? gate.locked : false,
+          lock_reason: gate.gated ? gate.lock_reason : null,
+          unlock_message: gate.gated ? gate.message : null,
+          profile_ok: gate.gated ? gate.profile_ok : true,
+          service_unlocked: gate.gated ? gate.service_unlocked : true,
+          can_use: gate.gated ? gate.can_use : true,
+        };
+      }),
+  );
+
+  const activeAssigned = assignedCoupons.filter((coupon: any) => coupon.is_active !== false);
 
   const openPublic = (publicCoupons || []).filter((coupon: any) => {
     if (coupon.is_public === false) return false;
@@ -84,7 +100,7 @@ export async function GET() {
   });
 
   const merged = new Map<string, any>();
-  for (const coupon of [...assignedCoupons, ...openPublic]) {
+  for (const coupon of [...activeAssigned, ...openPublic]) {
     if (!coupon?.id || coupon.is_active === false) continue;
     merged.set(String(coupon.id), coupon);
   }

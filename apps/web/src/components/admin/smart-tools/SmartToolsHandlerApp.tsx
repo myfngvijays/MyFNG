@@ -9,6 +9,7 @@ import {
   type SmartToolsHandlerConfig,
 } from '@/lib/smart-tools-config';
 import { countEnabledSmartToolPlacements, listEnabledSmartToolPlacementLabels } from '@/lib/smart-tools-placements';
+import { LEGACY_MEMBERSHIP_CODES } from '@/lib/membership-plans-db';
 import SmartToolAdvancedFields from './SmartToolAdvancedFields';
 
 type MembershipPlanOption = {
@@ -64,18 +65,32 @@ export default function SmartToolsHandlerApp() {
         );
       }
 
-      setConfig(toolsJson.config || DEFAULT_SMART_TOOLS_HANDLER);
-      setPlans(
-        Array.isArray(plansJson?.data)
-          ? plansJson.data.map((plan: any) => ({
+      const loadedPlans = Array.isArray(plansJson?.data)
+        ? plansJson.data
+            .filter(
+              (plan: any) =>
+                !LEGACY_MEMBERSHIP_CODES.has(String(plan.code || '').toUpperCase()),
+            )
+            .map((plan: any) => ({
               id: String(plan.id),
               name: String(plan.name || plan.code || 'Plan'),
               code: String(plan.code || ''),
               membership_type: String(plan.membership_type || 'SERVICE'),
               active: Boolean(plan.active),
             }))
-          : [],
-      );
+        : [];
+      const allowedPlanIds = new Set(loadedPlans.map((p: MembershipPlanOption) => p.id));
+      const rawConfig = toolsJson.config || DEFAULT_SMART_TOOLS_HANDLER;
+      setConfig({
+        ...rawConfig,
+        tools: (rawConfig.tools || []).map((tool: SmartToolRow) => ({
+          ...tool,
+          allowed_membership_plan_ids: (tool.allowed_membership_plan_ids || []).filter((id) =>
+            allowedPlanIds.has(id),
+          ),
+        })),
+      });
+      setPlans(loadedPlans);
     } catch (err: any) {
       toast.error(err?.message || 'Could not load Smart Tools settings');
     } finally {
@@ -218,6 +233,7 @@ export default function SmartToolsHandlerApp() {
                   const planCount = (tool.allowed_membership_plan_ids || []).length;
                   const placementCount = countEnabledSmartToolPlacements(tool.placements);
                   const placementLabels = listEnabledSmartToolPlacementLabels(tool.placements);
+                  const phoneCount = (tool.allowed_phones || []).length;
                   const expanded = expandedToolId === tool.tool_id;
 
                   return (
@@ -243,6 +259,7 @@ export default function SmartToolsHandlerApp() {
                               {tool.membership_only || planCount > 0
                                 ? ` · ${planCount > 0 ? `${planCount} plan${planCount === 1 ? '' : 's'}` : 'Members only'}`
                                 : ''}
+                              {phoneCount > 0 ? ` · ${phoneCount} phone unlock` : ''}
                             </p>
                           ) : null}
                         </div>
@@ -266,6 +283,11 @@ export default function SmartToolsHandlerApp() {
                               <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
                                 <Crown className="h-3 w-3" />
                                 {planCount > 0 ? `${planCount} plan${planCount === 1 ? '' : 's'}` : 'Members'}
+                              </span>
+                            ) : null}
+                            {phoneCount > 0 ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
+                                {phoneCount} phone{phoneCount === 1 ? '' : 's'}
                               </span>
                             ) : null}
                             {placementCount > 0 ? (
@@ -355,6 +377,7 @@ export default function SmartToolsHandlerApp() {
                 <li><strong>Enabled</strong> — hide a tool completely.</li>
                 <li><strong>Any membership</strong> — all active Prime / RSA members.</li>
                 <li><strong>Specific plans</strong> — RSA Basic, Family, Prime, etc.</li>
+                <li><strong>Phone unlock</strong> — manual numbers that bypass membership.</li>
                 <li><strong>Placements</strong> — Home, Search, Services, RSA, Settings slots.</li>
                 <li><strong>Requires login</strong> — login before opening.</li>
                 <li><strong>Order</strong> — lower numbers appear first in a slot.</li>
@@ -364,13 +387,15 @@ export default function SmartToolsHandlerApp() {
             <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
               <h3 className="text-xs font-black uppercase tracking-wide text-blue-700">Visibility logic</h3>
               <p className="mt-2 text-sm leading-6 text-blue-900">
-                No plan selected and no &quot;Any membership&quot; = everyone sees the tool. Specific plans = only those members. Main grid slot shows the section heading.
+                No plan selected and no &quot;Any membership&quot; = everyone sees the tool. Specific plans = only those members.
+                Phone unlock list = those logged-in numbers can open it even without membership. Main grid slot shows the section heading.
               </p>
             </div>
 
             <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 text-sm text-amber-900">
-              Run migrations <code className="rounded bg-white px-1 py-0.5">235</code> and{' '}
-              <code className="rounded bg-white px-1 py-0.5">236</code> in Supabase if save fails.
+              Run migrations <code className="rounded bg-white px-1 py-0.5">235</code>,{' '}
+              <code className="rounded bg-white px-1 py-0.5">236</code>, and{' '}
+              <code className="rounded bg-white px-1 py-0.5">306</code> in Supabase if save fails.
             </div>
           </div>
         </aside>

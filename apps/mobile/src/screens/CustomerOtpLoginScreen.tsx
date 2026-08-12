@@ -409,7 +409,8 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
           }
           if (pendingGoBackRef.current) {
             pendingGoBackRef.current = false;
-            finishLoginSuccess();
+            // Avoid stacking Modal dismiss + navigation (iOS ghost touch blocker).
+            setTimeout(() => finishLoginSuccess(), 400);
           }
         }}
       />

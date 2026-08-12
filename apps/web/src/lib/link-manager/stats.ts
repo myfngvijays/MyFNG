@@ -111,7 +111,7 @@ export async function getLinkManagerStats(
       .gte('created_at', range.start)
       .lte('created_at', range.end)
       .order('created_at', { ascending: false })
-      .limit(100),
+      .limit(20),
     client
       .from('managed_short_link_clicks')
       .select('id', { count: 'exact', head: true })
@@ -123,7 +123,7 @@ export async function getLinkManagerStats(
       .select('id,short_code,title,utm_source,utm_medium,utm_campaign,utm_term,utm_content,created_at')
       .or('utm_source.not.is.null,utm_medium.not.is.null,utm_campaign.not.is.null')
       .order('created_at', { ascending: false })
-      .limit(20),
+      .limit(10),
   ]);
 
   const rows = links.data || [];
@@ -152,5 +152,142 @@ export async function getLinkManagerStats(
     utm_campaigns: aggregateUtmField(clickOnlyEvents, 'utm_campaign'),
     configured_links: utmLinks.data || [],
     recent_clicks: clickEvents,
+  };
+}
+
+export async function listLinkManagerEvents(
+  client: SupabaseClient,
+  opts: {
+    start: string;
+    end: string;
+    page?: number;
+    pageSize?: number;
+    eventType?: string;
+    platform?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    q?: string;
+  },
+) {
+  const page = Math.max(1, Number(opts.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(opts.pageSize) || 25));
+  const fromIdx = (page - 1) * pageSize;
+
+  const platform = String(opts.platform || '').trim().toLowerCase();
+  const utmSource = String(opts.utmSource || '').trim().toLowerCase();
+  const utmMedium = String(opts.utmMedium || '').trim().toLowerCase();
+  const utmCampaign = String(opts.utmCampaign || '').trim().toLowerCase();
+  const q = String(opts.q || '').trim().toLowerCase();
+  const needsPostFilter = Boolean(platform || utmSource || utmMedium || utmCampaign || q);
+
+  let query = client
+    .from('managed_short_link_clicks')
+    .select(
+      'id,event_type,created_at,referrer,user_agent,meta,link:managed_short_links(short_code,title,utm_source,utm_medium,utm_campaign,utm_term,utm_content)',
+      { count: 'exact' },
+    )
+    .gte('created_at', opts.start)
+    .lte('created_at', opts.end)
+    .order('created_at', { ascending: false });
+
+  const eventType = String(opts.eventType || '').trim();
+  if (eventType === 'click' || eventType === 'qr_scan') {
+    query = query.eq('event_type', eventType);
+  }
+
+  // Extra filters live on joined/meta fields → pull a window then filter/paginate in memory
+  const fetchQuery = needsPostFilter ? query.limit(1500) : query.range(fromIdx, fromIdx + pageSize - 1);
+  const { data, error, count } = await fetchQuery;
+  if (error) throw new Error(error.message);
+
+  let events = (data || []).map((row) => normalizeClick(row as RawClickRow));
+
+  if (platform) {
+    events = events.filter((ev) => (ev.platform || '').toLowerCase().includes(platform));
+  }
+  if (utmSource) {
+    events = events.filter((ev) => (ev.utm_source || '').toLowerCase().includes(utmSource));
+  }
+  if (utmMedium) {
+    events = events.filter((ev) => (ev.utm_medium || '').toLowerCase().includes(utmMedium));
+  }
+  if (utmCampaign) {
+    events = events.filter((ev) => (ev.utm_campaign || '').toLowerCase().includes(utmCampaign));
+  }
+  if (q) {
+    events = events.filter(
+      (ev) =>
+        (ev.short_code || '').toLowerCase().includes(q) ||
+        (ev.link_title || '').toLowerCase().includes(q) ||
+        (ev.source || '').toLowerCase().includes(q),
+    );
+  }
+
+  if (needsPostFilter) {
+    const total = events.length;
+    return {
+      events: events.slice(fromIdx, fromIdx + pageSize),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  }
+
+  return {
+    events,
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil((count || 0) / pageSize)),
+  };
+}
+
+export async function listUtmConfiguredLinks(
+  client: SupabaseClient,
+  opts: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+  },
+) {
+  const page = Math.max(1, Number(opts.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(opts.pageSize) || 25));
+  const fromIdx = (page - 1) * pageSize;
+
+  let query = client
+    .from('managed_short_links')
+    .select(
+      'id,short_code,title,utm_source,utm_medium,utm_campaign,utm_term,utm_content,clicks,qr_scans,created_at,is_active',
+      { count: 'exact' },
+    )
+    .or('utm_source.not.is.null,utm_medium.not.is.null,utm_campaign.not.is.null')
+    .order('created_at', { ascending: false });
+
+  const utmSource = String(opts.utmSource || '').trim();
+  const utmMedium = String(opts.utmMedium || '').trim();
+  const utmCampaign = String(opts.utmCampaign || '').trim();
+  const q = String(opts.q || '').trim();
+
+  if (utmSource) query = query.ilike('utm_source', `%${utmSource}%`);
+  if (utmMedium) query = query.ilike('utm_medium', `%${utmMedium}%`);
+  if (utmCampaign) query = query.ilike('utm_campaign', `%${utmCampaign}%`);
+  if (q) {
+    query = query.or(`title.ilike.%${q}%,short_code.ilike.%${q}%`);
+  }
+
+  const { data, error, count } = await query.range(fromIdx, fromIdx + pageSize - 1);
+  if (error) throw new Error(error.message);
+
+  return {
+    links: data || [],
+    total: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil((count || 0) / pageSize)),
   };
 }

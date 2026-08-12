@@ -110,13 +110,18 @@ async function customerHasAssignment(
   couponId: string,
   customerId?: string | null,
   customerPhone?: string | null,
+  options?: { requireAssigned?: boolean },
 ) {
   const { count: anyAssignment } = await supabaseAdmin
     .from('customer_coupon_assignments')
     .select('id', { count: 'exact', head: true })
     .eq('coupon_id', couponId);
 
-  if (!anyAssignment || anyAssignment === 0) return true;
+  // Public coupons with no assignment rows are open to everyone.
+  // Private (is_public=false) coupons always require a personal assignment.
+  if (!anyAssignment || anyAssignment === 0) {
+    return options?.requireAssigned ? false : true;
+  }
 
   const phone = normalizePhone(customerPhone || null);
   const nowIso = new Date().toISOString();
@@ -247,9 +252,37 @@ export async function validateCouponForCheckout(
     coupon.id,
     leadContext.customer_id,
     leadContext.customer_phone,
+    { requireAssigned: coupon.is_public === false },
   );
   if (!assignedOk) {
     return { valid: false, error: 'This coupon is not assigned to your account.' };
+  }
+
+  // Special Welcome Car Inspection: profile + 1 completed non-inspection service.
+  try {
+    const { evaluateWelcomeCiCouponGate, isWelcomeCiGatedCoupon } = await import(
+      '@/lib/welcome-ci-coupon-gate'
+    );
+    if (isWelcomeCiGatedCoupon(coupon) && leadContext.customer_id) {
+      const { data: customerRow } = await supabaseAdmin
+        .from('customers')
+        .select('id, phone')
+        .eq('id', leadContext.customer_id)
+        .maybeSingle();
+      const gate = await evaluateWelcomeCiCouponGate(
+        supabaseAdmin,
+        {
+          id: String(leadContext.customer_id),
+          phone: customerRow?.phone || leadContext.customer_phone || null,
+        },
+        coupon,
+      );
+      if (!gate.can_use) {
+        return { valid: false, error: gate.message || 'This coupon is not active yet.' };
+      }
+    }
+  } catch (e) {
+    console.warn('[validateCouponForCheckout] welcome CI gate failed:', e);
   }
 
   if (String(coupon.coupon_type_slug || '') === 'referral') {
