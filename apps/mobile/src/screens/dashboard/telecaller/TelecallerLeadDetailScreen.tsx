@@ -84,6 +84,7 @@ type EditForm = {
   pickup_time: string;
   workshop_id: string;
   workshop_name: string;
+  lead_priority: string;
 };
 
 function emptyEditForm(): EditForm {
@@ -115,6 +116,7 @@ function emptyEditForm(): EditForm {
     pickup_time: '',
     workshop_id: '',
     workshop_name: '',
+    lead_priority: 'NORMAL',
   };
 }
 
@@ -281,6 +283,7 @@ function buildFormFromLead(data: any): EditForm {
     pickup_time: meta.pickup_time || slot.time,
     workshop_id: data?.workshop_id || '',
     workshop_name: data?.workshop?.name || '',
+    lead_priority: data?.lead_priority || 'NORMAL',
   };
 }
 
@@ -436,6 +439,52 @@ export default function TelecallerLeadDetailScreen({
   const setEditField = (key: keyof EditForm, value: any) =>
     setEditForm((prev) => ({ ...prev, [key]: value }));
 
+  const lastPhoneLookupRef = React.useRef<string>('');
+
+  const lookupCustomerByPhone = async (phoneRaw: string) => {
+    const phone10 = String(phoneRaw || '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    if (phone10.length !== 10 || phone10 === lastPhoneLookupRef.current) return;
+    lastPhoneLookupRef.current = phone10;
+    try {
+      const res = await apiFetch<any>(`/api/telecaller/crm/customer-lookup?phone=${phone10}`);
+      if (!res?.found || !res?.fill) return;
+      const fill = res.fill;
+      setEditForm((prev) => {
+        const empty = (v: string) => !String(v || '').trim();
+        const next = { ...prev };
+        if (empty(next.customer_name) && fill.customer_name) next.customer_name = String(fill.customer_name);
+        if (empty(next.customer_email) && fill.customer_email) next.customer_email = String(fill.customer_email);
+        if (empty(next.vehicle_number) && fill.vehicle_number) {
+          next.vehicle_number = String(fill.vehicle_number);
+        }
+        if (empty(next.vehicle_make) && fill.vehicle_make) next.vehicle_make = String(fill.vehicle_make);
+        if (empty(next.vehicle_model) && fill.vehicle_model) next.vehicle_model = String(fill.vehicle_model);
+        if (empty(next.city) && fill.city) next.city = String(fill.city);
+        if (empty(next.city_id) && fill.city_id) next.city_id = String(fill.city_id);
+        if (empty(next.pincode) && fill.pincode) next.pincode = String(fill.pincode);
+        if (
+          empty(next.pickup_address) &&
+          empty(next.flat_number) &&
+          (fill.customer_address || fill.pickup_address)
+        ) {
+          const addr = String(fill.pickup_address || fill.customer_address);
+          const parsed = parseComposedAddress(addr, fill, fill.city, fill.pincode);
+          if (parsed.flat) next.flat_number = parsed.flat;
+          if (parsed.area) next.pickup_address = parsed.area;
+          if (parsed.landmark) next.landmark = parsed.landmark;
+        }
+        return next;
+      });
+      if (fill.vehicle_make || fill.vehicle_model) {
+        setCarDisplay([fill.vehicle_make, fill.vehicle_model].filter(Boolean).join(' '));
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   // Direct list — no search / cityQuery (tap to select)
   const cityOptions = cities;
 
@@ -456,6 +505,10 @@ export default function TelecallerLeadDetailScreen({
     const next = buildFormFromLead(data);
     setEditForm(next);
     setCarDisplay([next.vehicle_make, next.vehicle_model].filter(Boolean).join(' '));
+    const phone10 = String(next.customer_phone || '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    if (phone10.length === 10) lastPhoneLookupRef.current = phone10;
     const meta = data?.coupon_meta && typeof data.coupon_meta === 'object' ? data.coupon_meta : {};
     setCouponMeta(meta);
     setInitialServiceTypes(next.service_types);
@@ -534,6 +587,7 @@ export default function TelecallerLeadDetailScreen({
   const cancelEditing = () => {
     setEditing(false);
     setCityOpen(false);
+    navigation?.goBack?.();
   };
 
   const saveLeadEdits = async () => {
@@ -727,6 +781,7 @@ export default function TelecallerLeadDetailScreen({
         pickup_required: editForm.pickup_required,
         pickup_address: editForm.pickup_required ? composed : null,
         workshop_id: editForm.workshop_id || null,
+        lead_priority: editForm.lead_priority || 'NORMAL',
         preferred_slot_start: start,
         preferred_slot_end: end,
         coupon_meta: nextMeta,
@@ -1021,6 +1076,17 @@ export default function TelecallerLeadDetailScreen({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, editForm.pincode, editForm.city]);
+
+  useEffect(() => {
+    if (!editing) return;
+    const phone = String(editForm.customer_phone || '').replace(/\D/g, '').slice(-10);
+    if (phone.length !== 10) return;
+    const t = setTimeout(() => {
+      void lookupCustomerByPhone(phone);
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, editForm.customer_phone]);
 
   useEffect(() => {
     fetchLeadDetails();
@@ -1617,7 +1683,7 @@ export default function TelecallerLeadDetailScreen({
             onPress={() => (editing ? cancelEditing() : startEditing())}
           >
             <Icon name={editing ? 'close' : 'pencil'} size={16} color={COLORS.primary} />
-            <Text style={styles.actionButtonTextEdit}>{editing ? 'Cancel' : 'Edit'}</Text>
+            <Text style={styles.actionButtonTextEdit}>{editing ? 'Back' : 'Edit'}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -1721,7 +1787,7 @@ export default function TelecallerLeadDetailScreen({
           <View style={[styles.sectionIconWrap, { backgroundColor: '#DBEAFE' }]}>
             <Icon name="account" size={16} color={COLORS.primary} />
           </View>
-          <Text style={styles.sectionTitle}>Customer</Text>
+          <Text style={styles.sectionTitle}>Customer Details</Text>
         </View>
         <View style={styles.sectionContent}>
           {editing ? (
@@ -1760,6 +1826,9 @@ export default function TelecallerLeadDetailScreen({
                   placeholder="Optional"
                 />
               </View>
+              <Text style={[styles.mutedValue, { marginBottom: 8 }]}>
+                10-digit phone auto-fills name / car / address if found in DB
+              </Text>
               <DetailRow
                 icon="email"
                 label="Email"
@@ -1770,12 +1839,33 @@ export default function TelecallerLeadDetailScreen({
                 onChangeText={(v) => setEditField('customer_email', v)}
                 placeholder="Optional email"
               />
+              <DetailRow
+                icon="building"
+                label="Flat / Building"
+                value={editForm.flat_number}
+                editing
+                onChangeText={(v) => setEditField('flat_number', v)}
+                placeholder="Flat / house no."
+              />
+              <DetailRow
+                icon="map-marker"
+                label="Area / Street"
+                value={editForm.pickup_address}
+                editing
+                onChangeText={(v) => setEditField('pickup_address', v)}
+                placeholder="Society, road, locality"
+              />
+              <DetailRow
+                icon="navigation"
+                label="Landmark"
+                value={editForm.landmark}
+                editing
+                onChangeText={(v) => setEditField('landmark', v)}
+                placeholder="Near …"
+              />
               <View style={styles.detailGrid}>
-                <TouchableOpacity style={{ flex: 1 }} onPress={() => setCityOpen(true)} activeOpacity={0.85}>
-                  <DetailRow icon="city" label="City" value={editForm.city || 'Select city'} compact />
-                </TouchableOpacity>
                 <DetailRow
-                  icon="map-marker-radius"
+                  icon="map-pin"
                   label="Pincode"
                   value={editForm.pincode}
                   compact
@@ -1785,6 +1875,9 @@ export default function TelecallerLeadDetailScreen({
                   onChangeText={(v) => setEditField('pincode', v.replace(/\D/g, '').slice(0, 6))}
                   placeholder="6-digit"
                 />
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => setCityOpen(true)} activeOpacity={0.85}>
+                  <DetailRow icon="city" label="City" value={editForm.city || 'Select city'} compact />
+                </TouchableOpacity>
               </View>
 
               {/^\d{6}$/.test(editForm.pincode) ? (
@@ -1914,6 +2007,66 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
+      {/* Lead Overview — no source / UTM */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+            <Icon name="clipboard-text" size={16} color="#B45309" />
+          </View>
+          <Text style={styles.sectionTitle}>Lead Overview</Text>
+        </View>
+        <View style={styles.sectionContent}>
+          <DetailRow icon="pound" label="Lead #" value={lead?.lead_number || '—'} />
+          <DetailRow
+            icon="flag"
+            label="Status"
+            value={String(lead?.status || '—').replace(/_/g, ' ')}
+          />
+          {editing ? (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={styles.fieldCaption}>Priority</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                {(['NORMAL', 'HIGH', 'URGENT'] as const).map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setEditField('lead_priority', p)}
+                    style={[
+                      styles.fuelChip,
+                      String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.fuelChipText,
+                        String(editForm.lead_priority || 'NORMAL') === p && styles.fuelChipTextActive,
+                      ]}
+                    >
+                      {p}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <DetailRow icon="flag-outline" label="Priority" value={lead?.lead_priority || 'NORMAL'} />
+          )}
+          <DetailRow
+            icon="clock-outline"
+            label="Created"
+            value={
+              lead?.created_at
+                ? new Date(lead.created_at).toLocaleString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '—'
+            }
+          />
+        </View>
+      </View>
+
       {/* Vehicle Information */}
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
@@ -1943,6 +2096,7 @@ export default function TelecallerLeadDetailScreen({
               <CarModelSearchField
                 label="CAR MODEL"
                 variant="default"
+                hideVariant
                 displayValue={carDisplay}
                 selectedMake={editForm.vehicle_make}
                 selectedModel={editForm.vehicle_model}

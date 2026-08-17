@@ -32,7 +32,7 @@ async function assertSuperAdmin() {
   if (roleError || !userData) return { ok: false as const, status: 403, error: 'Forbidden' };
 
   const roleCode = (userData as { roles?: { role_code?: string } }).roles?.role_code;
-  if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(String(roleCode || ''))) {
+  if (!['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER'].includes(String(roleCode || ''))) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 

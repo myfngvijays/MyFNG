@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import DashboardLayout from '@/components/DashboardLayout';
 import TelecallerAanshBar from '@/components/telecaller/TelecallerAanshBar';
 import {
@@ -18,6 +20,7 @@ import {
   Calendar,
   ClipboardList,
   MessageCircle,
+  BarChart3,
   ChevronDown,
   ChevronUp,
   Check,
@@ -89,6 +92,8 @@ function SimpleBarChart({
 }
 
 export default function TelecallerCrmHomePage() {
+  const pathname = usePathname();
+  const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [kpis, setKpis] = useState<Kpis>({});
@@ -170,14 +175,16 @@ export default function TelecallerCrmHomePage() {
   }));
 
   return (
-    <DashboardLayout role="telecaller">
+    <DashboardLayout role={layoutRole}>
       <div className="w-full max-w-7xl mx-auto space-y-3 sm:space-y-4 pb-8">
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[13px] font-semibold text-slate-500">Advanced CRM</p>
+            <p className="text-[13px] font-semibold text-slate-500">
+              {isLeadManager ? 'Lead Manager Advanced CRM' : 'Advanced CRM'}
+            </p>
             <h1 className="text-[22px] sm:text-2xl md:text-3xl font-extrabold text-[#023D95] leading-tight mt-0.5">
-              {profileName}
+              {isLeadManager ? 'Lead Manager Control Panel' : profileName}
             </h1>
           </div>
           <span
@@ -281,7 +288,7 @@ export default function TelecallerCrmHomePage() {
               {kpiCards.map((k) => (
                 <Link
                   key={k.label}
-                  href={`/dashboard/telecaller/leads?filter=${k.filter}`}
+                  href={`${base}/leads?filter=${k.filter}`}
                   onClick={() => saveTelecallerCrmFilterPrefs({ statusFilter: k.filter })}
                   className="rounded-xl bg-white py-3 sm:py-4 text-center shadow-sm border border-slate-100 hover:border-blue-200 transition"
                 >
@@ -326,47 +333,71 @@ export default function TelecallerCrmHomePage() {
             </div>
 
             <h2 className="text-[15px] font-bold text-[#023D95] pt-1">Quick Actions</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
               {[
                 {
-                  href: '/dashboard/telecaller/book?mode=book',
+                  href: `${base}/book?mode=book`,
                   label: 'Booking',
                   icon: Calendar,
                   color: '#10B981',
                 },
                 {
-                  href: '/dashboard/telecaller/book?mode=lead',
+                  href: `${base}/book?mode=lead`,
                   label: 'Add Lead',
                   icon: Phone,
                   color: '#004AAD',
                 },
                 {
-                  href: '/dashboard/telecaller/leads',
+                  href: `${base}/leads`,
                   label: 'Open Leads',
                   icon: ClipboardList,
                   color: '#F59E0B',
                 },
                 {
-                  href: '/dashboard/telecaller/engage?tab=followups',
-                  label: 'Follow-ups',
+                  href: '#whatsapp',
+                  label: 'WhatsApp',
                   icon: MessageCircle,
                   color: '#25D366',
+                  action: 'open-wa-inbox' as const,
                 },
-              ].map((a) => (
-                <Link
-                  key={a.href + a.label}
-                  href={a.href}
-                  className="rounded-2xl bg-white py-4 px-3 shadow-sm border border-slate-100 flex flex-col items-center gap-2 hover:border-blue-200 transition"
-                >
-                  <span
-                    className="w-11 h-11 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${a.color}18` }}
+                {
+                  href: isLeadManager ? `${base}/assignment` : `${base}/reports`,
+                  label: isLeadManager ? 'Assignment' : 'Reports',
+                  icon: isLeadManager ? MessageCircle : BarChart3,
+                  color: isLeadManager ? '#7C3AED' : '#023D95',
+                },
+              ].map((a) =>
+                a.action === 'open-wa-inbox' ? (
+                  <button
+                    key={a.label}
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
+                    className="rounded-2xl bg-white py-4 px-3 shadow-sm border border-slate-100 flex flex-col items-center gap-2 hover:border-emerald-200 transition"
                   >
-                    <a.icon className="w-[22px] h-[22px]" style={{ color: a.color }} />
-                  </span>
-                  <span className="text-[13px] font-bold text-slate-800 text-center">{a.label}</span>
-                </Link>
-              ))}
+                    <span
+                      className="w-11 h-11 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: `${a.color}18` }}
+                    >
+                      <a.icon className="w-[22px] h-[22px]" style={{ color: a.color }} />
+                    </span>
+                    <span className="text-[13px] font-bold text-slate-800 text-center">{a.label}</span>
+                  </button>
+                ) : (
+                  <Link
+                    key={a.href + a.label}
+                    href={a.href}
+                    className="rounded-2xl bg-white py-4 px-3 shadow-sm border border-slate-100 flex flex-col items-center gap-2 hover:border-blue-200 transition"
+                  >
+                    <span
+                      className="w-11 h-11 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: `${a.color}18` }}
+                    >
+                      <a.icon className="w-[22px] h-[22px]" style={{ color: a.color }} />
+                    </span>
+                    <span className="text-[13px] font-bold text-slate-800 text-center">{a.label}</span>
+                  </Link>
+                ),
+              )}
             </div>
           </>
         )}

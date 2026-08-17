@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import {
+  crmSeesAllLeads,
+  isTelecallerCrmRole,
+  normalizeRoleCode,
+} from '@/lib/telecaller/crmRoles';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +60,13 @@ export async function GET(request: NextRequest) {
     const teleCallerId = String(profile?.id || '').trim();
     if (!teleCallerId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
+    const roleCode = normalizeRoleCode((profile as { roles?: { role_code?: string } })?.roles?.role_code);
+    if (!isTelecallerCrmRole(roleCode) && roleCode !== 'APP_OPERATIONS') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const seesAll = crmSeesAllLeads(roleCode);
+    const telecallerFilter = String(new URL(request.url).searchParams.get('telecaller_id') || '').trim();
+
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = (supabaseAdmin ?? supabase) as any;
 
@@ -101,8 +113,17 @@ export async function GET(request: NextRequest) {
     const wg = (t: string) => weekStartParts.find((p) => p.type === t)?.value || '';
     const weekStart = `${wg('year')}-${wg('month')}-${wg('day')}`;
 
-    // Telecallers only see leads explicitly assigned to them (not the global unassigned pool).
+    // Telecallers only see leads assigned to them; Lead Manager / admins see full pool.
     const assignedToMe = teleCallerId;
+    const applyAssignee = (q: any) => {
+      if (seesAll) {
+        if (telecallerFilter) return q.eq('assigned_telecaller_id', telecallerFilter);
+        return q;
+      }
+      return q.or(
+        `assigned_telecaller_id.eq.${assignedToMe},created_by_id.eq.${assignedToMe}`,
+      );
+    };
 
     const applyCreatedRange = (q: any) => {
       if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
@@ -124,11 +145,21 @@ export async function GET(request: NextRequest) {
     };
 
     const leadBase = () =>
-      db
-        .from('service_leads')
-        .select('id', { count: 'exact', head: true })
-        .eq('assigned_telecaller_id', assignedToMe)
-        .is('deleted_at', null);
+      applyAssignee(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null),
+      );
+
+    const followUpBase = () =>
+      applyAssignee(
+        db
+          .from('service_leads')
+          .select('id', { count: 'exact', head: true })
+          .eq('follow_up_required', true)
+          .is('deleted_at', null),
+      );
 
     const [
       totalLeads,
@@ -156,39 +187,52 @@ export async function GET(request: NextRequest) {
       applyCreatedRange(leadBase().eq('status', 'IN_PROGRESS')),
       applyCreatedRange(leadBase().eq('status', 'COMPLETED')),
       applyCreatedRange(leadBase().eq('status', 'REJECTED')),
-      applyFuRange(
-        db
-          .from('service_leads')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_telecaller_id', teleCallerId)
-          .eq('follow_up_required', true)
-          .is('deleted_at', null),
-      ),
-      applySchedRange(
-        db
-          .from('telecaller_follow_ups')
-          .select('id', { count: 'exact', head: true })
-          .eq('telecaller_id', teleCallerId)
-          .eq('status', 'PENDING'),
-      ),
-      applyCallRange(
-        db.from('telecaller_call_logs').select('call_status').eq('telecaller_id', teleCallerId),
-      ),
-      db
-        .from('telecaller_performance_metrics')
-        .select(
-          'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate',
-        )
-        .eq('telecaller_id', teleCallerId)
-        .gte('date', weekStart)
-        .lte('date', today)
-        .order('date', { ascending: true }),
-      db
-        .from('telecaller_attendance')
-        .select('*')
-        .eq('telecaller_id', teleCallerId)
-        .is('punch_out_at', null)
-        .maybeSingle(),
+      applyFuRange(followUpBase()),
+      seesAll
+        ? applySchedRange(
+            db
+              .from('telecaller_follow_ups')
+              .select('id', { count: 'exact', head: true })
+              .eq('status', 'PENDING'),
+          )
+        : applySchedRange(
+            db
+              .from('telecaller_follow_ups')
+              .select('id', { count: 'exact', head: true })
+              .eq('telecaller_id', teleCallerId)
+              .eq('status', 'PENDING'),
+          ),
+      seesAll
+        ? applyCallRange(db.from('telecaller_call_logs').select('call_status'))
+        : applyCallRange(
+            db.from('telecaller_call_logs').select('call_status').eq('telecaller_id', teleCallerId),
+          ),
+      seesAll
+        ? db
+            .from('telecaller_performance_metrics')
+            .select(
+              'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate',
+            )
+            .gte('date', weekStart)
+            .lte('date', today)
+            .order('date', { ascending: true })
+        : db
+            .from('telecaller_performance_metrics')
+            .select(
+              'date, total_calls, answered_calls, leads_created, leads_completed, call_to_lead_conversion_rate',
+            )
+            .eq('telecaller_id', teleCallerId)
+            .gte('date', weekStart)
+            .lte('date', today)
+            .order('date', { ascending: true }),
+      seesAll
+        ? Promise.resolve({ data: null })
+        : db
+            .from('telecaller_attendance')
+            .select('*')
+            .eq('telecaller_id', teleCallerId)
+            .is('punch_out_at', null)
+            .maybeSingle(),
     ]);
 
     const calls = rangeCalls.data || [];

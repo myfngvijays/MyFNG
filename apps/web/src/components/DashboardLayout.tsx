@@ -36,12 +36,12 @@ import {
   MessageSquare,
   MessageCircle,
   MapPin,
+  Download,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
-import WhatsAppChatListModal from '@/components/shared/WhatsAppChatListModal';
-import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
+import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
@@ -98,6 +98,8 @@ type MenuItem = {
   icon: React.ReactNode;
   label: string;
   children?: MenuItem[];
+  /** Special action instead of navigation (e.g. open WhatsApp workspace). */
+  action?: 'open-wa-inbox';
 };
 
 export default function DashboardLayout({ children, role }: DashboardLayoutProps) {
@@ -118,7 +120,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   });
   const [loading, setLoading] = useState(true);
 
-  const eligibleForAansh = role && ['TELECALLER', 'RSA_MANAGER'].includes(role.toUpperCase());
+  const eligibleForAansh = role && ['TELECALLER', 'RSA_MANAGER', 'LEAD_MANAGER'].includes(role.toUpperCase());
   const [aanshAvailable, setAanshAvailable] = useState<{ aansh_id: number; system_name: string | null }[]>([]);
   const [aanshSession, setAanshSession] = useState<{
     session_token: string;
@@ -128,9 +130,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const [aanshModalOpen, setAanshModalOpen] = useState(false);
   const [aanshLoading, setAanshLoading] = useState(false);
   const [aanshClaiming, setAanshClaiming] = useState(false);
-  const whatsappFabEnabled = role && ['TELECALLER', 'RSA_MANAGER'].includes(role.toUpperCase());
-  const [waListOpen, setWaListOpen] = useState(false);
-  const [waPreviewOpen, setWaPreviewOpen] = useState(false);
+  const whatsappFabEnabled = role && ['TELECALLER', 'RSA_MANAGER', 'LEAD_MANAGER'].includes(role.toUpperCase());
+  const [waWorkspaceOpen, setWaWorkspaceOpen] = useState(false);
   const [waPreviewPhone, setWaPreviewPhone] = useState('');
   const [waPreviewMessage, setWaPreviewMessage] = useState('');
   const [waUnreadCount, setWaUnreadCount] = useState(0);
@@ -437,8 +438,37 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const handleOpenWaList = useCallback(() => {
     setWaUnreadCount(0);
     stopCallRing();
-    setWaListOpen(true);
+    setWaPreviewPhone('');
+    setWaPreviewMessage('');
+    setWaWorkspaceOpen(true);
   }, [stopCallRing]);
+
+  useEffect(() => {
+    if (!whatsappFabEnabled) return;
+    const onOpen = () => handleOpenWaList();
+    const onOpenChat = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ phone?: string; preview?: string }>).detail || {};
+      const phone = String(detail.phone || '').replace(/\D/g, '');
+      setWaUnreadCount(0);
+      stopCallRing();
+      if (!phone) {
+        handleOpenWaList();
+        return;
+      }
+      setWaPreviewPhone(phone.length === 10 ? `91${phone}` : phone);
+      setWaPreviewMessage(
+        String(detail.preview || '').trim() ||
+          'Namaste! MyFNG se baat kar rahe hain — aapki service request me help karenge.',
+      );
+      setWaWorkspaceOpen(true);
+    };
+    window.addEventListener('myfng:open-wa-inbox', onOpen);
+    window.addEventListener('myfng:open-wa-chat', onOpenChat as EventListener);
+    return () => {
+      window.removeEventListener('myfng:open-wa-inbox', onOpen);
+      window.removeEventListener('myfng:open-wa-chat', onOpenChat as EventListener);
+    };
+  }, [whatsappFabEnabled, handleOpenWaList, stopCallRing]);
 
   // Note: do NOT auto-release on beforeunload.
   // Refresh/navigation also triggers beforeunload, which would incorrectly free Aansh.
@@ -712,10 +742,32 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/workshop_pickup_boy/profile', icon: <Users className="w-5 h-5" />, label: 'Profile' },
       ],
       'LEAD_MANAGER': [
-        { href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-        { href: '/dashboard/lead_manager/leads', icon: <FileText className="w-5 h-5" />, label: 'Manage Leads' },
+        { href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Home' },
+        { href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        {
+          href: '#whatsapp',
+          icon: <MessageCircle className="w-5 h-5" />,
+          label: 'WhatsApp',
+          action: 'open-wa-inbox',
+        },
+        { href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
-        { href: '/dashboard/lead_manager/reports', icon: <TrendingUp className="w-5 h-5" />, label: 'Reports' },
+        { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
+        { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
+        {
+          href: '/dashboard/lead_manager/reports',
+          icon: <TrendingUp className="w-5 h-5" />,
+          label: 'Reports',
+          children: [
+            { href: '/dashboard/lead_manager/reports', icon: <TrendingUp className="w-5 h-5" />, label: 'Overview' },
+            { href: '/dashboard/lead_manager/reports/leaderboard', icon: <TrendingUp className="w-5 h-5" />, label: 'Leaderboard' },
+            { href: '/dashboard/lead_manager/reports/calls', icon: <Phone className="w-5 h-5" />, label: 'Call activity' },
+            { href: '/dashboard/lead_manager/reports/exports', icon: <Download className="w-5 h-5" />, label: 'Exports' },
+            { href: '/dashboard/lead_manager/reports/duplicates', icon: <Users className="w-5 h-5" />, label: 'Duplicates' },
+            { href: '/dashboard/lead_manager/reports/pipeline', icon: <BarChart3 className="w-5 h-5" />, label: 'Pipeline' },
+          ],
+        },
       ],
       'RSA_MANAGER': [
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -767,9 +819,25 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       'TELECALLER': [
         { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        {
+          href: '#whatsapp',
+          icon: <MessageCircle className="w-5 h-5" />,
+          label: 'WhatsApp',
+          action: 'open-wa-inbox',
+        },
         { href: '/dashboard/telecaller/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
         { href: '/dashboard/telecaller/workshops', icon: <MapPin className="w-5 h-5" />, label: 'Workshops' },
-        { href: '/dashboard/telecaller/engage', icon: <Calendar className="w-5 h-5" />, label: 'Engage' },
+        {
+          href: '/dashboard/telecaller/reports',
+          icon: <BarChart3 className="w-5 h-5" />,
+          label: 'Reports',
+          children: [
+            { href: '/dashboard/telecaller/reports', icon: <BarChart3 className="w-5 h-5" />, label: 'Overview' },
+            { href: '/dashboard/telecaller/reports/leaderboard', icon: <TrendingUp className="w-5 h-5" />, label: 'Your leaderboard' },
+            { href: '/dashboard/telecaller/reports/calls', icon: <Phone className="w-5 h-5" />, label: 'Call activity' },
+            { href: '/dashboard/telecaller/reports/duplicates', icon: <Users className="w-5 h-5" />, label: 'Duplicates' },
+          ],
+        },
         { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'Me' },
       ],
       'SUB_ADMIN': [
@@ -958,6 +1026,35 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
               }
 
               return (
+                item.action === 'open-wa-inbox' ? (
+                  <button
+                    key={item.label}
+                    type="button"
+                    title={sidebarCollapsed ? item.label : undefined}
+                    aria-label={item.label}
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
+                      try {
+                        if (window.innerWidth < 1024) setSidebarOpen(false);
+                      } catch {
+                        setSidebarOpen(false);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-blue-500/30 font-medium ${
+                      sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+                    } ${waWorkspaceOpen ? 'bg-white text-blue-700 shadow-lg font-semibold hover:bg-white' : ''}`}
+                  >
+                    <span className="flex-shrink-0">{item.icon}</span>
+                    <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>{item.label}</span>
+                    {waUnreadCount > 0 ? (
+                      <span
+                        className={`${sidebarCollapsed ? 'lg:hidden' : ''} ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white`}
+                      >
+                        {waUnreadCount > 99 ? '99+' : waUnreadCount}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : (
                 <NavLink
                   key={item.href}
                   href={item.href}
@@ -975,6 +1072,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                 >
                   {item.label}
                 </NavLink>
+                )
               );
             })}
           </nav>
@@ -1070,41 +1168,32 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           <button
             type="button"
             onClick={handleOpenWaList}
-            title="Open WhatsApp chats"
-            className="fixed z-40 inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:scale-[1.03] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))]"
+            title="WhatsApp inbox · 9594996161"
+            aria-label="Open WhatsApp 6161 chats"
+            className="fixed z-[60] inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white shadow-2xl transition hover:scale-[1.03] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] h-14 pl-3.5 pr-4 sm:h-14"
           >
-            <MessageCircle className="h-6 w-6" />
+            <MessageCircle className="h-6 w-6 shrink-0" />
+            <span className="text-left leading-tight">
+              <span className="block text-[11px] font-extrabold tracking-wide">WhatsApp</span>
+              <span className="block text-[10px] font-semibold opacity-90">· 6161</span>
+            </span>
             {waUnreadCount > 0 && (
               <span className="absolute -top-1 -right-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white animate-bounce">
                 {waUnreadCount > 99 ? '99+' : waUnreadCount}
               </span>
             )}
           </button>
-          <WhatsAppChatListModal
-            isOpen={waListOpen}
-            title="WhatsApp Chats"
+          <WhatsAppWebWorkspace
+            isOpen={waWorkspaceOpen}
+            title="WhatsApp · 6161"
             refreshSignal={waRefreshSignal}
             hideLeadPool={role?.toUpperCase() === 'TELECALLER'}
-            onClose={() => setWaListOpen(false)}
-            onOpenChat={(phone, preview) => {
-              setWaListOpen(false);
-              setWaUnreadCount(0);
-              setWaPreviewPhone(phone);
-              setWaPreviewMessage(
-                String(preview || '').trim() || 'Namaste! Hum aapki RSA request me assist karne ke liye available hain.'
-              );
-              setWaPreviewOpen(true);
-            }}
-          />
-          <WhatsAppMobilePreviewModal
-            isOpen={waPreviewOpen}
-            phoneNumber={waPreviewPhone}
-            title="WhatsApp Chat"
-            previewMessage={waPreviewMessage}
-            onClose={() => setWaPreviewOpen(false)}
-            onBack={() => {
-              setWaPreviewOpen(false);
-              setWaListOpen(true);
+            initialPhone={waPreviewPhone}
+            initialPreview={waPreviewMessage}
+            onClose={() => {
+              setWaWorkspaceOpen(false);
+              setWaPreviewPhone('');
+              setWaPreviewMessage('');
             }}
           />
         </>

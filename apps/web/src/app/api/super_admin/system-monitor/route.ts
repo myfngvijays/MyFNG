@@ -1211,6 +1211,89 @@ async function checkTelecallerLeadWhatsApp(): Promise<HealthCheck> {
   }
 }
 
+async function checkTelecallerCrmPermissions(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Telecaller CRM Permissions',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable',
+      reason: `Cannot verify telecaller_permission_templates: ${configError}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const [templates, columnProbe] = await Promise.all([
+      client
+        .from('telecaller_permission_templates')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true),
+      client.from('users_login').select('crm_permission_template_id').limit(1),
+    ]);
+    const responseTime = Date.now() - start;
+    const err = templates.error || columnProbe.error;
+    if (err) {
+      const missing =
+        err.code === '42P01' ||
+        String(err.message || '').includes('does not exist') ||
+        String(err.message || '').includes('crm_permission_template');
+      return {
+        name: 'Telecaller CRM Permissions',
+        category: 'Operations',
+        status: 'down',
+        responseTime,
+        message: missing ? 'Migration not applied' : err.message,
+        reason: missing
+          ? 'Run database/313_telecaller_crm_permissions.sql — Lead Manager cannot assign caller access templates.'
+          : `Permission templates inaccessible: ${err.message}`,
+        quickFix: {
+          label: 'Open LM Team',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/lead_manager/team' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const count = templates.count || 0;
+    return {
+      name: 'Telecaller CRM Permissions',
+      category: 'Operations',
+      status: count > 0 ? 'healthy' : 'degraded',
+      responseTime,
+      message:
+        count > 0
+          ? `${count} active permission template(s)`
+          : 'Table OK but no templates seeded',
+      reason:
+        count > 0
+          ? 'TeleCRM-style caller access templates ready for Lead Manager Team page.'
+          : 'Re-run 313 seed or create a Default Caller template on Team → Permission templates.',
+      quickFix: {
+        label: 'Manage templates',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/lead_manager/team' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { templates: count },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Telecaller CRM Permissions',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: e.message || 'Check failed',
+      reason: `CRM permissions health check failed: ${e.message}`,
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkRsaLeads(): Promise<HealthCheck> {
   const start = Date.now();
   const { client, configError } = getAdminClient();
@@ -1912,6 +1995,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkUniversalLink(),
     checkAppAssociationFiles(),
     checkTelecallerLeadWhatsApp(),
+    checkTelecallerCrmPermissions(),
     checkRsaLeads(),
     checkOpenAI(),
     checkMisaAiMonitoring(),

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import BottomNav from '../../../components/BottomNav';
 import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
@@ -26,6 +27,7 @@ import {
  * Date + status filters are shared between Home and Leads and persisted.
  */
 export default function TelecallerAdvancedCRM() {
+  const stackNav = useNavigation<any>();
   const defaults = defaultTelecallerCrmFilterPrefs();
   const [tab, setTab] = useState('home');
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
@@ -72,7 +74,7 @@ export default function TelecallerAdvancedCRM() {
     void saveTelecallerCrmFilterPrefs({ statusFilter: value });
   };
 
-  const openLead = (leadId: string, editing = false) => {
+  const openLead = (leadId: string, editing = true) => {
     setDetailEditing(editing);
     setDetailLeadId(leadId);
   };
@@ -139,6 +141,20 @@ export default function TelecallerAdvancedCRM() {
         setTab('home');
         setDetailLeadId(null);
         setDetailEditing(false);
+        return;
+      }
+      if (screen === 'CrmReports' || screen === 'reports' || screen === 'LeadManagerReports') {
+        try {
+          stackNav.navigate('CrmReports', params);
+        } catch {
+          /* ignore if stack unavailable */
+        }
+        return;
+      }
+      try {
+        stackNav.navigate(screen, params);
+      } catch {
+        /* ignore */
       }
     },
     goBack: () => {
@@ -206,6 +222,10 @@ export default function TelecallerAdvancedCRM() {
                 setTab('workshops');
                 return;
               }
+              if (screen === 'reports' || screen === 'CrmReports' || screen === 'LeadManagerReports') {
+                stackNav.navigate('CrmReports', params);
+                return;
+              }
               navigation.navigate(screen, params);
             }}
             onOpenWhatsApp={() => setWhatsAppOpen(true)}
@@ -216,7 +236,7 @@ export default function TelecallerAdvancedCRM() {
             {...dateProps}
             initialFilter={queueFilter}
             onFilterChange={persistQueueFilter}
-            onOpenLead={(id) => openLead(id, false)}
+            onOpenLead={(id) => openLead(id, true)}
             onEditLead={(id) => openLead(id, true)}
           />
         )}
@@ -233,7 +253,7 @@ export default function TelecallerAdvancedCRM() {
             hideModeSwitch
             onDone={(leadId) => {
               setBookMode(null);
-              openLead(leadId, false);
+              openLead(leadId, true);
             }}
             onCancel={() => setBookMode(null)}
           />
@@ -242,7 +262,21 @@ export default function TelecallerAdvancedCRM() {
         {tab === 'engage' && (
           <CrmEngageTab navigation={navigation} initialSegment={engageSegment} />
         )}
-        {tab === 'me' && <CrmMeTab navigation={navigation} active />}
+        {tab === 'me' && (
+          <CrmMeTab
+            navigation={{
+              ...navigation,
+              navigate: (screen: string, params?: any) => {
+                if (screen === 'CrmReports' || screen === 'reports' || screen === 'LeadManagerReports') {
+                  stackNav.navigate('CrmReports', params);
+                  return;
+                }
+                navigation.navigate(screen, params);
+              },
+            }}
+            active
+          />
+        )}
       </View>
 
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />

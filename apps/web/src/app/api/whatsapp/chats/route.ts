@@ -3,7 +3,13 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
-const ALLOWED_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER'];
+const ALLOWED_ROLE_CODES = [
+  'SUPER_ADMIN',
+  'SUB_ADMIN',
+  'RSA_MANAGER',
+  'TELECALLER',
+  'LEAD_MANAGER',
+];
 
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -28,24 +34,6 @@ function messagePreviewFromRow(row: any): string {
   if (type === 'DOCUMENT') return 'Document';
   if (type === 'TEMPLATE') return 'Template message';
   return 'Message';
-}
-
-function phoneDigits10(phone91: string): string {
-  const d = String(phone91 || '').replace(/\D/g, '');
-  if (d.length >= 10) return d.slice(-10);
-  return d;
-}
-
-function phoneMatchOrFilter(phone91: string): string {
-  const ten = phoneDigits10(phone91);
-  return [
-    `sender_phone.eq.${phone91}`,
-    `recipient_phone.eq.${phone91}`,
-    `sender_phone.eq.${ten}`,
-    `recipient_phone.eq.${ten}`,
-    `sender_phone.eq.91${ten}`,
-    `recipient_phone.eq.91${ten}`,
-  ].join(',');
 }
 
 function ts(value?: string | null): number {
@@ -85,104 +73,72 @@ async function loadTelecallerLeadPhones(
   unassigned: boolean,
 ): Promise<Map<string, any>> {
   const byPhone = new Map<string, any>();
-  let offset = 0;
-  const batch = 500;
+  // Hard cap — inbox must stay fast (no multi-page scan + N+1 WA lookups).
+  const LIMIT = 120;
 
-  while (true) {
-    let query = db
+  let query = db
+    .from('service_leads')
+    .select(
+      'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at',
+    )
+    .is('deleted_at', null)
+    .not('customer_phone', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(LIMIT);
+
+  query = unassigned
+    ? query.is('assigned_telecaller_id', null)
+    : query.or(
+        `assigned_telecaller_id.eq.${telecallerId},created_by_id.eq.${telecallerId}`,
+      );
+
+  let { data, error } = await query;
+
+  // Fallback if created_by_id missing / filter rejected
+  if (error && !unassigned) {
+    console.warn('[whatsapp/chats] assignee or-filter failed, assigned-only', error.message);
+    const retry = await db
       .from('service_leads')
       .select(
         'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at',
       )
       .is('deleted_at', null)
       .not('customer_phone', 'is', null)
+      .eq('assigned_telecaller_id', telecallerId)
       .order('updated_at', { ascending: false })
-      .range(offset, offset + batch - 1);
+      .limit(LIMIT);
+    data = retry.data;
+    error = retry.error;
+  }
 
-    query = unassigned
-      ? query.is('assigned_telecaller_id', null)
-      : query.eq('assigned_telecaller_id', telecallerId);
+  if (error) throw error;
 
-    const { data, error } = await query;
-    if (error) throw error;
-
-    const rows = data || [];
-    for (const row of rows) {
-      const phone = normalizePhone(String(row.customer_phone || ''));
-      if (!phone || byPhone.has(phone)) continue;
-      const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
-      const leadInboundAt =
-        String(meta.last_inbound_at || meta.inbound_at || '').trim() ||
-        row.updated_at ||
-        row.created_at ||
-        null;
-      byPhone.set(phone, {
-        phone,
-        customer_name: String(row.customer_name || '').trim() || null,
-        lead_message_preview: leadMessagePreview(row),
-        lead_inbound_at: leadInboundAt,
-        whatsapp_inbound: Boolean(meta.whatsapp_inbound || meta.whatsapp_enquiry),
-        last_message_preview: leadMessagePreview(row),
-        last_message_type: null,
-        last_direction: null,
-        last_status: null,
-        last_message_at: leadInboundAt,
-      });
-    }
-
-    if (rows.length < batch) break;
-    offset += batch;
-    if (offset >= 2000) break;
+  for (const row of data || []) {
+    const phone = normalizePhone(String(row.customer_phone || ''));
+    if (!phone || byPhone.has(phone)) continue;
+    const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+    const leadInboundAt =
+      String(meta.last_inbound_at || meta.inbound_at || '').trim() ||
+      row.updated_at ||
+      row.created_at ||
+      null;
+    const preview = leadMessagePreview(row);
+    const waInbound = Boolean(meta.whatsapp_inbound || meta.whatsapp_enquiry);
+    byPhone.set(phone, {
+      phone,
+      customer_name: String(row.customer_name || '').trim() || null,
+      lead_message_preview: preview,
+      lead_inbound_at: leadInboundAt,
+      whatsapp_inbound: waInbound,
+      last_message_preview: preview,
+      last_message_type: null,
+      last_direction: waInbound ? 'INBOUND' : null,
+      last_status: null,
+      last_message_at: leadInboundAt,
+    });
   }
 
   return byPhone;
-}
-
-async function enrichTelecallerChatsPerPhone(db: any, byPhone: Map<string, any>) {
-  let queried = 0;
-  for (const [, entry] of byPhone.entries()) {
-    const phone = String(entry.phone || '');
-    if (!phone) continue;
-
-    const { data: row, error } = await db
-      .from('whatsapp_messages')
-      .select(
-        'direction, text_body, media_caption, template_name, message_type, status, created_at',
-      )
-      .or(phoneMatchOrFilter(phone))
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    queried += 1;
-    if (error) {
-      console.warn('[whatsapp/chats] latest message lookup failed', phone, error.message);
-    }
-
-    const leadPreview = String(entry.lead_message_preview || entry.last_message_preview || '').trim();
-    const leadAt = entry.lead_inbound_at || entry.last_message_at;
-
-    if (row) {
-      const waPreview = messagePreviewFromRow(row);
-      const waAt = row.created_at || null;
-      if (ts(waAt) >= ts(leadAt) || !leadPreview) {
-        entry.last_message_preview = waPreview;
-        entry.last_message_at = waAt;
-        entry.last_direction = row.direction || null;
-        entry.last_status = row.status || null;
-        entry.last_message_type = row.message_type || null;
-      } else {
-        entry.last_message_preview = leadPreview;
-        entry.last_message_at = leadAt;
-        if (entry.whatsapp_inbound) entry.last_direction = 'INBOUND';
-      }
-    } else if (entry.whatsapp_inbound) {
-      entry.last_message_preview = leadPreview || entry.last_message_preview;
-      entry.last_message_at = leadAt;
-      entry.last_direction = 'INBOUND';
-    }
-  }
-  return queried;
 }
 
 async function getTelecallerWhatsappChats(
@@ -196,23 +152,29 @@ async function getTelecallerWhatsappChats(
 
   // Also include explicit WhatsApp chat assignments for this telecaller.
   if (!unassigned) {
-    const { data: assignedRows, error: assignedError } = await db
-      .from('whatsapp_chat_assignments')
-      .select('phone')
-      .contains('assigned_to_ids', [telecallerId]);
-    if (assignedError) throw assignedError;
-    for (const row of assignedRows || []) {
-      const phone = normalizePhone(String(row?.phone || ''));
-      if (!phone || byPhone.has(phone)) continue;
-      byPhone.set(phone, {
-        phone,
-        customer_name: null,
-        last_message_preview: 'Assigned WhatsApp chat',
-        last_message_type: null,
-        last_direction: null,
-        last_status: null,
-        last_message_at: null,
-      });
+    try {
+      const { data: assignedRows, error: assignedError } = await db
+        .from('whatsapp_chat_assignments')
+        .select('phone')
+        .contains('assigned_to_ids', [telecallerId])
+        .limit(80);
+      if (!assignedError) {
+        for (const row of assignedRows || []) {
+          const phone = normalizePhone(String(row?.phone || ''));
+          if (!phone || byPhone.has(phone)) continue;
+          byPhone.set(phone, {
+            phone,
+            customer_name: null,
+            last_message_preview: 'Assigned WhatsApp chat',
+            last_message_type: null,
+            last_direction: null,
+            last_status: null,
+            last_message_at: null,
+          });
+        }
+      }
+    } catch {
+      /* assignments table optional */
     }
   }
 
@@ -222,8 +184,8 @@ async function getTelecallerWhatsappChats(
     }
   }
 
-  const scanned = await enrichTelecallerChatsPerPhone(db, byPhone);
-
+  // Skip N+1 whatsapp_messages enrich — lead preview is enough for inbox list.
+  // Opening a chat loads full history separately.
   const chats = Array.from(byPhone.values())
     .map(({ lead_message_preview: _lp, lead_inbound_at: _la, whatsapp_inbound: _wi, ...rest }) => rest)
     .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
@@ -232,7 +194,7 @@ async function getTelecallerWhatsappChats(
     chats,
     count: chats.length,
     lead_count: chats.length,
-    scanned_messages: scanned,
+    scanned_messages: 0,
   };
 }
 

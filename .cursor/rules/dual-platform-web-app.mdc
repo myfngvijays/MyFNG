@@ -1,0 +1,15 @@
+---
+description: CRM / dashboard features must ship on web + mobile app together, with mobile-responsive web UI, for the same user roles.
+alwaysApply: true
+---
+
+# Dual platform (web + app)
+
+When the user asks for dashboard / Advanced CRM / Lead Manager / Telecaller (or similar role) features:
+
+1. **Implement on website** (`apps/web`) for the same roles (e.g. `TELECALLER` + `LEAD_MANAGER`).
+2. **Make the web UI mobile-responsive** (phone + tablet layouts; touch-friendly; no desktop-only breakage).
+3. **Implement the same feature on the mobile app** (`apps/mobile`) for those roles — same APIs, same capabilities (adapted to native UX).
+4. Do not leave app behind unless the user explicitly says web-only.
+
+Prefer shared APIs under `/api/telecaller/crm/...` (or existing role APIs) so web and app stay in sync.

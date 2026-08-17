@@ -14,7 +14,7 @@ async function requireTelecaller(request: NextRequest) {
   if (error || !user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   const profile = await resolveUserProfile(supabase, user);
   const roleCode = String((profile as any)?.roles?.role_code || '');
-  if (!['TELECALLER', 'SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER'].includes(roleCode)) {
+  if (!['TELECALLER', 'SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'LEAD_MANAGER'].includes(roleCode)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
   return { supabase, user, profile, roleCode };

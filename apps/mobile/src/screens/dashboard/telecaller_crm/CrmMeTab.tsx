@@ -239,6 +239,14 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
         <Text style={styles.linkText}>My Profile</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity
+        style={styles.linkBtn}
+        onPress={() => navigation?.navigate?.('CrmReports')}
+      >
+        <Ionicons name="bar-chart-outline" size={18} color={COLORS.primary} />
+        <Text style={styles.linkText}>Reports</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
         <Ionicons name="log-out-outline" size={18} color={COLORS.white} />
         <Text style={styles.logoutText}>Logout</Text>

@@ -37,7 +37,9 @@ export async function GET(request: NextRequest) {
 
     const userProfile = await resolveUserProfile(supabase, user);
     const roleCode = (userProfile?.roles as any)?.role_code || null;
-    if (roleCode !== 'TELECALLER') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (roleCode !== 'TELECALLER' && roleCode !== 'LEAD_MANAGER' && roleCode !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
     if (!supabaseAdmin) {

@@ -18,6 +18,8 @@ type Props = {
   onClear: () => void;
   placeholder?: string;
   variant?: 'default' | 'premium' | 'website';
+  /** When true, suggestions show make + model only (no variant line). */
+  hideVariant?: boolean;
 };
 
 export default function CarModelSearchField({
@@ -29,6 +31,7 @@ export default function CarModelSearchField({
   onClear,
   placeholder = 'Enter Model (e.g. Swift, City, Creta)',
   variant = 'default',
+  hideVariant = false,
 }: Props) {
   const premium = variant === 'premium';
   const website = variant === 'website';
@@ -176,7 +179,7 @@ export default function CarModelSearchField({
                         <Text style={styles.websiteMake}>{make}</Text>
                         <Text style={styles.websiteModel}>
                           {model}
-                          {item?.variant ? ` (${item.variant})` : ''}
+                          {!hideVariant && item?.variant ? ` (${item.variant})` : ''}
                         </Text>
                       </View>
                       <Ionicons name="arrow-forward" size={18} color="rgba(255,255,255,0.8)" />
@@ -184,7 +187,9 @@ export default function CarModelSearchField({
                   ) : (
                     <>
                       <Text style={[styles.suggestionTitle, premium ? styles.suggestionTitlePremium : null]}>{display}</Text>
-                      {item?.variant ? <Text style={styles.suggestionMeta}>{String(item.variant)}</Text> : null}
+                      {!hideVariant && item?.variant ? (
+                        <Text style={styles.suggestionMeta}>{String(item.variant)}</Text>
+                      ) : null}
                     </>
                   )}
                 </TouchableOpacity>

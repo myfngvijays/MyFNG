@@ -86,6 +86,9 @@ export function leadStatusCardColors(leadOrLabel: any): {
       ? leadOrLabel
       : leadDisplayStatus(leadOrLabel);
   const s = String(label || '').toUpperCase();
+  const incomplete =
+    (leadOrLabel && typeof leadOrLabel === 'object' && Boolean(leadOrLabel.is_incomplete)) ||
+    s.includes('INCOMPLETE');
 
   if (s.includes('LOST') || s === 'REJECTED') {
     return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
@@ -107,11 +110,14 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (s.includes('INTERESTED')) {
     return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
   }
-  if (s.includes('OTP')) {
-    return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#FEF3C7', badgeText: '#B45309' };
+  if (s.includes('OTP') || s.includes('MISA')) {
+    return { cardBg: '#FFFBEB', border: '#F59E0B', badgeBg: '#B45309', badgeText: '#FFFFFF' };
   }
-  if (s === 'NEW' || s.includes('INCOMPLETE')) {
-    return { cardBg: '#F8FAFC', border: '#E2E8F0', badgeBg: '#E2E8F0', badgeText: '#475569' };
+  if (incomplete) {
+    return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#B45309', badgeText: '#FFFFFF' };
+  }
+  if (s === 'NEW') {
+    return { cardBg: '#EFF6FF', border: '#BFDBFE', badgeBg: '#1D4ED8', badgeText: '#FFFFFF' };
   }
   return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
 }

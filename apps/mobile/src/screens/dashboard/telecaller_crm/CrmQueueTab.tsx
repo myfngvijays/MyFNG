@@ -612,14 +612,7 @@ export default function CrmQueueTab({
                   <Text style={styles.actText}>Call</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.act, styles.actOutline]} onPress={() => onOpenLead(item.id)}>
-                  <Text style={styles.actOutlineText}>View</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.act, styles.actIcon]}
-                  onPress={() => (onEditLead ? onEditLead(item.id) : onOpenLead(item.id))}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Ionicons name="pencil" size={15} color={COLORS.primary} />
+                  <Text style={styles.actOutlineText}>Open</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.act, styles.actOutline]} onPress={() => openShare(item)}>
                   <Ionicons name="share-outline" size={14} color={COLORS.primary} />

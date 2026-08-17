@@ -257,18 +257,29 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={require('../screens/dashboard/telecaller/TelecallerRSAComplaintDetailScreen').default}
           options={{ title: 'RSA Complaint Detail' }}
         />
+        <Stack.Screen
+          name="CrmReports"
+          component={require('../screens/dashboard/telecaller_crm/CrmReportsScreen').default}
+          options={{ title: 'Reports', headerShown: false }}
+        />
       </Stack.Navigator>
     );
   }
 
-  // Lead Manager Navigation
+  // Lead Manager Navigation — Advanced CRM shell + ops screens
   if (roleCode === 'LEAD_MANAGER') {
+    const TelecallerAdvancedCRM = require('../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM').default;
     return (
       <Stack.Navigator screenOptions={screenOptions}>
-        <Stack.Screen 
-          name="LeadManagerDashboard" 
+        <Stack.Screen
+          name="LeadManagerAdvancedCRM"
+          component={TelecallerAdvancedCRM}
+          options={{ title: 'Lead Manager CRM', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerDashboard"
           component={LeadManagerDashboard}
-          options={{ title: 'Lead Manager Dashboard' }}
+          options={{ title: 'Assignment Queue' }}
         />
         <Stack.Screen 
           name="LeadManagerLeads" 
@@ -290,6 +301,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={LeadManagerEscalationsScreen}
           options={{ title: 'Escalations' }}
         />
+        <Stack.Screen
+          name="CrmReports"
+          component={require('../screens/dashboard/telecaller_crm/CrmReportsScreen').default}
+          options={{ title: 'Reports', headerShown: false }}
+        />
         <Stack.Screen 
           name="LeadManagerReports" 
           component={LeadManagerReportsScreen}
@@ -304,6 +320,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="LeadManagerWorkshopDetail" 
           component={LeadManagerWorkshopDetailScreen}
           options={{ title: 'Workshop Details' }}
+        />
+        <Stack.Screen
+          name="TelecallerLeadDetail"
+          component={require('../screens/dashboard/telecaller/TelecallerLeadDetailScreen').default}
+          options={{ title: 'Lead Detail' }}
+        />
+        <Stack.Screen
+          name="TelecallerEditLead"
+          component={require('../screens/dashboard/telecaller/TelecallerEditLeadScreen').default}
+          options={{ title: 'Edit Lead' }}
         />
       </Stack.Navigator>
     );

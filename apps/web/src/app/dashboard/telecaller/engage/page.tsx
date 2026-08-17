@@ -1,10 +1,11 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
+import { useCrmPermissions } from '@/lib/telecaller/useCrmPermissions';
 import {
   Calendar,
   Clock,
@@ -43,6 +44,8 @@ const SCRIPT_CARDS = [
 ];
 
 function EngageContent() {
+  const router = useRouter();
+  const { permissions, loading: permLoading } = useCrmPermissions();
   const searchParams = useSearchParams();
   const tabParam = (searchParams?.get('tab') || 'followups') as Segment;
   const [segment, setSegment] = useState<Segment>(
@@ -53,14 +56,22 @@ function EngageContent() {
   const [filter, setFilter] = useState('pending');
 
   useEffect(() => {
+    if (permLoading) return;
+    if (!permissions.engage) {
+      router.replace('/dashboard/telecaller/reports');
+    }
+  }, [permLoading, permissions.engage, router]);
+
+  useEffect(() => {
     if (['followups', 'scripts', 'rsa'].includes(tabParam)) setSegment(tabParam);
   }, [tabParam]);
 
   useEffect(() => {
+    if (!permissions.engage || permLoading) return;
     if (segment !== 'followups') return;
     fetchFollowUps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segment, filter]);
+  }, [segment, filter, permissions.engage, permLoading]);
 
   async function fetchFollowUps() {
     const supabase = createClient();
@@ -116,6 +127,17 @@ function EngageContent() {
     } finally {
       setLoading(false);
     }
+  }
+
+
+  if (permLoading || !permissions.engage) {
+    return (
+      <DashboardLayout role="telecaller">
+        <div className="flex items-center justify-center gap-2 py-20 text-slate-500">
+          <Loader2 className="h-5 w-5 animate-spin" /> Redirecting…
+        </div>
+      </DashboardLayout>
+    );
   }
 
   async function markDone(id: string) {

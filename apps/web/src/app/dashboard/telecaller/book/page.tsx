@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import DashboardLayout from '@/components/DashboardLayout';
 import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
 import CrmBookingCatalog, { type CrmCatalogSelection } from '@/components/telecaller/crm/CrmBookingCatalog';
@@ -170,6 +171,8 @@ const initialForm: FormState = {
 function TelecallerCrmBookContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const { base, layoutRole } = getCrmDashboardBase(pathname);
   const modeParam = searchParams?.get('mode');
 
   /** null = chooser (Booking / Add Lead), same as mobile CrmBookChooser */
@@ -552,8 +555,8 @@ function TelecallerCrmBookContent() {
         throw new Error(data?.error || 'Failed to save lead');
       }
       const leadId = String(data.lead?.id || '');
-      if (leadId) router.push(`/dashboard/telecaller/leads/${leadId}`);
-      else router.push('/dashboard/telecaller/leads');
+      if (leadId) router.push(`${base}/leads/${leadId}`);
+      else router.push(`${base}/leads`);
     } catch (e: any) {
       setError(e?.message || 'Failed to save lead');
     } finally {
@@ -636,7 +639,7 @@ function TelecallerCrmBookContent() {
     if (mode === 'lead' || step === 0) {
       setMode(null);
       setStep(0);
-      router.replace('/dashboard/telecaller/book');
+      router.replace(`${base}/book`);
       return;
     }
     if (step === 4 && !needsPickupStep) {
@@ -702,9 +705,9 @@ function TelecallerCrmBookContent() {
       if (!res.ok) throw new Error(data?.error || 'Booking failed');
       const leadId = data?.lead?.id;
       if (leadId) {
-        router.push(`/dashboard/telecaller/leads/${leadId}`);
+        router.push(`${base}/leads/${leadId}`);
       } else {
-        router.push('/dashboard/telecaller/leads');
+        router.push(`${base}/leads`);
       }
     } catch (e: any) {
       setError(e?.message || 'Booking failed');
@@ -717,7 +720,7 @@ function TelecallerCrmBookContent() {
 
   if (!mode) {
     return (
-      <DashboardLayout role="telecaller">
+      <DashboardLayout role={layoutRole}>
         <div className="mx-auto w-full max-w-2xl pb-8">
           <h1 className="text-2xl font-extrabold text-gray-900">Book / Lead</h1>
           <p className="mt-1 text-sm text-gray-500">Choose what you want to do</p>
@@ -728,7 +731,7 @@ function TelecallerCrmBookContent() {
               setMode('book');
               setStep(0);
               setError('');
-              router.replace('/dashboard/telecaller/book?mode=book');
+              router.replace(`${base}/book?mode=book`);
             }}
             className="mt-6 flex w-full items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-[#004AAD]/40"
           >
@@ -750,7 +753,7 @@ function TelecallerCrmBookContent() {
               setMode('lead');
               setStep(0);
               setError('');
-              router.replace('/dashboard/telecaller/book?mode=lead');
+              router.replace(`${base}/book?mode=lead`);
             }}
             className="mt-3 flex w-full items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-[#004AAD]/40"
           >
@@ -768,7 +771,7 @@ function TelecallerCrmBookContent() {
 
           <button
             type="button"
-            onClick={() => router.push('/dashboard/telecaller')}
+            onClick={() => router.push(`${base}`)}
             className="mt-6 w-full rounded-xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-200"
           >
             Close
@@ -779,7 +782,7 @@ function TelecallerCrmBookContent() {
   }
 
   return (
-    <DashboardLayout role="telecaller">
+    <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full max-w-4xl pb-8">
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           {mode === 'book' ? (

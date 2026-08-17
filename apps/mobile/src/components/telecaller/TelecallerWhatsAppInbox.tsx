@@ -132,7 +132,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
             <Ionicons name="close" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>WhatsApp Inbox</Text>
+            <Text style={styles.title}>WhatsApp · 6161</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
           <TouchableOpacity onPress={fetchChats} style={styles.closeBtn}>

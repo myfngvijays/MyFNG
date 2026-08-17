@@ -9,6 +9,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  customer_name?: string | null;
 };
 
 type Props = {
@@ -50,6 +51,7 @@ type ModeTab = 'assigned' | 'unassigned';
 
 export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, title, refreshSignal, hideLeadPool = false }: Props) {
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [filter, setFilter] = useState<FilterTab>('all');
@@ -72,31 +74,42 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
   const unreadCount = useMemo(() => activeRows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND').length, [activeRows]);
 
   const fetchChats = useCallback(async (fetchMode: ModeTab, searchText: string, signal?: AbortSignal) => {
-    const params = new URLSearchParams({ limit: '250', scan: '50000', mode: fetchMode });
+    const params = new URLSearchParams({ limit: '120', scan: '500', mode: fetchMode });
     if (searchText) params.set('search', searchText);
     const res = await fetch(`/api/whatsapp/chats?${params.toString()}`, { cache: 'no-store', signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load chats');
-    return Array.isArray(data?.chats) ? data.chats : [];
+    return Array.isArray(data?.chats) ? (data.chats as ChatRow[]) : [];
   }, []);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 12000);
     const load = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
-        const chats = await fetchChats('assigned', debouncedSearch);
+        const chats = await fetchChats('assigned', debouncedSearch, ac.signal);
         if (cancelled) return;
         setRows(chats);
-      } catch {
-        if (!cancelled) setRows([]);
+      } catch (e: any) {
+        if (cancelled) return;
+        setRows([]);
+        if (e?.name === 'AbortError') setLoadError('Timed out — try Refresh');
+        else setLoadError(e?.message || 'Could not load chats');
       } finally {
+        clearTimeout(timeout);
         if (!cancelled) setLoading(false);
       }
     };
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      ac.abort();
+    };
   }, [isOpen, debouncedSearch, fetchChats]);
 
   useEffect(() => {
@@ -237,9 +250,28 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading {mode === 'unassigned' ? 'unassigned' : ''} chats...
             </div>
+          ) : loadError && mode === 'assigned' ? (
+            <div className="px-4 py-10 text-center text-sm text-red-600">
+              <p className="font-semibold">{loadError}</p>
+              <button
+                type="button"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#075e54] px-3 py-1.5 text-xs font-bold text-white"
+                onClick={() => {
+                  setSearch((s) => s);
+                  setLoadError(null);
+                  setLoading(true);
+                  void fetchChats('assigned', debouncedSearch)
+                    .then((chats) => setRows(chats))
+                    .catch((e: any) => setLoadError(e?.message || 'Failed'))
+                    .finally(() => setLoading(false));
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Retry
+              </button>
+            </div>
           ) : activeRows.length === 0 && !debouncedSearch ? (
             <div className="px-4 py-10 text-center text-sm text-gray-500">
-              {mode === 'unassigned' ? 'No unassigned chats found.' : 'No assigned chats found for this employee.'}
+              {mode === 'unassigned' ? 'No unassigned chats found.' : 'No assigned leads / chats yet.'}
             </div>
           ) : filteredRows.length === 0 && filter !== 'all' ? (
             <div className="px-4 py-10 text-center text-sm text-gray-500">
@@ -249,6 +281,10 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
             <>
               {filteredRows.map((chat) => {
                 const isUnread = (chat.last_direction || '').toUpperCase() === 'INBOUND';
+                const titleLine = String(chat.customer_name || '').trim() || formatPhone(chat.phone);
+                const subLine = chat.customer_name
+                  ? `${formatPhone(chat.phone)} · ${chat.last_message_preview || 'No preview'}`
+                  : chat.last_message_preview || 'No preview';
                 return (
                   <button
                     key={chat.phone}
@@ -260,8 +296,8 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                       <div className="flex items-start gap-2 min-w-0">
                         {isUnread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#25D366]" />}
                         <div className="min-w-0">
-                          <p className={`truncate text-sm ${isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'}`}>{formatPhone(chat.phone)}</p>
-                          <p className={`mt-0.5 truncate text-xs ${isUnread ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{chat.last_message_preview || 'No preview'}</p>
+                          <p className={`truncate text-sm ${isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'}`}>{titleLine}</p>
+                          <p className={`mt-0.5 truncate text-xs ${isUnread ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{subLine}</p>
                         </div>
                       </div>
                       <span className="shrink-0 text-[10px] text-gray-500">{formatTime(chat.last_message_at)}</span>
@@ -279,25 +315,9 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                     onOpenChat(normalized);
                   }}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#25D366]/10">
-                      <MessageCircle className="h-5 w-5 text-[#25D366]" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#075e54]">
-                        Start new chat with {formatPhone(debouncedSearch)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-500">
-                        Send a WhatsApp message to this number
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-semibold text-[#075e54]">Open chat with {formatPhone(debouncedSearch.replace(/\D/g, ''))}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">Not in your assigned list</p>
                 </button>
-              ) : null}
-              {filteredRows.length === 0 && debouncedSearch && debouncedSearch.replace(/\D/g, '').length < 10 ? (
-                <div className="px-4 py-10 text-center text-sm text-gray-500">
-                  No chats found. Enter a full phone number to start a new chat.
-                </div>
               ) : null}
             </>
           )}

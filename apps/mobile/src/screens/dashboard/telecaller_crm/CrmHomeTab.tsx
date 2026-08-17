@@ -113,6 +113,12 @@ export default function CrmHomeTab({
       go: () => onNavigate('book', { mode: 'lead' }),
     },
     { label: 'Open Leads', icon: 'list' as const, color: COLORS.orange, go: () => onNavigate('queue') },
+    {
+      label: 'Reports',
+      icon: 'bar-chart' as const,
+      color: COLORS.textHeading,
+      go: () => onNavigate('CrmReports'),
+    },
     { label: 'WhatsApp', icon: 'logo-whatsapp' as const, color: '#25D366', go: onOpenWhatsApp },
   ];
 

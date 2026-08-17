@@ -83,7 +83,7 @@ export default function CrmCarSearch({
   }, []);
 
   const pick = (car: CrmCarSelection) => {
-    const labelText = [car.make, car.model, car.variant].filter(Boolean).join(' ');
+    const labelText = [car.make, car.model].filter(Boolean).join(' ');
     setQuery(labelText);
     setOpen(false);
     onSelect(car);
@@ -143,7 +143,7 @@ export default function CrmCarSearch({
             >
               <Car className="h-4 w-4 shrink-0 text-white/80" />
               <span className="text-sm font-semibold text-white">
-                {[car.make, car.model, car.variant].filter(Boolean).join(' ')}
+                {[car.make, car.model].filter(Boolean).join(' ')}
                 {car.vehicleClass ? (
                   <span className="ml-1 text-xs font-normal text-white/70">({car.vehicleClass})</span>
                 ) : null}

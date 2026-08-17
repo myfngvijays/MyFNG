@@ -194,11 +194,13 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       {/* Header */}
       <View style={styles.leadHeader}>
         <View style={styles.leadHeaderLeft}>
-          <Text style={styles.leadName}>{item.customer_name || 'Unknown'}</Text>
           <Text style={styles.leadNumber}>{item.lead_number}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{item.status}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status), marginTop: 6 }]}>
+            <Text style={styles.statusText}>{item.status}</Text>
+          </View>
+          <Text style={[styles.leadName, { marginTop: 8 }]} numberOfLines={1}>
+            {item.customer_name || 'Unknown'}
+          </Text>
         </View>
       </View>
 
@@ -232,8 +234,16 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       <View style={styles.infoRow}>
         <Icon name="car" size={16} color={COLORS.textSecondary} />
         <Text style={styles.infoText}>
-          {item.vehicle_make || 'N/A'} {item.vehicle_model || ''}
-          {item.vehicle_number ? ` (${item.vehicle_number})` : ''}
+          Reg:{' '}
+          {item.vehicle_number && String(item.vehicle_number).toUpperCase() !== 'NA'
+            ? String(item.vehicle_number).toUpperCase()
+            : 'N/A'}
+        </Text>
+      </View>
+      <View style={styles.infoRow}>
+        <Icon name="car-side" size={16} color={COLORS.textSecondary} />
+        <Text style={styles.infoText}>
+          {[item.vehicle_make, item.vehicle_model].filter(Boolean).join(' ') || 'N/A'}
         </Text>
       </View>
 
@@ -570,14 +580,15 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   leadNumber: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#023D95',
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    alignSelf: 'flex-start',
   },
   statusText: {
     fontSize: 11,

@@ -40,6 +40,40 @@ interface WhatsAppMobilePreviewModalProps {
   leadId?: string | null;
   onClose: () => void;
   onBack?: () => void;
+  /** phone = mobile mockup (default); web = WhatsApp Web style pane */
+  variant?: 'phone' | 'web';
+  /** When true with variant=web, fill parent (no own fullscreen overlay). */
+  embedded?: boolean;
+  /** Workspace theme (web variant). */
+  theme?: 'light' | 'dark';
+}
+
+function humanizeTemplateKey(name: string): string {
+  return String(name || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function templateCategoryMeta(category?: string | null): { label: string; className: string } {
+  const cat = String(category || 'TEMPLATE').trim().toUpperCase();
+  if (cat.includes('MARKET')) {
+    return { label: 'Marketing', className: 'bg-purple-100 text-purple-800' };
+  }
+  if (cat.includes('AUTH')) {
+    return { label: 'OTP / Auth', className: 'bg-amber-100 text-amber-900' };
+  }
+  if (cat.includes('UTIL')) {
+    return { label: 'Utility', className: 'bg-sky-100 text-sky-800' };
+  }
+  return { label: cat || 'Template', className: 'bg-slate-100 text-slate-700' };
+}
+
+function templateTitle(row: { display_name?: string | null; template_name?: string | null }): string {
+  const display = String(row.display_name || '').trim();
+  if (display) return display;
+  return humanizeTemplateKey(String(row.template_name || ''));
 }
 
 type TemplateOption = {
@@ -636,7 +670,12 @@ export default function WhatsAppMobilePreviewModal({
   leadId,
   onClose,
   onBack,
+  variant = 'phone',
+  embedded = false,
+  theme = 'light',
 }: WhatsAppMobilePreviewModalProps) {
+  const isWeb = variant === 'web';
+  const isDark = isWeb && theme === 'dark';
   const waPhone = normalizePhone(phoneNumber);
 
   const [resolvedCustomerName, setResolvedCustomerName] = useState('');
@@ -668,6 +707,7 @@ export default function WhatsAppMobilePreviewModal({
   const [templateParams, setTemplateParams] = useState<string[]>([]);
   const [templateStep, setTemplateStep] = useState<1 | 2>(1);
   const [templateSearch, setTemplateSearch] = useState('');
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState<'all' | 'utility' | 'marketing' | 'auth'>('all');
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -839,14 +879,19 @@ export default function WhatsAppMobilePreviewModal({
   }, [templateVarCount, templateName, selectedTemplate, customerName]);
   const filteredTemplateOptions = useMemo(() => {
     const q = templateSearch.trim().toLowerCase();
-    if (!q) return templateOptions;
     return templateOptions.filter((row) => {
+      const cat = String(row.category || '').toLowerCase();
+      if (templateCategoryFilter === 'utility' && !cat.includes('util')) return false;
+      if (templateCategoryFilter === 'marketing' && !cat.includes('market')) return false;
+      if (templateCategoryFilter === 'auth' && !cat.includes('auth')) return false;
+      if (!q) return true;
       const name = String(row.template_name || '').toLowerCase();
       const display = String(row.display_name || '').toLowerCase();
       const body = String(row.body_text || '').toLowerCase();
-      return name.includes(q) || display.includes(q) || body.includes(q);
+      const human = humanizeTemplateKey(row.template_name).toLowerCase();
+      return name.includes(q) || display.includes(q) || body.includes(q) || human.includes(q);
     });
-  }, [templateOptions, templateSearch]);
+  }, [templateOptions, templateSearch, templateCategoryFilter]);
   const templatePreviewBody = useMemo(
     () => fillTemplateBody(selectedTemplate, templateParams),
     [selectedTemplate, templateParams]
@@ -2576,20 +2621,54 @@ export default function WhatsAppMobilePreviewModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[7000] bg-black/50" style={{ pointerEvents: 'auto' }}>
+    <div
+      className={
+        embedded
+          ? 'flex h-full min-h-0 w-full flex-col'
+          : isWeb
+            ? 'fixed inset-0 z-[7000] bg-[#0b141a]'
+            : 'fixed inset-0 z-[7000] bg-black/50'
+      }
+      style={{ pointerEvents: 'auto' }}
+    >
       <div
         ref={phoneRef}
-        className="w-[372px] max-w-[95vw] h-[720px] max-h-[94vh] rounded-[2.6rem] bg-[#0f1f2e] p-2.5 shadow-[0_28px_70px_rgba(0,0,0,0.55)]"
-        style={modalPos ? { position: 'fixed', left: modalPos.x, top: modalPos.y, margin: 0 } : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+        className={
+          isWeb
+            ? embedded
+              ? `flex h-full min-h-0 w-full flex-col overflow-hidden ${isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'}`
+              : 'relative mx-auto flex h-[100dvh] w-full max-w-[1200px] flex-col overflow-hidden bg-[#efeae2] shadow-2xl'
+            : 'w-[372px] max-w-[95vw] h-[720px] max-h-[94vh] rounded-[2.6rem] bg-[#0f1f2e] p-2.5 shadow-[0_28px_70px_rgba(0,0,0,0.55)]'
+        }
+        style={
+          isWeb
+            ? undefined
+            : modalPos
+              ? { position: 'fixed', left: modalPos.x, top: modalPos.y, margin: 0 }
+              : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+        }
       >
-        <div className="relative h-full rounded-[2.1rem] bg-[#efeae2] overflow-hidden border border-black/25 flex flex-col">
+        <div
+          className={
+            isWeb
+              ? 'relative flex h-full min-h-0 flex-col overflow-hidden'
+              : 'relative h-full rounded-[2.1rem] bg-[#efeae2] overflow-hidden border border-black/25 flex flex-col'
+          }
+        >
+          {!isWeb ? (
+            <div
+              className="h-6 bg-[#0f1f2e] flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+              onMouseDown={handleDragStart}
+            >
+              <div className="h-1.5 w-24 rounded-full bg-[#2f3b43]" />
+            </div>
+          ) : null}
           <div
-            className="h-6 bg-[#0f1f2e] flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
-            onMouseDown={handleDragStart}
+            className={`bg-[#005c4b] text-white px-3.5 py-3 flex items-center justify-between shadow-sm ${
+              isWeb ? '' : 'cursor-grab active:cursor-grabbing'
+            }`}
+            onMouseDown={isWeb ? undefined : handleDragStart}
           >
-            <div className="h-1.5 w-24 rounded-full bg-[#2f3b43]" />
-          </div>
-          <div className="bg-[#005c4b] text-white px-3.5 py-3 flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing" onMouseDown={handleDragStart}>
             <div className="flex items-center gap-2 min-w-0">
               {onBack && (
                 <button
@@ -2892,7 +2971,9 @@ export default function WhatsAppMobilePreviewModal({
           <div
             ref={messagesContainerRef}
             onScroll={handleConversationScroll}
-            className="flex-1 min-h-0 px-3 py-4 space-y-2 overflow-y-auto bg-[#efeae2]"
+            className={`flex-1 min-h-0 px-4 sm:px-6 py-4 space-y-2 overflow-y-auto ${
+              isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'
+            }`}
           >
             {loadingOlder ? (
               <div className="mx-auto w-fit rounded-full bg-[#d9dfe3] px-2.5 py-1 text-[10px] text-[#54656f]">
@@ -3061,8 +3142,16 @@ export default function WhatsAppMobilePreviewModal({
                   ? fillTemplateBodyFromArray(currentTemplate, msg?.payload?.request?.template_params || msg?.payload?.request?.params)
                   : '';
                 const templateButtons = isTemplateMessage ? extractTemplateButtons(currentTemplate) : [];
-                const templateDisplayName =
-                  currentTemplate?.display_name || currentTemplate?.template_name || msg?.template_name || '';
+                const templateDisplayName = isTemplateMessage
+                  ? templateTitle({
+                      display_name: currentTemplate?.display_name,
+                      template_name: currentTemplate?.template_name || msg?.template_name,
+                    })
+                  : '';
+                const templateTechName = String(
+                  currentTemplate?.template_name || msg?.template_name || '',
+                ).trim();
+                const templateCat = templateCategoryMeta(currentTemplate?.category);
                 const messageType = String(msg.message_type || '').trim().toUpperCase();
 
                 const extractInteractiveText = (): string => {
@@ -3211,8 +3300,21 @@ export default function WhatsAppMobilePreviewModal({
                         <div className="mb-1 text-[11px] font-semibold text-[#0f4c3a]">Sent by: {actorName}</div>
                       ) : null}
                       {isTemplateMessage ? (
-                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
-                          Template: {templateDisplayName}
+                        <div className="mb-1.5 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-[#0f5132]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0f5132]">
+                              Template
+                            </span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${templateCat.className}`}>
+                              {templateCat.label}
+                            </span>
+                          </div>
+                          <p className="text-[12px] font-semibold text-[#0f5132]">{templateDisplayName}</p>
+                          {templateTechName &&
+                          humanizeTemplateKey(templateTechName).toLowerCase() !==
+                            String(templateDisplayName).toLowerCase() ? (
+                            <p className="font-mono text-[10px] text-[#54656f]">{templateTechName}</p>
+                          ) : null}
                         </div>
                       ) : null}
                       {callPermissionBadge ? (
@@ -3464,11 +3566,13 @@ export default function WhatsAppMobilePreviewModal({
               </div>
             ) : null}
             {activeType === 'template' ? (
-              <div className="mb-2 rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-2.5">
+              <div className="mb-2 rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">Template mode</p>
-                    <p className="text-[10px] text-[#667781]">Select approved template and add params</p>
+                    <p className="text-[10px] text-[#667781]">
+                      Approved Meta templates — name, type aur preview clear dikhega
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -3481,8 +3585,8 @@ export default function WhatsAppMobilePreviewModal({
 
                 {templateStep === 1 ? (
                   <>
-                    <div className="rounded-xl border border-[#d5dbe1] bg-white p-2">
-                      <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="rounded-xl border border-[#d5dbe1] bg-white p-2.5">
+                      <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
                           Step 1 — Choose Template
                         </p>
@@ -3490,13 +3594,36 @@ export default function WhatsAppMobilePreviewModal({
                           {filteredTemplateOptions.length}/{templateOptions.length}
                         </span>
                       </div>
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {(
+                          [
+                            ['all', 'All'],
+                            ['utility', 'Utility'],
+                            ['marketing', 'Marketing'],
+                            ['auth', 'OTP / Auth'],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setTemplateCategoryFilter(key)}
+                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
+                              templateCategoryFilter === key
+                                ? 'bg-[#075e54] text-white'
+                                : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                       <input
                         className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
                         value={templateSearch}
                         onChange={(e) => setTemplateSearch(e.target.value)}
-                        placeholder="Search by template name..."
+                        placeholder="Search name, id, or message text…"
                       />
-                      <div className="mt-2 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-[#e5e9ee] bg-[#fbfcfd] p-1.5">
+                      <div className="mt-2 max-h-52 space-y-1.5 overflow-y-auto rounded-lg border border-[#e5e9ee] bg-[#fbfcfd] p-1.5">
                         {templatesLoading ? (
                           <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
                         ) : null}
@@ -3506,23 +3633,37 @@ export default function WhatsAppMobilePreviewModal({
                         {filteredTemplateOptions.map((row) => {
                           const isSelected =
                             row.template_name.trim().toLowerCase() === templateName.trim().toLowerCase();
+                          const cat = templateCategoryMeta(row.category);
+                          const titleLabel = templateTitle(row);
+                          const tech = String(row.template_name || '').trim();
+                          const preview = String(row.body_text || '').replace(/\s+/g, ' ').trim();
                           return (
                             <button
                               key={row.id}
                               type="button"
                               onClick={() => setTemplateName(row.template_name)}
-                              className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                              className={`w-full rounded-lg border px-2.5 py-2.5 text-left transition ${
                                 isSelected
                                   ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
                                   : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
                               }`}
                             >
-                              <p className="text-[11px] font-semibold text-[#111b21]">
-                                {row.display_name || row.template_name}
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-[12px] font-bold text-[#111b21]">{titleLabel}</p>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${cat.className}`}>
+                                  {cat.label}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 font-mono text-[10px] text-[#667781]">
+                                {tech} · {(row.language_code || 'en').toUpperCase()}
                               </p>
-                              <p className="mt-0.5 line-clamp-1 text-[10px] text-[#667781]">
-                                {row.language_code.toUpperCase()} • {String(row.category || 'TEMPLATE').toUpperCase()}
-                              </p>
+                              {preview ? (
+                                <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#3b4a54]">
+                                  {preview}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-[10px] italic text-[#98a2b3]">No body preview</p>
+                              )}
                             </button>
                           );
                         })}
@@ -3532,9 +3673,16 @@ export default function WhatsAppMobilePreviewModal({
                     {templateName.trim() ? (
                       <div className="mt-2 flex items-center gap-2">
                         <div className="flex-1 rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
-                          <p className="font-semibold">{selectedTemplate?.display_name || templateName}</p>
-                          <p className="mt-0.5 text-[#1b6f5f] line-clamp-1 whitespace-pre-wrap">
-                            {String(selectedTemplate?.body_text || '').slice(0, 60)}...
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="font-semibold">{templateTitle(selectedTemplate || { template_name: templateName })}</p>
+                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
+                              {templateCategoryMeta(selectedTemplate?.category).label}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
+                          <p className="mt-1 text-[#1b6f5f] line-clamp-2 whitespace-pre-wrap">
+                            {String(selectedTemplate?.body_text || '').slice(0, 120)}
+                            {String(selectedTemplate?.body_text || '').length > 120 ? '…' : ''}
                           </p>
                         </div>
                         {visibleVarCount > 0 ? (
@@ -3565,9 +3713,15 @@ export default function WhatsAppMobilePreviewModal({
                     </div>
 
                     <div className="mb-3 rounded-lg border border-[#bdebd2] bg-[#f2fcf6] px-2.5 py-2">
-                      <p className="text-[10px] font-semibold text-[#128c7e]">
-                        {selectedTemplate?.display_name || templateName}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="text-[11px] font-semibold text-[#128c7e]">
+                          {templateTitle(selectedTemplate || { template_name: templateName })}
+                        </p>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
+                          {templateCategoryMeta(selectedTemplate?.category).label}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
                       <p className="mt-1 text-[10px] text-[#1b6f5f] whitespace-pre-wrap line-clamp-3">
                         {fillTemplateBody(selectedTemplate, templateParams)}
                       </p>

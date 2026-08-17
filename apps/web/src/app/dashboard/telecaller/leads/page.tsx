@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState, Suspense, useRef } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
@@ -23,14 +24,25 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Phone,
   Search,
-  Filter,
-  Eye,
   Share2,
-  Pencil,
   Bell,
   Loader2,
   X,
+  MessageCircle,
 } from 'lucide-react';
+
+function openLeadWhatsApp(lead: { customer_phone?: string | null; message_preview?: string | null }) {
+  const phone = String(lead?.customer_phone || '').replace(/\D/g, '');
+  if (!phone) return;
+  window.dispatchEvent(
+    new CustomEvent('myfng:open-wa-chat', {
+      detail: {
+        phone,
+        preview: lead?.message_preview || undefined,
+      },
+    }),
+  );
+}
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -40,6 +52,8 @@ const PRIORITY_OPTIONS = [
 ];
 
 function TelecallerCrmLeadsContent() {
+  const pathname = usePathname();
+  const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
   const searchParams = useSearchParams();
   const router = useRouter();
   const filterParam = searchParams?.get('filter');
@@ -47,12 +61,17 @@ function TelecallerCrmLeadsContent() {
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const bootedRef = useRef(false);
   const [q, setQ] = useState('');
+  const [appliedQ, setAppliedQ] = useState('');
   const [filter, setFilter] = useState(filterParam || initialPrefs.statusFilter || 'all');
   const [lostReason, setLostReason] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
   const [priority, setPriority] = useState('');
+  const [telecallerId, setTelecallerId] = useState('');
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string | null }>>([]);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>(initialPrefs.datePreset);
   const [customStart, setCustomStart] = useState(initialPrefs.customStart);
   const [customEnd, setCustomEnd] = useState(initialPrefs.customEnd);
@@ -102,16 +121,40 @@ function TelecallerCrmLeadsContent() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!isLeadManager) return;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('users_login')
+          .select('id, full_name, roles!role_id(role_code)')
+          .eq('is_active', true)
+          .order('full_name');
+        setTelecallers(
+          (data || [])
+            .filter((t: any) => String(t?.roles?.role_code || '').toUpperCase() === 'TELECALLER')
+            .map((t: any) => ({ id: String(t.id), full_name: t.full_name ? String(t.full_name) : null })),
+        );
+      } catch {
+        setTelecallers([]);
+      }
+    })();
+  }, [isLeadManager]);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    if (bootedRef.current) setRefreshing(true);
+    else setLoading(true);
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
-      const params = new URLSearchParams({ limit: '80' });
+      const params = new URLSearchParams({ limit: '50' });
       if (filter && filter !== 'all') params.set('filter', filter);
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
-      if (q.trim()) params.set('q', q.trim());
+      if (appliedQ.trim()) params.set('q', appliedQ.trim());
       if (city.trim()) params.set('city', city.trim());
       if (priority.trim()) params.set('priority', priority.trim());
+      if (isLeadManager && telecallerId.trim()) params.set('telecaller_id', telecallerId.trim());
+      if (isLeadManager && unassignedOnly) params.set('unassigned', '1');
       params.set('from', range.start);
       params.set('to', range.end);
       const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
@@ -120,15 +163,21 @@ function TelecallerCrmLeadsContent() {
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
     } catch (e) {
       console.error(e);
-      setLeads([]);
+      if (!bootedRef.current) setLeads([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      bootedRef.current = true;
     }
-  }, [filter, lostReason, q, city, priority, datePreset, customStart, customEnd]);
+  }, [filter, lostReason, appliedQ, city, priority, datePreset, customStart, customEnd, isLeadManager, telecallerId, unassignedOnly]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  const runSearch = () => {
+    setAppliedQ(q.trim());
+  };
 
   const openShare = async (lead: any) => {
     setShareLead(lead);
@@ -173,26 +222,43 @@ function TelecallerCrmLeadsContent() {
     const next = new URLSearchParams(searchParams?.toString() || '');
     if (id === 'all') next.delete('filter');
     else next.set('filter', id);
-    router.replace(`/dashboard/telecaller/leads${next.toString() ? `?${next}` : ''}`);
+    router.replace(`${base}/leads${next.toString() ? `?${next}` : ''}`);
   };
 
   return (
-    <DashboardLayout role="telecaller">
-      <div className="w-full max-w-7xl mx-auto space-y-5">
+    <DashboardLayout role={layoutRole}>
+      <div className="w-full max-w-7xl mx-auto space-y-5 pb-24">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
             <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {isLeadManager
+                ? 'Open a lead to edit — assign / filter by telecaller. No lead source / UTM.'
+                : 'Sirf aapke assigned (ya aapke banaye) leads — WhatsApp · 6161 sticky pe niche.'}
+            </p>
           </div>
-          <Link
-            href="/dashboard/telecaller/book"
-            className="rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
-          >
-            + New Booking
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {!isLeadManager ? (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
+              >
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp · 6161
+              </button>
+            ) : null}
+            <Link
+              href={`${base}/book`}
+              className="rounded-xl bg-[#004AAD] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
+            >
+              + New Booking
+            </Link>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
           <div className="min-w-0">
             <label className="mb-1 block text-xs font-bold text-slate-500">Status</label>
             <select
@@ -215,7 +281,6 @@ function TelecallerCrmLeadsContent() {
               onChange={(e) => {
                 const v = e.target.value as CrmDatePreset;
                 persistDate({ datePreset: v });
-                if (v === 'custom') setShowFilters(true);
               }}
             >
               {CRM_DATE_PRESETS.map((p) => (
@@ -225,8 +290,64 @@ function TelecallerCrmLeadsContent() {
               ))}
             </select>
           </div>
+          <div className="min-w-0">
+            <label className="mb-1 block text-xs font-bold text-slate-500">City</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+            >
+              <option value="">All cities</option>
+              {cities.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className="mb-1 block text-xs font-bold text-slate-500">Priority</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+            >
+              {PRIORITY_OPTIONS.map((o) => (
+                <option key={o.value || 'all'} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {isLeadManager ? (
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-bold text-slate-500">Telecaller</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+                value={unassignedOnly ? '__unassigned__' : telecallerId}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === '__unassigned__') {
+                    setUnassignedOnly(true);
+                    setTelecallerId('');
+                  } else {
+                    setUnassignedOnly(false);
+                    setTelecallerId(v);
+                  }
+                }}
+              >
+                <option value="">All telecallers</option>
+                <option value="__unassigned__">Unassigned only</option>
+                {telecallers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.full_name || t.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {filter === 'lost' ? (
-            <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+            <div className="min-w-0">
               <label className="mb-1 block text-xs font-bold text-slate-500">Lost reason</label>
               <select
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
@@ -241,6 +362,28 @@ function TelecallerCrmLeadsContent() {
               </select>
             </div>
           ) : null}
+          {datePreset === 'custom' ? (
+            <>
+              <div className="min-w-0">
+                <label className="mb-1 block text-xs font-bold text-slate-500">From</label>
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  value={customStart}
+                  onChange={(e) => persistDate({ customStart: e.target.value, datePreset: 'custom' })}
+                />
+              </div>
+              <div className="min-w-0">
+                <label className="mb-1 block text-xs font-bold text-slate-500">To</label>
+                <input
+                  type="date"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  value={customEnd}
+                  onChange={(e) => persistDate({ customEnd: e.target.value, datePreset: 'custom' })}
+                />
+              </div>
+            </>
+          ) : null}
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
@@ -251,20 +394,29 @@ function TelecallerCrmLeadsContent() {
               placeholder="Search name, phone, lead #"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && load()}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
             />
           </div>
           <div className="flex gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setShowFilters((v) => !v)}
+              onClick={() => {
+                setFilterAndUrl('all');
+                setCity('');
+                setPriority('');
+                setTelecallerId('');
+                setUnassignedOnly(false);
+                setLostReason('');
+                setQ('');
+                setAppliedQ('');
+              }}
               className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
             >
-              <Filter className="h-4 w-4" /> Filters
+              <X className="h-4 w-4" /> Clear
             </button>
             <button
               type="button"
-              onClick={load}
+              onClick={runSearch}
               className="flex-1 sm:flex-none rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
             >
               Search
@@ -272,60 +424,31 @@ function TelecallerCrmLeadsContent() {
           </div>
         </div>
 
-        {showFilters ? (
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-            {datePreset === 'custom' ? (
-              <>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-500">From</label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    value={customStart}
-                    onChange={(e) => persistDate({ customStart: e.target.value, datePreset: 'custom' })}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-500">To</label>
-                  <input
-                    type="date"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    value={customEnd}
-                    onChange={(e) => persistDate({ customEnd: e.target.value, datePreset: 'custom' })}
-                  />
-                </div>
-              </>
-            ) : null}
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-500">City</label>
-              <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
+        {/* quick status chips */}
+        <div className="flex flex-wrap gap-2">
+          {LEAD_STATUS_FILTERS.map((f) => {
+            const active = filter === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilterAndUrl(f.id)}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold border transition ${
+                  active
+                    ? 'bg-[#004AAD] text-white border-[#004AAD]'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                }`}
               >
-                <option value="">All cities</option>
-                {cities.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-500">Priority</label>
-              <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                {PRIORITY_OPTIONS.map((o) => (
-                  <option key={o.value || 'all'} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {refreshing ? (
+          <p className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating…
+          </p>
         ) : null}
 
         {loading ? (
@@ -337,109 +460,298 @@ function TelecallerCrmLeadsContent() {
             No leads in this filter / date range
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {leads.map((lead) => {
-              const tint = leadStatusCardColors(lead);
-              const statusLabel = leadDisplayStatus(lead);
-              const reminder = lead.reminder || null;
-              const reminderAt = reminder?.at || lead.next_follow_up_at || null;
-              const reminderOverdue =
-                Boolean(reminder?.overdue) ||
-                (reminderAt ? new Date(reminderAt).getTime() < Date.now() : false);
-              return (
-              <div
-                key={lead.id}
-                className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md"
-                style={{ backgroundColor: tint.cardBg, borderColor: tint.border }}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-extrabold text-[#023D95]">
-                        {lead.lead_number || lead.id?.slice(0, 8)}
-                      </span>
-                      <span
-                        className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
-                        style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
-                      >
-                        {statusLabel}
-                      </span>
-                      {lead.lead_priority ? (
-                        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold text-orange-700 ring-1 ring-orange-200">
-                          {lead.lead_priority}
-                        </span>
+          <>
+            {/* Desktop table — SA-style, no lead source column */}
+            <div className="hidden lg:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Customer</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Phone</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Message</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Reg. No</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Make / Model</th>
+                      {isLeadManager ? (
+                        <th className="px-4 py-3 whitespace-nowrap">Assignee</th>
                       ) : null}
-                    </div>
-                    <p className="mt-1 text-base font-bold text-slate-900">
-                      {lead.customer_name || 'Unknown'}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      {[lead.vehicle_make, lead.vehicle_model, lead.city]
-                        .filter(Boolean)
-                        .join(' · ') || '—'}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {lead.created_at
-                        ? new Date(lead.created_at).toLocaleString('en-IN')
-                        : '—'}
-                    </p>
-                    {reminderAt ? (
-                      <div
-                        className={`mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ${
-                          reminderOverdue
-                            ? 'bg-red-50 text-red-700 ring-red-200'
-                            : 'bg-violet-50 text-violet-800 ring-violet-200'
-                        }`}
-                      >
-                        <Bell className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        <span className="min-w-0">
-                          <span className="font-bold">
-                            {reminderOverdue ? 'Overdue reminder' : 'Reminder'}
-                            {reminder?.type ? ` · ${String(reminder.type).replace(/_/g, ' ')}` : ''}
-                          </span>
-                          <span className="block text-[10px] font-medium opacity-90">
-                            {new Date(reminderAt).toLocaleString('en-IN')}
-                            {reminder?.reason ? ` — ${reminder.reason}` : ''}
-                          </span>
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2 sm:justify-end shrink-0">
-                    {lead.customer_phone ? (
-                      <a
-                        href={`tel:${lead.customer_phone}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
-                      >
-                        <Phone className="h-3.5 w-3.5" /> Call
-                      </a>
-                    ) : null}
-                    <Link
-                      href={`/dashboard/telecaller/leads/${lead.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-[#004AAD] ring-1 ring-blue-200"
-                    >
-                      <Eye className="h-3.5 w-3.5" /> View
-                    </Link>
-                    <Link
-                      href={`/dashboard/telecaller/leads/${lead.id}/edit`}
-                      title="Edit lead"
-                      className="inline-flex items-center justify-center rounded-xl bg-white/80 p-2 text-[#004AAD] ring-1 ring-blue-200"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => openShare(lead)}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
-                    >
-                      <Share2 className="h-3.5 w-3.5" /> Share
-                    </button>
-                  </div>
-                </div>
+                      <th className="px-4 py-3 whitespace-nowrap">Date</th>
+                      <th className="px-4 py-3 whitespace-nowrap">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {leads.map((lead) => {
+                      const tint = leadStatusCardColors(lead);
+                      const statusLabel = leadDisplayStatus(lead);
+                      const msg =
+                        lead.message_preview ||
+                        lead.coupon_meta?.last_inbound_message ||
+                        lead.problem_description ||
+                        '—';
+                      const regNo = String(lead.vehicle_number || '')
+                        .trim()
+                        .toUpperCase();
+                      const regDisplay = regNo && regNo !== 'NA' ? regNo : '—';
+                      const makeModel =
+                        [lead.vehicle_make, lead.vehicle_model]
+                          .map((v) => String(v || '').trim())
+                          .filter((v) => v && v.toUpperCase() !== 'NA')
+                          .join(' ') || '—';
+                      return (
+                        <tr
+                          key={lead.id}
+                          className="hover:bg-slate-50/80 cursor-pointer"
+                          onClick={() => router.push(`${base}/leads/${lead.id}`)}
+                        >
+                          <td className="px-4 py-3 font-extrabold text-[#023D95] whitespace-nowrap">
+                            {lead.lead_number || lead.id?.slice(0, 8)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span
+                              className="inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
+                            >
+                              {statusLabel}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+                            {lead.customer_name || 'Unknown'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                            {lead.customer_phone || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 max-w-[220px] truncate" title={String(msg)}>
+                            {String(msg)}
+                          </td>
+                          <td
+                            className="px-4 py-3 text-slate-800 font-semibold whitespace-nowrap uppercase"
+                            title={regDisplay}
+                          >
+                            {regDisplay}
+                          </td>
+                          <td
+                            className="px-4 py-3 text-slate-700 max-w-[180px] truncate"
+                            title={makeModel}
+                          >
+                            {makeModel}
+                          </td>
+                          {isLeadManager ? (
+                            <td className="px-4 py-3 text-indigo-700 font-semibold text-xs whitespace-nowrap">
+                              {lead.assigned_telecaller?.full_name || 'Unassigned'}
+                            </td>
+                          ) : null}
+                          <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                            {lead.created_at
+                              ? new Date(lead.created_at).toLocaleString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '—'}
+                          </td>
+                          <td
+                            className="px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center gap-2">
+                              {lead.customer_phone ? (
+                                <a
+                                  href={`tel:${lead.customer_phone}`}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
+                                >
+                                  <Phone className="h-3.5 w-3.5" /> Call
+                                </a>
+                              ) : null}
+                              {lead.customer_phone ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openLeadWhatsApp(lead)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-[#25D366]/15 px-2.5 py-1.5 text-xs font-bold text-[#128C7E] ring-1 ring-[#25D366]/40"
+                                  title="WhatsApp · 6161"
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" /> WA
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => openShare(lead)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
+                              >
+                                <Share2 className="h-3.5 w-3.5" /> Share
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              );
-            })}
-          </div>
+            </div>
+
+            {/* Mobile / tablet cards */}
+            <div className="grid grid-cols-1 gap-3 lg:hidden">
+              {leads.map((lead) => {
+                const tint = leadStatusCardColors(lead);
+                const statusLabel = leadDisplayStatus(lead);
+                const reminder = lead.reminder || null;
+                const reminderAt = reminder?.at || lead.next_follow_up_at || null;
+                const reminderOverdue =
+                  Boolean(reminder?.overdue) ||
+                  (reminderAt ? new Date(reminderAt).getTime() < Date.now() : false);
+                return (
+                  <div
+                    key={lead.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => router.push(`${base}/leads/${lead.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        router.push(`${base}/leads/${lead.id}`);
+                      }
+                    }}
+                    className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004AAD]"
+                    style={{ backgroundColor: tint.cardBg, borderColor: tint.border }}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-extrabold text-[#023D95]">
+                            {lead.lead_number || lead.id?.slice(0, 8)}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
+                            >
+                              {statusLabel}
+                            </span>
+                            {lead.is_incomplete ? (
+                              <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                                Incomplete
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              Customer
+                            </p>
+                            <p className="font-bold text-slate-900">
+                              {lead.customer_name || 'Unknown'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              Phone
+                            </p>
+                            <p className="font-semibold text-slate-800">
+                              {lead.customer_phone || '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              Reg. No
+                            </p>
+                            <p className="font-semibold uppercase text-slate-800">
+                              {lead.vehicle_number &&
+                              String(lead.vehicle_number).trim().toUpperCase() !== 'NA'
+                                ? String(lead.vehicle_number).trim().toUpperCase()
+                                : '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              Make / Model
+                            </p>
+                            <p className="font-semibold text-slate-800">
+                              {[lead.vehicle_make, lead.vehicle_model]
+                                .map((v) => String(v || '').trim())
+                                .filter((v) => v && v.toUpperCase() !== 'NA')
+                                .join(' ') || '—'}
+                            </p>
+                          </div>
+                        </div>
+                        {lead.city ? (
+                          <p className="mt-2 text-xs text-slate-500">{lead.city}</p>
+                        ) : null}
+                        {isLeadManager ? (
+                          <p className="text-[11px] font-semibold text-indigo-700 mt-0.5">
+                            {lead.assigned_telecaller?.full_name
+                              ? `Telecaller: ${lead.assigned_telecaller.full_name}`
+                              : 'Telecaller: Unassigned'}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-slate-500">
+                          {lead.created_at
+                            ? new Date(lead.created_at).toLocaleString('en-IN')
+                            : '—'}
+                        </p>
+                        {reminderAt ? (
+                          <div
+                            className={`mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ${
+                              reminderOverdue
+                                ? 'bg-red-50 text-red-700 ring-red-200'
+                                : 'bg-violet-50 text-violet-800 ring-violet-200'
+                            }`}
+                          >
+                            <Bell className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span className="min-w-0">
+                              <span className="font-bold">
+                                {reminderOverdue ? 'Overdue reminder' : 'Reminder'}
+                                {reminder?.type
+                                  ? ` · ${String(reminder.type).replace(/_/g, ' ')}`
+                                  : ''}
+                              </span>
+                              <span className="block text-[10px] font-medium opacity-90">
+                                {new Date(reminderAt).toLocaleString('en-IN')}
+                                {reminder?.reason ? ` — ${reminder.reason}` : ''}
+                              </span>
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div
+                        className="flex flex-wrap gap-2 sm:justify-end shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        {lead.customer_phone ? (
+                          <a
+                            href={`tel:${lead.customer_phone}`}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
+                          >
+                            <Phone className="h-3.5 w-3.5" /> Call
+                          </a>
+                        ) : null}
+                        {lead.customer_phone ? (
+                          <button
+                            type="button"
+                            onClick={() => openLeadWhatsApp(lead)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#25D366] px-3 py-2 text-xs font-bold text-white shadow-sm"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => openShare(lead)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
+                        >
+                          <Share2 className="h-3.5 w-3.5" /> Share
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
