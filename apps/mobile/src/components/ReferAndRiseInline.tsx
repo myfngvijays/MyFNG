@@ -184,6 +184,14 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
   const [contactsLimited, setContactsLimited] = useState(false);
   const [contactsCanAskAgain, setContactsCanAskAgain] = useState(true);
   const [dismissedMilestones, setDismissedMilestones] = useState<Set<number>>(new Set());
+  const [friendCodeInput, setFriendCodeInput] = useState('');
+  const [friendCodeApplying, setFriendCodeApplying] = useState(false);
+  const [friendCodeError, setFriendCodeError] = useState('');
+  const [friendCodeSuccess, setFriendCodeSuccess] = useState('');
+  const [appliedAsReferee, setAppliedAsReferee] = useState<{
+    referral_code: string;
+    status: string;
+  } | null>(null);
   const isTestReferrer = isReferralTestReferrerPhone(customerPhone || '');
 
   const dismissMilestonePicker = (milestoneCount?: number) => {
@@ -217,6 +225,14 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
         }
         setPicks(normalized);
       }
+      if (res?.applied_as_referee?.referral_code) {
+        setAppliedAsReferee({
+          referral_code: String(res.applied_as_referee.referral_code),
+          status: String(res.applied_as_referee.status || ''),
+        });
+      } else {
+        setAppliedAsReferee(null);
+      }
       return res;
     } catch {
       return null;
@@ -246,6 +262,44 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
       }
     } catch {
       // Non-blocking
+    }
+  };
+
+  const applyFriendReferralCode = async () => {
+    if (!isLoggedIn) {
+      onLogin?.();
+      return;
+    }
+    const trimmed = friendCodeInput.trim().toUpperCase();
+    if (!trimmed) {
+      setFriendCodeError('Please enter a referral code');
+      return;
+    }
+    if (referralCode && trimmed === referralCode.toUpperCase()) {
+      setFriendCodeError('You cannot use your own referral code');
+      return;
+    }
+    setFriendCodeApplying(true);
+    setFriendCodeError('');
+    setFriendCodeSuccess('');
+    try {
+      await apiFetch('/api/customer/referral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referral_code: trimmed }),
+      });
+      setFriendCodeSuccess('Referral applied — bonus credited to your wallet');
+      setFriendCodeInput('');
+      setAppliedAsReferee({ referral_code: trimmed, status: 'PENDING' });
+      await refreshReferralStats();
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (/already used/i.test(msg)) setFriendCodeError('You have already used a referral code');
+      else if (/Self referral/i.test(msg)) setFriendCodeError('You cannot use your own referral code');
+      else if (/Invalid/i.test(msg)) setFriendCodeError('Invalid referral code. Please check and try again.');
+      else setFriendCodeError(msg || 'Failed to apply code');
+    } finally {
+      setFriendCodeApplying(false);
     }
   };
 
@@ -575,6 +629,57 @@ const ReferAndRiseInline = forwardRef(function ReferAndRiseInline({ referralCode
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Manual friend referral code */}
+      {isLoggedIn ? (
+        <View style={s.applyCodeBox}>
+          <Text style={s.applyCodeLabel}>HAVE A FRIEND'S CODE?</Text>
+          {appliedAsReferee?.referral_code ? (
+            <View style={s.applyCodeDoneRow}>
+              <Ionicons name="checkmark-circle" size={18} color="#059669" />
+              <Text style={s.applyCodeDoneText}>
+                Applied: {appliedAsReferee.referral_code}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={s.applyCodeHint}>
+                Enter referral code manually if the invite link didn't open (especially on iOS).
+              </Text>
+              <View style={s.applyCodeRow}>
+                <TextInput
+                  value={friendCodeInput}
+                  onChangeText={(t) => {
+                    setFriendCodeInput(t.toUpperCase());
+                    if (friendCodeError) setFriendCodeError('');
+                    if (friendCodeSuccess) setFriendCodeSuccess('');
+                  }}
+                  placeholder="Enter code"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  style={s.applyCodeInput}
+                  editable={!friendCodeApplying}
+                />
+                <TouchableOpacity
+                  style={[s.applyCodeBtn, friendCodeApplying ? s.applyCodeBtnDisabled : null]}
+                  onPress={() => void applyFriendReferralCode()}
+                  activeOpacity={0.85}
+                  disabled={friendCodeApplying}
+                >
+                  {friendCodeApplying ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={s.applyCodeBtnText}>Apply</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+              {friendCodeError ? <Text style={s.applyCodeError}>{friendCodeError}</Text> : null}
+              {friendCodeSuccess ? <Text style={s.applyCodeSuccess}>{friendCodeSuccess}</Text> : null}
+            </>
+          )}
+        </View>
+      ) : null}
 
       {/* Quick Actions */}
       <View style={s.quickRow}>
@@ -1304,6 +1409,46 @@ const s = StyleSheet.create({
   contactsBtnText: { fontSize: 11, fontWeight: '600', color: BRAND },
   shareWhatsapp: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: '#25D366', borderRadius: 10, paddingVertical: 9 },
   shareWhatsappText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
+
+  applyCodeBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D6E8FA',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+  },
+  applyCodeLabel: { fontSize: 9, fontWeight: '700', color: '#4A6FA5', letterSpacing: 1, marginBottom: 6 },
+  applyCodeHint: { fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 17 },
+  applyCodeRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  applyCodeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D6E8FA',
+    backgroundColor: '#F8FBFF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 11 : 8,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: '#0A1A3A',
+  },
+  applyCodeBtn: {
+    minWidth: 78,
+    borderRadius: 10,
+    backgroundColor: BRAND,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyCodeBtnDisabled: { opacity: 0.7 },
+  applyCodeBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  applyCodeError: { marginTop: 8, fontSize: 12, fontWeight: '600', color: '#DC2626' },
+  applyCodeSuccess: { marginTop: 8, fontSize: 12, fontWeight: '600', color: '#059669' },
+  applyCodeDoneRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  applyCodeDoneText: { fontSize: 13, fontWeight: '700', color: '#047857' },
 
   quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   quickItem: { alignItems: 'center', width: '23%' },

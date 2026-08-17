@@ -1,5 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { sendWhatsAppOtpMessage } from '@/lib/services/whatsappOtpSend';
+import {
+  ensureWebsiteOtpVerifiedLead,
+  resolveOtpLeadOptionsFromSource,
+} from '@/lib/service-lead-reopen';
 import type { SessionData } from './session';
 
 const WINDOW_MINUTES = 15;
@@ -131,8 +135,14 @@ export async function sendBookingOtpForPhone(
 export async function verifyBookingOtpForPhone(
   phone: string,
   otp: string,
-  opts?: { dryRun?: boolean },
-): Promise<{ verified: boolean; error?: string; dryRun?: boolean }> {
+  opts?: { dryRun?: boolean; createLead?: boolean },
+): Promise<{
+  verified: boolean;
+  error?: string;
+  dryRun?: boolean;
+  leadId?: string | null;
+  leadNumber?: string | null;
+}> {
   const normalizedPhone = normalizeBookingPhone(phone);
   const normalizedOtp = normalizeBookingOtp(otp);
 
@@ -191,5 +201,34 @@ export async function verifyBookingOtpForPhone(
     return { verified: false, error: 'Failed to finalize OTP verification' };
   }
 
-  return { verified: true };
+  // Incomplete CRM lead even if booking is abandoned (MISA chat / WhatsApp / tools).
+  let leadId: string | null = null;
+  let leadNumber: string | null = null;
+  if (opts?.createLead !== false) {
+    try {
+      const leadOpts = resolveOtpLeadOptionsFromSource({
+        source: String((currentMetadata as any).source || 'misa_booking'),
+        bookingChannel: String((currentMetadata as any).channel || ''),
+        fallbackChannel: 'WEB',
+      });
+      // Tool OTP is always MISA-origin when source missing
+      if (leadOpts.origin !== 'misa') {
+        leadOpts.origin = 'misa';
+        leadOpts.misaChannel = leadOpts.misaChannel || 'WEBSITE';
+      }
+      const myfngLead = await ensureWebsiteOtpVerifiedLead(supabaseAdmin, normalizedPhone, leadOpts);
+      leadId = myfngLead.leadId;
+      leadNumber = myfngLead.leadNumber;
+      console.info('[verifyBookingOtpForPhone] OTP incomplete lead', {
+        phone: normalizedPhone,
+        created: myfngLead.created,
+        lead_number: leadNumber,
+        skipped: myfngLead.skipped || null,
+      });
+    } catch (err) {
+      console.error('[verifyBookingOtpForPhone] incomplete lead failed (non-blocking):', err);
+    }
+  }
+
+  return { verified: true, leadId, leadNumber };
 }

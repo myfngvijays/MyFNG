@@ -226,6 +226,8 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
     return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
   }, [query]);
 
+  if (!visible) return null;
+
   const handleClose = () => {
     setQuery('');
     onClose();
@@ -247,7 +249,7 @@ export default function SearchOverlay({ visible, onClose, navigation, city }: Pr
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <View style={styles.screen}>

@@ -24,8 +24,10 @@ export default function LiveTrackingModal({ visible, onClose }: Props) {
     return Math.round((done / STEPS.length) * 100);
   }, []);
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>

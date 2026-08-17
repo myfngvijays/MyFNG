@@ -1,5 +1,12 @@
 import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
 import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import {
+  getMisaCreatedFrom,
+  getMisaLeadSource,
+  type MisaBookingChannel,
+} from '@/lib/chatbot_v2/misaLeadSource';
+import type { LeadDistributionChannelId } from '@/lib/enquiry/leadChannels';
+import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 
 export type LeadHistoryEntry = {
   at: string;
@@ -173,6 +180,13 @@ export async function upsertBookingServiceLead(
     if (error || !inserted) {
       throw new Error(error?.message || 'Booking lead insert failed');
     }
+    void notifyTelecallerNewLeadAssignedSafe({
+      leadId: inserted.id,
+      leadNumber: inserted.lead_number,
+      telecallerId: payload.assigned_telecaller_id ? String(payload.assigned_telecaller_id) : null,
+      assignedByName: 'Auto distribution',
+      notes: bookingSummary || 'New booking lead',
+    });
     return {
       lead: { id: inserted.id, lead_number: inserted.lead_number },
       created: true,
@@ -261,7 +275,10 @@ export async function upsertBookingServiceLead(
       : existing.pincode
         ? String(existing.pincode)
         : null;
-  if (bookingPincode && !input.leadPayload.assigned_telecaller_id) {
+  const previousAssignee = existing.assigned_telecaller_id
+    ? String(existing.assigned_telecaller_id)
+    : null;
+  if (bookingPincode && !input.leadPayload.assigned_telecaller_id && !previousAssignee) {
     try {
       const picked = await pickTelecallerWeightedRoundRobin(
         bookingDistChannel(input.leadPayload),
@@ -301,6 +318,18 @@ export async function upsertBookingServiceLead(
         throw new Error(retry.error?.message || updateError.message || 'Lead reopen failed');
       }
       await softDeleteSiblingLeads(supabaseAdmin, phone10, retry.data.id);
+      void notifyTelecallerNewLeadAssignedSafe({
+        leadId: retry.data.id,
+        leadNumber: retry.data.lead_number,
+        telecallerId: patch.assigned_telecaller_id
+          ? String(patch.assigned_telecaller_id)
+          : input.leadPayload.assigned_telecaller_id
+            ? String(input.leadPayload.assigned_telecaller_id)
+            : null,
+        previousTelecallerId: previousAssignee,
+        assignedByName: 'Auto distribution',
+        notes: bookingSummary || 'Booking confirmed',
+      });
       return {
         lead: { id: retry.data.id, lead_number: retry.data.lead_number },
         created: false,
@@ -312,6 +341,19 @@ export async function upsertBookingServiceLead(
   }
 
   await softDeleteSiblingLeads(supabaseAdmin, phone10, updated.id);
+
+  void notifyTelecallerNewLeadAssignedSafe({
+    leadId: updated.id,
+    leadNumber: updated.lead_number,
+    telecallerId: patch.assigned_telecaller_id
+      ? String(patch.assigned_telecaller_id)
+      : input.leadPayload.assigned_telecaller_id
+        ? String(input.leadPayload.assigned_telecaller_id)
+        : null,
+    previousTelecallerId: previousAssignee,
+    assignedByName: 'Auto distribution',
+    notes: bookingSummary || 'Booking confirmed',
+  });
 
   return {
     lead: { id: updated.id, lead_number: updated.lead_number },
@@ -365,7 +407,7 @@ async function findOpenWebsiteOtpLead(
     let query = supabaseAdmin
       .from('service_leads')
       .select(
-        'id, lead_number, status, is_incomplete, coupon_meta, customer_name, customer_phone, created_at, updated_at',
+        'id, lead_number, status, is_incomplete, coupon_meta, customer_name, customer_phone, assigned_telecaller_id, created_at, updated_at',
       )
       .or(phoneOrFilter(phone10))
       .order('updated_at', { ascending: false })
@@ -375,7 +417,7 @@ async function findOpenWebsiteOtpLead(
     if (error && /deleted_at|is_incomplete/i.test(String(error.message || ''))) {
       ({ data, error } = await supabaseAdmin
         .from('service_leads')
-        .select('id, lead_number, status, coupon_meta, customer_name, customer_phone, created_at, updated_at')
+        .select('id, lead_number, status, coupon_meta, customer_name, customer_phone, assigned_telecaller_id, created_at, updated_at')
         .or(phoneOrFilter(phone10))
         .order('updated_at', { ascending: false })
         .limit(15));
@@ -429,8 +471,43 @@ async function softDeleteStaleWebsiteOtpStubs(
 }
 
 export type BookingOtpChannel = 'WEB' | 'MOBILE';
+export type OtpLeadOrigin = 'booking_form' | 'misa';
 
-function otpChannelMeta(channel: BookingOtpChannel) {
+export type EnsureOtpVerifiedLeadOptions = {
+  channel?: BookingOtpChannel;
+  /** When 'misa', tags lead as MISA AI (Website/App/WhatsApp) instead of Website/App Booking. */
+  origin?: OtpLeadOrigin;
+  misaChannel?: MisaBookingChannel;
+};
+
+function resolveMisaChannel(options?: EnsureOtpVerifiedLeadOptions): MisaBookingChannel {
+  if (options?.misaChannel) return options.misaChannel;
+  return options?.channel === 'MOBILE' ? 'APP' : 'WEBSITE';
+}
+
+function otpChannelMeta(channel: BookingOtpChannel, options?: EnsureOtpVerifiedLeadOptions) {
+  const isMisa = options?.origin === 'misa';
+  if (isMisa) {
+    const misaChannel = resolveMisaChannel(options);
+    const leadSource = getMisaLeadSource(misaChannel);
+    const createdFromRaw = getMisaCreatedFrom(misaChannel);
+    // DB allowlist historically prefers MOBILE_APP over APP
+    const created_from =
+      createdFromRaw === 'APP' ? 'MOBILE_APP' : createdFromRaw === 'WEB' ? 'WEB' : createdFromRaw;
+    return {
+      otp_channel: channel,
+      created_from,
+      lead_source: leadSource,
+      last_call_label: 'MISA OTP Verified',
+      description: `${leadSource} — OTP verified, booking incomplete`,
+      problem_description: `OTP verified via ${leadSource}; booking not completed`,
+      historySummary: `${leadSource} OTP verified — booking not completed yet`,
+      historyEvent: 'MISA_OTP_VERIFIED',
+      distChannel: 'MISA' as LeadDistributionChannelId,
+      misa_channel: misaChannel,
+    };
+  }
+
   const isMobile = channel === 'MOBILE';
   return {
     otp_channel: channel,
@@ -447,6 +524,53 @@ function otpChannelMeta(channel: BookingOtpChannel) {
       ? 'App OTP verified — booking not completed yet'
       : 'Website OTP verified — booking not completed yet',
     historyEvent: isMobile ? 'MOBILE_OTP_VERIFIED' : 'WEBSITE_OTP_VERIFIED',
+    distChannel: (isMobile ? 'APP_OTP' : 'WEBSITE_OTP') as LeadDistributionChannelId,
+    misa_channel: null as MisaBookingChannel | null,
+  };
+}
+
+/** Infer incomplete-lead tagging from otp_requests.metadata / request body. */
+export function resolveOtpLeadOptionsFromSource(input: {
+  source?: string | null;
+  channelHint?: string | null;
+  bookingChannel?: string | null;
+  fallbackChannel?: BookingOtpChannel;
+}): EnsureOtpVerifiedLeadOptions {
+  const source = String(input.source || '').toLowerCase().trim();
+  const bookingChannel = String(input.bookingChannel || input.channelHint || '')
+    .toUpperCase()
+    .trim();
+  const fallback: BookingOtpChannel = input.fallbackChannel === 'MOBILE' ? 'MOBILE' : 'WEB';
+
+  const isMisaSource =
+    source.includes('misa') ||
+    source.includes('chatbot') ||
+    source === 'ai_booking' ||
+    source === 'misa_booking';
+
+  if (!isMisaSource) {
+    return { origin: 'booking_form', channel: fallback };
+  }
+
+  let misaChannel: MisaBookingChannel = 'WEBSITE';
+  if (
+    source.includes('misa-app') ||
+    source.includes('misa_app') ||
+    bookingChannel === 'APP' ||
+    bookingChannel === 'MOBILE' ||
+    bookingChannel === 'MOBILE_APP'
+  ) {
+    misaChannel = 'APP';
+  } else if (bookingChannel === 'WHATSAPP' || source.includes('whatsapp')) {
+    misaChannel = 'WHATSAPP';
+  } else if (bookingChannel === 'WEBSITE' || bookingChannel === 'WEB') {
+    misaChannel = 'WEBSITE';
+  }
+
+  return {
+    origin: 'misa',
+    channel: misaChannel === 'APP' ? 'MOBILE' : 'WEB',
+    misaChannel,
   };
 }
 
@@ -456,8 +580,9 @@ async function insertWebsiteOtpIncompleteLead(
   nowIso: string,
   otpCouponMetaBase: Record<string, unknown>,
   channel: BookingOtpChannel = 'WEB',
+  options?: EnsureOtpVerifiedLeadOptions,
 ): Promise<EnsureOtpVerifiedLeadResult> {
-  const ch = otpChannelMeta(channel);
+  const ch = otpChannelMeta(channel, options);
   const leadNumber = `L-${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`;
   const couponMeta = appendLeadProfileHistory(otpCouponMetaBase, {
     at: nowIso,
@@ -468,8 +593,7 @@ async function insertWebsiteOtpIncompleteLead(
 
   let assignedId: string | null = null;
   try {
-    const distChannel = channel === 'MOBILE' ? 'APP_OTP' : 'WEBSITE_OTP';
-    const picked = await pickTelecallerWeightedRoundRobin(distChannel);
+    const picked = await pickTelecallerWeightedRoundRobin(ch.distChannel);
     assignedId = picked.telecallerId || null;
   } catch (err) {
     console.warn('[ensureWebsiteOtpVerifiedLead] insert assign failed:', err);
@@ -529,6 +653,14 @@ async function insertWebsiteOtpIncompleteLead(
     };
   }
 
+  void notifyTelecallerNewLeadAssignedSafe({
+    leadId: String(inserted.id),
+    leadNumber: String(inserted.lead_number || leadNumber),
+    telecallerId: assignedId,
+    assignedByName: 'Auto distribution',
+    notes: ch.last_call_label || 'OTP verified lead',
+  });
+
   return {
     leadId: String(inserted.id),
     leadNumber: String(inserted.lead_number || leadNumber),
@@ -537,22 +669,23 @@ async function insertWebsiteOtpIncompleteLead(
 }
 
 /**
- * After booking OTP verify (web or mobile): create/refresh an incomplete lead so it
+ * After booking OTP verify (web, mobile, or MISA): create/refresh an incomplete lead so it
  * shows in admin bookings + telecaller CRM even if booking is abandoned.
  * Never overwrites an existing active booking — inserts a separate OTP stub instead.
  */
 export async function ensureWebsiteOtpVerifiedLead(
   supabaseAdmin: any,
   phone: string | null | undefined,
-  options?: { channel?: BookingOtpChannel },
+  options?: EnsureOtpVerifiedLeadOptions,
 ): Promise<EnsureOtpVerifiedLeadResult> {
   const phone10 = normalizeCustomerPhone(phone);
   if (!phone10) {
     return { leadId: null, leadNumber: null, created: false, skipped: 'invalid_phone' };
   }
 
-  const channel: BookingOtpChannel = options?.channel === 'MOBILE' ? 'MOBILE' : 'WEB';
-  const ch = otpChannelMeta(channel);
+  const channel: BookingOtpChannel =
+    options?.channel === 'MOBILE' || options?.misaChannel === 'APP' ? 'MOBILE' : 'WEB';
+  const ch = otpChannelMeta(channel, options);
   const nowIso = new Date().toISOString();
   const otpCouponMetaBase = {
     last_call_result: 'OTP_VERIFIED',
@@ -563,6 +696,8 @@ export async function ensureWebsiteOtpVerifiedLead(
     otp_channel: channel,
     website_otp_verified: true,
     website_booking_abandoned: true,
+    misa_otp_verified: options?.origin === 'misa',
+    misa_channel: ch.misa_channel,
   };
 
   // Reuse only a *recent* OTP stub (same session). Older stubs sit mid-list by created_at
@@ -590,12 +725,15 @@ export async function ensureWebsiteOtpVerifiedLead(
 
     let assignedId: string | null = null;
     try {
-      const distChannel = channel === 'MOBILE' ? 'APP_OTP' : 'WEBSITE_OTP';
-      const picked = await pickTelecallerWeightedRoundRobin(distChannel);
+      const picked = await pickTelecallerWeightedRoundRobin(ch.distChannel);
       assignedId = picked.telecallerId || null;
     } catch (err) {
       console.warn('[ensureWebsiteOtpVerifiedLead] assign failed:', err);
     }
+
+    const previousAssignee = openStub.assigned_telecaller_id
+      ? String(openStub.assigned_telecaller_id)
+      : null;
 
     const patch: Record<string, unknown> = {
       status: 'NEW',
@@ -637,6 +775,14 @@ export async function ensureWebsiteOtpVerifiedLead(
     }
 
     if (!updateError) {
+      void notifyTelecallerNewLeadAssignedSafe({
+        leadId: String(openStub.id),
+        leadNumber: String(openStub.lead_number || '') || null,
+        telecallerId: assignedId,
+        previousTelecallerId: previousAssignee,
+        assignedByName: 'Auto distribution',
+        notes: ch.last_call_label || 'OTP verified lead',
+      });
       return {
         leadId: String(openStub.id),
         leadNumber: String(openStub.lead_number || '') || null,
@@ -653,6 +799,7 @@ export async function ensureWebsiteOtpVerifiedLead(
     nowIso,
     otpCouponMetaBase,
     channel,
+    options,
   );
   if (inserted.leadId) {
     await softDeleteStaleWebsiteOtpStubs(supabaseAdmin, phone10, inserted.leadId);

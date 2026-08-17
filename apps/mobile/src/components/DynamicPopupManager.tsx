@@ -32,6 +32,8 @@ type AppPopup = {
 
 type Props = {
   screen: string;
+  /** When true, do not open — avoids stacking with welcome/soft-update Modals (iOS touch ghost). */
+  paused?: boolean;
 };
 
 const DISMISSED_EVER_KEY = 'app_popups_dismissed_ever';
@@ -83,9 +85,10 @@ const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
   'message-square': 'chatbubble',
 };
 
-export default function DynamicPopupManager({ screen }: Props) {
+export default function DynamicPopupManager({ screen, paused = false }: Props) {
   const [popup, setPopup] = useState<AppPopup | null>(null);
   const [visible, setVisible] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const nav = useNavigation<any>();
   const checked = useRef(false);
 
@@ -109,7 +112,7 @@ export default function DynamicPopupManager({ screen }: Props) {
 
       setPopup(p);
       // Longer delay so welcome/soft-update modals don't stack and block home scroll.
-      setTimeout(() => setVisible(true), 1800);
+      setTimeout(() => setPendingOpen(true), 2200);
       return;
     }
   }, [screen]);
@@ -118,11 +121,19 @@ export default function DynamicPopupManager({ screen }: Props) {
     checkPopups();
   }, [checkPopups]);
 
+  useEffect(() => {
+    if (!pendingOpen || !popup || paused || visible) return;
+    setVisible(true);
+    setPendingOpen(false);
+  }, [pendingOpen, popup, paused, visible]);
+
   const dismiss = async () => {
     if (!popup) return;
     setVisible(false);
+    setPendingOpen(false);
     if (popup.display_rule === 'ONCE_EVER') await markDismissedEver(popup.id);
     DISMISSED_SESSION.add(popup.id);
+    setPopup(null);
   };
 
   const handlePrimary = async () => {
@@ -153,7 +164,7 @@ export default function DynamicPopupManager({ screen }: Props) {
   const ionIcon = ICON_MAP[popup.icon] || 'gift';
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={dismiss}>
+    <Modal visible transparent animationType="fade" onRequestClose={dismiss}>
       <Pressable style={s.overlay} onPress={dismiss}>
         <Pressable style={s.card} onPress={() => undefined}>
           {popup.image_url ? (

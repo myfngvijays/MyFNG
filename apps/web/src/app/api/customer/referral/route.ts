@@ -64,6 +64,14 @@ export async function GET() {
     .eq('customer_id', customer.id)
     .eq('event_name', 'referral_invite_sent');
 
+  const { data: appliedAsReferee } = await supabaseAdmin
+    .from('referral_events')
+    .select('id, referral_code, status, created_at')
+    .eq('referee_customer_id', customer.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const referredCount = totalReferred || 0;
   const rewardedCount = totalRewarded || 0;
 
@@ -101,6 +109,13 @@ export async function GET() {
     events: events || [],
     rewards: rewards || [],
     refer_and_rise: { picks },
+    applied_as_referee: appliedAsReferee
+      ? {
+          referral_code: String(appliedAsReferee.referral_code || ''),
+          status: String(appliedAsReferee.status || ''),
+          created_at: appliedAsReferee.created_at || null,
+        }
+      : null,
     stats: {
       total_referred: referredCount,
       total_rewarded: rewardedCount,

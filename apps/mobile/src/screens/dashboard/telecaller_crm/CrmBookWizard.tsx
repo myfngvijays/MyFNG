@@ -125,7 +125,6 @@ export default function CrmBookWizard({
 
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
-  const [cityQuery, setCityQuery] = useState('');
   const [carDisplay, setCarDisplay] = useState('');
   const [resolvingCity, setResolvingCity] = useState(false);
   const [leadStatusId, setLeadStatusId] = useState('INTERESTED');
@@ -251,11 +250,7 @@ export default function CrmBookWizard({
       ? form.booking_type
       : 'CAR_SERVICE';
 
-  const filteredCities = useMemo(() => {
-    const q = cityQuery.trim().toLowerCase();
-    if (!q) return cities.slice(0, 40);
-    return cities.filter((c) => String(c.name || '').toLowerCase().includes(q)).slice(0, 40);
-  }, [cities, cityQuery]);
+  const cityOptions = useMemo(() => cities.slice(0, 50), [cities]);
 
   const fetchQuote = async (workshopId?: string, couponOverride?: string) => {
     setQuoting(true);
@@ -918,15 +913,8 @@ export default function CrmBookWizard({
             </TouchableOpacity>
             {cityOpen ? (
               <View style={styles.menu}>
-                <TextInput
-                  style={styles.menuSearch}
-                  value={cityQuery}
-                  onChangeText={setCityQuery}
-                  placeholder="Search city"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-                <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  {filteredCities.map((c: any) => {
+                <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {cityOptions.map((c: any) => {
                     const name = c.name || c.city_name || '';
                     return (
                       <TouchableOpacity
@@ -936,7 +924,6 @@ export default function CrmBookWizard({
                           setField('city', name);
                           setField('city_id', c.id || '');
                           setCityOpen(false);
-                          setCityQuery('');
                         }}
                       >
                         <Text style={styles.menuItemText}>{name}</Text>

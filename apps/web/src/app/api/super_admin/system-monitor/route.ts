@@ -1041,6 +1041,176 @@ async function checkUniversalLink(): Promise<HealthCheck> {
   }
 }
 
+/** iOS AASA + Android assetlinks for Refer & Rise /refer/* deep links. */
+async function checkAppAssociationFiles(): Promise<HealthCheck> {
+  const start = Date.now();
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://myfng.in').replace(/\/$/, '');
+  const aasaUrl = `${origin}/.well-known/apple-app-site-association`;
+  const assetlinksUrl = `${origin}/.well-known/assetlinks.json`;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const [aasaRes, assetsRes] = await Promise.all([
+      fetch(aasaUrl, { signal: controller.signal, cache: 'no-store' }),
+      fetch(assetlinksUrl, { signal: controller.signal, cache: 'no-store' }),
+    ]);
+    clearTimeout(timer);
+
+    const aasaText = aasaRes.ok ? await aasaRes.text() : '';
+    const assetsJson = assetsRes.ok ? await assetsRes.json().catch(() => null) : null;
+    const hasRefer =
+      aasaText.includes('/refer/*') || aasaText.includes('"/refer');
+    const hasAppId = aasaText.includes('JUN6TX4JD3.com.myfng.app');
+    const fingerprints = Array.isArray(assetsJson)
+      ? (assetsJson[0]?.target?.sha256_cert_fingerprints as string[] | undefined) || []
+      : [];
+
+    if (!aasaRes.ok || !hasRefer || !hasAppId) {
+      return {
+        name: 'App Deep Links (AASA)',
+        category: 'Operations',
+        status: 'down',
+        responseTime: Date.now() - start,
+        message: !aasaRes.ok ? `AASA HTTP ${aasaRes.status}` : 'AASA missing /refer or appID',
+        reason: `Host AASA at ${aasaUrl} with appID JUN6TX4JD3.com.myfng.app and path /refer/*.`,
+        quickFix: {
+          label: 'Refer Deep Links admin',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/referral' },
+        },
+        lastChecked: new Date().toISOString(),
+        details: { aasaUrl, status: aasaRes.status },
+      };
+    }
+
+    if (!assetsRes.ok) {
+      return {
+        name: 'App Deep Links (AASA)',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'iOS AASA OK · Android assetlinks missing',
+        reason: `Serve ${assetlinksUrl} and set ANDROID_APP_LINK_SHA256 for App Links verification.`,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    if (!fingerprints.length) {
+      return {
+        name: 'App Deep Links (AASA)',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'iOS AASA OK · Android fingerprints not set',
+        reason:
+          'Set env ANDROID_APP_LINK_SHA256 (Play App Signing SHA-256) so Android App Links auto-verify.',
+        lastChecked: new Date().toISOString(),
+        details: { aasaUrl, assetlinksUrl },
+      };
+    }
+
+    return {
+      name: 'App Deep Links (AASA)',
+      category: 'Operations',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'AASA + assetlinks OK (/refer/*)',
+      reason: 'iOS Universal Links and Android App Links association files are reachable.',
+      lastChecked: new Date().toISOString(),
+      details: { aasaUrl, assetlinksUrl, fingerprints: fingerprints.length },
+    };
+  } catch (e: any) {
+    return {
+      name: 'App Deep Links (AASA)',
+      category: 'Operations',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'AASA check failed',
+      reason: 'Could not fetch association files (timeout or network).',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkTelecallerLeadWhatsApp(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const {
+      getTelecallerNewLeadWhatsAppSettings,
+      getTelecallerNewLeadTemplateStatus,
+      TELECALLER_NEW_LEAD_TEMPLATE,
+    } = await import('@/lib/services/telecallerNewLeadWhatsApp');
+
+    const [settings, templateStatus] = await Promise.all([
+      getTelecallerNewLeadWhatsAppSettings(),
+      getTelecallerNewLeadTemplateStatus(),
+    ]);
+
+    if (!settings.enabled) {
+      return {
+        name: 'Telecaller Lead WhatsApp',
+        category: 'Notifications',
+        status: 'healthy',
+        responseTime: Date.now() - start,
+        message: 'WhatsApp new-lead alerts disabled',
+        reason: 'Enable under Telecaller Distribution → WhatsApp Alerts when ready.',
+        quickFix: {
+          label: 'Open WhatsApp Alerts',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/telecaller-distribution' },
+        },
+        lastChecked: new Date().toISOString(),
+        details: { enabled: false, template: TELECALLER_NEW_LEAD_TEMPLATE.template_name },
+      };
+    }
+
+    if (!templateStatus.canSendTemplate) {
+      return {
+        name: 'Telecaller Lead WhatsApp',
+        category: 'Notifications',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: `Enabled but template ${templateStatus.metaStatus || 'missing'}`,
+        reason: `Create/approve Meta template ${TELECALLER_NEW_LEAD_TEMPLATE.template_name} before live alerts.`,
+        quickFix: {
+          label: 'Fix WhatsApp Alerts',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/telecaller-distribution' },
+        },
+        lastChecked: new Date().toISOString(),
+        details: { enabled: true, templateStatus },
+      };
+    }
+
+    return {
+      name: 'Telecaller Lead WhatsApp',
+      category: 'Notifications',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'New-lead WhatsApp alerts ready',
+      reason: 'Toggle ON and Meta template approved — sends with app push on assign.',
+      quickFix: {
+        label: 'WhatsApp Alerts',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/telecaller-distribution' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { enabled: true, template: TELECALLER_NEW_LEAD_TEMPLATE.template_name },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Telecaller Lead WhatsApp',
+      category: 'Notifications',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: 'Could not verify telecaller WhatsApp lead alert settings.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 async function checkRsaLeads(): Promise<HealthCheck> {
   const start = Date.now();
   const { client, configError } = getAdminClient();
@@ -1740,6 +1910,8 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkLinkManager(),
     checkSmartTools(),
     checkUniversalLink(),
+    checkAppAssociationFiles(),
+    checkTelecallerLeadWhatsApp(),
     checkRsaLeads(),
     checkOpenAI(),
     checkMisaAiMonitoring(),
@@ -1793,6 +1965,7 @@ export async function GET() {
       GOOGLE_MAPS_API_KEY: !!(process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
       SMTP_HOST: !!(process.env.SMTP_HOST || process.env.EMAIL_HOST),
       SYSTEM_ALERT_WHATSAPP_NUMBERS: ADMIN_WHATSAPP_NUMBERS.length > 0,
+      ANDROID_APP_LINK_SHA256: !!String(process.env.ANDROID_APP_LINK_SHA256 || '').trim(),
     };
 
     const healthAlertTemplate = await getHealthAlertTemplateStatus();

@@ -87,7 +87,12 @@ export function MisaVerificationPanel({ chatContext, onContextPatch, onVerified 
       const verifyRes = await fetch('/api/booking/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneInput, otp: otpCode }),
+        body: JSON.stringify({
+          phone: phoneInput,
+          otp: otpCode,
+          source: 'misa-ai-verification',
+          misa_channel: 'WEBSITE',
+        }),
       });
       const verifyJson = await verifyRes.json().catch(() => ({}));
       if (!verifyRes.ok || !verifyJson?.verified) {

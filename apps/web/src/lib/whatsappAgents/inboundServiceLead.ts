@@ -3,6 +3,7 @@ import { pickTelecallerForLead } from '@/lib/enquiry/assignment';
 import { channelFromWhatsAppLabels } from '@/lib/enquiry/leadChannels';
 import { findCustomerByPhone } from '@/lib/customer-service-leads';
 import { leadSourceLabelForWacaBusinessPhone } from '@/lib/telecrm/parseTelecrmWebhookPayload';
+import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 
 export type WhatsAppReferral = {
   source_url?: string | null;
@@ -307,7 +308,7 @@ export async function ensureWhatsAppInboundServiceLead(
     const res = await supabaseAdmin
       .from('service_leads')
       .select(
-        `id, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id,
+        `id, lead_number, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id,
          customer_name, customer_email, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
          city, pincode, customer_address, pickup_address`,
       )
@@ -328,7 +329,7 @@ export async function ensureWhatsAppInboundServiceLead(
     const res = await supabaseAdmin
       .from('service_leads')
       .select(
-        `id, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id,
+        `id, lead_number, status, coupon_meta, created_from, lead_source, customer_phone, assigned_telecaller_id,
          customer_name, customer_email, vehicle_number, vehicle_make, vehicle_model, vehicle_variant,
          city, pincode, customer_address, pickup_address`,
       )
@@ -378,6 +379,8 @@ export async function ensureWhatsAppInboundServiceLead(
     let assignedTo: string | null = existing.assigned_telecaller_id
       ? String(existing.assigned_telecaller_id)
       : null;
+    let assignmentChanged = false;
+    let previousAssigneeForNotify: string | null = assignedTo;
     // Always evaluate message triggers on inbound text.
     // Trigger match → force assignee (even if lead already belongs to someone else).
     // No trigger → only assign if currently unassigned (weighted RR).
@@ -406,7 +409,9 @@ export async function ensureWhatsAppInboundServiceLead(
 
       if (shouldAssign && picked.telecallerId) {
         const prevAssignee = assignedTo;
+        previousAssigneeForNotify = prevAssignee;
         const changing = Boolean(prevAssignee && prevAssignee !== picked.telecallerId);
+        assignmentChanged = !prevAssignee || changing;
         patch.assigned_telecaller_id = picked.telecallerId;
         patch.assigned_at = nowIso;
         assignedTo = picked.telecallerId;
@@ -449,6 +454,17 @@ export async function ensureWhatsAppInboundServiceLead(
       await supabaseAdmin.from('service_leads').update(patch).eq('id', existing.id);
     } catch (e) {
       console.warn('[whatsapp-inbound-lead] enrich failed', e);
+    }
+
+    if (assignmentChanged && assignedTo) {
+      void notifyTelecallerNewLeadAssignedSafe({
+        leadId: String(existing.id),
+        leadNumber: existing.lead_number ? String(existing.lead_number) : null,
+        telecallerId: assignedTo,
+        previousTelecallerId: previousAssigneeForNotify,
+        assignedByName: 'WhatsApp inbound',
+        notes: 'New WhatsApp lead',
+      });
     }
 
     return {
@@ -595,6 +611,17 @@ export async function ensureWhatsAppInboundServiceLead(
     'autofill',
     Boolean(known.customer_name || known.vehicle_number),
   );
+
+  if (inserted?.id && assignedTelecallerId) {
+    void notifyTelecallerNewLeadAssignedSafe({
+      leadId: String(inserted.id),
+      leadNumber: leadNumber,
+      telecallerId: assignedTelecallerId,
+      assignedByName: 'WhatsApp inbound',
+      notes: 'New WhatsApp lead',
+    });
+  }
+
   return {
     created: true,
     leadId: inserted?.id ? String(inserted.id) : null,

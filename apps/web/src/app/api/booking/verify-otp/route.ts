@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
-import { ensureWebsiteOtpVerifiedLead } from '@/lib/service-lead-reopen';
+import {
+  ensureWebsiteOtpVerifiedLead,
+  resolveOtpLeadOptionsFromSource,
+} from '@/lib/service-lead-reopen';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,13 +27,13 @@ function isNotExpired(expiresAt: unknown): boolean {
   return expiryMs > Date.now();
 }
 
-async function pushOtpVerifiedToTeleCRM(phone: string) {
+async function pushOtpVerifiedToTeleCRM(phone: string, leadSourceLabel: string) {
   const payload = {
     fields: {
       Name: `Customer_${phone.slice(-4)}`,
       Phone: `+91${phone}`,
-      LEADTAG: 'WEBSITE',
-      LeadSource: 'delhi_service',
+      LEADTAG: leadSourceLabel.toUpperCase().includes('MISA') ? 'MISA' : 'WEBSITE',
+      LeadSource: leadSourceLabel,
       LeadStatus: 'OTP_VERIFIED',
       CreatedFrom: 'WEB',
       CreatedAt: new Date().toISOString(),
@@ -38,7 +41,7 @@ async function pushOtpVerifiedToTeleCRM(phone: string) {
     actions: [
       {
         type: 'SYSTEM_NOTE',
-        text: 'Lead Source: WEBSITE',
+        text: `Lead Source: ${leadSourceLabel}`,
       },
     ],
   };
@@ -128,13 +131,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ verified: false, error: 'Failed to finalize OTP verification' }, { status: 500 });
   }
 
-  // MyFNG incomplete lead → admin Website bookings + telecaller CRM
+  const metaSource =
+    String(body.source || body.lead_source || (currentMetadata as any).source || '').trim() || null;
+  const metaBookingChannel =
+    String(body.misa_channel || (currentMetadata as any).channel || '').trim() || null;
+  const leadOpts = resolveOtpLeadOptionsFromSource({
+    source: metaSource,
+    bookingChannel: metaBookingChannel,
+    fallbackChannel: otpChannel,
+  });
+
+  // MyFNG incomplete lead → admin bookings + telecaller CRM (incl. MISA OTP abandon)
   let myfngLead: Awaited<ReturnType<typeof ensureWebsiteOtpVerifiedLead>> | null = null;
   try {
-    myfngLead = await ensureWebsiteOtpVerifiedLead(supabaseAdmin, phone, { channel: otpChannel });
+    myfngLead = await ensureWebsiteOtpVerifiedLead(supabaseAdmin, phone, leadOpts);
     console.info('[verify-otp] MyFNG OTP lead result', {
       phone,
-      channel: otpChannel,
+      channel: leadOpts.channel,
+      origin: leadOpts.origin,
+      misaChannel: leadOpts.misaChannel || null,
       created: myfngLead.created,
       lead_number: myfngLead.leadNumber,
       lead_id: myfngLead.leadId,
@@ -144,7 +159,18 @@ export async function POST(request: NextRequest) {
     console.error('[verify-otp] MyFNG incomplete lead failed (non-blocking):', err);
   }
 
-  pushOtpVerifiedToTeleCRM(phone).catch((err) => {
+  const telecrmLabel =
+    leadOpts.origin === 'misa'
+      ? leadOpts.misaChannel === 'APP'
+        ? 'MISA AI (App)'
+        : leadOpts.misaChannel === 'WHATSAPP'
+          ? 'WhatsApp MISA AI'
+          : 'MISA AI (Website)'
+      : otpChannel === 'MOBILE'
+        ? 'App Booking'
+        : 'Website';
+
+  pushOtpVerifiedToTeleCRM(phone, telecrmLabel).catch((err) => {
     console.error('[verify-otp] TeleCRM sync failed (non-blocking):', err);
   });
 

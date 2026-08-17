@@ -472,7 +472,8 @@ Content (no extension, `Content-Type: application/json`):
           { "/": "/booking/*" },
           { "/": "/track/*" },
           { "/": "/invoice/*" },
-          { "/": "/order/*" }
+          { "/": "/order/*" },
+          { "/": "/refer/*" }
         ]
       }
     ]

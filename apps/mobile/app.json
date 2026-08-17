@@ -22,7 +22,9 @@
       "buildNumber": "33",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
-        "applinks:myfng.in"
+        "applinks:myfng.in",
+        "applinks:www.myfng.in",
+        "applinks:myfng.astric.ai"
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -41,7 +43,8 @@
           {
             "CFBundleURLName": "com.myfng.app",
             "CFBundleURLSchemes": [
-              "com.myfng.app"
+              "com.myfng.app",
+              "myfng"
             ]
           },
           {
@@ -75,7 +78,8 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "myfng.in", "pathPrefix": "/refer" }
+            { "scheme": "https", "host": "myfng.in", "pathPrefix": "/refer" },
+            { "scheme": "https", "host": "www.myfng.in", "pathPrefix": "/refer" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }

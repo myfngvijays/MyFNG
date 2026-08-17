@@ -39,6 +39,19 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="com.myfng.app"/>
       </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="myfng"/>
+      </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="myfng.in" android:pathPrefix="/refer"/>
+        <data android:scheme="https" android:host="www.myfng.in" android:pathPrefix="/refer"/>
+      </intent-filter>
     </activity>
     <activity android:name="com.facebook.react.devsupport.DevSettingsActivity" android:exported="false"/>
     <!-- Firebase Phone Auth: in-app reCAPTCHA (avoid external browser redirect) -->

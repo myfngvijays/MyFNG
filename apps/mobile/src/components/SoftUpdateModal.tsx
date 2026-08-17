@@ -23,8 +23,10 @@ export default function SoftUpdateModal({
     void Linking.openURL(storeUrl).catch(() => null);
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onLater}>
+    <Modal visible transparent animationType="fade" onRequestClose={onLater}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.logoWrap}>

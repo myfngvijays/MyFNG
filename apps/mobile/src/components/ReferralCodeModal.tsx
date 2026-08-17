@@ -56,9 +56,11 @@ export function ReferralCodeModal({ visible, onClose, initialCode }: Props) {
     }
   };
 
+  if (!visible) return null;
+
   if (applied) {
     return (
-      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
         <Pressable style={styles.overlay} onPress={onClose}>
           <Pressable style={styles.card} onPress={() => undefined}>
             <View style={styles.iconWrap}>
@@ -83,7 +85,7 @@ export function ReferralCodeModal({ visible, onClose, initialCode }: Props) {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => undefined}>
           <View style={styles.iconWrap}>

@@ -256,6 +256,52 @@ export async function notifyTelecallerAssignedToLead(params: {
   });
 }
 
+/**
+ * Safe notify after auto/manual assign. Skips if same telecaller already owns the lead.
+ * createNotification → dispatchPushToUser (FCM) when device token exists.
+ * Also sends WhatsApp when enabled in Telecaller Distribution → WhatsApp Alerts.
+ */
+export async function notifyTelecallerNewLeadAssignedSafe(params: {
+  leadId?: string | null;
+  leadNumber?: string | null;
+  telecallerId?: string | null;
+  previousTelecallerId?: string | null;
+  assignedByName?: string;
+  isReassignment?: boolean;
+  notes?: string;
+}) {
+  const leadId = String(params.leadId || '').trim();
+  const telecallerId = String(params.telecallerId || '').trim();
+  if (!leadId || !telecallerId) return;
+
+  const prev = String(params.previousTelecallerId || '').trim();
+  if (prev && prev === telecallerId) return;
+
+  const leadNumber = String(params.leadNumber || leadId);
+
+  try {
+    await notifyTelecallerAssignedToLead({
+      leadId,
+      leadNumber,
+      telecallerId,
+      assignedByName: params.assignedByName || 'System',
+      isReassignment: params.isReassignment ?? Boolean(prev),
+      notes: params.notes,
+    });
+  } catch (err) {
+    console.warn('[notifyTelecallerNewLeadAssignedSafe] failed (non-blocking):', err);
+  }
+
+  try {
+    const { notifyTelecallerNewLeadWhatsAppSafe } = await import(
+      '@/lib/services/telecallerNewLeadWhatsApp'
+    );
+    void notifyTelecallerNewLeadWhatsAppSafe({ leadId, leadNumber, telecallerId });
+  } catch (err) {
+    console.warn('[notifyTelecallerNewLeadAssignedSafe] WhatsApp hook failed (non-blocking):', err);
+  }
+}
+
 export async function notifyTelecallerTeamlead(params: {
   telecallerId: string;
   leadId: string;

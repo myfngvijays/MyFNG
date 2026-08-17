@@ -21,6 +21,10 @@ import {
   ChevronDown,
   ChevronUp,
   Pencil,
+  Link2,
+  Copy,
+  ExternalLink,
+  Smartphone,
 } from 'lucide-react';
 import {
   DEFAULT_REFER_AND_RISE_CONFIG,
@@ -115,9 +119,31 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [expandedMilestone, setExpandedMilestone] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity'>(analyticsOnly ? 'users' : 'milestones');
+  const [activeTab, setActiveTab] = useState<'milestones' | 'content' | 'users' | 'activity' | 'deeplinks'>(
+    analyticsOnly ? 'users' : 'milestones',
+  );
   const [backfilling, setBackfilling] = useState(false);
   const [rewardingId, setRewardingId] = useState<string | null>(null);
+  const [deepLinks, setDeepLinks] = useState<{
+    overall?: string;
+    invite_url_pattern?: string;
+    sample_invite_url?: string;
+    store_redirect_note?: string;
+    apple_app_id?: string;
+    android_package?: string;
+    aasa?: { url?: string; ready?: boolean; has_refer_path?: boolean; has_app_id?: boolean; status?: number | null };
+    assetlinks?: {
+      url?: string;
+      ready?: boolean;
+      fingerprint_count?: number;
+      env_android_sha256_set?: boolean;
+      status?: number | null;
+    };
+    admin_links?: { universal_link?: string; system_monitor?: string; sample_landing?: string };
+    fetch_error?: string | null;
+  } | null>(null);
+  const [deepLinksLoading, setDeepLinksLoading] = useState(false);
+  const [copiedDeepLink, setCopiedDeepLink] = useState<string | null>(null);
   const [canEdit, setCanEdit] = useState(false);
 
   const editable = !analyticsOnly && canEdit;
@@ -162,6 +188,39 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
       setError('Network error');
     } finally {
       setRewardingId(null);
+    }
+  };
+
+  const fetchDeepLinks = useCallback(async () => {
+    setDeepLinksLoading(true);
+    try {
+      const res = await fetch('/api/super_admin/referral/deep-links');
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setDeepLinks(json);
+      } else {
+        setError(json.error || 'Failed to load deep link status');
+      }
+    } catch {
+      setError('Deep links network error');
+    } finally {
+      setDeepLinksLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'deeplinks' && !analyticsOnly) {
+      void fetchDeepLinks();
+    }
+  }, [activeTab, analyticsOnly, fetchDeepLinks]);
+
+  const copyDeepLinkText = async (value: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedDeepLink(key);
+      setTimeout(() => setCopiedDeepLink(null), 1500);
+    } catch {
+      setError('Copy failed');
     }
   };
 
@@ -444,6 +503,7 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
           {[
             { key: 'milestones' as const, label: 'Milestones & Rewards', icon: <Trophy className="h-3.5 w-3.5" /> },
             { key: 'content' as const, label: 'Content & T&C', icon: <Pencil className="h-3.5 w-3.5" /> },
+            { key: 'deeplinks' as const, label: 'Deep Links', icon: <Link2 className="h-3.5 w-3.5" /> },
             { key: 'users' as const, label: 'Users & Analytics', icon: <Users className="h-3.5 w-3.5" /> },
             { key: 'activity' as const, label: 'Recent Activity', icon: <Clock className="h-3.5 w-3.5" /> },
           ].map((tab) => (
@@ -993,6 +1053,194 @@ export default function ReferAndRiseApp({ mode = 'full' }: { mode?: 'full' | 'an
                     </tbody>
                   </table>
                 </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Deep Links Tab */}
+        {!analyticsOnly && activeTab === 'deeplinks' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-white/60 bg-white/90 backdrop-blur p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                    <Smartphone className="h-5 w-5 text-blue-600" />
+                    Refer &amp; Rise invite deep links
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1 max-w-2xl">
+                    Share <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">/refer/&#123;CODE&#125;</code> so iOS
+                    Universal Links and Android App Links open the app with the referral code applied.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void fetchDeepLinks()}
+                  disabled={deepLinksLoading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${deepLinksLoading ? 'animate-spin' : ''}`} />
+                  Refresh status
+                </button>
+              </div>
+
+              {deepLinksLoading && !deepLinks ? (
+                <p className="text-sm text-gray-400">Checking association files…</p>
+              ) : deepLinks ? (
+                <div className="space-y-4">
+                  <div
+                    className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                      deepLinks.overall === 'healthy'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : deepLinks.overall === 'degraded'
+                          ? 'border-amber-200 bg-amber-50 text-amber-900'
+                          : 'border-red-200 bg-red-50 text-red-800'
+                    }`}
+                  >
+                    Status:{' '}
+                    {deepLinks.overall === 'healthy'
+                      ? 'iOS + Android ready'
+                      : deepLinks.overall === 'degraded'
+                        ? 'iOS OK · Android needs fingerprints / assetlinks'
+                        : 'Deep links not ready — AASA/assetlinks missing on live site'}
+                    {deepLinks.fetch_error ? ` (${deepLinks.fetch_error})` : ''}
+                  </div>
+
+                  {(deepLinks.aasa?.status === 404 || deepLinks.assetlinks?.status === 404) && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 space-y-1">
+                      <p className="font-bold">HTTP 404 on myfng.in = routes not live yet</p>
+                      <p className="text-xs leading-relaxed">
+                        Code already has{' '}
+                        <code className="bg-white/70 px-1 rounded">/.well-known/apple-app-site-association</code> and{' '}
+                        <code className="bg-white/70 px-1 rounded">/.well-known/assetlinks.json</code>. Deploy the web
+                        app, then refresh this tab. After deploy: set Vercel env{' '}
+                        <code className="bg-white/70 px-1 rounded">ANDROID_APP_LINK_SHA256</code> (Play App Signing
+                        SHA-256) for Android &quot;Ready&quot;.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Invite URL pattern</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <code className="text-sm font-mono text-gray-900 break-all">
+                        {deepLinks.invite_url_pattern || 'https://myfng.in/refer/{CODE}'}
+                      </code>
+                      {deepLinks.invite_url_pattern ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void copyDeepLinkText(deepLinks.invite_url_pattern!, 'pattern')
+                          }
+                          className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          {copiedDeepLink === 'pattern' ? 'Copied' : 'Copy'}
+                        </button>
+                      ) : null}
+                    </div>
+                    {deepLinks.sample_invite_url ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="text-xs text-gray-500">Sample:</span>
+                        <code className="text-xs font-mono text-gray-700 break-all">
+                          {deepLinks.sample_invite_url}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => void copyDeepLinkText(deepLinks.sample_invite_url!, 'sample')}
+                          className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          {copiedDeepLink === 'sample' ? 'Copied' : 'Copy'}
+                        </button>
+                        {deepLinks.admin_links?.sample_landing ? (
+                          <a
+                            href={deepLinks.admin_links.sample_landing}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" /> Open landing
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
+                      {deepLinks.store_redirect_note ||
+                        '/go/myfngapp does not carry a referral code — use /refer/{CODE} for invites.'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-gray-100 p-4">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <h3 className="text-sm font-black text-gray-900">iOS AASA</h3>
+                        <span
+                          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            deepLinks.aasa?.ready
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {deepLinks.aasa?.ready ? 'Ready' : 'Not ready'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 break-all mb-2">{deepLinks.aasa?.url}</p>
+                      <ul className="text-xs text-gray-700 space-y-1">
+                        <li>/refer path: {deepLinks.aasa?.has_refer_path ? 'yes' : 'no'}</li>
+                        <li>App ID: {deepLinks.aasa?.has_app_id ? deepLinks.apple_app_id : 'missing'}</li>
+                        <li>HTTP: {deepLinks.aasa?.status ?? '—'}</li>
+                      </ul>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 p-4">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <h3 className="text-sm font-black text-gray-900">Android assetlinks</h3>
+                        <span
+                          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            deepLinks.assetlinks?.ready
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {deepLinks.assetlinks?.ready ? 'Ready' : 'Needs setup'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 break-all mb-2">{deepLinks.assetlinks?.url}</p>
+                      <ul className="text-xs text-gray-700 space-y-1">
+                        <li>Package: {deepLinks.android_package || 'com.myfng.app'}</li>
+                        <li>
+                          Fingerprints on file: {deepLinks.assetlinks?.fingerprint_count ?? 0}
+                        </li>
+                        <li>
+                          Env ANDROID_APP_LINK_SHA256:{' '}
+                          {deepLinks.assetlinks?.env_android_sha256_set ? 'set' : 'not set'}
+                        </li>
+                        <li>HTTP: {deepLinks.assetlinks?.status ?? '—'}</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {deepLinks.admin_links?.universal_link ? (
+                      <a
+                        href={deepLinks.admin_links.universal_link}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                      >
+                        <Link2 className="h-3.5 w-3.5" /> Store Universal Link (/go)
+                      </a>
+                    ) : null}
+                    {deepLinks.admin_links?.system_monitor ? (
+                      <a
+                        href={deepLinks.admin_links.system_monitor}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> System Monitor
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">No status loaded yet.</p>
               )}
             </div>
           </div>

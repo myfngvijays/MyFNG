@@ -24,8 +24,12 @@ export function WelcomeBonusGuestModal({
   onLogin,
   amountLabel = formatWelcomeBonusAmount(),
 }: GuestProps) {
+  // Unmount when hidden — leaving Modal mounted with visible=false can leave an
+  // invisible iOS touch blocker over the home ScrollView.
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => undefined}>
           <View style={styles.iconWrap}>
@@ -68,8 +72,10 @@ export function WelcomeBonusCreditedModal({
 }: CreditedProps) {
   const amountLabel = formatWelcomeBonusAmount(amount);
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => undefined}>
           <View style={styles.iconWrap}>

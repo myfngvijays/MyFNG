@@ -8,6 +8,7 @@ import {
   type ParsedTelecrmWebhookPayload,
 } from './parseTelecrmWebhookPayload';
 import { resolveTelecallerUserId } from './resolveTelecallerUserId';
+import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
@@ -74,7 +75,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
 
   const { data: existingRows, error: findErr } = await supabaseAdmin
     .from('service_leads')
-    .select('id, status, coupon_meta, assigned_telecaller_id, customer_name, lead_source, created_from, problem_description')
+    .select('id, lead_number, status, coupon_meta, assigned_telecaller_id, customer_name, lead_source, created_from, problem_description')
     .or(
       `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.ilike.%${phone10}`,
     )
@@ -223,6 +224,17 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
 
     if (upErr) return { ok: false, error: upErr.message };
 
+    if (nextAssignee && nextAssignee !== prevAssignee) {
+      void notifyTelecallerNewLeadAssignedSafe({
+        leadId: String(existing.id),
+        leadNumber: existing.lead_number ? String(existing.lead_number) : null,
+        telecallerId: nextAssignee,
+        previousTelecallerId: prevAssignee,
+        assignedByName: 'TeleCRM / WhatsApp',
+        notes: 'New WhatsApp lead',
+      });
+    }
+
     return {
       ok: true,
       created: false,
@@ -297,6 +309,16 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
   }
 
   if (insertErr) return { ok: false, error: insertErr.message };
+
+  if (inserted?.id && assignedTo) {
+    void notifyTelecallerNewLeadAssignedSafe({
+      leadId: String(inserted.id),
+      leadNumber,
+      telecallerId: assignedTo,
+      assignedByName: 'TeleCRM / WhatsApp',
+      notes: 'New WhatsApp lead',
+    });
+  }
 
   return {
     ok: true,

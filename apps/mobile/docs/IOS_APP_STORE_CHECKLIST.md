@@ -62,7 +62,8 @@ Sample content:
           { "/": "/customer/*", "comment": "Customer pages" },
           { "/": "/booking/*", "comment": "Booking flow" },
           { "/": "/track/*", "comment": "Tracking" },
-          { "/": "/invoice/*", "comment": "Invoices" }
+          { "/": "/invoice/*", "comment": "Invoices" },
+          { "/": "/refer/*", "comment": "Refer & Rise invite links" }
         ]
       }
     ]

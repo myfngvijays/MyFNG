@@ -21,8 +21,10 @@ export default function ForceUpdateModal({
     void Linking.openURL(storeUrl).catch(() => null);
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => undefined}>
+    <Modal visible transparent animationType="fade" onRequestClose={() => undefined}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.logoWrap}>

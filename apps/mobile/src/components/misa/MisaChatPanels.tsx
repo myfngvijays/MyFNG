@@ -534,7 +534,15 @@ export function MisaGuestOtpPanel({
       const authRes = await fetch(`${ENV.API_URL}/api/customer/auth/whatsapp-verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp, channel: 'WHATSAPP', platform: 'mobile' }),
+        body: JSON.stringify({
+          phone,
+          otp,
+          channel: 'WHATSAPP',
+          platform: 'mobile',
+          source: 'misa-app',
+          create_incomplete_lead: true,
+          misa_channel: 'APP',
+        }),
       });
       const authJson = await authRes.json().catch(() => ({}));
       if (!authRes.ok || !authJson?.success) {

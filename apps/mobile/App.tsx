@@ -81,6 +81,8 @@ import {
   subscribeToFcmTokenRefresh,
 } from './src/services/pushNotifications';
 import { checkForceUpdate, dismissSoftUpdate, type ForceUpdateResult } from './src/lib/forceUpdate';
+import SoftUpdateModal from './src/components/SoftUpdateModal';
+import ForceUpdateModal from './src/components/ForceUpdateModal';
 import { notifyAppSessionIncompleteOnServer } from './src/lib/whatsappAutomationClient';
 import { initializeClarity } from './src/lib/clarity';
 import { preloadMobileAuthConfig } from './src/lib/mobileAuthConfig';
@@ -219,12 +221,12 @@ function AppContent() {
 
     const handleDeepLink = (event: { url: string }) => {
       const url = event.url;
-      // Match /refer/CODE or ?code=CODE
-      const pathMatch = url.match(/\/refer\/([A-Za-z0-9]+)/);
-      const queryMatch = url.match(/[?&]code=([^&]+)/);
+      // Match https://myfng.in/refer/CODE, com.myfng.app://refer/CODE, myfng://refer/CODE, ?code=
+      const pathMatch = url.match(/\/refer\/([A-Za-z0-9]+)/i);
+      const queryMatch = url.match(/[?&]code=([^&]+)/i);
       const code = pathMatch?.[1] || queryMatch?.[1];
       if (code) {
-        void storeReferralCode(code);
+        void storeReferralCode(decodeURIComponent(code));
       }
     };
 
@@ -270,7 +272,7 @@ function AppContent() {
       setSoftUpdateVisible(false);
       return;
     }
-    const timer = setTimeout(() => setSoftUpdateVisible(true), 2200);
+    const timer = setTimeout(() => setSoftUpdateVisible(true), 3500);
     return () => clearTimeout(timer);
   }, [softUpdate?.softAvailable, showSplash, authReady]);
 

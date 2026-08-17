@@ -229,7 +229,6 @@ export default function TelecallerEditLeadScreen({
   const [errorMessage, setErrorMessage] = useState('');
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
-  const [cityQuery, setCityQuery] = useState('');
   const [carDisplay, setCarDisplay] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [couponMeta, setCouponMeta] = useState<any>({});
@@ -375,11 +374,7 @@ export default function TelecallerEditLeadScreen({
     })();
   }, [leadId]);
 
-  const filteredCities = useMemo(() => {
-    const q = cityQuery.trim().toLowerCase();
-    if (!q) return cities.slice(0, 50);
-    return cities.filter((c) => String(c.name || '').toLowerCase().includes(q)).slice(0, 50);
-  }, [cities, cityQuery]);
+  const cityOptions = useMemo(() => cities.slice(0, 50), [cities]);
 
   const pickupValue: CrmPickupVisitValue = {
     pickup_required: form.pickup_required,
@@ -888,21 +883,13 @@ export default function TelecallerEditLeadScreen({
         </TouchableOpacity>
       </View>
 
-      {/* City dropdown modal */}
+      {/* City dropdown modal — tap list only (no search / keyboard) */}
       <Modal visible={cityOpen} transparent animationType="fade" onRequestClose={() => setCityOpen(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setCityOpen(false)}>
           <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Select City</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Search city"
-              placeholderTextColor={COLORS.textSecondary}
-              value={cityQuery}
-              onChangeText={setCityQuery}
-              autoFocus
-            />
-            <ScrollView style={{ maxHeight: 320 }}>
-              {filteredCities.map((c) => {
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
+              {cityOptions.map((c) => {
                 const active = form.city_id === c.id || form.city === c.name;
                 return (
                   <TouchableOpacity
@@ -911,7 +898,6 @@ export default function TelecallerEditLeadScreen({
                     onPress={() => {
                       setForm((prev) => ({ ...prev, city_id: c.id, city: c.name }));
                       setCityOpen(false);
-                      setCityQuery('');
                     }}
                   >
                     <Text style={[styles.cityRowText, active && styles.cityRowTextActive]}>
@@ -1108,15 +1094,18 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: '#fff', fontWeight: '700' },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
   },
   modalSheet: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
     padding: 18,
-    paddingBottom: 28,
+    maxHeight: '70%',
   },
   modalTitle: { fontSize: 17, fontWeight: '800', color: COLORS.textHeading, marginBottom: 10 },
   cityRow: {

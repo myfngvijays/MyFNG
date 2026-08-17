@@ -27,6 +27,7 @@ import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
+  markWelcomeCreditedPopupQueued,
   markWelcomeCreditedPopupShown,
   resolveCustomerIdFromAuth,
 } from '../lib/welcomeBonus';
@@ -175,6 +176,7 @@ export default function CustomerOtpLoginScreen({ navigation, route }: any) {
       pendingWelcomeCustomerIdRef.current = customerId ? String(customerId) : null;
       pendingWelcomePhoneRef.current = authResponse?.customer?.phone || phone || null;
       setCreditedWelcomeAmount(decision.amount);
+      markWelcomeCreditedPopupQueued(pendingWelcomeCustomerIdRef.current, pendingWelcomePhoneRef.current);
       setCreditedWelcomeVisible(true);
       return true;
     }

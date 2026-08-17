@@ -12,6 +12,10 @@ import {
   isCustomerAccountBlocked,
   resolveCustomerAccountStatus,
 } from '@/lib/customer-account-admin';
+import {
+  ensureWebsiteOtpVerifiedLead,
+  resolveOtpLeadOptionsFromSource,
+} from '@/lib/service-lead-reopen';
 import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +93,39 @@ export async function POST(request: NextRequest) {
 
   if (updateOtpError) {
     return NextResponse.json({ error: 'Failed to finalize OTP verification' }, { status: 500 });
+  }
+
+  // MISA / booking OTP abandon → incomplete CRM lead (even if booking never happens)
+  const bodySource = String(body?.source || body?.lead_source || '').trim();
+  const metaSource = String((currentMetadata as any)?.source || '').trim();
+  const createIncompleteLead =
+    body?.create_incomplete_lead === true ||
+    body?.create_incomplete_lead === 'true' ||
+    /misa/i.test(bodySource) ||
+    /misa/i.test(metaSource);
+  let otpLead: Awaited<ReturnType<typeof ensureWebsiteOtpVerifiedLead>> | null = null;
+  if (createIncompleteLead) {
+    try {
+      const leadOpts = resolveOtpLeadOptionsFromSource({
+        source: bodySource || metaSource || 'misa-app',
+        bookingChannel: String(body?.misa_channel || (currentMetadata as any)?.channel || 'APP'),
+        fallbackChannel: 'MOBILE',
+      });
+      if (leadOpts.origin !== 'misa') {
+        leadOpts.origin = 'misa';
+        leadOpts.misaChannel = 'APP';
+        leadOpts.channel = 'MOBILE';
+      }
+      otpLead = await ensureWebsiteOtpVerifiedLead(supabaseAdmin, phone, leadOpts);
+      console.info('[whatsapp-verify] MISA OTP incomplete lead', {
+        phone,
+        created: otpLead.created,
+        lead_number: otpLead.leadNumber,
+        skipped: otpLead.skipped || null,
+      });
+    } catch (leadErr) {
+      console.error('[whatsapp-verify] incomplete lead failed (non-blocking):', leadErr);
+    }
   }
 
   let customerId: string;
@@ -214,5 +251,7 @@ export async function POST(request: NextRequest) {
     session_token: token,
     is_new_customer: isNewCustomer,
     welcome_bonus: welcomeBonus,
+    lead_id: otpLead?.leadId || null,
+    lead_number: otpLead?.leadNumber || null,
   });
 }

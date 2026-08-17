@@ -54,6 +54,7 @@ import {
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
   markGuestWelcomePopupShown,
+  markWelcomeCreditedPopupQueued,
   markWelcomeCreditedPopupShown,
   mobileCustomerHeaders,
   shouldShowGuestWelcomePopup,
@@ -276,7 +277,13 @@ export default function PublicHomeScreen({ navigation }: Props) {
               setCreditedWelcomeAmount(decision.amount);
               // Delay so login/referral modals finish unmounting first (scroll blocker fix).
               popupTimer = setTimeout(() => {
-                if (active) setCreditedWelcomeVisible(true);
+                if (active) {
+                  markWelcomeCreditedPopupQueued(
+                    pendingWelcomeCustomerIdRef.current,
+                    pendingWelcomePhoneRef.current,
+                  );
+                  setCreditedWelcomeVisible(true);
+                }
               }, 600);
             }
           } catch {
@@ -578,6 +585,9 @@ export default function PublicHomeScreen({ navigation }: Props) {
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
+          scrollEnabled
+          bounces
+          removeClippedSubviews={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1098,7 +1108,8 @@ export default function PublicHomeScreen({ navigation }: Props) {
         />
         <LiveTrackingModal visible={showTrackingModal} onClose={() => setShowTrackingModal(false)} />
 
-        <Modal visible={showAllReviews} transparent animationType="slide" onRequestClose={() => setShowAllReviews(false)}>
+        {showAllReviews ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setShowAllReviews(false)}>
           <View style={styles.reviewModalOverlay}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowAllReviews(false)} />
             <View style={styles.reviewModalSheet}>
@@ -1136,8 +1147,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </View>
           </View>
         </Modal>
+        ) : null}
 
-        <Modal visible={showAllFaqs} transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
+        {showAllFaqs ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setShowAllFaqs(false)}>
           <TouchableOpacity style={styles.faqModalOverlay} activeOpacity={1} onPress={() => setShowAllFaqs(false)}>
             <TouchableOpacity style={styles.faqModalSheet} activeOpacity={1} onPress={() => undefined}>
               <View style={styles.faqModalHeaderRow}>
@@ -1163,6 +1176,7 @@ export default function PublicHomeScreen({ navigation }: Props) {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+        ) : null}
 
         <WelcomeBonusGuestModal
           visible={guestWelcomeVisible}
@@ -1188,7 +1202,10 @@ export default function PublicHomeScreen({ navigation }: Props) {
           }}
         />
 
-        <DynamicPopupManager screen="HOME" />
+        <DynamicPopupManager
+          screen="HOME"
+          paused={guestWelcomeVisible || creditedWelcomeVisible}
+        />
 
       </View>
     </SafeAreaView>
@@ -1207,9 +1224,11 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.background,
+    position: 'relative',
   },
   homeScroll: {
     flex: 1,
+    zIndex: 0,
   },
   content: {
     flexGrow: 1,

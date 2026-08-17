@@ -286,26 +286,42 @@ function normalizeLeadPhone(phone?: string | null): string {
     .slice(-10);
 }
 
-/** Web OTP Verified / Mob OTP Verified — shown in Source column. */
+/** Web / Mob / MISA OTP Verified — shown in Source column. */
 function resolveOtpVerifiedTag(lead: Record<string, any>): {
-  label: 'Web OTP Verified' | 'Mob OTP Verified';
+  label: 'Web OTP Verified' | 'Mob OTP Verified' | 'MISA OTP Verified';
   className: string;
-  kind: 'website' | 'app';
+  kind: 'website' | 'app' | 'misa';
 } | null {
   const meta =
     lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? (lead.coupon_meta as Record<string, unknown>) : {};
   const result = String(meta.last_call_result || lead.otp_result || '').toUpperCase();
   const labelRaw = String(meta.last_call_label || lead.otp_label || '').toLowerCase();
   const desc = String(lead.description || lead.problem_description || '').toLowerCase();
+  const leadSource = String(lead.lead_source || '').toLowerCase();
   const isOtp =
     Boolean(lead.otp_verified) ||
     Boolean(meta.otp_verified_at) ||
     Boolean(meta.website_otp_verified) ||
     Boolean(meta.website_booking_abandoned) ||
+    Boolean(meta.misa_otp_verified) ||
     result === 'OTP_VERIFIED' ||
     labelRaw.includes('otp verified') ||
     desc.includes('otp verified');
   if (!isOtp) return null;
+
+  const isMisa =
+    Boolean(meta.misa_otp_verified) ||
+    labelRaw.includes('misa otp') ||
+    leadSource.includes('misa') ||
+    desc.includes('misa');
+
+  if (isMisa) {
+    return {
+      label: 'MISA OTP Verified',
+      className: 'bg-violet-100 text-violet-800',
+      kind: 'misa',
+    };
+  }
 
   const channel = String(meta.otp_channel || lead.otp_channel || '').toUpperCase();
   const createdFrom = String(lead.created_from || '').toUpperCase();

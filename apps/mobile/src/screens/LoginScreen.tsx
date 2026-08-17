@@ -40,6 +40,7 @@ import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
+  markWelcomeCreditedPopupQueued,
   markWelcomeCreditedPopupShown,
   mobileCustomerHeaders,
   resolveCustomerIdFromAuth,
@@ -102,6 +103,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       pendingWelcomeCustomerIdRef.current = resolvedId;
       pendingWelcomePhoneRef.current = authResponse?.customer?.phone || customerPhone || null;
       setCreditedWelcomeAmount(decision.amount);
+      markWelcomeCreditedPopupQueued(resolvedId, pendingWelcomePhoneRef.current);
       setCreditedWelcomeVisible(true);
       return true;
     }

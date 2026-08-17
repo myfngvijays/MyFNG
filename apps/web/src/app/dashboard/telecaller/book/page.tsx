@@ -183,7 +183,6 @@ function TelecallerCrmBookContent() {
 
   const [cities, setCities] = useState<any[]>([]);
   const [cityOpen, setCityOpen] = useState(false);
-  const [cityQuery, setCityQuery] = useState('');
   const [carDisplay, setCarDisplay] = useState('');
   const [resolvingCity, setResolvingCity] = useState(false);
 
@@ -280,11 +279,7 @@ function TelecallerCrmBookContent() {
       ? form.booking_type
       : 'CAR_SERVICE';
 
-  const filteredCities = useMemo(() => {
-    const q = cityQuery.trim().toLowerCase();
-    if (!q) return cities.slice(0, 40);
-    return cities.filter((c) => String(c.name || '').toLowerCase().includes(q)).slice(0, 40);
-  }, [cities, cityQuery]);
+  const cityOptions = useMemo(() => cities.slice(0, 50), [cities]);
 
   const bookingTypeLabel =
     BOOKING_TYPES.find((t) => t.id === form.booking_type)?.label || form.booking_type;
@@ -1006,17 +1001,8 @@ function TelecallerCrmBookContent() {
                 </button>
                 {cityOpen ? (
                   <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
-                    <div className="relative border-b border-gray-100">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        value={cityQuery}
-                        onChange={(e) => setCityQuery(e.target.value)}
-                        placeholder="Search city"
-                        className="w-full py-2.5 pl-9 pr-3 text-sm focus:outline-none"
-                      />
-                    </div>
-                    <div className="max-h-52 overflow-y-auto">
-                      {filteredCities.map((c: any) => {
+                    <div className="max-h-60 overflow-y-auto">
+                      {cityOptions.map((c: any) => {
                         const name = c.name || c.city_name || '';
                         return (
                           <button
@@ -1026,7 +1012,6 @@ function TelecallerCrmBookContent() {
                               setField('city', name);
                               setField('city_id', c.id || '');
                               setCityOpen(false);
-                              setCityQuery('');
                             }}
                             className="block w-full border-b border-gray-50 px-3 py-2.5 text-left text-sm font-medium text-gray-800 hover:bg-[#004AAD]/5 last:border-0"
                           >

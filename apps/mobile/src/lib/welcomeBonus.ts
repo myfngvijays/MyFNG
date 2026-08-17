@@ -69,6 +69,7 @@ export function shouldShowCreditedPopup(welcomeBonus: WelcomeBonusAuthPayload | 
 }
 
 let guestPopupShownThisSession = false;
+const creditedPopupShownThisSession = new Set<string>();
 
 export function shouldShowGuestWelcomePopup(isLoggedIn: boolean): boolean {
   return !isLoggedIn && !guestPopupShownThisSession;
@@ -80,6 +81,18 @@ export function markGuestWelcomePopupShown() {
 
 export function resetGuestWelcomePopupSessionFlag() {
   guestPopupShownThisSession = false;
+}
+
+function creditedSessionKey(customerId?: string | null, phone?: string | null): string | null {
+  if (customerId) return `c:${customerId}`;
+  const normalized = normalizeWelcomePopupPhone(phone);
+  return normalized ? `p:${normalized}` : null;
+}
+
+/** Call when opening the credited popup so Login + Home don't stack two Modals. */
+export function markWelcomeCreditedPopupQueued(customerId?: string | null, phone?: string | null) {
+  const sessionKey = creditedSessionKey(customerId, phone);
+  if (sessionKey) creditedPopupShownThisSession.add(sessionKey);
 }
 
 async function readStoredIds(key: string): Promise<string[]> {
@@ -119,6 +132,8 @@ export async function markWelcomeCreditedPopupShown(
   customerId: string,
   phone?: string | null,
 ): Promise<void> {
+  const sessionKey = creditedSessionKey(customerId, phone);
+  if (sessionKey) creditedPopupShownThisSession.add(sessionKey);
   if (customerId) await appendStoredId(WELCOME_POPUP_SHOWN_KEY, customerId);
   const normalizedPhone = normalizeWelcomePopupPhone(phone);
   if (normalizedPhone) await appendStoredId(WELCOME_POPUP_SHOWN_PHONES_KEY, normalizedPhone);
@@ -234,6 +249,8 @@ export async function shouldShowWelcomeCreditedPopupForCustomer(
   phone?: string | null,
 ): Promise<boolean> {
   if (!shouldShowCreditedPopup(welcomeBonus)) return false;
+  const sessionKey = creditedSessionKey(customerId, phone);
+  if (sessionKey && creditedPopupShownThisSession.has(sessionKey)) return false;
   if (customerId) {
     if (await wasWelcomeCreditedPopupShown(customerId)) return false;
     return true;
@@ -262,14 +279,9 @@ export async function decideWelcomeCreditedPopup(
     null;
   const welcomeBonus = await resolveWelcomeBonusAfterLogin(sessionToken, authResponse);
   const amount = Number(welcomeBonus?.amount || getWelcomeBonusAmount());
-  const isNewCustomer = authResponse?.is_new_customer === true;
 
-  if (shouldShowCreditedPopup(welcomeBonus)) {
-    await clearWelcomeCreditedPopupPhoneBlock(resolvedPhone);
-    if (isNewCustomer && resolvedCustomerId) {
-      await clearWelcomeCreditedPopupCustomerBlock(resolvedCustomerId);
-    }
-  }
+  // Do NOT clear "already shown" markers here — that re-opens welcome on every home
+  // focus while a recent wallet credit exists, stacking Modals and freezing home scroll.
 
   if (!resolvedCustomerId && !resolvedPhone) {
     return { show: shouldShowCreditedPopup(welcomeBonus), amount, welcomeBonus };

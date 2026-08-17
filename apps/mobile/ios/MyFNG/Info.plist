@@ -30,6 +30,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>com.myfng.app</string>
+          <string>myfng</string>
         </array>
       </dict>
       <dict>

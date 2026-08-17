@@ -5,7 +5,12 @@ const REFERRAL_CODE_KEY = 'pending_referral_code';
 
 export async function storeReferralCode(code: string): Promise<void> {
   try {
-    await AsyncStorage.setItem(REFERRAL_CODE_KEY, code);
+    const normalized = String(code || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    if (!normalized) return;
+    await AsyncStorage.setItem(REFERRAL_CODE_KEY, normalized);
   } catch (_) {}
 }
 

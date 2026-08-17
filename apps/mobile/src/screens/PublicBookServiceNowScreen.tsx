@@ -87,6 +87,7 @@ import {
   AuthVerifyResponse,
   decideWelcomeCreditedPopup,
   getWelcomeBonusAmount,
+  markWelcomeCreditedPopupQueued,
   markWelcomeCreditedPopupShown,
 } from '../lib/welcomeBonus';
 import {
@@ -2571,6 +2572,10 @@ export default function PublicBookServiceNowScreen({ navigation, route }: Props)
         pendingWelcomePhoneRef.current =
           (authResponse as any)?.customer?.phone || form.customerPhone || null;
         setCreditedWelcomeAmount(decision.amount);
+        markWelcomeCreditedPopupQueued(
+          pendingWelcomeCustomerIdRef.current,
+          pendingWelcomePhoneRef.current,
+        );
         setCreditedWelcomeVisible(true);
         pendingStepAdvanceRef.current = true;
       } else {

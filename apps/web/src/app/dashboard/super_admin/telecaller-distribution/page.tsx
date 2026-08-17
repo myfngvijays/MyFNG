@@ -16,6 +16,7 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  Bell,
 } from 'lucide-react';
 import {
   ALL_LEAD_CHANNEL_IDS,
@@ -55,8 +56,25 @@ type AllocationRow = {
   pincode_mode: PincodeRoutingMode;
 };
 
-type TabId = 'allocation' | 'triggers' | 'api';
+type TabId = 'allocation' | 'triggers' | 'api' | 'whatsapp';
 type TriggerStatusFilter = 'active' | 'inactive' | 'all';
+
+type WaLeadAlertState = {
+  settings: { enabled: boolean };
+  template_status: {
+    templateName: string;
+    exists: boolean;
+    isApproved: boolean;
+    metaStatus: string | null;
+    canSendTemplate: boolean;
+  };
+  template_preview: {
+    template_name: string;
+    display_name: string;
+    body_text: string;
+    example_values: readonly string[];
+  };
+};
 
 const TRIGGER_PAGE_SIZE = 10;
 
@@ -78,6 +96,15 @@ export default function TelecallerDistributionPage() {
   const [selectedSourceSlug, setSelectedSourceSlug] = useState('google-ads');
   const [routingPanel, setRoutingPanel] = useState<Record<number, 'pincodes' | 'sources' | null>>({});
   const [testMessage, setTestMessage] = useState('');
+  const [waAlert, setWaAlert] = useState<WaLeadAlertState | null>(null);
+  const [waLoading, setWaLoading] = useState(false);
+  const [waBusy, setWaBusy] = useState(false);
+  const [waMessage, setWaMessage] = useState<string | null>(null);
+  const [waError, setWaError] = useState<string | null>(null);
+  const [waTestTelecallerId, setWaTestTelecallerId] = useState('');
+  const [waTestPhone, setWaTestPhone] = useState('');
+  const [waPhoneDrafts, setWaPhoneDrafts] = useState<Record<string, string>>({});
+  const [waPhoneSavingId, setWaPhoneSavingId] = useState<string | null>(null);
   const [triggerFilterTelecallerId, setTriggerFilterTelecallerId] = useState('');
   const [triggerFilterStatus, setTriggerFilterStatus] = useState<TriggerStatusFilter>('active');
   const [triggerPage, setTriggerPage] = useState(1);
@@ -121,6 +148,122 @@ export default function TelecallerDistributionPage() {
     void fetchData();
   }, []);
 
+  useEffect(() => {
+    if (tab === 'whatsapp') void loadWaAlert();
+  }, [tab]);
+
+  async function loadWaAlert() {
+    setWaLoading(true);
+    setWaError(null);
+    try {
+      const res = await fetch('/api/super_admin/telecaller-lead-whatsapp');
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json?.error || 'Failed to load WhatsApp alert settings');
+      setWaAlert({
+        settings: json.settings,
+        template_status: json.template_status,
+        template_preview: json.template_preview,
+      });
+      if (!waTestTelecallerId && Array.isArray(telecallers) && telecallers[0]?.id) {
+        setWaTestTelecallerId(telecallers[0].id);
+      }
+    } catch (e: unknown) {
+      setWaError(e instanceof Error ? e.message : 'Failed to load');
+    } finally {
+      setWaLoading(false);
+    }
+  }
+
+  async function saveWaEnabled(enabled: boolean) {
+    setWaBusy(true);
+    setWaMessage(null);
+    setWaError(null);
+    try {
+      const res = await fetch('/api/super_admin/telecaller-lead-whatsapp', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json?.error || 'Save failed');
+      setWaAlert((prev) =>
+        prev ? { ...prev, settings: json.settings } : { settings: json.settings, template_status: { templateName: '', exists: false, isApproved: false, metaStatus: null, canSendTemplate: false }, template_preview: { template_name: '', display_name: '', body_text: '', example_values: [] } },
+      );
+      setWaMessage(enabled ? 'WhatsApp new-lead alerts enabled' : 'WhatsApp new-lead alerts disabled');
+      void loadWaAlert();
+    } catch (e: unknown) {
+      setWaError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setWaBusy(false);
+    }
+  }
+
+  async function runWaAction(action: 'create-template' | 'sync-template' | 'test-send') {
+    setWaBusy(true);
+    setWaMessage(null);
+    setWaError(null);
+    try {
+      const customPhone = waTestPhone.replace(/\D/g, '').trim();
+      if (action === 'test-send' && !customPhone && !waTestTelecallerId) {
+        throw new Error('Enter any phone number or select a telecaller');
+      }
+      const res = await fetch('/api/super_admin/telecaller-lead-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          ...(action === 'test-send'
+            ? {
+                telecaller_id: waTestTelecallerId || undefined,
+                phone: customPhone || undefined,
+              }
+            : {}),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json?.error || json?.message || 'Action failed');
+      setWaMessage(json.message || 'Done');
+      void loadWaAlert();
+    } catch (e: unknown) {
+      setWaError(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setWaBusy(false);
+    }
+  }
+
+  async function saveTelecallerPhone(telecallerId: string) {
+    const phone = String(waPhoneDrafts[telecallerId] ?? '').replace(/\D/g, '').trim();
+    if (!phone || phone.length < 10) {
+      setWaError('Enter a valid phone (at least 10 digits)');
+      return;
+    }
+    setWaPhoneSavingId(telecallerId);
+    setWaMessage(null);
+    setWaError(null);
+    try {
+      const res = await fetch('/api/super_admin/telecaller-lead-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-telecaller-phone',
+          telecaller_id: telecallerId,
+          phone,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json?.error || json?.message || 'Failed to save phone');
+      setTelecallers((prev) =>
+        prev.map((t) => (t.id === telecallerId ? { ...t, phone } : t)),
+      );
+      setWaPhoneDrafts((prev) => ({ ...prev, [telecallerId]: phone }));
+      setWaMessage(json.message || `Phone saved for telecaller`);
+    } catch (e: unknown) {
+      setWaError(e instanceof Error ? e.message : 'Failed to save phone');
+    } finally {
+      setWaPhoneSavingId(null);
+    }
+  }
+
   async function fetchData() {
     setLoading(true);
     try {
@@ -156,6 +299,13 @@ export default function TelecallerDistributionPage() {
         });
 
       setTelecallers(list);
+      setWaPhoneDrafts((prev) => {
+        const next = { ...prev };
+        for (const t of list) {
+          if (next[t.id] === undefined) next[t.id] = t.phone || '';
+        }
+        return next;
+      });
       // Do not auto-fill every telecaller — only saved allocation rows (empty until Add Row).
       setRows(allocs);
       setTriggers(Array.isArray(json.message_triggers) ? json.message_triggers : []);
@@ -538,6 +688,7 @@ export default function TelecallerDistributionPage() {
           [
             { id: 'allocation' as const, label: 'Allocation & Sources', icon: Percent },
             { id: 'triggers' as const, label: 'Message Triggers', icon: MessageSquareText },
+            { id: 'whatsapp' as const, label: 'WhatsApp Alerts', icon: Bell },
             { id: 'api' as const, label: 'Lead Source API', icon: Link2 },
           ] as const
         ).map((item) => {
@@ -563,6 +714,15 @@ export default function TelecallerDistributionPage() {
                   }`}
                 >
                   {activeTriggerCount}
+                </span>
+              ) : null}
+              {item.id === 'whatsapp' && waAlert?.settings.enabled ? (
+                <span
+                  className={`ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full ${
+                    active ? 'bg-white/20' : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  ON
                 </span>
               ) : null}
             </button>
@@ -1077,6 +1237,203 @@ export default function TelecallerDistributionPage() {
               )
             ) : null}
           </div>
+        </div>
+      )}
+
+      {tab === 'whatsapp' && (
+        <div className="bg-white rounded-xl border shadow-sm p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold text-sm sm:text-base">WhatsApp — new lead to telecaller</div>
+              <p className="text-[11px] text-gray-500 mt-0.5 max-w-2xl">
+                When a lead is auto/manual assigned, telecaller already gets app push. Turn this ON to also send a
+                WhatsApp UTILITY template to the telecaller&apos;s phone on{' '}
+                <code className="text-[10px] bg-gray-100 px-1 rounded">users_login</code>.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadWaAlert()}
+              disabled={waLoading || waBusy}
+              className="btn btn-secondary text-xs flex items-center gap-1"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${waLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+
+          {waMessage ? (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 font-medium">
+              {waMessage}
+            </div>
+          ) : null}
+          {waError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 font-medium">
+              {waError}
+            </div>
+          ) : null}
+
+          {waLoading && !waAlert ? (
+            <p className="text-sm text-gray-400">Loading…</p>
+          ) : waAlert ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-slate-50 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold">Send WhatsApp on new lead assign</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    Requires Meta-approved template{' '}
+                    <code className="text-[10px]">{waAlert.template_preview.template_name}</code>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={waBusy}
+                  onClick={() => void saveWaEnabled(!waAlert.settings.enabled)}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${
+                    waAlert.settings.enabled
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-gray-700 border-gray-300'
+                  }`}
+                >
+                  {waAlert.settings.enabled ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold">{waAlert.template_preview.display_name}</div>
+                  <span
+                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                      waAlert.template_status.canSendTemplate
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {waAlert.template_status.metaStatus ||
+                      (waAlert.template_status.exists ? 'PENDING' : 'NOT CREATED')}
+                  </span>
+                </div>
+                <pre className="text-[11px] bg-gray-50 border rounded-md p-3 overflow-x-auto whitespace-pre-wrap text-gray-700">
+                  {waAlert.template_preview.body_text}
+                </pre>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={waBusy}
+                    onClick={() => void runWaAction('create-template')}
+                    className="btn btn-secondary text-xs"
+                  >
+                    Create / push to Meta
+                  </button>
+                  <button
+                    type="button"
+                    disabled={waBusy}
+                    onClick={() => void runWaAction('sync-template')}
+                    className="btn btn-secondary text-xs"
+                  >
+                    Sync status from Meta
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="text-sm font-semibold">Telecaller WhatsApp numbers</div>
+                <p className="text-[11px] text-gray-500">
+                  Live alerts go to this phone on the telecaller profile. Edit any number here and save.
+                </p>
+                <div className="divide-y border rounded-md overflow-hidden">
+                  {telecallers.length === 0 ? (
+                    <p className="text-xs text-gray-400 px-3 py-4">No telecallers found.</p>
+                  ) : (
+                    telecallers.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 bg-white"
+                      >
+                        <div className="sm:w-44 shrink-0 text-sm font-medium text-gray-800 truncate">
+                          {telecallerLabel(t)}
+                        </div>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          placeholder="e.g. 9876543210"
+                          className="border rounded-md px-2 py-1.5 text-sm flex-1 min-w-0"
+                          value={waPhoneDrafts[t.id] ?? t.phone ?? ''}
+                          onChange={(e) =>
+                            setWaPhoneDrafts((prev) => ({ ...prev, [t.id]: e.target.value }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          disabled={waPhoneSavingId === t.id || waBusy}
+                          onClick={() => void saveTelecallerPhone(t.id)}
+                          className="btn btn-secondary text-xs disabled:opacity-50 shrink-0"
+                        >
+                          {waPhoneSavingId === t.id ? 'Saving…' : 'Save number'}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="text-sm font-semibold">Test send</div>
+                <p className="text-[11px] text-gray-500">
+                  Enter any phone for a quick test, or pick a telecaller (custom phone wins if both filled).
+                </p>
+                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="Any number to test (e.g. 8291347218)"
+                    className="border rounded-md px-2 py-1.5 text-sm"
+                    value={waTestPhone}
+                    onChange={(e) => setWaTestPhone(e.target.value)}
+                  />
+                  <select
+                    className="border rounded-md px-2 py-1.5 text-sm"
+                    value={waTestTelecallerId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setWaTestTelecallerId(id);
+                      const tc = telecallers.find((row) => row.id === id);
+                      if (tc?.phone && !waTestPhone.trim()) {
+                        setWaTestPhone(tc.phone);
+                      }
+                    }}
+                  >
+                    <option value="">Optional: pick telecaller…</option>
+                    {telecallers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {telecallerLabel(t)}
+                        {t.phone ? ` · ${t.phone}` : ' · no phone'}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={
+                      waBusy ||
+                      (!waTestPhone.replace(/\D/g, '') && !waTestTelecallerId) ||
+                      !waAlert.template_status.canSendTemplate
+                    }
+                    onClick={() => void runWaAction('test-send')}
+                    className="btn btn-primary text-xs disabled:opacity-50"
+                  >
+                    Send test WhatsApp
+                  </button>
+                </div>
+                {!waAlert.template_status.canSendTemplate ? (
+                  <p className="text-[11px] text-amber-800">
+                    Template must be APPROVED on Meta before test send or live alerts work.
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">Could not load settings.</p>
+          )}
         </div>
       )}
 
