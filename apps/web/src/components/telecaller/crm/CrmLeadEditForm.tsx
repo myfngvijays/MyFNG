@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode, type ComponentType } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import { createClient } from '@/lib/supabase/client';
@@ -27,6 +27,7 @@ import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
 const ACTIVITY_OPTIONS = [
   { id: 'INTERESTED', label: 'Interested', lead_status: null as string | null },
   { id: 'WILL_VISIT', label: 'He will visit', lead_status: null },
+  { id: 'CALLBACK', label: 'Follow-up', lead_status: null },
   { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', lead_status: 'VALIDATED' },
   { id: 'IN_SERVICE', label: 'In Service', lead_status: 'IN_PROGRESS' },
   { id: 'SERVICE_DONE', label: 'Service Done', lead_status: 'COMPLETED' },
@@ -95,6 +96,62 @@ function composeSmartAddress(parts: {
   ]
     .filter(Boolean)
     .join(', ');
+}
+
+function fieldCls(hasError?: boolean, disabled?: boolean) {
+  return [
+    'w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition',
+    'placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#023D95]/20 focus:border-[#023D95]',
+    disabled ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : 'bg-white hover:border-slate-300',
+    hasError ? 'border-rose-400 ring-1 ring-rose-200' : 'border-slate-200',
+  ].join(' ');
+}
+
+function FieldLabel({
+  children,
+  required,
+}: {
+  children: ReactNode;
+  required?: boolean;
+}) {
+  return (
+    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+      {children}
+      {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
+    </label>
+  );
+}
+
+function SectionCard({
+  title,
+  icon: Icon,
+  tone = 'slate',
+  children,
+}: {
+  title: string;
+  icon: ComponentType<{ className?: string }>;
+  tone?: 'slate' | 'emerald' | 'sky' | 'amber' | 'violet' | 'indigo';
+  children: ReactNode;
+}) {
+  const tones: Record<string, string> = {
+    slate: 'border-slate-200 bg-white',
+    emerald: 'border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 to-white',
+    sky: 'border-sky-200/80 bg-gradient-to-br from-sky-50/70 to-white',
+    amber: 'border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-white',
+    violet: 'border-violet-200/80 bg-gradient-to-br from-violet-50/60 to-white',
+    indigo: 'border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 to-white',
+  };
+  return (
+    <section className={`rounded-2xl border p-4 sm:p-5 shadow-sm ${tones[tone]}`}>
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#023D95] text-white shadow-sm">
+          <Icon className="h-4 w-4" />
+        </span>
+        <h2 className="text-base sm:text-lg font-black text-[#023D95]">{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 export type CrmLeadEditFormProps = {
@@ -175,12 +232,19 @@ export default function CrmLeadEditForm({
 
     pickup_required: false,
     pickup_address: '',
+    pickup_flat: '',
+    pickup_area: '',
+    pickup_landmark: '',
+    pickup_date: '',
+    pickup_time: '',
 
     notes: '',
     lead_priority: 'NORMAL',
     activity_result: 'INTERESTED',
     lost_reason: '',
     activity_notes: '',
+    callback_date: '',
+    callback_time: '',
   });
 
   useEffect(() => {
@@ -491,7 +555,52 @@ export default function CrmLeadEditForm({
         
         pickup_required: leadData.pickup_required || false,
         pickup_address: leadData.pickup_address || '',
-        
+        ...(() => {
+          const fromMeta = {
+            pickup_flat: String(meta.pickup_flat || '').trim(),
+            pickup_area: String(meta.pickup_area || '').trim(),
+            pickup_landmark: String(meta.pickup_landmark || '')
+              .replace(/^Near\s+/i, '')
+              .trim(),
+          };
+          if (fromMeta.pickup_flat || fromMeta.pickup_area || fromMeta.pickup_landmark) {
+            return fromMeta;
+          }
+          const parsed = parseAddressParts(String(leadData.pickup_address || ''), null);
+          return {
+            pickup_flat: parsed.flat_number,
+            pickup_area: parsed.area,
+            pickup_landmark: parsed.landmark,
+          };
+        })(),
+        pickup_date: (() => {
+          const slot = leadData.preferred_slot_start || leadData.preferred_date;
+          if (!slot) return '';
+          try {
+            const d = new Date(slot);
+            if (Number.isNaN(d.getTime())) return String(slot).slice(0, 10);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+          } catch {
+            return '';
+          }
+        })(),
+        pickup_time: (() => {
+          const slot = leadData.preferred_slot_start;
+          if (!slot) return '';
+          try {
+            const d = new Date(slot);
+            if (Number.isNaN(d.getTime())) return '';
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            return `${hh}:${mi}`;
+          } catch {
+            return '';
+          }
+        })(),
+
         notes: leadData.notes || '',
         lead_priority: leadData.lead_priority || 'NORMAL',
         activity_result: String(leadData?.coupon_meta?.last_call_result || 'INTERESTED').toUpperCase() || 'INTERESTED',
@@ -599,6 +708,11 @@ export default function CrmLeadEditForm({
     // Service validation
     if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
 
+    if (formData.activity_result === 'CALLBACK') {
+      if (!formData.callback_date) newErrors.callback_date = 'Follow-up date required';
+      if (!formData.callback_time) newErrors.callback_time = 'Follow-up time required';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -659,6 +773,9 @@ export default function CrmLeadEditForm({
         landmark: formData.landmark.trim() || null,
         area: formData.area.trim() || null,
         vehicle_class: formData.vehicle_class || (prevMeta as any).vehicle_class || null,
+        pickup_flat: formData.pickup_flat.trim() || null,
+        pickup_area: formData.pickup_area.trim() || null,
+        pickup_landmark: formData.pickup_landmark.trim() || null,
       };
 
       const payload: any = {
@@ -689,8 +806,23 @@ export default function CrmLeadEditForm({
 
         pickup_required: formData.pickup_required,
         pickup_address: formData.pickup_required
-          ? composedAddress
+          ? composeSmartAddress({
+              flat_number: formData.pickup_flat,
+              area: formData.pickup_area || formData.area,
+              landmark: formData.pickup_landmark,
+              city: formData.city,
+              pincode: formData.pincode,
+            }) || composedAddress
           : formData.pickup_address || composedAddress || null,
+        preferred_slot_start:
+          formData.pickup_required && formData.pickup_date
+            ? (() => {
+                const local = new Date(
+                  `${formData.pickup_date}T${formData.pickup_time || '10:00'}:00`,
+                );
+                return Number.isNaN(local.getTime()) ? null : local.toISOString();
+              })()
+            : null,
 
         notes: formData.notes || null,
         lead_priority: formData.lead_priority,
@@ -701,6 +833,14 @@ export default function CrmLeadEditForm({
         applied_coupon: nextApplied || null,
       };
 
+      if (selectedActivity.id === 'CALLBACK' && formData.callback_date && formData.callback_time) {
+        const local = new Date(`${formData.callback_date}T${formData.callback_time}:00`);
+        if (!Number.isNaN(local.getTime())) {
+          payload.follow_up_required = true;
+          payload.next_follow_up_at = local.toISOString();
+        }
+      }
+
       const res = await fetch(`/api/telecaller/leads/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -708,6 +848,24 @@ export default function CrmLeadEditForm({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to update lead');
+
+      if (selectedActivity.id === 'CALLBACK' && payload.next_follow_up_at) {
+        try {
+          await fetch('/api/telecaller/follow-ups', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lead_id: leadId,
+              follow_up_type: 'CALLBACK',
+              scheduled_time: payload.next_follow_up_at,
+              reason: formData.activity_notes.trim() || 'Follow-up',
+              priority: formData.lead_priority || 'NORMAL',
+            }),
+          });
+        } catch {
+          // best-effort reminder row
+        }
+      }
 
       if (onSaved) onSaved();
       else router.push(`${base}/leads/${leadId}`);
@@ -744,58 +902,47 @@ export default function CrmLeadEditForm({
   }
 
   return (
-      <div className={`${embedded ? 'w-full' : 'max-w-4xl mx-auto'} space-y-4 sm:space-y-5 md:space-y-6 ${embedded ? '' : 'px-3 sm:px-4 md:px-6'}`}>
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
-            <button type="button" onClick={handleCancel} className="btn btn-outline p-1.5 sm:p-2 flex-shrink-0">
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+    <div
+      className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} space-y-4 pb-28 ${embedded ? '' : 'px-3 sm:px-4'}`}
+    >
+      <div className="relative overflow-hidden rounded-2xl bg-[#023D95] text-white p-4 sm:p-5 shadow-lg">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.12),_transparent_55%)]" />
+        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0 transition"
+            >
+              <ArrowLeft className="w-5 h-5" />
             </button>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-blue-100">Edit lead</p>
+              <h1 className="text-xl sm:text-2xl font-black truncate mt-0.5">
                 {lead.customer_name || 'Lead'}
               </h1>
-              <p className="text-text-body text-xs sm:text-sm mt-0.5 sm:mt-1">
-                #{lead.lead_number} · edit on this screen
-              </p>
+              <p className="text-sm text-blue-100/90 mt-1 font-mono font-semibold">#{lead.lead_number}</p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-100 border border-slate-200 rounded-lg w-full sm:w-auto">
-            <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-700 flex-shrink-0" />
-            <span className="text-xs sm:text-sm text-slate-800 font-semibold">Status: {leadDisplayStatus(lead)}</span>
-          </div>
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold ring-1 ring-white/30">
+            <AlertCircle className="w-3.5 h-3.5" />
+            {leadDisplayStatus(lead)}
+          </span>
         </div>
+      </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="card space-y-6 sm:space-y-7 md:space-y-8 p-4 sm:p-5 md:p-6">
-          {/* Customer Details */}
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <User className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span>Customer Details</span>
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Customer Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="customer_name"
-                  value={formData.customer_name}
-                  onChange={handleChange}
-                  className={`input text-xs sm:text-sm ${errors.customer_name ? 'border-red-500' : ''}`}
-                  required
-                />
-                {errors.customer_name && (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.customer_name}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Phone Number <span className="text-red-500">*</span>
-                </label>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <SectionCard title="Customer Details" icon={User} tone="emerald">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <FieldLabel required>Customer Name</FieldLabel>
+              <input type="text" name="customer_name" value={formData.customer_name} onChange={handleChange} className={fieldCls(Boolean(errors.customer_name))} required />
+              {errors.customer_name ? <p className="mt-1 text-xs text-rose-600">{errors.customer_name}</p> : null}
+            </div>
+            <div>
+              <FieldLabel required>Phone Number</FieldLabel>
+              <div className="relative">
+                <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="tel"
                   name="customer_phone"
@@ -806,57 +953,37 @@ export default function CrmLeadEditForm({
                     setLookupHint(null);
                   }}
                   onBlur={(e) => void lookupCustomerByPhone(e.target.value)}
-                  className={`input text-xs sm:text-sm ${errors.customer_phone ? 'border-red-500' : ''}`}
+                  className={`${fieldCls(Boolean(errors.customer_phone))} pl-9`}
                   maxLength={10}
                   required
                 />
-                {lookingUpPhone ? (
-                  <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Checking past records…
-                  </p>
-                ) : lookupHint ? (
-                  <p className="mt-1 text-xs font-semibold text-[#004AAD]">{lookupHint}</p>
-                ) : (
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    Auto-fills name / car / address if this number exists in DB
-                  </p>
-                )}
-                {errors.customer_phone && (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.customer_phone}</p>
-                )}
               </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Alternate Phone
-                </label>
-                <input
-                  type="tel"
-                  name="customer_alternate_phone"
-                  value={formData.customer_alternate_phone}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  maxLength={10}
-                />
+              {lookingUpPhone ? (
+                <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Checking past records…
+                </p>
+              ) : lookupHint ? (
+                <p className="mt-1 text-xs font-semibold text-[#004AAD]">{lookupHint}</p>
+              ) : (
+                <p className="mt-1 text-[10px] text-slate-400">Auto-fills name / car / address if this number exists in DB</p>
+              )}
+              {errors.customer_phone ? <p className="mt-1 text-xs text-rose-600">{errors.customer_phone}</p> : null}
+            </div>
+            <div>
+              <FieldLabel>Alternate Phone</FieldLabel>
+              <input type="tel" name="customer_alternate_phone" value={formData.customer_alternate_phone} onChange={handleChange} className={fieldCls()} maxLength={10} />
+            </div>
+            <div>
+              <FieldLabel>Email</FieldLabel>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input type="email" name="customer_email" value={formData.customer_email} onChange={handleChange} className={`${fieldCls()} pl-9`} />
               </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  name="customer_email"
-                  value={formData.customer_email}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Pincode <span className="text-red-500">*</span>
-                </label>
+            </div>
+            <div>
+              <FieldLabel required>Pincode</FieldLabel>
+              <div className="relative">
+                <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   name="pincode"
@@ -870,580 +997,405 @@ export default function CrmLeadEditForm({
                     }));
                     if (pin.length === 6) void resolveCityFromPincode(pin);
                   }}
-                  className={`input text-xs sm:text-sm ${errors.pincode ? 'border-red-500' : ''}`}
+                  className={`${fieldCls(Boolean(errors.pincode))} pl-9`}
                   maxLength={6}
                   inputMode="numeric"
                 />
-                {resolvingCity ? (
-                  <p className="mt-1 text-xs text-slate-500">Finding city…</p>
-                ) : formData.city ? (
-                  <p className="mt-1 text-xs font-semibold text-[#004AAD]">{formData.city}</p>
-                ) : formData.pincode.length === 6 ? (
-                  <p className="mt-1 text-xs text-amber-600">City not found for this pincode</p>
-                ) : null}
-                {errors.pincode || errors.city_id ? (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">
-                    {errors.pincode || errors.city_id}
-                  </p>
-                ) : null}
               </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Flat / Building
-                </label>
-                <input
-                  type="text"
-                  name="flat_number"
-                  value={formData.flat_number}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  placeholder="Flat / house no."
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Area / Street <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="area"
-                  value={formData.area}
-                  onChange={handleChange}
-                  className={`input text-xs sm:text-sm ${errors.area ? 'border-red-500' : ''}`}
-                  placeholder="Society, road, locality"
-                />
-                {errors.area && (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.area}</p>
-                )}
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Landmark
-                </label>
-                <input
-                  type="text"
-                  name="landmark"
-                  value={formData.landmark}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  placeholder="Near …"
-                />
-              </div>
+              {resolvingCity ? (
+                <p className="mt-1 text-xs text-slate-500">Finding city…</p>
+              ) : formData.city ? (
+                <p className="mt-1 text-xs font-semibold text-[#004AAD]">{formData.city}</p>
+              ) : formData.pincode.length === 6 ? (
+                <p className="mt-1 text-xs text-amber-600">City not found for this pincode</p>
+              ) : null}
+              {errors.pincode || errors.city_id ? (
+                <p className="mt-1 text-xs text-rose-600">{errors.pincode || errors.city_id}</p>
+              ) : null}
+            </div>
+            <div>
+              <FieldLabel>Flat / Building</FieldLabel>
+              <input type="text" name="flat_number" value={formData.flat_number} onChange={handleChange} className={fieldCls()} placeholder="Flat / house no." />
+            </div>
+            <div>
+              <FieldLabel required>Area / Street</FieldLabel>
+              <input type="text" name="area" value={formData.area} onChange={handleChange} className={fieldCls(Boolean(errors.area))} placeholder="Society, road, locality" />
+              {errors.area ? <p className="mt-1 text-xs text-rose-600">{errors.area}</p> : null}
+            </div>
+            <div>
+              <FieldLabel>Landmark</FieldLabel>
+              <input type="text" name="landmark" value={formData.landmark} onChange={handleChange} className={fieldCls()} placeholder="Near …" />
             </div>
           </div>
+        </SectionCard>
 
-          {/* Lead Overview — no lead source / UTM for telecaller CRM */}
-          <div className="border-t pt-4 sm:pt-5 md:pt-6">
-            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <FileText className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span>Lead Overview</span>
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Lead Number
-                </label>
-                <input
-                  type="text"
-                  value={lead.lead_number || '—'}
-                  disabled
-                  className="input text-xs sm:text-sm bg-slate-50 text-slate-600"
-                />
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Priority
-                </label>
-                <select
-                  name="lead_priority"
-                  value={formData.lead_priority}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                >
-                  <option value="NORMAL">NORMAL</option>
-                  <option value="HIGH">HIGH</option>
-                  <option value="URGENT">URGENT</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Created
-                </label>
-                <input
-                  type="text"
-                  value={
-                    lead.created_at
-                      ? new Date(lead.created_at).toLocaleString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : '—'
-                  }
-                  disabled
-                  className="input text-xs sm:text-sm bg-slate-50 text-slate-600"
-                />
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Activity / Disposition
-                </label>
-                <select
-                  name="activity_result"
-                  value={formData.activity_result}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                >
-                  {ACTIVITY_OPTIONS.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
+        <SectionCard title="Lead Overview" icon={FileText} tone="slate">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div>
+              <FieldLabel>Lead Number</FieldLabel>
+              <input type="text" value={lead.lead_number || '—'} disabled className={fieldCls(false, true)} />
+            </div>
+            <div>
+              <FieldLabel>Priority</FieldLabel>
+              <select name="lead_priority" value={formData.lead_priority} onChange={handleChange} className={fieldCls()}>
+                <option value="NORMAL">NORMAL</option>
+                <option value="HIGH">HIGH</option>
+                <option value="URGENT">URGENT</option>
+              </select>
+            </div>
+            <div>
+              <FieldLabel>Created</FieldLabel>
+              <input
+                type="text"
+                value={
+                  lead.created_at
+                    ? new Date(lead.created_at).toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '—'
+                }
+                disabled
+                className={fieldCls(false, true)}
+              />
+            </div>
+            <div>
+              <FieldLabel>Activity / Disposition</FieldLabel>
+              <select name="activity_result" value={formData.activity_result} onChange={handleChange} className={fieldCls()}>
+                {ACTIVITY_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            {formData.activity_result === 'LOST' ? (
+              <div className="sm:col-span-2">
+                <FieldLabel>Lost Reason</FieldLabel>
+                <select name="lost_reason" value={formData.lost_reason} onChange={handleChange} className={fieldCls()}>
+                  <option value="">Select reason</option>
+                  {LOST_REASONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
               </div>
-              {formData.activity_result === 'LOST' ? (
-                <div className="sm:col-span-2">
-                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                    Lost Reason
-                  </label>
-                  <select
-                    name="lost_reason"
-                    value={formData.lost_reason}
+            ) : null}
+            {formData.activity_result === 'CALLBACK' ? (
+              <>
+                <div>
+                  <FieldLabel required>Follow-up date</FieldLabel>
+                  <input
+                    type="date"
+                    name="callback_date"
+                    value={formData.callback_date}
                     onChange={handleChange}
-                    className="input text-xs sm:text-sm"
-                  >
-                    <option value="">Select reason</option>
-                    {LOST_REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
+                    className={fieldCls(Boolean(errors.callback_date))}
+                  />
+                  {errors.callback_date ? (
+                    <p className="mt-1 text-xs text-rose-600">{errors.callback_date}</p>
+                  ) : null}
+                </div>
+                <div>
+                  <FieldLabel required>Follow-up time</FieldLabel>
+                  <input
+                    type="time"
+                    name="callback_time"
+                    value={formData.callback_time}
+                    onChange={handleChange}
+                    className={fieldCls(Boolean(errors.callback_time))}
+                  />
+                  {errors.callback_time ? (
+                    <p className="mt-1 text-xs text-rose-600">{errors.callback_time}</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+            <div className="col-span-2 lg:col-span-4">
+              <FieldLabel>Remarks</FieldLabel>
+              <textarea name="activity_notes" value={formData.activity_notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Call notes / remarks for this lead" />
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Vehicle Details" icon={Car} tone="sky">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="col-span-2 lg:col-span-1">
+              <FieldLabel required>Vehicle Number</FieldLabel>
+              <input
+                type="text"
+                name="vehicle_number"
+                value={formData.vehicle_number}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicle_number: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12),
+                  }))
+                }
+                className={`${fieldCls(Boolean(errors.vehicle_number))} uppercase tracking-wide font-semibold`}
+                placeholder="MH12AB1234 or NA"
+              />
+              {errors.vehicle_number ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_number}</p> : null}
+            </div>
+            <div className="col-span-2 lg:col-span-3">
+              <CrmCarSearch
+                label="Car Model *"
+                placeholder="Type model (e.g. Swift, City, Rapid)"
+                displayValue={carDisplay}
+                onSelect={(car) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicle_make: car.make,
+                    vehicle_model: car.model,
+                    model_id: car.id,
+                    vehicle_variant: '',
+                    vehicle_class: car.vehicleClass || '',
+                  }));
+                  setCarDisplay([car.make, car.model].filter(Boolean).join(' '));
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.vehicle_make;
+                    delete next.model_id;
+                    return next;
+                  });
+                }}
+                onClear={() => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicle_make: '',
+                    vehicle_model: '',
+                    model_id: '',
+                    vehicle_class: '',
+                  }));
+                  setCarDisplay('');
+                }}
+              />
+              {errors.vehicle_make ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_make}</p> : null}
+            </div>
+            <div>
+              <FieldLabel>Year</FieldLabel>
+              <input type="number" name="vehicle_year" value={formData.vehicle_year} onChange={handleChange} className={fieldCls()} min="1900" max={new Date().getFullYear() + 1} />
+            </div>
+            <div>
+              <FieldLabel required>Fuel Type</FieldLabel>
+              <select name="vehicle_fuel_type" value={formData.vehicle_fuel_type} onChange={handleChange} className={fieldCls(Boolean(errors.vehicle_fuel_type))}>
+                <option value="PETROL">Petrol</option>
+                <option value="DIESEL">Diesel</option>
+                <option value="CNG">CNG</option>
+                <option value="ELECTRIC">Electric</option>
+                <option value="HYBRID">Hybrid</option>
+              </select>
+              {errors.vehicle_fuel_type ? <p className="mt-1 text-xs text-rose-600">{errors.vehicle_fuel_type}</p> : null}
+            </div>
+            <div>
+              <FieldLabel>Odometer (km)</FieldLabel>
+              <input type="number" name="odometer_km" value={formData.odometer_km} onChange={handleChange} className={fieldCls()} />
+            </div>
+            <div>
+              <FieldLabel>Make / Model</FieldLabel>
+              <input
+                type="text"
+                value={[formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ') || '—'}
+                disabled
+                className={fieldCls(false, true)}
+              />
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Service Details" icon={Wrench} tone="amber">
+          <div className="space-y-4">
+            <CrmServicePlanPicker
+              selectedIds={formData.service_types}
+              onChange={(ids) => {
+                setFormData((prev) => ({ ...prev, service_types: ids }));
+                if (errors.service_types) {
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.service_types;
+                    return next;
+                  });
+                }
+              }}
+              title="Service Types"
+              subtitle="Segregated by category — Periodic, Engine, AC, Brake, Battery…"
+            />
+            {errors.service_types ? <p className="text-xs text-rose-600">{errors.service_types}</p> : null}
+
+            {SHOW_SERVICE_ADDONS && (
+              <div>
+                <FieldLabel>Service Add-ons (Optional)</FieldLabel>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {serviceAddons.map((addon) => (
+                    <label key={addon.id} className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3 hover:border-[#023D95]/40 cursor-pointer transition">
+                      <input type="checkbox" checked={formData.service_addons.includes(addon.id)} onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)} className="mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm text-slate-900">{addon.name}</div>
+                        {addon.price ? <div className="text-xs font-bold text-[#023D95] mt-0.5">₹{addon.price}</div> : null}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <FieldLabel>Coupons</FieldLabel>
+                <button type="button" className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-200" onClick={saveCouponsOnly} disabled={couponSaving}>
+                  {couponSaving ? 'Saving…' : 'Save coupons'}
+                </button>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 max-h-44 overflow-auto">
+                {couponsLoading ? (
+                  <div className="text-xs text-slate-500 p-2">Loading coupons…</div>
+                ) : availableCoupons.length === 0 ? (
+                  <div className="text-xs text-slate-500 p-2">{couponsError ? `Unable to load coupons: ${couponsError}` : 'No active coupons available.'}</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {availableCoupons.map((c) => {
+                      const code = String(c.code || '').toUpperCase();
+                      const label =
+                        c.coupon_kind === 'TOTAL_DISCOUNT'
+                          ? `${code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
+                          : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
+                      const checked = selectedCodes.includes(code);
+                      return (
+                        <label key={c.id} className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${checked ? 'bg-blue-50 text-[#023D95]' : 'hover:bg-slate-50 text-slate-800'}`}>
+                          <input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => { if (e.target.checked) addCouponCode(code); else removeCouponCode(code); }} />
+                          <span className="font-medium">{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <input className={`${fieldCls()} flex-1`} placeholder="Add coupon code manually" value={manualCoupon} onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())} />
+                <button type="button" className="rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50" onClick={() => { addCouponCode(manualCoupon); setManualCoupon(''); }} disabled={!manualCoupon.trim()}>Add</button>
+              </div>
+              {selectedCodes.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCodes.map((code) => (
+                      <button key={code} type="button" className="text-xs px-2.5 py-1 rounded-full bg-[#023D95]/10 text-[#023D95] font-bold hover:bg-[#023D95]/15" onClick={() => removeCouponCode(code)}>{code} ×</button>
                     ))}
+                  </div>
+                  <select className={fieldCls()} value={appliedCoupon} onChange={(e) => setAppliedCoupon(e.target.value)}>
+                    <option value="">Applied coupon (optional)</option>
+                    {selectedCodes.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
+                  <button type="button" className="w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50" onClick={() => { setCouponCodes([]); setAppliedCoupon(''); setManualCoupon(''); }}>Clear all coupons</button>
                 </div>
               ) : null}
-              <div className="sm:col-span-2">
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Remarks
-                </label>
-                <textarea
-                  name="activity_notes"
-                  value={formData.activity_notes}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  rows={2}
-                  placeholder="Call notes / remarks for this lead"
-                />
+            </div>
+
+            <div>
+              <FieldLabel>Customer Message</FieldLabel>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-800 whitespace-pre-wrap min-h-[4.5rem]">
+                {formData.problem_description?.trim() || (
+                  <span className="text-slate-400">No customer message</span>
+                )}
               </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Read-only — customer enquiry text (WhatsApp number / trigger hidden).
+              </p>
             </div>
           </div>
+        </SectionCard>
 
-                    {/* Vehicle Details */}
-          <div className="border-t pt-4 sm:pt-5 md:pt-6">
-            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <Car className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span>Vehicle Details</span>
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Vehicle Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="vehicle_number"
-                  value={formData.vehicle_number}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      vehicle_number: e.target.value
-                        .replace(/[^A-Za-z0-9]/g, '')
-                        .toUpperCase()
-                        .slice(0, 12),
-                    }))
-                  }
-                  className={`input text-xs sm:text-sm uppercase ${errors.vehicle_number ? 'border-red-500' : ''}`}
-                  placeholder="MH12AB1234 or NA"
-                />
-                {errors.vehicle_number && (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.vehicle_number}</p>
-                )}
-              </div>
-
-              <div className="sm:col-span-2">
-                <CrmCarSearch
-                  label="Car Model *"
-                  placeholder="Type model (e.g. Swift, City, Rapid)"
-                  displayValue={carDisplay}
-                  onSelect={(car) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      vehicle_make: car.make,
-                      vehicle_model: car.model,
-                      model_id: car.id,
-                      vehicle_variant: '',
-                      vehicle_class: car.vehicleClass || '',
-                    }));
-                    setCarDisplay([car.make, car.model].filter(Boolean).join(' '));
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.vehicle_make;
-                      delete next.model_id;
-                      return next;
-                    });
-                  }}
-                  onClear={() => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      vehicle_make: '',
-                      vehicle_model: '',
-                      model_id: '',
-                      vehicle_class: '',
-                    }));
-                    setCarDisplay('');
-                  }}
-                />
-                {errors.vehicle_make && (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.vehicle_make}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Year
-                </label>
-                <input
-                  type="number"
-                  name="vehicle_year"
-                  value={formData.vehicle_year}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  min="1900"
-                  max={new Date().getFullYear() + 1}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Fuel Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="vehicle_fuel_type"
-                  value={formData.vehicle_fuel_type}
-                  onChange={handleChange}
-                  className={`input text-xs sm:text-sm ${errors.vehicle_fuel_type ? 'border-red-500' : ''}`}
-                >
-                  <option value="PETROL">Petrol</option>
-                  <option value="DIESEL">Diesel</option>
-                  <option value="CNG">CNG</option>
-                  <option value="ELECTRIC">Electric</option>
-                  <option value="HYBRID">Hybrid</option>
-                </select>
-                {errors.vehicle_fuel_type && (
-                  <p className="mt-1 text-xs sm:text-sm text-red-500">{errors.vehicle_fuel_type}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Odometer (km)
-                </label>
-                <input
-                  type="number"
-                  name="odometer_km"
-                  value={formData.odometer_km}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-
-          {/* Service Details */}
-          <div className="border-t pt-4 sm:pt-5 md:pt-6">
-            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <Wrench className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span>Service Details</span>
-            </h2>
-            <div className="space-y-4 sm:space-y-5 md:space-y-6">
-              {/* Category tabs: Periodic / Engine / AC / Brake / … (mobile parity) */}
-              <CrmServicePlanPicker
-                selectedIds={formData.service_types}
-                onChange={(ids) => {
-                  setFormData((prev) => ({ ...prev, service_types: ids }));
-                  if (errors.service_types) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.service_types;
-                      return next;
-                    });
-                  }
-                }}
-                title="Service Types"
-                subtitle="Segregated by category — Periodic, Engine, AC, Brake, Battery…"
-              />
-              {errors.service_types && (
-                <p className="text-xs sm:text-sm text-red-500">{errors.service_types}</p>
-              )}
-
-              {/* Service Add-ons */}
-              {SHOW_SERVICE_ADDONS && (
+        <SectionCard title="Pickup Details" icon={Calendar} tone="violet">
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 rounded-xl border border-violet-200 bg-white px-4 py-3 cursor-pointer hover:bg-violet-50/50 transition">
+              <input type="checkbox" name="pickup_required" checked={formData.pickup_required} onChange={handleChange} className="h-4 w-4 rounded border-slate-300 text-[#023D95]" />
+              <span className="text-sm font-bold text-slate-800">Pickup required</span>
+            </label>
+            {formData.pickup_required ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-2 sm:mb-3">
-                    Service Add-ons (Optional)
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                    {serviceAddons.map(addon => (
-                      <label key={addon.id} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.service_addons.includes(addon.id)}
-                          onChange={(e) => handleMultiSelect('service_addons', addon.id, e.target.checked)}
-                          className="mt-0.5 sm:mt-1 flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-xs sm:text-sm text-text-heading">{addon.name}</div>
-                          {addon.price && (
-                            <div className="text-xs sm:text-sm text-brand-primary mt-0.5">₹{addon.price}</div>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Coupons */}
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
-                  <label className="block text-xs sm:text-sm font-medium text-text-body">
-                    Coupons (select multiple)
-                  </label>
-                  <button
-                    type="button"
-                    className="btn btn-secondary text-xs sm:text-sm"
-                    onClick={saveCouponsOnly}
-                    disabled={couponSaving}
-                    title="Save coupon changes"
-                  >
-                    {couponSaving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-
-                <div className="border rounded-lg p-2 max-h-44 overflow-auto bg-white">
-                  {couponsLoading ? (
-                    <div className="text-xs text-gray-600 p-2">Loading coupons…</div>
-                  ) : availableCoupons.length === 0 ? (
-                    <div className="text-xs text-gray-500 p-2">
-                      {couponsError ? `Unable to load coupons: ${couponsError}` : 'No active coupons available.'}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {availableCoupons.map((c) => {
-                        const code = String(c.code || '').toUpperCase();
-                        const label =
-                          c.coupon_kind === 'TOTAL_DISCOUNT'
-                            ? `${code} — ${c.discount_mode === 'PERCENT' ? `${c.discount_value}% off` : `₹${c.discount_value} off`}${c.min_order_value ? ` (min ₹${c.min_order_value})` : ''}`
-                            : `${code} — Free Service${c.target_custom_label ? ` (${c.target_custom_label})` : ''}`;
-                        const checked = selectedCodes.includes(code);
-                        return (
-                          <label key={c.id} className="flex items-start gap-2 text-xs sm:text-sm cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={checked}
-                              onChange={(e) => {
-                                if (e.target.checked) addCouponCode(code);
-                                else removeCouponCode(code);
-                              }}
-                            />
-                            <span className="text-gray-800">{label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-2 mt-2">
+                  <FieldLabel>Flat / Building</FieldLabel>
                   <input
-                    className="input text-xs sm:text-sm flex-1"
-                    placeholder="Add coupon code manually"
-                    value={manualCoupon}
-                    onChange={(e) => setManualCoupon((e.target.value || '').toUpperCase())}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-secondary text-xs sm:text-sm"
-                    onClick={() => {
-                      addCouponCode(manualCoupon);
-                      setManualCoupon('');
-                    }}
-                    disabled={!manualCoupon.trim()}
-                  >
-                    Add
-                  </button>
-                </div>
-
-                {selectedCodes.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    <div className="text-[11px] text-gray-600">Selected: {selectedCodes.join(', ')}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCodes.map((code) => (
-                        <button
-                          key={code}
-                          type="button"
-                          className="text-xs px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200"
-                          onClick={() => removeCouponCode(code)}
-                          title="Remove"
-                        >
-                          {code} ×
-                        </button>
-                      ))}
-                    </div>
-                    <select
-                      className="input text-xs sm:text-sm"
-                      value={appliedCoupon}
-                      onChange={(e) => setAppliedCoupon(e.target.value)}
-                    >
-                      <option value="">Applied coupon (optional)</option>
-                      {selectedCodes.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="btn btn-secondary text-xs sm:text-sm w-full"
-                      onClick={() => {
-                        setCouponCodes([]);
-                        setAppliedCoupon('');
-                        setManualCoupon('');
-                      }}
-                    >
-                      Clear all coupons
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Customer message only — WhatsApp / Trigger / number never shown */}
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Customer Message
-                </label>
-                <textarea
-                  name="problem_description"
-                  value={formData.problem_description}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  rows={3}
-                  placeholder="Customer enquiry message"
-                />
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Only the customer message is shown — WhatsApp number and trigger are hidden.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Pickup Details */}
-          <div className="border-t pt-4 sm:pt-5 md:pt-6">
-            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2">
-              <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span>Pickup Details</span>
-            </h2>
-            <div className="space-y-3 sm:space-y-4">
-              <div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="pickup_required"
-                    checked={formData.pickup_required}
+                    type="text"
+                    name="pickup_flat"
+                    value={formData.pickup_flat}
                     onChange={handleChange}
-                    className="w-4 h-4 text-brand-primary flex-shrink-0"
+                    className={fieldCls()}
+                    placeholder="Flat / house no."
                   />
-                  <span className="text-xs sm:text-sm font-medium">Pickup Required</span>
-                </label>
-              </div>
-
-              {formData.pickup_required && (
+                </div>
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                    Pickup Address
-                  </label>
-                  <textarea
-                    name="pickup_address"
-                    value={formData.pickup_address}
+                  <FieldLabel>Area / Street</FieldLabel>
+                  <input
+                    type="text"
+                    name="pickup_area"
+                    value={formData.pickup_area}
                     onChange={handleChange}
-                    className="input text-xs sm:text-sm"
-                    rows={2}
-                    placeholder="Enter pickup address or leave blank to use customer address"
+                    className={fieldCls()}
+                    placeholder="Society, road, locality"
                   />
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Additional Info */}
-          <div className="border-t pt-4 sm:pt-5 md:pt-6">
-            <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">
-              Additional Information
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-              <div className="sm:col-span-2">
-                <label className="block text-xs sm:text-sm font-medium text-text-body mb-1.5 sm:mb-2">
-                  Notes
-                </label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  className="input text-xs sm:text-sm"
-                  rows={3}
-                  placeholder="Any additional notes or comments"
-                />
+                <div>
+                  <FieldLabel>Landmark</FieldLabel>
+                  <input
+                    type="text"
+                    name="pickup_landmark"
+                    value={formData.pickup_landmark}
+                    onChange={handleChange}
+                    className={fieldCls()}
+                    placeholder="Near …"
+                  />
+                </div>
+                <div className="hidden lg:block" />
+                <div>
+                  <FieldLabel>Pickup Date</FieldLabel>
+                  <input
+                    type="date"
+                    name="pickup_date"
+                    value={formData.pickup_date}
+                    onChange={handleChange}
+                    className={fieldCls()}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Pickup Time</FieldLabel>
+                  <input
+                    type="time"
+                    name="pickup_time"
+                    value={formData.pickup_time}
+                    onChange={handleChange}
+                    className={fieldCls()}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[11px] text-slate-500 pt-6">
+                    Leave area blank to reuse customer address area. Date + time save as preferred slot.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
+        </SectionCard>
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-5 md:pt-6 border-t">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="btn btn-outline flex-1 sm:flex-none text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-            >
-              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-              Cancel
+        <SectionCard title="Additional Information" icon={FileText} tone="indigo">
+          <div>
+            <FieldLabel>Notes</FieldLabel>
+            <textarea name="notes" value={formData.notes} onChange={handleChange} className={fieldCls()} rows={3} placeholder="Any additional notes or comments" />
+          </div>
+        </SectionCard>
+
+        <div className="fixed bottom-0 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 py-3 sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]">
+          <div className="mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3">
+            <button type="button" onClick={handleCancel} className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+              <X className="w-4 h-4" /> Cancel
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="btn btn-primary flex-1 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-            >
-              {saving ? (
-                <>
-                  <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-4 sm:w-4 border-b-2 border-white mr-1.5 sm:mr-2"></div>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                  Save Changes
-                </>
-              )}
+            <button type="submit" disabled={saving} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
+              {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}
             </button>
           </div>
-        </form>
-      </div>
-    
+        </div>
+      </form>
+    </div>
   );
 }
+
 

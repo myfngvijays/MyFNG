@@ -54,6 +54,7 @@ const STATUS_FILTERS = [
   { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
+  { id: 'callback', label: 'Follow-up' },
   { id: 'booking_confirmed', label: 'Booking confirmed' },
   { id: 'in_service', label: 'In Service' },
   { id: 'service_done', label: 'Service Done' },
@@ -75,6 +76,7 @@ const LOST_REASON_FILTERS = [
 function shortLeadStatusLabel(label: string): string {
   const s = String(label || '').trim();
   if (/^lost\b/i.test(s)) return 'Lost';
+  if (/^callback\b/i.test(s)) return 'Follow-up';
   return s;
 }
 
@@ -87,6 +89,7 @@ function leadDisplayStatus(lead: any): string {
   const mapResult: Record<string, string> = {
     INTERESTED: 'Interested',
     WILL_VISIT: 'He will visit',
+    CALLBACK: 'Follow-up',
     BOOKING_CONFIRMED: 'Booking confirmed',
     IN_SERVICE: 'In Service',
     SERVICE_DONE: 'Service Done',
@@ -136,6 +139,9 @@ function leadStatusCardColors(label: string): {
   }
   if (s.includes('WILL VISIT')) {
     return { cardBg: '#F5F3FF', border: '#DDD6FE', badgeBg: '#EDE9FE', badgeText: '#6D28D9' };
+  }
+  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) {
+    return { cardBg: '#F0F9FF', border: '#BAE6FD', badgeBg: '#E0F2FE', badgeText: '#0369A1' };
   }
   if (s.includes('INTERESTED')) {
     return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
@@ -227,6 +233,7 @@ export default function CrmQueueTab({
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
     } catch (e) {
       console.error('queue load failed', e);
+      setLeads([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

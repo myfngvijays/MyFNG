@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, Search, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Check, Loader2, Search, X, ListChecks } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export type CrmServiceItem = {
@@ -9,6 +10,12 @@ export type CrmServiceItem = {
   name: string;
   description?: string | null;
   category: string;
+};
+
+type ChecklistTpl = {
+  title?: string;
+  points?: number;
+  items: string[];
 };
 
 type Props = {
@@ -65,6 +72,20 @@ function getOilTypeForPlan(name: string, description = ''): 'semi' | 'full' | 'u
   return 'unknown';
 }
 
+function normalizeChecklistItems(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((it) => {
+      if (typeof it === 'string') return it.trim();
+      if (it && typeof it === 'object') {
+        const o = it as Record<string, unknown>;
+        return String(o.title || o.name || o.label || o.item || '').trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
 export default function CrmServicePlanPicker({
   selectedIds,
   onChange,
@@ -73,9 +94,20 @@ export default function CrmServicePlanPicker({
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [allServices, setAllServices] = useState<CrmServiceItem[]>([]);
+  const [checklists, setChecklists] = useState<Record<string, ChecklistTpl>>({});
   const [selectedCategory, setSelectedCategory] = useState('');
   const [oilType, setOilType] = useState<'semi' | 'full'>('semi');
   const [search, setSearch] = useState('');
+  const [pointsModal, setPointsModal] = useState<{
+    name: string;
+    title?: string;
+    items: string[];
+  } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,16 +128,42 @@ export default function CrmServicePlanPicker({
         (cats || []).forEach((c: any) => {
           if (c.uuid && c.category) categoryMap[String(c.uuid)] = String(c.category).toUpperCase();
         });
-        setAllServices(
-          (rows || []).map((s: any) => ({
-            id: String(s.id),
-            name: String(s.name || ''),
-            description: s.description,
-            category: s.category_uuid
-              ? categoryMap[String(s.category_uuid)] || 'OTHER SERVICES'
-              : 'OTHER SERVICES',
-          })),
-        );
+        const services = (rows || []).map((s: any) => ({
+          id: String(s.id),
+          name: String(s.name || ''),
+          description: s.description,
+          category: s.category_uuid
+            ? categoryMap[String(s.category_uuid)] || 'OTHER SERVICES'
+            : 'OTHER SERVICES',
+        }));
+        setAllServices(services);
+
+        try {
+          const ids = services.map((s) => s.id).filter(Boolean);
+          if (ids.length) {
+            const { data: tplRows, error: tplError } = await supabase
+              .from('service_type_checklist_templates')
+              .select('service_type_id, title, points, checklist_items')
+              .in('service_type_id', ids);
+            if (!cancelled && !tplError && tplRows) {
+              const map: Record<string, ChecklistTpl> = {};
+              (tplRows as any[]).forEach((r) => {
+                const sid = String(r?.service_type_id || '');
+                const items = normalizeChecklistItems(r?.checklist_items);
+                if (sid && items.length) {
+                  map[sid] = {
+                    title: r?.title ? String(r.title) : undefined,
+                    points: typeof r?.points === 'number' ? r.points : items.length,
+                    items,
+                  };
+                }
+              });
+              setChecklists(map);
+            }
+          }
+        } catch {
+          /* checklist table optional */
+        }
       } catch {
         if (!cancelled) setAllServices([]);
       } finally {
@@ -138,7 +196,6 @@ export default function CrmServicePlanPicker({
     }
   }, [categories, selectedCategory]);
 
-  // Prefer category that already has a selected plan
   useEffect(() => {
     if (!selectedIds.length || !categories.length) return;
     const selectedCats = new Set(
@@ -189,6 +246,18 @@ export default function CrmServicePlanPicker({
   const toggle = (id: string) => {
     if (selectedIds.includes(id)) onChange(selectedIds.filter((x) => x !== id));
     else onChange([...selectedIds, id]);
+  };
+
+  const openPoints = (service: CrmServiceItem, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const tpl = checklists[service.id];
+    if (!tpl?.items?.length) return;
+    setPointsModal({
+      name: service.name,
+      title: tpl.title,
+      items: tpl.items,
+    });
   };
 
   return (
@@ -320,39 +389,104 @@ export default function CrmServicePlanPicker({
             ) : (
               servicesInCategory.map((service) => {
                 const selected = selectedIds.includes(service.id);
+                const tpl = checklists[service.id];
+                const pointsCount = tpl?.points || tpl?.items?.length || 0;
                 return (
-                  <label
+                  <div
                     key={service.id}
-                    className={`flex items-start gap-2 sm:gap-3 p-3 sm:p-4 border rounded-lg cursor-pointer transition ${
+                    className={`flex flex-col gap-2 p-3 sm:p-4 border rounded-lg transition ${
                       selected
                         ? 'border-brand-primary bg-blue-50/50'
                         : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggle(service.id)}
-                      className="mt-0.5 sm:mt-1 flex-shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-xs sm:text-sm text-text-heading flex items-center gap-1.5">
-                        {service.name}
-                        {selected ? <Check className="w-3.5 h-3.5 text-brand-primary shrink-0" /> : null}
-                      </div>
-                      {service.description ? (
-                        <div className="text-xs sm:text-sm text-text-body mt-0.5 line-clamp-2">
-                          {service.description}
+                    <label className="flex items-start gap-2 sm:gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggle(service.id)}
+                        className="mt-0.5 sm:mt-1 flex-shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-xs sm:text-sm text-text-heading flex items-center gap-1.5">
+                          {service.name}
+                          {selected ? (
+                            <Check className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                  </label>
+                        {service.description ? (
+                          <div className="text-xs sm:text-sm text-text-body mt-0.5 line-clamp-2">
+                            {service.description}
+                          </div>
+                        ) : null}
+                      </div>
+                    </label>
+                    {tpl?.items?.length ? (
+                      <button
+                        type="button"
+                        onClick={(e) => openPoints(service, e)}
+                        className="inline-flex items-center justify-center gap-1.5 self-start rounded-lg border border-[#023D95]/25 bg-white px-2.5 py-1.5 text-[11px] font-bold text-[#023D95] hover:bg-blue-50"
+                      >
+                        <ListChecks className="h-3.5 w-3.5" />
+                        View all points{pointsCount ? ` (${pointsCount})` : ''}
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })
             )}
           </div>
         </>
       )}
+
+      {mounted &&
+        pointsModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/50"
+              aria-label="Close points"
+              onClick={() => setPointsModal(null)}
+            />
+            <div className="relative z-10 flex max-h-[80vh] w-full sm:max-w-xl flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Checkpoints
+                  </p>
+                  <h3 className="text-base font-black text-[#023D95] truncate">
+                    {pointsModal.title || pointsModal.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {pointsModal.items.length} points included
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPointsModal(null)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5">
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {pointsModal.items.map((item, idx) => (
+                    <li
+                      key={`${idx}-${item.slice(0, 24)}`}
+                      className="flex items-start gap-2 rounded-lg bg-emerald-50/60 px-2.5 py-1.5 text-xs sm:text-sm text-slate-800"
+                    >
+                      <span className="mt-0.5 shrink-0 font-bold text-emerald-700">✔</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

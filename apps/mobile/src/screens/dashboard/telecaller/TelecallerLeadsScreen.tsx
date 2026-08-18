@@ -372,7 +372,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           color={COLORS.blue}
         />
         <FilterChip
-          label="Callback"
+          label="Follow-up"
           active={activeFilter === 'callback'}
           onPress={() => setActiveFilter('callback')}
           color={COLORS.orange}

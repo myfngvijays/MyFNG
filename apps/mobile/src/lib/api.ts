@@ -17,6 +17,11 @@ export async function apiFetch<T = JsonValue>(
   try {
     const { data: { session } } = await supabase.auth.getSession();
     bearerToken = session?.access_token;
+    // Stale/missing access token — try one refresh before failing auth
+    if (!bearerToken) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      bearerToken = refreshed.session?.access_token;
+    }
   } catch {
     bearerToken = undefined;
   }
@@ -50,6 +55,14 @@ export async function apiFetch<T = JsonValue>(
   const res = await fetch(`${ENV.API_URL}${path}`, {
     ...options,
     headers,
+  }).catch((err: unknown) => {
+    const raw = String((err as Error)?.message || err || '');
+    if (/network request failed|failed to fetch|networkerror|timed?\s*out/i.test(raw)) {
+      throw new Error(
+        'Could not reach the server. Check your internet connection and try again.',
+      );
+    }
+    throw err instanceof Error ? err : new Error(raw || 'Request failed');
   });
 
   const text = await res.text().catch(() => '');

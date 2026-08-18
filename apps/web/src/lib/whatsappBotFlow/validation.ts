@@ -5,6 +5,8 @@ export type BotFlowNodeType =
   | 'condition'
   | 'api_request'
   | 'handoff'
+  | 'delay'
+  | 'update_lead'
   | 'end';
 
 export type BotFlowNode = {
@@ -22,6 +24,9 @@ export type BotFlowNode = {
     handoffNote?: string;
     nodeType?: string;
     mustTerminate?: boolean;
+    triggerEvent?: string;
+    delaySeconds?: number;
+    leadStatus?: string;
     [key: string]: unknown;
   };
 };
@@ -124,6 +129,13 @@ export function validateBotFlowGraph(input: unknown): FlowValidationResult {
         errors.push(
           `Template node "${node.data?.label || node.id}" requires ${expectedVars} mapped params, found ${mappedVars}.`
         );
+      }
+    }
+
+    if (node.type === 'delay') {
+      const secs = Number(node.data?.delaySeconds || 0);
+      if (!Number.isFinite(secs) || secs < 0) {
+        errors.push(`Delay node "${node.data?.label || node.id}" needs a valid delaySeconds (>= 0).`);
       }
     }
   }

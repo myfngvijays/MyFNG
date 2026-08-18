@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const ELIGIBLE_ROLES = new Set(['TELECALLER', 'RSA_MANAGER']);
+const ELIGIBLE_ROLES = new Set(['TELECALLER', 'RSA_MANAGER', 'LEAD_MANAGER']);
 const SESSION_TTL_SECONDS = 120;
 
 export { SESSION_TTL_SECONDS };
@@ -42,7 +42,7 @@ export async function assertEligibleUser(supabase: SupabaseClient): Promise<{
   }
   const roleCode = String((profile.roles as any)?.role_code || '');
   if (!ELIGIBLE_ROLES.has(roleCode)) {
-    throw { status: 403, error: 'Forbidden: TELECALLER or RSA_MANAGER only' };
+    throw { status: 403, error: 'Forbidden: TELECALLER, LEAD_MANAGER or RSA_MANAGER only' };
   }
   return { user, profile, roleCode };
 }

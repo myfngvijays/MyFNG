@@ -97,13 +97,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     if (searchParams.get('peers') === '1') {
-      const { data: role } = await supabase
+      const { supabaseAdmin } = getSupabaseAdmin();
+      const db: any = supabaseAdmin || supabase;
+
+      const { data: role } = await db
         .from('roles')
         .select('id')
         .eq('role_code', 'TELECALLER')
         .maybeSingle();
 
-      let query = supabase
+      let query = db
         .from('users_login')
         .select('id, full_name, phone, email, is_active')
         .eq('is_active', true)
@@ -111,7 +114,9 @@ export async function GET(request: NextRequest) {
         .limit(100);
 
       if (role?.id) query = query.eq('role_id', role.id);
-      if (profile?.id) query = query.neq('id', profile.id);
+      // Keep all telecallers for Lead Manager filter; peers for self still exclude me
+      const roleCode = String((profile as any)?.roles?.role_code || '').toUpperCase();
+      if (profile?.id && roleCode === 'TELECALLER') query = query.neq('id', profile.id);
 
       const { data } = await query;
       return NextResponse.json({ success: true, peers: data || [] });

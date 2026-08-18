@@ -1166,13 +1166,17 @@ async function checkTelecallerLeadWhatsApp(): Promise<HealthCheck> {
     }
 
     if (!templateStatus.canSendTemplate) {
+      const categoryNote =
+        templateStatus.metaCategory && templateStatus.metaCategory !== 'UTILITY'
+          ? ` Meta category is ${templateStatus.metaCategory} (need UTILITY).`
+          : '';
       return {
         name: 'Telecaller Lead WhatsApp',
         category: 'Notifications',
         status: 'degraded',
         responseTime: Date.now() - start,
         message: `Enabled but template ${templateStatus.metaStatus || 'missing'}`,
-        reason: `Create/approve Meta template ${TELECALLER_NEW_LEAD_TEMPLATE.template_name} before live alerts.`,
+        reason: `Create/approve Meta UTILITY template ${TELECALLER_NEW_LEAD_TEMPLATE.template_name} before live alerts.${categoryNote}`,
         quickFix: {
           label: 'Fix WhatsApp Alerts',
           action: 'internal-link',
@@ -1368,6 +1372,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/whatsapp-agents',
     '/api/cron/whatsapp-automation',
     '/api/cron/telecrm-push',
+    '/api/cron/notifications?task=followup_reminder',
   ];
 
   if (!cronSecret) {
@@ -1976,6 +1981,199 @@ function calculateHealthScore(checks: HealthCheck[]): number {
   return totalWeight > 0 ? Math.round((weightedScore / totalWeight) * 100) : 100;
 }
 
+async function checkWhatsAppWorkflows(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'WhatsApp Workflow Builder',
+      category: 'WhatsApp',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Cannot check (DB unavailable)',
+      reason: configError || 'No admin client',
+      quickFix: {
+        label: 'Open Workflow Builder',
+        action: 'external-link',
+        actionPayload: { url: '/dashboard/super_admin/whatsapp-workflows' },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { error: flowsErr } = await checkWithTimeout(() =>
+      client.from('bot_flows').select('id', { count: 'exact', head: true }),
+    );
+    if (flowsErr) {
+      return {
+        name: 'WhatsApp Workflow Builder',
+        category: 'WhatsApp',
+        status: 'down',
+        responseTime: Date.now() - start,
+        message: 'bot_flows table missing/unreadable',
+        reason: flowsErr.message,
+        quickFix: {
+          label: 'Open Bot Flow',
+          action: 'external-link',
+          actionPayload: { url: '/dashboard/super_admin/bot-flow' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const { error: runsErr } = await checkWithTimeout(() =>
+      client.from('bot_flow_runs').select('id', { count: 'exact', head: true }),
+    );
+    const responseTime = Date.now() - start;
+    if (runsErr && (/does not exist|42P01/i.test(String(runsErr.message || '')) || runsErr.code === '42P01')) {
+      return {
+        name: 'WhatsApp Workflow Builder',
+        category: 'WhatsApp',
+        status: 'degraded',
+        responseTime,
+        message: 'Flows OK — run migration 315 for executions',
+        reason: 'bot_flow_runs table missing. Apply database/315_whatsapp_workflow_builder.sql',
+        quickFix: {
+          label: 'Open Workflow Builder',
+          action: 'external-link',
+          actionPayload: { url: '/dashboard/super_admin/whatsapp-workflows' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    return {
+      name: 'WhatsApp Workflow Builder',
+      category: 'WhatsApp',
+      status: 'healthy',
+      responseTime,
+      message: 'Bot flows + execution log ready',
+      reason: 'Synced with admin Workflow Builder / Bot Flow canvas and inbound WhatsApp executor',
+      quickFix: {
+        label: 'Open Workflow Builder',
+        action: 'external-link',
+        actionPayload: { url: '/dashboard/super_admin/whatsapp-workflows' },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'WhatsApp Workflow Builder',
+      category: 'WhatsApp',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Workflow check failed',
+      reason: e?.message || 'Unknown error',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkTelecallerCallbackReminders(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'Telecaller Callback Reminders',
+      category: 'Operations',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Cannot check (DB unavailable)',
+      reason: configError || 'No admin client',
+      quickFix: {
+        label: 'Open Reminders',
+        action: 'external-link',
+        actionPayload: { url: '/dashboard/telecaller/followups' },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const nowIso = new Date().toISOString();
+    const { count, error } = await checkWithTimeout(() =>
+      client
+        .from('telecaller_follow_ups')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'PENDING')
+        .lt('scheduled_time', nowIso)
+        .eq('reminder_sent', false),
+    );
+
+    if (error) {
+      const msg = String(error.message || '');
+      if (/relation|does not exist|telecaller_follow_ups/i.test(msg)) {
+        return {
+          name: 'Telecaller Callback Reminders',
+          category: 'Operations',
+          status: 'degraded',
+          responseTime: Date.now() - start,
+          message: 'Follow-ups table missing',
+          reason: msg,
+          lastChecked: new Date().toISOString(),
+        };
+      }
+      return {
+        name: 'Telecaller Callback Reminders',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Could not query overdue reminders',
+        reason: msg,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const overdue = Number(count || 0);
+    const cronOk = Boolean(process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET);
+    if (!cronOk) {
+      return {
+        name: 'Telecaller Callback Reminders',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'CRON_SECRET missing — reminder cron cannot auth',
+        reason: 'Set CRON_SECRET for /api/cron/notifications?task=followup_reminder',
+        quickFix: {
+          label: 'Open Reminders',
+          action: 'external-link',
+          actionPayload: { url: '/dashboard/telecaller/followups' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    return {
+      name: 'Telecaller Callback Reminders',
+      category: 'Operations',
+      status: overdue > 25 ? 'degraded' : 'healthy',
+      responseTime: Date.now() - start,
+      message:
+        overdue > 0
+          ? `${overdue} overdue callback(s) without reminder_sent`
+          : 'Callback reminder cron wired (every 5 min)',
+      reason: overdue > 25 ? 'Many overdue unsent reminders — check cron logs' : undefined,
+      quickFix: {
+        label: 'Open Reminders',
+        action: 'external-link',
+        actionPayload: { url: '/dashboard/telecaller/followups' },
+      },
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'Telecaller Callback Reminders',
+      category: 'Operations',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Reminder check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -1996,10 +2194,12 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkAppAssociationFiles(),
     checkTelecallerLeadWhatsApp(),
     checkTelecallerCrmPermissions(),
+    checkTelecallerCallbackReminders(),
     checkRsaLeads(),
     checkOpenAI(),
     checkMisaAiMonitoring(),
     checkWhatsAppAgents(),
+    checkWhatsAppWorkflows(),
     checkGoogleMaps(),
     checkCronJobs(),
     checkFeatureCrons(),

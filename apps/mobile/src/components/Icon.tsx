@@ -102,8 +102,10 @@ const ICON_MAP: Record<string, IoniconsName> = {
   'car-sport': 'car-sport-outline',
   'wrench': 'construct-outline',
   'map-marker': 'location-outline',
+  'map-marker-radius': 'navigate-circle-outline',
   'map-pin': 'location-outline',
   'location': 'location-outline',
+  'location-on': 'location-outline',
   'navigation': 'navigate-outline',
   'compass': 'compass-outline',
   'city': 'business-outline',
@@ -118,6 +120,7 @@ const ICON_MAP: Record<string, IoniconsName> = {
   'calendar-check': 'calendar-outline',
   'calendar-today': 'calendar-outline',
   'clock': 'time-outline',
+  'clock-outline': 'time-outline',
   'time': 'time-outline',
   'timer': 'timer-outline',
   'stopwatch': 'stopwatch-outline',
@@ -148,6 +151,7 @@ const ICON_MAP: Record<string, IoniconsName> = {
   'help': 'help-circle-outline',
   'priority-high': 'flag-outline',
   'flag': 'flag-outline',
+  'flag-outline': 'flag-outline',
 
   // Files / docs
   'file': 'document-outline',
@@ -157,6 +161,11 @@ const ICON_MAP: Record<string, IoniconsName> = {
   'file-document-outline': 'document-text-outline',
   'file-export': 'download-outline',
   'clipboard': 'clipboard-outline',
+  'clipboard-text': 'clipboard-outline',
+  'clipboard-list': 'clipboard-outline',
+  'list': 'list-outline',
+  'pound': 'keypad-outline',
+  'hash': 'keypad-outline',
   'script-text-outline': 'reader-outline',
   'text': 'document-text-outline',
   'image': 'image-outline',
@@ -206,7 +215,11 @@ const ICON_MAP: Record<string, IoniconsName> = {
 function resolveIconName(name?: string): IoniconsName {
   if (!name) return 'help-circle-outline';
   if (ICON_MAP[name]) return ICON_MAP[name];
-  // Already a valid-looking ionicons name — try as-is
+  // Already a valid-looking ionicons name — try as-is; unknown glyphs still show "?"
+  // Prefer a safe fallback for hyphenated Material-style names we haven't mapped yet.
+  if (name.includes('-') && !(name in ICON_MAP)) {
+    return 'ellipse-outline';
+  }
   return name as IoniconsName;
 }
 

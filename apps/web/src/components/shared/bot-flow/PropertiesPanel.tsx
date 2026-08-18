@@ -19,9 +19,11 @@ type PropertiesPanelProps = {
 export default function PropertiesPanel({ selectedNode, templateOptions, onPatchNodeData }: PropertiesPanelProps) {
   if (!selectedNode) {
     return (
-      <div className="rounded-xl border bg-white p-3 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-900">Properties</h3>
-        <p className="mt-2 text-xs text-gray-500">Select a node to configure properties.</p>
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center">
+        <h3 className="text-sm font-semibold text-slate-800">No node selected</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Canvas pe <span className="font-semibold">Send Message</span> block pe click karo — yahan message text likhne ka box aayega.
+        </p>
       </div>
     );
   }
@@ -33,41 +35,41 @@ export default function PropertiesPanel({ selectedNode, templateOptions, onPatch
   const templateVarCount = Array.isArray(selectedTemplate?.variable_keys) ? selectedTemplate!.variable_keys!.length : 0;
 
   return (
-    <div className="rounded-xl border bg-white p-3 shadow-sm space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900">Properties</h3>
-        <p className="text-xs text-gray-500 mt-1">
-          Node: <span className="font-medium text-gray-700">{String(data.label || selectedNode.id)}</span> ({nodeType})
-        </p>
+    <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{nodeType}</p>
+        <p className="mt-0.5 truncate text-sm font-bold text-slate-900">{String(data.label || selectedNode.id)}</p>
       </div>
 
       <div className="space-y-1">
-        <label className="text-xs font-medium text-gray-600">Label</label>
+        <label className="text-xs font-medium text-slate-600">Label</label>
         <input
-          className="w-full rounded-lg border px-2 py-1.5 text-xs"
+          className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
           value={String(data.label || '')}
           onChange={(e) => onPatchNodeData({ label: e.target.value })}
         />
       </div>
 
       {nodeType === 'message' || nodeType === 'end' ? (
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-600">Message Body</label>
+        <div className="space-y-1 rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+          <label className="text-xs font-bold text-violet-800">Message Body (WhatsApp pe yeh text jayega)</label>
           <textarea
-            className="w-full rounded-lg border px-2 py-1.5 text-xs"
-            rows={4}
+            className="w-full rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+            rows={5}
             value={String(data.messageBody || data.text || '')}
             onChange={(e) => onPatchNodeData({ messageBody: e.target.value })}
-            placeholder="Text sent to the customer on WhatsApp"
+            placeholder="Hi {{profile_name}}, thanks for messaging MyFNG…"
+            autoFocus={nodeType === 'message'}
           />
+          <p className="text-[10px] text-violet-700/80">Tip: {'{{profile_name}}'} use kar sakte ho</p>
         </div>
       ) : null}
 
       {nodeType === 'handoff' ? (
         <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-600">Handoff Note (internal)</label>
+          <label className="text-xs font-medium text-slate-600">Handoff Note (internal)</label>
           <input
-            className="w-full rounded-lg border px-2 py-1.5 text-xs"
+            className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
             value={String(data.handoffNote || '')}
             onChange={(e) => onPatchNodeData({ handoffNote: e.target.value })}
             placeholder="Shown to agents in chat assignment"
@@ -78,9 +80,9 @@ export default function PropertiesPanel({ selectedNode, templateOptions, onPatch
       {nodeType === 'template' ? (
         <>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">Template</label>
+            <label className="text-xs font-medium text-slate-600">Template</label>
             <select
-              className="w-full rounded-lg border px-2 py-1.5 text-xs"
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
               value={String(data.templateName || '')}
               onChange={(e) => {
                 const name = e.target.value;
@@ -101,9 +103,9 @@ export default function PropertiesPanel({ selectedNode, templateOptions, onPatch
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">Template Param Mapping (comma separated)</label>
+            <label className="text-xs font-medium text-slate-600">Template Param Mapping (comma separated)</label>
             <input
-              className="w-full rounded-lg border px-2 py-1.5 text-xs"
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
               value={Array.isArray(data.templateParamsMapping) ? data.templateParamsMapping.join(', ') : ''}
               onChange={(e) =>
                 onPatchNodeData({
@@ -114,27 +116,84 @@ export default function PropertiesPanel({ selectedNode, templateOptions, onPatch
                 })
               }
             />
-            <p className="text-[11px] text-gray-500">
-              Expected variables: {templateVarCount}
-            </p>
+            <p className="text-[11px] text-slate-500">Expected variables: {templateVarCount}</p>
           </div>
         </>
       ) : null}
 
       {nodeType === 'condition' ? (
         <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-600">Condition Expression</label>
+          <label className="text-xs font-medium text-slate-600">Condition Expression</label>
           <textarea
-            className="w-full rounded-lg border px-2 py-1.5 text-xs"
+            className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
             rows={3}
             value={String(data.condition || '')}
             onChange={(e) => onPatchNodeData({ condition: e.target.value })}
-            placeholder='Example: intent == "RSA"'
+            placeholder='Example: intent == "RSA" or contains:price'
           />
         </div>
       ) : null}
 
-      <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+      {nodeType === 'trigger' ? (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-600">Trigger event</label>
+          <select
+            className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+            value={String(data.triggerEvent || 'whatsapp_incoming')}
+            onChange={(e) =>
+              onPatchNodeData({
+                triggerEvent: e.target.value,
+                label: e.target.selectedOptions[0]?.text || data.label,
+              })
+            }
+          >
+            <option value="whatsapp_incoming">Incoming WhatsApp</option>
+            <option value="template_replied">On Template Replied</option>
+            <option value="interactive_replied">On Interactive Replied</option>
+            <option value="lead_assigned">On Lead Assignment</option>
+            <option value="lead_status_change">On Lead Status Change</option>
+            <option value="payment_completed">Payment Completed</option>
+          </select>
+        </div>
+      ) : null}
+
+      {nodeType === 'delay' ? (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-600">Delay (seconds)</label>
+          <input
+            type="number"
+            min={0}
+            className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+            value={Number(data.delaySeconds || 0)}
+            onChange={(e) => onPatchNodeData({ delaySeconds: Number(e.target.value || 0) })}
+          />
+          <p className="text-[11px] text-slate-500">Logged in sync path; scheduled wait can use cron later.</p>
+        </div>
+      ) : null}
+
+      {nodeType === 'update_lead' ? (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-600">Lead status to set</label>
+          <input
+            className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+            value={String(data.leadStatus || '')}
+            onChange={(e) => onPatchNodeData({ leadStatus: e.target.value })}
+            placeholder="e.g. CONTACTED / FOLLOW_UP"
+          />
+        </div>
+      ) : null}
+
+      {nodeType === 'template' && selectedTemplate ? (
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800">Preview</p>
+          <p className="mt-1 text-[11px] text-emerald-900">
+            Template <span className="font-mono">{selectedTemplate.template_name}</span> — vars:{' '}
+            {templateVarCount}
+          </p>
+        </div>
+      ) : null}
+
+      <label className="inline-flex items-center gap-2 text-xs text-slate-700">
         <input
           type="checkbox"
           checked={Boolean(data.mustTerminate)}

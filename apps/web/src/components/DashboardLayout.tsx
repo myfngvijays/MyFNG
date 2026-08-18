@@ -137,10 +137,40 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const [waUnreadCount, setWaUnreadCount] = useState(0);
   const [waRefreshSignal, setWaRefreshSignal] = useState(0);
   const waAssignedPhonesRef = useRef<Set<string>>(new Set());
+  const headerRef = useRef<HTMLElement | null>(null);
+  const sidebarNavRef = useRef<HTMLElement | null>(null);
+  const [headerHeightPx, setHeaderHeightPx] = useState(64);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Keep sidebar glued under the real header height (avoids Tailwind/cache top-calc misses
+  // that left only bottom-0 and made the menu float in the lower half).
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const apply = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      // Guard against bad measurements pushing the rail halfway down the screen
+      if (h > 0 && h < 160) setHeaderHeightPx(h);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    window.addEventListener('resize', apply);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', apply);
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    if (!waWorkspaceOpen) return;
+    setSidebarCollapsed(true);
+    const nav = sidebarNavRef.current;
+    if (nav) nav.scrollTop = 0;
+  }, [waWorkspaceOpen]);
 
   // Mobile / WebView: drawer overlays content — close on navigate; never push main aside
   useEffect(() => {
@@ -151,6 +181,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     } catch {
       setSidebarOpen(false);
     }
+    // Leads / other pages must not stay hidden under WhatsApp overlay
+    setWaWorkspaceOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -493,8 +525,24 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       const supabase = createClient();
       // On some navigations the auth store can take a moment to hydrate.
       // Use a timeout guard so the dashboard doesn't get stuck on spinner.
-      const sessionRes = await withTimeout(supabase.auth.getSession(), 8000, 'auth.getSession');
-      const authUser = sessionRes?.data?.session?.user || null;
+      let authUser: { id: string; email?: string | null; phone?: string | null } | null = null;
+
+      try {
+        const sessionRes = await withTimeout(supabase.auth.getSession(), 8000, 'auth.getSession');
+        authUser = sessionRes?.data?.session?.user || null;
+      } catch (sessionErr) {
+        console.warn('auth.getSession slow/failed, retrying via getUser:', sessionErr);
+      }
+
+      // Retry once — brief null/timeout during token refresh must NOT force login
+      if (!authUser) {
+        try {
+          const userRes = await withTimeout(supabase.auth.getUser(), 8000, 'auth.getUser');
+          authUser = userRes?.data?.user || null;
+        } catch (userErr) {
+          console.warn('auth.getUser retry failed:', userErr);
+        }
+      }
 
       if (!authUser) {
         router.push('/login');
@@ -552,6 +600,12 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       }
 
       if (profile) {
+        if (profile.is_active === false) {
+          await supabase.auth.signOut();
+          logout();
+          router.push('/login');
+          return;
+        }
         setUser(authUser);
         setUserProfile(profile);
         const roleCode = (profile?.role as any)?.role_code;
@@ -575,8 +629,17 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         setUser(authUser);
       }
     } catch (error) {
+      // Network/timeout errors must not look like a logout — only redirect when session is truly gone.
       console.error('Auth check failed:', error);
-      router.push('/login');
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        if (!data?.session?.user) {
+          router.push('/login');
+        }
+      } catch {
+        // stay on page; user can refresh
+      }
     } finally {
       setLoading(false);
     }
@@ -676,6 +739,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           children: [
             { href: '/dashboard/super_admin/whatsapp-templates', icon: <MessageSquare className="w-5 h-5" />, label: 'WhatsApp Templates' },
             { href: '/dashboard/super_admin/whatsapp-dashboard', icon: <BarChart3 className="w-5 h-5" />, label: 'WhatsApp Dashboard' },
+            { href: '/dashboard/super_admin/whatsapp-workflows', icon: <Activity className="w-5 h-5" />, label: 'Workflow Builder' },
             { href: '/dashboard/super_admin/whatsapp-messages', icon: <ClipboardList className="w-5 h-5" />, label: 'Message Logs' },
             { href: '/dashboard/super_admin/bot-flow', icon: <Activity className="w-5 h-5" />, label: 'Bot Flow' },
           ],
@@ -744,6 +808,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       'LEAD_MANAGER': [
         { href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         {
           href: '#whatsapp',
           icon: <MessageCircle className="w-5 h-5" />,
@@ -819,6 +884,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       'TELECALLER': [
         { href: '/dashboard/telecaller', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/telecaller/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/telecaller/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         {
           href: '#whatsapp',
           icon: <MessageCircle className="w-5 h-5" />,
@@ -910,15 +976,10 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
   const menuItems = getMenuItems();
 
-  const headerOffsetClass =
-    'top-[calc(3.5rem+env(safe-area-inset-top))] sm:top-[calc(4rem+env(safe-area-inset-top))]';
-  const mainPadTopClass =
-    'pt-[calc(3.5rem+env(safe-area-inset-top))] sm:pt-[calc(4rem+env(safe-area-inset-top))]';
-
   return (
     <div className="admin-shell">
       {/* Header */}
-      <header className="admin-header">
+      <header ref={headerRef} className="admin-header">
         <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-2 sm:py-3 gap-2">
           <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
             <button
@@ -973,19 +1034,44 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       {/* Sidebar — overlay on mobile/WebView; docked on lg+ */}
       <aside
         onMouseEnter={() => {
+          // Keep icon-rail while WhatsApp is open so the inbox isn't covered by expanded labels
+          if (waWorkspaceOpen) return;
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(false);
         }}
         onMouseLeave={() => {
           if (typeof window !== 'undefined' && window.innerWidth >= 1024) setSidebarCollapsed(true);
         }}
-        className={`fixed left-0 ${headerOffsetClass} h-[calc(100dvh-3.5rem-env(safe-area-inset-top))] sm:h-[calc(100dvh-4rem-env(safe-area-inset-top))] bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-all duration-300 ease-in-out lg:translate-x-0 w-[min(18rem,85vw)] sm:w-64 ${
-          sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
-        } z-30 ${
+        style={{
+          position: 'fixed',
+          left: 0,
+          // When WhatsApp is open it is top:0 — keep the rail aligned to the same top
+          // so icons are not floating mid-screen under an empty gap.
+          top: waWorkspaceOpen ? 0 : headerHeightPx,
+          bottom: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-start',
+          alignItems: 'stretch',
+          overflow: 'hidden',
+          margin: 0,
+          padding: 0,
+        }}
+        className={`bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 shadow-2xl transition-[width,transform] duration-300 ease-in-out lg:translate-x-0 w-[min(18rem,85vw)] sm:w-64 ${
+          waWorkspaceOpen || sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
+        } ${waWorkspaceOpen ? 'z-[10001]' : 'z-30'} ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="h-full flex flex-col overflow-hidden">
-          <nav className="flex-1 overflow-y-auto overscroll-contain p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2">
+        <nav
+          ref={sidebarNavRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 sm:p-3 md:p-4 space-y-1 sm:space-y-2"
+          style={{
+            display: 'block',
+            marginTop: 0,
+            paddingTop: undefined,
+            alignContent: 'start',
+          }}
+        >
             {menuItems.map((item) => {
               if (item.children && item.children.length > 0) {
                 const childActive = item.children.some((child) => pathname === child.href);
@@ -1040,15 +1126,21 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                         setSidebarOpen(false);
                       }
                     }}
-                    className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-blue-500/30 font-medium ${
-                      sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
-                    } ${waWorkspaceOpen ? 'bg-white text-blue-700 shadow-lg font-semibold hover:bg-white' : ''}`}
+                    className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base ${
+                      waWorkspaceOpen || sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+                    } ${
+                      waWorkspaceOpen
+                        ? 'bg-[#25D366] text-white font-semibold shadow-lg hover:bg-[#1ebe5c]'
+                        : 'text-white hover:bg-blue-500/30 font-medium'
+                    }`}
                   >
                     <span className="flex-shrink-0">{item.icon}</span>
-                    <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>{item.label}</span>
+                    <span className={`${waWorkspaceOpen || sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>
+                      {item.label}
+                    </span>
                     {waUnreadCount > 0 ? (
                       <span
-                        className={`${sidebarCollapsed ? 'lg:hidden' : ''} ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white`}
+                        className={`${waWorkspaceOpen || sidebarCollapsed ? 'lg:hidden' : ''} ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white`}
                       >
                         {waUnreadCount > 99 ? '99+' : waUnreadCount}
                       </span>
@@ -1075,24 +1167,27 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                 )
               );
             })}
-          </nav>
-          <div className="p-2 sm:p-3 md:p-4 border-t border-blue-500/30">
-            <button
-              onClick={handleLogout}
-              className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-red-500/30 font-medium ${
-                sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
-              }`}
-            >
-              <LogOut className="w-5 h-5 flex-shrink-0" />
-              <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>Logout</span>
-            </button>
-          </div>
+        </nav>
+        <div className="shrink-0 border-t border-blue-500/30 p-2 sm:p-3 md:p-4">
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Logout"
+            aria-label="Logout"
+            className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg transition-all duration-200 text-sm sm:text-base text-white hover:bg-red-500/30 font-medium ${
+              sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+            }`}
+          >
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            <span className={`${sidebarCollapsed ? 'lg:hidden' : ''} truncate`}>Logout</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Content — fixed icon-rail margin on desktop; expanded labels overlay (no content shift) */}
       <main
-        className={`admin-main ml-0 lg:ml-20 ${mainPadTopClass} min-h-[100dvh] pb-[env(safe-area-inset-bottom)]`}
+        className="admin-main ml-0 lg:ml-20 min-h-[100dvh] pb-[env(safe-area-inset-bottom)]"
+        style={{ paddingTop: headerHeightPx }}
       >
         <div className="admin-page">{children}</div>
       </main>
@@ -1188,6 +1283,9 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             title="WhatsApp · 6161"
             refreshSignal={waRefreshSignal}
             hideLeadPool={role?.toUpperCase() === 'TELECALLER'}
+            showAssigneeFilter={['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+              String(role || '').toUpperCase(),
+            )}
             initialPhone={waPreviewPhone}
             initialPreview={waPreviewMessage}
             onClose={() => {

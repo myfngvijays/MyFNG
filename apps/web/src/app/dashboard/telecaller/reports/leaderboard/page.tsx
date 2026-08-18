@@ -49,7 +49,6 @@ export default function CrmReportsLeaderboardPage() {
   const { permissions } = useCrmPermissions();
   const fullName = useAuthStore((s) => s.userProfile?.full_name);
   const teamMode = Boolean(isLeadManager || permissions.reports_team_leaderboard);
-  const boardTitle = teamMode ? 'Leaderboard' : personalLeaderboardLabel(fullName);
   const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'year'>('day');
   const [date, setDate] = useState(istYmd());
   const [q, setQ] = useState('');
@@ -105,23 +104,35 @@ export default function CrmReportsLeaderboardPage() {
         { label: 'First call', value: fmtTime(selected.first_call_at) },
         { label: 'Last call', value: fmtTime(selected.last_call_at) },
       ]
-    : [
-        { label: 'Team size', value: String(teamSize) },
-        { label: 'Calls', value: String(totals.calls) },
-        { label: 'Answered', value: String(totals.answered) },
-        { label: 'Talk time', value: formatDurationShort(totals.duration_seconds) },
-        { label: 'Bookings', value: String(totals.bookings) },
-      ];
+    : teamMode
+      ? [
+          { label: 'Team size', value: String(teamSize) },
+          { label: 'Calls', value: String(totals.calls) },
+          { label: 'Answered', value: String(totals.answered) },
+          { label: 'Talk time', value: formatDurationShort(totals.duration_seconds) },
+          { label: 'Bookings', value: String(totals.bookings) },
+        ]
+      : [
+          { label: 'Calls', value: String(totals.calls || members[0]?.calls || 0) },
+          { label: 'Answered', value: String(totals.answered || members[0]?.answered || 0) },
+          {
+            label: 'Talk time',
+            value: formatDurationShort(
+              totals.duration_seconds || members[0]?.duration_seconds || 0,
+            ),
+          },
+          { label: 'Bookings', value: String(totals.bookings || members[0]?.bookings || 0) },
+        ];
 
   return (
     <DashboardLayout role={layoutRole}>
       <div className="mx-auto w-full max-w-7xl space-y-5 pb-10">
         <CrmReportsNav
-          title={boardTitle}
+          title={teamMode ? 'Leaderboard' : 'My stats'}
           subtitle={
             teamMode
               ? `${label} · ranked by call volume`
-              : `${label} · your calls & bookings only`
+              : `${label} · ${fullName ? `${String(fullName).split(/\s+/)[0]} · ` : ''}your calls & bookings`
           }
           onRefresh={load}
           refreshing={loading}
@@ -139,6 +150,42 @@ export default function CrmReportsLeaderboardPage() {
           ) : null}
         </div>
 
+        {!teamMode ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-slate-500">
+                <Loader2 className="h-5 w-5 animate-spin" /> Loading…
+              </div>
+            ) : (
+              <>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {personalLeaderboardLabel(fullName)}
+                </p>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                  <MetricMini label="Calls" value={String(totals.calls || members[0]?.calls || 0)} />
+                  <MetricMini
+                    label="Talk"
+                    value={formatDurationShort(
+                      totals.duration_seconds || members[0]?.duration_seconds || 0,
+                    )}
+                  />
+                  <MetricMini
+                    label="Bookings"
+                    value={String(totals.bookings || members[0]?.bookings || 0)}
+                  />
+                </div>
+                <ul className="mt-5 divide-y divide-slate-100">
+                  {detailStats.map((row) => (
+                    <li key={row.label} className="flex items-center justify-between gap-3 py-2.5">
+                      <span className="text-sm text-slate-600">{row.label}</span>
+                      <span className="text-sm font-bold text-slate-900">{row.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
           <div className="space-y-3 order-2 lg:order-1">
             <div className="relative">
@@ -254,6 +301,7 @@ export default function CrmReportsLeaderboardPage() {
             </ul>
           </div>
         </div>
+        )}
       </div>
     </DashboardLayout>
   );

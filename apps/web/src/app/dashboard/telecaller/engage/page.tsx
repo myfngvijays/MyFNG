@@ -26,7 +26,7 @@ const SCRIPT_CARDS = [
     body: 'Hello, main MyFNG se bol raha/rahi hoon. Aapne car service ke liye enquiry ki thi — kab convenient hoga pickup schedule karne ke liye?',
   },
   {
-    title: 'Callback / follow-up',
+    title: 'Follow-up reminder',
     body: 'Namaste, pehle call pe baat hui thi. Aaj slot confirm kar sakte hain? Doorstep pickup ya workshop visit — kya prefer karenge?',
   },
   {

@@ -11,8 +11,12 @@ import {
   Share,
   Alert,
   useWindowDimensions,
+  Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
 import { apiFetchRaw } from '../../../lib/apiRaw';
@@ -21,11 +25,11 @@ import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import { istYmd } from '../../../lib/crmDateRange';
 
 type Period = 'day' | 'week' | 'month' | 'year';
-type TabId = 'overview' | 'leaderboard' | 'calls' | 'exports' | 'duplicates' | 'pipeline';
+type TabId = 'leaderboard' | 'calls' | 'exports' | 'duplicates' | 'pipeline';
 
 type Props = {
   navigation: any;
-  route?: { params?: { tab?: TabId } };
+  route?: { params?: { tab?: string } };
 };
 
 function formatDuration(seconds: number): string {
@@ -49,6 +53,32 @@ function initials(name: string) {
   return `${p[0][0] || ''}${p[1][0] || ''}`.toUpperCase();
 }
 
+function ymdToDate(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+function dateToYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function periodLabel(period: Period, date: string): string {
+  const today = istYmd();
+  if (period === 'day') return date === today ? 'Today' : date;
+  if (period === 'week') return 'Last 7 days';
+  if (period === 'month') return 'This month';
+  return date.slice(0, 4) || 'Year';
+}
+
+function normalizeTab(raw?: string): TabId {
+  const v = String(raw || '').toLowerCase();
+  if (v === 'calls') return 'calls';
+  if (v === 'exports' || v === 'export') return 'exports';
+  if (v === 'duplicates' || v === 'dupes') return 'duplicates';
+  if (v === 'pipeline' || v === 'pipe') return 'pipeline';
+  return 'leaderboard';
+}
+
 type CrmPerms = {
   reports: boolean;
   reports_export: boolean;
@@ -64,17 +94,20 @@ const DEFAULT_PERMS: CrmPerms = {
 };
 
 export default function CrmReportsScreen({ navigation, route }: Props) {
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const compact = width < 400;
 
   const [isLeadManager, setIsLeadManager] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [permissions, setPermissions] = useState<CrmPerms>(DEFAULT_PERMS);
-  const [tab, setTab] = useState<TabId>(route?.params?.tab || 'overview');
+  const [tab, setTab] = useState<TabId>(normalizeTab(route?.params?.tab));
   const [period, setPeriod] = useState<Period>('day');
   const [date, setDate] = useState(istYmd());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const [leaderboard, setLeaderboard] = useState<any>(null);
   const [calls, setCalls] = useState<any>(null);
@@ -83,6 +116,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
   const [selectedMember, setSelectedMember] = useState<string | 'total'>('total');
   const [selectedDup, setSelectedDup] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
   const [exportKind, setExportKind] = useState<'leads' | 'calls'>('leads');
   const [exporting, setExporting] = useState(false);
 
@@ -90,8 +124,13 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
   const canExport = Boolean(isLeadManager || permissions.reports_export);
   const canDupes = Boolean(isLeadManager || permissions.reports_duplicates);
   const firstName = displayName.split(/\s+/).filter(Boolean)[0];
-  const personalBoard = firstName ? `${firstName}'s leaderboard` : 'Your leaderboard';
-  const boardTitle = teamMode ? 'Team leaderboard' : personalBoard;
+  const personalBoard = firstName ? `${firstName}'s stats` : 'Your stats';
+  const rangeLabel = periodLabel(period, date);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,24 +176,25 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
 
   const tabs = useMemo(() => {
     const base: Array<{ id: TabId; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-      { id: 'overview', label: 'Home', icon: 'grid-outline' },
-      { id: 'leaderboard', label: teamMode ? 'Board' : firstName || 'Yours', icon: 'trophy-outline' },
+      { id: 'leaderboard', label: teamMode ? 'Leaderboard' : 'My stats', icon: 'trophy-outline' },
       { id: 'calls', label: 'Calls', icon: 'call-outline' },
     ];
     if (canExport) base.push({ id: 'exports', label: 'Export', icon: 'download-outline' });
-    if (canDupes) base.push({ id: 'duplicates', label: 'Dupes', icon: 'git-network-outline' });
-    if (isLeadManager) base.push({ id: 'pipeline', label: 'Pipe', icon: 'stats-chart-outline' });
+    if (canDupes) base.push({ id: 'duplicates', label: 'Duplicates', icon: 'git-network-outline' });
+    if (isLeadManager) base.push({ id: 'pipeline', label: 'Pipeline', icon: 'stats-chart-outline' });
     return base;
-  }, [isLeadManager, teamMode, canExport, canDupes, firstName]);
+  }, [isLeadManager, teamMode, canExport, canDupes]);
 
   useEffect(() => {
-    if (tab === 'exports' && !canExport) setTab('overview');
-    if (tab === 'duplicates' && !canDupes) setTab('overview');
-  }, [tab, canExport, canDupes]);
+    if (tab === 'exports' && !canExport) setTab('leaderboard');
+    if (tab === 'duplicates' && !canDupes) setTab('leaderboard');
+    if (tab === 'pipeline' && !isLeadManager) setTab('leaderboard');
+  }, [tab, canExport, canDupes, isLeadManager]);
 
   const loadTab = useCallback(async () => {
-    if (tab === 'overview' || tab === 'exports') return;
+    if (tab === 'exports') return;
     setLoading(true);
+    setLoadError('');
     try {
       if (tab === 'leaderboard') {
         const params = new URLSearchParams({ period, date });
@@ -162,7 +202,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
         setLeaderboard(res);
       } else if (tab === 'calls') {
         const params = new URLSearchParams({ period, date });
-        if (search.trim()) params.set('q', search.trim());
+        if (searchDebounced) params.set('q', searchDebounced);
         const res = await apiFetch<any>(`/api/telecaller/crm/reports/calls?${params}`);
         setCalls(res);
       } else if (tab === 'duplicates') {
@@ -179,12 +219,13 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
         setPipeline(res);
       }
     } catch (e: any) {
+      setLoadError(e?.message || 'Failed to load');
       Alert.alert('Reports', e?.message || 'Failed to load');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [tab, period, date, search, isLeadManager]);
+  }, [tab, period, date, searchDebounced, isLeadManager]);
 
   useEffect(() => {
     void loadTab();
@@ -229,15 +270,16 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textHeading} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>Advanced CRM</Text>
           <Text style={styles.title}>Reports</Text>
+          <Text style={styles.subtitle}>{rangeLabel}</Text>
         </View>
-        {tab !== 'overview' && tab !== 'exports' ? (
+        {tab !== 'exports' ? (
           <TouchableOpacity onPress={onRefresh} style={styles.iconBtn}>
             <Ionicons name="refresh" size={20} color={COLORS.primary} />
           </TouchableOpacity>
@@ -266,18 +308,27 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
       </ScrollView>
 
       {(tab === 'leaderboard' || tab === 'calls' || tab === 'exports') && (
-        <View style={styles.periodRow}>
-          {(['day', 'week', 'month', 'year'] as Period[]).map((p) => (
-            <TouchableOpacity
-              key={p}
-              style={[styles.periodChip, period === p && styles.periodChipOn]}
-              onPress={() => setPeriod(p)}
-            >
-              <Text style={[styles.periodText, period === p && styles.periodTextOn]}>
-                {p.toUpperCase()}
-              </Text>
+        <View style={styles.filterBlock}>
+          <View style={styles.periodRow}>
+            {(['day', 'week', 'month', 'year'] as Period[]).map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.periodChip, period === p && styles.periodChipOn]}
+                onPress={() => setPeriod(p)}
+              >
+                <Text style={[styles.periodText, period === p && styles.periodTextOn]}>
+                  {p === 'day' ? 'Day' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {period === 'day' ? (
+            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)}>
+              <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.dateBtnText}>{date === istYmd() ? `Today · ${date}` : date}</Text>
+              <Ionicons name="chevron-down" size={14} color={COLORS.textSecondary} />
             </TouchableOpacity>
-          ))}
+          ) : null}
         </View>
       )}
 
@@ -285,7 +336,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         refreshControl={
-          tab !== 'overview' && tab !== 'exports' ? (
+          tab !== 'exports' ? (
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
           ) : undefined
         }
@@ -297,75 +348,16 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {tab === 'overview' && !loading ? (
-          <View style={styles.cardGrid}>
-            {(
-              [
-                {
-                  id: 'leaderboard' as TabId,
-                  title: boardTitle,
-                  blurb: teamMode ? 'Calls, talk time, bookings' : 'Your calls & bookings only',
-                  icon: 'trophy' as const,
-                  tint: '#FEF3C7',
-                  show: true,
-                },
-                {
-                  id: 'calls' as TabId,
-                  title: 'Call activity',
-                  blurb: 'Hourly volume + call feed',
-                  icon: 'call' as const,
-                  tint: '#DBEAFE',
-                  show: true,
-                },
-                {
-                  id: 'exports' as TabId,
-                  title: 'Exports',
-                  blurb: 'Share leads / calls CSV',
-                  icon: 'download' as const,
-                  tint: '#D1FAE5',
-                  show: canExport,
-                },
-                {
-                  id: 'duplicates' as TabId,
-                  title: 'Duplicate phones',
-                  blurb: 'Clean repeated numbers',
-                  icon: 'git-network' as const,
-                  tint: '#FFE4E6',
-                  show: canDupes,
-                },
-                ...(isLeadManager
-                  ? [
-                      {
-                        id: 'pipeline' as TabId,
-                        title: 'Pipeline analytics',
-                        blurb: 'Status, city, workshop, SLA',
-                        icon: 'stats-chart' as const,
-                        tint: '#E0E7FF',
-                        show: true,
-                      },
-                    ]
-                  : []),
-              ] as const
-            )
-              .filter((card) => card.show)
-              .map((card) => (
-              <TouchableOpacity
-                key={card.id}
-                style={styles.hubCard}
-                onPress={() => setTab(card.id)}
-                activeOpacity={0.88}
-              >
-                <View style={[styles.hubIcon, { backgroundColor: card.tint }]}>
-                  <Ionicons name={card.icon} size={20} color={COLORS.textHeading} />
-                </View>
-                <Text style={styles.hubTitle}>{card.title}</Text>
-                <Text style={styles.hubBlurb}>{card.blurb}</Text>
-              </TouchableOpacity>
-            ))}
+        {!loading && loadError && tab !== 'exports' ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.empty}>{loadError}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => void loadTab()}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
-        {tab === 'leaderboard' && leaderboard && !loading ? (
+        {tab === 'leaderboard' && !loading && !loadError ? (
           <View>
             {teamMode ? (
             <TouchableOpacity
@@ -383,7 +375,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
             ) : (
             <View style={styles.memberCard}>
               <Text style={styles.memberName}>{personalBoard}</Text>
-              <Text style={styles.muted}>Your calls & bookings for this period</Text>
+              <Text style={styles.muted}>{rangeLabel} · your calls & bookings</Text>
               <View style={styles.metricsRow}>
                 <Metric label="Calls" value={String(totals.calls || members[0]?.calls || 0)} />
                 <Metric
@@ -451,7 +443,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {tab === 'calls' && calls && !loading ? (
+        {tab === 'calls' && !loading && !loadError ? (
           <View>
             <View style={styles.searchWrap}>
               <Ionicons name="search" size={16} color={COLORS.textSecondary} />
@@ -461,7 +453,6 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
                 placeholderTextColor={COLORS.textSecondary}
                 value={search}
                 onChangeText={setSearch}
-                onSubmitEditing={() => void loadTab()}
                 returnKeyType="search"
               />
             </View>
@@ -469,17 +460,17 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
               <SummaryTile
                 primary
                 label="Calls"
-                value={String(calls.summary?.total_calls ?? 0)}
+                value={String(calls?.summary?.total_calls ?? 0)}
                 compact={compact}
               />
               <SummaryTile
                 label="Talk"
-                value={formatDuration(calls.summary?.duration_seconds ?? 0)}
+                value={formatDuration(calls?.summary?.duration_seconds ?? 0)}
                 compact={compact}
               />
               <SummaryTile
                 label="Leads"
-                value={String(calls.summary?.unique_leads ?? 0)}
+                value={String(calls?.summary?.unique_leads ?? 0)}
                 compact={compact}
               />
             </View>
@@ -526,7 +517,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
         {tab === 'exports' ? (
           <View style={styles.exportCard}>
             <Text style={styles.sectionTitle}>Download CSV</Text>
-            <Text style={styles.muted}>Share leads or call logs for the selected period.</Text>
+            <Text style={styles.muted}>Share leads or call logs · {rangeLabel}</Text>
             <View style={styles.kindRow}>
               {(['leads', 'calls'] as const).map((k) => (
                 <TouchableOpacity
@@ -557,10 +548,10 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {tab === 'duplicates' && duplicates && !loading ? (
+        {tab === 'duplicates' && !loading && !loadError ? (
           <View>
             <Text style={styles.muted}>
-              {duplicates.total_groups || 0} groups · {duplicates.total_extra_leads || 0} extras
+              {duplicates?.total_groups || 0} groups · {duplicates?.total_extra_leads || 0} extras
             </Text>
             {dupGroups.map((g: any) => (
               <TouchableOpacity
@@ -594,15 +585,15 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {tab === 'pipeline' && pipeline && !loading ? (
+        {tab === 'pipeline' && !loading && !loadError ? (
           <View>
             <View style={styles.summaryRow}>
-              <SummaryTile primary label="Leads" value={String(pipeline.stats?.total_leads ?? 0)} />
-              <SummaryTile label="Validated" value={String(pipeline.stats?.validated_leads ?? 0)} />
-              <SummaryTile label="Rate" value={`${pipeline.stats?.validation_rate ?? 0}%`} />
+              <SummaryTile primary label="Leads" value={String(pipeline?.stats?.total_leads ?? 0)} />
+              <SummaryTile label="Validated" value={String(pipeline?.stats?.validated_leads ?? 0)} />
+              <SummaryTile label="Rate" value={`${pipeline?.stats?.validation_rate ?? 0}%`} />
             </View>
             <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Status</Text>
-            {(pipeline.status_breakdown || []).slice(0, 8).map((s: any) => (
+            {(pipeline?.status_breakdown || []).slice(0, 8).map((s: any) => (
               <View key={s.status} style={styles.detailRow}>
                 <Text style={styles.muted}>{s.status}</Text>
                 <Text style={styles.detailValue}>
@@ -611,7 +602,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
               </View>
             ))}
             <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Top cities</Text>
-            {(pipeline.city_distribution || []).map((c: any) => (
+            {(pipeline?.city_distribution || []).map((c: any) => (
               <View key={c.city} style={styles.detailRow}>
                 <Text style={styles.muted}>{c.city}</Text>
                 <Text style={styles.detailValue}>{c.count}</Text>
@@ -620,6 +611,43 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
       </ScrollView>
+
+      {showDatePicker && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={ymdToDate(date)}
+          mode="date"
+          display="default"
+          onChange={(_e, selected) => {
+            setShowDatePicker(false);
+            if (selected) setDate(dateToYmd(selected));
+          }}
+        />
+      ) : null}
+
+      <Modal
+        visible={showDatePicker && Platform.OS === 'ios'}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowDatePicker(false)}>
+          <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sectionTitle}>Pick date</Text>
+            <DateTimePicker
+              value={ymdToDate(date)}
+              mode="date"
+              display="spinner"
+              themeVariant="light"
+              onChange={(_e, selected) => {
+                if (selected) setDate(dateToYmd(selected));
+              }}
+            />
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowDatePicker(false)}>
+              <Text style={styles.primaryBtnText}>Done</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -666,7 +694,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
     paddingBottom: SPACING.xs,
     gap: 8,
   },
@@ -674,6 +701,7 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 8 },
   kicker: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase' },
   title: { fontSize: 22, fontWeight: '800', color: COLORS.textHeading, fontFamily: 'Poppins' },
+  subtitle: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 1 },
   tabsScroll: { maxHeight: 48, flexGrow: 0 },
   tabsRow: { paddingHorizontal: SPACING.md, gap: 8, paddingBottom: 8 },
   tabChip: {
@@ -690,12 +718,11 @@ const styles = StyleSheet.create({
   tabChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   tabChipText: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
   tabChipTextOn: { color: '#fff' },
+  filterBlock: { paddingHorizontal: SPACING.md, marginBottom: 8, gap: 8 },
   periodRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    paddingHorizontal: SPACING.md,
-    marginBottom: 8,
   },
   periodChip: {
     paddingHorizontal: 12,
@@ -708,26 +735,37 @@ const styles = StyleSheet.create({
   periodChipOn: { backgroundColor: COLORS.textHeading, borderColor: COLORS.textHeading },
   periodText: { fontSize: 11, fontWeight: '800', color: COLORS.textSecondary },
   periodTextOn: { color: '#fff' },
+  dateBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  dateBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.textHeading },
   body: { flex: 1 },
   bodyContent: { padding: SPACING.md, paddingBottom: 40 },
   center: { paddingVertical: 40, alignItems: 'center' },
-  cardGrid: { gap: 12 },
-  hubCard: {
+  emptyCard: {
     backgroundColor: COLORS.white,
     borderRadius: 14,
-    padding: 16,
+    padding: 20,
+    alignItems: 'center',
     ...SHADOWS.small,
   },
-  hubIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  hubTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textHeading },
-  hubBlurb: { marginTop: 4, fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 },
+  retryText: { color: '#fff', fontWeight: '800' },
   memberCard: {
     backgroundColor: COLORS.white,
     borderRadius: 14,
@@ -852,4 +890,16 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   empty: { textAlign: 'center', color: COLORS.textSecondary, paddingVertical: 28 },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    paddingBottom: 28,
+  },
 });

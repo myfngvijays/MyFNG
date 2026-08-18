@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 
-const ALLOWED_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER'];
-const ASSIGNABLE_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER', 'CUSTOMER_SERVICE_EXECUTIVE'];
+const ALLOWED_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER', 'LEAD_MANAGER'];
+const ASSIGNABLE_ROLE_CODES = ['SUPER_ADMIN', 'SUB_ADMIN', 'RSA_MANAGER', 'TELECALLER', 'LEAD_MANAGER', 'CUSTOMER_SERVICE_EXECUTIVE'];
 
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
+  const last10 = digits.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
   return digits.startsWith('91') ? digits : `91${digits}`;
 }
 
@@ -48,12 +51,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const readDb: any = supabaseAdmin || db;
+
     const normalizedPhone = normalizePhone(String(request.nextUrl.searchParams.get('phone') || ''));
     if (!normalizedPhone) {
       return NextResponse.json({ error: 'Valid phone is required' }, { status: 400 });
     }
 
-    const { data: employeesRaw, error: employeesError } = await db
+    const { data: employeesRaw, error: employeesError } = await readDb
       .from('users_login')
       .select('id, full_name, email, phone, roles!inner(role_code)')
       .limit(300);
@@ -77,7 +83,7 @@ export async function GET(request: NextRequest) {
         String(a.full_name || a.email || a.phone || '').localeCompare(String(b.full_name || b.email || b.phone || ''))
       );
 
-    const { data: assignmentRow, error: assignmentError } = await db
+    const { data: assignmentRow, error: assignmentError } = await readDb
       .from('whatsapp_chat_assignments')
       .select('phone, assigned_to_ids, assigned_by, assigned_note, assigned_at, updated_at')
       .eq('phone', normalizedPhone)
@@ -95,7 +101,7 @@ export async function GET(request: NextRequest) {
       const userIds = [...assignedToIds, assignmentRow.assigned_by].filter(Boolean);
       const usersById = new Map<string, any>();
       if (userIds.length > 0) {
-        const { data: users } = await db
+        const { data: users } = await readDb
           .from('users_login')
           .select('id, full_name, email, phone')
           .in('id', userIds);
@@ -148,6 +154,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const writeDb: any = supabaseAdmin || db;
+
     const body = await request.json().catch(() => ({}));
     const normalizedPhone = normalizePhone(String(body?.phone || ''));
     const assignedToIdsRaw = Array.isArray(body?.assigned_to_ids) ? body.assigned_to_ids : [];
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (assignedToIds.length > 0) {
-      const { data: assignees, error: assigneesError } = await db
+      const { data: assignees, error: assigneesError } = await writeDb
         .from('users_login')
         .select('id, roles!inner(role_code)')
         .in('id', assignedToIds);
@@ -197,7 +206,7 @@ export async function POST(request: NextRequest) {
       assigned_at: nowIso,
       updated_at: nowIso,
     };
-    const { error: upsertError } = await db
+    const { error: upsertError } = await writeDb
       .from('whatsapp_chat_assignments')
       .upsert(payload, { onConflict: 'phone' });
     if (upsertError) {

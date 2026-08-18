@@ -66,12 +66,16 @@ type WaLeadAlertState = {
     exists: boolean;
     isApproved: boolean;
     metaStatus: string | null;
+    metaCategory?: string | null;
+    isUtility?: boolean;
     canSendTemplate: boolean;
   };
   template_preview: {
     template_name: string;
     display_name: string;
     body_text: string;
+    header_text?: string;
+    category?: string;
     example_values: readonly string[];
   };
 };
@@ -187,7 +191,7 @@ export default function TelecallerDistributionPage() {
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json?.error || 'Save failed');
       setWaAlert((prev) =>
-        prev ? { ...prev, settings: json.settings } : { settings: json.settings, template_status: { templateName: '', exists: false, isApproved: false, metaStatus: null, canSendTemplate: false }, template_preview: { template_name: '', display_name: '', body_text: '', example_values: [] } },
+        prev ? { ...prev, settings: json.settings } : { settings: json.settings, template_status: { templateName: '', exists: false, isApproved: false, metaStatus: null, metaCategory: null, isUtility: false, canSendTemplate: false }, template_preview: { template_name: '', display_name: '', body_text: '', example_values: [] } },
       );
       setWaMessage(enabled ? 'WhatsApp new-lead alerts enabled' : 'WhatsApp new-lead alerts disabled');
       void loadWaAlert();
@@ -1302,17 +1306,54 @@ export default function TelecallerDistributionPage() {
               <div className="rounded-lg border p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-semibold">{waAlert.template_preview.display_name}</div>
-                  <span
-                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                      waAlert.template_status.canSendTemplate
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {waAlert.template_status.metaStatus ||
-                      (waAlert.template_status.exists ? 'PENDING' : 'NOT CREATED')}
-                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span
+                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                        waAlert.template_status.metaCategory === 'UTILITY' ||
+                        (!waAlert.template_status.metaCategory &&
+                          waAlert.template_preview.category === 'UTILITY')
+                          ? 'bg-sky-100 text-sky-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {waAlert.template_status.metaCategory ||
+                        waAlert.template_preview.category ||
+                        'UTILITY'}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                        waAlert.template_status.canSendTemplate
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {waAlert.template_status.metaStatus ||
+                        (waAlert.template_status.exists ? 'PENDING' : 'NOT CREATED')}
+                    </span>
+                  </div>
                 </div>
+                <p className="text-[11px] text-gray-500">
+                  Meta template name:{' '}
+                  <code className="text-[10px] bg-gray-100 px-1 rounded">
+                    {waAlert.template_preview.template_name}
+                  </code>
+                  . Old <code className="text-[10px]">telecaller_new_lead_alert</code> may stay
+                  MARKETING on Meta — ignore it; use this v2 UTILITY name.
+                </p>
+                {waAlert.template_status.exists &&
+                waAlert.template_status.metaCategory &&
+                waAlert.template_status.metaCategory !== 'UTILITY' ? (
+                  <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                    Meta classified this as <strong>{waAlert.template_status.metaCategory}</strong>, not
+                    UTILITY. Delete it in Meta Business Manager, then click Create / push again (or bump
+                    the template name in code).
+                  </div>
+                ) : null}
+                {waAlert.template_preview.header_text ? (
+                  <div className="text-[11px] font-semibold text-gray-600">
+                    Header: {waAlert.template_preview.header_text}
+                  </div>
+                ) : null}
                 <pre className="text-[11px] bg-gray-50 border rounded-md p-3 overflow-x-auto whitespace-pre-wrap text-gray-700">
                   {waAlert.template_preview.body_text}
                 </pre>
@@ -1426,7 +1467,11 @@ export default function TelecallerDistributionPage() {
                 </div>
                 {!waAlert.template_status.canSendTemplate ? (
                   <p className="text-[11px] text-amber-800">
-                    Template must be APPROVED on Meta before test send or live alerts work.
+                    Template must be APPROVED as UTILITY on Meta before test send or live alerts work.
+                    {waAlert.template_status.metaCategory &&
+                    waAlert.template_status.metaCategory !== 'UTILITY'
+                      ? ` Current Meta category: ${waAlert.template_status.metaCategory}.`
+                      : ''}
                   </p>
                 ) : null}
               </div>

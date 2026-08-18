@@ -281,6 +281,35 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
       continue;
     }
 
+    if (nodeType === 'delay') {
+      const secs = Math.max(0, Number(node.data?.delaySeconds || 0));
+      trace.push(`delay:${secs}s`);
+      // Sync path: record only (async wait via cron can be added later).
+      currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;
+      continue;
+    }
+
+    if (nodeType === 'update_lead') {
+      const status = String(node.data?.leadStatus || '').trim();
+      trace.push(`update_lead:${status || 'noop'}`);
+      if (status && !input.dryRun) {
+        try {
+          const db = getAdminDb();
+          const digits = String(phone || '').replace(/\D/g, '');
+          const local10 = digits.slice(-10);
+          await db
+            .from('service_leads')
+            .update({ status, updated_at: new Date().toISOString() })
+            .or(`customer_phone.ilike.%${local10}%`)
+            .is('deleted_at', null);
+        } catch (err) {
+          trace.push(`update_lead:error:${(err as Error)?.message || 'failed'}`);
+        }
+      }
+      currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;
+      continue;
+    }
+
     currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;
   }
 
@@ -293,6 +322,48 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
     status: nextStatus,
     variables,
   });
+
+  const runStatus =
+    nextStatus === 'HANDOFF' || nextStatus === 'COMPLETED' || replies.length > 0 ? 'SUCCESS' : 'SKIPPED';
+  try {
+    const db = getAdminDb();
+    await db.from('bot_flow_runs').insert({
+      bot_flow_id: loaded.flowId,
+      version_id: loaded.versionId,
+      trigger_event: String(
+        graph.nodes.find((n) => getNodeType(n) === 'trigger')?.data?.triggerEvent || 'whatsapp_incoming',
+      ),
+      phone,
+      status: runStatus,
+      input_payload: {
+        message,
+        profile_name: input.profileName || null,
+        dry_run: Boolean(input.dryRun),
+      },
+      trace,
+      finished_at: new Date().toISOString(),
+    });
+    if (runStatus === 'SUCCESS') {
+      const { data: flowRow } = await db
+        .from('bot_flows')
+        .select('total_runs, success_runs, failed_runs')
+        .eq('id', loaded.flowId)
+        .maybeSingle();
+      if (flowRow) {
+        await db
+          .from('bot_flows')
+          .update({
+            total_runs: Number(flowRow.total_runs || 0) + 1,
+            success_runs: Number(flowRow.success_runs || 0) + 1,
+            last_run_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', loaded.flowId);
+      }
+    }
+  } catch {
+    /* runs table optional until migration 315 */
+  }
 
   if (replies.length === 0) {
     return { handled: false, skippedReason: 'flow_no_reply', trace, session };

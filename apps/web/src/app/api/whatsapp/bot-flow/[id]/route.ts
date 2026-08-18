@@ -55,3 +55,46 @@ export async function GET(
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    if (!isUuid(id)) return NextResponse.json({ error: 'Invalid flow id' }, { status: 400 });
+
+    const auth = await getDbWithAdmin();
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+    const { data: existing, error: lookupError } = await auth.db
+      .from('bot_flows')
+      .select('id, name')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (lookupError) {
+      return NextResponse.json({ error: lookupError.message || 'Failed to lookup flow' }, { status: 500 });
+    }
+    if (!existing) return NextResponse.json({ error: 'Flow not found' }, { status: 404 });
+
+    // Break active_version FK before cascade delete of versions
+    const { error: clearError } = await auth.db
+      .from('bot_flows')
+      .update({ active_version_id: null, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (clearError) {
+      return NextResponse.json({ error: clearError.message || 'Failed to clear active version' }, { status: 500 });
+    }
+
+    const { error: deleteError } = await auth.db.from('bot_flows').delete().eq('id', id);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message || 'Failed to delete flow' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, deleted_id: id, name: existing.name });
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+  }
+}

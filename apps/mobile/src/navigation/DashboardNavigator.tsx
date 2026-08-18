@@ -95,6 +95,7 @@ import TelecallerCreateLeadScreen from '../screens/dashboard/telecaller/Telecall
 import TelecallerEditLeadScreen from '../screens/dashboard/telecaller/TelecallerEditLeadScreen';
 import TelecallerLeadDetailScreen from '../screens/dashboard/telecaller/TelecallerLeadDetailScreen';
 import TelecallerFollowUpsScreen from '../screens/dashboard/telecaller/TelecallerFollowUpsScreen';
+import NotificationsScreen from '../screens/dashboard/NotificationsScreen';
 import TelecallerProfileScreen from '../screens/dashboard/telecaller/TelecallerProfileScreen';
 import TelecallerScriptsScreen from '../screens/dashboard/telecaller/TelecallerScriptsScreen';
 
@@ -225,7 +226,12 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen 
           name="TelecallerFollowUps" 
           component={TelecallerFollowUpsScreen}
-          options={{ title: 'Follow Ups' }}
+          options={{ title: 'Reminders' }}
+        />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
         />
         <Stack.Screen 
           name="TelecallerScripts" 
@@ -330,6 +336,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="TelecallerEditLead"
           component={require('../screens/dashboard/telecaller/TelecallerEditLeadScreen').default}
           options={{ title: 'Edit Lead' }}
+        />
+        <Stack.Screen
+          name="TelecallerFollowUps"
+          component={TelecallerFollowUpsScreen}
+          options={{ title: 'Reminders' }}
+        />
+        <Stack.Screen
+          name="Notifications"
+          component={NotificationsScreen}
+          options={{ title: 'Notifications' }}
         />
       </Stack.Navigator>
     );

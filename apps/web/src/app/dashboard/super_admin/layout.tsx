@@ -60,6 +60,7 @@ import {
   Layers,
   Clock3,
   Link2,
+  Workflow,
 } from 'lucide-react';
 
 type NavItem = {
@@ -571,6 +572,12 @@ const navigationItems: NavItem[] = [
         description: 'Booking & lifecycle WhatsApp triggers',
       },
       {
+        name: 'Workflow Builder',
+        href: '/dashboard/super_admin/whatsapp-workflows',
+        icon: Workflow,
+        description: 'Visual WhatsApp bot / workflow canvas',
+      },
+      {
         name: 'WhatsApp Cron',
         href: '/dashboard/super_admin/whatsapp-cron',
         icon: Clock3,
@@ -791,7 +798,8 @@ function SuperAdminLayoutInner({
     }
     if (
       pathname?.startsWith('/dashboard/super_admin/whatsapp-') ||
-      pathname?.startsWith('/dashboard/super_admin/bot-flow')
+      pathname?.startsWith('/dashboard/super_admin/bot-flow') ||
+      pathname?.startsWith('/dashboard/super_admin/whatsapp-workflows')
     ) {
       setOpenGroups((prev) => ({ ...prev, WhatsApp: true }));
     }

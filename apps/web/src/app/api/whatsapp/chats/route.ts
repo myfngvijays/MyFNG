@@ -14,6 +14,8 @@ const ALLOWED_ROLE_CODES = [
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
+  const last10 = digits.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
   return digits.startsWith('91') ? digits : `91${digits}`;
 }
 
@@ -141,11 +143,100 @@ async function loadTelecallerLeadPhones(
   return byPhone;
 }
 
+/** Lead Manager / admins: CRM leads with phones; optional assignee filter. */
+async function loadAllCrmLeadPhones(
+  db: any,
+  searchDigits: string,
+  opts?: { telecallerId?: string; unassignedOnly?: boolean; searchName?: string },
+): Promise<Map<string, any>> {
+  const byPhone = new Map<string, any>();
+  const LIMIT = 200;
+  const telecallerId = String(opts?.telecallerId || '').trim();
+  const unassignedOnly = Boolean(opts?.unassignedOnly);
+  const searchName = String(opts?.searchName || '').trim();
+
+  const selectCols =
+    'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at, assigned_telecaller_id, assigned_telecaller:users_login!assigned_telecaller_id(id, full_name)';
+
+  let query = db
+    .from('service_leads')
+    .select(selectCols)
+    .is('deleted_at', null)
+    .not('customer_phone', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(LIMIT);
+
+  if (unassignedOnly) query = query.is('assigned_telecaller_id', null);
+  else if (telecallerId) query = query.eq('assigned_telecaller_id', telecallerId);
+
+  if (searchDigits) {
+    query = query.ilike('customer_phone', `%${searchDigits}%`);
+  } else if (searchName) {
+    query = query.ilike('customer_name', `%${searchName}%`);
+  }
+
+  let { data, error } = await query;
+  if (error) {
+    // Fallback without join / soft-delete for older schemas
+    let retry = db
+      .from('service_leads')
+      .select(
+        'customer_phone, customer_name, problem_description, description, coupon_meta, updated_at, created_at, assigned_telecaller_id',
+      )
+      .not('customer_phone', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(LIMIT);
+    if (!/deleted_at/i.test(String(error.message || ''))) {
+      retry = retry.is('deleted_at', null);
+    }
+    if (unassignedOnly) retry = retry.is('assigned_telecaller_id', null);
+    else if (telecallerId) retry = retry.eq('assigned_telecaller_id', telecallerId);
+    if (searchDigits) retry = retry.ilike('customer_phone', `%${searchDigits}%`);
+    else if (searchName) retry = retry.ilike('customer_name', `%${searchName}%`);
+    const second = await retry;
+    data = second.data;
+    error = second.error;
+  }
+  if (error) throw error;
+
+  const nameQ = searchName.toLowerCase();
+  for (const row of data || []) {
+    const phone = normalizePhone(String(row.customer_phone || ''));
+    if (!phone || byPhone.has(phone)) continue;
+    if (searchDigits && !phone.includes(searchDigits)) continue;
+    const customerName = String(row.customer_name || '').trim() || null;
+    if (nameQ && !String(customerName || '').toLowerCase().includes(nameQ)) continue;
+    const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
+    const leadInboundAt =
+      String(meta.last_inbound_at || meta.inbound_at || '').trim() ||
+      row.updated_at ||
+      row.created_at ||
+      null;
+    const preview = leadMessagePreview(row);
+    const waInbound = Boolean(meta.whatsapp_inbound || meta.whatsapp_enquiry);
+    const assignee = row?.assigned_telecaller;
+    byPhone.set(phone, {
+      phone,
+      customer_name: customerName,
+      assigned_telecaller_id: row.assigned_telecaller_id || null,
+      assigned_telecaller_name: String(assignee?.full_name || '').trim() || null,
+      last_message_preview: preview,
+      last_message_type: null,
+      last_direction: waInbound ? 'INBOUND' : null,
+      last_status: null,
+      last_message_at: leadInboundAt,
+    });
+  }
+
+  return byPhone;
+}
+
 async function getTelecallerWhatsappChats(
   db: any,
   telecallerId: string,
   mode: string,
   searchDigits: string,
+  searchName = '',
 ) {
   const unassigned = mode === 'unassigned';
   const byPhone = await loadTelecallerLeadPhones(db, telecallerId, unassigned);
@@ -181,6 +272,12 @@ async function getTelecallerWhatsappChats(
   if (searchDigits) {
     for (const phone of [...byPhone.keys()]) {
       if (!phone.includes(searchDigits)) byPhone.delete(phone);
+    }
+  } else if (searchName) {
+    const q = searchName.toLowerCase();
+    for (const [phone, row] of [...byPhone.entries()]) {
+      const name = String(row?.customer_name || '').toLowerCase();
+      if (!name.includes(q)) byPhone.delete(phone);
     }
   }
 
@@ -223,6 +320,7 @@ export async function GET(request: NextRequest) {
     const scanLimit = Number.isFinite(scanRaw) ? Math.max(200, Math.min(200000, Math.floor(scanRaw))) : 50000;
     const searchRaw = String(request.nextUrl.searchParams.get('search') || '').trim();
     const searchDigits = searchRaw.replace(/\D/g, '');
+    const searchName = searchRaw.replace(/[0-9+\s().\-]/g, '').trim();
 
     if (roleCode === 'TELECALLER') {
       const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
@@ -249,12 +347,126 @@ export async function GET(request: NextRequest) {
         String(userProfile.id),
         mode,
         searchDigits,
+        searchName,
       );
       return NextResponse.json({
         success: true,
         ...result,
         mode,
         scope: mode === 'unassigned' ? 'unassigned_leads' : 'my_assigned_leads',
+      });
+    }
+
+    // Lead Manager / admins: full CRM lead inbox (not assignee-scoped).
+    // Use service role — user RLS often hides service_leads / whatsapp_messages.
+    if (roleCode === 'LEAD_MANAGER' || roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN') {
+      const { supabaseAdmin, error: adminError } = getSupabaseAdmin();
+      if (!supabaseAdmin) {
+        return NextResponse.json(
+          { error: adminError || 'Server configuration error' },
+          { status: 503 },
+        );
+      }
+
+      const telecallerFilter = String(request.nextUrl.searchParams.get('telecaller_id') || '').trim();
+      const unassignedOnly = request.nextUrl.searchParams.get('unassigned') === '1';
+      const assigneeScoped = Boolean(telecallerFilter || unassignedOnly);
+
+      const byPhone = await loadAllCrmLeadPhones(supabaseAdmin, searchDigits, {
+        telecallerId: telecallerFilter || undefined,
+        unassignedOnly,
+        searchName: searchDigits ? undefined : searchName || undefined,
+      });
+
+      // Also include explicit WhatsApp chat assignments for a selected telecaller.
+      if (telecallerFilter) {
+        try {
+          const { data: assignedRows } = await supabaseAdmin
+            .from('whatsapp_chat_assignments')
+            .select('phone')
+            .contains('assigned_to_ids', [telecallerFilter])
+            .limit(120);
+          for (const row of assignedRows || []) {
+            const phone = normalizePhone(String(row?.phone || ''));
+            if (!phone || byPhone.has(phone)) continue;
+            if (searchDigits && !phone.includes(searchDigits)) continue;
+            // Name-only search: skip nameless assignment rows.
+            if (!searchDigits && searchName) continue;
+            byPhone.set(phone, {
+              phone,
+              customer_name: null,
+              assigned_telecaller_id: telecallerFilter,
+              assigned_telecaller_name: null,
+              last_message_preview: 'Assigned WhatsApp chat',
+              last_message_type: null,
+              last_direction: null,
+              last_status: null,
+              last_message_at: null,
+            });
+          }
+        } catch {
+          /* optional */
+        }
+      }
+
+      // Merge recent WhatsApp threads only when viewing full inbox (not assignee-filtered),
+      // otherwise filter would be polluted with unrelated chats.
+      // Skip message-merge when searching by name — keep name-matched leads only.
+      if (!assigneeScoped && !searchName) {
+        try {
+          const { data: recentMsgs } = await supabaseAdmin
+            .from('whatsapp_messages')
+            .select(
+              'direction, sender_phone, recipient_phone, message_type, text_body, media_caption, template_name, status, created_at',
+            )
+            .order('created_at', { ascending: false })
+            .limit(800);
+
+          for (const row of recentMsgs || []) {
+            const phone = getChatPhone(row);
+            if (!phone) continue;
+            if (searchDigits && !phone.includes(searchDigits)) continue;
+            const preview = messagePreviewFromRow(row);
+            const existing = byPhone.get(phone);
+            const rowTs = ts(row?.created_at);
+            const existingTs = ts(existing?.last_message_at);
+            if (!existing || rowTs >= existingTs) {
+              byPhone.set(phone, {
+                phone,
+                customer_name: existing?.customer_name || null,
+                assigned_telecaller_id: existing?.assigned_telecaller_id || null,
+                assigned_telecaller_name: existing?.assigned_telecaller_name || null,
+                last_message_preview: preview,
+                last_message_type: row?.message_type || null,
+                last_direction: row?.direction || null,
+                last_status: row?.status || null,
+                last_message_at: row?.created_at || existing?.last_message_at || null,
+              });
+            }
+          }
+        } catch (mergeErr) {
+          console.warn('[whatsapp/chats] message merge skipped', mergeErr);
+        }
+      }
+
+      const chats = Array.from(byPhone.values()).sort(
+        (a, b) => ts(b.last_message_at) - ts(a.last_message_at),
+      );
+
+      return NextResponse.json({
+        success: true,
+        chats,
+        count: chats.length,
+        lead_count: chats.length,
+        scanned_messages: 0,
+        mode,
+        scope: unassignedOnly
+          ? 'unassigned_leads'
+          : telecallerFilter
+            ? 'assignee_leads'
+            : 'all_crm_leads',
+        telecaller_id: telecallerFilter || null,
+        unassigned: unassignedOnly,
       });
     }
 

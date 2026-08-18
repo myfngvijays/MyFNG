@@ -12,7 +12,11 @@ type ChatRow = {
   last_status: string | null;
   last_direction: string | null;
   customer_name?: string | null;
+  assigned_telecaller_id?: string | null;
+  assigned_telecaller_name?: string | null;
 };
+
+type PeerRow = { id: string; full_name?: string | null; phone?: string | null };
 
 type Props = {
   isOpen: boolean;
@@ -20,13 +24,15 @@ type Props = {
   initialPhone?: string;
   initialPreview?: string;
   hideLeadPool?: boolean;
+  /** Lead Manager / admin: show assignee filter dropdown */
+  showAssigneeFilter?: boolean;
   refreshSignal?: number;
   title?: string;
 };
 
 export type WaTheme = 'light' | 'dark';
 
-const THEME_KEY = 'myfng:wa-workspace-theme';
+const THEME_KEY = 'myfng:wa-workspace-theme-v2';
 
 function formatPhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -101,6 +107,7 @@ export default function WhatsAppWebWorkspace({
   initialPhone = '',
   initialPreview = '',
   hideLeadPool = true,
+  showAssigneeFilter = false,
   refreshSignal,
   title = 'WhatsApp · 6161',
 }: Props) {
@@ -113,7 +120,9 @@ export default function WhatsAppWebWorkspace({
   const [selectedPreview, setSelectedPreview] = useState('');
   const [selectedName, setSelectedName] = useState('');
   const [isNarrow, setIsNarrow] = useState(false);
-  const [theme, setTheme] = useState<WaTheme>('dark');
+  const [theme, setTheme] = useState<WaTheme>('light');
+  const [assigneeFilter, setAssigneeFilter] = useState(''); // '' | 'unassigned' | telecaller uuid
+  const [peers, setPeers] = useState<PeerRow[]>([]);
 
   const debouncedSearch = useMemo(() => search.trim(), [search]);
   const colors = themePalette(theme);
@@ -122,6 +131,7 @@ export default function WhatsAppWebWorkspace({
     setMounted(true);
     try {
       const saved = localStorage.getItem(THEME_KEY);
+      // Default is light; only restore if user explicitly picked a theme before.
       if (saved === 'light' || saved === 'dark') setTheme(saved);
     } catch {
       /* ignore */
@@ -146,14 +156,39 @@ export default function WhatsAppWebWorkspace({
     return () => mq.removeEventListener('change', apply);
   }, [mounted]);
 
-  const fetchChats = useCallback(async (searchText: string, signal?: AbortSignal) => {
-    const params = new URLSearchParams({ limit: '120', scan: '500', mode: 'assigned' });
-    if (searchText) params.set('search', searchText);
-    const res = await fetch(`/api/whatsapp/chats?${params.toString()}`, { cache: 'no-store', signal });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load chats');
-    return Array.isArray(data?.chats) ? (data.chats as ChatRow[]) : [];
-  }, []);
+  const fetchChats = useCallback(
+    async (searchText: string, signal?: AbortSignal) => {
+      const params = new URLSearchParams({ limit: '120', scan: '500', mode: 'assigned' });
+      if (searchText) params.set('search', searchText);
+      if (showAssigneeFilter) {
+        if (assigneeFilter === 'unassigned') params.set('unassigned', '1');
+        else if (assigneeFilter) params.set('telecaller_id', assigneeFilter);
+      }
+      const res = await fetch(`/api/whatsapp/chats?${params.toString()}`, { cache: 'no-store', signal });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to load chats');
+      return Array.isArray(data?.chats) ? (data.chats as ChatRow[]) : [];
+    },
+    [showAssigneeFilter, assigneeFilter],
+  );
+
+  useEffect(() => {
+    if (!isOpen || !showAssigneeFilter) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/telecaller/crm/transfer?peers=1', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setPeers(Array.isArray(data?.peers) ? data.peers : []);
+      } catch {
+        if (!cancelled) setPeers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, showAssigneeFilter]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -204,7 +239,10 @@ export default function WhatsAppWebWorkspace({
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      // Nested template picker owns Escape first.
+      if (document.querySelector('[data-wa-template-picker="1"]')) return;
+      onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -225,28 +263,33 @@ export default function WhatsAppWebWorkspace({
       aria-label={title}
       style={{
         position: 'fixed',
-        inset: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        // Desktop: leave icon-rail so left sidebar stays visible/usable
+        left: isNarrow ? 0 : '5rem',
         zIndex: 10000,
         display: 'flex',
         alignItems: 'stretch',
-        justifyContent: 'center',
-        width: '100vw',
+        justifyContent: 'stretch',
+        width: isNarrow ? '100vw' : 'calc(100vw - 5rem)',
         height: '100dvh',
-        padding: isNarrow ? '0' : '16px 28px',
+        padding: 0,
         boxSizing: 'border-box',
-        background: colors.shell,
+        background: colors.panel,
       }}
     >
       <div
         style={{
           display: 'flex',
           width: '100%',
-          maxWidth: 1440,
+          maxWidth: 'none',
           height: '100%',
-          borderRadius: isNarrow ? 0 : 14,
+          borderRadius: 0,
           overflow: 'hidden',
-          boxShadow: isNarrow ? 'none' : '0 12px 40px rgba(0,0,0,0.28)',
-          border: isNarrow ? 'none' : `1px solid ${colors.listBorder}`,
+          boxShadow: 'none',
+          border: 'none',
+          borderLeft: isNarrow ? 'none' : `1px solid ${colors.listBorder}`,
           background: colors.panel,
         }}
       >
@@ -319,7 +362,7 @@ export default function WhatsAppWebWorkspace({
               </div>
             </div>
 
-            <div className="px-3 py-2" style={{ background: colors.listBg }}>
+            <div className="space-y-2 px-3 py-2" style={{ background: colors.listBg }}>
               <div
                 className="flex items-center gap-2 rounded-lg px-3 py-2"
                 style={{ background: colors.searchBg }}
@@ -333,6 +376,27 @@ export default function WhatsAppWebWorkspace({
                   style={{ color: colors.text }}
                 />
               </div>
+              {showAssigneeFilter ? (
+                <select
+                  value={assigneeFilter}
+                  onChange={(e) => setAssigneeFilter(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{
+                    background: colors.searchBg,
+                    color: colors.text,
+                    border: `1px solid ${colors.listBorder}`,
+                  }}
+                  aria-label="Filter by assignee"
+                >
+                  <option value="">All assignees</option>
+                  <option value="unassigned">Unassigned</option>
+                  {peers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {String(p.full_name || p.phone || p.id).trim() || 'Telecaller'}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -347,7 +411,7 @@ export default function WhatsAppWebWorkspace({
                 <div className="px-4 py-10 text-center text-sm text-red-500">{loadError}</div>
               ) : rows.length === 0 ? (
                 <div className="px-4 py-10 text-center text-sm" style={{ color: colors.muted }}>
-                  No assigned chats yet.
+                  {hideLeadPool ? 'No assigned chats yet.' : 'No chats yet. Leads with phone numbers will show here.'}
                 </div>
               ) : (
                 rows.map((chat) => {
@@ -397,6 +461,13 @@ export default function WhatsAppWebWorkspace({
                         {name ? (
                           <p className="truncate text-[11px]" style={{ color: colors.muted }}>
                             {formatPhone(phone)}
+                          </p>
+                        ) : null}
+                        {showAssigneeFilter ? (
+                          <p className="truncate text-[10px]" style={{ color: colors.muted }}>
+                            {chat.assigned_telecaller_name
+                              ? `Assignee: ${chat.assigned_telecaller_name}`
+                              : 'Unassigned'}
                           </p>
                         ) : null}
                         <p
@@ -459,7 +530,7 @@ export default function WhatsAppWebWorkspace({
                   WhatsApp · 6161
                 </p>
                 <p className="max-w-sm text-sm" style={{ color: colors.muted }}>
-                  Left se chat select karo. Light / Dark upar sun/moon se badlo.
+                  Left se chat select karo. Theme upar sun/moon se badlo.
                 </p>
               </div>
             )}

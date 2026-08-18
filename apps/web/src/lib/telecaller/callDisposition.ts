@@ -13,6 +13,7 @@ export const DISPOSITION_TO_LEAD_STATUS: Record<string, string> = {
 export const DISPOSITION_LABEL: Record<string, string> = {
   INTERESTED: 'Interested',
   WILL_VISIT: 'He will visit',
+  CALLBACK: 'Follow-up',
   BOOKING_CONFIRMED: 'Booking confirmed',
   IN_SERVICE: 'In Service',
   SERVICE_DONE: 'Service Done',
@@ -24,6 +25,7 @@ const NOTE_TAG_TO_RESULT: Array<{ re: RegExp; id: string }> = [
   { re: /^lost\b/i, id: 'LOST' },
   { re: /^interested\b/i, id: 'INTERESTED' },
   { re: /will\s*visit/i, id: 'WILL_VISIT' },
+  { re: /^callback\b/i, id: 'CALLBACK' },
   { re: /booking\s*confirmed/i, id: 'BOOKING_CONFIRMED' },
   { re: /^in\s*service\b/i, id: 'IN_SERVICE' },
   { re: /service\s*done/i, id: 'SERVICE_DONE' },

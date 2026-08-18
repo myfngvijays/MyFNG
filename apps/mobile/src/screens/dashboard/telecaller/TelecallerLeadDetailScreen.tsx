@@ -24,13 +24,14 @@ import { workshopPublicPageAddress } from '../../../lib/workshopDisplay';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { parseIds } from '../../../lib/parseIds';
-import { openPhoneCall, openWhatsApp } from '../../../lib/phone';
+import { openPhoneCall } from '../../../lib/phone';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanPicker';
 import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
 } from '../../../components/telecaller/CrmPickupVisitStep';
+import TelecallerWhatsAppChat from '../../../components/telecaller/TelecallerWhatsAppChat';
 import {
   resolveVehicleClass,
   resolveVehicleClassByMakeModel,
@@ -315,6 +316,7 @@ const RINGING: CallDisposition = {
 const STATUS_OPTIONS: CallDisposition[] = [
   { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
+  { id: 'CALLBACK', label: 'Follow-up', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   {
     id: 'BOOKING_CONFIRMED',
     label: 'Booking confirmed',
@@ -416,6 +418,7 @@ export default function TelecallerLeadDetailScreen({
   const [couponInput, setCouponInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
+  const [showWaChat, setShowWaChat] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
   const [carDisplay, setCarDisplay] = useState('');
   const [cities, setCities] = useState<any[]>([]);
@@ -644,6 +647,10 @@ export default function TelecallerLeadDetailScreen({
     }
     if (activityData.result === 'LOST' && !activityData.lostReason) {
       Alert.alert('Missing info', 'Select lost reason');
+      return;
+    }
+    if (activityData.result === 'CALLBACK' && (!activityData.date || !activityData.time)) {
+      Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
       return;
     }
 
@@ -879,6 +886,15 @@ export default function TelecallerLeadDetailScreen({
             selected.id === 'LOST'
               ? `Lost · ${activityData.lostReason}`
               : selected.label;
+          const whenIso =
+            selected.id === 'CALLBACK'
+              ? combineDateAndTime(activityData.date, activityData.time)
+              : null;
+          if (selected.id === 'CALLBACK' && !whenIso) {
+            Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
+            setSaving(false);
+            return;
+          }
           const notesParts = [
             `[${statusLabel}]`,
             activityData.notes.trim() || null,
@@ -894,8 +910,8 @@ export default function TelecallerLeadDetailScreen({
               outcome: selected.outcome,
               notes: notesParts.join(' '),
               phone_number: editForm.customer_phone || lead?.customer_phone,
-              next_action: null,
-              next_action_time: null,
+              next_action: whenIso ? 'FOLLOW_UP' : null,
+              next_action_time: whenIso,
             }),
           });
           const nextCallMeta = {
@@ -913,7 +929,35 @@ export default function TelecallerLeadDetailScreen({
             updated_at: new Date().toISOString(),
           };
           if (selected.lead_status) leadUpdate.status = selected.lead_status;
+          if (whenIso) {
+            leadUpdate.follow_up_required = true;
+            leadUpdate.next_follow_up_at = whenIso;
+          }
           await supabase.from('service_leads').update(leadUpdate).eq('id', leadId);
+
+          if (whenIso) {
+            const { data: profile } = await supabase
+              .from('users_login')
+              .select('id')
+              .eq('email', user?.email)
+              .single();
+            await supabase
+              .from('telecaller_follow_ups')
+              .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+              .eq('lead_id', leadId)
+              .eq('status', 'PENDING');
+            await supabase.from('telecaller_follow_ups').insert([
+              {
+                lead_id: leadId,
+                telecaller_id: profile?.id,
+                follow_up_type: 'CALLBACK',
+                scheduled_time: whenIso,
+                reason: activityData.notes || statusLabel,
+                priority: 'NORMAL',
+                status: 'PENDING',
+              },
+            ]);
+          }
         } catch (actErr) {
           console.warn('[LeadDetail] activity log during save failed', actErr);
         }
@@ -1302,6 +1346,10 @@ export default function TelecallerLeadDetailScreen({
         Alert.alert('Lost reason', 'Please select a lost reason.');
         return;
       }
+      if (selected.id === 'CALLBACK' && (!activityData.date || !activityData.time)) {
+        Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
+        return;
+      }
 
       const whenIso = combineDateAndTime(activityData.date, activityData.time);
       const statusLabel =
@@ -1374,6 +1422,12 @@ export default function TelecallerLeadDetailScreen({
           .eq('email', user?.email)
           .single();
 
+        await supabase
+          .from('telecaller_follow_ups')
+          .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+          .eq('lead_id', leadId)
+          .eq('status', 'PENDING');
+
         await supabase.from('telecaller_follow_ups').insert([
           {
             lead_id: leadId,
@@ -1403,11 +1457,13 @@ export default function TelecallerLeadDetailScreen({
     }
   };
 
-  const handleOpenWhatsApp = async () => {
-    const ok = await openWhatsApp(lead?.customer_phone);
-    if (!ok) {
-      Alert.alert('WhatsApp', 'Could not open WhatsApp. Check the phone number.');
+  const handleOpenWhatsApp = () => {
+    const phone = String(editing ? editForm.customer_phone : lead?.customer_phone || '').trim();
+    if (!phone.replace(/\D/g, '')) {
+      Alert.alert('WhatsApp', 'Customer phone number missing.');
+      return;
     }
+    setShowWaChat(true);
   };
 
   const handleSendPricingWhatsApp = async () => {
@@ -1990,7 +2046,7 @@ export default function TelecallerLeadDetailScreen({
               <View style={styles.detailGrid}>
                 <DetailRow icon="city" label="City" value={lead.city || '—'} compact />
                 <DetailRow
-                  icon="map-marker-radius"
+                  icon="map-pin"
                   label="Pincode"
                   value={lead.pincode ? String(lead.pincode) : '—'}
                   compact
@@ -2011,7 +2067,7 @@ export default function TelecallerLeadDetailScreen({
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
           <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-            <Icon name="clipboard-text" size={16} color="#B45309" />
+            <Icon name="clipboard-list" size={16} color="#B45309" />
           </View>
           <Text style={styles.sectionTitle}>Lead Overview</Text>
         </View>
@@ -2334,7 +2390,11 @@ export default function TelecallerLeadDetailScreen({
                 </>
               ) : null}
 
-              <Text style={styles.formLabel}>Date & time (optional)</Text>
+              <Text style={styles.formLabel}>
+                {activityData.result === 'CALLBACK'
+                  ? 'Follow-up date & time (required)'
+                  : 'Date & time (optional)'}
+              </Text>
               <View style={styles.dateTimeRow}>
                 <TouchableOpacity
                   style={[styles.datetimeButton, { flex: 1 }]}
@@ -2349,6 +2409,11 @@ export default function TelecallerLeadDetailScreen({
                   <Text style={styles.datetimeButtonText}>{formatDisplayTime(activityData.time)}</Text>
                 </TouchableOpacity>
               </View>
+              {activityData.result === 'CALLBACK' ? (
+                <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginBottom: 8 }}>
+                  Is time pe telecaller ko in-app + push reminder milega.
+                </Text>
+              ) : null}
               {activityData.date || activityData.time ? (
                 <TouchableOpacity
                   onPress={() => setActivityData({ ...activityData, date: '', time: '' })}
@@ -2632,7 +2697,11 @@ export default function TelecallerLeadDetailScreen({
               </>
             ) : null}
 
-            <Text style={styles.formLabel}>Date & time (optional)</Text>
+            <Text style={styles.formLabel}>
+              {activityData.result === 'CALLBACK'
+                ? 'Follow-up date & time (required)'
+                : 'Date & time (optional)'}
+            </Text>
             <View style={styles.dateTimeRow}>
               <TouchableOpacity
                 style={[styles.datetimeButton, { flex: 1 }]}
@@ -2647,6 +2716,11 @@ export default function TelecallerLeadDetailScreen({
                 <Text style={styles.datetimeButtonText}>{formatDisplayTime(activityData.time)}</Text>
               </TouchableOpacity>
             </View>
+            {activityData.result === 'CALLBACK' ? (
+              <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginBottom: 8 }}>
+                Is time pe telecaller ko in-app + push reminder milega.
+              </Text>
+            ) : null}
             {activityData.date || activityData.time ? (
               <TouchableOpacity
                 onPress={() => setActivityData({ ...activityData, date: '', time: '' })}
@@ -2901,6 +2975,18 @@ export default function TelecallerLeadDetailScreen({
           </ScrollView>
         </View>
       </View>
+    </Modal>
+
+    <Modal
+      visible={showWaChat}
+      animationType="slide"
+      onRequestClose={() => setShowWaChat(false)}
+    >
+      <TelecallerWhatsAppChat
+        phone={String(editing ? editForm.customer_phone : lead?.customer_phone || '')}
+        customerName={String(editing ? editForm.customer_name : lead?.customer_name || '') || null}
+        onBack={() => setShowWaChat(false)}
+      />
     </Modal>
 
     {editing ? (

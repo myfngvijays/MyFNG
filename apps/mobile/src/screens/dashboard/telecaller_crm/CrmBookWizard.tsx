@@ -43,6 +43,7 @@ const PAYMENT_MODES = [
 const LEAD_STATUS_OPTIONS = [
   { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
   { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
+  { id: 'CALLBACK', label: 'Follow-up', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'NEW' },
   {
     id: 'BOOKING_CONFIRMED',
     label: 'Booking confirmed',
@@ -469,11 +470,16 @@ export default function CrmBookWizard({
       Alert.alert('Lost reason', 'Lost select kiya hai — reason choose karo');
       return;
     }
-    // Date/Time = kab baat hui (call activity), NOT follow-up schedule
+    // Date/Time = kab baat hui (call activity); for CALLBACK this also schedules the reminder
     const activityIso =
       activityDate && activityTime ? `${activityDate}T${activityTime}:00+05:30` : null;
     if (!activityIso) {
-      Alert.alert('Call time', 'Kab baat hui — date & time dalo');
+      Alert.alert(
+        statusOpt.id === 'CALLBACK' ? 'Follow-up time' : 'Call time',
+        statusOpt.id === 'CALLBACK'
+          ? 'Follow-up ke liye date & time dalo — usi pe reminder jayega'
+          : 'Kab baat hui — date & time dalo',
+      );
       return;
     }
     const statusLabel =
@@ -510,6 +516,14 @@ export default function CrmBookWizard({
           call_notes: form.problem_description || null,
           lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
           activity_at: activityIso,
+          ...(statusOpt.id === 'CALLBACK'
+            ? {
+                follow_up_required: true,
+                next_follow_up_at: activityIso,
+                follow_up_type: 'CALLBACK',
+                follow_up_reason: form.problem_description || 'Follow-up',
+              }
+            : {}),
         }),
       });
       if (!data?.lead?.id && !data?.success) {

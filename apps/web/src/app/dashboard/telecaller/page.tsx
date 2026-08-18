@@ -26,6 +26,7 @@ import {
   Check,
   Loader2,
   CalendarDays,
+  Clock,
 } from 'lucide-react';
 
 type Kpis = {
@@ -159,6 +160,7 @@ export default function TelecallerCrmHomePage() {
     { label: 'Incomplete', value: kpis.incomplete, color: '#B45309', filter: 'incomplete' },
     { label: 'Interested', value: kpis.interested, color: '#C2410C', filter: 'interested' },
     { label: 'He will visit', value: kpis.will_visit, color: '#6D28D9', filter: 'will_visit' },
+    { label: 'Follow-up', value: kpis.callbacks, color: '#0369A1', filter: 'callback' },
     { label: 'Booking confirmed', value: kpis.booking_confirmed ?? kpis.booked, color: '#047857', filter: 'booking_confirmed' },
     { label: 'In Service', value: kpis.in_service, color: '#1D4ED8', filter: 'in_service' },
     { label: 'Service Done', value: kpis.service_done, color: '#059669', filter: 'service_done' },
@@ -187,16 +189,31 @@ export default function TelecallerCrmHomePage() {
               {isLeadManager ? 'Lead Manager Control Panel' : profileName}
             </h1>
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold ${
-              punchedIn ? 'bg-emerald-500/10 text-slate-800' : 'bg-orange-500/10 text-slate-800'
-            }`}
-          >
+          <div className="flex items-center gap-2">
+            <Link
+              href={`${base}/followups`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-800 hover:bg-sky-100"
+              title="Reminders / Follow-ups"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Reminders
+              {Number(kpis.followups_today || 0) > 0 ? (
+                <span className="rounded-full bg-sky-600 px-1.5 py-0.5 text-[10px] text-white">
+                  {kpis.followups_today}
+                </span>
+              ) : null}
+            </Link>
             <span
-              className={`h-2 w-2 rounded-full ${punchedIn ? 'bg-emerald-500' : 'bg-orange-500'}`}
-            />
-            {punchedIn ? 'On Floor' : 'Off Duty'}
-          </span>
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold ${
+                punchedIn ? 'bg-emerald-500/10 text-slate-800' : 'bg-orange-500/10 text-slate-800'
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${punchedIn ? 'bg-emerald-500' : 'bg-orange-500'}`}
+              />
+              {punchedIn ? 'On Floor' : 'Off Duty'}
+            </span>
+          </div>
         </div>
 
         {/* Date + Aansh row on desktop */}

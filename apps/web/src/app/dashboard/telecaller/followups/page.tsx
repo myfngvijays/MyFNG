@@ -1,21 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Calendar, Clock, Phone, CheckCircle, XCircle, AlertCircle, Filter, Search } from 'lucide-react';
+import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { Calendar, Clock, Phone, CheckCircle, XCircle, Filter, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { formatDateTime } from "@/lib/utils";
+import { istYmd, istDayBounds } from '@/lib/telecaller/crmDateRange';
+
+function formatYmdShort(ymd: string) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d} ${months[m - 1]} ${y}`;
+}
 
 export default function FollowUpsPage() {
+  const pathname = usePathname();
+  const { base, layoutRole } = getCrmDashboardBase(pathname);
   const [followUps, setFollowUps] = useState<any[]>([]);
+  const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('pending'); // pending, today, overdue, completed
+  const [filter, setFilter] = useState<'pending' | 'today' | 'calendar' | 'completed'>('pending');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'CALLBACK'>('all');
+  const [pickMode, setPickMode] = useState<'single' | 'range'>('single');
+  const [customStart, setCustomStart] = useState(istYmd());
+  const [customEnd, setCustomEnd] = useState(istYmd());
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchFollowUps();
-  }, [filter]);
+  }, [filter, customStart, customEnd, pickMode]);
 
   async function fetchFollowUps() {
     const supabase = createClient();
@@ -31,6 +48,14 @@ export default function FollowUpsPage() {
         .eq('email', user.email)
         .single();
 
+      const { data: pendingRows } = await supabase
+        .from('telecaller_follow_ups')
+        .select('lead_id')
+        .eq('telecaller_id', userProfile?.id)
+        .eq('status', 'PENDING');
+      const pendingIds = new Set((pendingRows || []).map((r: any) => String(r.lead_id)));
+      setPendingLeadIds(pendingIds);
+
       let query = supabase
         .from('telecaller_follow_ups')
         .select(`
@@ -39,32 +64,32 @@ export default function FollowUpsPage() {
         `)
         .eq('telecaller_id', userProfile?.id);
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayBounds = istDayBounds(istYmd());
 
-      switch (filter) {
-        case 'pending':
-          query = query.eq('status', 'PENDING');
-          break;
-        case 'today':
+      if (filter === 'completed') {
+        query = query.eq('status', 'COMPLETED').order('completed_at', { ascending: false });
+      } else {
+        query = query.eq('status', 'PENDING');
+        if (filter === 'today') {
           query = query
-            .eq('status', 'PENDING')
-            .gte('scheduled_time', today.toISOString())
-            .lt('scheduled_time', tomorrow.toISOString());
-          break;
-        case 'overdue':
-          query = query
-            .eq('status', 'PENDING')
-            .lt('scheduled_time', new Date().toISOString());
-          break;
-        case 'completed':
-          query = query.eq('status', 'COMPLETED');
-          break;
+            .gte('scheduled_time', todayBounds.start)
+            .lte('scheduled_time', todayBounds.end);
+        } else if (filter === 'calendar') {
+          let start = customStart;
+          let end = pickMode === 'single' ? customStart : customEnd;
+          if (start > end) {
+            const tmp = start;
+            start = end;
+            end = tmp;
+          }
+          const startBound = istDayBounds(start).start;
+          const endBound = istDayBounds(end).end;
+          query = query.gte('scheduled_time', startBound).lte('scheduled_time', endBound);
+        }
+        query = query.order('scheduled_time', { ascending: true });
       }
 
-      const { data, error } = await query.order('scheduled_time', { ascending: true });
+      const { data, error } = await query;
 
       if (error) throw error;
       setFollowUps(data || []);
@@ -129,16 +154,27 @@ export default function FollowUpsPage() {
     }
   }
 
-  const filteredFollowUps = followUps.filter(fu => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    return (
-      fu.lead?.customer_name?.toLowerCase().includes(search) ||
-      fu.lead?.customer_phone?.includes(search) ||
-      fu.lead?.lead_number?.toLowerCase().includes(search) ||
-      fu.reason?.toLowerCase().includes(search)
-    );
-  });
+  const filteredFollowUps = useMemo(() => {
+    return followUps.filter((fu) => {
+      if (filter === 'completed' && pendingLeadIds.has(String(fu.lead_id))) return false;
+      if (typeFilter === 'CALLBACK') {
+        if (String(fu.follow_up_type || '').toUpperCase() !== 'CALLBACK') return false;
+      }
+      if (!searchTerm) return true;
+      const search = searchTerm.toLowerCase();
+      return (
+        fu.lead?.customer_name?.toLowerCase().includes(search) ||
+        fu.lead?.customer_phone?.includes(search) ||
+        fu.lead?.lead_number?.toLowerCase().includes(search) ||
+        fu.reason?.toLowerCase().includes(search)
+      );
+    });
+  }, [followUps, searchTerm, typeFilter, filter, pendingLeadIds]);
+
+  const calendarLabel =
+    pickMode === 'single' || customStart === customEnd
+      ? formatYmdShort(customStart)
+      : `${formatYmdShort(customStart)} – ${formatYmdShort(customEnd)}`;
 
   const getTimeStatus = (scheduledTime: string) => {
     const now = new Date();
@@ -154,7 +190,7 @@ export default function FollowUpsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout role="telecaller">
+      <DashboardLayout role={layoutRole}>
         <div className="flex items-center justify-center h-48 sm:h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
@@ -166,64 +202,119 @@ export default function FollowUpsPage() {
   }
 
   return (
-    <DashboardLayout role="telecaller">
+    <DashboardLayout role={layoutRole}>
       <div className="space-y-4 sm:space-y-5 md:space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Follow-up Management</h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Manage and track customer follow-ups</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Reminders / Follow-ups</h1>
+          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Scheduled follow-ups — clock icon se yahan aate ho</p>
         </div>
 
         {/* Filters & Search */}
         <div className="card">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Search */}
-            <div className="flex-1 min-w-0 relative">
-              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-              <input
-                type="text"
-                placeholder="Search by customer name, phone, lead number..."
-                className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <div className="flex-1 min-w-0 relative">
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <input
+                  type="text"
+                  placeholder="Search by customer name, phone, lead number..."
+                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2 items-center">
+                {(
+                  [
+                    { id: 'pending' as const, label: 'All Pending' },
+                    { id: 'today' as const, label: 'Today' },
+                    { id: 'calendar' as const, label: 'Calendar' },
+                    { id: 'completed' as const, label: 'Done' },
+                  ]
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFilter(f.id)}
+                    className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
+                      filter === f.id
+                        ? 'bg-[#004AAD] text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+                <label className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-700">
+                  <Filter className="w-3.5 h-3.5 text-[#004AAD]" />
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as 'all' | 'CALLBACK')}
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm font-semibold"
+                  >
+                    <option value="all">All types</option>
+                    <option value="CALLBACK">Follow-up only</option>
+                  </select>
+                </label>
+              </div>
             </div>
 
-            {/* Filter Buttons */}
-            <div className="flex flex-wrap gap-2 overflow-x-auto">
-              <button
-                onClick={() => setFilter('pending')}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
-                  filter === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All Pending
-              </button>
-              <button
-                onClick={() => setFilter('today')}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
-                  filter === 'today' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setFilter('overdue')}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
-                  filter === 'overdue' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
-                }`}
-              >
-                Overdue
-              </button>
-              <button
-                onClick={() => setFilter('completed')}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
-                  filter === 'completed' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`}
-              >
-                Completed
-              </button>
-            </div>
+            {filter === 'calendar' ? (
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 items-stretch sm:items-center rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                <div className="inline-flex rounded-lg bg-white border border-gray-200 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickMode('single');
+                      setCustomEnd(customStart);
+                    }}
+                    className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold ${
+                      pickMode === 'single' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
+                    }`}
+                  >
+                    Single date
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPickMode('range')}
+                    className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold ${
+                      pickMode === 'range' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
+                    }`}
+                  >
+                    Date range
+                  </button>
+                </div>
+                <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700">
+                  <Calendar className="w-3.5 h-3.5 text-[#004AAD]" />
+                  <span>{pickMode === 'range' ? 'From' : 'Date'}</span>
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => {
+                      const v = e.target.value || istYmd();
+                      setCustomStart(v);
+                      if (pickMode === 'single') setCustomEnd(v);
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm font-semibold"
+                  />
+                </label>
+                {pickMode === 'range' ? (
+                  <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700">
+                    <span>To</span>
+                    <input
+                      type="date"
+                      value={customEnd}
+                      min={customStart}
+                      onChange={(e) => setCustomEnd(e.target.value || customStart)}
+                      className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm font-semibold"
+                    />
+                  </label>
+                ) : null}
+                <span className="text-[11px] sm:text-xs text-gray-500 font-medium">{calendarLabel}</span>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -246,9 +337,7 @@ export default function FollowUpsPage() {
                   }`}
                 >
                   <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
-                    {/* Main Info */}
                     <div className="flex-1 min-w-0">
-                      {/* Row 1: Customer & Lead Info */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -281,7 +370,6 @@ export default function FollowUpsPage() {
                         </span>
                       </div>
 
-                      {/* Row 2: Follow-up Details */}
                       <div className="space-y-1.5 sm:space-y-2">
                         <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
                           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
@@ -323,7 +411,6 @@ export default function FollowUpsPage() {
                       </div>
                     </div>
 
-                    {/* Actions */}
                     {followUp.status === 'PENDING' && (
                       <div className="flex flex-row sm:flex-col gap-2 lg:w-48">
                         <a 
@@ -334,7 +421,7 @@ export default function FollowUpsPage() {
                           Call Now
                         </a>
                         <Link 
-                          href={`/dashboard/telecaller/leads/${followUp.lead_id}`}
+                          href={`${base}/leads/${followUp.lead_id}`}
                           className="btn btn-outline flex-1 sm:w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
                         >
                           View Lead
@@ -383,4 +470,3 @@ export default function FollowUpsPage() {
     </DashboardLayout>
   );
 }
-

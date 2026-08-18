@@ -17,6 +17,7 @@ const ALLOWED_ROLE_CODES = [
   'SUB_ADMIN',
   'RSA_MANAGER',
   'TELECALLER',
+  'LEAD_MANAGER',
   'CUSTOMER_SERVICE_EXECUTIVE',
   'WORKSHOP_ADMIN',
   'WORKSHOP_SUPERVISOR',
@@ -30,6 +31,8 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || '';
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
+  const last10 = digits.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
   return digits.startsWith('91') ? digits : `91${digits}`;
 }
 
@@ -177,7 +180,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const recipientPhone = String(body?.recipient_phone || lead?.customer_phone || '').trim();
+    const recipientPhoneRaw = String(body?.recipient_phone || lead?.customer_phone || '').trim();
+    const recipientPhone = normalizePhone(recipientPhoneRaw);
     if (!recipientPhone) {
       return NextResponse.json({ error: 'Recipient phone is required' }, { status: 400 });
     }
@@ -350,7 +354,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Full WhatsApp archive row (outbound). Use plain insert so logging does not depend on unique index presence.
+    // Full WhatsApp archive row (outbound). Prefer admin client so RLS never drops the row.
+    const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const archiveDb: any = supabaseAdmin || db;
+
+    const templateParamsForArchive =
+      messageType === 'template' && Array.isArray(requestPayload?.template_params)
+        ? (requestPayload.template_params as unknown[]).map((v) => String(v ?? ''))
+        : [];
+    const templateBodyPreview =
+      messageType === 'template'
+        ? (() => {
+            const name = String(templateNameForLog || '');
+            const paramsHint = templateParamsForArchive.filter(Boolean).join(', ');
+            return paramsHint ? `Template: ${name} (${paramsHint})` : `Template: ${name}`;
+          })()
+        : null;
+
     const archivePayload = {
       provider_message_id: result.messageId || null,
       direction: 'OUTBOUND',
@@ -361,7 +382,7 @@ export async function POST(request: NextRequest) {
       recipient_phone: recipientPhone,
       template_name: templateNameForLog,
       template_language: messageType === 'template' ? String(body?.language || 'en') : null,
-      text_body: messageType === 'text' ? messageForLog : null,
+      text_body: messageType === 'text' ? messageForLog : templateBodyPreview,
       media_url: mediaUrlForArchive,
       media_mime_type: messageType === 'media' ? mediaMimeTypeForLog : null,
       media_caption: messageType === 'media' ? String(body?.caption || '') || null : null,
@@ -376,12 +397,19 @@ export async function POST(request: NextRequest) {
         role_code: roleCode,
         actor_id: userProfile.id,
         actor_name: userProfile.full_name || null,
+        template_params: templateParamsForArchive,
       },
       created_by: userProfile.id,
       updated_at: now,
     };
 
-    const { error: archiveError } = await db.from('whatsapp_messages').insert(archivePayload);
+    const { data: archivedRow, error: archiveError } = await archiveDb
+      .from('whatsapp_messages')
+      .insert(archivePayload)
+      .select(
+        'id, provider_message_id, direction, message_type, sender_phone, recipient_phone, template_name, text_body, media_url, media_mime_type, media_caption, payload, meta, status, error_message, status_at, created_at',
+      )
+      .maybeSingle();
     if (archiveError) {
       console.error('Failed to archive outbound WhatsApp message:', archiveError);
       return NextResponse.json(
@@ -411,9 +439,9 @@ export async function POST(request: NextRequest) {
     // Auto-map chat to message initiator.
     // Keep this best-effort so message send success is never blocked by assignment issues.
     try {
-      const normalizedPhone = normalizePhone(recipientPhone);
+      const normalizedPhone = recipientPhone;
       if (normalizedPhone) {
-        const { data: existingRow } = await db
+        const { data: existingRow } = await archiveDb
           .from('whatsapp_chat_assignments')
           .select('assigned_to_ids, assigned_note')
           .eq('phone', normalizedPhone)
@@ -428,7 +456,7 @@ export async function POST(request: NextRequest) {
         const nextAssignedToIds = mergedIds.slice(-2);
         const nowIso = new Date().toISOString();
 
-        await db.from('whatsapp_chat_assignments').upsert(
+        await archiveDb.from('whatsapp_chat_assignments').upsert(
           {
             phone: normalizedPhone,
             assigned_to_ids: nextAssignedToIds,
@@ -451,6 +479,7 @@ export async function POST(request: NextRequest) {
       message_type: messageType,
       message_id: result.messageId,
       recipient_phone: recipientPhone,
+      message: archivedRow || null,
     });
   } catch (error: any) {
     console.error('Error in WhatsApp send API:', error);

@@ -13,6 +13,10 @@ import {
   isTelecallerCrmRole,
   normalizeRoleCode,
 } from '@/lib/telecaller/crmRoles';
+import {
+  applyCrmLeadDateRange,
+  applyCrmNewLeadFilter,
+} from '@/lib/telecaller/crmLeadFilters';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,11 +125,10 @@ export async function GET(request: NextRequest) {
     // Intentionally ignore `source` filter — telecallers must not segment by lead origin
     if (priority) query = query.eq('lead_priority', priority.toUpperCase());
     if (workshopId) query = query.eq('workshop_id', workshopId);
-    if (from) query = query.gte('created_at', from);
-    if (to) query = query.lte('created_at', to);
+    query = applyCrmLeadDateRange(query, filter, from, to);
 
     if (filter === 'new') {
-      query = query.eq('status', 'NEW').eq('is_incomplete', false);
+      query = applyCrmNewLeadFilter(query);
     } else if (filter === 'interested') {
       query = query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
     } else if (filter === 'will_visit') {
@@ -149,13 +152,14 @@ export async function GET(request: NextRequest) {
       if (lostReason) {
         query = query.filter('coupon_meta->>last_lost_reason', 'eq', lostReason);
       }
-    } else if (filter === 'callback') {
+    } else if (filter === 'callback' || filter === 'followup' || filter === 'follow_up') {
+      // Disposition tile: last call result CALLBACK (not overdue-only follow_up_required)
+      query = query.filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK');
+    } else if (filter === 'overdue_callback') {
       query = query.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
     } else if (filter === 'incomplete') {
       // Only this telecaller's incomplete booking stubs (matches dashboard KPI).
       query = query.eq('is_incomplete', true);
-    } else if (filter === 'follow_up') {
-      query = query.eq('follow_up_required', true);
     }
 
     if (q) {
@@ -177,9 +181,8 @@ export async function GET(request: NextRequest) {
       if (city) retry = retry.ilike('city', `%${city}%`);
       if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
-      if (from) retry = retry.gte('created_at', from);
-      if (to) retry = retry.lte('created_at', to);
-      if (filter === 'new') retry = retry.eq('status', 'NEW').eq('is_incomplete', false);
+      retry = applyCrmLeadDateRange(retry, filter, from, to);
+      if (filter === 'new') retry = applyCrmNewLeadFilter(retry);
       else if (filter === 'interested') {
         retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
       } else if (filter === 'will_visit') {
@@ -201,11 +204,13 @@ export async function GET(request: NextRequest) {
         if (lostReason) {
           retry = retry.filter('coupon_meta->>last_lost_reason', 'eq', lostReason);
         }
-      } else if (filter === 'callback') {
+      } else if (filter === 'callback' || filter === 'followup' || filter === 'follow_up') {
+        retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK');
+      } else if (filter === 'overdue_callback') {
         retry = retry.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
       } else if (filter === 'incomplete') {
         retry = retry.eq('is_incomplete', true);
-      } else if (filter === 'follow_up') retry = retry.eq('follow_up_required', true);
+      }
       if (q) {
         retry = retry.or(
           `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`,

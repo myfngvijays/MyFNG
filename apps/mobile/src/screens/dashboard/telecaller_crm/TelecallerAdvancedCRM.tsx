@@ -108,8 +108,20 @@ export default function TelecallerAdvancedCRM() {
         return;
       }
       if (screen === 'followups' || screen === 'TelecallerFollowUps') {
-        setTab('engage');
-        setEngageSegment('followups');
+        try {
+          stackNav.navigate('TelecallerFollowUps', params);
+        } catch {
+          setTab('engage');
+          setEngageSegment('followups');
+        }
+        return;
+      }
+      if (screen === 'Notifications' || screen === 'notifications') {
+        try {
+          stackNav.navigate('Notifications');
+        } catch {
+          /* ignore */
+        }
         return;
       }
       if (screen === 'scripts' || screen === 'TelecallerScripts') {

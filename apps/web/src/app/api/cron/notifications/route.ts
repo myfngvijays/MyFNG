@@ -1109,7 +1109,9 @@ async function runPickupBoyDailySummaryCron(opts: { dayStartIso: string; dayEndI
 
 /**
  * Followup Reminder Cron
- * Checks for followups scheduled 15 minutes from now and sends notifications
+ * - T−15 min pre-reminder
+ * - Due-now window (scheduled within last 5 min … next 1 min)
+ * - Daily IST morning digest of today's pending callbacks (≈ 09:00–09:10 IST)
  */
 async function runFollowupReminderCron() {
   const { supabaseAdmin } = getSupabaseAdmin();
@@ -1119,120 +1121,203 @@ async function runFollowupReminderCron() {
 
   try {
     const now = new Date();
-    const in15Minutes = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
-    const in16Minutes = new Date(now.getTime() + 16 * 60 * 1000); // 16 minutes from now (window)
+    const in15Minutes = new Date(now.getTime() + 15 * 60 * 1000);
+    const in16Minutes = new Date(now.getTime() + 16 * 60 * 1000);
+    const dueFrom = new Date(now.getTime() - 5 * 60 * 1000);
+    const dueTo = new Date(now.getTime() + 1 * 60 * 1000);
 
-    // Find followups scheduled between 15-16 minutes from now that haven't been reminded
-    const { data: followups, error: followupError } = await supabaseAdmin
-      .from('telecaller_follow_ups')
-      .select(`
-        id,
-        lead_id,
-        telecaller_id,
-        scheduled_time,
-        follow_up_type,
-        reason,
-        lead:service_leads(lead_number, customer_name, customer_phone)
-      `)
-      .eq('status', 'PENDING')
-      .eq('reminder_sent', false)
-      .gte('scheduled_time', in15Minutes.toISOString())
-      .lt('scheduled_time', in16Minutes.toISOString());
+    const [{ data: preFollowups, error: preErr }, { data: dueFollowups, error: dueErr }] =
+      await Promise.all([
+        supabaseAdmin
+          .from('telecaller_follow_ups')
+          .select(`
+            id,
+            lead_id,
+            telecaller_id,
+            scheduled_time,
+            follow_up_type,
+            reason,
+            reminder_sent,
+            lead:service_leads(lead_number, customer_name, customer_phone)
+          `)
+          .eq('status', 'PENDING')
+          .gte('scheduled_time', in15Minutes.toISOString())
+          .lt('scheduled_time', in16Minutes.toISOString()),
+        supabaseAdmin
+          .from('telecaller_follow_ups')
+          .select(`
+            id,
+            lead_id,
+            telecaller_id,
+            scheduled_time,
+            follow_up_type,
+            reason,
+            reminder_sent,
+            lead:service_leads(lead_number, customer_name, customer_phone)
+          `)
+          .eq('status', 'PENDING')
+          .eq('reminder_sent', false)
+          .gte('scheduled_time', dueFrom.toISOString())
+          .lt('scheduled_time', dueTo.toISOString()),
+      ]);
 
-    if (followupError) {
-      console.error('[Followup Reminder] Error fetching followups:', followupError);
-      return { ok: false, error: followupError.message };
+    if (preErr) {
+      console.error('[Followup Reminder] Error fetching pre followups:', preErr);
+      return { ok: false, error: preErr.message };
     }
-
-    if (!followups || followups.length === 0) {
-      return { ok: true, notified: 0, message: 'No followups due in 15 minutes' };
+    if (dueErr) {
+      console.error('[Followup Reminder] Error fetching due followups:', dueErr);
+      return { ok: false, error: dueErr.message };
     }
 
     let notified = 0;
     const notifications: any[] = [];
 
-    for (const followup of followups) {
+    const pushFollowupNotif = async (
+      followup: any,
+      kind: string,
+      title: string,
+      minutesUntil: number,
+      markSent: boolean,
+    ) => {
       const lead = followup.lead as any;
       const leadNumber = lead?.lead_number || followup.lead_id;
       const customerName = lead?.customer_name || 'Customer';
       const scheduledTime = new Date(followup.scheduled_time);
-      const timeStr = scheduledTime.toLocaleTimeString('en-IN', { 
-        hour: '2-digit', 
+      const timeStr = scheduledTime.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: true 
+        hour12: true,
+        timeZone: 'Asia/Kolkata',
       });
 
-      // Check if already notified (deduplication)
-      const since = new Date(now.getTime() - 5 * 60 * 1000).toISOString(); // Last 5 minutes
-      const alreadyNotified = await alreadyNotifiedForUser({
+      const since = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
+      const already = await alreadyNotifiedForUser({
         userId: followup.telecaller_id,
-        kind: 'FOLLOWUP_REMINDER',
+        kind,
         sinceIso: since,
-        title: `Follow-up reminder: ${leadNumber}`,
+        title: `${title}: ${leadNumber}`,
       });
+      if (already) return;
 
-      if (alreadyNotified) {
-        console.log(`[Followup Reminder] Already notified telecaller ${followup.telecaller_id} for followup ${followup.id}`);
-        continue;
-      }
-
-      // Determine priority based on followup type
       let priority: NotificationPriority = 'MEDIUM';
       if (followup.follow_up_type === 'URGENT' || followup.follow_up_type === 'HIGH') {
         priority = 'HIGH';
       }
+      if (kind === 'FOLLOWUP_DUE') priority = 'HIGH';
 
-      // Create notification
       notifications.push({
         user_id: followup.telecaller_id,
         type: 'FOLLOW_UP_DUE' as NotificationType,
-        title: 'Follow-up reminder',
-        message: `Follow-up for ${leadNumber} (${customerName}) scheduled at ${timeStr}. Reason: ${followup.reason || 'Callback'}`,
+        title,
+        message: `${leadNumber} (${customerName}) — ${timeStr}. ${followup.reason || 'Callback'}`,
         priority,
         lead_id: followup.lead_id,
         lead_number: leadNumber,
         action_url: `/dashboard/telecaller/leads/${followup.lead_id}`,
         metadata: {
-          kind: 'FOLLOWUP_REMINDER',
+          kind,
           followup_id: followup.id,
           scheduled_time: followup.scheduled_time,
           follow_up_type: followup.follow_up_type,
-          minutes_until: 15,
+          minutes_until: minutesUntil,
         },
         is_read: false,
         created_at: now.toISOString(),
       });
 
-      // Mark reminder as sent
-      await supabaseAdmin
-        .from('telecaller_follow_ups')
-        .update({
-          reminder_sent: true,
-          reminder_sent_at: now.toISOString(),
-        })
-        .eq('id', followup.id);
+      if (markSent) {
+        await supabaseAdmin
+          .from('telecaller_follow_ups')
+          .update({
+            reminder_sent: true,
+            reminder_sent_at: now.toISOString(),
+          })
+          .eq('id', followup.id);
+      }
 
       notified += 1;
+    };
+
+    for (const followup of preFollowups || []) {
+      await pushFollowupNotif(followup, 'FOLLOWUP_PRE', 'Callback in 15 min', 15, false);
+    }
+    for (const followup of dueFollowups || []) {
+      await pushFollowupNotif(followup, 'FOLLOWUP_DUE', 'Callback due now', 0, true);
     }
 
-    // Bulk insert notifications
-    if (notifications.length > 0) {
-      const { error: notifError } = await supabaseAdmin
-        .from('notifications')
-        .insert(notifications);
+    // Daily digest ~09:00 IST (window 09:00–09:09)
+    const istParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const g = (t: string) => istParts.find((p) => p.type === t)?.value || '';
+    const istHour = Number(g('hour'));
+    const istMinute = Number(g('minute'));
+    const istYmd = `${g('year')}-${g('month')}-${g('day')}`;
+    if (istHour === 9 && istMinute < 10) {
+      const dayStart = new Date(`${istYmd}T00:00:00+05:30`);
+      const dayEnd = new Date(`${istYmd}T23:59:59+05:30`);
+      const { data: todayRows } = await supabaseAdmin
+        .from('telecaller_follow_ups')
+        .select('id, telecaller_id, scheduled_time')
+        .eq('status', 'PENDING')
+        .gte('scheduled_time', dayStart.toISOString())
+        .lte('scheduled_time', dayEnd.toISOString());
 
+      const byUser = new Map<string, number>();
+      for (const row of todayRows || []) {
+        const uid = String(row.telecaller_id || '');
+        if (!uid) continue;
+        byUser.set(uid, (byUser.get(uid) || 0) + 1);
+      }
+
+      for (const [userId, count] of byUser.entries()) {
+        const since = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+        const already = await alreadyNotifiedForUser({
+          userId,
+          kind: 'FOLLOWUP_DAILY',
+          sinceIso: since,
+          title: `Today's callbacks (${istYmd})`,
+        });
+        if (already) continue;
+        notifications.push({
+          user_id: userId,
+          type: 'FOLLOW_UP_DUE' as NotificationType,
+          title: `Today's callbacks (${istYmd})`,
+          message: `Aaj ${count} callback/reminder pending hain. Reminders list check karo.`,
+          priority: 'MEDIUM' as NotificationPriority,
+          action_url: '/dashboard/telecaller/followups',
+          metadata: { kind: 'FOLLOWUP_DAILY', date: istYmd, count },
+          is_read: false,
+          created_at: now.toISOString(),
+        });
+        notified += 1;
+      }
+    }
+
+    if (notifications.length > 0) {
+      const { error: notifError } = await supabaseAdmin.from('notifications').insert(notifications);
       if (notifError) {
         console.error('[Followup Reminder] Error creating notifications:', notifError);
         return { ok: false, error: notifError.message, notified: 0 };
       }
-
-      // Dispatch push notifications (best-effort)
       for (const notif of notifications) {
         void dispatchPushToUser(notif.user_id, notif as any);
       }
     }
 
-    return { ok: true, notified, total_followups: followups.length };
+    return {
+      ok: true,
+      notified,
+      pre: (preFollowups || []).length,
+      due: (dueFollowups || []).length,
+    };
   } catch (error: any) {
     console.error('[Followup Reminder] Unexpected error:', error);
     return { ok: false, error: error?.message || 'Unknown error' };
@@ -1471,6 +1556,19 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ error: 'Unknown task', task }, { status: 400 });
+}
+
+/** Vercel Cron uses GET */
+export async function GET(req: NextRequest) {
+  const authErr = assertCronAuth(req);
+  if (authErr) return NextResponse.json({ error: authErr }, { status: authErr === 'Unauthorized' ? 401 : 500 });
+
+  const task = String(req.nextUrl.searchParams.get('task') || 'followup_reminder');
+  if (task === 'followup_reminder' || task === 'test_followup_reminder') {
+    const res = await runFollowupReminderCron();
+    return NextResponse.json({ ...res, task }, { status: res.ok ? 200 : 500 });
+  }
+  return NextResponse.json({ error: 'Unknown task for GET', task }, { status: 400 });
 }
 
 

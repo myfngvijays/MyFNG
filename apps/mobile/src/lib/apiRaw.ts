@@ -12,6 +12,10 @@ export async function apiFetchRaw(path: string, options: RequestInit = {}): Prom
       data: { session },
     } = await supabase.auth.getSession();
     bearerToken = session?.access_token;
+    if (!bearerToken) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      bearerToken = refreshed.session?.access_token;
+    }
   } catch {
     bearerToken = undefined;
   }

@@ -8,13 +8,19 @@ const WHATSAPP_BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID ||
 
 export const TELECALLER_NEW_LEAD_WHATSAPP_SETTING_KEY = 'telecaller_new_lead_whatsapp';
 
+/**
+ * Meta often reclassifies soft “alert / open the app” copy as MARKETING.
+ * v2 uses a new name + account-update wording + allow_category_change:false.
+ * (Old name telecaller_new_lead_alert may stay MARKETING / inactive on Meta — ignore it.)
+ */
 export const TELECALLER_NEW_LEAD_TEMPLATE = {
-  template_name: 'telecaller_new_lead_alert',
-  display_name: 'Telecaller New Lead Alert',
+  template_name: 'telecaller_lead_assigned_v2',
+  display_name: 'Telecaller Lead Assignment (Utility)',
   language_code: 'en',
   category: 'UTILITY',
+  header_text: 'Account update',
   body_text:
-    'MyFNG Lead Alert\n\nHi {{1}},\n\nNew lead assigned to you.\n\nLead: {{2}}\nCustomer: {{3}}\nPhone: {{4}}\n\nOpen the MyFNG Telecaller app to follow up.',
+    'Hi {{1}},\n\nA service lead was assigned to your MyFNG telecaller account.\n\nLead ID: {{2}}\nCustomer name: {{3}}\nCustomer phone: {{4}}\n\nPlease review this assignment in your telecaller account.',
   variable_keys: ['telecaller_name', 'lead_number', 'customer_name', 'customer_phone'],
   example_values: ['Priya', 'SL-10245', 'Rahul Sharma', '9876543210'],
 } as const;
@@ -28,6 +34,8 @@ export type TelecallerNewLeadTemplateStatus = {
   exists: boolean;
   isApproved: boolean;
   metaStatus: string | null;
+  metaCategory: string | null;
+  isUtility: boolean;
   templateId: string | null;
   canSendTemplate: boolean;
 };
@@ -46,6 +54,17 @@ function parseSettings(raw: unknown): TelecallerNewLeadWhatsAppSettings {
   }
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
   return { enabled: Boolean((value as { enabled?: boolean }).enabled) };
+}
+
+function normalizeCategory(raw: unknown): string | null {
+  const cat = String(raw || '')
+    .trim()
+    .toUpperCase();
+  return cat || null;
+}
+
+function isUtilityCategory(category: string | null): boolean {
+  return !category || category === 'UTILITY';
 }
 
 export async function getTelecallerNewLeadWhatsAppSettings(): Promise<TelecallerNewLeadWhatsAppSettings> {
@@ -108,58 +127,91 @@ async function verifyTemplateOnMeta(templateName: string) {
 
   const data = Array.isArray(payload?.data) ? payload.data : [];
   return (
-    data.find((row: { name?: string }) => String(row?.name || '').trim().toLowerCase() === templateName.toLowerCase()) ||
-    null
+    data.find(
+      (row: { name?: string }) =>
+        String(row?.name || '')
+          .trim()
+          .toLowerCase() === templateName.toLowerCase(),
+    ) || null
   );
 }
 
-export async function getTelecallerNewLeadTemplateStatus(): Promise<TelecallerNewLeadTemplateStatus> {
+function statusFromMetaRow(verified: Record<string, unknown> | null): TelecallerNewLeadTemplateStatus {
   const templateName = TELECALLER_NEW_LEAD_TEMPLATE.template_name;
   const base: TelecallerNewLeadTemplateStatus = {
     templateName,
     exists: false,
     isApproved: false,
     metaStatus: null,
+    metaCategory: null,
+    isUtility: false,
     templateId: null,
     canSendTemplate: false,
   };
+  if (!verified) return base;
+
+  const metaStatus = String(verified.status || '')
+    .toUpperCase()
+    .trim() || null;
+  const metaCategory = normalizeCategory(verified.category);
+  const isUtility = isUtilityCategory(metaCategory);
+  const isApproved = metaStatus === 'APPROVED';
+
+  return {
+    templateName,
+    exists: true,
+    isApproved,
+    metaStatus,
+    metaCategory,
+    isUtility,
+    templateId: String(verified.id || '') || null,
+    // Only send when Meta approved AND kept UTILITY (marketing templates are not what we want)
+    canSendTemplate: isApproved && isUtility,
+  };
+}
+
+export async function getTelecallerNewLeadTemplateStatus(): Promise<TelecallerNewLeadTemplateStatus> {
+  const templateName = TELECALLER_NEW_LEAD_TEMPLATE.template_name;
+
+  // Prefer live Meta category/status — local DB may still say UTILITY after Meta reclassify
+  try {
+    const verified = await verifyTemplateOnMeta(templateName);
+    if (verified) return statusFromMetaRow(verified as Record<string, unknown>);
+  } catch {
+    // fall through to local cache
+  }
 
   const { supabaseAdmin } = getSupabaseAdmin();
   if (supabaseAdmin) {
     const { data } = await supabaseAdmin
       .from('whatsapp_templates')
-      .select('id, template_name, is_active, meta')
+      .select('id, template_name, is_active, meta, category')
       .eq('template_name', templateName)
       .maybeSingle();
 
     if (data) {
-      const metaStatus = String((data as { meta?: { status?: string; template_id?: string } })?.meta?.status || '')
-        .toUpperCase() || null;
-      base.exists = true;
-      base.metaStatus = metaStatus;
-      base.templateId =
-        String((data as { meta?: { template_id?: string } })?.meta?.template_id || '') || null;
-      base.isApproved = Boolean((data as { is_active?: boolean }).is_active) || metaStatus === 'APPROVED';
-      base.canSendTemplate = base.isApproved;
-      return base;
+      const meta = (data as { meta?: Record<string, unknown> }).meta || {};
+      const metaStatus =
+        String(meta.status || '')
+          .toUpperCase()
+          .trim() || null;
+      const metaCategory = normalizeCategory(meta.category || (data as { category?: string }).category);
+      const isUtility = isUtilityCategory(metaCategory);
+      const isApproved = Boolean((data as { is_active?: boolean }).is_active) || metaStatus === 'APPROVED';
+      return {
+        templateName,
+        exists: true,
+        isApproved,
+        metaStatus,
+        metaCategory,
+        isUtility,
+        templateId: String(meta.template_id || '') || null,
+        canSendTemplate: isApproved && isUtility,
+      };
     }
   }
 
-  try {
-    const verified = await verifyTemplateOnMeta(templateName);
-    if (verified) {
-      const metaStatus = String((verified as { status?: string })?.status || '').toUpperCase();
-      base.exists = true;
-      base.metaStatus = metaStatus;
-      base.templateId = String((verified as { id?: string })?.id || '') || null;
-      base.isApproved = metaStatus === 'APPROVED';
-      base.canSendTemplate = base.isApproved;
-    }
-  } catch {
-    // UI can still offer create/sync
-  }
-
-  return base;
+  return statusFromMetaRow(null);
 }
 
 export async function createTelecallerNewLeadTemplate(actorId?: string) {
@@ -170,6 +222,21 @@ export async function createTelecallerNewLeadTemplate(actorId?: string) {
   const template = TELECALLER_NEW_LEAD_TEMPLATE;
   const existing = await verifyTemplateOnMeta(template.template_name).catch(() => null);
   if (existing) {
+    const existingCategory = normalizeCategory((existing as { category?: string }).category);
+    const existingStatus = String((existing as { status?: string }).status || '')
+      .toUpperCase()
+      .trim();
+    if (existingCategory && existingCategory !== 'UTILITY') {
+      throw new Error(
+        `Meta has "${template.template_name}" as ${existingCategory} (status: ${existingStatus || 'UNKNOWN'}). ` +
+          `Delete/reject that template in Meta Business Manager, or bump the template name in code, then submit again as UTILITY.`,
+      );
+    }
+    if (existingStatus === 'REJECTED') {
+      throw new Error(
+        `Meta rejected "${template.template_name}". Delete it in Meta Business Manager or use a new template name, then submit again.`,
+      );
+    }
     return syncTelecallerNewLeadTemplate(actorId);
   }
 
@@ -183,7 +250,14 @@ export async function createTelecallerNewLeadTemplate(actorId?: string) {
       name: template.template_name,
       language: template.language_code,
       category: template.category,
+      // Prefer reject over silent reclassify to MARKETING
+      allow_category_change: false,
       components: [
+        {
+          type: 'HEADER',
+          format: 'TEXT',
+          text: template.header_text,
+        },
         {
           type: 'BODY',
           text: template.body_text,
@@ -214,25 +288,33 @@ export async function syncTelecallerNewLeadTemplate(
   const template = TELECALLER_NEW_LEAD_TEMPLATE;
   const verified = await verifyTemplateOnMeta(template.template_name);
   if (!verified) {
-    throw new Error('Template not found on Meta yet. If you just created it, wait a minute and refresh status.');
+    throw new Error(
+      'Template not found on Meta yet. If you just created it, wait a minute and refresh status.',
+    );
   }
 
   const metaStatus = String((verified as { status?: string })?.status || 'PENDING').toUpperCase();
+  const metaCategory =
+    normalizeCategory((verified as { category?: string })?.category) || template.category;
+  const isUtility = isUtilityCategory(metaCategory);
+
   const row = {
     template_name: template.template_name,
     display_name: template.display_name,
     language_code: template.language_code,
-    category: template.category,
-    body_text: template.body_text,
+    // Store Meta’s real category so admin UI doesn’t lie
+    category: metaCategory,
+    body_text: `${template.header_text}\n\n${template.body_text}`,
     variable_keys: [...template.variable_keys],
     example_values: [...template.example_values],
-    is_active: metaStatus === 'APPROVED',
+    is_active: metaStatus === 'APPROVED' && isUtility,
     meta: {
       source: 'telecaller_new_lead_alert',
       status: metaStatus,
       template_id: (verified as { id?: string })?.id || null,
-      category: (verified as { category?: string })?.category || template.category,
+      category: metaCategory,
       language: (verified as { language?: string })?.language || template.language_code,
+      header_text: template.header_text,
       synced_at: new Date().toISOString(),
       raw: {
         create_response: createResponse || null,
@@ -249,19 +331,29 @@ export async function syncTelecallerNewLeadTemplate(
   const { data, error } = await supabaseAdmin
     .from('whatsapp_templates')
     .upsert(row, { onConflict: 'template_name' })
-    .select('id, template_name, is_active, meta')
+    .select('id, template_name, is_active, meta, category')
     .single();
 
   if (error) throw new Error(error.message || 'Failed to save template locally');
 
+  let message =
+    metaStatus === 'APPROVED'
+      ? 'Telecaller lead-assignment WhatsApp template is approved and ready.'
+      : 'Template submitted to Meta. Refresh status after Meta approves it.';
+
+  if (!isUtility) {
+    message =
+      `Meta classified this template as ${metaCategory}, not UTILITY. ` +
+      `Delete it in Meta Business Manager and submit again with utility-safe copy (or bump template name).`;
+  }
+
   return {
     template: data,
     metaStatus,
-    isApproved: metaStatus === 'APPROVED',
-    message:
-      metaStatus === 'APPROVED'
-        ? 'Telecaller new-lead WhatsApp template is approved and ready.'
-        : 'Template submitted to Meta. Refresh status after Meta approves it.',
+    metaCategory,
+    isUtility,
+    isApproved: metaStatus === 'APPROVED' && isUtility,
+    message,
   };
 }
 
@@ -285,9 +377,15 @@ export async function sendTelecallerNewLeadTemplateMessage(
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   const templateStatus = await getTelecallerNewLeadTemplateStatus();
   if (!templateStatus.canSendTemplate) {
+    if (templateStatus.exists && !templateStatus.isUtility) {
+      return {
+        success: false,
+        error: `Template is ${templateStatus.metaCategory || 'MARKETING'} on Meta — need UTILITY approval`,
+      };
+    }
     return {
       success: false,
-      error: 'telecaller_new_lead_alert template is not approved on Meta yet',
+      error: `${TELECALLER_NEW_LEAD_TEMPLATE.template_name} template is not approved on Meta yet`,
     };
   }
 

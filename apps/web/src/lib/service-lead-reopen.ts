@@ -157,6 +157,8 @@ export async function upsertBookingServiceLead(
 
   if (!existing?.id) {
     const payload: Record<string, unknown> = { ...input.leadPayload };
+    // service_leads has no assignment_mode column (enquiry_hub does) — keep mode in coupon_meta only
+    delete payload.assignment_mode;
     if (!payload.assigned_telecaller_id) {
       try {
         const picked = await pickTelecallerWeightedRoundRobin(
@@ -166,7 +168,11 @@ export async function upsertBookingServiceLead(
         if (picked.telecallerId) {
           payload.assigned_telecaller_id = picked.telecallerId;
           payload.assigned_at = nowIso;
-          payload.assignment_mode = 'AUTO';
+          const prevMeta =
+            payload.coupon_meta && typeof payload.coupon_meta === 'object'
+              ? (payload.coupon_meta as Record<string, unknown>)
+              : {};
+          payload.coupon_meta = { ...prevMeta, assignment_mode: 'AUTO' };
         }
       } catch {
         /* distribution optional — booking still succeeds */
@@ -268,6 +274,8 @@ export async function upsertBookingServiceLead(
     updated_at: nowIso,
     deleted_at: null,
   };
+  // Never write enquiry_hub-only columns onto service_leads
+  delete patch.assignment_mode;
 
   const bookingPincode =
     input.leadPayload.pincode != null
@@ -287,7 +295,12 @@ export async function upsertBookingServiceLead(
       if (picked.telecallerId) {
         patch.assigned_telecaller_id = picked.telecallerId;
         patch.assigned_at = nowIso;
-        patch.assignment_mode = 'AUTO';
+        patch.coupon_meta = {
+          ...(typeof patch.coupon_meta === 'object' && patch.coupon_meta
+            ? (patch.coupon_meta as Record<string, unknown>)
+            : {}),
+          assignment_mode: 'AUTO',
+        };
       }
     } catch {
       /* distribution optional */
@@ -308,6 +321,7 @@ export async function upsertBookingServiceLead(
       delete slim.reopen_count;
       delete slim.deleted_at;
       delete slim.is_incomplete;
+      delete slim.assignment_mode;
       const retry = await supabaseAdmin
         .from('service_leads')
         .update(slim)

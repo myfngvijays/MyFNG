@@ -7,6 +7,7 @@ import {
   isTelecallerCrmRole,
   normalizeRoleCode,
 } from '@/lib/telecaller/crmRoles';
+import { applyCrmNewLeadFilter } from '@/lib/telecaller/crmLeadFilters';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,6 +130,11 @@ export async function GET(request: NextRequest) {
       if (rangeStart && rangeEnd) return q.gte('created_at', rangeStart).lte('created_at', rangeEnd);
       return q;
     };
+    /** Disposition tiles (Interested / Callback / …) count by when the call result was set. */
+    const applyActivityRange = (q: any) => {
+      if (rangeStart && rangeEnd) return q.gte('last_call_at', rangeStart).lte('last_call_at', rangeEnd);
+      return q;
+    };
     const applyFuRange = (q: any) => {
       if (rangeStart && rangeEnd) {
         return q.gte('next_follow_up_at', rangeStart).lte('next_follow_up_at', rangeEnd);
@@ -167,11 +173,12 @@ export async function GET(request: NextRequest) {
       incomplete,
       interested,
       willVisit,
+      callbackStatus,
       bookingConfirmed,
       inService,
       serviceDone,
       lost,
-      callbacks,
+      overdueCallbacks,
       followUps,
       rangeCalls,
       metrics,
@@ -179,15 +186,16 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       applyCreatedRange(leadBase()),
       // Same filters as /api/telecaller/crm/leads?filter=…
-      applyCreatedRange(leadBase().eq('status', 'NEW').eq('is_incomplete', false)),
+      applyCreatedRange(applyCrmNewLeadFilter(leadBase())),
       applyCreatedRange(leadBase().eq('is_incomplete', true)),
-      applyCreatedRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED')),
-      applyCreatedRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT')),
+      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED')),
+      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'WILL_VISIT')),
+      applyActivityRange(leadBase().filter('coupon_meta->>last_call_result', 'eq', 'CALLBACK')),
       applyCreatedRange(leadBase().eq('status', 'VALIDATED')),
       applyCreatedRange(leadBase().eq('status', 'IN_PROGRESS')),
       applyCreatedRange(leadBase().eq('status', 'COMPLETED')),
       applyCreatedRange(leadBase().eq('status', 'REJECTED')),
-      applyFuRange(followUpBase()),
+      applyFuRange(followUpBase().lte('next_follow_up_at', new Date().toISOString())),
       seesAll
         ? applySchedRange(
             db
@@ -290,6 +298,7 @@ export async function GET(request: NextRequest) {
         incomplete: incomplete.count || 0,
         interested: interested.count || 0,
         will_visit: willVisit.count || 0,
+        callbacks: callbackStatus.count || 0,
         booking_confirmed: bookingConfirmed.count || 0,
         in_service: inService.count || 0,
         service_done: serviceDone.count || 0,
@@ -297,7 +306,7 @@ export async function GET(request: NextRequest) {
         // aliases / ops queues (still useful elsewhere)
         booked: bookingConfirmed.count || 0,
         rejected: lost.count || 0,
-        callbacks: callbacks.count || 0,
+        overdue_callbacks: overdueCallbacks.count || 0,
         followups_today: followUps.count || 0,
         today_calls: calls.length,
         answered_calls: answered,

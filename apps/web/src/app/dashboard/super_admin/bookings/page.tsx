@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, List, LineChart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
+import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel';
 import {
   filterBookingLeads,
   enrichBookingLead,
@@ -1127,18 +1128,28 @@ function StatCard({
     <Wrapper
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      className={`rounded-2xl border bg-white p-4 shadow-sm text-left transition ${
-        active ? 'border-brand-primary ring-2 ring-brand-primary/20' : 'border-gray-200'
-      } ${onClick ? 'hover:border-brand-primary/40 hover:shadow-md cursor-pointer' : ''}`}
+      className={`flex h-full min-h-[108px] w-[158px] shrink-0 flex-col rounded-2xl border bg-white p-3.5 text-left shadow-sm transition sm:w-auto sm:min-w-0 sm:p-4 ${
+        active ? 'border-[#004AAD] ring-2 ring-[#004AAD]/20' : 'border-gray-200'
+      } ${onClick ? 'cursor-pointer hover:border-[#004AAD]/40 hover:shadow-md' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-extrabold text-gray-900">{value}</p>
-          {sub ? <p className="mt-1 text-xs text-gray-500">{sub}</p> : null}
+        <p className="min-w-0 flex-1 text-[10px] font-bold uppercase tracking-wide text-gray-500 sm:text-[11px]">
+          {label}
+        </p>
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+            accentClassName || 'bg-blue-50 text-blue-600'
+          }`}
+        >
+          {icon}
         </div>
-        <div className={`rounded-xl p-2 shrink-0 ${accentClassName || 'bg-blue-50 text-blue-600'}`}>{icon}</div>
       </div>
+      <p className="mt-2 text-2xl font-extrabold tabular-nums leading-none text-gray-900">{value}</p>
+      {sub ? (
+        <p className="mt-auto pt-2 text-[11px] leading-snug text-gray-500 line-clamp-2">{sub}</p>
+      ) : (
+        <div className="mt-auto pt-2" aria-hidden />
+      )}
     </Wrapper>
   );
 }
@@ -1248,6 +1259,7 @@ export default function SuperAdminBookingsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [visibleColumns, setVisibleColumns] = useState<BookingsColumnVisibility>(DEFAULT_BOOKINGS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
   const columnsMenuRef = useRef<HTMLDivElement>(null);
 
   // CSV upload state
@@ -1977,6 +1989,41 @@ export default function SuperAdminBookingsPage() {
 
               {!showUploadCrm ? (
                 <>
+                  <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('chart')}
+                      title="Chart view"
+                      aria-pressed={viewMode === 'chart'}
+                      style={
+                        viewMode === 'chart'
+                          ? { backgroundColor: '#004AAD', color: '#fff' }
+                          : { color: '#334155' }
+                      }
+                      className={`inline-flex h-9 w-10 items-center justify-center rounded-full transition ${
+                        viewMode === 'chart' ? 'shadow-sm' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <LineChart className="h-4 w-4" stroke="currentColor" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('list')}
+                      title="List view"
+                      aria-pressed={viewMode === 'list'}
+                      style={
+                        viewMode === 'list'
+                          ? { backgroundColor: '#004AAD', color: '#fff' }
+                          : { color: '#334155' }
+                      }
+                      className={`inline-flex h-9 w-10 items-center justify-center rounded-full transition ${
+                        viewMode === 'list' ? 'shadow-sm' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <List className="h-4 w-4" stroke="currentColor" />
+                    </button>
+                  </div>
+                  {viewMode === 'list' ? (
                   <div className="relative shrink-0" ref={columnsMenuRef}>
                     <button
                       type="button"
@@ -2064,6 +2111,7 @@ export default function SuperAdminBookingsPage() {
                       </div>
                     ) : null}
                   </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => void handleExport()}
@@ -2320,11 +2368,11 @@ export default function SuperAdminBookingsPage() {
             ) : datePreset !== 'all_time' ? (
               <p className="mb-3 text-xs font-medium text-gray-500">Overview for {dateRangeLabel}</p>
             ) : null}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-9">
+            <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9">
               <StatCard
                 label={hasActiveLeadFilters ? 'Filtered Leads' : 'Total Leads'}
                 value={serviceLeadOverview.total}
-                icon={<ClipboardList className="h-5 w-5" />}
+                icon={<ClipboardList className="h-4 w-4" />}
                 onClick={() => {
                   setSourceFilter('ALL');
                   setCouponFilter('ALL');
@@ -2338,43 +2386,42 @@ export default function SuperAdminBookingsPage() {
               <StatCard
                 label="App Booking"
                 value={serviceLeadOverview.app}
-                icon={<Smartphone className="h-5 w-5" />}
+                icon={<Smartphone className="h-4 w-4" />}
                 onClick={() => setSourceFilter(sourceFilter === 'APP' ? 'ALL' : 'APP')}
                 active={sourceFilter === 'APP'}
               />
               <StatCard
                 label="Website"
                 value={serviceLeadOverview.website}
-                icon={<Globe className="h-5 w-5" />}
+                icon={<Globe className="h-4 w-4" />}
                 onClick={() => setSourceFilter(sourceFilter === 'WEBSITE' ? 'ALL' : 'WEBSITE')}
                 active={sourceFilter === 'WEBSITE'}
               />
               <StatCard
                 label="MISA AI"
                 value={serviceLeadOverview.misa}
-                icon={<Bot className="h-5 w-5" />}
+                icon={<Bot className="h-4 w-4" />}
                 onClick={() => setSourceFilter(sourceFilter === 'MISA' ? 'ALL' : 'MISA')}
                 active={sourceFilter === 'MISA'}
               />
               <StatCard
                 label="Google Ads"
                 value={serviceLeadOverview.googleAds}
-                icon={<Megaphone className="h-5 w-5" />}
+                icon={<Megaphone className="h-4 w-4" />}
                 onClick={() => setSourceFilter(sourceFilter === 'GOOGLE' ? 'ALL' : 'GOOGLE')}
                 active={sourceFilter === 'GOOGLE'}
               />
               <StatCard
                 label="Meta / Insta Ads"
                 value={serviceLeadOverview.metaAds}
-                icon={<Megaphone className="h-5 w-5" />}
+                icon={<Megaphone className="h-4 w-4" />}
                 onClick={() => setSourceFilter(sourceFilter === 'META' ? 'ALL' : 'META')}
                 active={sourceFilter === 'META'}
               />
               <StatCard
                 label="Promo Coupon"
                 value={serviceLeadOverview.withPromoCoupon}
-                sub={`${serviceLeadOverview.total > 0 ? Math.round((serviceLeadOverview.withPromoCoupon / serviceLeadOverview.total) * 100) : 0}% of leads`}
-                icon={<Ticket className="h-5 w-5" />}
+                icon={<Ticket className="h-4 w-4" />}
                 accentClassName="bg-orange-50 text-orange-600"
                 onClick={() => setCouponFilter(couponFilter === 'PROMO' ? 'ALL' : 'PROMO')}
                 active={couponFilter === 'PROMO'}
@@ -2382,12 +2429,7 @@ export default function SuperAdminBookingsPage() {
               <StatCard
                 label="Refer & Rise"
                 value={serviceLeadOverview.withReferralReward}
-                sub={
-                  serviceLeadOverview.withReferralReward > 0
-                    ? `${serviceLeadOverview.total > 0 ? Math.round((serviceLeadOverview.withReferralReward / serviceLeadOverview.total) * 100) : 0}% used referral voucher`
-                    : 'No referral vouchers used yet'
-                }
-                icon={<Gift className="h-5 w-5" />}
+                icon={<Gift className="h-4 w-4" />}
                 accentClassName="bg-amber-50 text-amber-700"
                 onClick={() => setCouponFilter(couponFilter === 'REFERRAL' ? 'ALL' : 'REFERRAL')}
                 active={couponFilter === 'REFERRAL'}
@@ -2395,7 +2437,7 @@ export default function SuperAdminBookingsPage() {
               <StatCard
                 label="New Leads"
                 value={serviceLeadOverview.newLeads}
-                icon={<UserRound className="h-5 w-5" />}
+                icon={<UserRound className="h-4 w-4" />}
                 onClick={() => setStatusFilter(statusFilter === 'NEW' ? 'ALL' : 'NEW')}
                 active={statusFilter === 'NEW'}
               />
@@ -2515,6 +2557,8 @@ export default function SuperAdminBookingsPage() {
             <p className="text-gray-700 font-semibold">No records found</p>
             <p className="text-sm text-gray-500 mt-1">Try changing search or status filters.</p>
           </div>
+        ) : viewMode === 'chart' ? (
+          <BookingsLeadsChartPanel leads={displayedServiceLeads} />
         ) : (
           <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
@@ -3337,7 +3381,7 @@ export default function SuperAdminBookingsPage() {
             role="dialog"
             aria-modal="true"
             aria-label={detailTitle || 'Lead details'}
-            className="relative z-10 flex h-full w-full max-w-2xl sm:max-w-3xl flex-col bg-white shadow-2xl border-l border-gray-200"
+            className="relative z-10 flex h-full w-full sm:w-[min(96vw,1280px)] flex-col bg-white shadow-2xl border-l border-gray-200"
           >
             <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5 shrink-0">
               <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 min-w-0">

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
+import WhatsAppTemplatePickerModal from '@/components/shared/WhatsAppTemplatePickerModal';
 
 interface WhatsAppMobilePreviewModalProps {
   isOpen: boolean;
@@ -148,6 +149,8 @@ type BrowserCallOffer = {
 function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
+  const last10 = digits.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
   return digits.startsWith('91') ? digits : `91${digits}`;
 }
 
@@ -710,6 +713,8 @@ export default function WhatsAppMobilePreviewModal({
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<'all' | 'utility' | 'marketing' | 'auth'>('all');
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [telecallerScopedTemplates, setTelecallerScopedTemplates] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentGenerating, setPaymentGenerating] = useState(false);
@@ -881,11 +886,13 @@ export default function WhatsAppMobilePreviewModal({
     const q = templateSearch.trim().toLowerCase();
     return templateOptions.filter((row) => {
       const cat = String(row.category || '').toLowerCase();
+      const name = String(row.template_name || '').toLowerCase();
+      // Hide OTP / Auth from CRM compose (manager + telecaller).
+      if (cat.includes('auth') || name.includes('otp') || name.startsWith('auth_')) return false;
       if (templateCategoryFilter === 'utility' && !cat.includes('util')) return false;
       if (templateCategoryFilter === 'marketing' && !cat.includes('market')) return false;
-      if (templateCategoryFilter === 'auth' && !cat.includes('auth')) return false;
+      if (templateCategoryFilter === 'auth') return false;
       if (!q) return true;
-      const name = String(row.template_name || '').toLowerCase();
       const display = String(row.display_name || '').toLowerCase();
       const body = String(row.body_text || '').toLowerCase();
       const human = humanizeTemplateKey(row.template_name).toLowerCase();
@@ -1322,8 +1329,12 @@ export default function WhatsAppMobilePreviewModal({
       .then((data) => {
         const rows = Array.isArray(data?.templates) ? data.templates : [];
         setTemplateOptions(rows.filter((row: any) => Boolean(row?.is_active)));
+        setTelecallerScopedTemplates(Boolean(data?.telecaller_scoped));
       })
-      .catch(() => setTemplateOptions([]))
+      .catch(() => {
+        setTemplateOptions([]);
+        setTelecallerScopedTemplates(false);
+      })
       .finally(() => setTemplatesLoading(false));
   }, [isOpen]);
 
@@ -2044,7 +2055,27 @@ export default function WhatsAppMobilePreviewModal({
       try {
         const page = await fetchConversationPage(null);
         if (!isMounted) return;
-        setMessages(page.messages);
+        let nextMessages = page.messages;
+        if (
+          (!Array.isArray(nextMessages) || nextMessages.length === 0) &&
+          String(previewMessage || '').trim()
+        ) {
+          const text = String(previewMessage).trim();
+          nextMessages = [
+            {
+              id: `preview-seed-${waPhone}`,
+              direction: 'INBOUND',
+              message_type: 'TEXT',
+              text_body: text,
+              sender_phone: waPhone,
+              created_at: new Date().toISOString(),
+              status_at: new Date().toISOString(),
+              status: 'RECEIVED',
+              meta: { seeded_from_preview: true },
+            },
+          ];
+        }
+        setMessages(nextMessages);
         setHasMoreHistory(page.hasMore);
         setNextBeforeCreatedAt(page.nextBeforeCreatedAt);
         setUnreadCount(0);
@@ -2112,7 +2143,7 @@ export default function WhatsAppMobilePreviewModal({
       setUnreadCount(0);
       channel.unsubscribe();
     };
-  }, [isOpen, waPhone, fetchConversationPage, loadCalls, refreshConversation]);
+  }, [isOpen, waPhone, fetchConversationPage, loadCalls, refreshConversation, previewMessage]);
 
   useEffect(() => {
     if (isOpen) return;
@@ -2465,6 +2496,9 @@ export default function WhatsAppMobilePreviewModal({
         toast.error(data?.error || 'Send failed');
         return;
       }
+      if (data?.message && typeof data.message === 'object') {
+        setMessages((prev) => mergeMessages(prev, [data.message]));
+      }
       setTextMessage('');
       setCaption('');
       setSelectedMediaFile(null);
@@ -2472,7 +2506,15 @@ export default function WhatsAppMobilePreviewModal({
       setPaymentNote('');
       setShowAttachMenu(false);
       setActiveType('text');
-      await refreshConversation();
+      setTemplateStep(1);
+      try {
+        const page = await fetchConversationPage(null);
+        setMessages((prev) => mergeMessages(prev, page.messages));
+        setHasMoreHistory(page.hasMore);
+        setNextBeforeCreatedAt(page.nextBeforeCreatedAt);
+      } catch {
+        await refreshConversation();
+      }
 
       try {
         const supabase = createClient();
@@ -2621,6 +2663,7 @@ export default function WhatsAppMobilePreviewModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <div
       className={
         embedded
@@ -3558,34 +3601,67 @@ export default function WhatsAppMobilePreviewModal({
             </div>
           ) : null}
 
-          <div className={`border-t border-gray-200 bg-white flex flex-col max-h-[62%] ${selectMode ? 'hidden' : ''}`}>
-            <div className="overflow-y-auto min-h-0 flex-1 px-3 pt-3 space-y-2">
-            {isTemplateOnlyMode ? (
+          <WhatsAppTemplatePickerModal
+            open={templatePickerOpen}
+            onClose={() => setTemplatePickerOpen(false)}
+            templates={templateOptions as any}
+            loading={templatesLoading}
+            selectedName={templateName}
+            telecallerScoped={telecallerScopedTemplates}
+            onSelect={(name) => {
+              setTemplateName(name);
+              const row =
+                templateOptions.find(
+                  (r) => String(r.template_name || '').toLowerCase() === String(name || '').toLowerCase(),
+                ) || null;
+              setTemplateStep(getTemplateVariableCount(row) > 0 ? 2 : 1);
+            }}
+          />
+
+          <div
+            className={
+              activeType === 'template'
+                ? 'absolute inset-y-0 right-0 z-[45] flex flex-col overflow-hidden border-l border-[#d5dbe1] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.08)]'
+                : `border-t border-gray-200 bg-white flex flex-col max-h-[62%] ${selectMode ? 'hidden' : ''}`
+            }
+            style={
+              activeType === 'template'
+                ? { width: 380, minWidth: 380, maxWidth: 380, boxSizing: 'border-box' }
+                : undefined
+            }
+          >
+            <div className={`overflow-y-auto overflow-x-hidden min-h-0 min-w-0 flex-1 px-3 pt-3 space-y-2 ${activeType === 'template' ? 'pb-3' : ''}`}>
+            {isTemplateOnlyMode && activeType !== 'template' ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
                 Normal chat window closed. Only template messages can be sent.
               </div>
             ) : null}
             {activeType === 'template' ? (
-              <div className="mb-2 rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-3">
+              <div className="mb-2 min-w-0 max-w-full overflow-hidden rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-3">
+                {isTemplateOnlyMode ? (
+                  <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                    Normal chat window closed. Only template messages can be sent.
+                  </div>
+                ) : null}
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#475467]">Template mode</p>
                     <p className="text-[10px] text-[#667781]">
-                      Approved Meta templates — name, type aur preview clear dikhega
+                      Choose template, fill vars, send
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => { setActiveType('text'); setShowAttachMenu(false); }}
-                    className="text-[11px] font-semibold text-[#128c7e]"
+                    className="shrink-0 text-[11px] font-semibold text-[#128c7e]"
                   >
-                    Back to text
+                    Close
                   </button>
                 </div>
 
                 {templateStep === 1 ? (
                   <>
-                    <div className="rounded-xl border border-[#d5dbe1] bg-white p-2.5">
+                    <div className="min-w-0 max-w-full rounded-xl border border-[#d5dbe1] bg-white p-2.5">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#54656f]">
                           Step 1 — Choose Template
@@ -3594,106 +3670,90 @@ export default function WhatsAppMobilePreviewModal({
                           {filteredTemplateOptions.length}/{templateOptions.length}
                         </span>
                       </div>
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        {(
-                          [
-                            ['all', 'All'],
-                            ['utility', 'Utility'],
-                            ['marketing', 'Marketing'],
-                            ['auth', 'OTP / Auth'],
-                          ] as const
-                        ).map(([key, label]) => (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => setTemplateCategoryFilter(key)}
-                            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
-                              templateCategoryFilter === key
-                                ? 'bg-[#075e54] text-white'
-                                : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        className="w-full rounded-lg border border-[#d9dee3] bg-[#f8fafb] px-2.5 py-1.5 text-[11px] text-[#111b21] placeholder:text-[#7b8994] focus:border-[#25D366] focus:bg-white focus:outline-none"
-                        value={templateSearch}
-                        onChange={(e) => setTemplateSearch(e.target.value)}
-                        placeholder="Search name, id, or message text…"
-                      />
-                      <div className="mt-2 max-h-52 space-y-1.5 overflow-y-auto rounded-lg border border-[#e5e9ee] bg-[#fbfcfd] p-1.5">
-                        {templatesLoading ? (
-                          <div className="px-2 py-3 text-[11px] text-[#667781]">Loading templates...</div>
-                        ) : null}
-                        {!templatesLoading && filteredTemplateOptions.length === 0 ? (
-                          <div className="px-2 py-3 text-[11px] text-[#667781]">No templates found</div>
-                        ) : null}
-                        {filteredTemplateOptions.map((row) => {
-                          const isSelected =
-                            row.template_name.trim().toLowerCase() === templateName.trim().toLowerCase();
-                          const cat = templateCategoryMeta(row.category);
-                          const titleLabel = templateTitle(row);
-                          const tech = String(row.template_name || '').trim();
-                          const preview = String(row.body_text || '').replace(/\s+/g, ' ').trim();
-                          return (
-                            <button
-                              key={row.id}
-                              type="button"
-                              onClick={() => setTemplateName(row.template_name)}
-                              className={`w-full rounded-lg border px-2.5 py-2.5 text-left transition ${
-                                isSelected
-                                  ? 'border-[#25D366] bg-[#f2fcf6] ring-1 ring-[#25D366]/40'
-                                  : 'border-black/10 bg-white hover:border-[#b6c2cd] hover:bg-[#f7f9fb]'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-[12px] font-bold text-[#111b21]">{titleLabel}</p>
-                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${cat.className}`}>
-                                  {cat.label}
-                                </span>
-                              </div>
-                              <p className="mt-0.5 font-mono text-[10px] text-[#667781]">
-                                {tech} · {(row.language_code || 'en').toUpperCase()}
-                              </p>
-                              {preview ? (
-                                <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#3b4a54]">
-                                  {preview}
-                                </p>
-                              ) : (
-                                <p className="mt-1 text-[10px] italic text-[#98a2b3]">No body preview</p>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {telecallerScopedTemplates ? (
+                        <p className="mb-2 text-[10px] text-[#667781]">
+                          Telecaller templates only (Hello / session open). Admin catalog is hidden.
+                        </p>
+                      ) : (
+                        <p className="mb-2 text-[10px] text-[#667781]">
+                          Manager view — full approved template catalog.
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setTemplatePickerOpen(true);
+                        }}
+                        className="w-full min-w-0 max-w-full rounded-xl border border-[#25D366]/40 bg-[#f2fcf6] px-3 py-3 text-left transition hover:bg-[#e8f8ef]"
+                      >
+                        {selectedTemplate ? (
+                          <>
+                            <p className="truncate text-[12px] font-bold text-[#111b21]">
+                              {String(selectedTemplate.display_name || '').trim() ||
+                                humanizeTemplateKey(selectedTemplate.template_name)}
+                            </p>
+                            <p className="mt-0.5 truncate font-mono text-[10px] text-[#667781]">
+                              {selectedTemplate.template_name}
+                            </p>
+                            <p className="mt-2 text-[11px] font-semibold text-[#128c7e]">Change template →</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[12px] font-bold text-[#111b21]">Open template picker</p>
+                            <p className="mt-1 text-[11px] text-[#667781]">
+                              Grid se choose karo — preview yahin dikhega
+                            </p>
+                          </>
+                        )}
+                      </button>
                     </div>
 
+                    {selectedTemplate ? (
+                      <div className="mt-2 min-w-0 max-w-full overflow-hidden rounded-xl border border-[#d5dbe1] bg-[#efeae2] p-2.5">
+                        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#667781]">
+                          Preview
+                        </p>
+                        <div className="max-w-full overflow-hidden break-words rounded-lg rounded-tl-sm bg-white px-3 py-2.5 text-[12px] leading-relaxed text-[#111b21] shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
+                          {fillTemplateBody(selectedTemplate, templateParams)}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {templateName.trim() ? (
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="flex-1 rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <p className="font-semibold">{templateTitle(selectedTemplate || { template_name: templateName })}</p>
-                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
+                      <div className="mt-2 flex min-w-0 max-w-full flex-col gap-2">
+                        <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-[#bdebd2] bg-[#eafaf1] px-2.5 py-2 text-[10px] text-[#128c7e]">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <p className="min-w-0 truncate font-semibold">{templateTitle(selectedTemplate || { template_name: templateName })}</p>
+                            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
                               {templateCategoryMeta(selectedTemplate?.category).label}
                             </span>
                           </div>
-                          <p className="mt-0.5 font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
-                          <p className="mt-1 text-[#1b6f5f] line-clamp-2 whitespace-pre-wrap">
-                            {String(selectedTemplate?.body_text || '').slice(0, 120)}
-                            {String(selectedTemplate?.body_text || '').length > 120 ? '…' : ''}
-                          </p>
+                          <p className="mt-0.5 truncate font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
                         </div>
                         {visibleVarCount > 0 ? (
                           <button
                             type="button"
                             onClick={() => setTemplateStep(2)}
-                            className="shrink-0 rounded-lg bg-[#25D366] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#1da851]"
+                            className="w-full rounded-lg bg-[#25D366] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#1da851]"
                           >
                             Fill Variables →
                           </button>
-                        ) : null}
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleSend()}
+                            disabled={sending || paymentGenerating}
+                            className="w-full rounded-lg bg-[#25D366] px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#1da851] disabled:opacity-60"
+                          >
+                            {sending ? 'Sending…' : 'Send'}
+                          </button>
+                        )}
                       </div>
                     ) : null}
                   </>
@@ -3712,17 +3772,17 @@ export default function WhatsAppMobilePreviewModal({
                       </span>
                     </div>
 
-                    <div className="mb-3 rounded-lg border border-[#bdebd2] bg-[#f2fcf6] px-2.5 py-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <p className="text-[11px] font-semibold text-[#128c7e]">
+                    <div className="mb-3 min-w-0 max-w-full overflow-hidden rounded-lg border border-[#bdebd2] bg-[#f2fcf6] px-2.5 py-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <p className="min-w-0 truncate text-[11px] font-semibold text-[#128c7e]">
                           {templateTitle(selectedTemplate || { template_name: templateName })}
                         </p>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
+                        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${templateCategoryMeta(selectedTemplate?.category).className}`}>
                           {templateCategoryMeta(selectedTemplate?.category).label}
                         </span>
                       </div>
-                      <p className="mt-0.5 font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
-                      <p className="mt-1 text-[10px] text-[#1b6f5f] whitespace-pre-wrap line-clamp-3">
+                      <p className="mt-0.5 truncate font-mono text-[9px] text-[#1b6f5f]">{templateName}</p>
+                      <p className="mt-1 break-words text-[10px] text-[#1b6f5f] whitespace-pre-wrap line-clamp-3 [overflow-wrap:anywhere]">
                         {fillTemplateBody(selectedTemplate, templateParams)}
                       </p>
                     </div>
@@ -3779,6 +3839,15 @@ export default function WhatsAppMobilePreviewModal({
                         );
                       })}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleSend()}
+                      disabled={sending || paymentGenerating || !templateName.trim()}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#25D366] px-3 py-2.5 text-[12px] font-bold text-white hover:bg-[#1da851] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {sending || paymentGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {sending || paymentGenerating ? 'Sending…' : 'Send template'}
+                    </button>
                   </div>
                 )}
               </div>
@@ -3892,6 +3961,7 @@ export default function WhatsAppMobilePreviewModal({
               </div>
             ) : null}
             </div>
+            {activeType === 'template' ? null : (
             <div className="shrink-0 px-3 pb-3 pt-2 flex items-center gap-2">
               <div className="relative">
                 <button
@@ -3981,7 +4051,7 @@ export default function WhatsAppMobilePreviewModal({
                 ) : null}
               </div>
               <input
-                value={activeType === 'template' || activeType === 'payment' ? '' : textMessage}
+                value={activeType === 'payment' ? '' : textMessage}
                 onChange={(e) => setTextMessage(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -3989,11 +4059,9 @@ export default function WhatsAppMobilePreviewModal({
                     if (!sending) void handleSend();
                   }
                 }}
-                disabled={sending || paymentGenerating || activeType === 'template' || activeType === 'payment'}
+                disabled={sending || paymentGenerating || activeType === 'payment'}
                 placeholder={
-                  activeType === 'template'
-                    ? 'Template mode enabled'
-                    : activeType === 'payment'
+                  activeType === 'payment'
                     ? 'Payment mode enabled'
                     : isTemplateOnlyMode
                     ? 'Only templates can be sent'
@@ -4034,6 +4102,7 @@ export default function WhatsAppMobilePreviewModal({
                 }}
               />
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -4195,5 +4264,6 @@ export default function WhatsAppMobilePreviewModal({
         </div>
       ) : null}
     </div>
+    </>
   );
 }

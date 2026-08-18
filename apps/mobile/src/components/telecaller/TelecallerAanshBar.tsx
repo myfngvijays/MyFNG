@@ -67,8 +67,12 @@ export default function TelecallerAanshBar({
         await setStoredSession(data.currentSession);
         onSessionChange?.(data.currentSession);
       }
-    } catch (e) {
-      console.error('Aansh available failed', e);
+    } catch (e: any) {
+      // Optional dialer — don't LogBox on auth blips / skipped login
+      const msg = String(e?.message || e || '');
+      if (!/unauthorized|not authenticated|forbidden/i.test(msg)) {
+        console.warn('Aansh available failed', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -103,8 +107,11 @@ export default function TelecallerAanshBar({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_token: session.session_token }),
         });
-      } catch (e) {
-        console.error('Aansh heartbeat failed', e);
+      } catch (e: any) {
+        const msg = String(e?.message || e || '');
+        if (!/unauthorized|not authenticated|forbidden/i.test(msg)) {
+          console.warn('Aansh heartbeat failed', msg);
+        }
       }
     };
     beat();

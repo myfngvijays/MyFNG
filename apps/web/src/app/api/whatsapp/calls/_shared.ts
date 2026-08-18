@@ -6,6 +6,7 @@ export const ALLOWED_ROLE_CODES = [
   'SUB_ADMIN',
   'RSA_MANAGER',
   'TELECALLER',
+  'LEAD_MANAGER',
   'CUSTOMER_SERVICE_EXECUTIVE',
   'WORKSHOP_ADMIN',
   'WORKSHOP_SUPERVISOR',
@@ -24,6 +25,8 @@ export function isInboundDirection(direction: unknown): boolean {
 export function normalizePhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return '';
+  const last10 = digits.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
   return digits.startsWith('91') ? digits : `91${digits}`;
 }
 

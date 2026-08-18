@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useParams, useRouter, usePathname, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
@@ -27,12 +27,19 @@ function LeadDetailContent() {
   const searchParams = useSearchParams();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
   const leadId = params?.id as string;
+  const isEmbed = searchParams?.get('embed') === '1';
+  const wrap = (node: ReactNode) =>
+    isEmbed ? (
+      <div className="min-h-screen bg-slate-50">{node}</div>
+    ) : (
+      <DashboardLayout role={layoutRole}>{node}</DashboardLayout>
+    );
 
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -90,6 +97,7 @@ function LeadDetailContent() {
   const ACTIVITY_OPTIONS = [
     { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null as string | null },
     { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
+    { id: 'CALLBACK', label: 'Follow-up', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
     { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', call_status: 'ANSWERED', outcome: 'LEAD_CREATED', lead_status: 'VALIDATED' },
     { id: 'IN_SERVICE', label: 'In Service', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'IN_PROGRESS' },
     { id: 'SERVICE_DONE', label: 'Service Done', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'COMPLETED' },
@@ -120,17 +128,19 @@ function LeadDetailContent() {
     }
   }, [leadId]);
 
-  // Open = edit on the same screen (no separate Edit Lead modal / page)
+  // View-first (admin-style). Edit only when ?edit=1
   useEffect(() => {
-    setEditing(true);
-  }, [leadId]);
+    setEditing(searchParams?.get('edit') === '1');
+  }, [leadId, searchParams]);
 
   const exitEditing = () => {
-    router.push(`${base}/leads`);
+    setEditing(false);
+    router.replace(`${base}/leads/${leadId}`, { scroll: false });
   };
 
   const finishEditing = async () => {
-    setEditing(true);
+    setEditing(false);
+    router.replace(`${base}/leads/${leadId}`, { scroll: false });
     await fetchLeadDetails();
   };
 
@@ -489,73 +499,57 @@ function LeadDetailContent() {
   }
 
   if (loading) {
-    return (
-      <DashboardLayout role={layoutRole}>
-        <div className="flex items-center justify-center h-48 sm:h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
-            <p className="mt-3 sm:mt-4 text-gray-600 text-sm sm:text-base">Loading lead details...</p>
-          </div>
+    return wrap(
+      <div className="flex items-center justify-center h-48 sm:h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 border-b-2 border-brand-primary mx-auto"></div>
+          <p className="mt-3 sm:mt-4 text-gray-600 text-sm sm:text-base">Loading lead details...</p>
         </div>
-      </DashboardLayout>
+      </div>,
     );
   }
 
   if (!lead) {
-    return (
-      <DashboardLayout role={layoutRole}>
-        <div className="card text-center py-12">
+    return wrap(
+      <div className="card text-center py-12">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <p className="text-gray-500">Lead not found</p>
           <Link href={`${base}/leads`} className="btn btn-primary mt-4">
             Back to Leads
           </Link>
-        </div>
-      </DashboardLayout>
+        </div>,
     );
   }
 
-  return (
-    <DashboardLayout role={layoutRole}>
+  return wrap(
+    <>
       <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-5 pb-8">
         {editing ? (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                  {isLeadManager ? 'Lead Manager' : 'Telecaller'} · open to edit
-                </p>
-                <p className="font-extrabold text-[#023D95] truncate">
-                  {lead.customer_name || 'Lead'} · #{lead.lead_number}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {lead.customer_phone ? (
-                  <a
-                    href={`tel:${lead.customer_phone}`}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-white"
-                  >
-                    <PhoneCall className="w-4 h-4" /> Call
-                  </a>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void openSharePanel()}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700"
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {lead.customer_phone ? (
+                <a
+                  href={`tel:${lead.customer_phone}`}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-white shadow-sm"
                 >
-                  <Share2 className="w-4 h-4" />
-                  {isLeadManager ? 'Assign' : 'Share'}
-                </button>
-              </div>
+                  <PhoneCall className="w-4 h-4" /> Call
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void openSharePanel()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700 ring-1 ring-indigo-200"
+              >
+                <Share2 className="w-4 h-4" />
+                {isLeadManager ? 'Assign' : 'Share'}
+              </button>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
-              <CrmLeadEditForm
-                leadId={leadId}
-                embedded
-                onCancel={exitEditing}
-                onSaved={() => void finishEditing()}
-              />
-            </div>
+            <CrmLeadEditForm
+              leadId={leadId}
+              embedded
+              onCancel={exitEditing}
+              onSaved={() => void finishEditing()}
+            />
           </div>
         ) : (
           <>
@@ -563,12 +557,14 @@ function LeadDetailContent() {
           <div className="relative flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0">
-                <button type="button" onClick={() => router.back()} className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0">
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
+                {!isEmbed ? (
+                  <button type="button" onClick={() => router.push(`${base}/leads`)} className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0">
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                ) : null}
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-blue-100">
-                    {isLeadManager ? 'Lead Manager · Advanced CRM' : 'Advanced CRM'}
+                    {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
                   </p>
                   <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate mt-0.5 text-white">
                     {lead.customer_name || 'Unknown customer'}
@@ -584,11 +580,29 @@ function LeadDetailContent() {
                 <a href={`tel:${lead.customer_phone}`} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white px-3.5 py-2 text-sm font-bold shadow">
                   <PhoneCall className="w-4 h-4" /> Call
                 </a>
+                {lead.customer_phone ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(
+                        new CustomEvent('myfng:open-wa-chat', {
+                          detail: {
+                            phone: String(lead.customer_phone || '').replace(/\D/g, ''),
+                            preview: lead.problem_description || undefined,
+                          },
+                        }),
+                      );
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe57] text-white px-3.5 py-2 text-sm font-bold shadow"
+                  >
+                    <MessageSquare className="w-4 h-4" /> WhatsApp
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
                     setEditing(true);
-                    router.replace(`${base}/leads/${leadId}?edit=1`, { scroll: false });
+                    router.replace(`${base}/leads/${leadId}?edit=1${isEmbed ? '&embed=1' : ''}`, { scroll: false });
                   }}
                   className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white text-[#023D95] px-3.5 py-2 text-sm font-bold"
                 >
@@ -801,7 +815,7 @@ function LeadDetailContent() {
               {showFollowUpForm && (
                 <div className="mb-3 space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-100">
                   <select value={followUpData.follow_up_type} onChange={(e) => setFollowUpData({ ...followUpData, follow_up_type: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-lg">
-                    <option value="CALLBACK">Callback</option>
+                    <option value="CALLBACK">Follow-up</option>
                     <option value="PRICE_CONFIRMATION">Price Confirmation</option>
                     <option value="INFO_PENDING">Info Pending</option>
                     <option value="SLOT_CONFIRMATION">Slot Confirmation</option>
@@ -914,7 +928,7 @@ function LeadDetailContent() {
         defaultPhone={lead?.customer_phone}
         defaultCustomerName={lead?.customer_name}
       />
-    </DashboardLayout>
+    </>,
   );
 }
 

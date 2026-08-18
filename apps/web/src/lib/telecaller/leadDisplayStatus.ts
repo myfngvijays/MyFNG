@@ -6,6 +6,7 @@ export const LEAD_STATUS_FILTERS = [
   { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
+  { id: 'callback', label: 'Follow-up' },
   { id: 'booking_confirmed', label: 'Booking confirmed' },
   { id: 'in_service', label: 'In Service' },
   { id: 'service_done', label: 'Service Done' },
@@ -26,6 +27,7 @@ export const LOST_REASON_FILTERS = [
 const RESULT_LABEL: Record<string, string> = {
   INTERESTED: 'Interested',
   WILL_VISIT: 'He will visit',
+  CALLBACK: 'Follow-up',
   BOOKING_CONFIRMED: 'Booking confirmed',
   IN_SERVICE: 'In Service',
   SERVICE_DONE: 'Service Done',
@@ -37,6 +39,7 @@ const RESULT_LABEL: Record<string, string> = {
 function shortLeadStatusLabel(label: string): string {
   const s = String(label || '').trim();
   if (/^lost\b/i.test(s)) return 'Lost';
+  if (/^callback\b/i.test(s)) return 'Follow-up';
   return s;
 }
 
@@ -107,6 +110,9 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (s.includes('WILL VISIT')) {
     return { cardBg: '#F5F3FF', border: '#DDD6FE', badgeBg: '#EDE9FE', badgeText: '#6D28D9' };
   }
+  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) {
+    return { cardBg: '#F0F9FF', border: '#BAE6FD', badgeBg: '#E0F2FE', badgeText: '#0369A1' };
+  }
   if (s.includes('INTERESTED')) {
     return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
   }
@@ -132,6 +138,7 @@ export function leadStatusBannerClass(lead: any): string {
   }
   if (s.includes('IN SERVICE')) return 'bg-blue-50 border-blue-200';
   if (s.includes('WILL VISIT')) return 'bg-violet-50 border-violet-200';
+  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) return 'bg-sky-50 border-sky-200';
   if (s.includes('INTERESTED')) return 'bg-orange-50 border-orange-200';
   if (s.includes('OTP')) return 'bg-amber-50 border-amber-200';
   if (s === 'NEW' || s.includes('INCOMPLETE')) return 'bg-slate-50 border-slate-200';
@@ -147,6 +154,7 @@ export function leadStatusPillClass(lead: any): string {
   }
   if (s.includes('IN SERVICE')) return 'bg-blue-100 text-blue-700';
   if (s.includes('WILL VISIT')) return 'bg-violet-100 text-violet-800';
+  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) return 'bg-sky-100 text-sky-800';
   if (s.includes('INTERESTED')) return 'bg-orange-100 text-orange-700';
   if (s.includes('OTP')) return 'bg-amber-100 text-amber-800';
   if (s === 'NEW' || s.includes('INCOMPLETE')) return 'bg-slate-200 text-slate-700';

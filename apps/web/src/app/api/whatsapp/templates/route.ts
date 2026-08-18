@@ -8,6 +8,7 @@ const ALLOWED_TEMPLATE_READ_ROLES = [
   'SUB_ADMIN',
   'RSA_MANAGER',
   'TELECALLER',
+  'LEAD_MANAGER',
   'CUSTOMER_SERVICE_EXECUTIVE',
   'WORKSHOP_ADMIN',
   'WORKSHOP_SUPERVISOR',
@@ -49,13 +50,24 @@ async function assertTemplateReader(db: any) {
     return { ok: false, status: 401, error: 'Unauthorized', user: null, userProfile: null };
   }
 
-  const { data: userProfile } = await db
+  const email = String(user.email || '').trim();
+  const phone = String(user.phone || '').trim();
+  const selectProfile = 'id, full_name, roles!inner(role_code)';
+
+  const { data: byId } = await db
     .from('users_login')
-    .select('id, full_name, roles!inner(role_code)')
+    .select(selectProfile)
     .eq('id', user.id)
     .maybeSingle();
+  const { data: byEmail } = !byId && email
+    ? await db.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
+    : { data: null };
+  const { data: byPhone } = !byId && !byEmail && phone
+    ? await db.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
+    : { data: null };
 
-  const roleCode = (userProfile as any)?.roles?.role_code;
+  const userProfile = byId || byEmail || byPhone;
+  const roleCode = String((userProfile as any)?.roles?.role_code || '').toUpperCase();
   if (!userProfile || !ALLOWED_TEMPLATE_READ_ROLES.includes(roleCode)) {
     return { ok: false, status: 403, error: 'Forbidden', user, userProfile: null };
   }
@@ -147,8 +159,13 @@ export async function GET() {
     const auth = await assertTemplateReader(db);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    const roleCode = (auth.userProfile as any)?.roles?.role_code;
-    const useAdminRead = roleCode === 'SUPER_ADMIN' || roleCode === 'SUB_ADMIN';
+    const roleCode = String((auth.userProfile as any)?.roles?.role_code || '').toUpperCase();
+    const useAdminRead =
+      roleCode === 'SUPER_ADMIN' ||
+      roleCode === 'SUB_ADMIN' ||
+      roleCode === 'LEAD_MANAGER' ||
+      roleCode === 'TELECALLER' ||
+      roleCode === 'RSA_MANAGER';
     const { supabaseAdmin } = getSupabaseAdmin();
     const readDb = useAdminRead && supabaseAdmin ? supabaseAdmin : db;
 
@@ -160,7 +177,46 @@ export async function GET() {
       .order('updated_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true, templates: data || [] });
+
+    let templates = Array.isArray(data) ? data : [];
+
+    const isAuthRow = (row: any) => {
+      const cat = String(row?.category || '').toLowerCase();
+      const name = String(row?.template_name || '').trim().toLowerCase();
+      return cat.includes('auth') || name.includes('otp') || name.startsWith('auth_');
+    };
+
+    // OTP / Auth templates are never useful in CRM chat for LM or telecaller.
+    if (roleCode === 'LEAD_MANAGER' || roleCode === 'TELECALLER') {
+      templates = templates.filter((row: any) => !isAuthRow(row));
+    }
+
+    // Telecallers only get basic CRM hello / explicitly flagged templates — not admin catalog.
+    if (roleCode === 'TELECALLER') {
+      templates = templates.filter((row: any) => {
+        const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+        if (meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1) {
+          return true;
+        }
+        const name = String(row?.template_name || '').trim().toLowerCase();
+        if (name.startsWith('admin_') || name.includes('admin_daily') || name.includes('daily_summary')) {
+          return false;
+        }
+        return (
+          name === 'crm_hello' ||
+          name.startsWith('crm_hello') ||
+          name === 'telecaller_hello' ||
+          name.startsWith('hello_customer')
+        );
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      templates,
+      viewer_role: roleCode,
+      telecaller_scoped: roleCode === 'TELECALLER',
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }

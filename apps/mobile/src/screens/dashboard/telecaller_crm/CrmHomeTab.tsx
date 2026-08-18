@@ -131,10 +131,29 @@ export default function CrmHomeTab({
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.hero}>
-        <View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={styles.hello}>Advanced CRM</Text>
           <Text style={styles.name}>{data?.profile?.name || 'Telecaller'}</Text>
         </View>
+        <TouchableOpacity
+          style={styles.remindBtn}
+          onPress={() => onNavigate('Notifications')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="notifications-outline" size={18} color="#0369A1" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.remindBtn}
+          onPress={() => onNavigate('TelecallerFollowUps')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="alarm-outline" size={18} color="#0369A1" />
+          {Number(kpis.followups_today || 0) > 0 ? (
+            <View style={styles.remindBadge}>
+              <Text style={styles.remindBadgeText}>{kpis.followups_today}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
         <View style={[styles.badge, onFloor ? styles.badgeOn : styles.badgeOff]}>
           <View style={[styles.dot, { backgroundColor: onFloor ? COLORS.green : COLORS.orange }]} />
           <Text style={styles.badgeText}>{onFloor ? 'On Floor' : 'Off Duty'}</Text>
@@ -216,6 +235,7 @@ export default function CrmHomeTab({
           { label: 'Incomplete', value: kpis.incomplete, color: '#B45309', filter: 'incomplete' },
           { label: 'Interested', value: kpis.interested, color: '#C2410C', filter: 'interested' },
           { label: 'He will visit', value: kpis.will_visit, color: '#6D28D9', filter: 'will_visit' },
+          { label: 'Follow-up', value: kpis.callbacks, color: '#0369A1', filter: 'callback' },
           {
             label: 'Booking confirmed',
             value: kpis.booking_confirmed ?? kpis.booked,
@@ -315,6 +335,28 @@ const styles = StyleSheet.create({
   badgeOff: { backgroundColor: COLORS.orange + '18' },
   badgeText: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  remindBtn: {
+    marginRight: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E0F2FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  remindBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#0369A1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  remindBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   dateDropdownWrap: { marginBottom: 10, zIndex: 5 },
   dateDropdownBtn: {
     flexDirection: 'row',

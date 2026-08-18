@@ -59,9 +59,14 @@ export const createClient = async () => {
   // even when the route handler was written for cookie auth.
   // Prefer cookies when a Supabase session cookie is present so a junk/stale
   // Authorization header cannot force Unauthorized on browser dashboard calls.
+  // Exception: mobile always wins with a valid Bearer — never let a leftover
+  // localhost cookie (e.g. shared cookie jar / proxy) override the app session.
   const headerStore = await headers();
   const authHeader = headerStore.get('authorization') || headerStore.get('Authorization');
   const bearer = extractBearerToken(authHeader);
+  const isMobileClient =
+    headerStore.get('x-mobile-client') === 'true' ||
+    /^(ios|android)$/i.test(String(headerStore.get('x-app-platform') || ''));
 
   const cookieStore = await cookies();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -72,7 +77,7 @@ export const createClient = async () => {
   }
 
   const cookieAuth = hasSupabaseAuthCookie(cookieStore.getAll());
-  if (bearer && !cookieAuth) {
+  if (bearer && (isMobileClient || !cookieAuth)) {
     return createSupabaseClient<Database>(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { headers: { Authorization: `Bearer ${bearer}` } },
@@ -99,12 +104,15 @@ export const createClientFromRequest = async (request: NextRequest) => {
 
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
   const bearer = extractBearerToken(authHeader);
+  const isMobileClient =
+    request.headers.get('x-mobile-client') === 'true' ||
+    /^(ios|android)$/i.test(String(request.headers.get('x-app-platform') || ''));
   const cookieStore = await cookies();
   const requestCookies = request.cookies.getAll();
   const cookieAuth =
     hasSupabaseAuthCookie(requestCookies) || hasSupabaseAuthCookie(cookieStore.getAll());
 
-  if (bearer && !cookieAuth) {
+  if (bearer && (isMobileClient || !cookieAuth)) {
     return createSupabaseClient<Database>(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { headers: { Authorization: `Bearer ${bearer}` } },

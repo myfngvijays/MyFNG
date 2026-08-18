@@ -7,13 +7,11 @@ import {
   Phone,
   Download,
   GitMerge,
-  LayoutGrid,
+  BarChart3,
   RefreshCw,
 } from 'lucide-react';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
-import { personalLeaderboardLabel } from '@/lib/telecaller/crmPermissions';
 import { useCrmPermissions } from '@/lib/telecaller/useCrmPermissions';
-import { useAuthStore } from '@/store/authStore';
 
 export function CrmReportsNav({
   title,
@@ -31,14 +29,10 @@ export function CrmReportsNav({
   const pathname = usePathname();
   const { base, isLeadManager } = getCrmDashboardBase(pathname);
   const { permissions, loading: permLoading } = useCrmPermissions();
-  const fullName = useAuthStore((s) => s.userProfile?.full_name);
-  const teamMode = Boolean(isLeadManager || permissions.reports_team_leaderboard);
-  const boardTab = teamMode ? 'Leaderboard' : personalLeaderboardLabel(fullName);
 
   const tabs = [
-    { id: '', label: 'Overview', icon: LayoutGrid, show: true },
-    { id: 'leaderboard', label: boardTab, icon: Trophy, show: permissions.reports },
-    { id: 'calls', label: 'Call activity', icon: Phone, show: permissions.reports },
+    { id: 'leaderboard', label: 'Leaderboard', icon: Trophy, show: permissions.reports },
+    { id: 'calls', label: 'Calls', icon: Phone, show: permissions.reports },
     {
       id: 'exports',
       label: 'Exports',
@@ -51,13 +45,21 @@ export function CrmReportsNav({
       icon: GitMerge,
       show: Boolean(isLeadManager || (!permLoading && permissions.reports_duplicates)),
     },
+    {
+      id: 'pipeline',
+      label: 'Pipeline',
+      icon: BarChart3,
+      show: isLeadManager,
+    },
   ].filter((t) => t.show);
 
   return (
     <div className="space-y-3 sm:space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Advanced CRM</p>
+          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
+            Advanced CRM
+          </p>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#023D95] flex items-center gap-2">
             {title}
             {onRefresh ? (
@@ -71,22 +73,21 @@ export function CrmReportsNav({
               </button>
             ) : null}
           </h1>
-          {subtitle ? <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">{subtitle}</p>
+          ) : null}
         </div>
         {actions ? <div className="flex flex-wrap gap-2 w-full sm:w-auto">{actions}</div> : null}
       </div>
 
       <div className="-mx-1 px-1 flex gap-1 overflow-x-auto border-b border-slate-200 pb-px scrollbar-thin">
         {tabs.map((tab) => {
-          const href = tab.id ? `${base}/reports/${tab.id}` : `${base}/reports`;
-          const active =
-            tab.id === ''
-              ? pathname === `${base}/reports` || pathname === `${base}/reports/`
-              : pathname?.includes(`/reports/${tab.id}`);
+          const href = `${base}/reports/${tab.id}`;
+          const active = pathname?.includes(`/reports/${tab.id}`);
           const Icon = tab.icon;
           return (
             <Link
-              key={tab.id || 'home'}
+              key={tab.id}
               href={href}
               className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-bold transition ${
                 active

@@ -10,9 +10,21 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '../../lib/api';
-import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import TelecallerWhatsAppChat from './TelecallerWhatsAppChat';
+
+const WA = {
+  header: '#008069',
+  bg: '#FFFFFF',
+  searchBg: '#F0F2F5',
+  text: '#111B21',
+  meta: '#667781',
+  unread: '#25D366',
+  divider: '#E9EDEF',
+  avatarColors: ['#00A884', '#02A698', '#7D9D9C', '#6A8CAF', '#DF8569', '#BA7BCC'],
+};
 
 type ChatRow = {
   phone: string;
@@ -37,17 +49,28 @@ function formatPhone(phone: string): string {
   return phone || '—';
 }
 
-function formatTime(value?: string | null): string {
+function formatListTime(value?: string | null): string {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) {
+    return date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate()
+  ) {
+    return 'Yesterday';
+  }
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
 function previewText(raw?: string | null): string {
@@ -64,12 +87,27 @@ function previewText(raw?: string | null): string {
   return text;
 }
 
+function avatarLetter(name?: string | null, phone?: string): string {
+  const n = String(name || '').trim();
+  if (n) return n.charAt(0).toUpperCase();
+  const d = String(phone || '').replace(/\D/g, '');
+  return d.slice(-1) || '?';
+}
+
+function avatarColor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash + seed.charCodeAt(i) * (i + 1)) % 997;
+  return WA.avatarColors[hash % WA.avatarColors.length];
+}
+
 export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [leadCount, setLeadCount] = useState(0);
   const [activePhone, setActivePhone] = useState<string | null>(null);
+  const [activeCustomerName, setActiveCustomerName] = useState<string | null>(null);
 
   const fetchChats = useCallback(async () => {
     setLoading(true);
@@ -81,7 +119,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
       });
       if (search.trim()) params.set('search', search.trim());
       const data = await apiFetch<{ success?: boolean; chats?: ChatRow[]; lead_count?: number }>(
-        `/api/whatsapp/chats?${params.toString()}`
+        `/api/whatsapp/chats?${params.toString()}`,
       );
       setRows(Array.isArray(data.chats) ? data.chats : []);
       setLeadCount(Number(data.lead_count ?? data.chats?.length ?? 0));
@@ -100,100 +138,144 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   }, [visible, fetchChats]);
 
   useEffect(() => {
-    if (!visible) setActivePhone(null);
+    if (!visible) {
+      setActivePhone(null);
+      setActiveCustomerName(null);
+    }
   }, [visible]);
 
   const inboundCount = useMemo(
     () => rows.filter((r) => String(r.last_direction || '').toUpperCase() === 'INBOUND').length,
-    [rows]
+    [rows],
   );
 
   const subtitle = useMemo(() => {
-    return `${leadCount} assigned lead${leadCount === 1 ? '' : 's'}${inboundCount > 0 ? ` · ${inboundCount} unread` : ''}`;
+    return `${leadCount} chats${inboundCount > 0 ? ` · ${inboundCount} unread` : ''}`;
   }, [leadCount, inboundCount]);
 
   const handleClose = () => {
     setActivePhone(null);
+    setActiveCustomerName(null);
     onClose();
+  };
+
+  const openChat = (phone: string, name?: string | null) => {
+    setActivePhone(phone);
+    setActiveCustomerName(String(name || '').trim() || null);
   };
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      onRequestClose={activePhone ? () => setActivePhone(null) : handleClose}
+      onRequestClose={
+        activePhone
+          ? () => {
+              setActivePhone(null);
+              setActiveCustomerName(null);
+            }
+          : handleClose
+      }
     >
       {activePhone ? (
-        <TelecallerWhatsAppChat phone={activePhone} onBack={() => setActivePhone(null)} />
+        <TelecallerWhatsAppChat
+          phone={activePhone}
+          customerName={activeCustomerName}
+          onBack={() => {
+            setActivePhone(null);
+            setActiveCustomerName(null);
+          }}
+        />
       ) : (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
-            <Ionicons name="close" size={22} color={COLORS.white} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>WhatsApp · 6161</Text>
-            <Text style={styles.subtitle}>{subtitle}</Text>
+        <View style={styles.container}>
+          <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
+            <TouchableOpacity style={styles.iconHit} onPress={handleClose}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>WhatsApp</Text>
+              <Text style={styles.subtitle}>{subtitle}</Text>
+            </View>
+            <TouchableOpacity onPress={fetchChats} style={styles.iconHit}>
+              <Ionicons name="refresh" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={fetchChats} style={styles.closeBtn}>
-            <Ionicons name="refresh" size={20} color={COLORS.white} />
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={16} color={COLORS.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search phone..."
-            value={search}
-            onChangeText={setSearch}
-            placeholderTextColor={COLORS.textSecondary}
-            keyboardType="phone-pad"
-          />
-        </View>
+          <View style={styles.searchWrap}>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={18} color={WA.meta} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search or start new chat"
+                value={search}
+                onChangeText={setSearch}
+                placeholderTextColor={WA.meta}
+                keyboardType="default"
+              />
+            </View>
+          </View>
 
-        {loading ? (
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
-        ) : (
-          <FlatList
-            data={rows}
-            keyExtractor={(item, idx) => `${item.phone}-${idx}`}
-            contentContainerStyle={{ padding: SPACING.md, paddingBottom: 40 }}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Ionicons name="logo-whatsapp" size={40} color={COLORS.gray[300]} />
-                <Text style={styles.emptyText}>No chats found</Text>
-              </View>
-            }
-            renderItem={({ item }) => {
-              const inbound = String(item.last_direction || '').toUpperCase() === 'INBOUND';
-              return (
-                <TouchableOpacity
-                  style={styles.card}
-                  onPress={() => setActivePhone(item.phone)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.avatar, inbound && styles.avatarUnread]}>
-                    <Ionicons name="logo-whatsapp" size={18} color={COLORS.white} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.cardTop}>
-                      <Text style={styles.phone}>
-                        {item.customer_name ? `${item.customer_name} · ` : ''}
-                        {formatPhone(item.phone)}
-                      </Text>
-                      <Text style={styles.time}>{formatTime(item.last_message_at)}</Text>
+          {loading ? (
+            <ActivityIndicator color={WA.header} style={{ marginTop: 40 }} />
+          ) : (
+            <FlatList
+              data={rows}
+              keyExtractor={(item, idx) => `${item.phone}-${idx}`}
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
+              ItemSeparatorComponent={() => <View style={styles.sep} />}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Ionicons name="chatbubbles-outline" size={42} color="#D1D7DB" />
+                  <Text style={styles.emptyText}>No chats found</Text>
+                </View>
+              }
+              renderItem={({ item }) => {
+                const inbound = String(item.last_direction || '').toUpperCase() === 'INBOUND';
+                const name = String(item.customer_name || '').trim() || formatPhone(item.phone);
+                const letter = avatarLetter(item.customer_name, item.phone);
+                return (
+                  <TouchableOpacity
+                    style={styles.row}
+                    onPress={() => openChat(item.phone, item.customer_name)}
+                    activeOpacity={0.65}
+                  >
+                    <View style={[styles.avatar, { backgroundColor: avatarColor(item.phone) }]}>
+                      <Text style={styles.avatarText}>{letter}</Text>
                     </View>
-                    <Text style={styles.preview} numberOfLines={2}>
-                      {previewText(item.last_message_preview)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        )}
-      </View>
+                    <View style={styles.rowBody}>
+                      <View style={styles.rowTop}>
+                        <Text style={styles.name} numberOfLines={1}>
+                          {name}
+                        </Text>
+                        <Text style={[styles.time, inbound && styles.timeUnread]}>
+                          {formatListTime(item.last_message_at)}
+                        </Text>
+                      </View>
+                      <View style={styles.rowBottom}>
+                        {!inbound ? (
+                          <Ionicons
+                            name="checkmark-done"
+                            size={16}
+                            color={
+                              String(item.last_status || '').toUpperCase() === 'READ'
+                                ? '#53BDEB'
+                                : WA.meta
+                            }
+                            style={{ marginRight: 2 }}
+                          />
+                        ) : null}
+                        <Text style={styles.preview} numberOfLines={1}>
+                          {previewText(item.last_message_preview)}
+                        </Text>
+                        {inbound ? <View style={styles.unreadDot} /> : null}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+        </View>
       )}
     </Modal>
   );
@@ -216,7 +298,7 @@ export function TelecallerWhatsAppFab({
       onPress={onPress}
       activeOpacity={0.85}
     >
-      <Ionicons name="logo-whatsapp" size={24} color={COLORS.white} />
+      <Ionicons name="logo-whatsapp" size={26} color={COLORS.white} />
       {badge && badge > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -229,133 +311,130 @@ export function TelecallerWhatsAppFab({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: WA.bg,
   },
   header: {
-    backgroundColor: '#075E54',
-    paddingTop: 50,
-    paddingBottom: 14,
-    paddingHorizontal: SPACING.md,
+    backgroundColor: WA.header,
+    paddingBottom: 10,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 4,
   },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  iconHit: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
   },
   subtitle: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.85)',
-    marginTop: 2,
+    marginTop: 1,
   },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.md,
-  },
-  modeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: COLORS.gray[100],
-  },
-  modeChipActive: {
-    backgroundColor: '#25D366',
-  },
-  modeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  modeTextActive: {
-    color: COLORS.white,
+  searchWrap: {
+    backgroundColor: WA.header,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    margin: SPACING.md,
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: WA.searchBg,
+    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    ...SHADOWS.small,
+    paddingVertical: 2,
   },
   searchInput: {
     flex: 1,
     paddingVertical: 10,
-    fontSize: 14,
-    color: COLORS.textPrimary,
+    fontSize: 15,
+    color: WA.text,
   },
-  card: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     gap: 12,
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: 12,
-    marginBottom: 8,
-    ...SHADOWS.small,
+    backgroundColor: '#fff',
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#25D366',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarUnread: {
-    backgroundColor: COLORS.primary,
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
   },
-  cardTop: {
+  rowBody: { flex: 1, minWidth: 0 },
+  rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
   },
-  phone: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+  name: {
     flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: WA.text,
   },
   time: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    color: WA.meta,
+  },
+  timeUnread: {
+    color: WA.unread,
+    fontWeight: '600',
+  },
+  rowBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
   },
   preview: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 3,
-    lineHeight: 16,
+    flex: 1,
+    fontSize: 14,
+    color: WA.meta,
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: WA.unread,
+    marginLeft: 8,
+  },
+  sep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: WA.divider,
+    marginLeft: 78,
   },
   empty: {
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: 80,
     gap: 10,
   },
   emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
+    color: WA.meta,
+    fontSize: 15,
   },
   fab: {
     position: 'absolute',
     right: 18,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     backgroundColor: '#25D366',
     alignItems: 'center',
     justifyContent: 'center',
