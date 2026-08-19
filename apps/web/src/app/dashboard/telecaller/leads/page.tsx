@@ -555,7 +555,7 @@ function TelecallerCrmLeadsContent() {
           lead_id: shareLead.id,
           to_telecaller_id: toId,
           transfer_type: type,
-          reason: type === 'SHARE' ? 'Shared from Advanced CRM' : 'Transferred from Advanced CRM',
+          reason: type === 'SHARE' ? 'Shared from MyFNG' : 'Transferred from MyFNG',
         }),
       });
       const data = await res.json();
@@ -581,7 +581,6 @@ function TelecallerCrmLeadsContent() {
       <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4 pb-24">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
             <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
             <p className="text-sm text-slate-500 mt-0.5">
               {isLeadManager
@@ -768,18 +767,21 @@ function TelecallerCrmLeadsContent() {
 
           {/* Compact filter dropdowns */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
-            <select
-              className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
-              value={filter}
-              onChange={(e) => setFilterAndUrl(e.target.value)}
-              aria-label="Status"
-            >
-              {LEAD_STATUS_FILTERS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative min-w-0">
+              <select
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                value={filter}
+                onChange={(e) => setFilterAndUrl(e.target.value)}
+                aria-label="Lead Status"
+              >
+                {LEAD_STATUS_FILTERS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.id === 'all' ? 'Lead Status' : f.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            </div>
 
             <button
               type="button"
@@ -788,94 +790,107 @@ function TelecallerCrmLeadsContent() {
               title="Select date"
             >
               <CalendarDays className="h-4 w-4 text-[#004AAD] shrink-0" />
-              <span className="truncate">{dateRangeLabel}</span>
+              <span className="min-w-0 flex-1 truncate">{dateRangeLabel}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
             </button>
 
-            <select
-              className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
-              value={city}
-              onChange={(e) => {
-                const v = e.target.value;
-                setCity(v);
-                persistAll({ city: v });
-                syncFiltersToUrl({ city: v });
-              }}
-              aria-label="City"
-            >
-              <option value="">All cities</option>
-              {cities.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
-              value={priority}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPriority(v);
-                persistAll({ priority: v });
-                syncFiltersToUrl({ priority: v });
-              }}
-              aria-label="Priority"
-            >
-              {PRIORITY_OPTIONS.map((o) => (
-                <option key={o.value || 'all'} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-
-            {isLeadManager ? (
+            <div className="relative min-w-0">
               <select
-                className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
-                value={unassignedOnly ? '__unassigned__' : telecallerId}
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                value={city}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === '__unassigned__') {
-                    setUnassignedOnly(true);
-                    setTelecallerId('');
-                    persistAll({ unassignedOnly: true, telecallerId: '' });
-                    syncFiltersToUrl({ unassignedOnly: true, telecallerId: '' });
-                  } else {
-                    setUnassignedOnly(false);
-                    setTelecallerId(v);
-                    persistAll({ unassignedOnly: false, telecallerId: v });
-                    syncFiltersToUrl({ unassignedOnly: false, telecallerId: v });
-                  }
+                  setCity(v);
+                  persistAll({ city: v });
+                  syncFiltersToUrl({ city: v });
                 }}
-                aria-label="Telecaller"
+                aria-label="City"
               >
-                <option value="">All telecallers</option>
-                <option value="__unassigned__">Unassigned only</option>
-                {telecallers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name || t.id.slice(0, 8)}
+                <option value="">All cities</option>
+                {cities.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
                   </option>
                 ))}
               </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            </div>
+
+            <div className="relative min-w-0">
+              <select
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                value={priority}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPriority(v);
+                  persistAll({ priority: v });
+                  syncFiltersToUrl({ priority: v });
+                }}
+                aria-label="Priority"
+              >
+                {PRIORITY_OPTIONS.map((o) => (
+                  <option key={o.value || 'all'} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            </div>
+
+            {isLeadManager ? (
+              <div className="relative min-w-0">
+                <select
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                  value={unassignedOnly ? '__unassigned__' : telecallerId}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '__unassigned__') {
+                      setUnassignedOnly(true);
+                      setTelecallerId('');
+                      persistAll({ unassignedOnly: true, telecallerId: '' });
+                      syncFiltersToUrl({ unassignedOnly: true, telecallerId: '' });
+                    } else {
+                      setUnassignedOnly(false);
+                      setTelecallerId(v);
+                      persistAll({ unassignedOnly: false, telecallerId: v });
+                      syncFiltersToUrl({ unassignedOnly: false, telecallerId: v });
+                    }
+                  }}
+                  aria-label="Telecaller"
+                >
+                  <option value="">All telecallers</option>
+                  <option value="__unassigned__">Unassigned only</option>
+                  {telecallers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name || t.id.slice(0, 8)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              </div>
             ) : null}
 
             {filter === 'lost' ? (
-              <select
-                className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
-                value={lostReason}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setLostReason(v);
-                  persistAll({ lostReason: v });
-                  syncFiltersToUrl({ lostReason: v });
-                }}
-                aria-label="Lost reason"
-              >
-                {LOST_REASON_FILTERS.map((f) => (
-                  <option key={f.id || 'all-lost'} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
+              <div className="relative min-w-0">
+                <select
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                  value={lostReason}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setLostReason(v);
+                    persistAll({ lostReason: v });
+                    syncFiltersToUrl({ lostReason: v });
+                  }}
+                  aria-label="Lost reason"
+                >
+                  {LOST_REASON_FILTERS.map((f) => (
+                    <option key={f.id || 'all-lost'} value={f.id}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              </div>
             ) : null}
 
             <div className="relative" ref={advancedMenuRef}>
@@ -894,7 +909,9 @@ function TelecallerCrmLeadsContent() {
                     </span>
                   ) : null}
                 </span>
-                <ChevronDown className={`h-4 w-4 shrink-0 transition ${showAdvanced ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-slate-500 transition ${showAdvanced ? 'rotate-180' : ''}`}
+                />
               </button>
               {showAdvanced ? (
                 <div className="absolute left-0 right-0 z-40 mt-1.5 min-w-[240px] rounded-xl border border-slate-200 bg-white p-2 shadow-lg sm:right-auto sm:w-72">
@@ -973,26 +990,6 @@ function TelecallerCrmLeadsContent() {
                 </div>
               ) : null}
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {LEAD_STATUS_FILTERS.map((f) => {
-              const active = filter === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setFilterAndUrl(f.id)}
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold border transition ${
-                    active
-                      ? 'bg-[#004AAD] text-white border-[#004AAD]'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-blue-300'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
           </div>
         </div>
 
@@ -1142,9 +1139,20 @@ function TelecallerCrmLeadsContent() {
                       return (
                         <tr
                           key={lead.id}
-                          className={`group hover:bg-slate-50/80 cursor-pointer ${
-                            isLeadManager && selectedIds.has(String(lead.id)) ? 'bg-blue-50/60' : ''
+                          className={`group cursor-pointer transition ${
+                            isLeadManager && selectedIds.has(String(lead.id))
+                              ? 'ring-2 ring-inset ring-blue-400'
+                              : ''
                           }`}
+                          style={{
+                            backgroundColor:
+                              isLeadManager && selectedIds.has(String(lead.id))
+                                ? '#DBEAFE'
+                                : tint.cardBg,
+                            boxShadow: `inset 4px 0 0 0 ${
+                              tint.badgeText === '#FFFFFF' ? tint.badgeBg : tint.badgeText
+                            }`,
+                          }}
                           onClick={() => openLead(String(lead.id))}
                         >
                           {isLeadManager ? (
@@ -1242,11 +1250,13 @@ function TelecallerCrmLeadsContent() {
                           ) : null}
                           {showCol('actions') ? (
                             <td
-                              className={`sticky right-0 z-10 px-2 py-2 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)] ${
-                                isLeadManager && selectedIds.has(String(lead.id))
-                                  ? 'bg-blue-50'
-                                  : 'bg-white group-hover:bg-slate-50'
-                              }`}
+                              className="sticky right-0 z-10 px-2 py-2 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)]"
+                              style={{
+                                backgroundColor:
+                                  isLeadManager && selectedIds.has(String(lead.id))
+                                    ? '#DBEAFE'
+                                    : tint.cardBg,
+                              }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className="flex items-center justify-end gap-1">
@@ -1255,9 +1265,9 @@ function TelecallerCrmLeadsContent() {
                                     href={`tel:${lead.customer_phone}`}
                                     title="Call"
                                     aria-label="Call"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
                                   >
-                                    <Phone className="h-4 w-4" />
+                                    <Phone className="h-4 w-4 fill-current" strokeWidth={0} />
                                   </a>
                                 ) : null}
                                 {lead.customer_phone ? (
@@ -1266,7 +1276,7 @@ function TelecallerCrmLeadsContent() {
                                     onClick={() => openLeadWhatsApp(lead)}
                                     title="WhatsApp"
                                     aria-label="WhatsApp"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366]/15 text-[#25D366] ring-1 ring-[#25D366]/40 hover:bg-[#25D366]/25"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366] text-white shadow-sm hover:bg-[#1ebe5c]"
                                   >
                                     <WhatsAppIcon className="h-4 w-4" />
                                   </button>
@@ -1276,9 +1286,9 @@ function TelecallerCrmLeadsContent() {
                                   onClick={() => openShare(lead)}
                                   title="Share"
                                   aria-label="Share"
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-600 text-white shadow-sm hover:bg-slate-700"
                                 >
-                                  <Share2 className="h-4 w-4" />
+                                  <Share2 className="h-3.5 w-3.5 fill-current" strokeWidth={2.5} />
                                 </button>
                               </div>
                             </td>
@@ -1313,7 +1323,13 @@ function TelecallerCrmLeadsContent() {
                       }
                     }}
                     className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004AAD]"
-                    style={{ backgroundColor: tint.cardBg, borderColor: tint.border }}
+                    style={{
+                      backgroundColor: tint.cardBg,
+                      borderColor: tint.border,
+                      boxShadow: `inset 4px 0 0 0 ${
+                        tint.badgeText === '#FFFFFF' ? tint.badgeBg : tint.badgeText
+                      }`,
+                    }}
                   >
                     {isLeadManager ? (
                       <div
@@ -1440,9 +1456,9 @@ function TelecallerCrmLeadsContent() {
                             href={`tel:${lead.customer_phone}`}
                             title="Call"
                             aria-label="Call"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/80 text-emerald-700 ring-1 ring-emerald-200"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm"
                           >
-                            <Phone className="h-4 w-4" />
+                            <Phone className="h-4 w-4 fill-current" strokeWidth={0} />
                           </a>
                         ) : null}
                         {lead.customer_phone ? (
@@ -1461,9 +1477,9 @@ function TelecallerCrmLeadsContent() {
                           onClick={() => openShare(lead)}
                           title="Share"
                           aria-label="Share"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/80 text-slate-600 ring-1 ring-slate-200"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-600 text-white shadow-sm"
                         >
-                          <Share2 className="h-4 w-4" />
+                          <Share2 className="h-3.5 w-3.5 fill-current" strokeWidth={2.5} />
                         </button>
                       </div>
                     </div>

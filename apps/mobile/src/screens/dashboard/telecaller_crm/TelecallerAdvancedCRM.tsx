@@ -331,7 +331,7 @@ const tabs = [
   { id: 'queue', label: 'Leads', icon: 'clipboard' },
   { id: 'book', label: 'Book', icon: 'plus' },
   { id: 'workshops', label: 'Workshops', icon: 'map-marker' },
-  { id: 'me', label: 'Me', icon: 'account' },
+  { id: 'me', label: 'My Profile', icon: 'account' },
 ];
 
 const styles = StyleSheet.create({

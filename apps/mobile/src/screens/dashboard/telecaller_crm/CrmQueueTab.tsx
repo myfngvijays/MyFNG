@@ -28,6 +28,7 @@ import {
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
+import { leadStatusCardColors } from '../../../lib/telecaller/leadStatusColors';
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -53,9 +54,9 @@ type Props = {
 
 type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'priority' | null;
 
-/** Match lead detail "Select status" + All / New */
+/** Match lead detail "Select status" + Lead Status / New */
 const STATUS_FILTERS = [
-  { id: 'all', label: 'All' },
+  { id: 'all', label: 'Lead Status' },
   { id: 'new', label: 'New' },
   { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
@@ -125,41 +126,6 @@ function leadDisplayStatus(lead: any): string {
   return shortLeadStatusLabel(mapStatus[status] || status.replace(/_/g, ' ') || 'New');
 }
 
-/** Whole-card light tint by display status */
-function leadStatusCardColors(label: string): {
-  cardBg: string;
-  border: string;
-  badgeBg: string;
-  badgeText: string;
-} {
-  const s = String(label || '').toUpperCase();
-  // Lost first — labels like "Lost · Already Service Done" must not match Service Done green
-  if (s.includes('LOST') || s === 'REJECTED') {
-    return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
-  }
-  if (s.includes('BOOKING') || s === 'SERVICE DONE' || s.startsWith('SERVICE DONE') || s === 'COMPLETED') {
-    return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
-  }
-  if (s.includes('IN SERVICE') || s === 'IN_PROGRESS') {
-    return { cardBg: '#EFF6FF', border: '#BFDBFE', badgeBg: '#DBEAFE', badgeText: '#1D4ED8' };
-  }
-  if (s.includes('WILL VISIT')) {
-    return { cardBg: '#F5F3FF', border: '#DDD6FE', badgeBg: '#EDE9FE', badgeText: '#6D28D9' };
-  }
-  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) {
-    return { cardBg: '#F0F9FF', border: '#BAE6FD', badgeBg: '#E0F2FE', badgeText: '#0369A1' };
-  }
-  if (s.includes('INTERESTED')) {
-    return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
-  }
-  if (s.includes('OTP')) {
-    return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#FEF3C7', badgeText: '#B45309' };
-  }
-  if (s === 'NEW' || s.includes('INCOMPLETE')) {
-    return { cardBg: '#F8FAFC', border: '#E2E8F0', badgeBg: '#E2E8F0', badgeText: '#475569' };
-  }
-  return { cardBg: COLORS.white, border: COLORS.border || '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
-}
 
 export default function CrmQueueTab({
   initialFilter = 'all',
@@ -213,7 +179,7 @@ export default function CrmQueueTab({
   const setCustomEnd = onCustomEndChange || setCustomEndLocal;
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
-  const statusLabel = STATUS_FILTERS.find((c) => c.id === filter)?.label || 'All';
+  const statusLabel = STATUS_FILTERS.find((c) => c.id === filter)?.label || 'Lead Status';
   const lostReasonLabel =
     LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
@@ -440,7 +406,7 @@ export default function CrmQueueTab({
           lead_id: shareLead.id,
           to_telecaller_id: toId,
           transfer_type: type,
-          reason: type === 'SHARE' ? 'Shared from Advanced CRM' : 'Transferred from Advanced CRM',
+          reason: type === 'SHARE' ? 'Shared from MyFNG' : 'Transferred from MyFNG',
         }),
       });
       Alert.alert('Done', type === 'SHARE' ? 'Lead shared' : 'Lead transferred');
@@ -777,7 +743,11 @@ export default function CrmQueueTab({
           }
           renderItem={({ item }) => {
             const statusLabel = leadDisplayStatus(item);
-            const tint = leadStatusCardColors(statusLabel);
+            const tint = leadStatusCardColors(
+              item.is_incomplete
+                ? { is_incomplete: true, display_status: statusLabel }
+                : statusLabel,
+            );
             const selected = selectedIds.has(String(item.id));
             return (
             <View

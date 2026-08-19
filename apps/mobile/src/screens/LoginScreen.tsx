@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { ENV } from '../config/environment';
 import { setCustomerSessionToken } from '../lib/customerSession';
 import { registerCustomerFcmPushToken } from '../services/pushNotifications';
@@ -407,6 +408,22 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         });
       } catch (histErr) {
         console.warn('Login history write skipped', histErr);
+      }
+
+      // Telecaller / LM: auto punch-in → On Floor
+      try {
+        const roleCode = String(
+          (profile as any)?.role?.role_code || (profile as any)?.roles?.role_code || '',
+        ).toUpperCase();
+        if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER') {
+          await apiFetch('/api/telecaller/crm/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'punch_in' }),
+          });
+        }
+      } catch (punchErr) {
+        console.warn('Auto punch-in skipped', punchErr);
       }
 
       // Success: AuthContext will react to the new session. If a callback is provided, call it.

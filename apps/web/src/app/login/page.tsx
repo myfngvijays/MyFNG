@@ -57,6 +57,13 @@ export default function LoginPage() {
 
       // Redirect based on role
       const roleCode = userProfile.role.role_code;
+      const {
+        ensureTelecallerPunchInOnLogin,
+        isTelecallerFloorRole,
+      } = await import('@/lib/telecaller/ensurePunchInOnLogin');
+      if (isTelecallerFloorRole(roleCode)) {
+        await ensureTelecallerPunchInOnLogin();
+      }
       router.push(`/dashboard/${roleCode.toLowerCase()}`);
       
     } catch (err: any) {

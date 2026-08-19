@@ -19,6 +19,10 @@ import {
   type CrmDatePreset,
   istYmd,
 } from '../../../lib/crmDateRange';
+import {
+  leadStatusCardColors,
+  statusAccentColor,
+} from '../../../lib/telecaller/leadStatusColors';
 
 type Props = {
   onNavigate: (screen: string, params?: any) => void;
@@ -119,6 +123,12 @@ export default function CrmHomeTab({
       color: COLORS.textHeading,
       go: () => onNavigate('CrmReports'),
     },
+    {
+      label: 'Workshops',
+      icon: 'map' as const,
+      color: '#0EA5E9',
+      go: () => onNavigate('workshops'),
+    },
     { label: 'WhatsApp', icon: 'logo-whatsapp' as const, color: '#25D366', go: onOpenWhatsApp },
   ];
 
@@ -132,7 +142,6 @@ export default function CrmHomeTab({
     >
       <View style={styles.hero}>
         <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={styles.hello}>Advanced CRM</Text>
           <Text style={styles.name}>{data?.profile?.name || 'Telecaller'}</Text>
         </View>
         <TouchableOpacity
@@ -231,30 +240,77 @@ export default function CrmHomeTab({
 
       <View style={styles.kpiGrid}>
         {[
-          { label: 'New', value: kpis.new_leads, color: '#475569', filter: 'new' },
-          { label: 'Incomplete', value: kpis.incomplete, color: '#B45309', filter: 'incomplete' },
-          { label: 'Interested', value: kpis.interested, color: '#C2410C', filter: 'interested' },
-          { label: 'He will visit', value: kpis.will_visit, color: '#6D28D9', filter: 'will_visit' },
-          { label: 'Follow-up', value: kpis.callbacks, color: '#0369A1', filter: 'callback' },
+          { label: 'New', value: kpis.new_leads, statusKey: 'New', filter: 'new' },
+          {
+            label: 'Incomplete',
+            value: kpis.incomplete,
+            statusKey: 'Incomplete',
+            filter: 'incomplete',
+          },
+          {
+            label: 'Interested',
+            value: kpis.interested,
+            statusKey: 'Interested',
+            filter: 'interested',
+          },
+          {
+            label: 'He will visit',
+            value: kpis.will_visit,
+            statusKey: 'He will visit',
+            filter: 'will_visit',
+          },
+          {
+            label: 'Follow-up',
+            value: kpis.callbacks,
+            statusKey: 'Follow-up',
+            filter: 'callback',
+          },
           {
             label: 'Booking confirmed',
             value: kpis.booking_confirmed ?? kpis.booked,
-            color: '#047857',
+            statusKey: 'Booking confirmed',
             filter: 'booking_confirmed',
           },
-          { label: 'In Service', value: kpis.in_service, color: '#1D4ED8', filter: 'in_service' },
-          { label: 'Service Done', value: kpis.service_done, color: '#059669', filter: 'service_done' },
-          { label: 'Lost', value: kpis.lost ?? kpis.rejected, color: '#B91C1C', filter: 'lost' },
-        ].map((k) => (
-          <TouchableOpacity
-            key={k.label}
-            style={styles.kpiCard}
-            onPress={() => onNavigate('queue', { filter: k.filter })}
-          >
-            <Text style={[styles.kpiValue, { color: k.color }]}>{k.value ?? 0}</Text>
-            <Text style={styles.kpiLabel}>{k.label}</Text>
-          </TouchableOpacity>
-        ))}
+          {
+            label: 'In Service',
+            value: kpis.in_service,
+            statusKey: 'In Service',
+            filter: 'in_service',
+          },
+          {
+            label: 'Service Done',
+            value: kpis.service_done,
+            statusKey: 'Service Done',
+            filter: 'service_done',
+          },
+          {
+            label: 'Lost',
+            value: kpis.lost ?? kpis.rejected,
+            statusKey: 'Lost',
+            filter: 'lost',
+          },
+        ].map((k) => {
+          const tint = leadStatusCardColors(
+            k.label === 'Incomplete' ? { is_incomplete: true } : k.statusKey,
+          );
+          const accent = statusAccentColor(tint);
+          return (
+            <TouchableOpacity
+              key={k.label}
+              style={[
+                styles.kpiCard,
+                { backgroundColor: tint.cardBg, borderColor: tint.border, borderWidth: 1 },
+              ]}
+              onPress={() => onNavigate('queue', { filter: k.filter })}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.kpiValue, { color: accent }]}>{k.value ?? 0}</Text>
+              <Text style={[styles.kpiLabel, { color: accent }]} numberOfLines={2}>
+                {k.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View style={styles.perfCard}>
@@ -408,17 +464,34 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   applyBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, marginBottom: 12 },
+  kpiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 8,
+    marginTop: 12,
+    marginBottom: 12,
+  },
   kpiCard: {
-    width: '31.5%',
+    width: '32%',
     backgroundColor: COLORS.white,
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 78,
     ...SHADOWS.small,
   },
-  kpiValue: { fontSize: 20, fontWeight: '800' },
-  kpiLabel: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2, fontWeight: '600' },
+  kpiValue: { fontSize: 20, fontWeight: '800', textAlign: 'center', width: '100%' },
+  kpiLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 4,
+    textAlign: 'center',
+    width: '100%',
+    lineHeight: 13,
+  },
   perfCard: {
     backgroundColor: COLORS.white,
     borderRadius: 14,

@@ -43,6 +43,7 @@ import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
 import ReminderHeaderIcon from '@/components/ReminderHeaderIcon';
 import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
 const AANSH_OPTIONAL_SKIP_KEY = 'myfng:aansh_optional_skip';
@@ -918,7 +919,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             { href: '/dashboard/telecaller/reports/duplicates', icon: <Users className="w-5 h-5" />, label: 'Duplicates' },
           ],
         },
-        { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'Me' },
+        { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'My Profile' },
       ],
       'SUB_ADMIN': [
         { href: '/dashboard/sub_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -1279,15 +1280,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             <button
               type="button"
               onClick={handleOpenWaList}
-              title="WhatsApp inbox · 9594996161"
-              aria-label="Open WhatsApp 6161 chats"
-              className="fixed z-[60] inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white shadow-2xl transition hover:scale-[1.03] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] h-12 pl-3 pr-3.5 sm:h-12"
+              title="WhatsApp inbox"
+              aria-label="Open WhatsApp inbox"
+              className="fixed z-[60] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-2xl transition hover:scale-[1.05] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))]"
             >
-              <MessageCircle className="h-6 w-6 shrink-0" />
-              <span className="text-left leading-tight">
-                <span className="block text-[11px] font-extrabold tracking-wide">WhatsApp</span>
-                <span className="block text-[10px] font-semibold opacity-90">· 6161</span>
-              </span>
+              <WhatsAppIcon className="h-7 w-7" />
               {waUnreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white animate-bounce">
                   {waUnreadCount > 99 ? '99+' : waUnreadCount}
@@ -1297,7 +1294,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           ) : null}
           <WhatsAppWebWorkspace
             isOpen={waWorkspaceOpen}
-            title="WhatsApp · 6161"
+            title="WhatsApp"
             refreshSignal={waRefreshSignal}
             hideLeadPool={role?.toUpperCase() === 'TELECALLER'}
             showAssigneeFilter={['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(

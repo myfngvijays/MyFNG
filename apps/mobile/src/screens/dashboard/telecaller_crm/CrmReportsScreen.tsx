@@ -275,7 +275,6 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
           <Ionicons name="arrow-back" size={22} color={COLORS.textHeading} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>Advanced CRM</Text>
           <Text style={styles.title}>Reports</Text>
           <Text style={styles.subtitle}>{rangeLabel}</Text>
         </View>

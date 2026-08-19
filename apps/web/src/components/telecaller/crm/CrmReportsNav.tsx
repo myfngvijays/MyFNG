@@ -57,9 +57,6 @@ export function CrmReportsNav({
     <div className="space-y-3 sm:space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
-            Advanced CRM
-          </p>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#023D95] flex items-center gap-2">
             {title}
             {onRefresh ? (

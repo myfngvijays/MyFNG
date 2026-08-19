@@ -191,7 +191,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen
           name="TelecallerDashboard"
           component={TelecallerAdvancedCRM}
-          options={{ title: 'Advanced CRM', headerShown: false }}
+          options={{ title: 'CRM', headerShown: false }}
         />
         <Stack.Screen
           name="TelecallerLegacyDashboard"
@@ -277,7 +277,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
     );
   }
 
-  // Lead Manager Navigation — Advanced CRM shell + ops screens
+  // Lead Manager Navigation — CRM shell + ops screens
   if (roleCode === 'LEAD_MANAGER') {
     const TelecallerAdvancedCRM = require('../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM').default;
     return (
@@ -285,7 +285,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen
           name="LeadManagerAdvancedCRM"
           component={TelecallerAdvancedCRM}
-          options={{ title: 'Lead Manager CRM', headerShown: false }}
+          options={{ title: 'Lead Manager', headerShown: false }}
         />
         <Stack.Screen
           name="LeadManagerDashboard"

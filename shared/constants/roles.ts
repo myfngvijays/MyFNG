@@ -52,7 +52,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   [UserRole.SUPER_ADMIN]: 'Full system owner with all permissions',
   [UserRole.SUB_ADMIN]: 'Department heads - Customer Service / Telecaller Manager / Auditor Manager',
-  [UserRole.LEAD_MANAGER]: 'Advanced CRM + workshop assignment — manages telecaller leads, booking, incomplete OTP, escalations, and team',
+  [UserRole.LEAD_MANAGER]: 'Workshop assignment — manages telecaller leads, booking, incomplete OTP, escalations, and team',
   [UserRole.RSA_MANAGER]: 'Handles roadside assistance leads and assigns company mechanics',
   [UserRole.HOME_SERVICE_MANAGER]: 'Handles Service at Home leads and assigns company service vans',
   [UserRole.TELECALLER]: 'Calls, follows up, updates CRM',

@@ -171,7 +171,6 @@ function EngageContent() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
             <h1 className="text-2xl font-extrabold text-[#023D95]">Engage</h1>
           </div>
           <Link
