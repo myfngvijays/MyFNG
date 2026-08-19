@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { Toaster } from 'react-hot-toast';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import MobileBottomNav from '@/components/landing/MobileBottomNav';
+import UiDensityController from '@/components/UiDensityController';
+import DevStaleCacheGuard from '@/components/DevStaleCacheGuard';
 import {
   buildRootMetadataFromSettings,
   buildSiteViewportFromSettings,
@@ -14,6 +17,12 @@ import '@fontsource/poppins/600.css';
 import '@fontsource/poppins/700.css';
 import 'leaflet/dist/leaflet.css';
 import './globals.css';
+
+/** Runs before hydration — drop stale SW/cache/zoom on localhost so normal Chrome matches Incognito. */
+const DEV_CACHE_BOOTSTRAP = `(function(){try{var h=location.hostname||'';if(h!=='localhost'&&h!=='127.0.0.1'&&h.indexOf('.local')<0)return;var el=document.documentElement;el.style.setProperty('zoom','1','important');el.classList.remove('ui-density-compact');el.removeAttribute('data-ui-density');if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){for(var i=0;i<rs.length;i++)rs[i].unregister();});}if(window.caches&&caches.keys){caches.keys().then(function(ks){for(var j=0;j<ks.length;j++)caches.delete(ks[j]);});}}catch(e){}})();`;
+
+/** Runs before hydration — avoids oversized flash on Windows dashboards. */
+const UI_DENSITY_BOOTSTRAP = `(function(){try{var p=location.pathname||'';if(p.indexOf('/dashboard')!==0)return;if((window.innerWidth||0)<1024)return;var ua=navigator.userAgent||'';var apple=(/Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(ua))&&!/Windows/i.test(ua);if(apple)return;document.documentElement.classList.add('ui-density-compact');document.documentElement.setAttribute('data-ui-density','compact');}catch(e){}})();`;
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteTechnicalSeo();
@@ -31,8 +40,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans">
+        <Script id="dev-cache-bootstrap" strategy="beforeInteractive">
+          {DEV_CACHE_BOOTSTRAP}
+        </Script>
+        <Script id="ui-density-bootstrap" strategy="beforeInteractive">
+          {UI_DENSITY_BOOTSTRAP}
+        </Script>
+        <UiDensityController />
+        <DevStaleCacheGuard />
         <NotificationProvider>
           {children}
           <MobileBottomNav />

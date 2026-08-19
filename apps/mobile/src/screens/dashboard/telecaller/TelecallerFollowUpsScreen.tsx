@@ -1012,23 +1012,21 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
                 return (
                   <TouchableOpacity
                     key={ymd}
-                    style={[
-                      styles.calDayCell,
-                      inRange && styles.calDayInRange,
-                      selected && styles.calDaySelected,
-                    ]}
+                    style={[styles.calDayCell, inRange && styles.calDayInRange]}
                     onPress={() => onCalendarDayPress(ymd)}
                     activeOpacity={0.75}
                   >
-                    <Text
-                      style={[
-                        styles.calDayText,
-                        isToday && !selected && styles.calDayTodayText,
-                        selected && styles.calDaySelectedText,
-                      ]}
-                    >
-                      {cell.day}
-                    </Text>
+                    <View style={[styles.calDayInner, selected && styles.calDaySelected]}>
+                      <Text
+                        style={[
+                          styles.calDayText,
+                          isToday && !selected && styles.calDayTodayText,
+                          selected && styles.calDaySelectedText,
+                        ]}
+                      >
+                        {cell.day}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
@@ -1365,23 +1363,31 @@ const styles = StyleSheet.create({
   },
   calDayCell: {
     width: `${100 / 7}%` as any,
-    aspectRatio: 1,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  calDayInner: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   calDayInRange: {
     backgroundColor: '#DBEAFE',
-    borderRadius: 0,
   },
   calDaySelected: {
     backgroundColor: COLORS.primary,
-    borderRadius: 10,
   },
   calDayText: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.textPrimary,
+    lineHeight: 16,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   calDayTodayText: {
     color: COLORS.primary,

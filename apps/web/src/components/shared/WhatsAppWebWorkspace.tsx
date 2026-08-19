@@ -299,9 +299,9 @@ export default function WhatsAppWebWorkspace({
             style={{
               display: 'flex',
               flexDirection: 'column',
-              width: isNarrow ? '100%' : 380,
-              minWidth: isNarrow ? '100%' : 320,
-              maxWidth: isNarrow ? '100%' : 380,
+              width: isNarrow ? '100%' : 'min(28vw, 420px)',
+              minWidth: isNarrow ? '100%' : 340,
+              maxWidth: isNarrow ? '100%' : 460,
               height: '100%',
               background: colors.listBg,
               borderRight: isNarrow ? 'none' : `1px solid ${colors.listBorder}`,

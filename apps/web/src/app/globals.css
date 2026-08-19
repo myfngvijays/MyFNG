@@ -15,6 +15,24 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Kill stale zoom:0.9 from old cached CSS (normal Chrome vs Incognito mismatch) */
+    zoom: 1 !important;
+  }
+  /*
+   * Compact density for Windows / non-Apple dashboards (~90% of default rem).
+   * Do NOT use CSS zoom on html — it shrinks fixed overlays (WhatsApp, FAB)
+   * and leaves empty gray gutters that look like a centered "box".
+   */
+  html.ui-density-compact {
+    font-size: 90%;
+  }
+  @media (max-width: 1023px) {
+    html.ui-density-compact {
+      font-size: 100%;
+    }
+  }
+  html.ui-density-compact .admin-page {
+    @apply p-2 sm:p-3 md:p-4;
   }
   body {
     @apply bg-[#F5F7FA] text-[#3A3F45] font-['Poppins',sans-serif] overflow-x-clip;
@@ -77,7 +95,17 @@
   }
 
   .admin-page {
-    @apply p-3 sm:p-4 md:p-6 min-w-0 w-full max-w-full;
+    @apply p-3 sm:p-4 md:p-5 min-w-0 w-full max-w-full overflow-x-clip;
+  }
+
+  /* Auth screens — keep padding in CSS so SSR/client markup stays identical */
+  .auth-shell {
+    @apply min-h-screen flex items-center justify-center overflow-x-clip w-full;
+    min-height: 100dvh;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
   }
 
   .admin-scroll-x {

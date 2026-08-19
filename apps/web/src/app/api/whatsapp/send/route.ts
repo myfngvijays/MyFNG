@@ -186,6 +186,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Recipient phone is required' }, { status: 400 });
     }
 
+    // Skip WhatsApp DND / opt-out numbers
+    try {
+      const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+      const { supabaseAdmin } = getSupabaseAdmin();
+      const last10 = recipientPhone.slice(-10);
+      if (supabaseAdmin && last10.length === 10) {
+        const { data: dnd } = await supabaseAdmin
+          .from('whatsapp_dnd_numbers')
+          .select('id')
+          .eq('phone_last10', last10)
+          .maybeSingle();
+        if (dnd) {
+          return NextResponse.json(
+            { error: 'This number is on WhatsApp DND / opt-out list', dnd: true },
+            { status: 403 },
+          );
+        }
+      }
+    } catch {
+      /* table may not exist yet — ignore */
+    }
+
     let result;
     let messageForLog = '';
     let requestPayload: Record<string, unknown> = {};

@@ -88,7 +88,10 @@ export async function GET(request: NextRequest) {
     const lostReason = String(sp.get('lost_reason') || '').trim();
     const telecallerFilter = String(sp.get('telecaller_id') || '').trim();
     const unassignedOnly = sp.get('unassigned') === '1';
-    const limit = Math.min(Math.max(parseInt(sp.get('limit') || '50', 10) || 50, 1), 120);
+    const pageSize = Math.min(Math.max(parseInt(sp.get('limit') || '25', 10) || 25, 1), 100);
+    const page = Math.max(1, parseInt(sp.get('page') || '1', 10) || 1);
+    const rangeFrom = (page - 1) * pageSize;
+    const rangeTo = rangeFrom + pageSize - 1;
 
     const applyAssigneeScope = (query: any) => {
       if (seesAll) {
@@ -112,10 +115,10 @@ export async function GET(request: NextRequest) {
         assigned_telecaller:users_login!assigned_telecaller_id(id, full_name, phone)
       `;
 
-    let query = db.from('service_leads').select(LEAD_LIST_SELECT);
+    let query = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
     query = applyAssigneeScope(query)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .range(rangeFrom, rangeTo);
 
     // Soft-deleted hide (ignore if column missing — query will fail and we retry below)
     query = query.is('deleted_at', null);
@@ -168,14 +171,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let { data, error } = await query;
+    let { data, error, count } = await query;
 
     if (error && /deleted_at/i.test(String(error.message || ''))) {
       // Retry without soft-delete filter for older schemas
-      let retry = db.from('service_leads').select(LEAD_LIST_SELECT);
+      let retry = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
       retry = applyAssigneeScope(retry)
         .order('created_at', { ascending: false })
-        .limit(limit);
+        .range(rangeFrom, rangeTo);
 
       if (status) retry = retry.eq('status', status.toUpperCase());
       if (city) retry = retry.ilike('city', `%${city}%`);
@@ -216,7 +219,7 @@ export async function GET(request: NextRequest) {
           `customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,lead_number.ilike.%${q}%`,
         );
       }
-      ({ data, error } = await retry);
+      ({ data, error, count } = await retry);
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -282,7 +285,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       leads,
-      total: leads.length,
+      total: typeof count === 'number' ? count : leads.length,
+      page,
+      page_size: pageSize,
       scope: seesAll ? 'all' : 'mine',
       assigned_telecaller_id: seesAll ? null : teleCallerId,
     });

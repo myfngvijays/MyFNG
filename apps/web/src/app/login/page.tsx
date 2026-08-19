@@ -67,16 +67,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      className="min-h-[100dvh] min-h-screen bg-gradient-to-br from-brand-my/10 via-white to-brand-fng/10 flex items-center justify-center p-3 sm:p-4 overflow-x-clip"
-      style={{
-        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
-        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
-        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
-        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
-      }}
-    >
-      <div className="w-full max-w-md min-w-0">
+    <div className="auth-shell flex min-h-[100dvh] w-full items-center justify-center bg-gradient-to-br from-brand-my/10 via-white to-brand-fng/10 px-4">
+      <div className="mx-auto w-full max-w-md min-w-0">
         {/* Logo */}
         <div className="text-center mb-6 sm:mb-7 md:mb-8">
           <Link href="/" className="inline-block mb-3 sm:mb-4">

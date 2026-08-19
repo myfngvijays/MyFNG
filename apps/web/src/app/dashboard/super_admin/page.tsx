@@ -25,7 +25,10 @@ import {
   BarChart3,
   FileText,
   Percent,
+  LogOut,
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 import {
   BarChart,
   Bar,
@@ -99,6 +102,7 @@ function alertStyles(type: string) {
 }
 
 export default function SuperAdminDashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +285,19 @@ export default function SuperAdminDashboard() {
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirm('Are you sure you want to logout?')) return;
+                const supabase = createClient();
+                await supabase.auth.signOut();
+                router.push('/login');
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors text-sm font-semibold text-white shadow-sm"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
             </button>
           </div>
         </div>

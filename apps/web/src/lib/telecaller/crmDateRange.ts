@@ -1,6 +1,6 @@
 /**
  * CRM / Queue date presets (IST).
- * Today, Yesterday, Last 3/7/14 Days, This Month, Last Month, Custom Range.
+ * Today, Yesterday, Last 3/7/14 Days, This Month, Last Month, All Time, Custom Range.
  */
 
 export type CrmDatePreset =
@@ -11,6 +11,7 @@ export type CrmDatePreset =
   | 'last_14_days'
   | 'this_month'
   | 'last_month'
+  | 'all_time'
   | 'custom';
 
 export const CRM_DATE_PRESETS: Array<{ value: CrmDatePreset; label: string }> = [
@@ -21,6 +22,7 @@ export const CRM_DATE_PRESETS: Array<{ value: CrmDatePreset; label: string }> = 
   { value: 'last_14_days', label: 'Last 14 Days' },
   { value: 'this_month', label: 'This Month' },
   { value: 'last_month', label: 'Last Month' },
+  { value: 'all_time', label: 'All Time' },
   { value: 'custom', label: 'Custom Range' },
 ];
 
@@ -69,6 +71,7 @@ export function resolveCrmDateRange(
   startYmd: string;
   endYmd: string;
   label: string;
+  allTime: boolean;
 } {
   const today = istYmd();
   const { y, m } = istParts();
@@ -76,6 +79,7 @@ export function resolveCrmDateRange(
   let startYmd = today;
   let endYmd = today;
   let label = 'Today';
+  let allTime = false;
   const normalized = String(preset || 'today').trim().toLowerCase() as CrmDatePreset;
 
   switch (normalized) {
@@ -118,6 +122,12 @@ export function resolveCrmDateRange(
       label = 'Last Month';
       break;
     }
+    case 'all_time':
+      allTime = true;
+      startYmd = '2020-01-01';
+      endYmd = today;
+      label = 'All Time';
+      break;
     case 'custom': {
       startYmd = String(customStart || today).slice(0, 10);
       endYmd = String(customEnd || today).slice(0, 10);
@@ -141,11 +151,16 @@ export function resolveCrmDateRange(
   const startBounds = istDayBounds(startYmd);
   const endBounds = istDayBounds(endYmd);
   return {
-    preset: normalized === 'custom' ? 'custom' : normalized,
+    preset: (['custom', 'all_time'].includes(normalized)
+      ? normalized
+      : CRM_DATE_PRESETS.some((p) => p.value === normalized)
+        ? normalized
+        : 'today') as CrmDatePreset,
     start: startBounds.start,
     end: endBounds.end,
     startYmd,
     endYmd,
     label,
+    allTime,
   };
 }

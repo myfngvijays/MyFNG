@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { istYmd, type CrmDatePreset } from './crmDateRange';
 
-const STORAGE_KEY = 'myfng:telecaller_crm_filters_v1';
+const STORAGE_KEY = 'myfng:telecaller_crm_filters_v2';
+const LEGACY_KEY = 'myfng:telecaller_crm_filters_v1';
 
 const VALID_PRESETS = new Set<string>([
   'today',
@@ -20,6 +21,14 @@ export type TelecallerCrmFilterPrefs = {
   customStart: string;
   customEnd: string;
   statusFilter: string;
+  lostReason: string;
+  city: string;
+  priority: string;
+  q: string;
+  advIncomplete: boolean;
+  advFollowUp: boolean;
+  advHasVehicle: boolean;
+  advHasCoupon: boolean;
 };
 
 export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
@@ -29,6 +38,14 @@ export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
     customStart: today,
     customEnd: today,
     statusFilter: 'all',
+    lostReason: '',
+    city: '',
+    priority: '',
+    q: '',
+    advIncomplete: false,
+    advFollowUp: false,
+    advHasVehicle: false,
+    advHasCoupon: false,
   };
 }
 
@@ -40,12 +57,20 @@ function normalizePrefs(raw: Partial<TelecallerCrmFilterPrefs> | null | undefine
     customStart: String(raw?.customStart || defaults.customStart).slice(0, 10),
     customEnd: String(raw?.customEnd || defaults.customEnd).slice(0, 10),
     statusFilter: String(raw?.statusFilter || defaults.statusFilter || 'all').trim() || 'all',
+    lostReason: String(raw?.lostReason || '').trim(),
+    city: String(raw?.city || '').trim(),
+    priority: String(raw?.priority || '').trim(),
+    q: String(raw?.q || '').trim(),
+    advIncomplete: Boolean(raw?.advIncomplete),
+    advFollowUp: Boolean(raw?.advFollowUp),
+    advHasVehicle: Boolean(raw?.advHasVehicle),
+    advHasCoupon: Boolean(raw?.advHasCoupon),
   };
 }
 
 export async function loadTelecallerCrmFilterPrefs(): Promise<TelecallerCrmFilterPrefs> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = (await AsyncStorage.getItem(STORAGE_KEY)) || (await AsyncStorage.getItem(LEGACY_KEY));
     if (!raw) return defaultTelecallerCrmFilterPrefs();
     return normalizePrefs(JSON.parse(raw));
   } catch {

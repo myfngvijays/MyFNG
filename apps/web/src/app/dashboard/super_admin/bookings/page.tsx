@@ -1255,6 +1255,8 @@ export default function SuperAdminBookingsPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkAssignTcId, setBulkAssignTcId] = useState('');
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [visibleColumns, setVisibleColumns] = useState<BookingsColumnVisibility>(DEFAULT_BOOKINGS_COLUMNS);
@@ -1900,6 +1902,48 @@ export default function SuperAdminBookingsPage() {
     }
   };
 
+  const bulkAssignTelecaller = async (clear = false) => {
+    if (selectedIds.size === 0) return;
+    if (!clear && !bulkAssignTcId) {
+      toast.error('Pick a telecaller');
+      return;
+    }
+    setBulkAssigning(true);
+    try {
+      const res = await fetch('/api/lead-manager/bulk-assign-telecaller', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(selectedIds),
+          telecaller_id: clear ? undefined : bulkAssignTcId,
+          clear,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Bulk assign failed');
+      const tcName =
+        telecallers.find((t) => t.id === bulkAssignTcId)?.full_name || 'telecaller';
+      setServiceLeads((prev) =>
+        prev.map((l) => {
+          if (!selectedIds.has(String(l.id))) return l;
+          return {
+            ...l,
+            assigned_telecaller_id: clear ? null : bulkAssignTcId,
+            assigned_telecaller_name: clear ? null : tcName,
+          } as any;
+        }),
+      );
+      toast.success(json?.message || `Updated ${json?.updated || selectedIds.size}`);
+      setSelectedIds(new Set());
+      setBulkAssignTcId('');
+    } catch (e: any) {
+      toast.error(e?.message || 'Bulk assign failed');
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
   const handleExport = async () => {
     if (datePreset === 'custom' && (!customStart || !customEnd)) {
       toast.error('Please select both start and end dates');
@@ -2331,7 +2375,41 @@ export default function SuperAdminBookingsPage() {
             <CheckSquare className="w-5 h-5" />
             <span className="text-sm font-bold">{selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} selected</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="rounded-lg border-0 bg-white/20 px-3 py-1.5 text-xs font-semibold text-white min-w-[140px]"
+              value={bulkAssignTcId}
+              onChange={(e) => setBulkAssignTcId(e.target.value)}
+              onFocus={() => {
+                if (!telecallers.length) void loadTelecallers(null);
+              }}
+            >
+              <option value="" className="text-slate-900">
+                Assign telecaller…
+              </option>
+              {telecallers.map((t) => (
+                <option key={t.id} value={t.id} className="text-slate-900">
+                  {t.full_name}
+                  {!t.is_active ? ' (inactive)' : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={bulkAssigning}
+              onClick={() => void bulkAssignTelecaller(false)}
+              className="px-3 py-1.5 rounded-lg bg-white text-rose-700 text-xs font-bold hover:bg-rose-50 disabled:opacity-60"
+            >
+              {bulkAssigning ? 'Assigning…' : 'Bulk assign'}
+            </button>
+            <button
+              type="button"
+              disabled={bulkAssigning}
+              onClick={() => void bulkAssignTelecaller(true)}
+              className="px-3 py-1.5 rounded-lg border border-white/30 text-xs font-semibold hover:bg-white/10 disabled:opacity-60"
+            >
+              Unassign
+            </button>
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}

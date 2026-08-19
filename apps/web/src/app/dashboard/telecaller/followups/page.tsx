@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
-import { Calendar, Clock, Phone, CheckCircle, XCircle, Filter, Search } from 'lucide-react';
+import { Calendar, Clock, Phone, CheckCircle, XCircle, Filter, Search, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { formatDateTime } from "@/lib/utils";
 import { istYmd, istDayBounds } from '@/lib/telecaller/crmDateRange';
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 function formatYmdShort(ymd: string) {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -16,6 +17,42 @@ function formatYmdShort(ymd: string) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d} ${months[m - 1]} ${y}`;
 }
+
+function addMonthsYm(year: number, month0: number, delta: number) {
+  const d = new Date(year, month0 + delta, 1);
+  return { year: d.getFullYear(), month0: d.getMonth() };
+}
+
+function ymdFromParts(y: number, m0: number, day: number) {
+  return `${y}-${String(m0 + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function buildMonthCells(year: number, month0: number) {
+  const firstDow = new Date(year, month0, 1).getDay();
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate();
+  const cells: Array<{ ymd: string | null; day: number | null }> = [];
+  for (let i = 0; i < firstDow; i++) cells.push({ ymd: null, day: null });
+  for (let day = 1; day <= daysInMonth; day++) {
+    cells.push({ ymd: ymdFromParts(year, month0, day), day });
+  }
+  while (cells.length % 7 !== 0) cells.push({ ymd: null, day: null });
+  return cells;
+}
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 export default function FollowUpsPage() {
   const pathname = usePathname();
@@ -29,6 +66,10 @@ export default function FollowUpsPage() {
   const [customStart, setCustomStart] = useState(istYmd());
   const [customEnd, setCustomEnd] = useState(istYmd());
   const [searchTerm, setSearchTerm] = useState('');
+  const todayYmd = istYmd();
+  const [viewYear, setViewYear] = useState(() => Number(todayYmd.slice(0, 4)));
+  const [viewMonth0, setViewMonth0] = useState(() => Number(todayYmd.slice(5, 7)) - 1);
+  const [rangeTap, setRangeTap] = useState<'start' | 'end'>('start');
 
   useEffect(() => {
     fetchFollowUps();
@@ -100,6 +141,26 @@ export default function FollowUpsPage() {
     }
   }
 
+  function onCalendarDayPress(ymd: string) {
+    if (pickMode === 'single') {
+      setCustomStart(ymd);
+      setCustomEnd(ymd);
+      return;
+    }
+    if (rangeTap === 'start') {
+      setCustomStart(ymd);
+      setCustomEnd(ymd);
+      setRangeTap('end');
+      return;
+    }
+    if (ymd < customStart) {
+      setCustomEnd(customStart);
+      setCustomStart(ymd);
+    } else {
+      setCustomEnd(ymd);
+    }
+    setRangeTap('start');
+  }
   async function markAsCompleted(followUpId: string, notes: string = '') {
     const supabase = createClient();
 
@@ -203,29 +264,29 @@ export default function FollowUpsPage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
+      <div className="mx-auto w-full min-w-0 max-w-5xl overflow-x-clip space-y-3 sm:space-y-4">
         {/* Header */}
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-text-heading">Reminders / Follow-ups</h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1 sm:mt-2">Scheduled follow-ups — clock icon se yahan aate ho</p>
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Reminders / Follow-ups</h1>
+          <p className="text-text-body text-xs sm:text-sm mt-1">Scheduled follow-ups — clock icon se yahan aate ho</p>
         </div>
 
         {/* Filters & Search */}
-        <div className="card">
-          <div className="flex flex-col gap-3 sm:gap-4">
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 min-w-0 overflow-hidden">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col lg:flex-row gap-3 min-w-0">
               <div className="flex-1 min-w-0 relative">
-                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
                   type="text"
                   placeholder="Search by customer name, phone, lead number..."
-                  className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                  className="w-full min-w-0 pl-8 sm:pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap gap-2 items-center shrink-0">
                 {(
                   [
                     { id: 'pending' as const, label: 'All Pending' },
@@ -238,7 +299,7 @@ export default function FollowUpsPage() {
                     key={f.id}
                     type="button"
                     onClick={() => setFilter(f.id)}
-                    className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold text-xs sm:text-sm whitespace-nowrap ${
+                    className={`px-3 py-1.5 rounded-lg font-semibold text-xs whitespace-nowrap ${
                       filter === f.id
                         ? 'bg-[#004AAD] text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -247,12 +308,12 @@ export default function FollowUpsPage() {
                     {f.label}
                   </button>
                 ))}
-                <label className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-700">
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                   <Filter className="w-3.5 h-3.5 text-[#004AAD]" />
                   <select
                     value={typeFilter}
                     onChange={(e) => setTypeFilter(e.target.value as 'all' | 'CALLBACK')}
-                    className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm font-semibold"
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-semibold max-w-[140px]"
                   >
                     <option value="all">All types</option>
                     <option value="CALLBACK">Follow-up only</option>
@@ -262,13 +323,14 @@ export default function FollowUpsPage() {
             </div>
 
             {filter === 'calendar' ? (
-              <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 items-stretch sm:items-center rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 sm:p-4 space-y-3">
                 <div className="inline-flex rounded-lg bg-white border border-gray-200 p-0.5">
                   <button
                     type="button"
                     onClick={() => {
                       setPickMode('single');
                       setCustomEnd(customStart);
+                      setRangeTap('start');
                     }}
                     className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold ${
                       pickMode === 'single' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
@@ -278,7 +340,10 @@ export default function FollowUpsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPickMode('range')}
+                    onClick={() => {
+                      setPickMode('range');
+                      setRangeTap('start');
+                    }}
                     className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold ${
                       pickMode === 'range' ? 'bg-[#004AAD] text-white' : 'text-gray-600'
                     }`}
@@ -286,44 +351,100 @@ export default function FollowUpsPage() {
                     Date range
                   </button>
                 </div>
-                <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700">
-                  <Calendar className="w-3.5 h-3.5 text-[#004AAD]" />
-                  <span>{pickMode === 'range' ? 'From' : 'Date'}</span>
-                  <input
-                    type="date"
-                    value={customStart}
-                    onChange={(e) => {
-                      const v = e.target.value || istYmd();
-                      setCustomStart(v);
-                      if (pickMode === 'single') setCustomEnd(v);
-                    }}
-                    className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm font-semibold"
-                  />
-                </label>
-                {pickMode === 'range' ? (
-                  <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700">
-                    <span>To</span>
-                    <input
-                      type="date"
-                      value={customEnd}
-                      min={customStart}
-                      onChange={(e) => setCustomEnd(e.target.value || customStart)}
-                      className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm font-semibold"
-                    />
-                  </label>
-                ) : null}
-                <span className="text-[11px] sm:text-xs text-gray-500 font-medium">{calendarLabel}</span>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 max-w-md">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg p-2 hover:bg-slate-100"
+                      onClick={() => {
+                        const next = addMonthsYm(viewYear, viewMonth0, -1);
+                        setViewYear(next.year);
+                        setViewMonth0(next.month0);
+                      }}
+                      aria-label="Previous month"
+                    >
+                      <ChevronLeft className="h-5 w-5 text-[#004AAD]" />
+                    </button>
+                    <p className="text-sm font-extrabold text-slate-800">
+                      {MONTH_NAMES[viewMonth0]} {viewYear}
+                    </p>
+                    <button
+                      type="button"
+                      className="rounded-lg p-2 hover:bg-slate-100"
+                      onClick={() => {
+                        const next = addMonthsYm(viewYear, viewMonth0, 1);
+                        setViewYear(next.year);
+                        setViewMonth0(next.month0);
+                      }}
+                      aria-label="Next month"
+                    >
+                      <ChevronRight className="h-5 w-5 text-[#004AAD]" />
+                    </button>
+                  </div>
+                  <div className="mb-1 grid grid-cols-7 gap-1">
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                      <div
+                        key={`${d}-${i}`}
+                        className="text-center text-[11px] font-bold text-slate-400 py-1"
+                      >
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {buildMonthCells(viewYear, viewMonth0).map((cell, idx) => {
+                      if (!cell.ymd) {
+                        return <div key={`e-${idx}`} className="aspect-square" />;
+                      }
+                      const ymd = cell.ymd;
+                      const lo = customStart <= customEnd ? customStart : customEnd;
+                      const hi = customStart <= customEnd ? customEnd : customStart;
+                      const selected =
+                        pickMode === 'single'
+                          ? ymd === customStart
+                          : ymd === lo || ymd === hi;
+                      const inRange = pickMode === 'range' && ymd > lo && ymd < hi;
+                      const isToday = ymd === todayYmd;
+                      return (
+                        <button
+                          key={ymd}
+                          type="button"
+                          onClick={() => onCalendarDayPress(ymd)}
+                          className={`aspect-square rounded-lg text-sm font-semibold flex items-center justify-center transition ${
+                            selected
+                              ? 'bg-[#004AAD] text-white shadow-sm'
+                              : inRange
+                                ? 'bg-blue-100 text-[#004AAD]'
+                                : isToday
+                                  ? 'text-[#004AAD] font-extrabold hover:bg-slate-50'
+                                  : 'text-slate-800 hover:bg-slate-50'
+                          }`}
+                        >
+                          {cell.day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-center text-xs font-semibold text-slate-500">
+                    {pickMode === 'single'
+                      ? `Selected: ${formatYmdShort(customStart)}`
+                      : rangeTap === 'end' && customStart === customEnd
+                        ? `Start: ${formatYmdShort(customStart)} · ab end date choose karo`
+                        : calendarLabel}
+                  </p>
+                </div>
               </div>
             ) : null}
           </div>
         </div>
 
-        {/* Follow-ups List */}
-        <div className="space-y-3 sm:space-y-4">
+        {/* Follow-ups List — full width, compact rows */}
+        <div className="space-y-2">
           {filteredFollowUps.length === 0 ? (
-            <div className="card text-center py-8 sm:py-10 md:py-12">
-              <Calendar className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-              <p className="text-gray-500 text-sm sm:text-base">No follow-ups found</p>
+            <div className="border border-dashed border-slate-200 bg-white py-10 text-center">
+              <Calendar className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500 text-sm">No follow-ups found</p>
             </div>
           ) : (
             filteredFollowUps.map((followUp) => {
@@ -332,22 +453,22 @@ export default function FollowUpsPage() {
               return (
                 <div 
                   key={followUp.id} 
-                  className={`card hover:shadow-lg transition ${
+                  className={`w-full min-w-0 max-w-full border border-slate-200 bg-white px-3 py-3 sm:px-4 hover:bg-slate-50/80 transition overflow-hidden ${
                     timeStatus.urgent ? 'ring-2 ring-orange-500' : ''
                   }`}
                 >
-                  <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                            <h3 className="text-base sm:text-lg font-semibold truncate">
+                  <div className="flex flex-col gap-3 min-w-0 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <h3 className="text-base font-semibold truncate max-w-full">
                               {followUp.lead?.customer_name || 'Unknown'}
                             </h3>
-                            <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 rounded font-mono">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded font-mono shrink-0">
                               {followUp.lead?.lead_number}
                             </span>
-                            <span className={`text-[10px] sm:text-xs px-2 sm:px-3 py-0.5 sm:py-1 rounded-full font-semibold ${
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${
                               followUp.priority === 'URGENT' ? 'bg-red-100 text-red-700' :
                               followUp.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
                               followUp.priority === 'LOW' ? 'bg-gray-100 text-gray-700' :
@@ -356,11 +477,11 @@ export default function FollowUpsPage() {
                               {followUp.priority}
                             </span>
                           </div>
-                          <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1 truncate">
+                          <p className="text-xs text-gray-600 mt-0.5 truncate">
                             {followUp.lead?.vehicle_make} {followUp.lead?.vehicle_model} • {followUp.lead?.customer_phone}
                           </p>
                         </div>
-                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap shrink-0 ${
                           timeStatus.color === 'red' ? 'bg-red-100 text-red-700' :
                           timeStatus.color === 'orange' ? 'bg-orange-100 text-orange-700' :
                           timeStatus.color === 'blue' ? 'bg-blue-100 text-blue-700' :
@@ -371,38 +492,38 @@ export default function FollowUpsPage() {
                       </div>
 
                       <div className="space-y-1.5 sm:space-y-2">
-                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm min-w-0">
                           <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
-                          <span className="font-semibold">Type:</span>
+                          <span className="font-semibold shrink-0">Type:</span>
                           <span className="text-gray-700 truncate">{followUp.follow_up_type}</span>
                         </div>
                         
-                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                        <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm min-w-0 flex-wrap">
                           <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
-                          <span className="font-semibold">Scheduled:</span>
-                          <span className="text-gray-700">
+                          <span className="font-semibold shrink-0">Scheduled:</span>
+                          <span className="text-gray-700 break-words">
                             {formatDateTime(followUp.scheduled_time)}
                           </span>
                         </div>
 
                         {followUp.reason && (
-                          <div className="text-xs sm:text-sm">
+                          <div className="text-xs sm:text-sm min-w-0">
                             <span className="font-semibold">Reason:</span>
-                            <p className="text-gray-700 mt-0.5 sm:mt-1">{followUp.reason}</p>
+                            <p className="text-gray-700 mt-0.5 sm:mt-1 break-words">{followUp.reason}</p>
                           </div>
                         )}
 
                         {followUp.context_notes && (
-                          <div className="text-xs sm:text-sm">
+                          <div className="text-xs sm:text-sm min-w-0">
                             <span className="font-semibold">Context:</span>
-                            <p className="text-gray-600 italic mt-0.5 sm:mt-1">{followUp.context_notes}</p>
+                            <p className="text-gray-600 italic mt-0.5 sm:mt-1 break-words">{followUp.context_notes}</p>
                           </div>
                         )}
 
                         {followUp.status === 'COMPLETED' && followUp.completion_notes && (
-                          <div className="bg-green-50 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm mt-1.5 sm:mt-2">
+                          <div className="bg-green-50 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm mt-1.5 sm:mt-2 min-w-0">
                             <p className="font-semibold text-green-700 mb-0.5 sm:mb-1">Completion Notes:</p>
-                            <p className="text-gray-700">{followUp.completion_notes}</p>
+                            <p className="text-gray-700 break-words">{followUp.completion_notes}</p>
                             <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">
                               Completed on {formatDateTime(followUp.completed_at)}
                             </p>
@@ -412,52 +533,78 @@ export default function FollowUpsPage() {
                     </div>
 
                     {followUp.status === 'PENDING' && (
-                      <div className="flex flex-row sm:flex-col gap-2 lg:w-48">
-                        <a 
-                          href={`tel:${followUp.lead?.customer_phone}`}
-                          className="btn btn-primary flex-1 sm:w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-                        >
-                          <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                          Call Now
-                        </a>
+                      <div className="flex flex-row flex-wrap gap-1.5 shrink-0 self-start">
+                        {followUp.lead?.customer_phone ? (
+                          <a 
+                            href={`tel:${followUp.lead.customer_phone}`}
+                            title="Call"
+                            aria-label="Call"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#004AAD] text-white"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        ) : null}
+                        {followUp.lead?.customer_phone ? (
+                          <button
+                            type="button"
+                            title="WhatsApp"
+                            aria-label="WhatsApp"
+                            onClick={() => {
+                              const phone = String(followUp.lead?.customer_phone || '').replace(/\D/g, '');
+                              if (!phone) return;
+                              window.dispatchEvent(
+                                new CustomEvent('myfng:open-wa-chat', {
+                                  detail: { phone },
+                                }),
+                              );
+                            }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#25D366] text-white"
+                          >
+                            <WhatsAppIcon className="w-4 h-4" />
+                          </button>
+                        ) : null}
                         <Link 
                           href={`${base}/leads/${followUp.lead_id}`}
-                          className="btn btn-outline flex-1 sm:w-full text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                          title="View lead"
+                          aria-label="View lead"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#004AAD] text-[#004AAD]"
                         >
-                          View Lead
+                          <Eye className="w-4 h-4" />
                         </Link>
                         <button
+                          type="button"
+                          title="Mark done"
+                          aria-label="Mark done"
                           onClick={() => {
                             const notes = prompt('Add completion notes (optional):');
                             if (notes !== null) {
                               markAsCompleted(followUp.id, notes);
                             }
                           }}
-                          className="btn btn-outline flex-1 sm:w-full text-green-600 hover:bg-green-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-500 text-emerald-700"
                         >
-                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                          Mark Done
+                          <CheckCircle className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
+                          title="Cancel"
+                          aria-label="Cancel"
                           onClick={() => {
                             if (confirm('Cancel this follow-up?')) {
                               cancelFollowUp(followUp.id);
                             }
                           }}
-                          className="btn btn-outline flex-1 sm:w-full text-red-600 hover:bg-red-50 text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-400 text-red-600"
                         >
-                          <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-                          Cancel
+                          <XCircle className="w-4 h-4" />
                         </button>
                       </div>
                     )}
 
                     {followUp.status === 'COMPLETED' && (
-                      <div className="flex items-center justify-center lg:w-48">
-                        <div className="text-center">
-                          <CheckCircle className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 text-green-500 mx-auto mb-1.5 sm:mb-2" />
-                          <p className="text-xs sm:text-sm font-semibold text-green-700">Completed</p>
-                        </div>
+                      <div className="flex items-center gap-1.5 shrink-0 self-start text-green-700">
+                        <CheckCircle className="w-5 h-5" />
+                        <p className="text-xs font-semibold">Completed</p>
                       </div>
                     )}
                   </div>

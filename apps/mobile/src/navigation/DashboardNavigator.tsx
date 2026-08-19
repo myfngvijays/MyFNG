@@ -118,6 +118,11 @@ import LeadManagerEscalationsScreen from '../screens/dashboard/lead_manager/Lead
 import LeadManagerReportsScreen from '../screens/dashboard/lead_manager/LeadManagerReportsScreen';
 import LeadManagerWorkshopsScreen from '../screens/dashboard/lead_manager/LeadManagerWorkshopsScreen';
 import LeadManagerWorkshopDetailScreen from '../screens/dashboard/lead_manager/LeadManagerWorkshopDetailScreen';
+import {
+  LeadManagerFloorScreen,
+  LeadManagerTeamWhatsAppScreen,
+  LeadManagerWhatsAppDndScreen,
+} from '../screens/dashboard/lead_manager/LeadManagerOpsScreens';
 
 // Super Admin screens
 import WorkshopManagementScreen from '../screens/dashboard/superadmin/WorkshopManagementScreen';
@@ -321,6 +326,21 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="LeadManagerWorkshops" 
           component={LeadManagerWorkshopsScreen}
           options={{ title: 'Workshops' }}
+        />
+        <Stack.Screen
+          name="LeadManagerFloor"
+          component={LeadManagerFloorScreen}
+          options={{ title: 'Live floor' }}
+        />
+        <Stack.Screen
+          name="LeadManagerTeamWhatsApp"
+          component={LeadManagerTeamWhatsAppScreen}
+          options={{ title: 'Team WhatsApp' }}
+        />
+        <Stack.Screen
+          name="LeadManagerWhatsAppDnd"
+          component={LeadManagerWhatsAppDndScreen}
+          options={{ title: 'WhatsApp DND' }}
         />
         <Stack.Screen 
           name="LeadManagerWorkshopDetail" 

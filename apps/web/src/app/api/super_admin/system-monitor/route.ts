@@ -1952,6 +1952,70 @@ async function checkWhatsAppAgents(): Promise<HealthCheck> {
   }
 }
 
+async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return {
+        name: 'CRM Manager Ops Tables',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Admin client unavailable',
+        reason: 'Cannot verify crm_lead_tags / saved views / WA DND',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const tables = ['crm_lead_tags', 'crm_saved_views', 'whatsapp_dnd_numbers'] as const;
+    const missing: string[] = [];
+    for (const table of tables) {
+      const { error } = await supabaseAdmin.from(table).select('id').limit(1);
+      if (error && /does not exist|relation|Could not find/i.test(String(error.message || ''))) {
+        missing.push(table);
+      }
+    }
+
+    if (missing.length) {
+      return {
+        name: 'CRM Manager Ops Tables',
+        category: 'Operations',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: `Missing: ${missing.join(', ')}`,
+        reason: 'Run database/317_crm_manager_ops_tags_views_dnd.sql',
+        quickFix: {
+          label: 'Open SQL migrations',
+          action: 'external-link',
+          actionPayload: { url: '/dashboard/super_admin/system-monitor' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    return {
+      name: 'CRM Manager Ops Tables',
+      category: 'Operations',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'Tags, saved views, WA DND tables OK',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'CRM Manager Ops Tables',
+      category: 'Operations',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: String(e?.message || e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 function calculateHealthScore(checks: HealthCheck[]): number {
   if (checks.length === 0) return 100;
   const weights: Record<string, number> = {
@@ -2195,6 +2259,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkTelecallerLeadWhatsApp(),
     checkTelecallerCrmPermissions(),
     checkTelecallerCallbackReminders(),
+    checkCrmManagerOpsTables(),
     checkRsaLeads(),
     checkOpenAI(),
     checkMisaAiMonitoring(),

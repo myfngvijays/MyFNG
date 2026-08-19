@@ -40,6 +40,13 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
   const [loginTotal, setLoginTotal] = useState(0);
   const [loginRecent, setLoginRecent] = useState<any[]>([]);
   const [loginLoading, setLoginLoading] = useState(true);
+  const [quickStats, setQuickStats] = useState({
+    calls: 0,
+    leads: 0,
+    followups: 0,
+    conversion: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -50,8 +57,28 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
   useEffect(() => {
     fetchProfile();
     fetchLoginHistory();
+    fetchQuickStats();
   }, []);
 
+  const fetchQuickStats = async () => {
+    setStatsLoading(true);
+    try {
+      const data = await apiFetch<any>('/api/telecaller/crm/dashboard?all=1');
+      const k = data?.kpis || {};
+      const total = Number(k.total_leads || 0);
+      const done = Number(k.service_done || 0);
+      setQuickStats({
+        calls: Number(k.today_calls || 0),
+        leads: total,
+        followups: Number(k.followups_today || 0) + Number(k.overdue_callbacks || 0),
+        conversion: total > 0 ? Math.round((done / total) * 100) : 0,
+      });
+    } catch (e) {
+      console.warn('Quick stats failed', e);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
   const fetchLoginHistory = async () => {
     setLoginLoading(true);
     try {
@@ -374,29 +401,31 @@ export default function TelecallerProfileScreen({ navigation, embedded = false }
         )}
       </View>
 
-      {/* Performance Stats Placeholder */}
+      {/* Performance Stats */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Stats</Text>
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>--</Text>
-            <Text style={styles.statLabel}>Total Calls</Text>
+            <Text style={styles.statValue}>{statsLoading ? '…' : String(quickStats.calls)}</Text>
+            <Text style={styles.statLabel}>Calls (today)</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>--</Text>
-            <Text style={styles.statLabel}>Leads Created</Text>
+            <Text style={styles.statValue}>{statsLoading ? '…' : String(quickStats.leads)}</Text>
+            <Text style={styles.statLabel}>Leads (all time)</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>--</Text>
-            <Text style={styles.statLabel}>Follow-ups</Text>
+            <Text style={styles.statValue}>{statsLoading ? '…' : String(quickStats.followups)}</Text>
+            <Text style={styles.statLabel}>Follow-ups due</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>--</Text>
+            <Text style={styles.statValue}>
+              {statsLoading ? '…' : `${quickStats.conversion}%`}
+            </Text>
             <Text style={styles.statLabel}>Conversion</Text>
           </View>
         </View>
         <Text style={styles.statsHint}>
-          Stats will be available once performance metrics are implemented
+          From your CRM dashboard · conversion = service done / total leads
         </Text>
       </View>
     </ScrollView>

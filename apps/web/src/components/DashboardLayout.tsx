@@ -41,6 +41,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
 import NotificationBell from '@/components/NotificationBell';
+import ReminderHeaderIcon from '@/components/ReminderHeaderIcon';
 import WhatsAppWebWorkspace from '@/components/shared/WhatsAppWebWorkspace';
 
 const AANSH_SESSION_KEY = 'myfng:aansh_session';
@@ -430,6 +431,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       if (seenCallIdsRef.current.has(callId)) return;
       seenCallIdsRef.current.add(callId);
       setWaUnreadCount((prev) => prev + 1);
+      try {
+        window.dispatchEvent(new CustomEvent('myfng:wa-unread-bump'));
+      } catch {
+        /* ignore */
+      }
       startCallRing();
     };
 
@@ -445,6 +451,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           const sender = normPhone(String(row.sender_phone || ''));
           setWaRefreshSignal((prev) => prev + 1);
           setWaUnreadCount((prev) => prev + 1);
+          try {
+            window.dispatchEvent(new CustomEvent('myfng:wa-unread-bump'));
+          } catch {
+            /* ignore */
+          }
           playMessageSound();
         }
       )
@@ -815,6 +826,9 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           label: 'WhatsApp',
           action: 'open-wa-inbox',
         },
+        { href: '/dashboard/lead_manager/team-whatsapp', icon: <MessageCircle className="w-5 h-5" />, label: 'Team WA' },
+        { href: '/dashboard/lead_manager/floor', icon: <Activity className="w-5 h-5" />, label: 'Live floor' },
+        { href: '/dashboard/lead_manager/whatsapp-dnd', icon: <AlertTriangle className="w-5 h-5" />, label: 'WA DND' },
         { href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
         { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
@@ -1010,6 +1024,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                 {aanshSession ? `Aansh: ${aanshSession.aansh_id}` : 'Select Aansh'}
               </button>
             )}
+            <ReminderHeaderIcon />
             <NotificationBell />
             
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -1260,24 +1275,26 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
       {whatsappFabEnabled ? (
         <>
-          <button
-            type="button"
-            onClick={handleOpenWaList}
-            title="WhatsApp inbox · 9594996161"
-            aria-label="Open WhatsApp 6161 chats"
-            className="fixed z-[60] inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white shadow-2xl transition hover:scale-[1.03] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] h-14 pl-3.5 pr-4 sm:h-14"
-          >
-            <MessageCircle className="h-6 w-6 shrink-0" />
-            <span className="text-left leading-tight">
-              <span className="block text-[11px] font-extrabold tracking-wide">WhatsApp</span>
-              <span className="block text-[10px] font-semibold opacity-90">· 6161</span>
-            </span>
-            {waUnreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white animate-bounce">
-                {waUnreadCount > 99 ? '99+' : waUnreadCount}
+          {!waWorkspaceOpen ? (
+            <button
+              type="button"
+              onClick={handleOpenWaList}
+              title="WhatsApp inbox · 9594996161"
+              aria-label="Open WhatsApp 6161 chats"
+              className="fixed z-[60] inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white shadow-2xl transition hover:scale-[1.03] hover:bg-[#1ebe5c] bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] h-12 pl-3 pr-3.5 sm:h-12"
+            >
+              <MessageCircle className="h-6 w-6 shrink-0" />
+              <span className="text-left leading-tight">
+                <span className="block text-[11px] font-extrabold tracking-wide">WhatsApp</span>
+                <span className="block text-[10px] font-semibold opacity-90">· 6161</span>
               </span>
-            )}
-          </button>
+              {waUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow-lg ring-2 ring-white animate-bounce">
+                  {waUnreadCount > 99 ? '99+' : waUnreadCount}
+                </span>
+              )}
+            </button>
+          ) : null}
           <WhatsAppWebWorkspace
             isOpen={waWorkspaceOpen}
             title="WhatsApp · 6161"

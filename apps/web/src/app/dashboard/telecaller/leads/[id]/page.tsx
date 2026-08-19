@@ -13,12 +13,15 @@ import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
+import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
+import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
 import {
   leadDisplayStatus,
 } from '@/lib/telecaller/leadDisplayStatus';
 import { redactLeadSourceForTelecaller } from '@/lib/telecaller/redactLeadSource';
 import { parseCallDisposition } from '@/lib/telecaller/callDisposition';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 function LeadDetailContent() {
   const params = useParams();
@@ -577,12 +580,21 @@ function LeadDetailContent() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <a href={`tel:${lead.customer_phone}`} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white px-3.5 py-2 text-sm font-bold shadow">
-                  <PhoneCall className="w-4 h-4" /> Call
-                </a>
+                {lead.customer_phone ? (
+                  <a
+                    href={`tel:${lead.customer_phone}`}
+                    title="Call"
+                    aria-label="Call"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white shadow"
+                  >
+                    <PhoneCall className="w-4 h-4" />
+                  </a>
+                ) : null}
                 {lead.customer_phone ? (
                   <button
                     type="button"
+                    title="WhatsApp"
+                    aria-label="WhatsApp"
                     onClick={() => {
                       window.dispatchEvent(
                         new CustomEvent('myfng:open-wa-chat', {
@@ -593,24 +605,31 @@ function LeadDetailContent() {
                         }),
                       );
                     }}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe57] text-white px-3.5 py-2 text-sm font-bold shadow"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25D366] hover:bg-[#1ebe57] text-white shadow"
                   >
-                    <MessageSquare className="w-4 h-4" /> WhatsApp
+                    <WhatsAppIcon className="w-4 h-4" />
                   </button>
                 ) : null}
                 <button
                   type="button"
+                  title="Edit"
+                  aria-label="Edit"
                   onClick={() => {
                     setEditing(true);
                     router.replace(`${base}/leads/${leadId}?edit=1${isEmbed ? '&embed=1' : ''}`, { scroll: false });
                   }}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white text-[#023D95] px-3.5 py-2 text-sm font-bold"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#023D95]"
                 >
-                  <Edit className="w-4 h-4" /> Edit
+                  <Edit className="w-4 h-4" />
                 </button>
-                <button type="button" onClick={() => void openSharePanel()} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/15 hover:bg-white/25 px-3.5 py-2 text-sm font-bold">
+                <button
+                  type="button"
+                  title={isLeadManager ? 'Assign TC' : 'Share'}
+                  aria-label={isLeadManager ? 'Assign TC' : 'Share'}
+                  onClick={() => void openSharePanel()}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25"
+                >
                   <Share2 className="w-4 h-4" />
-                  {isLeadManager ? 'Assign TC' : 'Share'}
                 </button>
               </div>
             </div>
@@ -777,6 +796,9 @@ function LeadDetailContent() {
                 {lead.last_call_at ? <StatItem label="Last call" value={formatDateTime(lead.last_call_at)} icon={<Clock className="w-4 h-4" />} /> : null}
               </div>
             </div>
+
+            <LeadTagsPanel leadId={leadId} canManage={isLeadManager} />
+            <LeadTimelinePanel leadId={leadId} />
 
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-2">

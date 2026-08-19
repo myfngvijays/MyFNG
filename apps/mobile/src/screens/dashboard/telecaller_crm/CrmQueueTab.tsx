@@ -24,6 +24,10 @@ import {
   type CrmDatePreset,
   istYmd,
 } from '../../../lib/crmDateRange';
+import {
+  loadTelecallerCrmFilterPrefs,
+  saveTelecallerCrmFilterPrefs,
+} from '../../../lib/crmFilterPrefs';
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -43,6 +47,8 @@ type Props = {
   onDatePresetChange?: (v: CrmDatePreset) => void;
   onCustomStartChange?: (v: string) => void;
   onCustomEndChange?: (v: string) => void;
+  /** Lead Manager ops: multi-select, bulk assign, bulk WA */
+  managerOps?: boolean;
 };
 
 type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'priority' | null;
@@ -166,6 +172,7 @@ export default function CrmQueueTab({
   onDatePresetChange,
   onCustomStartChange,
   onCustomEndChange,
+  managerOps = false,
 }: Props) {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,6 +183,10 @@ export default function CrmQueueTab({
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
   const [priority, setPriority] = useState('');
+  const [advIncomplete, setAdvIncomplete] = useState(false);
+  const [advFollowUp, setAdvFollowUp] = useState(false);
+  const [advHasVehicle, setAdvHasVehicle] = useState(false);
+  const [advHasCoupon, setAdvHasCoupon] = useState(false);
   const [datePresetLocal, setDatePresetLocal] = useState<CrmDatePreset>('last_7_days');
   const [customStartLocal, setCustomStartLocal] = useState(istYmd());
   const [customEndLocal, setCustomEndLocal] = useState(istYmd());
@@ -184,6 +195,15 @@ export default function CrmQueueTab({
   const [shareLead, setShareLead] = useState<any>(null);
   const [peers, setPeers] = useState<any[]>([]);
   const [sharing, setSharing] = useState(false);
+  const [localPrefsReady, setLocalPrefsReady] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string | null }>>(
+    [],
+  );
+  const [bulkTcId, setBulkTcId] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkWaOpen, setBulkWaOpen] = useState(false);
+  const [bulkWaText, setBulkWaText] = useState('');
 
   const datePreset = datePresetProp ?? datePresetLocal;
   const customStart = customStartProp ?? customStartLocal;
@@ -197,6 +217,27 @@ export default function CrmQueueTab({
   const lostReasonLabel =
     LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const prefs = await loadTelecallerCrmFilterPrefs();
+      if (cancelled) return;
+      setQ(prefs.q || '');
+      setCity(prefs.city || '');
+      setPriority(prefs.priority || '');
+      setLostReason(prefs.lostReason || '');
+      setAdvIncomplete(Boolean(prefs.advIncomplete));
+      setAdvFollowUp(Boolean(prefs.advFollowUp));
+      setAdvHasVehicle(Boolean(prefs.advHasVehicle));
+      setAdvHasCoupon(Boolean(prefs.advHasCoupon));
+      if (!onFilterChange && prefs.statusFilter) setFilter(prefs.statusFilter);
+      setLocalPrefsReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [onFilterChange]);
 
   useEffect(() => {
     (async () => {
@@ -216,7 +257,99 @@ export default function CrmQueueTab({
     })();
   }, []);
 
+  useEffect(() => {
+    if (!managerOps) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('users_login')
+          .select('id, full_name, roles!role_id(role_code)')
+          .eq('is_active', true)
+          .order('full_name');
+        setTelecallers(
+          (data || [])
+            .filter((t: any) => String(t?.roles?.role_code || '').toUpperCase() === 'TELECALLER')
+            .map((t: any) => ({
+              id: String(t.id),
+              full_name: t.full_name ? String(t.full_name) : null,
+            })),
+        );
+      } catch {
+        setTelecallers([]);
+      }
+    })();
+  }, [managerOps]);
+
+  const toggleSelect = (id: string) => {
+    if (!managerOps) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const runBulkAssign = async (clear = false) => {
+    if (!managerOps || selectedIds.size === 0) return;
+    if (!clear && !bulkTcId) {
+      Alert.alert('Pick telecaller');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      const data = await apiFetch<any>('/api/lead-manager/bulk-assign-telecaller', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(selectedIds),
+          telecaller_id: clear ? undefined : bulkTcId,
+          clear,
+        }),
+      });
+      Alert.alert('Done', data?.message || 'Updated');
+      setSelectedIds(new Set());
+      setRefreshing(true);
+      await load();
+    } catch (e: any) {
+      Alert.alert('Failed', e?.message || 'Bulk assign failed');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const runBulkWa = async () => {
+    if (!managerOps || selectedIds.size === 0) return;
+    if (!bulkWaText.trim()) {
+      Alert.alert('Enter message');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      const data = await apiFetch<any>('/api/lead-manager/bulk-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(selectedIds),
+          message_type: 'text',
+          text: bulkWaText.trim(),
+        }),
+      });
+      Alert.alert(
+        'Bulk WhatsApp',
+        `Sent ${data?.sent || 0} · DND ${data?.dnd_skipped || 0} · Failed ${data?.failed || 0}`,
+      );
+      setBulkWaOpen(false);
+      setBulkWaText('');
+    } catch (e: any) {
+      Alert.alert('Failed', e?.message || 'Bulk WA failed');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const load = useCallback(async () => {
+    if (!localPrefsReady) return;
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const params = new URLSearchParams({ limit: '80' });
@@ -238,12 +371,13 @@ export default function CrmQueueTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filter, lostReason, q, city, priority, datePreset, customStart, customEnd]);
+  }, [localPrefsReady, filter, lostReason, q, city, priority, datePreset, customStart, customEnd]);
 
   useEffect(() => {
+    if (!localPrefsReady) return;
     setLoading(true);
     load();
-  }, [load]);
+  }, [load, localPrefsReady]);
 
   useEffect(() => {
     if (initialFilter) {
@@ -252,6 +386,39 @@ export default function CrmQueueTab({
     }
   }, [initialFilter]);
 
+  const persistLocalFilters = (partial: {
+    q?: string;
+    city?: string;
+    priority?: string;
+    lostReason?: string;
+    statusFilter?: string;
+    advIncomplete?: boolean;
+    advFollowUp?: boolean;
+    advHasVehicle?: boolean;
+    advHasCoupon?: boolean;
+  }) => {
+    void saveTelecallerCrmFilterPrefs(partial);
+  };
+
+  const displayedLeads = useMemo(() => {
+    return leads.filter((lead) => {
+      if (advIncomplete && !lead.is_incomplete) return false;
+      if (advFollowUp && !lead.follow_up_required && !lead.next_follow_up_at && !lead.reminder?.at) {
+        return false;
+      }
+      if (advHasVehicle) {
+        const reg = String(lead.vehicle_number || '')
+          .trim()
+          .toUpperCase();
+        if (!reg || reg === 'NA' || reg === '—') return false;
+      }
+      if (advHasCoupon) {
+        const code = String(lead.coupon_code || lead.coupon_meta?.coupon_code || '').trim();
+        if (!code) return false;
+      }
+      return true;
+    });
+  }, [leads, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon]);
   const openShare = async (lead: any) => {
     setShareLead(lead);
     try {
@@ -352,7 +519,10 @@ export default function CrmQueueTab({
           placeholder="Search name / phone / lead #"
           value={q}
           onChangeText={setQ}
-          onSubmitEditing={load}
+          onSubmitEditing={() => {
+            persistLocalFilters({ q: q.trim() });
+            load();
+          }}
           placeholderTextColor={COLORS.textSecondary}
         />
         <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
@@ -399,7 +569,12 @@ export default function CrmQueueTab({
                       onPress={() => {
                         setFilter(c.id);
                         onFilterChange?.(c.id);
+                        const nextLost = c.id === 'lost' ? lostReason : '';
                         if (c.id !== 'lost') setLostReason('');
+                        persistLocalFilters({
+                          statusFilter: c.id,
+                          lostReason: nextLost,
+                        });
                         setOpenDropdown(null);
                       }}
                     >
@@ -509,6 +684,7 @@ export default function CrmQueueTab({
                       style={[styles.selectItem, lostReason === c.id && styles.selectItemActive]}
                       onPress={() => {
                         setLostReason(c.id);
+                        persistLocalFilters({ lostReason: c.id });
                         setOpenDropdown(null);
                       }}
                     >
@@ -536,7 +712,7 @@ export default function CrmQueueTab({
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
-          data={leads}
+          data={displayedLeads}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
           style={styles.list}
@@ -547,6 +723,52 @@ export default function CrmQueueTab({
             if (openDropdown) setOpenDropdown(null);
           }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
+          ListHeaderComponent={
+            managerOps && selectedIds.size > 0 ? (
+              <View style={styles.bulkBar}>
+                <Text style={styles.bulkTitle}>{selectedIds.size} selected</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {telecallers.map((t) => (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={[styles.bulkChip, bulkTcId === t.id && styles.bulkChipOn]}
+                      onPress={() => setBulkTcId(t.id)}
+                    >
+                      <Text style={[styles.bulkChipText, bulkTcId === t.id && styles.bulkChipTextOn]}>
+                        {t.full_name || t.id.slice(0, 6)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <View style={styles.bulkActions}>
+                  <TouchableOpacity
+                    style={styles.bulkBtn}
+                    disabled={bulkBusy}
+                    onPress={() => void runBulkAssign(false)}
+                  >
+                    <Text style={styles.bulkBtnText}>Assign</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.bulkBtn, styles.bulkBtnOutline]}
+                    disabled={bulkBusy}
+                    onPress={() => void runBulkAssign(true)}
+                  >
+                    <Text style={styles.bulkBtnOutlineText}>Unassign</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.bulkBtn, { backgroundColor: '#25D366' }]}
+                    disabled={bulkBusy}
+                    onPress={() => setBulkWaOpen(true)}
+                  >
+                    <Text style={styles.bulkBtnText}>Bulk WA</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSelectedIds(new Set())}>
+                    <Text style={styles.bulkClear}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="file-tray-outline" size={40} color={COLORS.gray[300]} />
@@ -556,13 +778,28 @@ export default function CrmQueueTab({
           renderItem={({ item }) => {
             const statusLabel = leadDisplayStatus(item);
             const tint = leadStatusCardColors(statusLabel);
+            const selected = selectedIds.has(String(item.id));
             return (
             <View
               style={[
                 styles.card,
                 { backgroundColor: tint.cardBg, borderColor: tint.border, borderWidth: 1 },
+                selected ? { borderColor: COLORS.primary, borderWidth: 2 } : null,
               ]}
             >
+              {managerOps ? (
+                <TouchableOpacity
+                  style={styles.selectRow}
+                  onPress={() => toggleSelect(String(item.id))}
+                >
+                  <Ionicons
+                    name={selected ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={COLORS.primary}
+                  />
+                  <Text style={styles.selectLabel}>Select</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity onPress={() => onOpenLead(item.id)}>
                 <View style={styles.cardTop}>
                   <Text style={styles.name} numberOfLines={1}>{item.customer_name}</Text>
@@ -689,8 +926,62 @@ export default function CrmQueueTab({
                 </View>
               ) : null}
 
-              {renderSelect('city', 'City', city, cityOptions, setCity)}
-              {renderSelect('priority', 'Priority', priority, PRIORITY_OPTIONS, setPriority)}
+              {renderSelect('city', 'City', city, cityOptions, (v) => {
+                setCity(v);
+                persistLocalFilters({ city: v });
+              })}
+              {renderSelect('priority', 'Priority', priority, PRIORITY_OPTIONS, (v) => {
+                setPriority(v);
+                persistLocalFilters({ priority: v });
+              })}
+
+              <Text style={[styles.filterLabel, { marginTop: 10 }]}>Quick filters</Text>
+              {(
+                [
+                  {
+                    key: 'advIncomplete' as const,
+                    label: 'Incomplete only',
+                    value: advIncomplete,
+                    set: setAdvIncomplete,
+                  },
+                  {
+                    key: 'advFollowUp' as const,
+                    label: 'Follow-up / reminder',
+                    value: advFollowUp,
+                    set: setAdvFollowUp,
+                  },
+                  {
+                    key: 'advHasVehicle' as const,
+                    label: 'Has reg. number',
+                    value: advHasVehicle,
+                    set: setAdvHasVehicle,
+                  },
+                  {
+                    key: 'advHasCoupon' as const,
+                    label: 'Has coupon',
+                    value: advHasCoupon,
+                    set: setAdvHasCoupon,
+                  },
+                ] as const
+              ).map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.advChip, opt.value && styles.advChipOn]}
+                  onPress={() => {
+                    const next = !opt.value;
+                    opt.set(next);
+                    persistLocalFilters({ [opt.key]: next });
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons
+                    name={opt.value ? 'checkbox' : 'square-outline'}
+                    size={18}
+                    color={opt.value ? COLORS.primary : COLORS.textSecondary}
+                  />
+                  <Text style={[styles.advChipText, opt.value && styles.advChipTextOn]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
 
               <View style={styles.sheetActions}>
                 <TouchableOpacity
@@ -698,9 +989,21 @@ export default function CrmQueueTab({
                   onPress={() => {
                     setCity('');
                     setPriority('');
+                    setAdvIncomplete(false);
+                    setAdvFollowUp(false);
+                    setAdvHasVehicle(false);
+                    setAdvHasCoupon(false);
                     setDatePreset('today');
                     setCustomStart(istYmd());
                     setCustomEnd(istYmd());
+                    persistLocalFilters({
+                      city: '',
+                      priority: '',
+                      advIncomplete: false,
+                      advFollowUp: false,
+                      advHasVehicle: false,
+                      advHasCoupon: false,
+                    });
                     setOpenDropdown(null);
                   }}
                 >
@@ -709,6 +1012,15 @@ export default function CrmQueueTab({
                 <TouchableOpacity
                   style={styles.primary}
                   onPress={() => {
+                    persistLocalFilters({
+                      city,
+                      priority,
+                      q: q.trim(),
+                      advIncomplete,
+                      advFollowUp,
+                      advHasVehicle,
+                      advHasCoupon,
+                    });
                     closeFilters();
                     setLoading(true);
                     load();
@@ -762,6 +1074,35 @@ export default function CrmQueueTab({
                 ))
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={bulkWaOpen} transparent animationType="slide" onRequestClose={() => setBulkWaOpen(false)}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setBulkWaOpen(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Bulk WhatsApp · {selectedIds.size}</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setBulkWaOpen(false)}>
+                <Ionicons name="close" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.meta}>Manager only · DND numbers skipped</Text>
+            <TextInput
+              style={[styles.search, { marginTop: 12, minHeight: 100, textAlignVertical: 'top' }]}
+              multiline
+              placeholder="Message text…"
+              value={bulkWaText}
+              onChangeText={setBulkWaText}
+            />
+            <TouchableOpacity
+              style={[styles.bulkBtn, { marginTop: 12, backgroundColor: '#25D366', alignItems: 'center' }]}
+              disabled={bulkBusy}
+              onPress={() => void runBulkWa()}
+            >
+              <Text style={styles.bulkBtnText}>{bulkBusy ? 'Sending…' : 'Send'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -894,6 +1235,37 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     ...SHADOWS.small,
   },
+  selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  selectLabel: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  bulkBar: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  bulkTitle: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  bulkChip: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginRight: 6,
+  },
+  bulkChipOn: { backgroundColor: '#fff' },
+  bulkChipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  bulkChipTextOn: { color: COLORS.primary },
+  bulkActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  bulkBtn: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  bulkBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 12 },
+  bulkBtnOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+  bulkBtnOutlineText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  bulkClear: { color: '#fff', fontWeight: '600', fontSize: 12, marginLeft: 4 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, flex: 1, minWidth: 0 },
   status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: '46%', flexShrink: 0 },
@@ -995,6 +1367,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryText: { color: '#fff', fontWeight: '700' },
+  advChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border || '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    backgroundColor: COLORS.white,
+  },
+  advChipOn: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#EFF6FF',
+  },
+  advChipText: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  advChipTextOn: { color: COLORS.primary },
   secondary: {
     flex: 1,
     backgroundColor: COLORS.gray[100],

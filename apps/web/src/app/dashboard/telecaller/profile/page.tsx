@@ -42,6 +42,13 @@ export default function TelecallerProfilePage() {
   const [loginTotal, setLoginTotal] = useState(0);
   const [loginRecent, setLoginRecent] = useState<LoginHistoryRow[]>([]);
   const [loginLoading, setLoginLoading] = useState(true);
+  const [quickStats, setQuickStats] = useState({
+    calls: 0,
+    leads: 0,
+    followups: 0,
+    conversion: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -54,8 +61,30 @@ export default function TelecallerProfilePage() {
   useEffect(() => {
     fetchProfile();
     fetchLoginHistory();
+    fetchQuickStats();
   }, []);
 
+  const fetchQuickStats = async () => {
+    setStatsLoading(true);
+    try {
+      const res = await fetch('/api/telecaller/crm/dashboard?all=1');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed');
+      const k = data?.kpis || {};
+      const total = Number(k.total_leads || 0);
+      const done = Number(k.service_done || 0);
+      setQuickStats({
+        calls: Number(k.today_calls || 0),
+        leads: total,
+        followups: Number(k.followups_today || 0) + Number(k.overdue_callbacks || 0),
+        conversion: total > 0 ? Math.round((done / total) * 100) : 0,
+      });
+    } catch (e) {
+      console.error('Quick stats failed', e);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
   const fetchLoginHistory = async () => {
     setLoginLoading(true);
     try {
@@ -420,29 +449,37 @@ export default function TelecallerProfilePage() {
         )}
       </div>
 
-      {/* Performance Stats (Optional) */}
+      {/* Performance Stats */}
       <div className="card p-4 sm:p-5 md:p-6">
         <h2 className="text-lg sm:text-xl font-bold text-text-heading mb-3 sm:mb-4">Quick Stats</h2>
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg">
-            <p className="text-2xl sm:text-3xl font-bold text-brand-primary">--</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Total Calls</p>
+            <p className="text-2xl sm:text-3xl font-bold text-brand-primary">
+              {statsLoading ? '…' : quickStats.calls}
+            </p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Calls (today)</p>
           </div>
           <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg">
-            <p className="text-2xl sm:text-3xl font-bold text-green-600">--</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Leads Created</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">
+              {statsLoading ? '…' : quickStats.leads}
+            </p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Leads (all time)</p>
           </div>
           <div className="text-center p-3 sm:p-4 bg-yellow-50 rounded-lg">
-            <p className="text-2xl sm:text-3xl font-bold text-yellow-600">--</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Follow-ups</p>
+            <p className="text-2xl sm:text-3xl font-bold text-yellow-600">
+              {statsLoading ? '…' : quickStats.followups}
+            </p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Follow-ups due</p>
           </div>
           <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
-            <p className="text-2xl sm:text-3xl font-bold text-purple-600">--</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Conversion Rate</p>
+            <p className="text-2xl sm:text-3xl font-bold text-purple-600">
+              {statsLoading ? '…' : `${quickStats.conversion}%`}
+            </p>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">Conversion</p>
           </div>
         </div>
         <p className="text-[10px] sm:text-xs text-gray-500 text-center mt-2 sm:mt-3">
-          Stats will be available once performance metrics are implemented
+          From your CRM dashboard · conversion = service done / total leads
         </p>
       </div>
     </div>

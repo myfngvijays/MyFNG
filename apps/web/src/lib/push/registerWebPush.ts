@@ -14,6 +14,18 @@ export async function ensureWebPushSubscribed(): Promise<{ ok: boolean; reason?:
   if (!('serviceWorker' in navigator)) return { ok: false, reason: 'no_service_worker' };
   if (!('PushManager' in window)) return { ok: false, reason: 'no_push_manager' };
 
+  // Never register SW on localhost — it fights Next.js hot reload / stale UI in normal Chrome tabs
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    } catch {
+      /* ignore */
+    }
+    return { ok: false, reason: 'localhost_skip' };
+  }
+
   const vapidPublicKey = getVapidPublicKey();
   if (!vapidPublicKey) return { ok: false, reason: 'missing_vapid_public_key' };
 

@@ -921,12 +921,12 @@ function SuperAdminLayoutInner({
         </div>
       </header>
 
-      {/* Sidebar - Desktop */}
+      {/* Sidebar - Desktop: menu scrolls in the middle; logout always pinned at bottom */}
       <aside
         onMouseEnter={() => { if (!sidebarPinned) setSidebarOpen(true); }}
         onMouseLeave={() => { if (!sidebarPinned) { setSidebarOpen(false); setSearchQuery(''); } }}
         className={`
-          hidden lg:flex flex-col
+          hidden lg:flex flex-col h-full min-h-0 overflow-hidden
           ${sidebarOpen ? 'w-72' : 'w-20'}
           bg-gradient-to-b from-blue-600 via-blue-700 to-blue-900 text-white
           transition-all duration-700 ease-in-out
@@ -1171,14 +1171,17 @@ function SuperAdminLayoutInner({
         </nav>
         )}
 
-        {/* Logout Button */}
-        <div className="p-4 border-t border-blue-400/30">
+        {/* Logout always visible at sidebar bottom; only the menu above scrolls */}
+        <div className="shrink-0 border-t border-blue-400/30 bg-blue-900 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
+            type="button"
             onClick={handleLogout}
+            title="Logout"
             className={`
               w-full flex items-center gap-3 px-4 py-3 rounded-lg
               bg-red-600 hover:bg-red-700 transition-colors
               text-white font-semibold shadow-lg
+              ${sidebarOpen ? 'justify-start' : 'justify-center'}
             `}
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
@@ -1387,9 +1390,10 @@ function SuperAdminLayoutInner({
             </nav>
             )}
 
-            {/* Logout Button */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-400/30">
+            {/* Logout always visible at drawer bottom */}
+            <div className="shrink-0 border-t border-blue-400/30 bg-blue-900 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <button
+                type="button"
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-red-600 hover:bg-red-700 transition-colors text-white font-semibold shadow-lg"
               >

@@ -27,7 +27,14 @@ import {
   Loader2,
   CalendarDays,
   Clock,
+  MapPin,
+  Truck,
+  TrendingUp,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
+import { formatDurationShort } from '@/lib/telecaller/crmReportsRange';
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 
 type Kpis = {
   new_leads?: number;
@@ -40,11 +47,15 @@ type Kpis = {
   lost?: number;
   callbacks?: number;
   followups_today?: number;
+  overdue_callbacks?: number;
   booked?: number;
   rejected?: number;
   today_calls?: number;
   answered_calls?: number;
   answer_rate?: number;
+  talk_duration_seconds?: number;
+  my_rank?: number | null;
+  leaderboard_size?: number;
 };
 
 type TrendRow = {
@@ -52,6 +63,20 @@ type TrendRow = {
   label?: string;
   calls?: number;
   leads_created?: number;
+};
+
+type UpcomingReminder = {
+  id: string;
+  scheduled_time?: string;
+  reason?: string | null;
+  priority?: string | null;
+  lead_id?: string;
+  lead?: {
+    id?: string;
+    lead_number?: string;
+    customer_name?: string;
+    customer_phone?: string;
+  } | null;
 };
 
 function SimpleBarChart({
@@ -99,8 +124,11 @@ export default function TelecallerCrmHomePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [kpis, setKpis] = useState<Kpis>({});
   const [trend, setTrend] = useState<TrendRow[]>([]);
+  const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminder[]>([]);
   const [profileName, setProfileName] = useState('Telecaller');
   const [punchedIn, setPunchedIn] = useState(false);
+  const [punching, setPunching] = useState(false);
+  const [waUnread, setWaUnread] = useState(0);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>(
     () => loadTelecallerCrmFilterPrefs().datePreset,
   );
@@ -132,13 +160,18 @@ export default function TelecallerCrmHomePage() {
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
       const params = new URLSearchParams();
-      params.set('from', range.start);
-      params.set('to', range.end);
+      if (range.allTime) {
+        params.set('all', '1');
+      } else {
+        params.set('from', range.start);
+        params.set('to', range.end);
+      }
       const res = await fetch(`/api/telecaller/crm/dashboard?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed');
       setKpis(json.kpis || {});
       setTrend(Array.isArray(json.trend) ? json.trend : []);
+      setUpcomingReminders(Array.isArray(json.upcoming_reminders) ? json.upcoming_reminders : []);
       setProfileName(json?.profile?.name || 'Telecaller');
       setPunchedIn(Boolean(json?.attendance?.is_punched_in));
     } catch (e) {
@@ -153,6 +186,37 @@ export default function TelecallerCrmHomePage() {
     setLoading(true);
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const onBump = () => setWaUnread((n) => n + 1);
+    const onClear = () => setWaUnread(0);
+    window.addEventListener('myfng:wa-unread-bump', onBump);
+    window.addEventListener('myfng:open-wa-inbox', onClear);
+    return () => {
+      window.removeEventListener('myfng:wa-unread-bump', onBump);
+      window.removeEventListener('myfng:open-wa-inbox', onClear);
+    };
+  }, []);
+
+  const punch = async () => {
+    setPunching(true);
+    try {
+      const res = await fetch('/api/telecaller/crm/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: punchedIn ? 'punch_out' : 'punch_in' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Punch failed');
+      setPunchedIn(!punchedIn);
+      setRefreshing(true);
+      void load();
+    } catch (e: any) {
+      alert(e?.message || 'Punch failed');
+    } finally {
+      setPunching(false);
+    }
+  };
 
   // Same labels / filters as Leads status dropdown (no "Rejected")
   const kpiCards = [
@@ -178,7 +242,7 @@ export default function TelecallerCrmHomePage() {
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="w-full max-w-7xl mx-auto space-y-3 sm:space-y-4 pb-8">
+      <div className="mx-auto w-full max-w-6xl space-y-3 sm:space-y-4 pb-8">
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -203,16 +267,35 @@ export default function TelecallerCrmHomePage() {
                 </span>
               ) : null}
             </Link>
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold ${
-                punchedIn ? 'bg-emerald-500/10 text-slate-800' : 'bg-orange-500/10 text-slate-800'
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${punchedIn ? 'bg-emerald-500' : 'bg-orange-500'}`}
-              />
-              {punchedIn ? 'On Floor' : 'Off Duty'}
-            </span>
+            {isLeadManager ? (
+              <Link
+                href={`${base}/floor`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-800 ring-1 ring-violet-200 hover:bg-violet-100"
+              >
+                Floor status
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void punch()}
+                disabled={punching}
+                title={punchedIn ? 'Punch out' : 'Punch in'}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-bold disabled:opacity-60 ${
+                  punchedIn
+                    ? 'bg-emerald-500/10 text-emerald-800 ring-1 ring-emerald-200'
+                    : 'bg-orange-500/10 text-orange-800 ring-1 ring-orange-200'
+                }`}
+              >
+                {punching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : punchedIn ? (
+                  <LogOut className="h-3.5 w-3.5" />
+                ) : (
+                  <LogIn className="h-3.5 w-3.5" />
+                )}
+                {punchedIn ? 'On Floor · Out' : 'Off Duty · In'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -300,14 +383,14 @@ export default function TelecallerCrmHomePage() {
           </div>
         ) : (
           <>
-            {/* KPI grid — matches CRM lead statuses */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-3">
+            {/* KPI grid — 2→5 cols, capped page width (no ultrawide stretch) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
               {kpiCards.map((k) => (
                 <Link
                   key={k.label}
                   href={`${base}/leads?filter=${k.filter}`}
                   onClick={() => saveTelecallerCrmFilterPrefs({ statusFilter: k.filter })}
-                  className="rounded-xl bg-white py-3 sm:py-4 text-center shadow-sm border border-slate-100 hover:border-blue-200 transition"
+                  className="rounded-xl bg-white py-3 sm:py-3.5 text-center shadow-sm border border-slate-100 hover:border-blue-200 transition"
                 >
                   <div className="text-xl sm:text-2xl font-extrabold" style={{ color: k.color }}>
                     {k.value ?? 0}
@@ -323,7 +406,7 @@ export default function TelecallerCrmHomePage() {
               {/* Calls in range */}
               <div className="rounded-2xl bg-white p-3.5 sm:p-5 shadow-sm border border-slate-100">
                 <h2 className="text-[15px] font-bold text-[#023D95] mb-2.5">Calls in range</h2>
-                <div className="grid grid-cols-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="text-center">
                     <div className="text-xl sm:text-2xl font-extrabold text-[#004AAD]">
                       {kpis.today_calls ?? 0}
@@ -342,15 +425,110 @@ export default function TelecallerCrmHomePage() {
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">Answer Rate</div>
                   </div>
+                  <div className="text-center">
+                    <div className="text-xl sm:text-2xl font-extrabold text-slate-800">
+                      {formatDurationShort(Number(kpis.talk_duration_seconds || 0))}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">Talk time</div>
+                  </div>
                 </div>
+                {kpis.my_rank != null ? (
+                  <Link
+                    href={`${base}/reports/leaderboard`}
+                    className="mt-3 flex items-center justify-between rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      Today rank #{kpis.my_rank}
+                      {kpis.leaderboard_size ? ` / ${kpis.leaderboard_size}` : ''}
+                    </span>
+                    <span className="text-indigo-500">Leaderboard →</span>
+                  </Link>
+                ) : (
+                  <Link
+                    href={`${base}/reports/leaderboard`}
+                    className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      Your leaderboard
+                    </span>
+                    <span>→</span>
+                  </Link>
+                )}
               </div>
 
               <SimpleBarChart title="7-Day Call Trend" data={callTrend} color="#004AAD" />
               <SimpleBarChart title="7-Day Bookings Created" data={bookingTrend} color="#10B981" />
             </div>
 
+            {/* Upcoming reminders */}
+            <div className="rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-100">
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <h2 className="text-[15px] font-bold text-[#023D95] inline-flex items-center gap-1.5">
+                  <Clock className="h-4 w-4" />
+                  Upcoming reminders
+                  {Number(kpis.overdue_callbacks || 0) > 0 ? (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                      {kpis.overdue_callbacks} overdue
+                    </span>
+                  ) : null}
+                </h2>
+                <Link href={`${base}/followups`} className="text-xs font-bold text-[#004AAD]">
+                  View all →
+                </Link>
+              </div>
+              {upcomingReminders.length === 0 ? (
+                <p className="text-sm text-slate-500 py-4 text-center">No pending reminders</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {upcomingReminders.map((r) => {
+                    const overdue = r.scheduled_time
+                      ? new Date(r.scheduled_time).getTime() < Date.now()
+                      : false;
+                    return (
+                      <li key={r.id}>
+                        <Link
+                          href={`${base}/leads/${r.lead_id || r.lead?.id || ''}`}
+                          className="flex items-start justify-between gap-3 py-2.5 hover:bg-slate-50/80 px-1 rounded-lg"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-900 truncate">
+                              {r.lead?.customer_name || 'Customer'}
+                              {r.lead?.lead_number ? (
+                                <span className="ml-1.5 text-[10px] font-mono text-slate-500">
+                                  {r.lead.lead_number}
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-xs text-slate-500 truncate">
+                              {r.reason || 'Follow-up'}
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 text-[11px] font-bold ${
+                              overdue ? 'text-red-600' : 'text-slate-600'
+                            }`}
+                          >
+                            {r.scheduled_time
+                              ? new Date(r.scheduled_time).toLocaleString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '—'}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
             <h2 className="text-[15px] font-bold text-[#023D95] pt-1">Quick Actions</h2>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
               {[
                 {
                   href: `${base}/book?mode=book`,
@@ -378,6 +556,29 @@ export default function TelecallerCrmHomePage() {
                   action: 'open-wa-inbox' as const,
                 },
                 {
+                  href: `${base}/workshops`,
+                  label: 'Workshops',
+                  icon: MapPin,
+                  color: '#0EA5E9',
+                },
+                ...(!isLeadManager
+                  ? [
+                      {
+                        href: `${base}/rsa`,
+                        label: 'RSA',
+                        icon: Truck,
+                        color: '#EA580C',
+                      },
+                    ]
+                  : [
+                      {
+                        href: `${base}/floor`,
+                        label: 'Floor',
+                        icon: TrendingUp,
+                        color: '#7C3AED',
+                      },
+                    ]),
+                {
                   href: isLeadManager ? `${base}/assignment` : `${base}/reports`,
                   label: isLeadManager ? 'Assignment' : 'Reports',
                   icon: isLeadManager ? MessageCircle : BarChart3,
@@ -388,16 +589,24 @@ export default function TelecallerCrmHomePage() {
                   <button
                     key={a.label}
                     type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
-                    className="rounded-2xl bg-white py-4 px-3 shadow-sm border border-slate-100 flex flex-col items-center gap-2 hover:border-emerald-200 transition"
+                    onClick={() => {
+                      setWaUnread(0);
+                      window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
+                    }}
+                    className="relative rounded-2xl bg-white py-4 px-3 shadow-sm border border-slate-100 flex flex-col items-center gap-2 hover:border-emerald-200 transition"
                   >
                     <span
                       className="w-11 h-11 rounded-xl flex items-center justify-center"
                       style={{ backgroundColor: `${a.color}18` }}
                     >
-                      <a.icon className="w-[22px] h-[22px]" style={{ color: a.color }} />
+                      <WhatsAppIcon className="w-[22px] h-[22px] text-[#25D366]" />
                     </span>
                     <span className="text-[13px] font-bold text-slate-800 text-center">{a.label}</span>
+                    {waUnread > 0 ? (
+                      <span className="absolute top-2 right-2 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        {waUnread > 9 ? '9+' : waUnread}
+                      </span>
+                    ) : null}
                   </button>
                 ) : (
                   <Link

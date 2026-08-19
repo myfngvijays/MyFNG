@@ -1,17 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState, Suspense, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
-  CRM_DATE_PRESETS,
   resolveCrmDateRange,
   type CrmDatePreset,
 } from '@/lib/telecaller/crmDateRange';
 import {
+  defaultTelecallerCrmFilterPrefs,
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '@/lib/telecaller/crmFilterPrefs';
@@ -29,10 +28,68 @@ import {
   Bell,
   Loader2,
   X,
-  MessageCircle,
   SlidersHorizontal,
   ChevronDown,
+  List,
+  LineChart,
+  Columns3,
+  CalendarDays,
 } from 'lucide-react';
+import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel';
+import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkActionsBar';
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
+
+const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v3';
+
+const LEADS_TABLE_COLUMNS = [
+  { key: 'leadNumber', label: 'Lead #', onByDefault: true, locked: true },
+  { key: 'status', label: 'Status', onByDefault: true, locked: false },
+  { key: 'customer', label: 'Customer', onByDefault: true, locked: false },
+  { key: 'phone', label: 'Phone', onByDefault: true, locked: false },
+  { key: 'message', label: 'Message', onByDefault: true, locked: false },
+  { key: 'regNo', label: 'Reg. No', onByDefault: true, locked: false },
+  { key: 'makeModel', label: 'Make / Model', onByDefault: true, locked: false },
+  { key: 'city', label: 'City', onByDefault: true, locked: false },
+  { key: 'priority', label: 'Priority', onByDefault: true, locked: false },
+  { key: 'assignee', label: 'Assignee', onByDefault: true, locked: false },
+  { key: 'date', label: 'Date', onByDefault: true, locked: false },
+  { key: 'actions', label: 'Actions', onByDefault: true, locked: true },
+] as const;
+
+type LeadsColumnKey = (typeof LEADS_TABLE_COLUMNS)[number]['key'];
+type LeadsColumnVisibility = Record<LeadsColumnKey, boolean>;
+
+const DEFAULT_LEADS_COLUMNS: LeadsColumnVisibility = LEADS_TABLE_COLUMNS.reduce((acc, col) => {
+  acc[col.key] = col.onByDefault;
+  return acc;
+}, {} as LeadsColumnVisibility);
+
+function loadLeadsColumnVisibility(): LeadsColumnVisibility {
+  if (typeof window === 'undefined') return { ...DEFAULT_LEADS_COLUMNS };
+  try {
+    const raw = window.localStorage.getItem(LEADS_COLUMNS_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_LEADS_COLUMNS };
+    const parsed = JSON.parse(raw) as Partial<LeadsColumnVisibility>;
+    const next = { ...DEFAULT_LEADS_COLUMNS };
+    for (const col of LEADS_TABLE_COLUMNS) {
+      if (typeof parsed[col.key] === 'boolean') next[col.key] = parsed[col.key]!;
+    }
+    next.leadNumber = true;
+    next.actions = true;
+    return next;
+  } catch {
+    return { ...DEFAULT_LEADS_COLUMNS };
+  }
+}
+
+function saveLeadsColumnVisibility(next: LeadsColumnVisibility) {
+  try {
+    window.localStorage.setItem(LEADS_COLUMNS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
 
 function openLeadWhatsApp(lead: { customer_phone?: string | null; message_preview?: string | null }) {
   const phone = String(lead?.customer_phone || '').replace(/\D/g, '');
@@ -60,24 +117,33 @@ function TelecallerCrmLeadsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const filterParam = searchParams?.get('filter');
-  const initialPrefs = loadTelecallerCrmFilterPrefs();
+  const dateParam = searchParams?.get('date') as CrmDatePreset | null;
+  const cityParam = searchParams?.get('city');
+  const priorityParam = searchParams?.get('priority');
+  const qParam = searchParams?.get('q');
+  const lostParam = searchParams?.get('lost_reason');
+  const telecallerParam = searchParams?.get('telecaller_id');
+  const unassignedParam = searchParams?.get('unassigned');
 
+  // Defaults only — hydrate from localStorage after mount (SSR-safe)
+  const defaults = defaultTelecallerCrmFilterPrefs();
+  const [prefsReady, setPrefsReady] = useState(false);
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const bootedRef = useRef(false);
-  const [q, setQ] = useState('');
-  const [appliedQ, setAppliedQ] = useState('');
-  const [filter, setFilter] = useState(filterParam || initialPrefs.statusFilter || 'all');
-  const [lostReason, setLostReason] = useState('');
-  const [city, setCity] = useState('');
-  const [priority, setPriority] = useState('');
-  const [telecallerId, setTelecallerId] = useState('');
-  const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [q, setQ] = useState(qParam || '');
+  const [appliedQ, setAppliedQ] = useState(qParam || '');
+  const [filter, setFilter] = useState(filterParam || 'all');
+  const [lostReason, setLostReason] = useState(lostParam || '');
+  const [city, setCity] = useState(cityParam || '');
+  const [priority, setPriority] = useState(priorityParam || '');
+  const [telecallerId, setTelecallerId] = useState(telecallerParam || '');
+  const [unassignedOnly, setUnassignedOnly] = useState(unassignedParam === '1');
   const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string | null }>>([]);
-  const [datePreset, setDatePreset] = useState<CrmDatePreset>(initialPrefs.datePreset);
-  const [customStart, setCustomStart] = useState(initialPrefs.customStart);
-  const [customEnd, setCustomEnd] = useState(initialPrefs.customEnd);
+  const [datePreset, setDatePreset] = useState<CrmDatePreset>(dateParam || defaults.datePreset);
+  const [customStart, setCustomStart] = useState(defaults.customStart);
+  const [customEnd, setCustomEnd] = useState(defaults.customEnd);
   const [cities, setCities] = useState<string[]>([]);
   const [shareLead, setShareLead] = useState<any>(null);
   const [peers, setPeers] = useState<any[]>([]);
@@ -88,18 +154,166 @@ function TelecallerCrmLeadsContent() {
   const [advHasVehicle, setAdvHasVehicle] = useState(false);
   const [advHasCoupon, setAdvHasCoupon] = useState(false);
   const [advNoAssignee, setAdvNoAssignee] = useState(false);
-  const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
-  const [drawerMounted, setDrawerMounted] = useState(false);
+  const [advHasPhone, setAdvHasPhone] = useState(false);
+  const [advOverdueReminder, setAdvOverdueReminder] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pageSize, setPageSize] = useState<25 | 50 | 75 | 100>(25);
+  const [page, setPage] = useState(1);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [visibleColumns, setVisibleColumns] = useState<LeadsColumnVisibility>(DEFAULT_LEADS_COLUMNS);
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const columnsMenuRef = useRef<HTMLDivElement>(null);
+  const advancedMenuRef = useRef<HTMLDivElement>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   useEffect(() => {
-    setDrawerMounted(true);
+    setVisibleColumns(loadLeadsColumnVisibility());
   }, []);
 
-  const openLeadDrawer = (leadId: string) => {
-    setDrawerLeadId(leadId);
+  useEffect(() => {
+    if (!columnsMenuOpen && !showAdvanced) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (columnsMenuOpen && !columnsMenuRef.current?.contains(t)) setColumnsMenuOpen(false);
+      if (showAdvanced && !advancedMenuRef.current?.contains(t)) setShowAdvanced(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [columnsMenuOpen, showAdvanced]);
+
+  const showCol = (key: LeadsColumnKey) => {
+    if (key === 'assignee' && !isLeadManager) return false;
+    return Boolean(visibleColumns[key]);
   };
 
-  const closeLeadDrawer = () => setDrawerLeadId(null);
+  const visibleTableCols = useMemo(() => {
+    return LEADS_TABLE_COLUMNS.filter((c) => showCol(c.key));
+  }, [visibleColumns, isLeadManager]);
+
+  const dataColWidthPct = useMemo(() => {
+    const dataCount = visibleTableCols.filter((c) => c.key !== 'actions').length || 1;
+    return `${(100 / dataCount).toFixed(3)}%`;
+  }, [visibleTableCols]);
+
+  const toggleColumn = (key: LeadsColumnKey) => {
+    const meta = LEADS_TABLE_COLUMNS.find((c) => c.key === key);
+    if (meta?.locked) return;
+    setVisibleColumns((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (!LEADS_TABLE_COLUMNS.some((c) => next[c.key] && c.key !== 'actions')) {
+        next.leadNumber = true;
+      }
+      saveLeadsColumnVisibility(next);
+      return next;
+    });
+  };
+
+  const dateRangeLabel = useMemo(
+    () => resolveCrmDateRange(datePreset, customStart, customEnd).label,
+    [datePreset, customStart, customEnd],
+  );
+
+  const advancedOnCount = [
+    advIncomplete,
+    advFollowUp,
+    advHasVehicle,
+    advHasCoupon,
+    advNoAssignee,
+    advHasPhone,
+    advOverdueReminder,
+  ].filter(Boolean).length;
+
+  // Restore saved filters once on client (survives lead open → back)
+  useEffect(() => {
+    const saved = loadTelecallerCrmFilterPrefs();
+    setFilter(filterParam || saved.statusFilter || 'all');
+    setDatePreset((dateParam && dateParam) || saved.datePreset);
+    setCustomStart(saved.customStart);
+    setCustomEnd(saved.customEnd);
+    setLostReason(lostParam || saved.lostReason || '');
+    setCity(cityParam || saved.city || '');
+    setPriority(priorityParam || saved.priority || '');
+    setQ(qParam || saved.q || '');
+    setAppliedQ(qParam || saved.q || '');
+    setTelecallerId(telecallerParam || saved.telecallerId || '');
+    setUnassignedOnly(unassignedParam === '1' || saved.unassignedOnly);
+    setAdvIncomplete(saved.advIncomplete);
+    setAdvFollowUp(saved.advFollowUp);
+    setAdvHasVehicle(saved.advHasVehicle);
+    setAdvHasCoupon(saved.advHasCoupon);
+    setAdvNoAssignee(saved.advNoAssignee);
+    setPrefsReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once on mount / URL entry
+  }, []);
+
+  const syncFiltersToUrl = useCallback(
+    (next: {
+      filter?: string;
+      datePreset?: CrmDatePreset;
+      city?: string;
+      priority?: string;
+      q?: string;
+      lostReason?: string;
+      telecallerId?: string;
+      unassignedOnly?: boolean;
+    }) => {
+      const params = new URLSearchParams(searchParams?.toString() || '');
+      const f = next.filter ?? filter;
+      const d = next.datePreset ?? datePreset;
+      const c = next.city ?? city;
+      const p = next.priority ?? priority;
+      const query = next.q ?? appliedQ;
+      const lr = next.lostReason ?? lostReason;
+      const tid = next.telecallerId ?? telecallerId;
+      const una = next.unassignedOnly ?? unassignedOnly;
+
+      if (!f || f === 'all') params.delete('filter');
+      else params.set('filter', f);
+      if (!d || d === 'last_7_days') params.delete('date');
+      else params.set('date', d);
+      if (!c) params.delete('city');
+      else params.set('city', c);
+      if (!p) params.delete('priority');
+      else params.set('priority', p);
+      if (!query) params.delete('q');
+      else params.set('q', query);
+      if (f === 'lost' && lr) params.set('lost_reason', lr);
+      else params.delete('lost_reason');
+      if (isLeadManager && tid) params.set('telecaller_id', tid);
+      else params.delete('telecaller_id');
+      if (isLeadManager && una) params.set('unassigned', '1');
+      else params.delete('unassigned');
+
+      const qs = params.toString();
+      router.replace(`${base}/leads${qs ? `?${qs}` : ''}`, { scroll: false });
+    },
+    [
+      searchParams,
+      filter,
+      datePreset,
+      city,
+      priority,
+      appliedQ,
+      lostReason,
+      telecallerId,
+      unassignedOnly,
+      isLeadManager,
+      router,
+      base,
+    ],
+  );
+
+  const persistAll = useCallback(
+    (partial: Parameters<typeof saveTelecallerCrmFilterPrefs>[0]) => {
+      saveTelecallerCrmFilterPrefs(partial);
+    },
+    [],
+  );
+
+  const openLead = (leadId: string) => {
+    router.push(`${base}/leads/${leadId}`);
+  };
 
   const displayedLeads = useMemo(() => {
     return leads.filter((lead) => {
@@ -118,9 +332,23 @@ function TelecallerCrmLeadsContent() {
         if (!code) return false;
       }
       if (advNoAssignee && lead.assigned_telecaller_id) return false;
+      if (advHasPhone && !String(lead.customer_phone || '').trim()) return false;
+      if (advOverdueReminder) {
+        const at = lead.reminder?.at || lead.next_follow_up_at;
+        if (!at || new Date(at).getTime() >= Date.now()) return false;
+      }
       return true;
     });
-  }, [leads, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon, advNoAssignee]);
+  }, [
+    leads,
+    advIncomplete,
+    advFollowUp,
+    advHasVehicle,
+    advHasCoupon,
+    advNoAssignee,
+    advHasPhone,
+    advOverdueReminder,
+  ]);
 
   const persistDate = (next: {
     datePreset?: CrmDatePreset;
@@ -128,20 +356,11 @@ function TelecallerCrmLeadsContent() {
     customEnd?: string;
   }) => {
     if (next.datePreset) setDatePreset(next.datePreset);
-    if (next.customStart) setCustomStart(next.customStart);
-    if (next.customEnd) setCustomEnd(next.customEnd);
-    saveTelecallerCrmFilterPrefs(next);
+    if (typeof next.customStart === 'string') setCustomStart(next.customStart);
+    if (typeof next.customEnd === 'string') setCustomEnd(next.customEnd);
+    persistAll(next);
+    if (next.datePreset) syncFiltersToUrl({ datePreset: next.datePreset });
   };
-
-  useEffect(() => {
-    if (filterParam) {
-      setFilter(filterParam);
-      saveTelecallerCrmFilterPrefs({ statusFilter: filterParam });
-      return;
-    }
-    const saved = loadTelecallerCrmFilterPrefs().statusFilter || 'all';
-    setFilter(saved);
-  }, [filterParam]);
 
   useEffect(() => {
     (async () => {
@@ -184,12 +403,51 @@ function TelecallerCrmLeadsContent() {
     })();
   }, [isLeadManager]);
 
+  const toggleSelect = (id: string) => {
+    if (!isLeadManager) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const pageLeadIds = useMemo(
+    () => displayedLeads.map((l) => String(l.id)).filter(Boolean),
+    [displayedLeads],
+  );
+
+  const allPageSelected =
+    isLeadManager && pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectPage = () => {
+    if (!isLeadManager) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        pageLeadIds.forEach((id) => next.delete(id));
+      } else {
+        pageLeadIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
   const load = useCallback(async () => {
+    if (!prefsReady) return;
     if (bootedRef.current) setRefreshing(true);
     else setLoading(true);
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams();
+      if (viewMode === 'chart') {
+        params.set('limit', '100');
+        params.set('page', '1');
+      } else {
+        params.set('limit', String(pageSize));
+        params.set('page', String(page));
+      }
       if (filter && filter !== 'all') params.set('filter', filter);
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (appliedQ.trim()) params.set('q', appliedQ.trim());
@@ -197,28 +455,82 @@ function TelecallerCrmLeadsContent() {
       if (priority.trim()) params.set('priority', priority.trim());
       if (isLeadManager && telecallerId.trim()) params.set('telecaller_id', telecallerId.trim());
       if (isLeadManager && unassignedOnly) params.set('unassigned', '1');
-      params.set('from', range.start);
-      params.set('to', range.end);
+      if (!range.allTime) {
+        params.set('from', range.start);
+        params.set('to', range.end);
+      }
       const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed');
       setLeads(Array.isArray(data?.leads) ? data.leads : []);
+      setTotalLeads(Number(data?.total || 0));
     } catch (e) {
       console.error(e);
       if (!bootedRef.current) setLeads([]);
+      setTotalLeads(0);
     } finally {
       setLoading(false);
       setRefreshing(false);
       bootedRef.current = true;
     }
-  }, [filter, lostReason, appliedQ, city, priority, datePreset, customStart, customEnd, isLeadManager, telecallerId, unassignedOnly]);
+  }, [
+    prefsReady,
+    viewMode,
+    page,
+    pageSize,
+    filter,
+    lostReason,
+    appliedQ,
+    city,
+    priority,
+    datePreset,
+    customStart,
+    customEnd,
+    isLeadManager,
+    telecallerId,
+    unassignedOnly,
+  ]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // Reset to page 1 when filters change (not when page itself changes)
+  useEffect(() => {
+    setPage(1);
+  }, [
+    filter,
+    lostReason,
+    appliedQ,
+    city,
+    priority,
+    datePreset,
+    customStart,
+    customEnd,
+    telecallerId,
+    unassignedOnly,
+    pageSize,
+    advIncomplete,
+    advFollowUp,
+    advHasVehicle,
+    advHasCoupon,
+    advNoAssignee,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(totalLeads / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const pageStart = totalLeads === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(safePage * pageSize, totalLeads);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const runSearch = () => {
-    setAppliedQ(q.trim());
+    const nextQ = q.trim();
+    setAppliedQ(nextQ);
+    persistAll({ q: nextQ });
+    syncFiltersToUrl({ q: nextQ });
   };
 
   const openShare = async (lead: any) => {
@@ -259,35 +571,121 @@ function TelecallerCrmLeadsContent() {
 
   const setFilterAndUrl = (id: string) => {
     setFilter(id);
-    saveTelecallerCrmFilterPrefs({ statusFilter: id });
     if (id !== 'lost') setLostReason('');
-    const next = new URLSearchParams(searchParams?.toString() || '');
-    if (id === 'all') next.delete('filter');
-    else next.set('filter', id);
-    router.replace(`${base}/leads${next.toString() ? `?${next}` : ''}`);
+    persistAll({ statusFilter: id, lostReason: id === 'lost' ? lostReason : '' });
+    syncFiltersToUrl({ filter: id, lostReason: id === 'lost' ? lostReason : '' });
   };
 
   return (
     <DashboardLayout role={layoutRole}>
-      <div className="w-full max-w-7xl mx-auto space-y-5 pb-24">
+      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4 pb-24">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-500">Advanced CRM</p>
             <h1 className="text-2xl md:text-3xl font-extrabold text-[#023D95]">Leads</h1>
             <p className="text-sm text-slate-500 mt-0.5">
               {isLeadManager
-                ? 'Click a lead to open full Service Lead Details (side panel). Assign / filter by telecaller.'
+                ? 'Click a lead to open full Service Lead Details. Assign / filter by telecaller.'
                 : 'Sirf aapke assigned (ya aapke banaye) leads — WhatsApp · 6161 sticky pe niche.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('chart')}
+                title="Chart view"
+                aria-pressed={viewMode === 'chart'}
+                style={
+                  viewMode === 'chart'
+                    ? { backgroundColor: '#004AAD', color: '#fff' }
+                    : { color: '#334155' }
+                }
+                className={`inline-flex h-9 w-10 items-center justify-center rounded-full transition ${
+                  viewMode === 'chart' ? 'shadow-sm' : 'hover:bg-slate-50'
+                }`}
+              >
+                <LineChart className="h-4 w-4" stroke="currentColor" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                title="List view"
+                aria-pressed={viewMode === 'list'}
+                style={
+                  viewMode === 'list'
+                    ? { backgroundColor: '#004AAD', color: '#fff' }
+                    : { color: '#334155' }
+                }
+                className={`inline-flex h-9 w-10 items-center justify-center rounded-full transition ${
+                  viewMode === 'list' ? 'shadow-sm' : 'hover:bg-slate-50'
+                }`}
+              >
+                <List className="h-4 w-4" stroke="currentColor" />
+              </button>
+            </div>
+            {viewMode === 'list' ? (
+              <div className="relative shrink-0" ref={columnsMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setColumnsMenuOpen((o) => !o)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700"
+                  aria-expanded={columnsMenuOpen}
+                >
+                  <Columns3 className="h-4 w-4" />
+                  Columns
+                  <ChevronDown className={`h-4 w-4 transition ${columnsMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {columnsMenuOpen ? (
+                  <div className="absolute right-0 z-40 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        Show columns
+                      </p>
+                      <button
+                        type="button"
+                        className="text-[11px] font-bold text-[#004AAD]"
+                        onClick={() => {
+                          const next = { ...DEFAULT_LEADS_COLUMNS };
+                          setVisibleColumns(next);
+                          saveLeadsColumnVisibility(next);
+                        }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                      {LEADS_TABLE_COLUMNS.filter(
+                        (c) => c.key !== 'assignee' || isLeadManager,
+                      ).map((col) => (
+                        <label
+                          key={col.key}
+                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                            col.locked ? 'opacity-60' : 'hover:bg-slate-50 cursor-pointer'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300"
+                            checked={showCol(col.key)}
+                            disabled={col.locked}
+                            onChange={() => toggleColumn(col.key)}
+                          />
+                          <span className="font-semibold text-slate-700">{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'))}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
+              title="WhatsApp · 6161"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
             >
-              <MessageCircle className="h-4 w-4" />
-              WhatsApp
+              <WhatsAppIcon className="h-5 w-5" />
             </button>
             <Link
               href={`${base}/book`}
@@ -298,13 +696,83 @@ function TelecallerCrmLeadsContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-          <div className="min-w-0">
-            <label className="mb-1 block text-xs font-bold text-slate-500">Status</label>
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-3.5 shadow-sm space-y-3">
+          {/* Search + clear in same bar */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                placeholder="Search name, phone, lead #"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+              />
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterAndUrl('all');
+                  setCity('');
+                  setPriority('');
+                  setTelecallerId('');
+                  setUnassignedOnly(false);
+                  setLostReason('');
+                  setQ('');
+                  setAppliedQ('');
+                  setAdvIncomplete(false);
+                  setAdvFollowUp(false);
+                  setAdvHasVehicle(false);
+                  setAdvHasCoupon(false);
+                  setAdvNoAssignee(false);
+                  setAdvHasPhone(false);
+                  setAdvOverdueReminder(false);
+                  persistAll({
+                    statusFilter: 'all',
+                    city: '',
+                    priority: '',
+                    telecallerId: '',
+                    unassignedOnly: false,
+                    lostReason: '',
+                    q: '',
+                    advIncomplete: false,
+                    advFollowUp: false,
+                    advHasVehicle: false,
+                    advHasCoupon: false,
+                    advNoAssignee: false,
+                  });
+                  syncFiltersToUrl({
+                    filter: 'all',
+                    city: '',
+                    priority: '',
+                    telecallerId: '',
+                    unassignedOnly: false,
+                    lostReason: '',
+                    q: '',
+                  });
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                <X className="h-4 w-4" /> Clear
+              </button>
+              <button
+                type="button"
+                onClick={runSearch}
+                className="rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
+              >
+                Search
+              </button>
+            </div>
+          </div>
+
+          {/* Compact filter dropdowns */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
             <select
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
               value={filter}
               onChange={(e) => setFilterAndUrl(e.target.value)}
+              aria-label="Status"
             >
               {LEAD_STATUS_FILTERS.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -312,30 +780,27 @@ function TelecallerCrmLeadsContent() {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="min-w-0">
-            <label className="mb-1 block text-xs font-bold text-slate-500">Date</label>
-            <select
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
-              value={datePreset}
-              onChange={(e) => {
-                const v = e.target.value as CrmDatePreset;
-                persistDate({ datePreset: v });
-              }}
+
+            <button
+              type="button"
+              onClick={() => setDatePickerOpen(true)}
+              className="w-full inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left text-sm font-semibold text-slate-800 hover:border-blue-300"
+              title="Select date"
             >
-              {CRM_DATE_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-0">
-            <label className="mb-1 block text-xs font-bold text-slate-500">City</label>
+              <CalendarDays className="h-4 w-4 text-[#004AAD] shrink-0" />
+              <span className="truncate">{dateRangeLabel}</span>
+            </button>
+
             <select
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
               value={city}
-              onChange={(e) => setCity(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setCity(v);
+                persistAll({ city: v });
+                syncFiltersToUrl({ city: v });
+              }}
+              aria-label="City"
             >
               <option value="">All cities</option>
               {cities.map((c) => (
@@ -344,13 +809,17 @@ function TelecallerCrmLeadsContent() {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="min-w-0">
-            <label className="mb-1 block text-xs font-bold text-slate-500">Priority</label>
+
             <select
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+              className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
               value={priority}
-              onChange={(e) => setPriority(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPriority(v);
+                persistAll({ priority: v });
+                syncFiltersToUrl({ priority: v });
+              }}
+              aria-label="Priority"
             >
               {PRIORITY_OPTIONS.map((o) => (
                 <option key={o.value || 'all'} value={o.value}>
@@ -358,23 +827,26 @@ function TelecallerCrmLeadsContent() {
                 </option>
               ))}
             </select>
-          </div>
-          {isLeadManager ? (
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-bold text-slate-500">Telecaller</label>
+
+            {isLeadManager ? (
               <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+                className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
                 value={unassignedOnly ? '__unassigned__' : telecallerId}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === '__unassigned__') {
                     setUnassignedOnly(true);
                     setTelecallerId('');
+                    persistAll({ unassignedOnly: true, telecallerId: '' });
+                    syncFiltersToUrl({ unassignedOnly: true, telecallerId: '' });
                   } else {
                     setUnassignedOnly(false);
                     setTelecallerId(v);
+                    persistAll({ unassignedOnly: false, telecallerId: v });
+                    syncFiltersToUrl({ unassignedOnly: false, telecallerId: v });
                   }
                 }}
+                aria-label="Telecaller"
               >
                 <option value="">All telecallers</option>
                 <option value="__unassigned__">Unassigned only</option>
@@ -384,15 +856,19 @@ function TelecallerCrmLeadsContent() {
                   </option>
                 ))}
               </select>
-            </div>
-          ) : null}
-          {filter === 'lost' ? (
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-bold text-slate-500">Lost reason</label>
+            ) : null}
+
+            {filter === 'lost' ? (
               <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
+                className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-800"
                 value={lostReason}
-                onChange={(e) => setLostReason(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setLostReason(v);
+                  persistAll({ lostReason: v });
+                  syncFiltersToUrl({ lostReason: v });
+                }}
+                aria-label="Lost reason"
               >
                 {LOST_REASON_FILTERS.map((f) => (
                   <option key={f.id || 'all-lost'} value={f.id}>
@@ -400,173 +876,148 @@ function TelecallerCrmLeadsContent() {
                   </option>
                 ))}
               </select>
-            </div>
-          ) : null}
-          {datePreset === 'custom' ? (
-            <>
-              <div className="min-w-0">
-                <label className="mb-1 block text-xs font-bold text-slate-500">From</label>
-                <input
-                  type="date"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={customStart}
-                  onChange={(e) => persistDate({ customStart: e.target.value, datePreset: 'custom' })}
-                />
-              </div>
-              <div className="min-w-0">
-                <label className="mb-1 block text-xs font-bold text-slate-500">To</label>
-                <input
-                  type="date"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  value={customEnd}
-                  onChange={(e) => persistDate({ customEnd: e.target.value, datePreset: 'custom' })}
-                />
-              </div>
-            </>
-          ) : null}
-        </div>
+            ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((v) => !v)}
-            className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50"
-          >
-            <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-800">
-              <SlidersHorizontal className="h-4 w-4 text-[#023D95]" />
-              Advanced filters
-              {(advIncomplete || advFollowUp || advHasVehicle || advHasCoupon || advNoAssignee) && (
-                <span className="rounded-full bg-[#023D95] px-2 py-0.5 text-[10px] font-bold text-white">
-                  ON
+            <div className="relative" ref={advancedMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="w-full inline-flex items-center justify-between gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold text-slate-800"
+                aria-expanded={showAdvanced}
+              >
+                <span className="inline-flex items-center gap-1.5 truncate">
+                  <SlidersHorizontal className="h-4 w-4 text-[#023D95] shrink-0" />
+                  More filters
+                  {advancedOnCount > 0 ? (
+                    <span className="rounded-full bg-[#023D95] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      {advancedOnCount}
+                    </span>
+                  ) : null}
                 </span>
-              )}
-            </span>
-            <ChevronDown
-              className={`h-4 w-4 text-slate-500 transition ${showAdvanced ? 'rotate-180' : ''}`}
-            />
-          </button>
-          {showAdvanced ? (
-            <div className="border-t border-slate-100 px-4 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2">
-              {[
-                {
-                  id: 'incomplete',
-                  label: 'Incomplete only',
-                  checked: advIncomplete,
-                  set: setAdvIncomplete,
-                },
-                {
-                  id: 'followup',
-                  label: 'Follow-up / reminder',
-                  checked: advFollowUp,
-                  set: setAdvFollowUp,
-                },
-                {
-                  id: 'vehicle',
-                  label: 'Has reg. number',
-                  checked: advHasVehicle,
-                  set: setAdvHasVehicle,
-                },
-                {
-                  id: 'coupon',
-                  label: 'Has coupon',
-                  checked: advHasCoupon,
-                  set: setAdvHasCoupon,
-                },
-                ...(isLeadManager
-                  ? [
-                      {
-                        id: 'noassignee',
-                        label: 'Unassigned only',
-                        checked: advNoAssignee,
-                        set: setAdvNoAssignee,
-                      },
-                    ]
-                  : []),
-              ].map((opt) => (
-                <label
-                  key={opt.id}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold cursor-pointer ${
-                    opt.checked
-                      ? 'border-[#023D95] bg-blue-50 text-[#023D95]'
-                      : 'border-slate-200 text-slate-700'
+                <ChevronDown className={`h-4 w-4 shrink-0 transition ${showAdvanced ? 'rotate-180' : ''}`} />
+              </button>
+              {showAdvanced ? (
+                <div className="absolute left-0 right-0 z-40 mt-1.5 min-w-[240px] rounded-xl border border-slate-200 bg-white p-2 shadow-lg sm:right-auto sm:w-72">
+                  {[
+                    {
+                      id: 'incomplete',
+                      label: 'Incomplete only',
+                      checked: advIncomplete,
+                      set: setAdvIncomplete,
+                      key: 'advIncomplete' as const,
+                    },
+                    {
+                      id: 'followup',
+                      label: 'Follow-up / reminder',
+                      checked: advFollowUp,
+                      set: setAdvFollowUp,
+                      key: 'advFollowUp' as const,
+                    },
+                    {
+                      id: 'overdue',
+                      label: 'Overdue reminder',
+                      checked: advOverdueReminder,
+                      set: setAdvOverdueReminder,
+                      key: null,
+                    },
+                    {
+                      id: 'phone',
+                      label: 'Has phone',
+                      checked: advHasPhone,
+                      set: setAdvHasPhone,
+                      key: null,
+                    },
+                    {
+                      id: 'vehicle',
+                      label: 'Has reg. number',
+                      checked: advHasVehicle,
+                      set: setAdvHasVehicle,
+                      key: 'advHasVehicle' as const,
+                    },
+                    {
+                      id: 'coupon',
+                      label: 'Has coupon',
+                      checked: advHasCoupon,
+                      set: setAdvHasCoupon,
+                      key: 'advHasCoupon' as const,
+                    },
+                    ...(isLeadManager
+                      ? [
+                          {
+                            id: 'noassignee',
+                            label: 'Unassigned only',
+                            checked: advNoAssignee,
+                            set: setAdvNoAssignee,
+                            key: 'advNoAssignee' as const,
+                          },
+                        ]
+                      : []),
+                  ].map((opt) => (
+                    <label
+                      key={opt.id}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded border-slate-300"
+                        checked={opt.checked}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          opt.set(checked);
+                          if (opt.key) persistAll({ [opt.key]: checked });
+                        }}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {LEAD_STATUS_FILTERS.map((f) => {
+              const active = filter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFilterAndUrl(f.id)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold border transition ${
+                    active
+                      ? 'bg-[#004AAD] text-white border-[#004AAD]'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-blue-300'
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    className="rounded border-slate-300"
-                    checked={opt.checked}
-                    onChange={(e) => opt.set(e.target.checked)}
-                  />
-                  {opt.label}
-                </label>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-          <div className="relative min-w-0 flex-1 max-w-xl">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
-              placeholder="Search name, phone, lead #"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-            />
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setFilterAndUrl('all');
-                setCity('');
-                setPriority('');
-                setTelecallerId('');
-                setUnassignedOnly(false);
-                setLostReason('');
-                setQ('');
-                setAppliedQ('');
-                setAdvIncomplete(false);
-                setAdvFollowUp(false);
-                setAdvHasVehicle(false);
-                setAdvHasCoupon(false);
-                setAdvNoAssignee(false);
-              }}
-              className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-            >
-              <X className="h-4 w-4" /> Clear
-            </button>
-            <button
-              type="button"
-              onClick={runSearch}
-              className="flex-1 sm:flex-none rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
-            >
-              Search
-            </button>
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* quick status chips */}
-        <div className="flex flex-wrap gap-2">
-          {LEAD_STATUS_FILTERS.map((f) => {
-            const active = filter === f.id;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setFilterAndUrl(f.id)}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold border transition ${
-                  active
-                    ? 'bg-[#004AAD] text-white border-[#004AAD]'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
+        <CrmDatePickerModal
+          open={datePickerOpen}
+          onClose={() => setDatePickerOpen(false)}
+          value={{ datePreset, customStart, customEnd }}
+          onApply={(next) => {
+            persistDate({
+              datePreset: next.datePreset,
+              customStart: next.customStart,
+              customEnd: next.customEnd,
+            });
+          }}
+        />
+
+        {isLeadManager && selectedIds.size > 0 ? (
+          <ManagerBulkActionsBar
+            selectedIds={Array.from(selectedIds)}
+            telecallers={telecallers}
+            allowBulkWhatsApp
+            onClear={() => setSelectedIds(new Set())}
+            onDone={() => void load()}
+          />
+        ) : null}
 
         {refreshing ? (
           <p className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
@@ -574,7 +1025,15 @@ function TelecallerCrmLeadsContent() {
           </p>
         ) : null}
 
-        {loading ? (
+        {viewMode === 'chart' ? (
+          loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
+              <Loader2 className="h-5 w-5 animate-spin" /> Loading chart…
+            </div>
+          ) : (
+            <BookingsLeadsChartPanel leads={displayedLeads} />
+          )
+        ) : loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
             <Loader2 className="h-5 w-5 animate-spin" /> Loading leads…
           </div>
@@ -584,24 +1043,82 @@ function TelecallerCrmLeadsContent() {
           </div>
         ) : (
           <>
-            {/* Desktop table — SA-style, no lead source column */}
-            <div className="hidden lg:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
+            {/* Desktop table — visible cols share width (no blank gaps when unchecked) */}
+            <div className="hidden lg:block w-full overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full table-fixed text-left text-sm">
                   <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-4 py-3 whitespace-nowrap">Lead #</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Customer</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Phone</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Message</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Reg. No</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Make / Model</th>
                       {isLeadManager ? (
-                        <th className="px-4 py-3 whitespace-nowrap">Assignee</th>
+                        <th className="px-2 py-2 w-10">
+                          <input
+                            type="checkbox"
+                            checked={allPageSelected}
+                            onChange={toggleSelectPage}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Select all on page"
+                          />
+                        </th>
                       ) : null}
-                      <th className="px-4 py-3 whitespace-nowrap">Date</th>
-                      <th className="px-4 py-3 whitespace-nowrap">Actions</th>
+                      {showCol('leadNumber') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Lead #
+                        </th>
+                      ) : null}
+                      {showCol('status') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Status
+                        </th>
+                      ) : null}
+                      {showCol('customer') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Customer
+                        </th>
+                      ) : null}
+                      {showCol('phone') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Phone
+                        </th>
+                      ) : null}
+                      {showCol('message') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Message
+                        </th>
+                      ) : null}
+                      {showCol('regNo') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Reg. No
+                        </th>
+                      ) : null}
+                      {showCol('makeModel') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Make / Model
+                        </th>
+                      ) : null}
+                      {showCol('city') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          City
+                        </th>
+                      ) : null}
+                      {showCol('priority') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Priority
+                        </th>
+                      ) : null}
+                      {showCol('assignee') && isLeadManager ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Assignee
+                        </th>
+                      ) : null}
+                      {showCol('date') ? (
+                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                          Date
+                        </th>
+                      ) : null}
+                      {showCol('actions') ? (
+                        <th className="sticky right-0 z-20 w-[112px] bg-slate-50 px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.18)]">
+                          Actions
+                        </th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -625,98 +1142,156 @@ function TelecallerCrmLeadsContent() {
                       return (
                         <tr
                           key={lead.id}
-                          className="hover:bg-slate-50/80 cursor-pointer"
-                          onClick={() => openLeadDrawer(String(lead.id))}
+                          className={`group hover:bg-slate-50/80 cursor-pointer ${
+                            isLeadManager && selectedIds.has(String(lead.id)) ? 'bg-blue-50/60' : ''
+                          }`}
+                          onClick={() => openLead(String(lead.id))}
                         >
-                          <td className="px-4 py-3 font-extrabold text-[#023D95] whitespace-nowrap">
-                            {lead.lead_number || lead.id?.slice(0, 8)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span
-                              className="inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold"
-                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
-                            >
-                              {statusLabel}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
-                            {lead.customer_name || 'Unknown'}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                            {lead.customer_phone || '—'}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 max-w-[220px] truncate" title={String(msg)}>
-                            {String(msg)}
-                          </td>
-                          <td
-                            className="px-4 py-3 text-slate-800 font-semibold whitespace-nowrap uppercase"
-                            title={regDisplay}
-                          >
-                            {regDisplay}
-                          </td>
-                          <td
-                            className="px-4 py-3 text-slate-700 max-w-[180px] truncate"
-                            title={makeModel}
-                          >
-                            {makeModel}
-                          </td>
                           {isLeadManager ? (
-                            <td className="px-4 py-3 text-indigo-700 font-semibold text-xs whitespace-nowrap">
+                            <td
+                              className="px-2 py-2"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelect(String(lead.id));
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(String(lead.id))}
+                                onChange={() => toggleSelect(String(lead.id))}
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Select ${lead.lead_number || lead.id}`}
+                              />
+                            </td>
+                          ) : null}
+                          {showCol('leadNumber') ? (
+                            <td className="px-2 py-2 font-extrabold text-[#023D95] truncate text-[13px]">
+                              {lead.lead_number || lead.id?.slice(0, 8)}
+                            </td>
+                          ) : null}
+                          {showCol('status') ? (
+                            <td className="px-2 py-2 truncate">
+                              <span
+                                className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold"
+                                style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
+                              >
+                                {statusLabel}
+                              </span>
+                            </td>
+                          ) : null}
+                          {showCol('customer') ? (
+                            <td className="px-2 py-2 font-semibold text-slate-900 truncate">
+                              {lead.customer_name || 'Unknown'}
+                            </td>
+                          ) : null}
+                          {showCol('phone') ? (
+                            <td className="px-2 py-2 text-slate-700 truncate text-[13px]">
+                              {lead.customer_phone || '—'}
+                            </td>
+                          ) : null}
+                          {showCol('message') ? (
+                            <td
+                              className="px-2 py-2 text-slate-600 max-w-[180px] truncate text-[12px]"
+                              title={String(msg)}
+                            >
+                              {String(msg)}
+                            </td>
+                          ) : null}
+                          {showCol('regNo') ? (
+                            <td
+                              className="px-2 py-2 text-slate-800 font-semibold whitespace-nowrap uppercase text-[12px]"
+                              title={regDisplay}
+                            >
+                              {regDisplay}
+                            </td>
+                          ) : null}
+                          {showCol('makeModel') ? (
+                            <td
+                              className="px-2 py-2 text-slate-700 truncate text-[12px]"
+                              title={makeModel}
+                            >
+                              {makeModel}
+                            </td>
+                          ) : null}
+                          {showCol('city') ? (
+                            <td className="px-2 py-2 text-slate-700 truncate text-[12px]">
+                              {lead.city || lead.workshop?.city || '—'}
+                            </td>
+                          ) : null}
+                          {showCol('priority') ? (
+                            <td className="px-2 py-2 text-slate-700 truncate text-[12px] font-semibold">
+                              {lead.lead_priority || lead.priority || 'NORMAL'}
+                            </td>
+                          ) : null}
+                          {showCol('assignee') && isLeadManager ? (
+                            <td className="px-2 py-2 text-indigo-700 font-semibold text-xs whitespace-nowrap">
                               {lead.assigned_telecaller?.full_name || 'Unassigned'}
                             </td>
                           ) : null}
-                          <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                            {lead.created_at
-                              ? new Date(lead.created_at).toLocaleString('en-IN', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : '—'}
-                          </td>
-                          <td
-                            className="px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center gap-2">
-                              {lead.customer_phone ? (
-                                <a
-                                  href={`tel:${lead.customer_phone}`}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
-                                >
-                                  <Phone className="h-3.5 w-3.5" /> Call
-                                </a>
-                              ) : null}
-                              {lead.customer_phone ? (
+                          {showCol('date') ? (
+                            <td className="px-2 py-2 text-[11px] text-slate-500 whitespace-nowrap">
+                              {lead.created_at
+                                ? new Date(lead.created_at).toLocaleString('en-IN', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : '—'}
+                            </td>
+                          ) : null}
+                          {showCol('actions') ? (
+                            <td
+                              className={`sticky right-0 z-10 px-2 py-2 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)] ${
+                                isLeadManager && selectedIds.has(String(lead.id))
+                                  ? 'bg-blue-50'
+                                  : 'bg-white group-hover:bg-slate-50'
+                              }`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex items-center justify-end gap-1">
+                                {lead.customer_phone ? (
+                                  <a
+                                    href={`tel:${lead.customer_phone}`}
+                                    title="Call"
+                                    aria-label="Call"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                  >
+                                    <Phone className="h-4 w-4" />
+                                  </a>
+                                ) : null}
+                                {lead.customer_phone ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openLeadWhatsApp(lead)}
+                                    title="WhatsApp"
+                                    aria-label="WhatsApp"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#25D366]/15 text-[#25D366] ring-1 ring-[#25D366]/40 hover:bg-[#25D366]/25"
+                                  >
+                                    <WhatsAppIcon className="h-4 w-4" />
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
-                                  onClick={() => openLeadWhatsApp(lead)}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-[#25D366]/15 px-2.5 py-1.5 text-xs font-bold text-[#128C7E] ring-1 ring-[#25D366]/40"
-                                  title="WhatsApp · 6161"
+                                  onClick={() => openShare(lead)}
+                                  title="Share"
+                                  aria-label="Share"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
                                 >
-                                  <MessageCircle className="h-3.5 w-3.5" /> WA
+                                  <Share2 className="h-4 w-4" />
                                 </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                onClick={() => openShare(lead)}
-                                className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
-                              >
-                                <Share2 className="h-3.5 w-3.5" /> Share
-                              </button>
-                            </div>
-                          </td>
+                              </div>
+                            </td>
+                          ) : null}
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              </div>
             </div>
 
             {/* Mobile / tablet cards */}
-            <div className="grid grid-cols-1 gap-3 lg:hidden">
+            <div className="grid grid-cols-1 gap-2 lg:hidden">
               {displayedLeads.map((lead) => {
                 const tint = leadStatusCardColors(lead);
                 const statusLabel = leadDisplayStatus(lead);
@@ -730,16 +1305,32 @@ function TelecallerCrmLeadsContent() {
                     key={lead.id}
                     role="link"
                     tabIndex={0}
-                    onClick={() => openLeadDrawer(String(lead.id))}
+                    onClick={() => openLead(String(lead.id))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        openLeadDrawer(String(lead.id));
+                        openLead(String(lead.id));
                       }
                     }}
                     className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004AAD]"
                     style={{ backgroundColor: tint.cardBg, borderColor: tint.border }}
                   >
+                    {isLeadManager ? (
+                      <div
+                        className="mb-2"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(String(lead.id))}
+                            onChange={() => toggleSelect(String(lead.id))}
+                          />
+                          Select
+                        </label>
+                      </div>
+                    ) : null}
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -847,26 +1438,32 @@ function TelecallerCrmLeadsContent() {
                         {lead.customer_phone ? (
                           <a
                             href={`tel:${lead.customer_phone}`}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"
+                            title="Call"
+                            aria-label="Call"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/80 text-emerald-700 ring-1 ring-emerald-200"
                           >
-                            <Phone className="h-3.5 w-3.5" /> Call
+                            <Phone className="h-4 w-4" />
                           </a>
                         ) : null}
                         {lead.customer_phone ? (
                           <button
                             type="button"
                             onClick={() => openLeadWhatsApp(lead)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#25D366] px-3 py-2 text-xs font-bold text-white shadow-sm"
+                            title="WhatsApp"
+                            aria-label="WhatsApp"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
                           >
-                            <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                            <WhatsAppIcon className="h-4 w-4" />
                           </button>
                         ) : null}
                         <button
                           type="button"
                           onClick={() => openShare(lead)}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
+                          title="Share"
+                          aria-label="Share"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/80 text-slate-600 ring-1 ring-slate-200"
                         >
-                          <Share2 className="h-3.5 w-3.5" /> Share
+                          <Share2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
@@ -874,6 +1471,51 @@ function TelecallerCrmLeadsContent() {
                 );
               })}
             </div>
+
+            {viewMode === 'list' ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200 bg-white px-3 py-3">
+                <p className="text-xs font-semibold text-slate-500">
+                  {totalLeads === 0
+                    ? 'No leads'
+                    : `Showing ${pageStart}–${pageEnd} of ${totalLeads.toLocaleString('en-IN')}`}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                    Per page
+                    <select
+                      className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold"
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value) as 25 | 50 | 75 | 100)}
+                    >
+                      {[25, 50, 75, 100].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={safePage <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+                  <span className="text-xs font-bold text-slate-600 tabular-nums">
+                    {safePage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safePage >= totalPages || loading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </div>
@@ -928,52 +1570,6 @@ function TelecallerCrmLeadsContent() {
           </div>
         </div>
       ) : null}
-
-      {drawerMounted &&
-        drawerLeadId &&
-        createPortal(
-          <div className="fixed inset-0 z-[90] flex justify-end">
-            <button
-              type="button"
-              aria-label="Close lead details"
-              className="flex-1 min-w-0 bg-black/40"
-              onClick={closeLeadDrawer}
-            />
-            <aside
-              role="dialog"
-              aria-modal="true"
-              aria-label="Service Lead Details"
-              className="relative z-10 flex h-full w-full sm:w-[min(96vw,1280px)] flex-col bg-white shadow-2xl border-l border-slate-200"
-            >
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 shrink-0 bg-white">
-                <p className="text-sm font-extrabold text-[#023D95] truncate">Service Lead Details</p>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={`${base}/leads/${drawerLeadId}?edit=1`}
-                    className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50"
-                    onClick={closeLeadDrawer}
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={closeLeadDrawer}
-                    className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-                    aria-label="Close"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-              <iframe
-                title="Lead details"
-                src={`${base}/leads/${drawerLeadId}?embed=1`}
-                className="flex-1 min-h-0 w-full border-0 bg-slate-50"
-              />
-            </aside>
-          </div>,
-          document.body,
-        )}
     </DashboardLayout>
   );
 }

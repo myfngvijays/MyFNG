@@ -22,9 +22,10 @@ type Props = {
   navigation: any;
   /** When true, refresh attendance + Aansh (parent CRM tab active) */
   active?: boolean;
+  isLeadManager?: boolean;
 };
 
-export default function CrmMeTab({ navigation, active = true }: Props) {
+export default function CrmMeTab({ navigation, active = true, isLeadManager = false }: Props) {
   const [segment, setSegment] = useState<'attendance' | 'profile'>('attendance');
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
@@ -148,6 +149,32 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
       <Text style={styles.title}>Workforce Timings</Text>
       <Text style={styles.sub}>Punch in when you start calling. Punch out when you leave.</Text>
 
+      {isLeadManager ? (
+        <View style={styles.mgrLinks}>
+          <TouchableOpacity
+            style={styles.mgrLink}
+            onPress={() => navigation.navigate('LeadManagerFloor')}
+          >
+            <Ionicons name="people-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.mgrLinkText}>Live floor</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mgrLink}
+            onPress={() => navigation.navigate('LeadManagerTeamWhatsApp')}
+          >
+            <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+            <Text style={styles.mgrLinkText}>Team WA</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mgrLink}
+            onPress={() => navigation.navigate('LeadManagerWhatsAppDnd')}
+          >
+            <Ionicons name="ban-outline" size={18} color="#DC2626" />
+            <Text style={styles.mgrLinkText}>WA DND</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {data?.warning ? (
         <View style={styles.warnBox}>
           <Ionicons name="warning-outline" size={18} color={COLORS.orange} />
@@ -260,6 +287,19 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: SPACING.md, paddingTop: 4, paddingBottom: 40 },
   title: { fontSize: 20, fontWeight: '800', color: COLORS.textHeading },
   sub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4, marginBottom: 14 },
+  mgrLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  mgrLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  mgrLinkText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
   warnBox: {
     flexDirection: 'row',
     gap: 8,

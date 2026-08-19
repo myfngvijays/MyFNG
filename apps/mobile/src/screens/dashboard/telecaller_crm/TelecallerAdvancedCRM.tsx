@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import BottomNav from '../../../components/BottomNav';
 import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
@@ -28,6 +28,8 @@ import {
  */
 export default function TelecallerAdvancedCRM() {
   const stackNav = useNavigation<any>();
+  const route = useRoute();
+  const isLeadManager = String(route?.name || '').includes('LeadManager');
   const defaults = defaultTelecallerCrmFilterPrefs();
   const [tab, setTab] = useState('home');
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
@@ -187,29 +189,13 @@ export default function TelecallerAdvancedCRM() {
     // Do not reset queueFilter — keep Home/Leads selection in sync
   };
 
-  if (detailLeadId) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar barStyle="light-content" />
-        <View style={styles.body}>
-          <TelecallerLeadDetailScreen
-            key={`${detailLeadId}-${detailEditing ? 'edit' : 'view'}`}
-            navigation={navigation}
-            route={{ params: { leadId: detailLeadId } }}
-            embedded
-            initialEditing={detailEditing}
-          />
-        </View>
-        <BottomNav activeTab="queue" onTabChange={handleTabChange} tabs={tabs} />
-      </SafeAreaView>
-    );
-  }
+  const showQueue = prefsReady && tab === 'queue';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle={detailLeadId ? 'light-content' : 'dark-content'} />
       <View style={styles.body}>
-        {prefsReady && tab === 'home' && (
+        {prefsReady && tab === 'home' && !detailLeadId && (
           <CrmHomeTab
             {...dateProps}
             onNavigate={(screen, params) => {
@@ -243,22 +229,48 @@ export default function TelecallerAdvancedCRM() {
             onOpenWhatsApp={() => setWhatsAppOpen(true)}
           />
         )}
-        {prefsReady && tab === 'queue' && (
-          <CrmQueueTab
-            {...dateProps}
-            initialFilter={queueFilter}
-            onFilterChange={persistQueueFilter}
-            onOpenLead={(id) => openLead(id, true)}
-            onEditLead={(id) => openLead(id, true)}
-          />
-        )}
-        {tab === 'book' && !bookMode && (
+
+        {/* Keep Leads queue mounted while viewing a lead so filters survive back */}
+        {showQueue ? (
+          <View
+            style={[
+              styles.body,
+              detailLeadId
+                ? { position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', left: -20 }
+                : null,
+            ]}
+            pointerEvents={detailLeadId ? 'none' : 'auto'}
+          >
+            <CrmQueueTab
+              {...dateProps}
+              managerOps={isLeadManager}
+              initialFilter={queueFilter}
+              onFilterChange={persistQueueFilter}
+              onOpenLead={(id) => openLead(id, true)}
+              onEditLead={(id) => openLead(id, true)}
+            />
+          </View>
+        ) : null}
+
+        {detailLeadId ? (
+          <View style={styles.body}>
+            <TelecallerLeadDetailScreen
+              key={`${detailLeadId}-${detailEditing ? 'edit' : 'view'}`}
+              navigation={navigation}
+              route={{ params: { leadId: detailLeadId } }}
+              embedded
+              initialEditing={detailEditing}
+            />
+          </View>
+        ) : null}
+
+        {tab === 'book' && !bookMode && !detailLeadId && (
           <CrmBookChooser
             onPick={(mode) => setBookMode(mode)}
             onCancel={() => setTab('home')}
           />
         )}
-        {tab === 'book' && bookMode && (
+        {tab === 'book' && bookMode && !detailLeadId && (
           <CrmBookWizard
             key={bookMode}
             initialMode={bookMode}
@@ -270,17 +282,26 @@ export default function TelecallerAdvancedCRM() {
             onCancel={() => setBookMode(null)}
           />
         )}
-        {tab === 'workshops' && <CrmWorkshopLocatorTab navigation={navigation} />}
-        {tab === 'engage' && (
+        {tab === 'workshops' && !detailLeadId && <CrmWorkshopLocatorTab navigation={navigation} />}
+        {tab === 'engage' && !detailLeadId && (
           <CrmEngageTab navigation={navigation} initialSegment={engageSegment} />
         )}
-        {tab === 'me' && (
+        {tab === 'me' && !detailLeadId && (
           <CrmMeTab
+            isLeadManager={isLeadManager}
             navigation={{
               ...navigation,
               navigate: (screen: string, params?: any) => {
                 if (screen === 'CrmReports' || screen === 'reports' || screen === 'LeadManagerReports') {
                   stackNav.navigate('CrmReports', params);
+                  return;
+                }
+                if (
+                  screen === 'LeadManagerFloor' ||
+                  screen === 'LeadManagerTeamWhatsApp' ||
+                  screen === 'LeadManagerWhatsAppDnd'
+                ) {
+                  stackNav.navigate(screen, params);
                   return;
                 }
                 navigation.navigate(screen, params);
@@ -297,7 +318,7 @@ export default function TelecallerAdvancedCRM() {
       ) : null}
 
       <BottomNav
-        activeTab={tab === 'engage' ? 'workshops' : tab}
+        activeTab={detailLeadId ? 'queue' : tab === 'engage' ? 'workshops' : tab}
         onTabChange={handleTabChange}
         tabs={tabs}
       />
