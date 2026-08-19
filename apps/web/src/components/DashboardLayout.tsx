@@ -396,6 +396,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     const normPhone = (p: string) => {
       const d = String(p || '').replace(/\D/g, '');
       if (!d) return '';
+      const last10 = d.slice(-10);
+      if (last10.length === 10) return `91${last10}`;
       return d.startsWith('91') ? d : `91${d}`;
     };
 
@@ -448,9 +450,21 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         (payload) => {
           const row: any = payload.new || {};
           const dir = String(row.direction || '').toUpperCase();
-          if (dir !== 'INBOUND') return;
           const sender = normPhone(String(row.sender_phone || ''));
+          const recipient = normPhone(String(row.recipient_phone || ''));
+          const customerPhone = dir === 'INBOUND' ? sender : recipient || sender;
+          // Refresh inbox for every new message (inbound + outbound/AI), not only inbound.
           setWaRefreshSignal((prev) => prev + 1);
+          try {
+            window.dispatchEvent(
+              new CustomEvent('myfng:wa-message', {
+                detail: { phone: customerPhone, direction: dir },
+              }),
+            );
+          } catch {
+            /* ignore */
+          }
+          if (dir !== 'INBOUND') return;
           setWaUnreadCount((prev) => prev + 1);
           try {
             window.dispatchEvent(new CustomEvent('myfng:wa-unread-bump'));
@@ -670,6 +684,19 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       }
       setAanshSession(null);
       setStoredAanshSession(null);
+    }
+    // Header logout must punch out — otherwise Live Floor keeps showing On Floor
+    const roleCode =
+      String((userProfile as any)?.role?.role_code || role || '').toUpperCase() || '';
+    if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER') {
+      try {
+        const { ensureTelecallerPunchOutOnLogout } = await import(
+          '@/lib/telecaller/ensurePunchInOnLogin'
+        );
+        await ensureTelecallerPunchOutOnLogout();
+      } catch {
+        /* continue logout */
+      }
     }
     const supabase = createClient();
     await supabase.auth.signOut();

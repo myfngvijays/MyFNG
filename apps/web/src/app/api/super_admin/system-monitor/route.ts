@@ -2238,6 +2238,75 @@ async function checkTelecallerCallbackReminders(): Promise<HealthCheck> {
   }
 }
 
+async function checkWhatsAppChatReads(): Promise<HealthCheck> {
+  const start = Date.now();
+  const { client, configError } = getAdminClient();
+  if (!client) {
+    return {
+      name: 'WhatsApp Inbox Read State',
+      category: 'WhatsApp',
+      status: 'down',
+      responseTime: Date.now() - start,
+      message: 'Cannot check (DB unavailable)',
+      reason: configError || 'No admin client',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { error } = await checkWithTimeout(() =>
+      client.from('whatsapp_chat_reads').select('phone', { count: 'exact', head: true }),
+    );
+    const responseTime = Date.now() - start;
+    if (error && (/does not exist|42P01/i.test(String(error.message || '')) || error.code === '42P01')) {
+      return {
+        name: 'WhatsApp Inbox Read State',
+        category: 'WhatsApp',
+        status: 'degraded',
+        responseTime,
+        message: 'Read receipts table missing',
+        reason: 'whatsapp_chat_reads missing. Apply database/318_whatsapp_chat_reads.sql so unread badges clear after opening a chat.',
+        quickFix: {
+          label: 'Open WhatsApp Inbox',
+          action: 'external-link',
+          actionPayload: { url: '/dashboard/lead_manager' },
+        },
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    if (error) {
+      return {
+        name: 'WhatsApp Inbox Read State',
+        category: 'WhatsApp',
+        status: 'degraded',
+        responseTime,
+        message: 'Read table unreadable',
+        reason: error.message,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'WhatsApp Inbox Read State',
+      category: 'WhatsApp',
+      status: 'healthy',
+      responseTime,
+      message: 'Unread clear-on-open ready',
+      reason: 'whatsapp_chat_reads table is available for per-user inbox read receipts.',
+      lastChecked: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    return {
+      name: 'WhatsApp Inbox Read State',
+      category: 'WhatsApp',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -2265,6 +2334,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkMisaAiMonitoring(),
     checkWhatsAppAgents(),
     checkWhatsAppWorkflows(),
+    checkWhatsAppChatReads(),
     checkGoogleMaps(),
     checkCronJobs(),
     checkFeatureCrons(),

@@ -302,16 +302,39 @@ export async function sendTemplateMessage(input: TemplateMessageInput): Promise<
     });
   }
 
-  return sendMessagePayload({
-    messaging_product: 'whatsapp',
-    to,
-    type: 'template',
-    template: {
-      name: input.templateName.trim(),
-      language: { code: input.languageCode || 'en' },
-      components: components.length > 0 ? components : undefined,
-    },
-  });
+  const primaryLanguage = String(input.languageCode || 'en').trim() || 'en';
+  const languageFallbacks = Array.from(
+    new Set(
+      [primaryLanguage, primaryLanguage === 'en' ? 'en_US' : '', primaryLanguage === 'en_US' ? 'en' : ''].filter(
+        Boolean,
+      ),
+    ),
+  );
+
+  let lastError: WhatsAppSendResult | null = null;
+  for (const languageCode of languageFallbacks) {
+    const result = await sendMessagePayload({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name: input.templateName.trim(),
+        language: { code: languageCode },
+        components: components.length > 0 ? components : undefined,
+      },
+    });
+    if (result.success) return result;
+    lastError = result;
+    const msg = String(result.error || '').toLowerCase();
+    // Only retry alternate language when Meta complains about language / template match
+    const languageIssue =
+      msg.includes('language') ||
+      msg.includes('template name') ||
+      msg.includes('does not exist') ||
+      msg.includes('translated');
+    if (!languageIssue) break;
+  }
+  return lastError || { success: false, error: 'Failed to send template' };
 }
 
 /**

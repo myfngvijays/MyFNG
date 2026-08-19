@@ -54,6 +54,76 @@ function getChatPhone(row: any): string {
   return recipient || sender;
 }
 
+/** Trailing inbound streak (newest→oldest). Stops at first outbound or last_read_at. */
+function bumpUnreadStreak(
+  state: Map<string, { count: number; sealed: boolean }>,
+  phone: string,
+  direction: string,
+  createdAt?: string | null,
+  lastReadAt?: string | null,
+) {
+  let entry = state.get(phone);
+  if (!entry) {
+    entry = { count: 0, sealed: false };
+    state.set(phone, entry);
+  }
+  if (entry.sealed) return;
+  if (lastReadAt && createdAt) {
+    const msgTs = new Date(createdAt).getTime();
+    const readTs = new Date(lastReadAt).getTime();
+    if (Number.isFinite(msgTs) && Number.isFinite(readTs) && msgTs <= readTs) {
+      entry.sealed = true;
+      return;
+    }
+  }
+  if (String(direction || '').toUpperCase() === 'INBOUND') {
+    entry.count += 1;
+  } else {
+    entry.sealed = true;
+  }
+}
+
+function unreadCountForChat(
+  chat: { last_direction?: string | null; unread_count?: number | null; last_message_at?: string | null },
+  streak?: Map<string, { count: number; sealed: boolean }>,
+  phone?: string,
+  readMap?: Map<string, string>,
+): number {
+  if (phone && streak?.has(phone)) return streak.get(phone)!.count;
+  const lastRead = phone && readMap?.get(phone);
+  if (lastRead && chat.last_message_at) {
+    const msgTs = new Date(chat.last_message_at).getTime();
+    const readTs = new Date(lastRead).getTime();
+    if (Number.isFinite(msgTs) && Number.isFinite(readTs) && msgTs <= readTs) return 0;
+  }
+  if (typeof chat.unread_count === 'number' && chat.unread_count >= 0) return chat.unread_count;
+  return String(chat.last_direction || '').toUpperCase() === 'INBOUND' ? 1 : 0;
+}
+
+async function loadReadMapForUser(db: any, userId: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!userId) return map;
+  try {
+    const { data, error } = await db
+      .from('whatsapp_chat_reads')
+      .select('phone, last_read_at')
+      .eq('user_id', userId)
+      .limit(2000);
+    if (error) {
+      console.warn('[whatsapp/chats] read map skipped:', error.message);
+      return map;
+    }
+    for (const row of data || []) {
+      const phone = normalizePhone(String(row?.phone || ''));
+      const at = String(row?.last_read_at || '').trim();
+      if (phone && at) map.set(phone, at);
+    }
+  } catch (err) {
+    console.warn('[whatsapp/chats] read map failed', err);
+  }
+  return map;
+}
+
 function leadMessagePreview(lead: any): string {
   const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
   const fromMeta =
@@ -237,6 +307,7 @@ async function getTelecallerWhatsappChats(
   mode: string,
   searchDigits: string,
   searchName = '',
+  readMap?: Map<string, string>,
 ) {
   const unassigned = mode === 'unassigned';
   const byPhone = await loadTelecallerLeadPhones(db, telecallerId, unassigned);
@@ -281,10 +352,45 @@ async function getTelecallerWhatsappChats(
     }
   }
 
+  // Light unread enrich from recent WA messages (trailing inbound streak).
+  const unreadStreak = new Map<string, { count: number; sealed: boolean }>();
+  try {
+    const phones = [...byPhone.keys()].slice(0, 120);
+    if (phones.length > 0) {
+      const { data: recentMsgs } = await db
+        .from('whatsapp_messages')
+        .select('direction, sender_phone, recipient_phone, created_at')
+        .order('created_at', { ascending: false })
+        .limit(1200);
+      for (const row of recentMsgs || []) {
+        const phone = getChatPhone(row);
+        if (!phone || !byPhone.has(phone)) continue;
+        bumpUnreadStreak(
+          unreadStreak,
+          phone,
+          String(row?.direction || ''),
+          row?.created_at,
+          readMap?.get(phone),
+        );
+        const existing = byPhone.get(phone);
+        const rowTs = ts(row?.created_at);
+        if (existing && rowTs >= ts(existing.last_message_at)) {
+          existing.last_direction = row?.direction || existing.last_direction;
+          existing.last_message_at = row?.created_at || existing.last_message_at;
+        }
+      }
+    }
+  } catch {
+    /* optional */
+  }
+
   // Skip N+1 whatsapp_messages enrich — lead preview is enough for inbox list.
   // Opening a chat loads full history separately.
   const chats = Array.from(byPhone.values())
-    .map(({ lead_message_preview: _lp, lead_inbound_at: _la, whatsapp_inbound: _wi, ...rest }) => rest)
+    .map(({ lead_message_preview: _lp, lead_inbound_at: _la, whatsapp_inbound: _wi, ...rest }) => ({
+      ...rest,
+      unread_count: unreadCountForChat(rest, unreadStreak, rest.phone, readMap),
+    }))
     .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
   return {
@@ -348,6 +454,7 @@ export async function GET(request: NextRequest) {
         mode,
         searchDigits,
         searchName,
+        await loadReadMapForUser(supabaseAdmin, String(userProfile.id)),
       );
       return NextResponse.json({
         success: true,
@@ -412,6 +519,8 @@ export async function GET(request: NextRequest) {
       // Merge recent WhatsApp threads only when viewing full inbox (not assignee-filtered),
       // otherwise filter would be polluted with unrelated chats.
       // Skip message-merge when searching by name — keep name-matched leads only.
+      const readMap = await loadReadMapForUser(supabaseAdmin, String(userProfile.id));
+      const unreadStreak = new Map<string, { count: number; sealed: boolean }>();
       if (!assigneeScoped && !searchName) {
         try {
           const { data: recentMsgs } = await supabaseAdmin
@@ -426,6 +535,13 @@ export async function GET(request: NextRequest) {
             const phone = getChatPhone(row);
             if (!phone) continue;
             if (searchDigits && !phone.includes(searchDigits)) continue;
+            bumpUnreadStreak(
+              unreadStreak,
+              phone,
+              String(row?.direction || ''),
+              row?.created_at,
+              readMap.get(phone),
+            );
             const preview = messagePreviewFromRow(row);
             const existing = byPhone.get(phone);
             const rowTs = ts(row?.created_at);
@@ -447,11 +563,47 @@ export async function GET(request: NextRequest) {
         } catch (mergeErr) {
           console.warn('[whatsapp/chats] message merge skipped', mergeErr);
         }
+      } else if (byPhone.size > 0) {
+        // Assignee-filtered inbox: still compute unread for listed phones.
+        try {
+          const { data: recentMsgs } = await supabaseAdmin
+            .from('whatsapp_messages')
+            .select(
+              'direction, sender_phone, recipient_phone, created_at, message_type, text_body, media_caption, template_name, status',
+            )
+            .order('created_at', { ascending: false })
+            .limit(1200);
+          for (const row of recentMsgs || []) {
+            const phone = getChatPhone(row);
+            if (!phone || !byPhone.has(phone)) continue;
+            bumpUnreadStreak(
+              unreadStreak,
+              phone,
+              String(row?.direction || ''),
+              row?.created_at,
+              readMap.get(phone),
+            );
+            const existing = byPhone.get(phone);
+            const rowTs = ts(row?.created_at);
+            if (existing && rowTs >= ts(existing.last_message_at)) {
+              existing.last_message_preview = messagePreviewFromRow(row);
+              existing.last_message_type = row?.message_type || existing.last_message_type;
+              existing.last_direction = row?.direction || existing.last_direction;
+              existing.last_status = row?.status || existing.last_status;
+              existing.last_message_at = row?.created_at || existing.last_message_at;
+            }
+          }
+        } catch {
+          /* optional */
+        }
       }
 
-      const chats = Array.from(byPhone.values()).sort(
-        (a, b) => ts(b.last_message_at) - ts(a.last_message_at),
-      );
+      const chats = Array.from(byPhone.values())
+        .map((chat) => ({
+          ...chat,
+          unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
+        }))
+        .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
 
       return NextResponse.json({
         success: true,
@@ -524,6 +676,8 @@ export async function GET(request: NextRequest) {
 
     const batchSize = 1000;
     const byPhone = new Map<string, any>();
+    const readMap = await loadReadMapForUser(db, String(userProfile.id));
+    const unreadStreak = new Map<string, { count: number; sealed: boolean }>();
     let scanned = 0;
     let cursorCreatedAt: string | null = null;
     let page = 0;
@@ -556,6 +710,13 @@ export async function GET(request: NextRequest) {
         if (assignedPhoneSet && !assignedPhoneSet.has(phone)) continue;
         if (excludePhoneSet && excludePhoneSet.has(phone)) continue;
         if (searchDigits && !phone.includes(searchDigits)) continue;
+        bumpUnreadStreak(
+          unreadStreak,
+          phone,
+          String(row?.direction || ''),
+          row?.created_at,
+          readMap.get(phone),
+        );
         if (byPhone.has(phone)) continue;
 
         byPhone.set(phone, {
@@ -576,10 +737,15 @@ export async function GET(request: NextRequest) {
       if (rows.length < batchSize || !cursorCreatedAt) break;
     }
 
+    const chats = Array.from(byPhone.values()).map((chat) => ({
+      ...chat,
+      unread_count: unreadCountForChat(chat, unreadStreak, chat.phone, readMap),
+    }));
+
     return NextResponse.json({
       success: true,
-      chats: Array.from(byPhone.values()),
-      count: byPhone.size,
+      chats,
+      count: chats.length,
       scanned_messages: scanned,
     });
   } catch (error: any) {

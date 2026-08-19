@@ -50,7 +50,7 @@ const TOOL_GROUPS: Record<keyof WhatsAppBrainToolsConfig, string[]> = {
   pricing: ['get_service_pricing', 'validate_pincode'],
   workshops: ['search_workshops'],
   service_details: ['get_service_details'],
-  booking: ['send_booking_otp', 'verify_booking_otp', 'create_booking'],
+  booking: ['send_booking_otp', 'verify_booking_otp', 'create_booking', 'set_customer_name', 'set_vehicle_number'],
 };
 
 export type BrainProcessInput = {
@@ -478,6 +478,35 @@ export async function processWhatsAppBrainMessage(input: BrainProcessInput): Pro
   if (!phone || !message) {
     return { handled: false, skippedReason: 'missing_phone_or_message' };
   }
+
+  // If MISA just asked for name and customer replied with a real name, persist it on the CRM lead.
+  void (async () => {
+    try {
+      const { looksLikePersonName, updateLeadCustomerNameByPhone } = await import(
+        '@/lib/service-lead-reopen'
+      );
+      if (!looksLikePersonName(message)) return;
+      const { supabaseAdmin } = getSupabaseAdmin();
+      if (!supabaseAdmin) return;
+      const { data: lastOut } = await supabaseAdmin
+        .from('whatsapp_messages')
+        .select('text_body, direction, created_at, recipient_phone')
+        .eq('direction', 'OUTBOUND')
+        .or(
+          `recipient_phone.eq.${phone},recipient_phone.eq.${phone.slice(-10)},recipient_phone.ilike.%${phone.slice(-10)}`,
+        )
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lastText = String(lastOut?.text_body || '');
+      if (!/what'?s your name|your (full )?name|may i know your name|share your name|tell me your name/i.test(lastText)) {
+        return;
+      }
+      await updateLeadCustomerNameByPhone(supabaseAdmin, phone, message);
+    } catch (err) {
+      console.warn('[whatsapp-brain] name capture skipped', err);
+    }
+  })();
 
   const config = await fetchWhatsAppBrainConfig();
   if (!config.enabled && !input.dryRun) {

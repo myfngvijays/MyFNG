@@ -9,6 +9,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  unread_count?: number | null;
   customer_name?: string | null;
 };
 
@@ -66,12 +67,44 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
   const activeRows = mode === 'unassigned' ? unassignedRows : rows;
 
   const filteredRows = useMemo(() => {
-    if (filter === 'all') return activeRows;
-    if (filter === 'unread') return activeRows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND');
-    return activeRows.filter((r) => (r.last_direction || '').toUpperCase() !== 'INBOUND');
+    if (filter === 'unread') {
+      return activeRows.filter((r) => {
+        const n =
+          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
+            ? r.unread_count
+            : (r.last_direction || '').toUpperCase() === 'INBOUND'
+              ? 1
+              : 0;
+        return n > 0;
+      });
+    }
+    if (filter === 'read') {
+      return activeRows.filter((r) => {
+        const n =
+          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
+            ? r.unread_count
+            : (r.last_direction || '').toUpperCase() === 'INBOUND'
+              ? 1
+              : 0;
+        return n <= 0;
+      });
+    }
+    return activeRows;
   }, [activeRows, filter]);
 
-  const unreadCount = useMemo(() => activeRows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND').length, [activeRows]);
+  const unreadCount = useMemo(
+    () =>
+      activeRows.filter((r) => {
+        const n =
+          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
+            ? r.unread_count
+            : (r.last_direction || '').toUpperCase() === 'INBOUND'
+              ? 1
+              : 0;
+        return n > 0;
+      }).length,
+    [activeRows],
+  );
 
   const fetchChats = useCallback(async (fetchMode: ModeTab, searchText: string, signal?: AbortSignal) => {
     const params = new URLSearchParams({ limit: '120', scan: '500', mode: fetchMode });
@@ -156,7 +189,16 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
   }, [refreshSignal, isOpen, debouncedSearch, fetchChats, hideLeadPool]);
 
   const unassignedInboundCount = useMemo(
-    () => unassignedRows.filter((r) => (r.last_direction || '').toUpperCase() === 'INBOUND').length,
+    () =>
+      unassignedRows.filter((r) => {
+        const n =
+          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
+            ? r.unread_count
+            : (r.last_direction || '').toUpperCase() === 'INBOUND'
+              ? 1
+              : 0;
+        return n > 0;
+      }).length,
     [unassignedRows]
   );
 
@@ -280,7 +322,15 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
           ) : (
             <>
               {filteredRows.map((chat) => {
-                const isUnread = (chat.last_direction || '').toUpperCase() === 'INBOUND';
+                const unreadCount = Math.max(
+                  0,
+                  typeof chat.unread_count === 'number' && Number.isFinite(chat.unread_count)
+                    ? chat.unread_count
+                    : (chat.last_direction || '').toUpperCase() === 'INBOUND'
+                      ? 1
+                      : 0,
+                );
+                const isUnread = unreadCount > 0;
                 const titleLine = String(chat.customer_name || '').trim() || formatPhone(chat.phone);
                 const subLine = chat.customer_name
                   ? `${formatPhone(chat.phone)} · ${chat.last_message_preview || 'No preview'}`
@@ -290,17 +340,41 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                     key={chat.phone}
                     type="button"
                     className={`w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 ${isUnread ? 'bg-[#25D366]/[0.04]' : ''}`}
-                    onClick={() => onOpenChat(chat.phone, chat.last_message_preview)}
+                    onClick={() => {
+                      const phone = String(chat.phone || '');
+                      void fetch('/api/whatsapp/chats/read', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone }),
+                      }).catch(() => {
+                        /* ignore */
+                      });
+                      onOpenChat(chat.phone, chat.last_message_preview);
+                    }}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2 min-w-0">
-                        {isUnread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#25D366]" />}
-                        <div className="min-w-0">
-                          <p className={`truncate text-sm ${isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'}`}>{titleLine}</p>
-                          <p className={`mt-0.5 truncate text-xs ${isUnread ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{subLine}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`truncate text-sm ${isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'}`}>
+                            {titleLine}
+                          </p>
+                          <span
+                            className={`shrink-0 text-[11px] font-medium ${isUnread ? 'text-[#25D366]' : 'text-gray-500'}`}
+                          >
+                            {formatTime(chat.last_message_at)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <p className={`min-w-0 flex-1 truncate text-xs ${isUnread ? 'font-medium text-gray-800' : 'text-gray-600'}`}>
+                            {subLine}
+                          </p>
+                          {isUnread ? (
+                            <span className="inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1.5 text-[11px] font-bold leading-none text-white">
+                              {unreadCount > 99 ? '99+' : unreadCount}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
-                      <span className="shrink-0 text-[10px] text-gray-500">{formatTime(chat.last_message_at)}</span>
                     </div>
                   </button>
                 );

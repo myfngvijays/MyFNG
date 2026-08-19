@@ -154,6 +154,16 @@ function normalizePhone(phone: string): string {
   return digits.startsWith('91') ? digits : `91${digits}`;
 }
 
+function phoneLast10(phone: string): string {
+  return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+function isSameWaPhone(a: string, b: string): boolean {
+  const left = phoneLast10(a);
+  const right = phoneLast10(b);
+  return Boolean(left) && left.length === 10 && left === right;
+}
+
 function formatPhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) {
@@ -259,6 +269,61 @@ function paymentTemplateLikely(row: TemplateOption): boolean {
   return haystack.includes('payment') || haystack.includes('pay now') || haystack.includes('collect payment');
 }
 
+function templateHasDynamicUrlButton(row: TemplateOption | null): boolean {
+  if (!row?.meta || typeof row.meta !== 'object') return false;
+  const meta = row.meta as Record<string, any>;
+  const rawComponents = meta?.raw?.components || meta?.components || [];
+  if (!Array.isArray(rawComponents)) return false;
+  return rawComponents.some((c: any) => {
+    const buttons = Array.isArray(c?.buttons) ? c.buttons : [];
+    return buttons.some((b: any) => {
+      if (String(b?.type || '').toUpperCase() !== 'URL') return false;
+      return /\{\{\s*\d+\s*\}\}/.test(String(b?.url || ''));
+    });
+  });
+}
+
+/** Meta URL buttons with {{1}} need the dynamic suffix (not always the full URL). */
+function buildTemplateUrlButtonParams(
+  template: TemplateOption | null,
+  bodyParams: string[],
+): string[] {
+  if (!templateHasDynamicUrlButton(template)) return [];
+  const meta = (template?.meta || {}) as Record<string, any>;
+  const rawComponents = meta?.raw?.components || meta?.components || [];
+  const buttonsComp = (Array.isArray(rawComponents) ? rawComponents : []).find(
+    (c: any) => String(c?.type || '').toUpperCase() === 'BUTTONS',
+  );
+  const buttons = Array.isArray(buttonsComp?.buttons) ? buttonsComp.buttons : [];
+  const httpsFromBody = [...bodyParams].reverse().find((p) => /^https?:\/\//i.test(String(p || '').trim()));
+  const out: string[] = [];
+  for (const btn of buttons) {
+    if (String(btn?.type || '').toUpperCase() !== 'URL') continue;
+    const url = String(btn?.url || '');
+    if (!/\{\{\s*\d+\s*\}\}/.test(url)) continue;
+    const base = url.replace(/\{\{\s*\d+\s*\}\}/g, '');
+    if (httpsFromBody && base && httpsFromBody.startsWith(base.replace(/\/$/, ''))) {
+      out.push(httpsFromBody.slice(base.replace(/\/$/, '').length).replace(/^\//, '') || httpsFromBody);
+    } else if (httpsFromBody) {
+      try {
+        const u = new URL(httpsFromBody);
+        out.push(`${u.pathname.replace(/^\//, '')}${u.search}` || httpsFromBody);
+      } catch {
+        out.push(httpsFromBody);
+      }
+    } else {
+      const example = Array.isArray(btn?.example) ? String(btn.example[0] || '').trim() : '';
+      out.push(example || 'open');
+    }
+  }
+  return out;
+}
+
+function resolveTemplateLanguageCode(template: TemplateOption | null | undefined): string {
+  const code = String(template?.language_code || '').trim();
+  return code || 'en';
+}
+
 function templateHasUrlButton(row: TemplateOption | null): boolean {
   if (!row?.meta || typeof row.meta !== 'object') return false;
   const meta = row.meta as Record<string, any>;
@@ -267,7 +332,9 @@ function templateHasUrlButton(row: TemplateOption | null): boolean {
   return rawComponents.some((c: any) => {
     const t = String(c?.type || '').toUpperCase();
     const sub = String(c?.sub_type || c?.subType || '').toUpperCase();
-    return t === 'BUTTONS' || (t === 'BUTTON' && sub === 'URL');
+    if (t === 'BUTTON' && sub === 'URL') return true;
+    const buttons = Array.isArray(c?.buttons) ? c.buttons : [];
+    return t === 'BUTTONS' && buttons.some((b: any) => String(b?.type || '').toUpperCase() === 'URL');
   });
 }
 
@@ -710,6 +777,7 @@ export default function WhatsAppMobilePreviewModal({
   const [templateParams, setTemplateParams] = useState<string[]>([]);
   const [templateStep, setTemplateStep] = useState<1 | 2>(1);
   const [templateSearch, setTemplateSearch] = useState('');
+  const [templateSendError, setTemplateSendError] = useState('');
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<'all' | 'utility' | 'marketing' | 'auth'>('all');
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -2086,6 +2154,33 @@ export default function WhatsAppMobilePreviewModal({
     void loadInitialConversation();
     void loadCalls();
 
+    const rowMatchesOpenChat = (row: any) => {
+      const sender = String(row?.sender_phone || '');
+      const recipient = String(row?.recipient_phone || '');
+      return isSameWaPhone(sender, waPhone) || isSameWaPhone(recipient, waPhone);
+    };
+
+    const onLiveMessage = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const phone = String(detail?.phone || '');
+      if (phone && !isSameWaPhone(phone, waPhone)) return;
+      void refreshConversation();
+    };
+
+    window.addEventListener('myfng:wa-message', onLiveMessage);
+    window.addEventListener('myfng:wa-unread-bump', onLiveMessage);
+
+    // Realtime can drop; poll while chat is open so new msgs appear without manual refresh.
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      void refreshConversation();
+    }, 2500);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshConversation();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     const supabase = createClient();
     const channel = supabase
       .channel(`wa-chat-${waPhone}`)
@@ -2094,11 +2189,11 @@ export default function WhatsAppMobilePreviewModal({
         { event: '*', schema: 'public', table: 'whatsapp_messages' },
         (payload) => {
           const row: any = payload.new || payload.old || {};
-          const sender = normalizePhone(String(row?.sender_phone || ''));
-          const recipient = normalizePhone(String(row?.recipient_phone || ''));
-          if (sender === waPhone || recipient === waPhone) {
-            void refreshConversation();
+          if (!rowMatchesOpenChat(row)) return;
+          if (payload.eventType === 'INSERT' && payload.new) {
+            setMessages((prev) => mergeMessages(prev, [payload.new]));
           }
+          void refreshConversation();
         }
       )
       .on(
@@ -2106,8 +2201,7 @@ export default function WhatsAppMobilePreviewModal({
         { event: '*', schema: 'public', table: 'whatsapp_call_logs' },
         (payload) => {
           const row: any = payload.new || payload.old || {};
-          const phone = normalizePhone(String(row?.customer_phone || ''));
-          if (phone === waPhone) {
+          if (isSameWaPhone(String(row?.customer_phone || ''), waPhone)) {
             void loadCalls();
           }
         }
@@ -2141,6 +2235,10 @@ export default function WhatsAppMobilePreviewModal({
       pendingPrependHeightRef.current = null;
       previousLastMessageKeyRef.current = '';
       setUnreadCount(0);
+      window.clearInterval(pollId);
+      window.removeEventListener('myfng:wa-message', onLiveMessage);
+      window.removeEventListener('myfng:wa-unread-bump', onLiveMessage);
+      document.removeEventListener('visibilitychange', onVisibility);
       channel.unsubscribe();
     };
   }, [isOpen, waPhone, fetchConversationPage, loadCalls, refreshConversation, previewMessage]);
@@ -2375,11 +2473,15 @@ export default function WhatsAppMobilePreviewModal({
         return;
       }
 
+      const languageCode = resolveTemplateLanguageCode(selectedTemplate);
+      const buttonUrlParams = buildTemplateUrlButtonParams(selectedTemplate, cleanedParams);
+
       payload = {
         ...payload,
         template_name: templateName.trim(),
-        language: 'en',
+        language: languageCode,
         template_params: cleanedParams,
+        ...(buttonUrlParams.length ? { button_url_params: buttonUrlParams } : {}),
       };
     } else if (activeType === 'payment') {
       const amount = Number(paymentAmount);
@@ -2449,7 +2551,7 @@ export default function WhatsAppMobilePreviewModal({
           ...payload,
           message_type: 'template',
           template_name: chosenTemplateName,
-          language: 'en',
+          language: resolveTemplateLanguageCode(chosenTemplate),
           template_params: templateParamsPayload,
           button_url_params: templateHasUrlButton(chosenTemplate) ? [link] : [],
         };
@@ -2493,9 +2595,18 @@ export default function WhatsAppMobilePreviewModal({
       const data = await res.json();
       if (!res.ok || !data?.success) {
         await refreshConversation();
-        toast.error(data?.error || 'Send failed');
+        const errDetail = String(
+          data?.error ||
+            data?.raw?.error?.error_user_msg ||
+            data?.raw?.error?.message ||
+            'Send failed',
+        );
+        toast.error(errDetail, { duration: 8000 });
+        // Modal often covers toaster — surface failure in-panel too
+        setTemplateSendError(errDetail);
         return;
       }
+      setTemplateSendError('');
       if (data?.message && typeof data.message === 'object') {
         setMessages((prev) => mergeMessages(prev, [data.message]));
       }
@@ -2505,8 +2616,14 @@ export default function WhatsAppMobilePreviewModal({
       setPaymentAmount('');
       setPaymentNote('');
       setShowAttachMenu(false);
-      setActiveType('text');
-      setTemplateStep(1);
+      // Stay in template mode when 24h window is closed (text send is blocked)
+      if (!isTemplateOnlyMode) {
+        setActiveType('text');
+        setTemplateStep(1);
+      } else {
+        setTemplateStep(1);
+        toast.success('Template sent');
+      }
       try {
         const page = await fetchConversationPage(null);
         setMessages((prev) => mergeMessages(prev, page.messages));
@@ -3610,6 +3727,7 @@ export default function WhatsAppMobilePreviewModal({
             telecallerScoped={telecallerScopedTemplates}
             onSelect={(name) => {
               setTemplateName(name);
+              setTemplateSendError('');
               const row =
                 templateOptions.find(
                   (r) => String(r.template_name || '').toLowerCase() === String(name || '').toLowerCase(),
@@ -3841,13 +3959,26 @@ export default function WhatsAppMobilePreviewModal({
                     </div>
                     <button
                       type="button"
-                      onClick={() => void handleSend()}
+                      onClick={() => {
+                        setTemplateSendError('');
+                        void handleSend();
+                      }}
                       disabled={sending || paymentGenerating || !templateName.trim()}
                       className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#25D366] px-3 py-2.5 text-[12px] font-bold text-white hover:bg-[#1da851] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {sending || paymentGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       {sending || paymentGenerating ? 'Sending…' : 'Send template'}
                     </button>
+                    {templateSendError ? (
+                      <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] font-medium text-red-700">
+                        {templateSendError}
+                      </div>
+                    ) : null}
+                    {isTemplateOnlyMode ? (
+                      <p className="mt-2 text-[10px] text-[#667781]">
+                        Chat window is closed — template messages still send normally (Meta-approved).
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </div>

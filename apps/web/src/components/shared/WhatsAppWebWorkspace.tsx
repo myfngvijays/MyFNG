@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, MessageCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-react';
 import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
@@ -11,6 +11,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  unread_count?: number | null;
   customer_name?: string | null;
   assigned_telecaller_id?: string | null;
   assigned_telecaller_name?: string | null;
@@ -33,6 +34,7 @@ type Props = {
 export type WaTheme = 'light' | 'dark';
 
 const THEME_KEY = 'myfng:wa-workspace-theme-v2';
+const READ_KEY = 'myfng:wa-chat-reads-v1';
 
 function formatPhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -59,7 +61,60 @@ function formatTime(value?: string | null): string {
 function normalizePhone(phone: string): string {
   const d = String(phone || '').replace(/\D/g, '');
   if (!d) return '';
-  return d.startsWith('91') ? d : `91${d.slice(-10)}`;
+  const last10 = d.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
+  return d.startsWith('91') ? d : `91${d}`;
+}
+
+function loadLocalReads(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(READ_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalRead(phone: string, atIso?: string) {
+  if (typeof window === 'undefined' || !phone) return;
+  try {
+    const map = loadLocalReads();
+    map[phone] = atIso || new Date().toISOString();
+    // Cap map size
+    const entries = Object.entries(map).sort((a, b) => String(b[1]).localeCompare(String(a[1])));
+    const trimmed = Object.fromEntries(entries.slice(0, 500));
+    localStorage.setItem(READ_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Prefer explicit unread_count (including 0). Only fall back to last_direction when unset. */
+function resolveUnreadCount(chat: ChatRow): number {
+  if (typeof chat.unread_count === 'number' && Number.isFinite(chat.unread_count)) {
+    return Math.max(0, chat.unread_count);
+  }
+  return (chat.last_direction || '').toUpperCase() === 'INBOUND' ? 1 : 0;
+}
+
+/** Clear unread for chats already opened, until a newer inbound arrives. */
+function applyLocalReads(chats: ChatRow[]): ChatRow[] {
+  const reads = loadLocalReads();
+  return chats.map((chat) => {
+    const phone = normalizePhone(chat.phone);
+    const readAt = reads[phone];
+    if (!readAt) return chat;
+    const lastMs = chat.last_message_at ? new Date(chat.last_message_at).getTime() : 0;
+    const readMs = new Date(readAt).getTime();
+    if (!Number.isFinite(readMs)) return chat;
+    // Message at/before open time → stay read. Newer message → show API unread again.
+    if (!lastMs || lastMs <= readMs) {
+      return { ...chat, unread_count: 0 };
+    }
+    return chat;
+  });
 }
 
 function themePalette(theme: WaTheme) {
@@ -123,6 +178,8 @@ export default function WhatsAppWebWorkspace({
   const [theme, setTheme] = useState<WaTheme>('light');
   const [assigneeFilter, setAssigneeFilter] = useState(''); // '' | 'unassigned' | telecaller uuid
   const [peers, setPeers] = useState<PeerRow[]>([]);
+  const rowsRef = useRef<ChatRow[]>([]);
+  rowsRef.current = rows;
 
   const debouncedSearch = useMemo(() => search.trim(), [search]);
   const colors = themePalette(theme);
@@ -198,6 +255,36 @@ export default function WhatsAppWebWorkspace({
     setSelectedName('');
   }, [isOpen, initialPhone, initialPreview]);
 
+  // Mark chat as read when opened (persist locally + server so badge stays cleared after switch).
+  useEffect(() => {
+    if (!isOpen || !selectedPhone) return;
+    const phone = normalizePhone(selectedPhone);
+    if (!phone) return;
+
+    const markRead = () => {
+      const row = rowsRef.current.find((r) => normalizePhone(r.phone) === phone);
+      const lastAt = row?.last_message_at ? new Date(row.last_message_at).getTime() : 0;
+      const readIso = new Date(Math.max(Date.now(), lastAt || 0)).toISOString();
+      saveLocalRead(phone, readIso);
+      setRows((prev) =>
+        applyLocalReads(
+          prev.map((r) => (normalizePhone(r.phone) === phone ? { ...r, unread_count: 0 } : r)),
+        ),
+      );
+      void fetch('/api/whatsapp/chats/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      }).catch(() => {
+        /* ignore — local read still applies */
+      });
+    };
+
+    markRead();
+    const id = window.setInterval(markRead, 8000);
+    return () => window.clearInterval(id);
+  }, [isOpen, selectedPhone]);
+
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -209,7 +296,7 @@ export default function WhatsAppWebWorkspace({
       try {
         const chats = await fetchChats(debouncedSearch, ac.signal);
         if (cancelled) return;
-        setRows(chats);
+        setRows(applyLocalReads(chats));
       } catch (e: any) {
         if (cancelled) return;
         setRows([]);
@@ -227,6 +314,40 @@ export default function WhatsAppWebWorkspace({
       ac.abort();
     };
   }, [isOpen, debouncedSearch, fetchChats, refreshSignal]);
+
+  // Keep chat list fresh without manual refresh (realtime alone is not reliable enough).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const silentRefresh = async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const chats = await fetchChats(debouncedSearch);
+        if (!cancelled) {
+          setRows(applyLocalReads(chats));
+        }
+      } catch {
+        /* keep previous rows */
+      }
+    };
+    const onLive = () => {
+      void silentRefresh();
+    };
+    window.addEventListener('myfng:wa-message', onLive);
+    window.addEventListener('myfng:wa-unread-bump', onLive);
+    const pollId = window.setInterval(silentRefresh, 3000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void silentRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollId);
+      window.removeEventListener('myfng:wa-message', onLive);
+      window.removeEventListener('myfng:wa-unread-bump', onLive);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [isOpen, debouncedSearch, fetchChats]);
 
   useEffect(() => {
     if (!selectedPhone || rows.length === 0) return;
@@ -417,7 +538,8 @@ export default function WhatsAppWebWorkspace({
                 rows.map((chat) => {
                   const phone = normalizePhone(chat.phone);
                   const active = phone === normalizePhone(selectedPhone);
-                  const unread = (chat.last_direction || '').toUpperCase() === 'INBOUND';
+                  const unreadCount = resolveUnreadCount(chat);
+                  const unread = unreadCount > 0;
                   const name = String(chat.customer_name || '').trim();
                   return (
                     <button
@@ -454,7 +576,10 @@ export default function WhatsAppWebWorkspace({
                           >
                             {name || formatPhone(phone)}
                           </p>
-                          <span className="shrink-0 text-[10px]" style={{ color: colors.muted }}>
+                          <span
+                            className="shrink-0 text-[11px] font-medium"
+                            style={{ color: unread ? colors.unread : colors.muted }}
+                          >
                             {formatTime(chat.last_message_at)}
                           </span>
                         </div>
@@ -470,19 +595,23 @@ export default function WhatsAppWebWorkspace({
                               : 'Unassigned'}
                           </p>
                         ) : null}
-                        <p
-                          className={`mt-0.5 truncate text-xs ${unread ? 'font-medium' : ''}`}
-                          style={{ color: colors.muted }}
-                        >
-                          {chat.last_message_preview || '—'}
-                        </p>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <p
+                            className={`min-w-0 flex-1 truncate text-xs ${unread ? 'font-medium' : ''}`}
+                            style={{ color: colors.muted }}
+                          >
+                            {chat.last_message_preview || '—'}
+                          </p>
+                          {unread ? (
+                            <span
+                              className="inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-none text-white"
+                              style={{ background: colors.unread }}
+                            >
+                              {unreadCount > 99 ? '99+' : unreadCount}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      {unread ? (
-                        <span
-                          className="mt-2 h-2 w-2 shrink-0 rounded-full"
-                          style={{ background: colors.unread }}
-                        />
-                      ) : null}
                     </button>
                   );
                 })

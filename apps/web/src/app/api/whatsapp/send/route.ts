@@ -495,14 +495,16 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      success: true,
+      success: Boolean(result.success),
       lead_id: leadId || null,
       lead_number: lead?.lead_number || null,
       message_type: messageType,
-      message_id: result.messageId,
+      message_id: result.messageId || null,
       recipient_phone: recipientPhone,
-      message: archivedRow || null,
-    });
+      message: result.success ? archivedRow || null : null,
+      error: result.success ? undefined : result.error || 'Failed to send WhatsApp message',
+      raw: result.success ? undefined : result.raw || null,
+    }, { status: result.success ? 200 : 400 });
   } catch (error: any) {
     console.error('Error in WhatsApp send API:', error);
     return NextResponse.json(

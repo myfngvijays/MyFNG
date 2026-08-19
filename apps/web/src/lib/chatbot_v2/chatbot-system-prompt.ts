@@ -158,6 +158,7 @@ After user confirms they want to book, collect remaining information **ONE quest
 2. **Then ask:** "What's your name?"
    - **MANDATORY** — never skip this step, even if phone is verified
    - Do NOT proceed to address until user provides their real name
+   - As soon as they reply with a name, call \`set_customer_name\` immediately (do not wait for create_booking)
    - Wait for response
    
 3. **Then ask:** "What's your complete address for pickup?"

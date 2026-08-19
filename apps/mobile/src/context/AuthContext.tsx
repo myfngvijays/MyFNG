@@ -112,6 +112,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = async () => {
+    // Punch out before session ends so Live Floor flips to Off Duty
+    try {
+      const roleCode = String(
+        (userProfile as any)?.role?.role_code ||
+          (userProfile as any)?.roles?.role_code ||
+          '',
+      ).toUpperCase();
+      if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER') {
+        const { apiFetch } = await import('../lib/api');
+        await apiFetch('/api/telecaller/crm/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'punch_out' }),
+        });
+      }
+    } catch {
+      /* best-effort */
+    }
     await supabase.auth.signOut();
     setUser(null);
     setUserProfile(null);

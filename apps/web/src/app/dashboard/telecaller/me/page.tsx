@@ -227,16 +227,14 @@ export default function TelecallerMyProfilePage() {
   };
 
   const logout = async () => {
-    if (attendance?.is_punched_in) {
-      try {
-        await fetch('/api/telecaller/crm/attendance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'punch_out' }),
-        });
-      } catch {
-        /* continue */
-      }
+    // Prefer shared punch-out helper (also covers header logout path)
+    try {
+      const { ensureTelecallerPunchOutOnLogout } = await import(
+        '@/lib/telecaller/ensurePunchInOnLogin'
+      );
+      await ensureTelecallerPunchOutOnLogout();
+    } catch {
+      /* ignore */
     }
     const supabase = createClient();
     await supabase.auth.signOut();

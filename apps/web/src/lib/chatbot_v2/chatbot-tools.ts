@@ -143,6 +143,29 @@ export const CHATBOT_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'set_customer_name',
+      description:
+        'Save the customer\'s real name as soon as they share it (after "What\'s your name?"). Call immediately — do not wait for create_booking. Replaces placeholder names like Customer_1234 on the CRM lead.',
+      parameters: {
+        type: 'object',
+        properties: {
+          customer_name: {
+            type: 'string',
+            description: "Customer's real full name (e.g. Nikhil, Rahul Sharma)",
+          },
+          phone_number: {
+            type: 'string',
+            description: 'Optional 10-digit phone if already known/verified',
+            pattern: '^[0-9]{10}$',
+          },
+        },
+        required: ['customer_name'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'set_vehicle_number',
       description:
         'Save and validate the customer car registration number. Call ONLY at the end of booking flow, just before showing booking summary and create_booking — NOT before pricing.',
@@ -491,6 +514,48 @@ export async function executeToolCall(
         }
       }
 
+      case 'set_customer_name': {
+        const customerName = String(args.customer_name || '').trim();
+        const phone =
+          normalizeBookingPhone(args.phone_number) ||
+          normalizeBookingPhone(opts?.sessionData?.bookingState?.phoneNumber) ||
+          normalizeBookingPhone(getVerifiedPhoneFromSession(opts?.sessionData)) ||
+          normalizeBookingPhone(opts?.channelPhone);
+
+        if (customerName.length < 2 || /^customer_/i.test(customerName)) {
+          return {
+            success: false,
+            message: 'Please ask for their real name (not a placeholder).',
+          };
+        }
+
+        if (opts?.sessionData) {
+          opts.sessionData.bookingState = {
+            ...(opts.sessionData.bookingState || {}),
+            customerName,
+          };
+        }
+
+        if (phone.length === 10) {
+          try {
+            const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+            const { updateLeadCustomerNameByPhone } = await import('@/lib/service-lead-reopen');
+            const { supabaseAdmin } = getSupabaseAdmin();
+            if (supabaseAdmin) {
+              await updateLeadCustomerNameByPhone(supabaseAdmin, phone, customerName);
+            }
+          } catch (err) {
+            console.warn('[TOOL] set_customer_name lead update failed', err);
+          }
+        }
+
+        return {
+          success: true,
+          customer_name: customerName,
+          message: 'Customer name saved. Continue with address / next booking question.',
+        };
+      }
+
       case 'set_vehicle_number': {
         if (!opts?.sessionData) {
           return { success: false, message: 'Session unavailable. Please try again.' };
@@ -613,6 +678,24 @@ export async function executeToolCall(
             success: false,
             message: 'Customer name is required. Ask "What\'s your name?" and wait for response before booking.',
           };
+        }
+
+        if (opts?.sessionData) {
+          opts.sessionData.bookingState = {
+            ...(opts.sessionData.bookingState || {}),
+            customerName,
+          };
+        }
+
+        try {
+          const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+          const { updateLeadCustomerNameByPhone } = await import('@/lib/service-lead-reopen');
+          const { supabaseAdmin } = getSupabaseAdmin();
+          if (supabaseAdmin) {
+            await updateLeadCustomerNameByPhone(supabaseAdmin, phone, customerName);
+          }
+        } catch (err) {
+          console.warn('[TOOL] create_booking name sync failed', err);
         }
 
         const trackingUtm = opts?.sessionData?.bookingState?.trackingUtm;

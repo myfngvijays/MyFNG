@@ -226,9 +226,10 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!normalized) return;
-    setLoading(true);
+    const silent = Boolean(opts?.silent);
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ phone: normalized, limit: '80' });
       const data = await apiFetch<{ messages?: Msg[] }>(
@@ -238,10 +239,12 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
       setMessages([...rows].reverse());
     } catch (e) {
       console.error('WA conversation failed', e);
-      setMessages([]);
-      Alert.alert('WhatsApp', String((e as Error)?.message || 'Failed to load chat'));
+      if (!silent) {
+        setMessages([]);
+        Alert.alert('WhatsApp', String((e as Error)?.message || 'Failed to load chat'));
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [normalized]);
 
@@ -249,6 +252,15 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
     load();
     loadTemplates();
   }, [load, loadTemplates]);
+
+  // Auto-refresh open chat so inbound/AI replies appear without tapping refresh.
+  useEffect(() => {
+    if (!normalized) return;
+    const id = setInterval(() => {
+      void load({ silent: true });
+    }, 2500);
+    return () => clearInterval(id);
+  }, [normalized, load]);
 
   useEffect(() => {
     if (isTemplateOnlyMode) setTemplateMode(true);
@@ -357,7 +369,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
         <TouchableOpacity style={styles.iconHit} onPress={openTemplatePicker} accessibilityLabel="Templates">
           <Ionicons name="document-text-outline" size={20} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconHit} onPress={load}>
+        <TouchableOpacity style={styles.iconHit} onPress={() => load()}>
           <Ionicons name="refresh" size={20} color="#fff" />
         </TouchableOpacity>
       </View>

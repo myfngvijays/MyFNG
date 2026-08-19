@@ -230,16 +230,14 @@ export default function CrmMeTab({ navigation, active = true, isLeadManager = fa
   };
 
   const logout = async () => {
-    if (attendance?.is_punched_in) {
-      try {
-        await apiFetch('/api/telecaller/crm/attendance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'punch_out' }),
-        });
-      } catch {
-        /* continue */
-      }
+    try {
+      await apiFetch('/api/telecaller/crm/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'punch_out' }),
+      });
+    } catch {
+      /* continue */
     }
     await supabase.auth.signOut();
   };

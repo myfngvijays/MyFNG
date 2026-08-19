@@ -32,6 +32,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  unread_count?: number | null;
   customer_name?: string | null;
 };
 
@@ -109,8 +110,9 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   const [activePhone, setActivePhone] = useState<string | null>(null);
   const [activeCustomerName, setActiveCustomerName] = useState<string | null>(null);
 
-  const fetchChats = useCallback(async () => {
-    setLoading(true);
+  const fetchChats = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({
         limit: '250',
@@ -125,17 +127,26 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
       setLeadCount(Number(data.lead_count ?? data.chats?.length ?? 0));
     } catch (e) {
       console.error('WhatsApp chats failed', e);
-      setRows([]);
+      if (!silent) setRows([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [search]);
 
   useEffect(() => {
     if (!visible) return;
-    const t = setTimeout(fetchChats, 250);
+    const t = setTimeout(() => fetchChats(), 250);
     return () => clearTimeout(t);
   }, [visible, fetchChats]);
+
+  // Keep inbox list live while open (no manual refresh needed).
+  useEffect(() => {
+    if (!visible || activePhone) return;
+    const id = setInterval(() => {
+      void fetchChats({ silent: true });
+    }, 3000);
+    return () => clearInterval(id);
+  }, [visible, activePhone, fetchChats]);
 
   useEffect(() => {
     if (!visible) {
@@ -145,7 +156,16 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   }, [visible]);
 
   const inboundCount = useMemo(
-    () => rows.filter((r) => String(r.last_direction || '').toUpperCase() === 'INBOUND').length,
+    () =>
+      rows.reduce((sum, r) => {
+        const n =
+          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
+            ? r.unread_count
+            : String(r.last_direction || '').toUpperCase() === 'INBOUND'
+              ? 1
+              : 0;
+        return sum + (n > 0 ? 1 : 0);
+      }, 0),
     [rows],
   );
 
@@ -160,6 +180,24 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   };
 
   const openChat = (phone: string, name?: string | null) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    const normalized =
+      digits.length === 10 ? `91${digits}` : digits.startsWith('91') ? digits : `91${digits.slice(-10)}`;
+    setRows((prev) =>
+      prev.map((row) => {
+        const p = String(row.phone || '').replace(/\D/g, '');
+        const rowNorm =
+          p.length === 10 ? `91${p}` : p.startsWith('91') ? p : `91${p.slice(-10)}`;
+        return rowNorm === normalized ? { ...row, unread_count: 0 } : row;
+      }),
+    );
+    void apiFetch('/api/whatsapp/chats/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: normalized || phone }),
+    }).catch(() => {
+      /* ignore */
+    });
     setActivePhone(phone);
     setActiveCustomerName(String(name || '').trim() || null);
   };
@@ -196,7 +234,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
               <Text style={styles.title}>WhatsApp</Text>
               <Text style={styles.subtitle}>{subtitle}</Text>
             </View>
-            <TouchableOpacity onPress={fetchChats} style={styles.iconHit}>
+            <TouchableOpacity onPress={() => fetchChats()} style={styles.iconHit}>
               <Ionicons name="refresh" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -230,7 +268,15 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                 </View>
               }
               renderItem={({ item }) => {
-                const inbound = String(item.last_direction || '').toUpperCase() === 'INBOUND';
+                const unreadCount = Math.max(
+                  0,
+                  typeof item.unread_count === 'number' && Number.isFinite(item.unread_count)
+                    ? item.unread_count
+                    : String(item.last_direction || '').toUpperCase() === 'INBOUND'
+                      ? 1
+                      : 0,
+                );
+                const inbound = unreadCount > 0;
                 const name = String(item.customer_name || '').trim() || formatPhone(item.phone);
                 const letter = avatarLetter(item.customer_name, item.phone);
                 return (
@@ -244,7 +290,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                     </View>
                     <View style={styles.rowBody}>
                       <View style={styles.rowTop}>
-                        <Text style={styles.name} numberOfLines={1}>
+                        <Text style={[styles.name, inbound && styles.nameUnread]} numberOfLines={1}>
                           {name}
                         </Text>
                         <Text style={[styles.time, inbound && styles.timeUnread]}>
@@ -267,7 +313,13 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
                         <Text style={styles.preview} numberOfLines={1}>
                           {previewText(item.last_message_preview)}
                         </Text>
-                        {inbound ? <View style={styles.unreadDot} /> : null}
+                        {inbound ? (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadBadgeText}>
+                              {unreadCount > 99 ? '99+' : String(unreadCount)}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -390,6 +442,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: WA.text,
   },
+  nameUnread: {
+    fontWeight: '700',
+  },
   time: {
     fontSize: 12,
     color: WA.meta,
@@ -408,12 +463,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: WA.meta,
   },
-  unreadDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
     backgroundColor: WA.unread,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginLeft: 8,
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 13,
   },
   sep: {
     height: StyleSheet.hairlineWidth,

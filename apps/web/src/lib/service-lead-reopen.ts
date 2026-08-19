@@ -86,6 +86,99 @@ export async function findLatestServiceLeadByPhone(
   return data || null;
 }
 
+export function isPlaceholderCustomerName(name: string | null | undefined): boolean {
+  const n = String(name || '').trim();
+  if (!n || n.length < 2) return true;
+  if (/^customer[_\s-]?\d*$/i.test(n)) return true;
+  if (/^whatsapp\s*customer$/i.test(n)) return true;
+  return false;
+}
+
+export function looksLikePersonName(raw: string | null | undefined): boolean {
+  const t = String(raw || '').trim();
+  if (t.length < 2 || t.length > 60) return false;
+  if (isPlaceholderCustomerName(t)) return false;
+  if (/^\d+$/.test(t)) return false;
+  if (!/^[a-zA-Z\u0900-\u097F][a-zA-Z\u0900-\u097F\s.'-]{1,59}$/.test(t)) return false;
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length > 4) return false;
+  if (
+    /^(yes|no|ok|okay|hi|hello|hey|cancel|book|booking|pricing|help|thanks|thank you|address|pincode|otp)$/i.test(
+      t,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Persist real customer name on the canonical CRM lead for this phone
+ * (replaces Customer_XXXX placeholders from OTP stub leads).
+ */
+export async function updateLeadCustomerNameByPhone(
+  supabaseAdmin: any,
+  phone: string | null | undefined,
+  customerName: string,
+): Promise<{ updated: boolean; leadId: string | null; name: string | null }> {
+  const phone10 = normalizeCustomerPhone(phone);
+  const name = String(customerName || '').trim().slice(0, 120);
+  if (!phone10 || !looksLikePersonName(name)) {
+    return { updated: false, leadId: null, name: null };
+  }
+
+  const lead = await findLatestServiceLeadByPhone(supabaseAdmin, phone10);
+  if (!lead?.id) {
+    return { updated: false, leadId: null, name };
+  }
+
+  const existing = String(lead.customer_name || '').trim();
+  if (existing && !isPlaceholderCustomerName(existing) && existing.toLowerCase() === name.toLowerCase()) {
+    return { updated: false, leadId: String(lead.id), name: existing };
+  }
+
+  // Don't overwrite a real different name unless current is placeholder.
+  if (existing && !isPlaceholderCustomerName(existing) && existing.toLowerCase() !== name.toLowerCase()) {
+    return { updated: false, leadId: String(lead.id), name: existing };
+  }
+
+  const nowIso = new Date().toISOString();
+  const prevMeta =
+    lead.coupon_meta && typeof lead.coupon_meta === 'object'
+      ? (lead.coupon_meta as Record<string, unknown>)
+      : {};
+  const nextMeta = appendLeadProfileHistory(
+    {
+      ...prevMeta,
+      customer_name_captured_at: nowIso,
+      customer_name_source: 'misa_chat',
+    },
+    {
+      at: nowIso,
+      summary: `Customer name saved: ${name}`,
+      status: String(lead.status || '') || null,
+      event: 'CUSTOMER_NAME_CAPTURED',
+      previous_label: existing || null,
+    },
+  );
+
+  const { error } = await supabaseAdmin
+    .from('service_leads')
+    .update({
+      customer_name: name,
+      coupon_meta: nextMeta,
+      updated_at: nowIso,
+    })
+    .eq('id', lead.id);
+
+  if (error) {
+    console.warn('[service-lead-reopen] name update failed:', error.message);
+    return { updated: false, leadId: String(lead.id), name };
+  }
+
+  return { updated: true, leadId: String(lead.id), name };
+}
+
 /** Soft-delete other leads for same phone (keep keeper). Skip active workshop jobs. */
 async function softDeleteSiblingLeads(
   supabaseAdmin: any,

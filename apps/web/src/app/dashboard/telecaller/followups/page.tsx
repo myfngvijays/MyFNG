@@ -56,7 +56,7 @@ const MONTH_NAMES = [
 
 export default function FollowUpsPage() {
   const pathname = usePathname();
-  const { base, layoutRole } = getCrmDashboardBase(pathname);
+  const { base, layoutRole, scopeAll } = getCrmDashboardBase(pathname);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [pendingLeadIds, setPendingLeadIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -73,7 +73,7 @@ export default function FollowUpsPage() {
 
   useEffect(() => {
     fetchFollowUps();
-  }, [filter, customStart, customEnd, pickMode]);
+  }, [filter, customStart, customEnd, pickMode, scopeAll]);
 
   async function fetchFollowUps() {
     const supabase = createClient();
@@ -89,11 +89,15 @@ export default function FollowUpsPage() {
         .eq('email', user.email)
         .single();
 
-      const { data: pendingRows } = await supabase
+      // Lead Manager / admin: all team reminders. Telecaller: only own.
+      let pendingQ = supabase
         .from('telecaller_follow_ups')
         .select('lead_id')
-        .eq('telecaller_id', userProfile?.id)
         .eq('status', 'PENDING');
+      if (!scopeAll && userProfile?.id) {
+        pendingQ = pendingQ.eq('telecaller_id', userProfile.id);
+      }
+      const { data: pendingRows } = await pendingQ;
       const pendingIds = new Set((pendingRows || []).map((r: any) => String(r.lead_id)));
       setPendingLeadIds(pendingIds);
 
@@ -101,9 +105,13 @@ export default function FollowUpsPage() {
         .from('telecaller_follow_ups')
         .select(`
           *,
-          lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model)
-        `)
-        .eq('telecaller_id', userProfile?.id);
+          lead:service_leads(lead_number, customer_name, customer_phone, vehicle_make, vehicle_model),
+          telecaller:users_login!telecaller_id(id, full_name)
+        `);
+
+      if (!scopeAll && userProfile?.id) {
+        query = query.eq('telecaller_id', userProfile.id);
+      }
 
       const todayBounds = istDayBounds(istYmd());
 
@@ -130,7 +138,7 @@ export default function FollowUpsPage() {
         query = query.order('scheduled_time', { ascending: true });
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.limit(scopeAll ? 500 : 200);
 
       if (error) throw error;
       setFollowUps(data || []);
@@ -268,7 +276,11 @@ export default function FollowUpsPage() {
         {/* Header */}
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold text-text-heading">Reminders / Follow-ups</h1>
-          <p className="text-text-body text-xs sm:text-sm mt-1">Scheduled follow-ups — clock icon se yahan aate ho</p>
+          <p className="text-text-body text-xs sm:text-sm mt-1">
+            {scopeAll
+              ? 'Team reminders — home se View all yahan khulta hai'
+              : 'Scheduled follow-ups — clock icon se yahan aate ho'}
+          </p>
         </div>
 
         {/* Filters & Search */}
@@ -479,6 +491,9 @@ export default function FollowUpsPage() {
                           </div>
                           <p className="text-xs text-gray-600 mt-0.5 truncate">
                             {followUp.lead?.vehicle_make} {followUp.lead?.vehicle_model} • {followUp.lead?.customer_phone}
+                            {scopeAll && followUp.telecaller?.full_name
+                              ? ` · ${followUp.telecaller.full_name}`
+                              : ''}
                           </p>
                         </div>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap shrink-0 ${

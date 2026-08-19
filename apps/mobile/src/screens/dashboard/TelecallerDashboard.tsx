@@ -244,6 +244,16 @@ export default function TelecallerDashboard() {
   };
 
   const handleLogout = async () => {
+    try {
+      const { apiFetch } = await import('../../lib/api');
+      await apiFetch('/api/telecaller/crm/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'punch_out' }),
+      });
+    } catch {
+      /* best-effort */
+    }
     await supabase.auth.signOut();
   };
 
