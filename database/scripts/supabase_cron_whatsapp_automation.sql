@@ -18,6 +18,7 @@ BEGIN
     FROM cron.job
     WHERE jobname LIKE 'wa-auto-%'
        OR jobname LIKE 'sys-health-alert-%'
+       OR jobname LIKE 'wa-telecaller-%'
   LOOP
     PERFORM cron.unschedule(r.jobid);
     RAISE NOTICE 'Unscheduled % (jobid=%)', r.jobname, r.jobid;
@@ -159,12 +160,31 @@ SELECT cron.schedule(
 );
 
 -- -----------------------------------------------------------------------------
+-- Telecaller leads shift summary (13:30 UTC = 19:00 IST)
+-- Shift window: previous day 7:00 PM IST → today 7:00 PM IST
+-- -----------------------------------------------------------------------------
+SELECT cron.schedule(
+  'wa-telecaller-leads-shift-summary',
+  '30 13 * * *',
+  $$
+  SELECT net.http_get(
+    url := 'https://myfng.in/api/cron/telecaller-leads-shift-summary?force=1',
+    headers := jsonb_build_object(
+      'Authorization', 'Bearer YOUR_CRON_SECRET'
+    ),
+    timeout_milliseconds := 120000
+  );
+  $$
+);
+
+-- -----------------------------------------------------------------------------
 -- Verify
 -- -----------------------------------------------------------------------------
 SELECT jobid, jobname, schedule, active
 FROM cron.job
 WHERE jobname LIKE 'wa-auto-%'
    OR jobname LIKE 'sys-health-alert-%'
+   OR jobname = 'wa-telecaller-leads-shift-summary'
 ORDER BY jobname;
 
 -- After a run, check responses:

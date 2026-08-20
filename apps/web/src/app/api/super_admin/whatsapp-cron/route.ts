@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
+import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import {
   WHATSAPP_CRON_JOBS,
   buildWhatsAppCronUrl,
@@ -20,29 +21,31 @@ import {
   getWhatsAppCronJobEnabledMap,
   setWhatsAppCronJobEnabled,
 } from '@/lib/services/whatsappCronJobFlags';
+import {
+  createTelecallerLeadsShiftTemplate,
+  getTelecallerLeadsShiftTemplateStatus,
+  TELECALLER_LEADS_SHIFT_TEMPLATE,
+} from '@/lib/services/telecallerLeadsShiftSummaryTemplate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-async function assertAdmin() {
-  const supabase = await createClient();
+async function assertAdmin(request: NextRequest) {
+  const supabase = await createClientFromRequest(request);
   const {
     data: { user },
     error,
   } = await supabase.auth.getUser();
   if (error || !user) return { ok: false as const, status: 401, error: 'Unauthorized' };
 
-  const { data: profile } = await supabase
-    .from('users_login')
-    .select('id, roles!inner(role_code)')
-    .eq('id', user.id)
-    .single();
+  const profile = await resolveUserProfile(supabase as any, user);
+  if (!profile?.id) return { ok: false as const, status: 403, error: 'Forbidden' };
 
-  const role = (profile as { roles?: { role_code?: string } } | null)?.roles?.role_code || '';
+  const role = String((profile as { roles?: { role_code?: string } })?.roles?.role_code || '').toUpperCase();
   if (!['SUPER_ADMIN', 'SUB_ADMIN'].includes(role)) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
-  return { ok: true as const, role, userId: user.id };
+  return { ok: true as const, role, userId: String(profile.id) };
 }
 
 function publicBaseUrl(req: NextRequest): string {
@@ -55,15 +58,17 @@ function publicBaseUrl(req: NextRequest): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await assertAdmin();
+    const auth = await assertAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    const [cronMasterEnabled, settings, jobEnabledMap, alertNumbers] = await Promise.all([
-      isWhatsAppAutomationCronMasterEnabled(),
-      listAutomationSettings(),
-      getWhatsAppCronJobEnabledMap(),
-      listSystemAlertWhatsAppNumbers(),
-    ]);
+    const [cronMasterEnabled, settings, jobEnabledMap, alertNumbers, tcLeadsTemplate] =
+      await Promise.all([
+        isWhatsAppAutomationCronMasterEnabled(),
+        listAutomationSettings(),
+        getWhatsAppCronJobEnabledMap(),
+        listSystemAlertWhatsAppNumbers(),
+        getTelecallerLeadsShiftTemplateStatus().catch(() => null),
+      ]);
 
     const byKey = new Map(settings.map((s) => [s.trigger_key, s]));
     const baseUrl = publicBaseUrl(request);
@@ -139,6 +144,13 @@ export async function GET(request: NextRequest) {
       sql_source: 'database/scripts/supabase_cron_whatsapp_automation.sql',
       timezone_note: 'Schedules stored in UTC on Supabase. IST labels are Asia/Kolkata (+5:30).',
       jobs,
+      telecaller_leads_template: tcLeadsTemplate
+        ? {
+            ...tcLeadsTemplate,
+            display_name: TELECALLER_LEADS_SHIFT_TEMPLATE.display_name,
+            body_preview: TELECALLER_LEADS_SHIFT_TEMPLATE.body_text,
+          }
+        : null,
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Internal server error';
@@ -148,7 +160,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await assertAdmin();
+    const auth = await assertAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const body = await request.json().catch(() => ({}));
@@ -182,6 +194,19 @@ export async function POST(request: NextRequest) {
       const result = await removeSystemAlertWhatsAppNumber(phone, auth.userId);
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
       return NextResponse.json({ success: true, numbers: result.numbers });
+    }
+
+    if (action === 'ensure-telecaller-leads-template') {
+      if (auth.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Only Super Admin can create templates' }, { status: 403 });
+      }
+      const result = await createTelecallerLeadsShiftTemplate(auth.userId);
+      const status = await getTelecallerLeadsShiftTemplateStatus();
+      return NextResponse.json({
+        success: true,
+        ...result,
+        status,
+      });
     }
 
     // Default: run now

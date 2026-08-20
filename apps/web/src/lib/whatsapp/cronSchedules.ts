@@ -130,6 +130,20 @@ export const WHATSAPP_CRON_JOBS: WhatsAppCronJobDef[] = [
     category: 'automation',
   },
   {
+    id: 'telecaller-leads-shift-summary',
+    jobName: 'wa-telecaller-leads-shift-summary',
+    title: 'Telecaller leads · Shift summary',
+    description:
+      'WhatsApp to alert numbers: each telecaller’s lead count for the office shift (7:00 PM → next day 7:00 PM IST).',
+    scheduleUtc: '30 13 * * *',
+    scheduleIst: 'Daily · 7:00 PM IST',
+    endpointPath: '/api/cron/telecaller-leads-shift-summary',
+    force: true,
+    triggerKeys: [],
+    cadence: 'daily',
+    category: 'system_health',
+  },
+  {
     id: 'system-health-evening',
     jobName: 'sys-health-alert-evening',
     title: 'System health alert · Evening',

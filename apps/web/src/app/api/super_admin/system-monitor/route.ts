@@ -1371,6 +1371,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/wallet-welcome-expiry-push',
     '/api/cron/whatsapp-agents',
     '/api/cron/whatsapp-automation',
+    '/api/cron/telecaller-leads-shift-summary',
     '/api/cron/telecrm-push',
     '/api/cron/notifications?task=followup_reminder',
   ];
@@ -2307,6 +2308,96 @@ async function checkWhatsAppChatReads(): Promise<HealthCheck> {
   }
 }
 
+async function checkTelecallerLeadsShiftSummary(): Promise<HealthCheck> {
+  const start = Date.now();
+  const cronSecret = Boolean(process.env.CRON_SECRET || process.env.NOTIFICATION_CRON_SECRET);
+  const { client } = getAdminClient();
+
+  if (!cronSecret) {
+    return {
+      name: 'Telecaller Leads Shift WA',
+      category: 'WhatsApp',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'CRON_SECRET missing',
+      reason: 'Shift summary cron at 7pm IST needs CRON_SECRET to run /api/cron/telecaller-leads-shift-summary.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  if (!client) {
+    return {
+      name: 'Telecaller Leads Shift WA',
+      category: 'WhatsApp',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'DB unavailable for telecaller check',
+      reason: 'Cannot verify TELECALLER role / users for shift lead summary.',
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  try {
+    const { data: roleRow, error: roleErr } = await checkWithTimeout(() =>
+      client.from('roles').select('id').eq('role_code', 'TELECALLER').maybeSingle(),
+    );
+    if (roleErr || !roleRow?.id) {
+      return {
+        name: 'Telecaller Leads Shift WA',
+        category: 'WhatsApp',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'TELECALLER role missing',
+        reason: roleErr?.message || 'roles.role_code=TELECALLER not found',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    const { count, error } = await checkWithTimeout(() =>
+      client
+        .from('users_login')
+        .select('id', { count: 'exact', head: true })
+        .eq('role_id', roleRow.id),
+    );
+    if (error) {
+      return {
+        name: 'Telecaller Leads Shift WA',
+        category: 'WhatsApp',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Cannot count telecallers',
+        reason: error.message,
+        lastChecked: new Date().toISOString(),
+      };
+    }
+    return {
+      name: 'Telecaller Leads Shift WA',
+      category: 'WhatsApp',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: `Ready · ${(count || 0)} telecallers · 7pm IST shift`,
+      reason:
+        'Daily WhatsApp at 7:00 PM IST lists each TC lead count for previous 7pm→today 7pm. Recipients = system alert WhatsApp numbers. Schedule job wa-telecaller-leads-shift-summary in Supabase cron.',
+      quickFix: {
+        label: 'WhatsApp Cron',
+        action: 'external-link',
+        actionPayload: { url: '/dashboard/super_admin/whatsapp-cron' },
+      },
+      lastChecked: new Date().toISOString(),
+      details: { telecallerCount: count || 0, cronPath: '/api/cron/telecaller-leads-shift-summary' },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Telecaller Leads Shift WA',
+      category: 'WhatsApp',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: e?.message || 'Check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
 /** Shared by System Monitor UI and cron WhatsApp health alerts. */
 export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
   return Promise.all([
@@ -2329,6 +2420,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkTelecallerCrmPermissions(),
     checkTelecallerCallbackReminders(),
     checkCrmManagerOpsTables(),
+    checkTelecallerLeadsShiftSummary(),
     checkRsaLeads(),
     checkOpenAI(),
     checkMisaAiMonitoring(),
