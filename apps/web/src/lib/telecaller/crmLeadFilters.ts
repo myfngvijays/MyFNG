@@ -38,12 +38,31 @@ export function applyCrmLeadDateRange(
   filter: string | null | undefined,
   from: string | null | undefined,
   to: string | null | undefined,
+  dateField?: string | null,
 ) {
   if (!from && !to) return query;
-  const useActivity = CRM_ACTIVITY_DATE_FILTERS.has(String(filter || '').toLowerCase());
-  const col = useActivity ? 'last_call_at' : 'created_at';
+  const requested = String(dateField || '')
+    .toLowerCase()
+    .trim();
+  let col = 'created_at';
+  if (requested === 'updated_at' || requested === 'modified') {
+    col = 'updated_at';
+  } else if (requested === 'last_call_at' || requested === 'activity') {
+    col = 'last_call_at';
+  } else if (CRM_ACTIVITY_DATE_FILTERS.has(String(filter || '').toLowerCase())) {
+    col = 'last_call_at';
+  }
   let q = query;
   if (from) q = q.gte(col, from);
   if (to) q = q.lte(col, to);
   return q;
+}
+
+/** Resolve list sort column from date filter field. */
+export function resolveCrmLeadOrderColumn(dateField?: string | null): 'created_at' | 'updated_at' {
+  const requested = String(dateField || '')
+    .toLowerCase()
+    .trim();
+  if (requested === 'updated_at' || requested === 'modified') return 'updated_at';
+  return 'created_at';
 }

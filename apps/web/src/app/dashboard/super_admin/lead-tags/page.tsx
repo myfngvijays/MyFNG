@@ -151,10 +151,10 @@ export default function SuperAdminLeadTagsPage() {
             <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {tags.map((t) =>
               editingId === t.id ? (
-                <li key={t.id} className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2">
+                <li key={t.id} className="sm:col-span-2 rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2">
                   <div className="flex flex-wrap gap-2">
                     {COLORS.map((c) => (
                       <button
@@ -193,7 +193,7 @@ export default function SuperAdminLeadTagsPage() {
               ) : (
                 <li
                   key={t.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3"
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5"
                 >
                   <span
                     className="rounded-md px-2.5 py-1 text-xs font-bold"

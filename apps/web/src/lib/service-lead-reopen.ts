@@ -970,24 +970,30 @@ function leadDedupeRank(row: any): number {
     Boolean(meta.website_booking_abandoned) ||
     Boolean(row?.is_incomplete);
   if (otp && (status === 'NEW' || row?.is_incomplete)) return 100;
-  if (status === 'NEW' || status === 'CONTACTED' || status === 'ASSIGNED') return 80;
-  if (status === 'VALIDATED' || status === 'ACCEPTED' || status === 'IN_PROGRESS') return 70;
+  if (status === 'IN_PROGRESS' || status === 'ACCEPTED' || status === 'ASSIGNED') return 95;
+  if (status === 'NEW' || status === 'CONTACTED') return 80;
+  if (status === 'VALIDATED') return 70;
   if (status === 'REJECTED' || status === 'COMPLETED' || status === 'CANCELLED') return 10;
   return 40;
 }
 
-/** Collapse CRM list to one row per phone (prefer chaseable OTP/NEW over Lost). */
+function leadRecencyMs(row: any): number {
+  return new Date(row?.updated_at || row?.created_at || 0).getTime() || 0;
+}
+
+/**
+ * Collapse CRM list to one row per phone.
+ * Prefer latest activity; among equal times, prefer chaseable / active ranks.
+ */
 export function dedupeLeadsByPhone<T extends { customer_phone?: string | null; updated_at?: string | null; created_at?: string | null }>(
   rows: T[],
 ): T[] {
   const seen = new Set<string>();
   const out: T[] = [];
   const sorted = [...rows].sort((a, b) => {
-    const rankDiff = leadDedupeRank(b) - leadDedupeRank(a);
-    if (rankDiff !== 0) return rankDiff;
-    const ta = new Date(a.updated_at || a.created_at || 0).getTime();
-    const tb = new Date(b.updated_at || b.created_at || 0).getTime();
-    return tb - ta;
+    const timeDiff = leadRecencyMs(b) - leadRecencyMs(a);
+    if (timeDiff !== 0) return timeDiff;
+    return leadDedupeRank(b) - leadDedupeRank(a);
   });
   for (const row of sorted) {
     const key = normalizeCustomerPhone(row.customer_phone) || `id:${(row as any).id}`;
@@ -996,4 +1002,132 @@ export function dedupeLeadsByPhone<T extends { customer_phone?: string | null; u
     out.push(row);
   }
   return out;
+}
+
+const ACTIVE_JOB_STATUSES = new Set([
+  'IN_PROGRESS',
+  'ACCEPTED',
+  'ASSIGNED',
+  'ASSIGNED_TO_WORKSHOP',
+]);
+
+function pickCanonicalLeadForPhone(siblings: any[]): any | null {
+  if (!siblings.length) return null;
+  const active = siblings.filter((r) =>
+    ACTIVE_JOB_STATUSES.has(String(r.status || '').toUpperCase()),
+  );
+  const pool = active.length ? active : siblings;
+  return [...pool].sort((a, b) => {
+    const timeDiff = leadRecencyMs(b) - leadRecencyMs(a);
+    if (timeDiff !== 0) return timeDiff;
+    return leadDedupeRank(b) - leadDedupeRank(a);
+  })[0];
+}
+
+export type ConsolidatePhoneDupesResult = {
+  deletedIds: string[];
+  /** Winner id → refreshed coupon_meta after history merge */
+  winnerMetaById: Map<string, Record<string, unknown>>;
+};
+
+/**
+ * TeleCRM phone merge: one open lead per phone.
+ * Latest (or active job) stays; older duplicates → profile_history + soft-delete.
+ */
+export async function consolidateDuplicateLeadsByPhones(
+  supabaseAdmin: any,
+  phones: string[],
+): Promise<ConsolidatePhoneDupesResult> {
+  const deletedIds: string[] = [];
+  const winnerMetaById = new Map<string, Record<string, unknown>>();
+  const uniquePhones = Array.from(
+    new Set(phones.map((p) => normalizeCustomerPhone(p)).filter(Boolean)),
+  ).slice(0, 40);
+
+  for (const phone10 of uniquePhones) {
+    try {
+      const { data: siblings, error } = await supabaseAdmin
+        .from('service_leads')
+        .select(
+          'id, lead_number, status, customer_name, customer_phone, vehicle_number, vehicle_make, vehicle_model, is_incomplete, coupon_meta, created_at, updated_at',
+        )
+        .or(phoneOrFilter(phone10))
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .limit(40);
+
+      if (error || !siblings?.length || siblings.length < 2) continue;
+
+      const winner = pickCanonicalLeadForPhone(siblings);
+      if (!winner?.id) continue;
+
+      const losers = siblings.filter((r: any) => {
+        if (String(r.id) === String(winner.id)) return false;
+        // Never soft-delete another active workshop job
+        if (ACTIVE_JOB_STATUSES.has(String(r.status || '').toUpperCase())) return false;
+        return true;
+      });
+      if (!losers.length) continue;
+
+      let meta =
+        winner.coupon_meta && typeof winner.coupon_meta === 'object'
+          ? ({ ...(winner.coupon_meta as Record<string, unknown>) } as Record<string, unknown>)
+          : {};
+
+      const nowIso = new Date().toISOString();
+      for (const loser of losers) {
+        const vehicle = [loser.vehicle_make, loser.vehicle_model, loser.vehicle_number]
+          .map((v) => String(v || '').trim())
+          .filter((v) => v && v.toUpperCase() !== 'NA')
+          .join(' · ');
+        const status = String(loser.status || '').toUpperCase() || 'LEAD';
+        const statusLabel =
+          status === 'NEW'
+            ? 'Fresh'
+            : status === 'VALIDATED'
+              ? 'Booking confirmed'
+              : status === 'IN_PROGRESS'
+                ? 'In Service'
+                : status === 'COMPLETED'
+                  ? 'Service Done'
+                  : status === 'REJECTED'
+                    ? 'Lost'
+                    : status.replace(/_/g, ' ');
+        const leadNo = String(loser.lead_number || loser.id || '').slice(0, 24);
+        meta = appendLeadProfileHistory(meta, {
+          at: nowIso,
+          summary: `Earlier lead ${leadNo} merged (same phone)${vehicle ? ` · ${vehicle}` : ''} · was ${statusLabel}`,
+          status,
+          event: 'PHONE_DUPLICATE_MERGED',
+          previous_status: status,
+          previous_label: leadNo || null,
+        });
+        deletedIds.push(String(loser.id));
+      }
+
+      const loserIds = losers.map((r: any) => String(r.id)).filter(Boolean);
+      const { error: delErr } = await supabaseAdmin
+        .from('service_leads')
+        .update({ deleted_at: nowIso, updated_at: nowIso })
+        .in('id', loserIds);
+      if (delErr) {
+        console.warn('[consolidateDuplicateLeadsByPhones] soft-delete failed:', delErr.message);
+        continue;
+      }
+
+      const { error: winErr } = await supabaseAdmin
+        .from('service_leads')
+        .update({ coupon_meta: meta, updated_at: nowIso })
+        .eq('id', winner.id);
+      if (winErr) {
+        console.warn('[consolidateDuplicateLeadsByPhones] winner history failed:', winErr.message);
+      } else {
+        winnerMetaById.set(String(winner.id), meta);
+      }
+    } catch (err) {
+      console.warn('[consolidateDuplicateLeadsByPhones] skipped phone', phone10, err);
+    }
+  }
+
+  return { deletedIds, winnerMetaById };
 }

@@ -130,7 +130,7 @@ export default function LeadManagerTagsPage() {
 
   return (
     <DashboardLayout role="LEAD_MANAGER">
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 space-y-4">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 space-y-4">
         <div>
           <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">
             <Tag className="h-6 w-6" /> Lead tags
@@ -191,12 +191,12 @@ export default function LeadManagerTagsPage() {
         ) : tags.length === 0 ? (
           <p className="text-center text-sm text-slate-500 py-10">No tags yet — create one above</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {tags.map((t) =>
               editingId === t.id ? (
                 <li
                   key={t.id}
-                  className="rounded-xl border border-blue-200 bg-blue-50/40 px-4 py-3 shadow-sm space-y-3"
+                  className="sm:col-span-2 rounded-xl border border-blue-200 bg-blue-50/40 px-4 py-3 shadow-sm space-y-3"
                 >
                   <div className="flex flex-wrap gap-2">
                     {COLORS.map((c) => (
@@ -238,7 +238,7 @@ export default function LeadManagerTagsPage() {
               ) : (
                 <li
                   key={t.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm"
                 >
                   <div className="min-w-0 flex flex-wrap items-center gap-2">
                     <span

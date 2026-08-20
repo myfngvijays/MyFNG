@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, Suspense, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useState, Suspense, useRef, useMemo, type CSSProperties } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 import Link from 'next/link';
@@ -40,10 +40,10 @@ import ManagerBulkActionsBar from '@/components/telecaller/crm/ManagerBulkAction
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
 import CrmDatePickerModal from '@/components/telecaller/crm/CrmDatePickerModal';
 
-const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v3';
+const LEADS_COLUMNS_STORAGE_KEY = 'telecaller_crm_leads_columns_v5';
 
 const LEADS_TABLE_COLUMNS = [
-  { key: 'leadNumber', label: 'Lead #', onByDefault: true, locked: true },
+  { key: 'leadNumber', label: 'Lead #', onByDefault: false, locked: false },
   { key: 'status', label: 'Status', onByDefault: true, locked: false },
   { key: 'customer', label: 'Customer', onByDefault: true, locked: false },
   { key: 'phone', label: 'Phone', onByDefault: true, locked: false },
@@ -51,9 +51,10 @@ const LEADS_TABLE_COLUMNS = [
   { key: 'regNo', label: 'Reg. No', onByDefault: true, locked: false },
   { key: 'makeModel', label: 'Make / Model', onByDefault: true, locked: false },
   { key: 'city', label: 'City', onByDefault: true, locked: false },
-  { key: 'priority', label: 'Priority', onByDefault: true, locked: false },
+  { key: 'priority', label: 'Priority', onByDefault: false, locked: false },
   { key: 'assignee', label: 'Assignee', onByDefault: true, locked: false },
-  { key: 'date', label: 'Date', onByDefault: true, locked: false },
+  { key: 'date', label: 'Created on', onByDefault: true, locked: false },
+  { key: 'modified', label: 'Modified', onByDefault: true, locked: false },
   { key: 'actions', label: 'Actions', onByDefault: true, locked: true },
 ] as const;
 
@@ -65,6 +66,44 @@ const DEFAULT_LEADS_COLUMNS: LeadsColumnVisibility = LEADS_TABLE_COLUMNS.reduce(
   return acc;
 }, {} as LeadsColumnVisibility);
 
+/** Split date + time onto two lines (TeleCRM-style stack). */
+function formatLeadDateParts(iso: string | null | undefined): { date: string; time: string } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  return {
+    date: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+    time: d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+  };
+}
+
+function formatLeadDateTime(iso: string | null | undefined) {
+  const parts = formatLeadDateParts(iso);
+  if (!parts) return '—';
+  return `${parts.date}, ${parts.time}`;
+}
+
+/** Prefer 2 lines with full name (no ellipsis) — first word(s) then remainder. */
+function splitCustomerNameLines(name: string): [string, string | null] {
+  const full = String(name || '').trim() || 'Unknown';
+  const parts = full.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return [full, null];
+  if (parts.length === 2) return [parts[0], parts[1]];
+  // 3+ words: keep first on line 1, rest complete on line 2
+  return [parts[0], parts.slice(1).join(' ')];
+}
+
+function StackedDateTime({ iso }: { iso: string | null | undefined }) {
+  const parts = formatLeadDateParts(iso);
+  if (!parts) return <span>—</span>;
+  return (
+    <span className="inline-flex flex-col leading-tight">
+      <span>{parts.date}</span>
+      <span className="text-slate-400">{parts.time}</span>
+    </span>
+  );
+}
+
 function loadLeadsColumnVisibility(): LeadsColumnVisibility {
   if (typeof window === 'undefined') return { ...DEFAULT_LEADS_COLUMNS };
   try {
@@ -75,7 +114,6 @@ function loadLeadsColumnVisibility(): LeadsColumnVisibility {
     for (const col of LEADS_TABLE_COLUMNS) {
       if (typeof parsed[col.key] === 'boolean') next[col.key] = parsed[col.key]!;
     }
-    next.leadNumber = true;
     next.actions = true;
     return next;
   } catch {
@@ -118,6 +156,7 @@ function TelecallerCrmLeadsContent() {
   const router = useRouter();
   const filterParam = searchParams?.get('filter');
   const dateParam = searchParams?.get('date') as CrmDatePreset | null;
+  const dateFieldParam = searchParams?.get('date_field');
   const cityParam = searchParams?.get('city');
   const priorityParam = searchParams?.get('priority');
   const qParam = searchParams?.get('q');
@@ -145,6 +184,9 @@ function TelecallerCrmLeadsContent() {
   const [unassignedOnly, setUnassignedOnly] = useState(unassignedParam === '1');
   const [telecallers, setTelecallers] = useState<Array<{ id: string; full_name: string | null }>>([]);
   const [datePreset, setDatePreset] = useState<CrmDatePreset>(dateParam || defaults.datePreset);
+  const [dateField, setDateField] = useState<'created' | 'modified'>(
+    dateFieldParam === 'modified' || dateFieldParam === 'updated_at' ? 'modified' : defaults.dateField,
+  );
   const [customStart, setCustomStart] = useState(defaults.customStart);
   const [customEnd, setCustomEnd] = useState(defaults.customEnd);
   const [cities, setCities] = useState<string[]>([]);
@@ -199,13 +241,21 @@ function TelecallerCrmLeadsContent() {
     return `${(100 / dataCount).toFixed(3)}%`;
   }, [visibleTableCols]);
 
+  /** Tight widths for Status / Customer / Phone so badge ↔ name gap isn't huge. */
+  const colWidthStyle = (key: LeadsColumnKey): CSSProperties => {
+    if (key === 'status') return { width: '5.25rem', minWidth: '5.25rem', maxWidth: '5.75rem' };
+    if (key === 'phone') return { width: '6.75rem', minWidth: '6.5rem', maxWidth: '7.25rem' };
+    if (key === 'customer') return { width: '8.25rem', minWidth: '7.5rem', maxWidth: '10rem' };
+    return { width: dataColWidthPct };
+  };
+
   const toggleColumn = (key: LeadsColumnKey) => {
     const meta = LEADS_TABLE_COLUMNS.find((c) => c.key === key);
     if (meta?.locked) return;
     setVisibleColumns((prev) => {
       const next = { ...prev, [key]: !prev[key] };
       if (!LEADS_TABLE_COLUMNS.some((c) => next[c.key] && c.key !== 'actions')) {
-        next.leadNumber = true;
+        next.customer = true;
       }
       saveLeadsColumnVisibility(next);
       return next;
@@ -267,6 +317,11 @@ function TelecallerCrmLeadsContent() {
     const saved = loadTelecallerCrmFilterPrefs();
     setFilter(filterParam || saved.statusFilter || 'all');
     setDatePreset((dateParam && dateParam) || saved.datePreset);
+    setDateField(
+      dateFieldParam === 'modified' || dateFieldParam === 'updated_at'
+        ? 'modified'
+        : saved.dateField || 'created',
+    );
     setCustomStart(saved.customStart);
     setCustomEnd(saved.customEnd);
     setLostReason(lostParam || saved.lostReason || '');
@@ -289,6 +344,7 @@ function TelecallerCrmLeadsContent() {
     (next: {
       filter?: string;
       datePreset?: CrmDatePreset;
+      dateField?: 'created' | 'modified';
       city?: string;
       priority?: string;
       q?: string;
@@ -299,6 +355,7 @@ function TelecallerCrmLeadsContent() {
       const params = new URLSearchParams(searchParams?.toString() || '');
       const f = next.filter ?? filter;
       const d = next.datePreset ?? datePreset;
+      const df = next.dateField ?? dateField;
       const c = next.city ?? city;
       const p = next.priority ?? priority;
       const query = next.q ?? appliedQ;
@@ -310,6 +367,8 @@ function TelecallerCrmLeadsContent() {
       else params.set('filter', f);
       if (!d || d === 'last_7_days') params.delete('date');
       else params.set('date', d);
+      if (!df || df === 'created') params.delete('date_field');
+      else params.set('date_field', df);
       if (!c) params.delete('city');
       else params.set('city', c);
       if (!p) params.delete('priority');
@@ -330,6 +389,7 @@ function TelecallerCrmLeadsContent() {
       searchParams,
       filter,
       datePreset,
+      dateField,
       city,
       priority,
       appliedQ,
@@ -484,6 +544,7 @@ function TelecallerCrmLeadsContent() {
       if (appliedQ.trim()) baseParams.set('q', appliedQ.trim());
       if (city.trim()) baseParams.set('city', city.trim());
       if (priority.trim()) baseParams.set('priority', priority.trim());
+      if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
       if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
       if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
       if (!range.allTime) {
@@ -543,6 +604,7 @@ function TelecallerCrmLeadsContent() {
     city,
     priority,
     datePreset,
+    dateField,
     customStart,
     customEnd,
     isLeadManager,
@@ -564,6 +626,7 @@ function TelecallerCrmLeadsContent() {
     city,
     priority,
     datePreset,
+    dateField,
     customStart,
     customEnd,
     telecallerId,
@@ -786,6 +849,7 @@ function TelecallerCrmLeadsContent() {
                   setAdvNoAssignee(false);
                   setAdvHasPhone(false);
                   setAdvOverdueReminder(false);
+                  setDateField('created');
                   persistAll({
                     statusFilter: 'all',
                     city: '',
@@ -794,6 +858,7 @@ function TelecallerCrmLeadsContent() {
                     unassignedOnly: false,
                     lostReason: '',
                     q: '',
+                    dateField: 'created',
                     advIncomplete: false,
                     advFollowUp: false,
                     advHasVehicle: false,
@@ -808,6 +873,7 @@ function TelecallerCrmLeadsContent() {
                     unassignedOnly: false,
                     lostReason: '',
                     q: '',
+                    dateField: 'created',
                   });
                 }}
                 className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
@@ -852,6 +918,24 @@ function TelecallerCrmLeadsContent() {
               <span className="min-w-0 flex-1 truncate">{dateRangeLabel}</span>
               <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
             </button>
+
+            <div className="relative min-w-0">
+              <select
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
+                value={dateField}
+                onChange={(e) => {
+                  const v = e.target.value === 'modified' ? 'modified' : 'created';
+                  setDateField(v);
+                  persistAll({ dateField: v });
+                  syncFiltersToUrl({ dateField: v });
+                }}
+                aria-label="Date type"
+              >
+                <option value="created">Created on</option>
+                <option value="modified">Modified</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            </div>
 
             <div className="relative min-w-0">
               <select
@@ -1121,58 +1205,63 @@ function TelecallerCrmLeadsContent() {
                         </th>
                       ) : null}
                       {showCol('leadNumber') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('leadNumber')}>
                           Lead #
                         </th>
                       ) : null}
                       {showCol('status') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-1.5 py-2 truncate" style={colWidthStyle('status')}>
                           Status
                         </th>
                       ) : null}
                       {showCol('customer') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-1.5 py-2 whitespace-normal" style={colWidthStyle('customer')}>
                           Customer
                         </th>
                       ) : null}
                       {showCol('phone') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-1.5 py-2 truncate" style={colWidthStyle('phone')}>
                           Phone
                         </th>
                       ) : null}
                       {showCol('message') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('message')}>
                           Message
                         </th>
                       ) : null}
                       {showCol('regNo') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('regNo')}>
                           Reg. No
                         </th>
                       ) : null}
                       {showCol('makeModel') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('makeModel')}>
                           Make / Model
                         </th>
                       ) : null}
                       {showCol('city') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('city')}>
                           City
                         </th>
                       ) : null}
                       {showCol('priority') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('priority')}>
                           Priority
                         </th>
                       ) : null}
                       {showCol('assignee') && isLeadManager ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('assignee')}>
                           Assignee
                         </th>
                       ) : null}
                       {showCol('date') ? (
-                        <th className="px-2 py-2 truncate" style={{ width: dataColWidthPct }}>
-                          Date
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('date')}>
+                          Created on
+                        </th>
+                      ) : null}
+                      {showCol('modified') ? (
+                        <th className="px-2 py-2 truncate" style={colWidthStyle('modified')}>
+                          Modified
                         </th>
                       ) : null}
                       {showCol('actions') ? (
@@ -1239,7 +1328,7 @@ function TelecallerCrmLeadsContent() {
                             </td>
                           ) : null}
                           {showCol('status') ? (
-                            <td className="px-2 py-2 truncate">
+                            <td className="px-1.5 py-2" style={colWidthStyle('status')}>
                               <span
                                 className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold"
                                 style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
@@ -1249,12 +1338,31 @@ function TelecallerCrmLeadsContent() {
                             </td>
                           ) : null}
                           {showCol('customer') ? (
-                            <td className="px-2 py-2 font-semibold text-slate-900 truncate">
-                              {lead.customer_name || 'Unknown'}
+                            <td
+                              className="px-1.5 py-2 font-semibold text-slate-900 text-[13px]"
+                              style={colWidthStyle('customer')}
+                              title={lead.customer_name || 'Unknown'}
+                            >
+                              {(() => {
+                                const [line1, line2] = splitCustomerNameLines(
+                                  lead.customer_name || 'Unknown',
+                                );
+                                return (
+                                  <span className="inline-flex flex-col leading-snug">
+                                    <span className="break-words">{line1}</span>
+                                    {line2 ? (
+                                      <span className="break-words">{line2}</span>
+                                    ) : null}
+                                  </span>
+                                );
+                              })()}
                             </td>
                           ) : null}
                           {showCol('phone') ? (
-                            <td className="px-2 py-2 text-slate-700 truncate text-[13px]">
+                            <td
+                              className="px-1.5 py-2 text-slate-700 text-[13px] whitespace-nowrap"
+                              style={colWidthStyle('phone')}
+                            >
                               {lead.customer_phone || '—'}
                             </td>
                           ) : null}
@@ -1275,11 +1383,24 @@ function TelecallerCrmLeadsContent() {
                             </td>
                           ) : null}
                           {showCol('makeModel') ? (
-                            <td
-                              className="px-2 py-2 text-slate-700 truncate text-[12px]"
-                              title={makeModel}
-                            >
-                              {makeModel}
+                            <td className="px-2 py-2 text-slate-700 text-[12px]" title={makeModel}>
+                              {(() => {
+                                const make = String(lead.vehicle_make || '')
+                                  .trim()
+                                  .toUpperCase();
+                                const model = String(lead.vehicle_model || '')
+                                  .trim()
+                                  .toUpperCase();
+                                const makeOk = make && make !== 'NA';
+                                const modelOk = model && model !== 'NA';
+                                if (!makeOk && !modelOk) return '—';
+                                return (
+                                  <span className="inline-flex flex-col leading-snug">
+                                    {makeOk ? <span>{make}</span> : null}
+                                    {modelOk ? <span className="text-slate-500">{model}</span> : null}
+                                  </span>
+                                );
+                              })()}
                             </td>
                           ) : null}
                           {showCol('city') ? (
@@ -1298,15 +1419,19 @@ function TelecallerCrmLeadsContent() {
                             </td>
                           ) : null}
                           {showCol('date') ? (
-                            <td className="px-2 py-2 text-[11px] text-slate-500 whitespace-nowrap">
-                              {lead.created_at
-                                ? new Date(lead.created_at).toLocaleString('en-IN', {
-                                    day: '2-digit',
-                                    month: 'short',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : '—'}
+                            <td
+                              className="px-2 py-2 text-[11px] text-slate-600"
+                              title={lead.created_at || undefined}
+                            >
+                              <StackedDateTime iso={lead.created_at} />
+                            </td>
+                          ) : null}
+                          {showCol('modified') ? (
+                            <td
+                              className="px-2 py-2 text-[11px] text-slate-600"
+                              title={lead.updated_at || undefined}
+                            >
+                              <StackedDateTime iso={lead.updated_at || lead.created_at} />
                             </td>
                           ) : null}
                           {showCol('actions') ? (
@@ -1408,9 +1533,19 @@ function TelecallerCrmLeadsContent() {
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-sm font-extrabold text-[#023D95]">
-                            {lead.lead_number || lead.id?.slice(0, 8)}
-                          </span>
+                          <p className="font-bold text-slate-900 leading-snug">
+                            {(() => {
+                              const [line1, line2] = splitCustomerNameLines(
+                                lead.customer_name || 'Unknown',
+                              );
+                              return (
+                                <>
+                                  <span className="block">{line1}</span>
+                                  {line2 ? <span className="block">{line2}</span> : null}
+                                </>
+                              );
+                            })()}
+                          </p>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span
                               className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
@@ -1426,14 +1561,6 @@ function TelecallerCrmLeadsContent() {
                           </div>
                         </div>
                         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                              Customer
-                            </p>
-                            <p className="font-bold text-slate-900">
-                              {lead.customer_name || 'Unknown'}
-                            </p>
-                          </div>
                           <div>
                             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                               Phone
@@ -1457,11 +1584,26 @@ function TelecallerCrmLeadsContent() {
                             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                               Make / Model
                             </p>
-                            <p className="font-semibold text-slate-800">
-                              {[lead.vehicle_make, lead.vehicle_model]
-                                .map((v) => String(v || '').trim())
-                                .filter((v) => v && v.toUpperCase() !== 'NA')
-                                .join(' ') || '—'}
+                            <p className="font-semibold text-slate-800 leading-snug">
+                              {(() => {
+                                const make = String(lead.vehicle_make || '')
+                                  .trim()
+                                  .toUpperCase();
+                                const model = String(lead.vehicle_model || '')
+                                  .trim()
+                                  .toUpperCase();
+                                const makeOk = make && make !== 'NA';
+                                const modelOk = model && model !== 'NA';
+                                if (!makeOk && !modelOk) return '—';
+                                return (
+                                  <>
+                                    {makeOk ? <span className="block">{make}</span> : null}
+                                    {modelOk ? (
+                                      <span className="block text-slate-500">{model}</span>
+                                    ) : null}
+                                  </>
+                                );
+                              })()}
                             </p>
                           </div>
                         </div>
@@ -1475,10 +1617,18 @@ function TelecallerCrmLeadsContent() {
                               : 'Telecaller: Unassigned'}
                           </p>
                         ) : null}
-                        <p className="mt-1 text-xs text-slate-500">
-                          {lead.created_at
-                            ? new Date(lead.created_at).toLocaleString('en-IN')
-                            : '—'}
+                        <p className="mt-1 text-xs text-slate-500 leading-snug">
+                          <span className="font-semibold text-slate-600">Created</span>
+                          <br />
+                          <StackedDateTime iso={lead.created_at} />
+                          {lead.updated_at ? (
+                            <>
+                              <br />
+                              <span className="font-semibold text-slate-600">Modified</span>
+                              <br />
+                              <StackedDateTime iso={lead.updated_at} />
+                            </>
+                          ) : null}
                         </p>
                         {reminderAt ? (
                           <div

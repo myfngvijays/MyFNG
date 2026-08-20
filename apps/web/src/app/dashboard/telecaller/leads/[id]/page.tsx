@@ -961,7 +961,6 @@ function LeadDetailContent() {
               <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
               <div className="space-y-2.5">
                 <StatItem label="Total calls" value={Math.max(Number(lead.total_calls || 0), callLogs.length)} icon={<PhoneCall className="w-4 h-4" />} />
-                <StatItem label="Priority" value={lead.lead_priority || 'NORMAL'} icon={<TrendingUp className="w-4 h-4" />} />
                 {lead.last_call_at ? <StatItem label="Last call" value={formatDateTime(lead.last_call_at)} icon={<Clock className="w-4 h-4" />} /> : null}
               </div>
             </div>

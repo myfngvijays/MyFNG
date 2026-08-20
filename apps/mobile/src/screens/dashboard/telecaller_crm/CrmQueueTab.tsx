@@ -52,7 +52,7 @@ type Props = {
   managerOps?: boolean;
 };
 
-type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'priority' | null;
+type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'city' | 'priority' | null;
 
 /** Match lead detail "Select status" + Lead Status / New */
 const DEFAULT_STATUS_FILTERS = [
@@ -150,6 +150,7 @@ export default function CrmQueueTab({
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
   const [priority, setPriority] = useState('');
+  const [dateField, setDateField] = useState<'created' | 'modified'>('created');
   const [advIncomplete, setAdvIncomplete] = useState(false);
   const [advFollowUp, setAdvFollowUp] = useState(false);
   const [advHasVehicle, setAdvHasVehicle] = useState(false);
@@ -226,6 +227,7 @@ export default function CrmQueueTab({
       setQ(prefs.q || '');
       setCity(prefs.city || '');
       setPriority(prefs.priority || '');
+      setDateField(prefs.dateField === 'modified' ? 'modified' : 'created');
       setLostReason(prefs.lostReason || '');
       setAdvIncomplete(Boolean(prefs.advIncomplete));
       setAdvFollowUp(Boolean(prefs.advFollowUp));
@@ -358,6 +360,7 @@ export default function CrmQueueTab({
       if (q.trim()) params.set('q', q.trim());
       if (city.trim()) params.set('city', city.trim());
       if (priority.trim()) params.set('priority', priority.trim());
+      if (dateField === 'modified') params.set('date_field', 'updated_at');
       if (!range.allTime) {
         params.set('from', range.start);
         params.set('to', range.end);
@@ -371,7 +374,7 @@ export default function CrmQueueTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [localPrefsReady, filter, lostReason, q, city, priority, datePreset, customStart, customEnd]);
+  }, [localPrefsReady, filter, lostReason, q, city, priority, dateField, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     if (!localPrefsReady) return;
@@ -390,6 +393,7 @@ export default function CrmQueueTab({
     q?: string;
     city?: string;
     priority?: string;
+    dateField?: 'created' | 'modified';
     lostReason?: string;
     statusFilter?: string;
     advIncomplete?: boolean;
@@ -648,6 +652,23 @@ export default function CrmQueueTab({
           </View>
         </View>
 
+        <View style={{ zIndex: openDropdown === 'dateField' ? 45 : 1, marginBottom: 8 }}>
+          {renderSelect(
+            'dateField',
+            'Date type',
+            dateField,
+            [
+              { value: 'created', label: 'Created on' },
+              { value: 'modified', label: 'Modified' },
+            ],
+            (v) => {
+              const next = v === 'modified' ? 'modified' : 'created';
+              setDateField(next);
+              persistLocalFilters({ dateField: next });
+            },
+          )}
+        </View>
+
         {filter === 'lost' ? (
           <View
             style={[
@@ -806,22 +827,76 @@ export default function CrmQueueTab({
               ) : null}
               <TouchableOpacity onPress={() => onOpenLead(item.id)}>
                 <View style={styles.cardTop}>
-                  <Text style={styles.name} numberOfLines={1}>{item.customer_name}</Text>
+                  <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                    {(() => {
+                      const full = String(item.customer_name || 'Unknown').trim();
+                      const parts = full.split(/\s+/).filter(Boolean);
+                      const line1 = parts[0] || full;
+                      const line2 = parts.length > 1 ? parts.slice(1).join(' ') : null;
+                      return (
+                        <>
+                          <Text style={styles.name}>{line1}</Text>
+                          {line2 ? <Text style={styles.nameSecond}>{line2}</Text> : null}
+                        </>
+                      );
+                    })()}
+                  </View>
                   <View style={[styles.status, { backgroundColor: tint.badgeBg }]}>
                     <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
                       {statusLabel}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.meta}>#{item.lead_number} · {item.customer_phone}</Text>
+                <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
                 <Text style={styles.meta}>
                   {item.city || '—'} · {item.workshop?.name || 'No workshop'}
                 </Text>
                 {item.vehicle_number && String(item.vehicle_number).toUpperCase() !== 'NA' ? (
-                  <Text style={styles.meta}>
-                    {[item.vehicle_number, item.vehicle_make, item.vehicle_model].filter(Boolean).join(' · ')}
-                  </Text>
+                  <Text style={styles.meta}>{String(item.vehicle_number).toUpperCase()}</Text>
                 ) : null}
+                {item.vehicle_make || item.vehicle_model ? (
+                  <View style={{ marginTop: 2 }}>
+                    {String(item.vehicle_make || '')
+                      .trim()
+                      .toUpperCase() !== 'NA' && String(item.vehicle_make || '').trim() ? (
+                      <Text style={styles.meta}>{String(item.vehicle_make).trim().toUpperCase()}</Text>
+                    ) : null}
+                    {String(item.vehicle_model || '')
+                      .trim()
+                      .toUpperCase() !== 'NA' && String(item.vehicle_model || '').trim() ? (
+                      <Text style={styles.meta}>{String(item.vehicle_model).trim().toUpperCase()}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                <Text style={styles.meta}>
+                  Created{' '}
+                  {item.created_at
+                    ? `${new Date(item.created_at).toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                      })}\n${new Date(item.created_at).toLocaleTimeString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}`
+                    : '—'}
+                </Text>
+                <Text style={styles.meta}>
+                  Modified{' '}
+                  {item.updated_at || item.created_at
+                    ? `${new Date(item.updated_at || item.created_at).toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                      })}\n${new Date(item.updated_at || item.created_at).toLocaleTimeString(
+                        'en-IN',
+                        {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true,
+                        },
+                      )}`
+                    : '—'}
+                </Text>
                 {item.message_preview || item.coupon_meta?.last_inbound_message || item.problem_description ? (
                   <View style={styles.msgRow}>
                     <Ionicons
@@ -1271,7 +1346,8 @@ const styles = StyleSheet.create({
   bulkBtnOutlineText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   bulkClear: { color: '#fff', fontWeight: '600', fontSize: 12, marginLeft: 4 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, flex: 1, minWidth: 0 },
+  name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  nameSecond: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginTop: 1 },
   status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: '46%', flexShrink: 0 },
   statusText: { fontSize: 10, fontWeight: '700' },
   meta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3 },

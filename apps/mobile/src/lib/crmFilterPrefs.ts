@@ -20,6 +20,7 @@ export type TelecallerCrmFilterPrefs = {
   datePreset: CrmDatePreset;
   customStart: string;
   customEnd: string;
+  dateField: 'created' | 'modified';
   statusFilter: string;
   lostReason: string;
   city: string;
@@ -37,6 +38,7 @@ export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
     datePreset: 'last_7_days' as CrmDatePreset,
     customStart: today,
     customEnd: today,
+    dateField: 'created',
     statusFilter: 'all',
     lostReason: '',
     city: '',
@@ -52,10 +54,14 @@ export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
 function normalizePrefs(raw: Partial<TelecallerCrmFilterPrefs> | null | undefined): TelecallerCrmFilterPrefs {
   const defaults = defaultTelecallerCrmFilterPrefs();
   const preset = String(raw?.datePreset || defaults.datePreset);
+  const dateFieldRaw = String((raw as any)?.dateField || defaults.dateField).toLowerCase();
+  const dateField: 'created' | 'modified' =
+    dateFieldRaw === 'modified' || dateFieldRaw === 'updated_at' ? 'modified' : 'created';
   return {
     datePreset: (VALID_PRESETS.has(preset) ? preset : defaults.datePreset) as CrmDatePreset,
     customStart: String(raw?.customStart || defaults.customStart).slice(0, 10),
     customEnd: String(raw?.customEnd || defaults.customEnd).slice(0, 10),
+    dateField,
     statusFilter: String(raw?.statusFilter || defaults.statusFilter || 'all').trim() || 'all',
     lostReason: String(raw?.lostReason || '').trim(),
     city: String(raw?.city || '').trim(),

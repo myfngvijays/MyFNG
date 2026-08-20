@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { consolidateDuplicateLeadsByPhones } from '@/lib/service-lead-reopen';
+import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,6 +13,24 @@ function normalizePhone(phone: string): string {
   const last10 = digits.slice(-10);
   if (last10.length === 10) return `91${last10}`;
   return digits.startsWith('91') ? digits : `91${digits}`;
+}
+
+function friendlyPipelineStatus(status: string | null | undefined): string {
+  const s = String(status || '').toUpperCase();
+  const map: Record<string, string> = {
+    NEW: 'Fresh',
+    CONTACTED: 'Contacted',
+    ASSIGNED: 'Assigned',
+    ACCEPTED: 'Accepted',
+    VALIDATED: 'Booking confirmed',
+    IN_PROGRESS: 'In Service',
+    COMPLETED: 'Service Done',
+    REJECTED: 'Lost',
+    CANCELLED: 'Cancelled',
+    HOLD: 'Hold',
+    READY_FOR_DELIVERY: 'Ready for delivery',
+  };
+  return map[s] || (s ? s.replace(/_/g, ' ') : 'Unknown');
 }
 
 async function requireCrmUser(request: NextRequest) {
@@ -40,7 +60,7 @@ async function requireCrmUser(request: NextRequest) {
 
 /**
  * GET /api/telecaller/crm/lead-timeline?lead_id=
- * Unified timeline: call logs + follow-ups + recent WA messages + status hints.
+ * Activity History + Tasks (TeleCRM-style). Also consolidates same-phone duplicate leads.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -53,10 +73,10 @@ export async function GET(request: NextRequest) {
     const { supabaseAdmin } = getSupabaseAdmin();
     if (!supabaseAdmin) return NextResponse.json({ error: 'Admin unavailable' }, { status: 500 });
 
-    const { data: lead, error: leadErr } = await supabaseAdmin
+    let { data: lead, error: leadErr } = await supabaseAdmin
       .from('service_leads')
       .select(
-        'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks',
+        'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model',
       )
       .eq('id', leadId)
       .maybeSingle();
@@ -65,11 +85,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: leadErr?.message || 'Lead not found' }, { status: 404 });
     }
 
-    // Telecaller: only own / created leads
     if (gate.roleCode === 'TELECALLER') {
       const assigned = String((lead as any).assigned_telecaller_id || '');
       if (assigned && assigned !== gate.userId) {
-        // allow if they have call logs on it
         const { count } = await supabaseAdmin
           .from('telecaller_call_logs')
           .select('id', { count: 'exact', head: true })
@@ -81,9 +99,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const phone10 = normalizeCustomerPhone(String((lead as any).customer_phone || ''));
+    if (phone10) {
+      try {
+        await consolidateDuplicateLeadsByPhones(supabaseAdmin, [phone10]);
+        const { data: refreshed } = await supabaseAdmin
+          .from('service_leads')
+          .select(
+            'id, lead_number, customer_phone, customer_name, status, created_at, updated_at, assigned_telecaller_id, coupon_meta, telecaller_remarks, vehicle_number, vehicle_make, vehicle_model',
+          )
+          .eq('id', leadId)
+          .maybeSingle();
+        if (refreshed) lead = refreshed;
+      } catch (e) {
+        console.warn('[lead-timeline] consolidate skipped', e);
+      }
+    }
+
     const phone = normalizePhone(String((lead as any).customer_phone || ''));
 
-    const [callsRes, fuRes, waRes] = await Promise.all([
+    const [callsRes, fuRes, waRes, archivedRes] = await Promise.all([
       supabaseAdmin
         .from('telecaller_call_logs')
         .select(
@@ -94,10 +129,12 @@ export async function GET(request: NextRequest) {
         .limit(50),
       supabaseAdmin
         .from('telecaller_follow_ups')
-        .select('id, follow_up_type, status, scheduled_time, notes, created_at, completed_at, telecaller_id')
+        .select(
+          'id, follow_up_type, status, scheduled_time, notes, reason, priority, created_at, completed_at, telecaller_id',
+        )
         .eq('lead_id', leadId)
         .order('scheduled_time', { ascending: false })
-        .limit(30),
+        .limit(40),
       phone
         ? supabaseAdmin
             .from('whatsapp_messages')
@@ -108,11 +145,25 @@ export async function GET(request: NextRequest) {
             .order('created_at', { ascending: false })
             .limit(40)
         : Promise.resolve({ data: [] as any[] }),
+      phone10
+        ? supabaseAdmin
+            .from('service_leads')
+            .select(
+              'id, lead_number, status, vehicle_number, vehicle_make, vehicle_model, created_at, updated_at, deleted_at, coupon_meta',
+            )
+            .or(
+              `customer_phone.eq.${phone10},customer_phone.eq.91${phone10},customer_phone.eq.+91${phone10},customer_phone.ilike.%${phone10}`,
+            )
+            .neq('id', leadId)
+            .not('deleted_at', 'is', null)
+            .order('deleted_at', { ascending: false })
+            .limit(20)
+        : Promise.resolve({ data: [] as any[] }),
     ]);
 
     type Item = {
       id: string;
-      kind: 'call' | 'followup' | 'whatsapp' | 'system';
+      kind: 'call' | 'followup' | 'whatsapp' | 'system' | 'booking';
       at: string;
       title: string;
       body?: string | null;
@@ -126,7 +177,7 @@ export async function GET(request: NextRequest) {
       kind: 'system',
       at: String((lead as any).created_at),
       title: 'Lead created',
-      body: String((lead as any).lead_number || ''),
+      body: `${String((lead as any).lead_number || '')} · Status: ${friendlyPipelineStatus((lead as any).status)}`,
       meta: { status: (lead as any).status },
     });
 
@@ -150,11 +201,11 @@ export async function GET(request: NextRequest) {
 
     for (const fu of fuRes.data || []) {
       items.push({
-        id: `fu-${(fu as any).id}`,
+        id: `fu-hist-${(fu as any).id}`,
         kind: 'followup',
         at: String((fu as any).completed_at || (fu as any).scheduled_time || (fu as any).created_at),
-        title: `${(fu as any).follow_up_type || 'Follow-up'} · ${(fu as any).status || ''}`,
-        body: (fu as any).notes || null,
+        title: `Task · ${(fu as any).follow_up_type || 'Follow-up'} · ${(fu as any).status || ''}`,
+        body: (fu as any).reason || (fu as any).notes || null,
         meta: { scheduled_time: (fu as any).scheduled_time },
       });
     }
@@ -185,17 +236,97 @@ export async function GET(request: NextRequest) {
         id: `disp-${leadId}`,
         kind: 'system',
         at: String((lead as any).updated_at || (lead as any).created_at),
-        title: `Disposition · ${meta.last_call_label || meta.last_call_result}`,
+        title: `Status · ${meta.last_call_label || meta.last_call_result}`,
         body: (lead as any).telecaller_remarks || null,
+      });
+    }
+
+    const hist = Array.isArray(meta.profile_history) ? meta.profile_history : [];
+    const histMergeIds = new Set<string>();
+    for (let i = 0; i < hist.length; i++) {
+      const h = hist[i] || {};
+      const at = String(h.at || '').trim();
+      if (!at) continue;
+      const event = String(h.event || '');
+      const isMerge = event === 'PHONE_DUPLICATE_MERGED';
+      if (isMerge && h.previous_label) histMergeIds.add(String(h.previous_label));
+      const statusLabel = friendlyPipelineStatus(h.status || h.previous_status);
+      items.push({
+        id: `hist-${leadId}-${i}`,
+        kind: isMerge ? 'booking' : 'system',
+        at,
+        title: isMerge
+          ? `Earlier booking merged · was ${statusLabel}`
+          : String(h.summary || h.event || 'History').slice(0, 160),
+        body: isMerge
+          ? [
+              h.previous_label ? `Lead # ${h.previous_label}` : null,
+              `Status: ${statusLabel}`,
+              String(h.summary || '').replace(/^Earlier lead[^.]*merged[^·]*·?\s*/i, '').trim() ||
+                null,
+            ]
+              .filter(Boolean)
+              .join('\n')
+          : h.previous_label
+            ? `Previous: ${h.previous_label}${h.previous_status ? ` · ${friendlyPipelineStatus(h.previous_status)}` : ''}`
+            : null,
+        meta: {
+          event: h.event || null,
+          status: h.status || null,
+          status_label: statusLabel,
+        },
+      });
+    }
+
+    // Soft-deleted same-phone leads (even if history write missed)
+    for (const arch of archivedRes.data || []) {
+      const leadNo = String((arch as any).lead_number || (arch as any).id || '');
+      if (histMergeIds.has(leadNo)) continue;
+      const vehicle = [(arch as any).vehicle_make, (arch as any).vehicle_model, (arch as any).vehicle_number]
+        .map((v) => String(v || '').trim())
+        .filter((v) => v && v.toUpperCase() !== 'NA')
+        .join(' · ');
+      const statusLabel = friendlyPipelineStatus((arch as any).status);
+      items.push({
+        id: `arch-${(arch as any).id}`,
+        kind: 'booking',
+        at: String((arch as any).deleted_at || (arch as any).updated_at || (arch as any).created_at),
+        title: `Earlier booking · was ${statusLabel}`,
+        body: [`Lead # ${leadNo}`, `Status: ${statusLabel}`, vehicle || null].filter(Boolean).join('\n'),
+        meta: {
+          status: (arch as any).status,
+          status_label: statusLabel,
+          lead_number: leadNo,
+          merged: true,
+        },
       });
     }
 
     items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
+    const now = Date.now();
+    const tasks = (fuRes.data || []).map((fu: any) => {
+      const status = String(fu.status || 'PENDING').toUpperCase();
+      const due = fu.scheduled_time ? new Date(fu.scheduled_time).getTime() : NaN;
+      let bucket: 'late' | 'active' | 'closed' = 'active';
+      if (status === 'COMPLETED' || status === 'CANCELLED' || status === 'DONE') bucket = 'closed';
+      else if (Number.isFinite(due) && due < now && status === 'PENDING') bucket = 'late';
+      return {
+        id: String(fu.id),
+        follow_up_type: fu.follow_up_type || 'CALLBACK',
+        status,
+        scheduled_time: fu.scheduled_time || null,
+        reason: fu.reason || fu.notes || null,
+        priority: fu.priority || 'NORMAL',
+        bucket,
+      };
+    });
+
     return NextResponse.json({
       success: true,
       lead_id: leadId,
-      items: items.slice(0, 100),
+      items: items.slice(0, 120),
+      tasks,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Timeline failed' }, { status: 500 });

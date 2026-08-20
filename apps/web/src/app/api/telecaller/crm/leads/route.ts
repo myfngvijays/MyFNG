@@ -3,7 +3,8 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { syncRecentWhatsAppInboundLeads } from '@/lib/whatsappAgents/inboundServiceLead';
-import { dedupeLeadsByPhone } from '@/lib/service-lead-reopen';
+import { dedupeLeadsByPhone, consolidateDuplicateLeadsByPhones } from '@/lib/service-lead-reopen';
+import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
 import {
   extractInboundCustomerMessage,
   redactLeadSourceForTelecaller,
@@ -16,6 +17,7 @@ import {
 import {
   applyCrmLeadDateRange,
   applyCrmNewLeadFilter,
+  resolveCrmLeadOrderColumn,
 } from '@/lib/telecaller/crmLeadFilters';
 
 export const dynamic = 'force-dynamic';
@@ -83,6 +85,8 @@ export async function GET(request: NextRequest) {
     const workshopId = sp.get('workshop_id');
     const from = sp.get('from');
     const to = sp.get('to');
+    const dateField = sp.get('date_field') || sp.get('dateField');
+    const orderCol = resolveCrmLeadOrderColumn(dateField);
     const q = sp.get('q');
     const filter = sp.get('filter'); // new|interested|will_visit|booking_confirmed|in_service|service_done|lost|callback|incomplete|follow_up|booked|rejected|all
     const lostReason = String(sp.get('lost_reason') || '').trim();
@@ -111,7 +115,7 @@ export async function GET(request: NextRequest) {
     const LEAD_LIST_SELECT = `
         id, lead_number, customer_name, customer_phone, status, city,
         lead_priority, is_incomplete, follow_up_required, next_follow_up_at, last_call_at,
-        total_calls, workshop_id, created_at, coupon_code, coupon_meta, payment_mode,
+        total_calls, workshop_id, created_at, updated_at, coupon_code, coupon_meta, payment_mode,
         vehicle_make, vehicle_model, vehicle_number, service_type, estimated_amount, problem_description,
         assigned_telecaller_id,
         workshop:workshops(id, name, city),
@@ -120,7 +124,7 @@ export async function GET(request: NextRequest) {
 
     let query = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
     query = applyAssigneeScope(query)
-      .order('created_at', { ascending: false })
+      .order(orderCol, { ascending: false })
       .range(rangeFrom, rangeTo);
 
     // Soft-deleted hide (ignore if column missing — query will fail and we retry below)
@@ -131,7 +135,7 @@ export async function GET(request: NextRequest) {
     // Intentionally ignore `source` filter — telecallers must not segment by lead origin
     if (priority) query = query.eq('lead_priority', priority.toUpperCase());
     if (workshopId) query = query.eq('workshop_id', workshopId);
-    query = applyCrmLeadDateRange(query, filter, from, to);
+    query = applyCrmLeadDateRange(query, filter, from, to, dateField);
 
     if (filter === 'new' || filter === 'fresh') {
       query = applyCrmNewLeadFilter(query);
@@ -183,14 +187,14 @@ export async function GET(request: NextRequest) {
       // Retry without soft-delete filter for older schemas
       let retry = db.from('service_leads').select(LEAD_LIST_SELECT, { count: 'exact' });
       retry = applyAssigneeScope(retry)
-        .order('created_at', { ascending: false })
+        .order(orderCol, { ascending: false })
         .range(rangeFrom, rangeTo);
 
       if (status) retry = retry.eq('status', status.toUpperCase());
       if (city) retry = retry.ilike('city', `%${city}%`);
       if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
-      retry = applyCrmLeadDateRange(retry, filter, from, to);
+      retry = applyCrmLeadDateRange(retry, filter, from, to, dateField);
       if (filter === 'new' || filter === 'fresh') retry = applyCrmNewLeadFilter(retry);
       else if (filter === 'interested') {
         retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
@@ -232,8 +236,33 @@ export async function GET(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-    const rows = data || [];
+    let rows = data || [];
     // Skip healLeadDispositions on list (extra call-log queries + writes). Badges use coupon_meta as-is.
+
+    // Same phone → keep latest lead; older duplicates go to history + soft-delete (TeleCRM merge)
+    try {
+      const phones = Array.from(
+        new Set(
+          rows
+            .map((r: any) => normalizeCustomerPhone(r?.customer_phone))
+            .filter(Boolean),
+        ),
+      );
+      if (phones.length) {
+        const { deletedIds, winnerMetaById } = await consolidateDuplicateLeadsByPhones(db, phones);
+        if (deletedIds.length) {
+          const gone = new Set(deletedIds);
+          rows = rows
+            .filter((r: any) => !gone.has(String(r.id)))
+            .map((r: any) => {
+              const meta = winnerMetaById.get(String(r.id));
+              return meta ? { ...r, coupon_meta: meta } : r;
+            });
+        }
+      }
+    } catch (mergeErr) {
+      console.warn('[crm/leads] phone duplicate consolidate skipped', mergeErr);
+    }
 
     const deduped = dedupeLeadsByPhone(rows);
 
