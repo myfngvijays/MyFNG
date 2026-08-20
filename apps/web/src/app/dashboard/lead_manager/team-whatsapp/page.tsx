@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Loader2, MessageCircle, RefreshCw } from 'lucide-react';
+import PageHelpIcon from '@/components/PageHelpIcon';
 
 type Chat = {
   phone: string;
@@ -85,6 +86,7 @@ export default function LeadManagerTeamWhatsAppPage() {
           <div>
             <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">
               <MessageCircle className="h-6 w-6" /> Team WhatsApp
+              <PageHelpIcon href="/dashboard/lead_manager/team-whatsapp" label="Team WA" />
             </h1>
             <p className="text-sm text-slate-500">
               Oversight of assigned chats — open any conversation in the inbox.
@@ -141,8 +143,8 @@ export default function LeadManagerTeamWhatsAppPage() {
           <p className="text-center text-sm text-slate-500 py-12">No chats match</p>
         ) : (
           <ul className="space-y-2">
-            {chats.map((c) => (
-              <li key={c.phone}>
+            {chats.map((c, idx) => (
+              <li key={`${c.phone}-${c.assignees.map((a) => a.id).join('_') || idx}`}>
                 <button
                   type="button"
                   onClick={() => openChat(c.phone)}

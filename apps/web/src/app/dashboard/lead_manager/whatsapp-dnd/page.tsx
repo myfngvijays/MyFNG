@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHelpIcon from '@/components/PageHelpIcon';
 import { Loader2, Plus, ShieldOff, Trash2 } from 'lucide-react';
 
 type DndRow = {
@@ -85,6 +86,7 @@ export default function LeadManagerWhatsAppDndPage() {
         <div>
           <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">
             <ShieldOff className="h-6 w-6" /> WhatsApp DND
+            <PageHelpIcon href="/dashboard/lead_manager/whatsapp-dnd" label="WA DND" />
           </h1>
           <p className="text-sm text-slate-500">
             Opt-out list — bulk WhatsApp skips these numbers automatically.

@@ -11,6 +11,7 @@ export const DISPOSITION_TO_LEAD_STATUS: Record<string, string> = {
 };
 
 export const DISPOSITION_LABEL: Record<string, string> = {
+  FRESH: 'Fresh',
   INTERESTED: 'Interested',
   WILL_VISIT: 'He will visit',
   CALLBACK: 'Follow-up',
@@ -56,6 +57,7 @@ export function parseCallDisposition(input: {
   outcome?: string | null;
   activity?: string | null;
   call_status?: string | null;
+  pipeline_status?: string | null;
 }): ParsedCallDisposition | null {
   const activity = String(input.activity || '').trim().toUpperCase();
   if (activity && DISPOSITION_LABEL[activity]) {
@@ -73,6 +75,21 @@ export function parseCallDisposition(input: {
       label,
       lostReason,
       leadStatus: DISPOSITION_TO_LEAD_STATUS[activity] || null,
+    };
+  }
+
+  // Custom CRM statuses (from crm_lead_statuses) — activity code not in built-in map
+  if (activity && activity !== 'RINGING') {
+    const tag = parseNotesActivityTag(input.notes);
+    const pipeline =
+      input.pipeline_status != null && String(input.pipeline_status).trim()
+        ? String(input.pipeline_status).trim().toUpperCase()
+        : null;
+    return {
+      result: activity,
+      label: tag || activity.replace(/_/g, ' '),
+      lostReason: null,
+      leadStatus: pipeline || DISPOSITION_TO_LEAD_STATUS[activity] || null,
     };
   }
 

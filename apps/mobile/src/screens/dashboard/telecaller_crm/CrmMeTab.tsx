@@ -303,6 +303,13 @@ export default function CrmMeTab({ navigation, active = true, isLeadManager = fa
             <Ionicons name="ban-outline" size={18} color="#DC2626" />
             <Text style={styles.mgrLinkText}>WA DND</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mgrLink}
+            onPress={() => navigation.navigate('LeadManagerStatuses')}
+          >
+            <Ionicons name="ellipse-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.mgrLinkText}>Lead status</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 

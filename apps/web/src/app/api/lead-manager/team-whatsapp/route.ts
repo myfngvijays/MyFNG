@@ -85,6 +85,44 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Dedupe by normalized phone (table can have duplicate/legacy rows for same chat)
+    const byPhone = new Map<string, any>();
+    for (const r of rows) {
+      const phone = normalizePhone(String((r as any).phone || ''));
+      if (!phone) continue;
+      const existing = byPhone.get(phone);
+      if (!existing) {
+        byPhone.set(phone, {
+          ...r,
+          phone,
+          assigned_to_ids: Array.isArray((r as any).assigned_to_ids)
+            ? [...new Set((r as any).assigned_to_ids.map(String))]
+            : [],
+        });
+        continue;
+      }
+      const mergedIds = new Set<string>([
+        ...(Array.isArray(existing.assigned_to_ids) ? existing.assigned_to_ids.map(String) : []),
+        ...(Array.isArray((r as any).assigned_to_ids) ? (r as any).assigned_to_ids.map(String) : []),
+      ]);
+      const existingTs = new Date(String(existing.updated_at || existing.assigned_at || 0)).getTime();
+      const rowTs = new Date(String((r as any).updated_at || (r as any).assigned_at || 0)).getTime();
+      byPhone.set(phone, {
+        ...(rowTs >= existingTs ? r : existing),
+        phone,
+        assigned_to_ids: Array.from(mergedIds),
+        updated_at:
+          rowTs >= existingTs
+            ? (r as any).updated_at || existing.updated_at
+            : existing.updated_at || (r as any).updated_at,
+      });
+    }
+    rows = Array.from(byPhone.values()).sort((a, b) => {
+      const ta = new Date(String(a.updated_at || a.assigned_at || 0)).getTime();
+      const tb = new Date(String(b.updated_at || b.assigned_at || 0)).getTime();
+      return tb - ta;
+    });
+
     const assigneeIds = new Set<string>();
     for (const r of rows) {
       for (const id of Array.isArray((r as any).assigned_to_ids) ? (r as any).assigned_to_ids : []) {
@@ -99,7 +137,12 @@ export async function GET(request: NextRequest) {
           .in('id', Array.from(assigneeIds))
       : { data: [] as any[] };
 
-    const userMap = new Map((users || []).map((u: any) => [String(u.id), u]));
+    const userMap = new Map<string, { id: string; full_name: string | null; phone?: string | null }>(
+      (users || []).map((u: any) => [
+        String(u.id),
+        { id: String(u.id), full_name: u.full_name || null, phone: u.phone || null },
+      ]),
+    );
 
     const chats: any[] = [];
     const now = Date.now();

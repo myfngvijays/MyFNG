@@ -4,6 +4,13 @@ import { channelFromWhatsAppLabels } from '@/lib/enquiry/leadChannels';
 import { findCustomerByPhone } from '@/lib/customer-service-leads';
 import { leadSourceLabelForWacaBusinessPhone } from '@/lib/telecrm/parseTelecrmWebhookPayload';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
+import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
+import {
+  addLeadTags,
+  ensureTagIdsByNames,
+  resolveMetaAdTagNames,
+  stampFreshOnMeta,
+} from '@/lib/telecaller/crmLeadTagsApply';
 
 export type WhatsAppReferral = {
   source_url?: string | null;
@@ -355,16 +362,18 @@ export async function ensureWhatsAppInboundServiceLead(
         : {};
 
     const patch: Record<string, unknown> = {
-      coupon_meta: buildCouponMeta({
-        existing: prevMeta,
-        referral: input.referral,
-        messageText: input.messageText,
-        profileName: input.profileName,
-        providerMessageId: input.providerMessageId,
-        businessPhone: input.businessPhone,
-        nowIso,
-        known,
-      }),
+      coupon_meta: stampFreshOnMeta(
+        buildCouponMeta({
+          existing: prevMeta,
+          referral: input.referral,
+          messageText: input.messageText,
+          profileName: input.profileName,
+          providerMessageId: input.providerMessageId,
+          businessPhone: input.businessPhone,
+          nowIso,
+          known,
+        }) as Record<string, unknown>,
+      ),
       problem_description: String(input.messageText || '').trim().slice(0, 1000) || undefined,
       updated_at: new Date().toISOString(),
     };
@@ -456,6 +465,29 @@ export async function ensureWhatsAppInboundServiceLead(
       console.warn('[whatsapp-inbound-lead] enrich failed', e);
     }
 
+    // TeleCRM-style: common Meta Ads + specific ad tag (A/B/C…)
+    try {
+      const metaTags = resolveMetaAdTagNames({
+        leadSource: String(patch.lead_source || labels.lead_source || existing.lead_source || ''),
+        triggerLabel: String(
+          (typeof patch.coupon_meta === 'object' &&
+            patch.coupon_meta &&
+            (patch.coupon_meta as any).message_trigger_label) ||
+            '',
+        ),
+        referralHeadline: input.referral?.headline || null,
+        markAsMeta: /WHATSAPP_META/i.test(String(patch.created_from || labels.created_from || '')),
+      });
+      if (metaTags.names.length) {
+        const tagIds = await ensureTagIdsByNames(metaTags.names, {
+          parentName: metaTags.parent,
+        });
+        await addLeadTags(String(existing.id), tagIds);
+      }
+    } catch (e) {
+      console.warn('[whatsapp-inbound-lead] tag apply failed', e);
+    }
+
     if (assignmentChanged && assignedTo) {
       void notifyTelecallerNewLeadAssignedSafe({
         leadId: String(existing.id),
@@ -519,16 +551,18 @@ export async function ensureWhatsAppInboundServiceLead(
     firstMsg ? `Msg: ${firstMsg}` : null,
   ].filter(Boolean);
 
-  const couponMeta = buildCouponMeta({
-    referral: input.referral,
-    messageText: firstMsg,
-    profileName: input.profileName,
-    providerMessageId: input.providerMessageId,
-    businessPhone: input.businessPhone,
-    nowIso,
-    isFirst: true,
-    known,
-  }) as Record<string, unknown>;
+  const couponMeta = stampFreshCrmDisposition(
+    buildCouponMeta({
+      referral: input.referral,
+      messageText: firstMsg,
+      profileName: input.profileName,
+      providerMessageId: input.providerMessageId,
+      businessPhone: input.businessPhone,
+      nowIso,
+      isFirst: true,
+      known,
+    }) as Record<string, unknown>,
+  );
   if (triggerId) {
     couponMeta.message_trigger_id = triggerId;
     couponMeta.message_trigger_label = triggerLabel;
@@ -620,6 +654,25 @@ export async function ensureWhatsAppInboundServiceLead(
       assignedByName: 'WhatsApp inbound',
       notes: 'New WhatsApp lead',
     });
+  }
+
+  if (inserted?.id) {
+    try {
+      const metaTags = resolveMetaAdTagNames({
+        leadSource: labels.lead_source,
+        triggerLabel,
+        referralHeadline: input.referral?.headline || null,
+        markAsMeta: /WHATSAPP_META/i.test(labels.created_from),
+      });
+      if (metaTags.names.length) {
+        const tagIds = await ensureTagIdsByNames(metaTags.names, {
+          parentName: metaTags.parent,
+        });
+        await addLeadTags(String(inserted.id), tagIds);
+      }
+    } catch (e) {
+      console.warn('[whatsapp-inbound-lead] tag apply on create failed', e);
+    }
   }
 
   return {

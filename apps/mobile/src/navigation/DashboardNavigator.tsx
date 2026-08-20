@@ -122,6 +122,7 @@ import {
   LeadManagerFloorScreen,
   LeadManagerTeamWhatsAppScreen,
   LeadManagerWhatsAppDndScreen,
+  LeadManagerStatusesScreen,
 } from '../screens/dashboard/lead_manager/LeadManagerOpsScreens';
 
 // Super Admin screens
@@ -341,6 +342,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="LeadManagerWhatsAppDnd"
           component={LeadManagerWhatsAppDndScreen}
           options={{ title: 'WhatsApp DND' }}
+        />
+        <Stack.Screen
+          name="LeadManagerStatuses"
+          component={LeadManagerStatusesScreen}
+          options={{ title: 'Lead status' }}
         />
         <Stack.Screen 
           name="LeadManagerWorkshopDetail" 

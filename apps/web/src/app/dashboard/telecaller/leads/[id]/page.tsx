@@ -97,18 +97,30 @@ function LeadDetailContent() {
     notes: ''
   });
 
-  const ACTIVITY_OPTIONS = [
-    { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null as string | null },
+  type ActivityOpt = {
+    id: string;
+    label: string;
+    call_status: string;
+    outcome: string | null;
+    lead_status: string | null;
+    requires_lost_reason?: boolean;
+    requires_follow_up?: boolean;
+  };
+
+  const FALLBACK_ACTIVITY: ActivityOpt[] = [
+    { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
+    { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
     { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
     { id: 'CALLBACK', label: 'Follow-up', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: null },
     { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', call_status: 'ANSWERED', outcome: 'LEAD_CREATED', lead_status: 'VALIDATED' },
     { id: 'IN_SERVICE', label: 'In Service', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'IN_PROGRESS' },
     { id: 'SERVICE_DONE', label: 'Service Done', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED', lead_status: 'COMPLETED' },
-    { id: 'LOST', label: 'Lost', call_status: 'ANSWERED', outcome: 'NOT_INTERESTED', lead_status: 'REJECTED' },
+    { id: 'LOST', label: 'Lost', call_status: 'ANSWERED', outcome: 'NOT_INTERESTED', lead_status: 'REJECTED', requires_lost_reason: true },
     { id: 'RINGING', label: 'Ringing / No answer', call_status: 'NO_ANSWER', outcome: null, lead_status: null },
   ];
 
-  const LOST_REASONS = [
+  const [activityOptions, setActivityOptions] = useState<ActivityOpt[]>(FALLBACK_ACTIVITY);
+  const [lostReasons, setLostReasons] = useState<string[]>([
     'Not Interested',
     'Unqualified Lead',
     'No-Response to Calls',
@@ -116,7 +128,41 @@ function LeadDetailContent() {
     'Under Warranty',
     'Looking For Authorised Service Center',
     'Other Reasons',
-  ];
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/lead-manager/statuses');
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows = Array.isArray(json?.statuses) ? json.statuses : [];
+        if (rows.length) {
+          setActivityOptions(
+            rows.map((r: any) => ({
+              id: String(r.code || '').toUpperCase(),
+              label: String(r.name || r.code),
+              call_status: String(r.call_status || 'ANSWERED').toUpperCase(),
+              outcome: r.outcome ? String(r.outcome).toUpperCase() : null,
+              lead_status: r.pipeline_status ? String(r.pipeline_status).toUpperCase() : null,
+              requires_lost_reason: Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
+              requires_follow_up: Boolean(r.requires_follow_up),
+            })),
+          );
+        }
+        const reasons = Array.isArray(json?.lost_reasons) ? json.lost_reasons : [];
+        if (reasons.length) {
+          setLostReasons(reasons.map((r: any) => String(r.name || '').trim()).filter(Boolean));
+        }
+      } catch {
+        /* keep fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [followUpData, setFollowUpData] = useState({
     follow_up_type: 'CALLBACK',
@@ -147,6 +193,9 @@ function LeadDetailContent() {
     await fetchLeadDetails();
   };
 
+  const sanitizeLead = (row: Record<string, any>) =>
+    isLeadManager ? row : redactLeadSourceForTelecaller(row);
+
   async function fetchLeadDetails() {
     const supabase = createClient();
     setLoading(true);
@@ -165,7 +214,8 @@ function LeadDetailContent() {
         .single();
 
       if (leadError) throw leadError;
-      setLead(redactLeadSourceForTelecaller(leadData as Record<string, any>));
+      const raw = leadData as Record<string, any>;
+      setLead(sanitizeLead(raw));
 
       // Fetch service types grouped by category (Periodic / AC / Brake / Engine …)
       if (leadData.service_type_ids) {
@@ -236,7 +286,7 @@ function LeadDetailContent() {
         setCallLogs([]);
       }
 
-      const safeLead = redactLeadSourceForTelecaller(leadData as Record<string, any>);
+      const safeLead = sanitizeLead(leadData as Record<string, any>);
       const meta =
         safeLead?.coupon_meta && typeof safeLead.coupon_meta === 'object'
           ? safeLead.coupon_meta
@@ -269,7 +319,7 @@ function LeadDetailContent() {
             if (healRes.ok) {
               const healed = await healRes.json().catch(() => ({}));
               if (healed?.lead) {
-                setLead(redactLeadSourceForTelecaller(healed.lead as Record<string, any>));
+                setLead(sanitizeLead(healed.lead as Record<string, any>));
               } else {
                 setLead({
                   ...safeLead,
@@ -311,13 +361,14 @@ function LeadDetailContent() {
   async function handleAddCallLog() {
     try {
       const selected =
-        ACTIVITY_OPTIONS.find((o) => o.id === callLogData.activity) || ACTIVITY_OPTIONS[0];
-      if (selected.id === 'LOST' && !callLogData.lost_reason.trim()) {
+        activityOptions.find((o) => o.id === callLogData.activity) || activityOptions[0];
+      const needsLost = Boolean(selected.requires_lost_reason) || selected.id === 'LOST';
+      if (needsLost && !callLogData.lost_reason.trim()) {
         alert('Please select a lost reason');
         return;
       }
       const statusLabel =
-        selected.id === 'LOST' && callLogData.lost_reason
+        needsLost && callLogData.lost_reason
           ? `Lost · ${callLogData.lost_reason}`
           : selected.label;
       const notesParts = [`[${statusLabel}]`, callLogData.notes.trim() || null].filter(Boolean);
@@ -332,6 +383,7 @@ function LeadDetailContent() {
           call_duration: callLogData.call_duration ? parseInt(callLogData.call_duration) : null,
           outcome: selected.outcome,
           activity: selected.id,
+          pipeline_status: selected.lead_status,
           notes: notesParts.join(' '),
           phone_number: lead?.customer_phone,
         }),
@@ -480,7 +532,7 @@ function LeadDetailContent() {
   }
 
   const PIPELINE = [
-    { id: 'NEW', label: 'New' },
+    { id: 'NEW', label: 'Fresh' },
     { id: 'INTERESTED', label: 'Interested' },
     { id: 'WILL_VISIT', label: 'Will Visit' },
     { id: 'VALIDATED', label: 'Confirmed' },
@@ -739,6 +791,105 @@ function LeadDetailContent() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 sm:p-5 shadow-sm">
+              <h2 className="text-base sm:text-lg font-black text-[#023D95] flex items-center gap-2 mb-3">
+                <FileText className="w-5 h-5" /> Payment & pricing
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <InfoItem
+                  icon={<FileText className="w-4 h-4" />}
+                  label="Estimated amount"
+                  value={
+                    lead.estimated_amount != null && lead.estimated_amount !== ''
+                      ? `Rs ${Number(lead.estimated_amount).toLocaleString('en-IN')}`
+                      : '—'
+                  }
+                />
+                <InfoItem
+                  icon={<FileText className="w-4 h-4" />}
+                  label="Actual / payable"
+                  value={
+                    lead.actual_amount != null && lead.actual_amount !== ''
+                      ? `Rs ${Number(lead.actual_amount).toLocaleString('en-IN')}`
+                      : lead.payable_amount != null
+                        ? `Rs ${Number(lead.payable_amount).toLocaleString('en-IN')}`
+                        : '—'
+                  }
+                />
+                <InfoItem
+                  icon={<FileText className="w-4 h-4" />}
+                  label="Coupon code"
+                  value={
+                    lead.coupon_display_code ||
+                    lead.coupon_code ||
+                    (lead.coupon_meta as any)?.coupon_code ||
+                    '—'
+                  }
+                />
+                <InfoItem
+                  icon={<FileText className="w-4 h-4" />}
+                  label="Discount"
+                  value={
+                    Number(lead.discount_amount || lead.coupon_display_discount || 0) > 0
+                      ? `Rs ${Number(lead.discount_amount || lead.coupon_display_discount).toLocaleString('en-IN')}`
+                      : '—'
+                  }
+                />
+                <InfoItem
+                  icon={<FileText className="w-4 h-4" />}
+                  label="Payment mode"
+                  value={lead.payment_mode || '—'}
+                />
+                <InfoItem
+                  icon={<FileText className="w-4 h-4" />}
+                  label="Payment status"
+                  value={lead.payment_status || '—'}
+                />
+                {Number((lead.coupon_meta as any)?.wallet_deduction || lead.wallet_deduction || 0) >
+                0 ? (
+                  <InfoItem
+                    icon={<FileText className="w-4 h-4" />}
+                    label="Wallet used"
+                    value={`Rs ${Number(
+                      (lead.coupon_meta as any)?.wallet_deduction || lead.wallet_deduction,
+                    ).toLocaleString('en-IN')}`}
+                  />
+                ) : null}
+                {Number((lead.coupon_meta as any)?.service_subtotal || 0) > 0 ? (
+                  <InfoItem
+                    icon={<FileText className="w-4 h-4" />}
+                    label="Service subtotal"
+                    value={`Rs ${Number((lead.coupon_meta as any).service_subtotal).toLocaleString('en-IN')}`}
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            {isLeadManager ? (
+              <div className="rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5 shadow-sm">
+                <h2 className="text-base sm:text-lg font-black text-[#023D95] mb-3">
+                  Campaign / source (managers)
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <InfoItem
+                    icon={<FileText className="w-4 h-4" />}
+                    label="Lead source"
+                    value={
+                      lead.lead_source ||
+                      lead.created_from ||
+                      lead.booking_source_label ||
+                      '—'
+                    }
+                  />
+                  <InfoItem icon={<FileText className="w-4 h-4" />} label="UTM source" value={lead.utm_source || '—'} />
+                  <InfoItem icon={<FileText className="w-4 h-4" />} label="UTM medium" value={lead.utm_medium || '—'} />
+                  <InfoItem icon={<FileText className="w-4 h-4" />} label="UTM campaign" value={lead.utm_campaign || '—'} />
+                  <InfoItem icon={<FileText className="w-4 h-4" />} label="UTM term" value={lead.utm_term || '—'} />
+                  <InfoItem icon={<FileText className="w-4 h-4" />} label="UTM content" value={lead.utm_content || '—'} />
+                </div>
+              </div>
+            ) : null}
+
             <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <h2 className="text-base sm:text-lg font-black text-[#023D95] flex items-center gap-2">
@@ -750,13 +901,31 @@ function LeadDetailContent() {
               </div>
               {showCallLogForm && (
                 <div className="mb-4 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-                  <select value={callLogData.activity} onChange={(e) => setCallLogData({ ...callLogData, activity: e.target.value, lost_reason: e.target.value === 'LOST' ? callLogData.lost_reason : '' })} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl">
-                    {ACTIVITY_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  <select
+                    value={callLogData.activity}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const opt = activityOptions.find((o) => o.id === next);
+                      const needsLost = Boolean(opt?.requires_lost_reason) || next === 'LOST';
+                      setCallLogData({
+                        ...callLogData,
+                        activity: next,
+                        lost_reason: needsLost ? callLogData.lost_reason : '',
+                      });
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                  >
+                    {activityOptions.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
                   </select>
-                  {callLogData.activity === 'LOST' && (
+                  {(callLogData.activity === 'LOST' ||
+                    activityOptions.find((o) => o.id === callLogData.activity)?.requires_lost_reason) && (
                     <select value={callLogData.lost_reason} onChange={(e) => setCallLogData({ ...callLogData, lost_reason: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl">
                       <option value="">Select lost reason</option>
-                      {LOST_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                      {lostReasons.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
                   )}
                   <input type="number" placeholder="Duration (seconds)" value={callLogData.call_duration} onChange={(e) => setCallLogData({ ...callLogData, call_duration: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl" />

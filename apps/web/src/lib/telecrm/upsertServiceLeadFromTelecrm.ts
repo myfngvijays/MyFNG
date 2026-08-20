@@ -9,6 +9,7 @@ import {
 } from './parseTelecrmWebhookPayload';
 import { resolveTelecallerUserId } from './resolveTelecallerUserId';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
+import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
 
 const OPEN_STATUSES = ['NEW', 'VALIDATED', 'HOLD', 'ACCEPTED', 'IN_PROGRESS', 'ASSIGNED'];
 
@@ -267,7 +268,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
     is_incomplete: true,
     assigned_telecaller_id: assignedTo,
     assigned_at: assignedTo ? nowIso : null,
-    coupon_meta: {
+    coupon_meta: stampFreshCrmDisposition({
       whatsapp_inbound: true,
       whatsapp_enquiry: true,
       telecrm_whatsapp: true,
@@ -285,7 +286,7 @@ export async function upsertServiceLeadFromTelecrmWhatsApp(
       message_trigger_id: triggerId,
       message_trigger_label: triggerLabel,
       assignment_mode: assignmentMode,
-    },
+    }),
     created_at: nowIso,
     updated_at: nowIso,
   };

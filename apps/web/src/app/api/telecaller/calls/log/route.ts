@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
       outcome,
       activity,
       call_status,
+      pipeline_status: body?.pipeline_status ?? body?.lead_status ?? null,
     });
     let leadPatch: Record<string, unknown> | null = null;
     try {

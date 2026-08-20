@@ -3,10 +3,14 @@ import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
 import {
   getMisaCreatedFrom,
   getMisaLeadSource,
+  getMisaOtpVerifiedLabel,
+  resolveMisaBookingChannel,
+  resolveMisaOtpTagNames,
   type MisaBookingChannel,
 } from '@/lib/chatbot_v2/misaLeadSource';
 import type { LeadDistributionChannelId } from '@/lib/enquiry/leadChannels';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
+import { addLeadTags, ensureTagIdsByNames } from '@/lib/telecaller/crmLeadTagsApply';
 
 export type LeadHistoryEntry = {
   at: string;
@@ -592,24 +596,55 @@ function resolveMisaChannel(options?: EnsureOtpVerifiedLeadOptions): MisaBooking
   return options?.channel === 'MOBILE' ? 'APP' : 'WEBSITE';
 }
 
+async function applyOtpVerifiedLeadTags(
+  leadId: string | null | undefined,
+  channel: BookingOtpChannel,
+  options?: EnsureOtpVerifiedLeadOptions,
+): Promise<void> {
+  const id = String(leadId || '').trim();
+  if (!id) return;
+  try {
+    if (options?.origin === 'misa') {
+      const misaChannel = resolveMisaChannel(options);
+      const { parent, names } = resolveMisaOtpTagNames(misaChannel);
+      const tagIds = await ensureTagIdsByNames(names, { parentName: parent });
+      if (tagIds.length) await addLeadTags(id, tagIds);
+      return;
+    }
+    // Non-MISA booking OTP: keep Website / App Booking source tags distinct from MISA OTP
+    const name = channel === 'MOBILE' ? 'Mob OTP Verified' : 'Web OTP Verified';
+    const tagIds = await ensureTagIdsByNames([name]);
+    if (tagIds.length) await addLeadTags(id, tagIds);
+  } catch (err) {
+    console.warn('[ensureWebsiteOtpVerifiedLead] tag apply skipped:', err);
+  }
+}
+
 function otpChannelMeta(channel: BookingOtpChannel, options?: EnsureOtpVerifiedLeadOptions) {
   const isMisa = options?.origin === 'misa';
   if (isMisa) {
     const misaChannel = resolveMisaChannel(options);
     const leadSource = getMisaLeadSource(misaChannel);
+    const otpLabel = getMisaOtpVerifiedLabel(misaChannel);
     const createdFromRaw = getMisaCreatedFrom(misaChannel);
     // DB allowlist historically prefers MOBILE_APP over APP
     const created_from =
       createdFromRaw === 'APP' ? 'MOBILE_APP' : createdFromRaw === 'WEB' ? 'WEB' : createdFromRaw;
+    const historyEvent =
+      misaChannel === 'WHATSAPP'
+        ? 'MISA_OTP_VERIFIED_WHATSAPP'
+        : misaChannel === 'APP'
+          ? 'MISA_OTP_VERIFIED_APP'
+          : 'MISA_OTP_VERIFIED_WEBSITE';
     return {
       otp_channel: channel,
       created_from,
       lead_source: leadSource,
-      last_call_label: 'MISA OTP Verified',
-      description: `${leadSource} — OTP verified, booking incomplete`,
+      last_call_label: otpLabel,
+      description: `${otpLabel} — booking incomplete`,
       problem_description: `OTP verified via ${leadSource}; booking not completed`,
-      historySummary: `${leadSource} OTP verified — booking not completed yet`,
-      historyEvent: 'MISA_OTP_VERIFIED',
+      historySummary: `${otpLabel} — booking not completed yet`,
+      historyEvent,
       distChannel: 'MISA' as LeadDistributionChannelId,
       misa_channel: misaChannel,
     };
@@ -641,6 +676,7 @@ export function resolveOtpLeadOptionsFromSource(input: {
   source?: string | null;
   channelHint?: string | null;
   bookingChannel?: string | null;
+  sessionId?: string | null;
   fallbackChannel?: BookingOtpChannel;
 }): EnsureOtpVerifiedLeadOptions {
   const source = String(input.source || '').toLowerCase().trim();
@@ -648,6 +684,7 @@ export function resolveOtpLeadOptionsFromSource(input: {
     .toUpperCase()
     .trim();
   const fallback: BookingOtpChannel = input.fallbackChannel === 'MOBILE' ? 'MOBILE' : 'WEB';
+  const sessionId = String(input.sessionId || '').trim();
 
   const isMisaSource =
     source.includes('misa') ||
@@ -672,6 +709,9 @@ export function resolveOtpLeadOptionsFromSource(input: {
     misaChannel = 'WHATSAPP';
   } else if (bookingChannel === 'WEBSITE' || bookingChannel === 'WEB') {
     misaChannel = 'WEBSITE';
+  } else if (sessionId) {
+    // WhatsApp 6161 sessions are wa_* — keep them off Website MISA OTP
+    misaChannel = resolveMisaBookingChannel({ sessionId });
   }
 
   return {
@@ -767,6 +807,8 @@ async function insertWebsiteOtpIncompleteLead(
     assignedByName: 'Auto distribution',
     notes: ch.last_call_label || 'OTP verified lead',
   });
+
+  void applyOtpVerifiedLeadTags(String(inserted.id), channel, options);
 
   return {
     leadId: String(inserted.id),
@@ -890,6 +932,7 @@ export async function ensureWebsiteOtpVerifiedLead(
         assignedByName: 'Auto distribution',
         notes: ch.last_call_label || 'OTP verified lead',
       });
+      void applyOtpVerifiedLeadTags(String(openStub.id), channel, options);
       return {
         leadId: String(openStub.id),
         leadNumber: String(openStub.lead_number || '') || null,

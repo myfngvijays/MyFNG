@@ -23,15 +23,19 @@ export type ChartDimension =
   | 'assignee'
   | 'created_on'
   | 'lost_reason'
-  | 'city';
+  | 'city'
+  | 'calls_placed';
 
-const DIMENSIONS: Array<{ id: ChartDimension; label: string }> = [
+type DimensionDef = { id: ChartDimension; label: string; managerOnly?: boolean };
+
+const ALL_DIMENSIONS: DimensionDef[] = [
   { id: 'created_on', label: 'Created on' },
   { id: 'status', label: 'Status' },
   { id: 'tc_update', label: 'TC Update' },
   { id: 'lost_reason', label: 'Lost reasons' },
-  { id: 'assignee', label: 'Assignee' },
-  { id: 'source', label: 'Source' },
+  { id: 'assignee', label: 'Assignee', managerOnly: true },
+  { id: 'calls_placed', label: 'Number of calls placed' },
+  { id: 'source', label: 'Source', managerOnly: true },
   { id: 'city', label: 'City' },
 ];
 
@@ -93,7 +97,7 @@ function getLostReason(lead: Lead): string | null {
     }
   }
   const meta = getCouponMeta(lead);
-  const direct = String(meta.lost_reason || '').trim();
+  const direct = String(meta.lost_reason || lead?.lost_reason || '').trim();
   return direct ? prettify(direct) : null;
 }
 
@@ -110,7 +114,16 @@ function getSource(lead: Lead): string {
 }
 
 function getAssignee(lead: Lead): string {
-  return String(lead?.assigned_telecaller_name || '').trim() || 'Unassigned';
+  const nested = lead?.assigned_telecaller;
+  const nestedName =
+    nested && typeof nested === 'object'
+      ? String((nested as any).full_name || '').trim()
+      : '';
+  return (
+    String(lead?.assigned_telecaller_name || '').trim() ||
+    nestedName ||
+    'Unassigned'
+  );
 }
 
 function getStatus(lead: Lead): string {
@@ -134,6 +147,17 @@ function getCreatedDay(lead: Lead): string {
   });
 }
 
+function getCallsPlacedBucket(lead: Lead): string {
+  const n = Math.max(0, Number(lead?.total_calls ?? lead?.call_count ?? 0) || 0);
+  if (n <= 0) return '0';
+  if (n === 1) return '1';
+  if (n === 2) return '2';
+  if (n === 3) return '3';
+  if (n === 4) return '4';
+  if (n <= 10) return '5 - 10';
+  return '10+';
+}
+
 function bucketKey(lead: Lead, dimension: ChartDimension): string | null {
   switch (dimension) {
     case 'status':
@@ -150,6 +174,8 @@ function bucketKey(lead: Lead, dimension: ChartDimension): string | null {
       return getCity(lead);
     case 'lost_reason':
       return getLostReason(lead);
+    case 'calls_placed':
+      return getCallsPlacedBucket(lead);
     default:
       return null;
   }
@@ -163,7 +189,7 @@ type ChartRow = {
   color: string;
 };
 
-function truncateLabel(key: string, max = 22) {
+function truncateLabel(key: string, max = 16) {
   if (key.length <= max) return key;
   return `${key.slice(0, max - 1)}…`;
 }
@@ -180,6 +206,8 @@ function formatPct(pct: number) {
   return `${pct}%`;
 }
 
+const CALLS_ORDER = ['0', '1', '2', '3', '4', '5 - 10', '10+'];
+
 function aggregateLeads(leads: Lead[], dimension: ChartDimension): ChartRow[] {
   const counts = new Map<string, number>();
   for (const lead of leads) {
@@ -188,19 +216,26 @@ function aggregateLeads(leads: Lead[], dimension: ChartDimension): ChartRow[] {
     counts.set(key, (counts.get(key) || 0) + 1);
   }
   const total = Array.from(counts.values()).reduce((a, b) => a + b, 0) || 1;
-  return Array.from(counts.entries())
-    .map(([key, count]) => ({
-      key,
-      label: truncateLabel(key),
-      count,
-      pct: Math.round((count / total) * 10000) / 100,
-      color: '#64748B',
-    }))
-    .sort((a, b) => b.count - a.count)
-    .map((row, idx) => ({
-      ...row,
-      color: BAR_COLORS[idx % BAR_COLORS.length],
-    }));
+  let entries = Array.from(counts.entries()).map(([key, count]) => ({
+    key,
+    label: truncateLabel(key),
+    count,
+    pct: Math.round((count / total) * 10000) / 100,
+    color: '#64748B',
+  }));
+
+  if (dimension === 'calls_placed') {
+    entries = entries.sort(
+      (a, b) => CALLS_ORDER.indexOf(a.key) - CALLS_ORDER.indexOf(b.key),
+    );
+  } else {
+    entries = entries.sort((a, b) => b.count - a.count);
+  }
+
+  return entries.map((row, idx) => ({
+    ...row,
+    color: BAR_COLORS[idx % BAR_COLORS.length],
+  }));
 }
 
 function exportChartCsv(rows: ChartRow[], dimension: ChartDimension) {
@@ -219,24 +254,45 @@ function exportChartCsv(rows: ChartRow[], dimension: ChartDimension) {
 
 export default function BookingsLeadsChartPanel({
   leads,
+  onViewLeads,
+  showManagerDimensions = true,
+  totalOverride,
 }: {
   leads: Lead[];
+  /** Click "View N leads" → leave chart and show list */
+  onViewLeads?: () => void;
+  /** Assignee / Source tabs (managers & admin) */
+  showManagerDimensions?: boolean;
+  /** Prefer API total when chart rows are a subset */
+  totalOverride?: number;
 }) {
-  const [dimension, setDimension] = useState<ChartDimension>('status');
-  const rows = useMemo(() => aggregateLeads(leads, dimension), [leads, dimension]);
-  const total = leads.length;
-  const chartHeight = Math.max(320, Math.min(560, 56 + rows.length * 36));
-  const yAxisWidth = Math.min(
-    160,
-    Math.max(88, ...rows.map((r) => Math.min(r.label.length, 22) * 7 + 12)),
+  const dimensions = useMemo(
+    () =>
+      ALL_DIMENSIONS.filter((d) => showManagerDimensions || !d.managerOnly),
+    [showManagerDimensions],
   );
+  const [dimension, setDimension] = useState<ChartDimension>('status');
+  const activeDimension = dimensions.some((d) => d.id === dimension)
+    ? dimension
+    : dimensions[0]?.id || 'status';
+
+  const rows = useMemo(
+    () => aggregateLeads(leads, activeDimension),
+    [leads, activeDimension],
+  );
+  const total =
+    typeof totalOverride === 'number' && totalOverride > 0
+      ? totalOverride
+      : leads.length;
+  const chartHeight = 360;
+  const needAngle = rows.length > 6;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1">
-          {DIMENSIONS.map((d) => {
-            const active = dimension === d.id;
+          {dimensions.map((d) => {
+            const active = activeDimension === d.id;
             return (
               <button
                 key={d.id}
@@ -257,19 +313,31 @@ export default function BookingsLeadsChartPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => exportChartCsv(rows, dimension)}
+            onClick={() => exportChartCsv(rows, activeDimension)}
             disabled={rows.length === 0}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5 text-slate-700" />
             Export chart CSV
           </button>
-          <span
-            className="rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm"
-            style={{ backgroundColor: ACTIVE_TAB }}
-          >
-            View {total} lead{total === 1 ? '' : 's'}
-          </span>
+          {onViewLeads ? (
+            <button
+              type="button"
+              onClick={onViewLeads}
+              className="rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:brightness-110"
+              style={{ backgroundColor: ACTIVE_TAB }}
+              title="Back to leads list"
+            >
+              View {total.toLocaleString('en-IN')} lead{total === 1 ? '' : 's'}
+            </button>
+          ) : (
+            <span
+              className="rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-sm"
+              style={{ backgroundColor: ACTIVE_TAB }}
+            >
+              View {total.toLocaleString('en-IN')} lead{total === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -277,11 +345,16 @@ export default function BookingsLeadsChartPanel({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-extrabold text-slate-800">
-              Leads by {DIMENSIONS.find((d) => d.id === dimension)?.label || dimension}
+              Leads by{' '}
+              {dimensions.find((d) => d.id === activeDimension)?.label || activeDimension}
             </p>
-            <p className="text-xs font-medium text-slate-500">Leads count · Bar chart</p>
+            <p className="text-xs font-medium text-slate-500">
+              Total {total.toLocaleString('en-IN')} · Vertical bar chart
+            </p>
           </div>
-          <p className="text-xs font-semibold text-slate-500">Group by category</p>
+          <p className="text-lg font-black tabular-nums text-[#023D95]">
+            {total.toLocaleString('en-IN')}
+          </p>
         </div>
 
         {rows.length === 0 ? (
@@ -292,22 +365,34 @@ export default function BookingsLeadsChartPanel({
           <div style={{ width: '100%', height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                layout="vertical"
                 data={rows}
-                margin={{ top: 8, right: 40, left: 4, bottom: 8 }}
+                margin={{
+                  top: 28,
+                  right: 12,
+                  left: 8,
+                  bottom: needAngle ? 72 : 28,
+                }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis
+                  type="category"
+                  dataKey="label"
+                  interval={0}
+                  angle={needAngle ? -35 : 0}
+                  textAnchor={needAngle ? 'end' : 'middle'}
+                  height={needAngle ? 70 : 36}
+                  tick={{ fontSize: 11, fill: '#475569' }}
+                />
+                <YAxis
                   type="number"
                   allowDecimals={false}
                   tick={{ fontSize: 11, fill: '#64748B' }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  width={yAxisWidth}
-                  tick={{ fontSize: 11, fill: '#475569' }}
-                  interval={0}
+                  label={{
+                    value: 'Leads count',
+                    angle: -90,
+                    position: 'insideLeft',
+                    style: { fontSize: 11, fill: '#94A3B8' },
+                  }}
                 />
                 <Tooltip
                   formatter={(value: any, _name: any, item: any) => [
@@ -324,13 +409,14 @@ export default function BookingsLeadsChartPanel({
                     color: '#0f172a',
                   }}
                 />
-                <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={28} barSize={22}>
+                <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   {rows.map((row) => (
                     <Cell key={row.key} fill={row.color} />
                   ))}
                   <LabelList
                     dataKey="count"
-                    position="right"
+                    position="top"
+                    formatter={(v: any) => formatCount(Number(v) || 0)}
                     style={{ fontSize: 11, fontWeight: 700, fill: '#334155' }}
                   />
                 </Bar>
@@ -342,7 +428,9 @@ export default function BookingsLeadsChartPanel({
 
       {rows.length > 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
-          <p className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400">Breakdown</p>
+          <p className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+            Breakdown
+          </p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
             {rows.map((row) => (
               <div

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, GitBranch, MessageSquare, PlugZap, Target, UserRoundCheck, Flag } from 'lucide-react';
+import { Bot, Edit3, GitBranch, MessageSquare, PlugZap, Tag, Target, UserRoundCheck, Flag } from 'lucide-react';
 
 type NodePaletteProps = {
   onAddNode: (type: string) => void;
@@ -11,6 +11,9 @@ const ITEMS = [
   { type: 'message', label: 'Message', icon: MessageSquare },
   { type: 'template', label: 'Template', icon: Bot },
   { type: 'condition', label: 'Condition', icon: GitBranch },
+  { type: 'update_lead', label: 'Fresh / Status', icon: Edit3 },
+  { type: 'apply_tags', label: 'Apply Tags', icon: Tag },
+  { type: 'assign_telecaller', label: 'Assign TC', icon: UserRoundCheck },
   { type: 'api_request', label: 'API Request', icon: PlugZap },
   { type: 'handoff', label: 'Handoff', icon: UserRoundCheck },
   { type: 'end', label: 'End', icon: Target },

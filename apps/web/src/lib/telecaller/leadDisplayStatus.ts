@@ -2,7 +2,7 @@
 
 export const LEAD_STATUS_FILTERS = [
   { id: 'all', label: 'All' },
-  { id: 'new', label: 'New' },
+  { id: 'new', label: 'Fresh' },
   { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
@@ -25,6 +25,7 @@ export const LOST_REASON_FILTERS = [
 ] as const;
 
 const RESULT_LABEL: Record<string, string> = {
+  FRESH: 'Fresh',
   INTERESTED: 'Interested',
   WILL_VISIT: 'He will visit',
   CALLBACK: 'Follow-up',
@@ -44,7 +45,7 @@ function shortLeadStatusLabel(label: string): string {
 }
 
 const PIPELINE_LABEL: Record<string, string> = {
-  NEW: 'New',
+  NEW: 'Fresh',
   VALIDATED: 'Booking confirmed',
   IN_PROGRESS: 'In Service',
   COMPLETED: 'Service Done',
@@ -74,7 +75,7 @@ export function leadDisplayStatus(lead: any): string {
   }
 
   const status = String(lead?.status || '').toUpperCase();
-  return shortLeadStatusLabel(PIPELINE_LABEL[status] || status.replace(/_/g, ' ') || 'New');
+  return shortLeadStatusLabel(PIPELINE_LABEL[status] || status.replace(/_/g, ' ') || 'Fresh');
 }
 
 /** Same palette as mobile CrmQueueTab.leadStatusCardColors */
@@ -122,7 +123,7 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (incomplete) {
     return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#B45309', badgeText: '#FFFFFF' };
   }
-  if (s === 'NEW') {
+  if (s === 'NEW' || s === 'FRESH') {
     return { cardBg: '#EFF6FF', border: '#BFDBFE', badgeBg: '#1D4ED8', badgeText: '#FFFFFF' };
   }
   return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
@@ -141,7 +142,9 @@ export function leadStatusBannerClass(lead: any): string {
   if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) return 'bg-sky-50 border-sky-200';
   if (s.includes('INTERESTED')) return 'bg-orange-50 border-orange-200';
   if (s.includes('OTP')) return 'bg-amber-50 border-amber-200';
-  if (s === 'NEW' || s.includes('INCOMPLETE')) return 'bg-slate-50 border-slate-200';
+  if (s === 'NEW' || s === 'FRESH' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
+    return 'bg-slate-50 border-slate-200';
+  }
   void c;
   return 'bg-gray-50 border-gray-200';
 }
@@ -157,6 +160,8 @@ export function leadStatusPillClass(lead: any): string {
   if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) return 'bg-sky-100 text-sky-800';
   if (s.includes('INTERESTED')) return 'bg-orange-100 text-orange-700';
   if (s.includes('OTP')) return 'bg-amber-100 text-amber-800';
-  if (s === 'NEW' || s.includes('INCOMPLETE')) return 'bg-slate-200 text-slate-700';
+  if (s === 'NEW' || s === 'FRESH' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
+    return 'bg-slate-200 text-slate-700';
+  }
   return 'bg-slate-100 text-slate-600';
 }

@@ -248,6 +248,146 @@ export function LeadManagerTeamWhatsAppScreen() {
   );
 }
 
+export function LeadManagerStatusesScreen() {
+  const [rows, setRows] = useState<any[]>([]);
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/api/lead-manager/statuses?all=1');
+      setRows(data?.statuses || []);
+      if (data?.warning) {
+        Alert.alert('Lead status', String(data.warning));
+      }
+    } catch (e: any) {
+      Alert.alert('Lead status', e?.message || 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const create = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await apiFetch('/api/lead-manager/statuses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_status', name: name.trim() }),
+      });
+      setName('');
+      await load();
+    } catch (e: any) {
+      Alert.alert('Create', e?.message || 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = (row: any) => {
+    if (row.is_system) {
+      Alert.alert('System', 'System status delete nahi hota — deactivate web pe karo.');
+      return;
+    }
+    Alert.alert('Delete', `Delete "${row.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              await apiFetch('/api/lead-manager/statuses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_status', id: row.id }),
+              });
+              await load();
+            } catch (e: any) {
+              Alert.alert('Delete', e?.message || 'Failed');
+            }
+          })();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.form}>
+        <Text style={styles.name}>Create status</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Hot lead, Quotation sent"
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor="#94A3B8"
+        />
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => void create()}
+          disabled={saving || !name.trim()}
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.addBtnText}>Add status</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+      {loading ? (
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={rows}
+          keyExtractor={(r) => r.id}
+          contentContainerStyle={{ padding: SPACING.md, paddingBottom: 40 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={false}
+              onRefresh={() => {
+                setLoading(true);
+                void load();
+              }}
+            />
+          }
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <View
+                  style={[
+                    styles.statusPill,
+                    { backgroundColor: item.color || '#E2E8F0' },
+                  ]}
+                >
+                  <Text style={styles.statusPillText}>{item.name}</Text>
+                </View>
+                {!item.is_system ? (
+                  <TouchableOpacity onPress={() => remove(item)}>
+                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.meta}>system</Text>
+                )}
+              </View>
+              <Text style={styles.meta}>
+                {item.code}
+                {item.is_active === false ? ' · off' : ''}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background || '#F8FAFC' },
   stats: { flexDirection: 'row', gap: 10, padding: SPACING.md },
@@ -279,7 +419,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
+    color: COLORS.textPrimary,
   },
+  addBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  addBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  statusPill: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  statusPillText: { fontSize: 12, fontWeight: '800', color: '#0F172A' },
   primaryBtn: {
     backgroundColor: COLORS.primary,
     borderRadius: 12,

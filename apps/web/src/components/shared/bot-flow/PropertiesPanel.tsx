@@ -172,14 +172,84 @@ export default function PropertiesPanel({ selectedNode, templateOptions, onPatch
       ) : null}
 
       {nodeType === 'update_lead' ? (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-600">CRM disposition (TeleCRM status)</label>
+            <select
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+              value={String(data.crmDisposition || '')}
+              onChange={(e) => onPatchNodeData({ crmDisposition: e.target.value })}
+            >
+              <option value="">— none —</option>
+              <option value="FRESH">Fresh (default / reopen)</option>
+              <option value="INTERESTED">Interested</option>
+              <option value="CALLBACK">Follow-up</option>
+              <option value="LOST">Lost</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-600">Pipeline status (optional)</label>
+            <input
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+              value={String(data.leadStatus || '')}
+              onChange={(e) => onPatchNodeData({ leadStatus: e.target.value })}
+              placeholder="e.g. NEW / CONTACTED (optional)"
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {nodeType === 'apply_tags' ? (
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-600">Lead status to set</label>
+          <label className="text-xs font-medium text-slate-600">
+            Lead tags (comma-separated)
+          </label>
           <input
             className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
-            value={String(data.leadStatus || '')}
-            onChange={(e) => onPatchNodeData({ leadStatus: e.target.value })}
-            placeholder="e.g. CONTACTED / FOLLOW_UP"
+            value={String(
+              data.tagNamesCsv ||
+                (Array.isArray(data.tagNames) ? (data.tagNames as string[]).join(', ') : ''),
+            )}
+            onChange={(e) => {
+              const csv = e.target.value;
+              const names = csv
+                .split(',')
+                .map((x) => x.trim())
+                .filter(Boolean);
+              onPatchNodeData({ tagNamesCsv: csv, tagNames: names });
+            }}
+            placeholder="Meta Ads, Meta Ads A"
           />
+          <p className="text-[11px] text-slate-500">
+            Child tag (Meta Ads A) pe common parent (Meta Ads) auto lagta hai.
+          </p>
+        </div>
+      ) : null}
+
+      {nodeType === 'assign_telecaller' ? (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-600">Assign mode</label>
+            <select
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+              value={String(data.assignMode || 'auto')}
+              onChange={(e) => onPatchNodeData({ assignMode: e.target.value })}
+            >
+              <option value="auto">Auto (distribution RR)</option>
+              <option value="fixed">Fixed telecaller id</option>
+            </select>
+          </div>
+          {String(data.assignMode || 'auto') === 'fixed' ? (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600">Telecaller user id</label>
+              <input
+                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-violet-400"
+                value={String(data.telecallerId || '')}
+                onChange={(e) => onPatchNodeData({ telecallerId: e.target.value })}
+                placeholder="UUID"
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 

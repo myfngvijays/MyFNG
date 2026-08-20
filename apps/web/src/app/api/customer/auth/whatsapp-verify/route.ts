@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
       const leadOpts = resolveOtpLeadOptionsFromSource({
         source: bodySource || metaSource || 'misa-app',
         bookingChannel: String(body?.misa_channel || (currentMetadata as any)?.channel || 'APP'),
+        sessionId: String(body?.session_id || (currentMetadata as any)?.session_id || ''),
         fallbackChannel: 'MOBILE',
       });
       if (leadOpts.origin !== 'misa') {

@@ -88,7 +88,10 @@ export async function GET(request: NextRequest) {
     const lostReason = String(sp.get('lost_reason') || '').trim();
     const telecallerFilter = String(sp.get('telecaller_id') || '').trim();
     const unassignedOnly = sp.get('unassigned') === '1';
-    const pageSize = Math.min(Math.max(parseInt(sp.get('limit') || '25', 10) || 25, 1), 100);
+    // Chart / export may request larger pages; list UI stays ≤100 for snappy paging
+    const requestedLimit = parseInt(sp.get('limit') || '25', 10) || 25;
+    const maxLimit = sp.get('for_chart') === '1' ? 1000 : 100;
+    const pageSize = Math.min(Math.max(requestedLimit, 1), maxLimit);
     const page = Math.max(1, parseInt(sp.get('page') || '1', 10) || 1);
     const rangeFrom = (page - 1) * pageSize;
     const rangeTo = rangeFrom + pageSize - 1;
@@ -130,7 +133,7 @@ export async function GET(request: NextRequest) {
     if (workshopId) query = query.eq('workshop_id', workshopId);
     query = applyCrmLeadDateRange(query, filter, from, to);
 
-    if (filter === 'new') {
+    if (filter === 'new' || filter === 'fresh') {
       query = applyCrmNewLeadFilter(query);
     } else if (filter === 'interested') {
       query = query.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
@@ -163,6 +166,9 @@ export async function GET(request: NextRequest) {
     } else if (filter === 'incomplete') {
       // Only this telecaller's incomplete booking stubs (matches dashboard KPI).
       query = query.eq('is_incomplete', true);
+    } else if (filter && filter !== 'all' && filter !== 'booked' && filter !== 'overdue_callback') {
+      // Custom / dynamic CRM statuses → last_call_result code
+      query = query.filter('coupon_meta->>last_call_result', 'eq', filter.toUpperCase());
     }
 
     if (q) {
@@ -185,7 +191,7 @@ export async function GET(request: NextRequest) {
       if (priority) retry = retry.eq('lead_priority', priority.toUpperCase());
       if (workshopId) retry = retry.eq('workshop_id', workshopId);
       retry = applyCrmLeadDateRange(retry, filter, from, to);
-      if (filter === 'new') retry = applyCrmNewLeadFilter(retry);
+      if (filter === 'new' || filter === 'fresh') retry = applyCrmNewLeadFilter(retry);
       else if (filter === 'interested') {
         retry = retry.filter('coupon_meta->>last_call_result', 'eq', 'INTERESTED');
       } else if (filter === 'will_visit') {
@@ -213,6 +219,8 @@ export async function GET(request: NextRequest) {
         retry = retry.eq('follow_up_required', true).lte('next_follow_up_at', new Date().toISOString());
       } else if (filter === 'incomplete') {
         retry = retry.eq('is_incomplete', true);
+      } else if (filter && filter !== 'all' && filter !== 'booked' && filter !== 'overdue_callback') {
+        retry = retry.filter('coupon_meta->>last_call_result', 'eq', filter.toUpperCase());
       }
       if (q) {
         retry = retry.or(
@@ -266,20 +274,43 @@ export async function GET(request: NextRequest) {
       const isWhatsappInbound = Boolean(row?.coupon_meta?.whatsapp_inbound);
       const fromFu = reminderByLead.get(String(row.id));
       const nextAt = fromFu?.at || row.next_follow_up_at || null;
-      return redactLeadSourceForTelecaller({
-        ...row,
-        message_preview: preview,
-        history_preview: hist.slice(0, 3),
-        is_whatsapp_lead: isWhatsappInbound,
-        reminder: nextAt
-          ? {
-              at: nextAt,
-              reason: fromFu?.reason || null,
-              type: fromFu?.type || null,
-              overdue: new Date(nextAt).getTime() < Date.now(),
-            }
-          : null,
-      });
+      return seesAll
+        ? {
+            ...row,
+            assigned_telecaller_name:
+              row?.assigned_telecaller?.full_name ||
+              row?.assigned_telecaller_name ||
+              null,
+            message_preview: preview,
+            history_preview: hist.slice(0, 3),
+            is_whatsapp_lead: isWhatsappInbound,
+            reminder: nextAt
+              ? {
+                  at: nextAt,
+                  reason: fromFu?.reason || null,
+                  type: fromFu?.type || null,
+                  overdue: new Date(nextAt).getTime() < Date.now(),
+                }
+              : null,
+          }
+        : redactLeadSourceForTelecaller({
+            ...row,
+            assigned_telecaller_name:
+              row?.assigned_telecaller?.full_name ||
+              row?.assigned_telecaller_name ||
+              null,
+            message_preview: preview,
+            history_preview: hist.slice(0, 3),
+            is_whatsapp_lead: isWhatsappInbound,
+            reminder: nextAt
+              ? {
+                  at: nextAt,
+                  reason: fromFu?.reason || null,
+                  type: fromFu?.type || null,
+                  overdue: new Date(nextAt).getTime() < Date.now(),
+                }
+              : null,
+          });
     });
 
     return NextResponse.json({

@@ -304,6 +304,8 @@ type CallDisposition = {
   call_status: string;
   outcome: string | null;
   lead_status?: string | null;
+  requires_follow_up?: boolean;
+  requires_lost_reason?: boolean;
 };
 
 const RINGING: CallDisposition = {
@@ -313,10 +315,17 @@ const RINGING: CallDisposition = {
   outcome: null,
 };
 
-const STATUS_OPTIONS: CallDisposition[] = [
+const DEFAULT_STATUS_OPTIONS: CallDisposition[] = [
+  { id: 'FRESH', label: 'Fresh', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'INTERESTED', label: 'Interested', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
   { id: 'WILL_VISIT', label: 'He will visit', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
-  { id: 'CALLBACK', label: 'Follow-up', call_status: 'ANSWERED', outcome: 'INFO_COLLECTED' },
+  {
+    id: 'CALLBACK',
+    label: 'Follow-up',
+    call_status: 'ANSWERED',
+    outcome: 'INFO_COLLECTED',
+    requires_follow_up: true,
+  },
   {
     id: 'BOOKING_CONFIRMED',
     label: 'Booking confirmed',
@@ -344,10 +353,11 @@ const STATUS_OPTIONS: CallDisposition[] = [
     call_status: 'ANSWERED',
     outcome: 'NOT_INTERESTED',
     lead_status: 'REJECTED',
+    requires_lost_reason: true,
   },
 ];
 
-const LOST_REASONS = [
+const DEFAULT_LOST_REASONS = [
   'Not Interested',
   'Unqualified Lead',
   'No-Response to Calls',
@@ -438,11 +448,50 @@ export default function TelecallerLeadDetailScreen({
     date: '',
     time: '',
   });
+  const [statusOptions, setStatusOptions] =
+    useState<CallDisposition[]>(DEFAULT_STATUS_OPTIONS);
+  const [lostReasons, setLostReasons] = useState<string[]>(DEFAULT_LOST_REASONS);
 
   const setEditField = (key: keyof EditForm, value: any) =>
     setEditForm((prev) => ({ ...prev, [key]: value }));
 
   const lastPhoneLookupRef = React.useRef<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<any>('/api/lead-manager/statuses');
+        const rows = Array.isArray(data?.statuses) ? data.statuses : [];
+        if (!cancelled && rows.length) {
+          const mapped: CallDisposition[] = rows
+            .filter((r: any) => String(r.code || '').toUpperCase() !== 'RINGING')
+            .map((r: any) => ({
+              id: String(r.code || '').toUpperCase(),
+              label: String(r.name || r.code),
+              call_status: String(r.call_status || 'ANSWERED').toUpperCase(),
+              outcome: r.outcome ? String(r.outcome).toUpperCase() : null,
+              lead_status: r.pipeline_status ? String(r.pipeline_status).toUpperCase() : null,
+              requires_follow_up: Boolean(r.requires_follow_up),
+              requires_lost_reason:
+                Boolean(r.requires_lost_reason) || String(r.code).toUpperCase() === 'LOST',
+            }));
+          if (mapped.length) setStatusOptions(mapped);
+        }
+        const reasons = Array.isArray(data?.lost_reasons) ? data.lost_reasons : [];
+        if (!cancelled && reasons.length) {
+          setLostReasons(
+            reasons.map((r: any) => String(r.name || '').trim()).filter(Boolean),
+          );
+        }
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const lookupCustomerByPhone = async (phoneRaw: string) => {
     const phone10 = String(phoneRaw || '')
@@ -645,11 +694,19 @@ export default function TelecallerLeadDetailScreen({
         return;
       }
     }
-    if (activityData.result === 'LOST' && !activityData.lostReason) {
+    const selectedForSave =
+      statusOptions.find((r) => r.id === activityData.result) || RINGING;
+    if (
+      (activityData.result === 'LOST' || selectedForSave.requires_lost_reason) &&
+      !activityData.lostReason
+    ) {
       Alert.alert('Missing info', 'Select lost reason');
       return;
     }
-    if (activityData.result === 'CALLBACK' && (!activityData.date || !activityData.time)) {
+    if (
+      (activityData.result === 'CALLBACK' || selectedForSave.requires_follow_up) &&
+      (!activityData.date || !activityData.time)
+    ) {
       Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
       return;
     }
@@ -684,7 +741,7 @@ export default function TelecallerLeadDetailScreen({
       let dispositionStatus: string | null = null;
       if (activityData.result !== 'RINGING') {
         const selected =
-          STATUS_OPTIONS.find((r) => r.id === activityData.result) || RINGING;
+          statusOptions.find((r) => r.id === activityData.result) || RINGING;
         const statusLabel =
           selected.id === 'LOST'
             ? `Lost · ${activityData.lostReason}`
@@ -721,7 +778,7 @@ export default function TelecallerLeadDetailScreen({
       if (servicesChangedLocal) changeBits.push('services');
       if (activityData.result !== 'RINGING') {
         const lbl =
-          STATUS_OPTIONS.find((r) => r.id === activityData.result)?.label || activityData.result;
+          statusOptions.find((r) => r.id === activityData.result)?.label || activityData.result;
         changeBits.push(lbl);
       }
       if (bookingConfirmed) changeBits.push('booking');
@@ -881,16 +938,16 @@ export default function TelecallerLeadDetailScreen({
           const selected =
             activityData.result === 'RINGING'
               ? RINGING
-              : STATUS_OPTIONS.find((r) => r.id === activityData.result) || RINGING;
+              : statusOptions.find((r) => r.id === activityData.result) || RINGING;
           const statusLabel =
-            selected.id === 'LOST'
+            selected.requires_lost_reason || selected.id === 'LOST'
               ? `Lost · ${activityData.lostReason}`
               : selected.label;
           const whenIso =
-            selected.id === 'CALLBACK'
+            selected.requires_follow_up || selected.id === 'CALLBACK'
               ? combineDateAndTime(activityData.date, activityData.time)
               : null;
-          if (selected.id === 'CALLBACK' && !whenIso) {
+          if ((selected.requires_follow_up || selected.id === 'CALLBACK') && !whenIso) {
             Alert.alert('Follow-up time', 'Follow-up ke liye date aur time dono select karo.');
             setSaving(false);
             return;
@@ -908,6 +965,8 @@ export default function TelecallerLeadDetailScreen({
               call_status: selected.call_status,
               call_duration: null,
               outcome: selected.outcome,
+              activity: selected.id,
+              pipeline_status: selected.lead_status || null,
               notes: notesParts.join(' '),
               phone_number: editForm.customer_phone || lead?.customer_phone,
               next_action: whenIso ? 'FOLLOW_UP' : null,
@@ -919,7 +978,10 @@ export default function TelecallerLeadDetailScreen({
             last_call_status: selected.call_status,
             last_call_result: selected.id,
             last_call_label: statusLabel,
-            last_lost_reason: selected.id === 'LOST' ? activityData.lostReason : null,
+            last_lost_reason:
+              selected.requires_lost_reason || selected.id === 'LOST'
+                ? activityData.lostReason
+                : null,
             last_call_at: new Date().toISOString(),
           };
           const leadUpdate: Record<string, unknown> = {
@@ -983,7 +1045,7 @@ export default function TelecallerLeadDetailScreen({
   const selectedResult: CallDisposition =
     activityData.result === 'RINGING'
       ? RINGING
-      : STATUS_OPTIONS.find((r) => r.id === activityData.result) || RINGING;
+      : statusOptions.find((r) => r.id === activityData.result) || RINGING;
 
   const activityItems = React.useMemo(() => {
     const calls = (callLogs || []).map((log) => ({
@@ -2367,7 +2429,7 @@ export default function TelecallerLeadDetailScreen({
                 <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
 
-              {activityData.result === 'LOST' ? (
+              {activityData.result === 'LOST' || selectedResult.requires_lost_reason ? (
                 <>
                   <Text style={styles.formLabel}>Lost reason</Text>
                   <TouchableOpacity
@@ -2674,7 +2736,7 @@ export default function TelecallerLeadDetailScreen({
               <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
 
-            {activityData.result === 'LOST' ? (
+            {activityData.result === 'LOST' || selectedResult.requires_lost_reason ? (
               <>
                 <Text style={styles.formLabel}>Lost reason</Text>
                 <TouchableOpacity
@@ -2844,7 +2906,7 @@ export default function TelecallerLeadDetailScreen({
       <Pressable style={styles.menuOverlay} onPress={() => setShowStatusMenu(false)}>
         <View style={styles.menuSheet}>
           <Text style={styles.menuTitle}>Select status</Text>
-          {STATUS_OPTIONS.map((opt) => (
+          {statusOptions.map((opt) => (
             <TouchableOpacity
               key={opt.id}
               style={styles.menuItem}
@@ -2852,7 +2914,7 @@ export default function TelecallerLeadDetailScreen({
                 setActivityData({
                   ...activityData,
                   result: opt.id,
-                  lostReason: opt.id === 'LOST' ? activityData.lostReason : '',
+                  lostReason: opt.requires_lost_reason || opt.id === 'LOST' ? activityData.lostReason : '',
                 });
                 setShowStatusMenu(false);
               }}
@@ -2868,7 +2930,7 @@ export default function TelecallerLeadDetailScreen({
       <Pressable style={styles.menuOverlay} onPress={() => setShowLostMenu(false)}>
         <View style={styles.menuSheet}>
           <Text style={styles.menuTitle}>Lost reason</Text>
-          {LOST_REASONS.map((reason) => (
+          {lostReasons.map((reason) => (
             <TouchableOpacity
               key={reason}
               style={styles.menuItem}
@@ -3085,7 +3147,7 @@ function resolveLeadDisplayStatus(lead: any, callLogs?: any[]): string {
   } else {
     const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
     if (result && result !== 'RINGING') {
-      const fromOpt = STATUS_OPTIONS.find((o) => o.id === result);
+      const fromOpt = statusOptions.find((o) => o.id === result);
       if (fromOpt) resolved = fromOpt.label;
     }
 
@@ -3096,7 +3158,7 @@ function resolveLeadDisplayStatus(lead: any, callLogs?: any[]): string {
       for (const entry of hist) {
         const s = String(entry?.status || '').toUpperCase();
         if (s && s !== 'RINGING') {
-          const fromOpt = STATUS_OPTIONS.find((o) => o.id === s);
+          const fromOpt = statusOptions.find((o) => o.id === s);
           if (fromOpt) {
             resolved = fromOpt.label;
             break;

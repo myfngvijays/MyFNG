@@ -135,6 +135,9 @@ function TelecallerCrmLeadsContent() {
   const [q, setQ] = useState(qParam || '');
   const [appliedQ, setAppliedQ] = useState(qParam || '');
   const [filter, setFilter] = useState(filterParam || 'all');
+  const [statusFilters, setStatusFilters] = useState<Array<{ id: string; label: string }>>(
+    () => LEAD_STATUS_FILTERS.map((f) => ({ id: f.id, label: f.label })),
+  );
   const [lostReason, setLostReason] = useState(lostParam || '');
   const [city, setCity] = useState(cityParam || '');
   const [priority, setPriority] = useState(priorityParam || '');
@@ -223,6 +226,41 @@ function TelecallerCrmLeadsContent() {
     advHasPhone,
     advOverdueReminder,
   ].filter(Boolean).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/lead-manager/statuses');
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows = Array.isArray(json?.statuses) ? json.statuses : [];
+        if (!rows.length) return;
+        const dynamic = rows
+          .filter((r: any) => String(r.code || '').toUpperCase() !== 'RINGING')
+          .map((r: any) => ({
+            id: String(r.code || '')
+              .trim()
+              .toLowerCase(),
+            label: String(r.name || r.code),
+          }));
+        setStatusFilters([
+          { id: 'all', label: 'All' },
+          { id: 'new', label: 'Fresh' },
+          { id: 'incomplete', label: 'Incomplete' },
+          ...dynamic.filter(
+            (d: { id: string }) =>
+              d.id !== 'fresh' && d.id !== 'ringing' && d.id !== 'new',
+          ),
+        ]);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Restore saved filters once on client (survives lead open → back)
   useEffect(() => {
@@ -440,30 +478,51 @@ function TelecallerCrmLeadsContent() {
     else setLoading(true);
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
-      const params = new URLSearchParams();
+      const baseParams = new URLSearchParams();
+      if (filter && filter !== 'all') baseParams.set('filter', filter);
+      if (filter === 'lost' && lostReason.trim()) baseParams.set('lost_reason', lostReason.trim());
+      if (appliedQ.trim()) baseParams.set('q', appliedQ.trim());
+      if (city.trim()) baseParams.set('city', city.trim());
+      if (priority.trim()) baseParams.set('priority', priority.trim());
+      if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
+      if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
+      if (!range.allTime) {
+        baseParams.set('from', range.start);
+        baseParams.set('to', range.end);
+      }
+
       if (viewMode === 'chart') {
-        params.set('limit', '100');
-        params.set('page', '1');
+        // Pull every matching lead (paged) so chart totals match filters, not a 100-row sample
+        const pageLimit = 1000;
+        let pageNum = 1;
+        let all: any[] = [];
+        let total = 0;
+        for (;;) {
+          const params = new URLSearchParams(baseParams);
+          params.set('for_chart', '1');
+          params.set('limit', String(pageLimit));
+          params.set('page', String(pageNum));
+          const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || 'Failed');
+          const batch = Array.isArray(data?.leads) ? data.leads : [];
+          total = Number(data?.total || 0);
+          all = all.concat(batch);
+          if (batch.length < pageLimit || all.length >= total || pageNum >= 40) break;
+          pageNum += 1;
+        }
+        setLeads(all);
+        setTotalLeads(total || all.length);
       } else {
+        const params = new URLSearchParams(baseParams);
         params.set('limit', String(pageSize));
         params.set('page', String(page));
+        const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Failed');
+        setLeads(Array.isArray(data?.leads) ? data.leads : []);
+        setTotalLeads(Number(data?.total || 0));
       }
-      if (filter && filter !== 'all') params.set('filter', filter);
-      if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
-      if (appliedQ.trim()) params.set('q', appliedQ.trim());
-      if (city.trim()) params.set('city', city.trim());
-      if (priority.trim()) params.set('priority', priority.trim());
-      if (isLeadManager && telecallerId.trim()) params.set('telecaller_id', telecallerId.trim());
-      if (isLeadManager && unassignedOnly) params.set('unassigned', '1');
-      if (!range.allTime) {
-        params.set('from', range.start);
-        params.set('to', range.end);
-      }
-      const res = await fetch(`/api/telecaller/crm/leads?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed');
-      setLeads(Array.isArray(data?.leads) ? data.leads : []);
-      setTotalLeads(Number(data?.total || 0));
     } catch (e) {
       console.error(e);
       if (!bootedRef.current) setLeads([]);
@@ -774,7 +833,7 @@ function TelecallerCrmLeadsContent() {
                 onChange={(e) => setFilterAndUrl(e.target.value)}
                 aria-label="Lead Status"
               >
-                {LEAD_STATUS_FILTERS.map((f) => (
+                {statusFilters.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.id === 'all' ? 'Lead Status' : f.label}
                   </option>
@@ -1028,7 +1087,12 @@ function TelecallerCrmLeadsContent() {
               <Loader2 className="h-5 w-5 animate-spin" /> Loading chart…
             </div>
           ) : (
-            <BookingsLeadsChartPanel leads={displayedLeads} />
+            <BookingsLeadsChartPanel
+              leads={displayedLeads}
+              showManagerDimensions={isLeadManager}
+              onViewLeads={() => setViewMode('list')}
+              totalOverride={totalLeads}
+            />
           )
         ) : loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
@@ -1149,9 +1213,6 @@ function TelecallerCrmLeadsContent() {
                               isLeadManager && selectedIds.has(String(lead.id))
                                 ? '#DBEAFE'
                                 : tint.cardBg,
-                            boxShadow: `inset 4px 0 0 0 ${
-                              tint.badgeText === '#FFFFFF' ? tint.badgeBg : tint.badgeText
-                            }`,
                           }}
                           onClick={() => openLead(String(lead.id))}
                         >
@@ -1326,9 +1387,6 @@ function TelecallerCrmLeadsContent() {
                     style={{
                       backgroundColor: tint.cardBg,
                       borderColor: tint.border,
-                      boxShadow: `inset 4px 0 0 0 ${
-                        tint.badgeText === '#FFFFFF' ? tint.badgeBg : tint.badgeText
-                      }`,
                     }}
                   >
                     {isLeadManager ? (

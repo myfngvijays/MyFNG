@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHelpIcon from '@/components/PageHelpIcon';
 import { createClient } from '@/lib/supabase/client';
 import {
   CRM_PERMISSION_LABELS,
@@ -217,6 +218,7 @@ export default function LeadManagerTeamPage() {
           <div>
             <h1 className="text-2xl font-extrabold text-[#023D95] flex items-center gap-2">
               <Users className="h-6 w-6" /> Telecaller Team
+              <PageHelpIcon href="/dashboard/lead_manager/team" label="Team" />
             </h1>
             <p className="text-sm text-slate-600 mt-1">
               Phones + TeleCRM-style access templates (who can export, see team board, etc.).

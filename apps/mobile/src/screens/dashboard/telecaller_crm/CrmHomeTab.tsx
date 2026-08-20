@@ -240,7 +240,7 @@ export default function CrmHomeTab({
 
       <View style={styles.kpiGrid}>
         {[
-          { label: 'New', value: kpis.new_leads, statusKey: 'New', filter: 'new' },
+          { label: 'Fresh', value: kpis.new_leads, statusKey: 'Fresh', filter: 'new' },
           {
             label: 'Incomplete',
             value: kpis.incomplete,

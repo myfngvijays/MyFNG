@@ -11,6 +11,14 @@ import type { WhatsAppBrainConfig } from './brainConfig';
 import { isRsaRelatedMessage } from './rsaIntent';
 import { performWhatsAppHandoff } from './handoff';
 import { sendBrainOutboundMessage } from './sessionWindow';
+import {
+  addLeadTags,
+  ensureTagIdsByNames,
+} from '@/lib/telecaller/crmLeadTagsApply';
+import { stampFreshCrmDisposition } from '@/lib/telecaller/freshLeadStatus';
+import { pickTelecallerWeightedRoundRobin } from '@/lib/enquiry/assignment';
+import { channelFromWhatsAppLabels } from '@/lib/enquiry/leadChannels';
+import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 
 export type FlowExecuteInput = {
   phone: string;
@@ -291,19 +299,152 @@ export async function executeBotFlow(input: FlowExecuteInput): Promise<FlowExecu
 
     if (nodeType === 'update_lead') {
       const status = String(node.data?.leadStatus || '').trim();
-      trace.push(`update_lead:${status || 'noop'}`);
-      if (status && !input.dryRun) {
+      const disposition = String(node.data?.crmDisposition || '')
+        .trim()
+        .toUpperCase();
+      trace.push(`update_lead:${status || disposition || 'noop'}`);
+      if (!input.dryRun && (status || disposition)) {
         try {
           const db = getAdminDb();
           const digits = String(phone || '').replace(/\D/g, '');
           const local10 = digits.slice(-10);
-          await db
+          const { data: leads } = await db
             .from('service_leads')
-            .update({ status, updated_at: new Date().toISOString() })
+            .select('id, coupon_meta, status')
             .or(`customer_phone.ilike.%${local10}%`)
-            .is('deleted_at', null);
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(3);
+          for (const lead of leads || []) {
+            const patch: Record<string, unknown> = {
+              updated_at: new Date().toISOString(),
+            };
+            if (status) patch.status = status;
+            if (disposition === 'FRESH' || disposition === 'FRESH_STATUS') {
+              const prev =
+                lead.coupon_meta && typeof lead.coupon_meta === 'object'
+                  ? (lead.coupon_meta as Record<string, unknown>)
+                  : {};
+              patch.coupon_meta = stampFreshCrmDisposition(prev);
+            } else if (disposition) {
+              const prev =
+                lead.coupon_meta && typeof lead.coupon_meta === 'object'
+                  ? (lead.coupon_meta as Record<string, unknown>)
+                  : {};
+              patch.coupon_meta = {
+                ...prev,
+                last_call_result: disposition,
+                last_call_label: disposition.replace(/_/g, ' '),
+              };
+            }
+            await db.from('service_leads').update(patch).eq('id', lead.id);
+          }
         } catch (err) {
           trace.push(`update_lead:error:${(err as Error)?.message || 'failed'}`);
+        }
+      }
+      currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;
+      continue;
+    }
+
+    if (nodeType === 'apply_tags') {
+      const tagNames = Array.isArray(node.data?.tagNames)
+        ? (node.data.tagNames as unknown[]).map((x) => String(x || '').trim()).filter(Boolean)
+        : String(node.data?.tagNamesCsv || '')
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean);
+      const tagIdsDirect = Array.isArray(node.data?.tagIds)
+        ? (node.data.tagIds as unknown[]).map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+      trace.push(`apply_tags:${tagNames.join('|') || tagIdsDirect.join('|') || 'noop'}`);
+      if (!input.dryRun && (tagNames.length || tagIdsDirect.length)) {
+        try {
+          const db = getAdminDb();
+          const digits = String(phone || '').replace(/\D/g, '');
+          const local10 = digits.slice(-10);
+          const { data: lead } = await db
+            .from('service_leads')
+            .select('id')
+            .or(`customer_phone.ilike.%${local10}%`)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (lead?.id) {
+            const fromNames = tagNames.length
+              ? await ensureTagIdsByNames(tagNames, {
+                  parentName: tagNames.some((n) => /meta\s*ads/i.test(n))
+                    ? 'Meta Ads'
+                    : null,
+                })
+              : [];
+            await addLeadTags(String(lead.id), [...fromNames, ...tagIdsDirect]);
+          }
+        } catch (err) {
+          trace.push(`apply_tags:error:${(err as Error)?.message || 'failed'}`);
+        }
+      }
+      currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;
+      continue;
+    }
+
+    if (nodeType === 'assign_telecaller') {
+      const mode = String(node.data?.assignMode || 'auto').toLowerCase();
+      const fixedId = String(node.data?.telecallerId || '').trim();
+      trace.push(`assign_telecaller:${mode}:${fixedId || 'rr'}`);
+      if (!input.dryRun) {
+        try {
+          const db = getAdminDb();
+          const digits = String(phone || '').replace(/\D/g, '');
+          const local10 = digits.slice(-10);
+          const { data: lead } = await db
+            .from('service_leads')
+            .select('id, lead_number, assigned_telecaller_id, lead_source, created_from, pincode')
+            .or(`customer_phone.ilike.%${local10}%`)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (lead?.id) {
+            let telecallerId = fixedId || null;
+            if (mode !== 'fixed' || !telecallerId) {
+              const channel = channelFromWhatsAppLabels(
+                String(lead.created_from || ''),
+                String(lead.lead_source || ''),
+              );
+              const picked = await pickTelecallerWeightedRoundRobin(
+                channel,
+                lead.pincode ? String(lead.pincode) : null,
+              );
+              telecallerId = picked.telecallerId || null;
+            }
+            if (telecallerId) {
+              const prev = lead.assigned_telecaller_id
+                ? String(lead.assigned_telecaller_id)
+                : null;
+              await db
+                .from('service_leads')
+                .update({
+                  assigned_telecaller_id: telecallerId,
+                  assigned_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', lead.id);
+              if (prev !== telecallerId) {
+                void notifyTelecallerNewLeadAssignedSafe({
+                  leadId: String(lead.id),
+                  leadNumber: lead.lead_number ? String(lead.lead_number) : null,
+                  telecallerId,
+                  previousTelecallerId: prev,
+                  assignedByName: 'WhatsApp bot flow',
+                  notes: 'Assigned by workflow',
+                });
+              }
+            }
+          }
+        } catch (err) {
+          trace.push(`assign_telecaller:error:${(err as Error)?.message || 'failed'}`);
         }
       }
       currentNodeId = outgoingEdges(graph, node.id)[0]?.target || null;

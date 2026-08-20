@@ -19,8 +19,9 @@ export const CRM_ACTIVITY_DATE_FILTERS = new Set([
 ]);
 
 /**
- * "New" = pipeline NEW, not incomplete, and not already moved to a disposition tile.
- * PostgREST: null last_call_result OR value outside disposition list.
+ * "Fresh" (filter id `new` / `fresh`) = pipeline NEW, not incomplete,
+ * and not already moved to a worked disposition tile.
+ * New inserts also get last_call_result=FRESH via DB trigger / stampFreshCrmDisposition.
  */
 export function applyCrmNewLeadFilter(query: any) {
   const notIn = CRM_DISPOSITION_RESULTS.join(',');
@@ -28,7 +29,7 @@ export function applyCrmNewLeadFilter(query: any) {
     .eq('status', 'NEW')
     .eq('is_incomplete', false)
     .or(
-      `coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.not.in.(${notIn})`,
+      `coupon_meta->>last_call_result.is.null,coupon_meta->>last_call_result.eq.FRESH,coupon_meta->>last_call_result.not.in.(${notIn})`,
     );
 }
 

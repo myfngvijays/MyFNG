@@ -209,12 +209,17 @@ export async function verifyBookingOtpForPhone(
       const leadOpts = resolveOtpLeadOptionsFromSource({
         source: String((currentMetadata as any).source || 'misa_booking'),
         bookingChannel: String((currentMetadata as any).channel || ''),
+        sessionId: String((currentMetadata as any).session_id || ''),
         fallbackChannel: 'WEB',
       });
-      // Tool OTP is always MISA-origin when source missing
+      // Tool OTP is always MISA-origin when source missing.
+      // Delivery is WhatsApp — default WA 6161 when channel/session still unknown.
       if (leadOpts.origin !== 'misa') {
         leadOpts.origin = 'misa';
-        leadOpts.misaChannel = leadOpts.misaChannel || 'WEBSITE';
+        leadOpts.misaChannel = leadOpts.misaChannel || 'WHATSAPP';
+        leadOpts.channel = leadOpts.misaChannel === 'APP' ? 'MOBILE' : 'WEB';
+      } else if (!leadOpts.misaChannel) {
+        leadOpts.misaChannel = 'WHATSAPP';
       }
       const myfngLead = await ensureWebsiteOtpVerifiedLead(supabaseAdmin, normalizedPhone, leadOpts);
       leadId = myfngLead.leadId;

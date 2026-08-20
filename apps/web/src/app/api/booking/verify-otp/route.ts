@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
   const leadOpts = resolveOtpLeadOptionsFromSource({
     source: metaSource,
     bookingChannel: metaBookingChannel,
+    sessionId: String((currentMetadata as any).session_id || body.session_id || ''),
     fallbackChannel: otpChannel,
   });
 

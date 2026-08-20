@@ -13,6 +13,7 @@ import {
   User,
   FileText,
   Tag,
+  CircleDot,
   Settings,
   Building2,
   TrendingUp,
@@ -37,6 +38,7 @@ import {
   MessageCircle,
   MapPin,
   Download,
+  BookOpen,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -799,6 +801,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           ],
         },
         { href: '/dashboard/super_admin/bookings', icon: <FileText className="w-5 h-5" />, label: 'Bookings & Leads' },
+        { href: '/dashboard/super_admin/lead-tags', icon: <Tag className="w-5 h-5" />, label: 'Lead Tags' },
+        { href: '/dashboard/super_admin/lead-statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead Status' },
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
         { href: '/dashboard/super_admin/reports', icon: <TrendingUp className="w-5 h-5" />, label: 'Reports & Analytics' },
         { href: '/dashboard/super_admin/audit-logs', icon: <Shield className="w-5 h-5" />, label: 'Audit Logs' },
@@ -862,6 +866,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
         { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
+        { href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
+        { href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
         {
           href: '/dashboard/lead_manager/reports',
           icon: <TrendingUp className="w-5 h-5" />,
@@ -875,6 +881,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             { href: '/dashboard/lead_manager/reports/pipeline', icon: <BarChart3 className="w-5 h-5" />, label: 'Pipeline' },
           ],
         },
+        { href: '/dashboard/lead_manager/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
       ],
       'RSA_MANAGER': [
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
@@ -947,6 +954,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           ],
         },
         { href: '/dashboard/telecaller/me', icon: <User className="w-5 h-5" />, label: 'My Profile' },
+        { href: '/dashboard/telecaller/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
       ],
       'SUB_ADMIN': [
         { href: '/dashboard/sub_admin', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },

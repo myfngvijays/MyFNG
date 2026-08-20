@@ -22,6 +22,10 @@ import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
 import { leadStatusCardColors } from '@/lib/telecaller/leadDisplayStatus';
+import {
+  getMisaOtpVerifiedLabel,
+  inferMisaOtpChannel,
+} from '@/lib/chatbot_v2/misaLeadSource';
 
 type ServiceLead = Record<string, any>;
 type CsvRow = Record<string, string>;
@@ -287,11 +291,11 @@ function normalizeLeadPhone(phone?: string | null): string {
     .slice(-10);
 }
 
-/** Web / Mob / MISA OTP Verified — shown in Source column. */
+/** Web / Mob / MISA OTP (WhatsApp · Website · App) — shown in Source column. */
 function resolveOtpVerifiedTag(lead: Record<string, any>): {
-  label: 'Web OTP Verified' | 'Mob OTP Verified' | 'MISA OTP Verified';
+  label: string;
   className: string;
-  kind: 'website' | 'app' | 'misa';
+  kind: 'website' | 'app' | 'misa' | 'whatsapp';
 } | null {
   const meta =
     lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? (lead.coupon_meta as Record<string, unknown>) : {};
@@ -307,21 +311,28 @@ function resolveOtpVerifiedTag(lead: Record<string, any>): {
     Boolean(meta.misa_otp_verified) ||
     result === 'OTP_VERIFIED' ||
     labelRaw.includes('otp verified') ||
+    labelRaw.includes('misa otp') ||
     desc.includes('otp verified');
   if (!isOtp) return null;
 
-  const isMisa =
-    Boolean(meta.misa_otp_verified) ||
-    labelRaw.includes('misa otp') ||
-    leadSource.includes('misa') ||
-    desc.includes('misa');
+  const misaChannel = inferMisaOtpChannel({
+    misaChannel: meta.misa_channel != null ? String(meta.misa_channel) : null,
+    lastCallLabel: String(meta.last_call_label || lead.otp_label || ''),
+    leadSource: String(lead.lead_source || ''),
+    createdFrom: String(lead.created_from || ''),
+    description: String(lead.description || lead.problem_description || ''),
+  });
 
-  if (isMisa) {
-    return {
-      label: 'MISA OTP Verified',
-      className: 'bg-violet-100 text-violet-800',
-      kind: 'misa',
-    };
+  if (misaChannel || Boolean(meta.misa_otp_verified) || labelRaw.includes('misa otp') || leadSource.includes('misa')) {
+    const channel = misaChannel || 'WEBSITE';
+    const label = getMisaOtpVerifiedLabel(channel);
+    if (channel === 'WHATSAPP') {
+      return { label, className: 'bg-emerald-100 text-emerald-800', kind: 'whatsapp' };
+    }
+    if (channel === 'APP') {
+      return { label, className: 'bg-violet-100 text-violet-800', kind: 'app' };
+    }
+    return { label, className: 'bg-indigo-100 text-indigo-800', kind: 'misa' };
   }
 
   const channel = String(meta.otp_channel || lead.otp_channel || '').toUpperCase();
@@ -2636,7 +2647,11 @@ export default function SuperAdminBookingsPage() {
             <p className="text-sm text-gray-500 mt-1">Try changing search or status filters.</p>
           </div>
         ) : viewMode === 'chart' ? (
-          <BookingsLeadsChartPanel leads={displayedServiceLeads} />
+          <BookingsLeadsChartPanel
+            leads={displayedServiceLeads}
+            showManagerDimensions
+            onViewLeads={() => setViewMode('list')}
+          />
         ) : (
           <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
@@ -2995,10 +3010,17 @@ export default function SuperAdminBookingsPage() {
                     </div>
                   ) : null}
                   <div className="flex items-start justify-between gap-3">
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openDetail('Service Lead Details', item)}
-                      className="text-left flex-1 min-w-0"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openDetail('Service Lead Details', item);
+                        }
+                      }}
+                      className="text-left flex-1 min-w-0 cursor-pointer"
                     >
                       <p className="text-sm font-bold text-gray-900 break-words">
                         {item.customer_name || item.lead_number || '-'}
@@ -3049,7 +3071,7 @@ export default function SuperAdminBookingsPage() {
                           </div>
                         </div>
                       </div>
-                    </button>
+                    </div>
                     <LeadStatusSelect
                       value={String(item.status || 'NEW')}
                       updating={statusUpdatingId === String(item.id)}

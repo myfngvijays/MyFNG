@@ -594,7 +594,9 @@ export async function executeToolCall(
         const result = await sendBookingOtpForPhone(phone, {
           source: 'misa_booking',
           session_id: opts?.sessionId || null,
-          channel: opts?.bookingChannel || null,
+          channel:
+            opts?.bookingChannel ||
+            (String(opts?.sessionId || '').startsWith('wa_') ? 'WHATSAPP' : null),
         }, { dryRun: opts?.dryRun });
 
         if (!result.success) {

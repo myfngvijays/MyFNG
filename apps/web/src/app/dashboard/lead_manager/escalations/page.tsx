@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getBrowserClient } from '@/lib/supabase/browserClient';
 import Link from 'next/link';
 import { formatDateTime } from "@/lib/utils";
+import PageHelpIcon from '@/components/PageHelpIcon';
 
 export default function LeadManagerEscalationsPage() {
   const supabase = getBrowserClient();
@@ -89,7 +90,10 @@ export default function LeadManagerEscalationsPage() {
       {/* Header */}
       <div className="mb-4 sm:mb-5 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Escalations Management</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 inline-flex items-center gap-2">
+            Escalations Management
+            <PageHelpIcon href="/dashboard/lead_manager/escalations" label="Escalations" />
+          </h1>
           <p className="text-gray-600 text-xs sm:text-sm mt-0.5 sm:mt-1">{escalations.length} escalation(s) found</p>
         </div>
         <Link href="/dashboard/lead_manager">

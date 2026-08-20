@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHelpIcon from '@/components/PageHelpIcon';
 import { Loader2, RefreshCw, Users } from 'lucide-react';
 
 type Agent = {
@@ -56,6 +57,7 @@ export default function LeadManagerFloorPage() {
           <div>
             <h1 className="text-2xl font-black text-[#023D95] flex items-center gap-2">
               <Users className="h-6 w-6" /> Live floor
+              <PageHelpIcon href="/dashboard/lead_manager/floor" label="Live floor" />
             </h1>
             <p className="text-sm text-slate-500">
               Punch-in + today&apos;s activity · {date || '—'} (auto-refresh 1m)

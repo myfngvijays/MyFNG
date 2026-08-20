@@ -228,7 +228,7 @@ export default function TelecallerCrmHomePage() {
 
   // Same labels / filters as Leads — colors from leadStatusCardColors palette
   const kpiCards = [
-    { label: 'New', value: kpis.new_leads, statusKey: 'New', filter: 'new', href: `${base}/leads?filter=new` },
+    { label: 'Fresh', value: kpis.new_leads, statusKey: 'Fresh', filter: 'new', href: `${base}/leads?filter=new` },
     {
       label: 'Incomplete',
       value: kpis.incomplete,
@@ -471,6 +471,112 @@ export default function TelecallerCrmHomePage() {
               })}
             </div>
 
+            {/* Quick Actions — web only, above analytics (phone order unchanged) */}
+            <div>
+              <h2 className="text-[14px] font-bold text-[#023D95] mb-2">Quick Actions</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">
+                {[
+                  {
+                    href: `${base}/book?mode=book`,
+                    label: 'Booking',
+                    icon: Calendar,
+                    color: '#10B981',
+                  },
+                  {
+                    href: `${base}/book?mode=lead`,
+                    label: 'Add Lead',
+                    icon: Phone,
+                    color: '#004AAD',
+                  },
+                  {
+                    href: `${base}/leads`,
+                    label: 'Open Leads',
+                    icon: ClipboardList,
+                    color: '#F59E0B',
+                  },
+                  {
+                    href: '#whatsapp',
+                    label: 'WhatsApp',
+                    icon: MessageCircle,
+                    color: '#25D366',
+                    action: 'open-wa-inbox' as const,
+                  },
+                  {
+                    href: `${base}/workshops`,
+                    label: 'Workshops',
+                    icon: MapPin,
+                    color: '#0EA5E9',
+                  },
+                  ...(!isLeadManager
+                    ? [
+                        {
+                          href: `${base}/rsa`,
+                          label: 'RSA',
+                          icon: Truck,
+                          color: '#EA580C',
+                        },
+                      ]
+                    : [
+                        {
+                          href: `${base}/floor`,
+                          label: 'Floor',
+                          icon: TrendingUp,
+                          color: '#7C3AED',
+                        },
+                      ]),
+                  {
+                    href: isLeadManager ? `${base}/assignment` : `${base}/reports`,
+                    label: isLeadManager ? 'Assignment' : 'Reports',
+                    icon: isLeadManager ? MessageCircle : BarChart3,
+                    color: isLeadManager ? '#7C3AED' : '#023D95',
+                  },
+                ].map((a) =>
+                  a.action === 'open-wa-inbox' ? (
+                    <button
+                      key={a.label}
+                      type="button"
+                      onClick={() => {
+                        setWaUnread(0);
+                        window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
+                      }}
+                      className="relative rounded-xl bg-white py-3 px-2 shadow-sm border border-slate-100 flex flex-col items-center gap-1.5 hover:border-emerald-200 transition"
+                    >
+                      <span
+                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: `${a.color}18` }}
+                      >
+                        <WhatsAppIcon className="w-5 h-5 text-[#25D366]" />
+                      </span>
+                      <span className="text-[12px] font-bold text-slate-800 text-center leading-tight">
+                        {a.label}
+                      </span>
+                      {waUnread > 0 ? (
+                        <span className="absolute top-1.5 right-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {waUnread > 9 ? '9+' : waUnread}
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : (
+                    <Link
+                      key={a.href + a.label}
+                      href={a.href}
+                      className="rounded-xl bg-white py-3 px-2 shadow-sm border border-slate-100 flex flex-col items-center gap-1.5 hover:border-blue-200 transition"
+                    >
+                      <span
+                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: `${a.color}18` }}
+                      >
+                        <a.icon className="w-5 h-5" style={{ color: a.color }} />
+                      </span>
+                      <span className="text-[12px] font-bold text-slate-800 text-center leading-tight">
+                        {a.label}
+                      </span>
+                    </Link>
+                  ),
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-100">
                 <h2 className="text-[14px] font-bold text-[#023D95] mb-2.5">Calls in range</h2>
@@ -645,111 +751,6 @@ export default function TelecallerCrmHomePage() {
                   })}
                 </ul>
               )}
-            </div>
-
-            <div>
-              <h2 className="text-[14px] font-bold text-[#023D95] mb-2">Quick Actions</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">
-                {[
-                  {
-                    href: `${base}/book?mode=book`,
-                    label: 'Booking',
-                    icon: Calendar,
-                    color: '#10B981',
-                  },
-                  {
-                    href: `${base}/book?mode=lead`,
-                    label: 'Add Lead',
-                    icon: Phone,
-                    color: '#004AAD',
-                  },
-                  {
-                    href: `${base}/leads`,
-                    label: 'Open Leads',
-                    icon: ClipboardList,
-                    color: '#F59E0B',
-                  },
-                  {
-                    href: '#whatsapp',
-                    label: 'WhatsApp',
-                    icon: MessageCircle,
-                    color: '#25D366',
-                    action: 'open-wa-inbox' as const,
-                  },
-                  {
-                    href: `${base}/workshops`,
-                    label: 'Workshops',
-                    icon: MapPin,
-                    color: '#0EA5E9',
-                  },
-                  ...(!isLeadManager
-                    ? [
-                        {
-                          href: `${base}/rsa`,
-                          label: 'RSA',
-                          icon: Truck,
-                          color: '#EA580C',
-                        },
-                      ]
-                    : [
-                        {
-                          href: `${base}/floor`,
-                          label: 'Floor',
-                          icon: TrendingUp,
-                          color: '#7C3AED',
-                        },
-                      ]),
-                  {
-                    href: isLeadManager ? `${base}/assignment` : `${base}/reports`,
-                    label: isLeadManager ? 'Assignment' : 'Reports',
-                    icon: isLeadManager ? MessageCircle : BarChart3,
-                    color: isLeadManager ? '#7C3AED' : '#023D95',
-                  },
-                ].map((a) =>
-                  a.action === 'open-wa-inbox' ? (
-                    <button
-                      key={a.label}
-                      type="button"
-                      onClick={() => {
-                        setWaUnread(0);
-                        window.dispatchEvent(new CustomEvent('myfng:open-wa-inbox'));
-                      }}
-                      className="relative rounded-xl bg-white py-3 px-2 shadow-sm border border-slate-100 flex flex-col items-center gap-1.5 hover:border-emerald-200 transition"
-                    >
-                      <span
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: `${a.color}18` }}
-                      >
-                        <WhatsAppIcon className="w-5 h-5 text-[#25D366]" />
-                      </span>
-                      <span className="text-[12px] font-bold text-slate-800 text-center leading-tight">
-                        {a.label}
-                      </span>
-                      {waUnread > 0 ? (
-                        <span className="absolute top-1.5 right-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                          {waUnread > 9 ? '9+' : waUnread}
-                        </span>
-                      ) : null}
-                    </button>
-                  ) : (
-                    <Link
-                      key={a.href + a.label}
-                      href={a.href}
-                      className="rounded-xl bg-white py-3 px-2 shadow-sm border border-slate-100 flex flex-col items-center gap-1.5 hover:border-blue-200 transition"
-                    >
-                      <span
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: `${a.color}18` }}
-                      >
-                        <a.icon className="w-5 h-5" style={{ color: a.color }} />
-                      </span>
-                      <span className="text-[12px] font-bold text-slate-800 text-center leading-tight">
-                        {a.label}
-                      </span>
-                    </Link>
-                  ),
-                )}
-              </div>
             </div>
           </>
         )}

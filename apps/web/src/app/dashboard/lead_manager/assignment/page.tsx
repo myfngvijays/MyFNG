@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search, Loader2, ArrowRight, Building, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import DashboardLayout from '@/components/DashboardLayout';
+import PageHelpIcon from '@/components/PageHelpIcon';
 
 function LeadManagerLeadsContent() {
   const supabase = createClient();
@@ -260,7 +261,10 @@ function LeadManagerLeadsContent() {
       {/* Header */}
       <div className="mb-4 sm:mb-5 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Lead Management</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 inline-flex items-center gap-2">
+            Lead Management
+            <PageHelpIcon href="/dashboard/lead_manager/assignment" label="Assignment" />
+          </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">{leads.length} leads found</p>
         </div>
         <Link href="/dashboard/lead_manager">

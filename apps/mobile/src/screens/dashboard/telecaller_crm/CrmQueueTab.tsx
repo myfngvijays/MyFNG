@@ -55,9 +55,9 @@ type Props = {
 type DropdownKey = 'date' | 'status' | 'lostReason' | 'city' | 'priority' | null;
 
 /** Match lead detail "Select status" + Lead Status / New */
-const STATUS_FILTERS = [
+const DEFAULT_STATUS_FILTERS = [
   { id: 'all', label: 'Lead Status' },
-  { id: 'new', label: 'New' },
+  { id: 'new', label: 'Fresh' },
   { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
@@ -114,7 +114,7 @@ function leadDisplayStatus(lead: any): string {
   }
   const status = String(lead?.status || '').toUpperCase();
   const mapStatus: Record<string, string> = {
-    NEW: 'New',
+    NEW: 'Fresh',
     VALIDATED: 'Booking confirmed',
     IN_PROGRESS: 'In Service',
     COMPLETED: 'Service Done',
@@ -123,7 +123,7 @@ function leadDisplayStatus(lead: any): string {
     ASSIGNED: 'Assigned',
     ACCEPTED: 'Accepted',
   };
-  return shortLeadStatusLabel(mapStatus[status] || status.replace(/_/g, ' ') || 'New');
+  return shortLeadStatusLabel(mapStatus[status] || status.replace(/_/g, ' ') || 'Fresh');
 }
 
 
@@ -145,6 +145,7 @@ export default function CrmQueueTab({
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState(initialFilter);
+  const [statusFilters, setStatusFilters] = useState(DEFAULT_STATUS_FILTERS);
   const [lostReason, setLostReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [city, setCity] = useState('');
@@ -179,10 +180,43 @@ export default function CrmQueueTab({
   const setCustomEnd = onCustomEndChange || setCustomEndLocal;
 
   const dateRange = resolveCrmDateRange(datePreset, customStart, customEnd);
-  const statusLabel = STATUS_FILTERS.find((c) => c.id === filter)?.label || 'Lead Status';
+  const statusLabel = statusFilters.find((c) => c.id === filter)?.label || 'Lead Status';
   const lostReasonLabel =
     LOST_REASON_FILTERS.find((c) => c.id === lostReason)?.label || 'All lost reasons';
   const dateLabel = CRM_DATE_PRESETS.find((p) => p.value === datePreset)?.label || dateRange.label;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<any>('/api/lead-manager/statuses');
+        const rows = Array.isArray(data?.statuses) ? data.statuses : [];
+        if (cancelled || !rows.length) return;
+        const dynamic = rows
+          .filter((r: any) => String(r.code || '').toUpperCase() !== 'RINGING')
+          .map((r: any) => ({
+            id: String(r.code || '')
+              .trim()
+              .toLowerCase(),
+            label: String(r.name || r.code),
+          }));
+        setStatusFilters([
+          { id: 'all', label: 'Lead Status' },
+          { id: 'new', label: 'Fresh' },
+          { id: 'incomplete', label: 'Incomplete' },
+          ...dynamic.filter(
+            (d: { id: string }) =>
+              d.id !== 'fresh' && d.id !== 'ringing' && d.id !== 'new',
+          ),
+        ]);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -528,7 +562,7 @@ export default function CrmQueueTab({
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="handled"
                 >
-                  {STATUS_FILTERS.map((c) => (
+                  {statusFilters.map((c) => (
                     <TouchableOpacity
                       key={c.id}
                       style={[styles.selectItem, filter === c.id && styles.selectItemActive]}

@@ -7,6 +7,8 @@ export type BotFlowNodeType =
   | 'handoff'
   | 'delay'
   | 'update_lead'
+  | 'apply_tags'
+  | 'assign_telecaller'
   | 'end';
 
 export type BotFlowNode = {
@@ -27,6 +29,14 @@ export type BotFlowNode = {
     triggerEvent?: string;
     delaySeconds?: number;
     leadStatus?: string;
+    /** CRM disposition e.g. FRESH (coupon_meta.last_call_result) */
+    crmDisposition?: string;
+    /** Tag names to apply (common parent auto-applied if configured) */
+    tagNames?: string[];
+    tagIds?: string[];
+    /** Assign telecaller: AUTO | trigger-aware channel RR, or fixed user id */
+    assignMode?: 'auto' | 'fixed';
+    telecallerId?: string;
     [key: string]: unknown;
   };
 };

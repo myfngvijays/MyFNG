@@ -1965,12 +1965,12 @@ async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
         status: 'degraded',
         responseTime: Date.now() - start,
         message: 'Admin client unavailable',
-        reason: 'Cannot verify crm_lead_tags / saved views / WA DND',
+        reason: 'Cannot verify crm_lead_tags / statuses / saved views / WA DND',
         lastChecked: new Date().toISOString(),
       };
     }
 
-    const tables = ['crm_lead_tags', 'crm_saved_views', 'whatsapp_dnd_numbers'] as const;
+    const tables = ['crm_lead_tags', 'crm_lead_statuses', 'crm_lost_reasons', 'crm_saved_views', 'whatsapp_dnd_numbers'] as const;
     const missing: string[] = [];
     for (const table of tables) {
       const { error } = await supabaseAdmin.from(table).select('id').limit(1);
@@ -1986,7 +1986,7 @@ async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
         status: 'degraded',
         responseTime: Date.now() - start,
         message: `Missing: ${missing.join(', ')}`,
-        reason: 'Run database/317_crm_manager_ops_tags_views_dnd.sql',
+        reason: 'Run database/317…, 322, 323, 325, 326_crm_lead_tags_parent_meta_ads.sql',
         quickFix: {
           label: 'Open SQL migrations',
           action: 'external-link',
