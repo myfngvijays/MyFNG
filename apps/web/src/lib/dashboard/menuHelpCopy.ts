@@ -43,7 +43,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/lead_manager/click-to-call': {
     title: 'Click to Call',
     body:
-      'Smartflo click-to-call: har telecaller ka from number set karo aur test call chalao.\n\nCall button pehle agent phone ring karta hai, phir customer connect hota hai. Gateway URL / DID Super Admin manage karta hai.',
+      'Smartflo click-to-call: har telecaller ka from number set karo aur test call chalao.\n\nFlow: pehle telecaller phone ring → uthaye → customer connect. Gateway / DID / Auto-dial Super Admin manage karta hai.',
     tips: [
       'Mahendra jaise agents ke liye users_login.phone = unka mobile (e.g. 9594050288).',
       'Phone missing ho to Call fail hoga — dialer fallback sirf mobile app pe.',
@@ -52,10 +52,10 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/super_admin/click-to-call': {
     title: 'Click to Call',
     body:
-      'Smartflo gateway setup: URL, provider, 5 DIDs assign (kis telecaller ko kaunsa DID), aur from-numbers.\n\nCall pe telecaller ka assigned DID use hota hai; nahi mila to fallback DID.',
+      'Sirf gateway URL hit hota hai (?from=&to=&did=&provider=). Call button aur Fresh auto-dial dono same URL.\n\nDID pool + telecaller from-number yahan set karo. Auto-dial Fresh ON = naya lead assign pe turant call.',
     tips: [
       'Example: 919262190064 → Sitaram — DID assignment table se set/change karo.',
-      'Env vars (CLICK_TO_CALL_*) defaults hain jab DB me save na ho.',
+      'Smartflo API token ki zaroorat nahi — sirf tumhara gateway URL.',
       'System Monitor me bhi is gateway ki health check dikhegi.',
     ],
   },
@@ -219,7 +219,11 @@ const BY_LABEL: Record<string, MenuHelpEntry> = {
   WhatsApp: BY_ACTION['open-wa-inbox'],
   Reports: {
     title: 'Reports',
-    body: 'Reports section — overview, leaderboard, calls, exports, pipeline.',
+    body: 'Reports section — overview, leaderboard, calls, exports, duplicates.',
+  },
+  Pipeline: {
+    title: 'Pipeline',
+    body: 'Lead pipeline by status — funnel view of conversion stages.',
   },
 };
 
@@ -290,6 +294,11 @@ export function getLeadManagerReadme(): ReadmeSection[] {
           href: '/dashboard/lead_manager/reports/duplicates',
           ...BY_HREF['/dashboard/lead_manager/reports/duplicates'],
         },
+      ],
+    },
+    {
+      heading: 'Pipeline',
+      items: [
         {
           href: '/dashboard/lead_manager/reports/pipeline',
           ...BY_HREF['/dashboard/lead_manager/reports/pipeline'],

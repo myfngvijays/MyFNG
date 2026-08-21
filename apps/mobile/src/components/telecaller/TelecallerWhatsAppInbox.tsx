@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '../../lib/api';
 import { COLORS, SHADOWS } from '../../constants/theme';
+import { isWhatsAppSessionWindowClosed } from '../../lib/whatsappSessionWindow';
 import TelecallerWhatsAppChat from './TelecallerWhatsAppChat';
 
 const WA = {
@@ -26,12 +27,15 @@ const WA = {
   avatarColors: ['#00A884', '#02A698', '#7D9D9C', '#6A8CAF', '#DF8569', '#BA7BCC'],
 };
 
+type InboxTab = 'open' | 'awaiting' | 'closed';
+
 type ChatRow = {
   phone: string;
   last_message_preview: string;
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  last_inbound_at?: string | null;
   unread_count?: number | null;
   customer_name?: string | null;
 };
@@ -101,12 +105,17 @@ function avatarColor(seed: string): string {
   return WA.avatarColors[hash % WA.avatarColors.length];
 }
 
+function isAwaitingReply(chat: ChatRow): boolean {
+  return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
+}
+
 export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [leadCount, setLeadCount] = useState(0);
+  const [inboxTab, setInboxTab] = useState<InboxTab>('open');
   const [activePhone, setActivePhone] = useState<string | null>(null);
   const [activeCustomerName, setActiveCustomerName] = useState<string | null>(null);
 
@@ -168,6 +177,32 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
       }, 0),
     [rows],
   );
+
+  const inboxCounts = useMemo(() => {
+    let open = 0;
+    let awaiting = 0;
+    let closed = 0;
+    for (const chat of rows) {
+      if (isWhatsAppSessionWindowClosed(chat)) {
+        closed += 1;
+        continue;
+      }
+      if (isAwaitingReply(chat)) awaiting += 1;
+      else open += 1;
+    }
+    return { open, awaiting, closed };
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((chat) => {
+      const closed = isWhatsAppSessionWindowClosed(chat);
+      const awaiting = isAwaitingReply(chat);
+      if (inboxTab === 'closed') return closed;
+      if (closed) return false;
+      if (inboxTab === 'awaiting') return awaiting;
+      return !awaiting;
+    });
+  }, [rows, inboxTab]);
 
   const subtitle = useMemo(() => {
     return `${leadCount} chats${inboundCount > 0 ? ` · ${inboundCount} unread` : ''}`;
@@ -253,18 +288,51 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
             </View>
           </View>
 
+          <View style={styles.tabsRow}>
+            {(
+              [
+                { id: 'open' as const, label: 'Open', count: inboxCounts.open },
+                { id: 'awaiting' as const, label: 'Awaiting', count: inboxCounts.awaiting },
+                { id: 'closed' as const, label: 'Closed', count: inboxCounts.closed },
+              ] as const
+            ).map((t) => {
+              const active = inboxTab === t.id;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[styles.tabBtn, active && styles.tabBtnOn]}
+                  onPress={() => setInboxTab(t.id)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.tabLabel, active && styles.tabLabelOn]}>{t.label}</Text>
+                  <View style={[styles.tabCount, active && styles.tabCountOn]}>
+                    <Text style={[styles.tabCountText, active && styles.tabCountTextOn]}>
+                      {t.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           {loading ? (
             <ActivityIndicator color={WA.header} style={{ marginTop: 40 }} />
           ) : (
             <FlatList
-              data={rows}
+              data={filteredRows}
               keyExtractor={(item, idx) => `${item.phone}-${idx}`}
               contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
               ItemSeparatorComponent={() => <View style={styles.sep} />}
               ListEmptyComponent={
                 <View style={styles.empty}>
                   <Ionicons name="chatbubbles-outline" size={42} color="#D1D7DB" />
-                  <Text style={styles.emptyText}>No chats found</Text>
+                  <Text style={styles.emptyText}>
+                    {inboxTab === 'closed'
+                      ? 'No window-closed chats'
+                      : inboxTab === 'awaiting'
+                        ? 'No chats awaiting reply'
+                        : 'No open chats'}
+                  </Text>
                 </View>
               }
               renderItem={({ item }) => {
@@ -408,6 +476,56 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
     color: WA.text,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: WA.divider,
+  },
+  tabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: WA.searchBg,
+  },
+  tabBtnOn: {
+    backgroundColor: '#E7F8F0',
+  },
+  tabLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: WA.meta,
+  },
+  tabLabelOn: {
+    color: WA.header,
+  },
+  tabCount: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  tabCountOn: {
+    backgroundColor: WA.header,
+  },
+  tabCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: WA.meta,
+  },
+  tabCountTextOn: {
+    color: '#fff',
   },
   row: {
     flexDirection: 'row',

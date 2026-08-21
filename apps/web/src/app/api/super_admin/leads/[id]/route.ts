@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { LEAD_SOURCES, normalizeLeadSource } from '@/lib/enquiry/createLead';
 import { PANEL_ACCESS_ROLES } from '@/lib/super-admin-auth';
-import { notifyTelecallerAssignedToLead } from '@/lib/notifications';
+import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -312,10 +312,11 @@ export async function PATCH(
           .select('full_name')
           .eq('id', auth.userId)
           .maybeSingle();
-        await notifyTelecallerAssignedToLead({
+        void notifyTelecallerNewLeadAssignedSafe({
           leadId: id,
           leadNumber: String(data?.lead_number || id),
           telecallerId: nextAssigneeId,
+          previousTelecallerId: previousAssigneeId,
           assignedByName: actor?.full_name || undefined,
           isReassignment: Boolean(previousAssigneeId),
         });

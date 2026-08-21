@@ -92,6 +92,7 @@ function SimpleBarChart({
 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const max = Math.max(1, ...data.map((d) => d.value));
+  const BAR_TRACK_PX = 128;
   return (
     <div className="rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-100 min-h-[200px] flex flex-col">
       <h2 className="mb-2 text-[14px] font-bold text-[#023D95]">{title}</h2>
@@ -101,17 +102,24 @@ function SimpleBarChart({
           <p className="text-xs font-semibold text-slate-500">{emptyHint}</p>
         </div>
       ) : (
-        <div className="flex h-36 items-end gap-2 flex-1">
+        <div className="flex items-end gap-2 flex-1 pt-1" style={{ minHeight: BAR_TRACK_PX + 40 }}>
           {data.map((t, i) => {
-            const h = Math.max(6, (t.value / max) * 100);
+            const hPx = Math.max(t.value > 0 ? 10 : 2, Math.round((t.value / max) * BAR_TRACK_PX));
             return (
               <div key={`${t.label}-${i}`} className="flex flex-1 flex-col items-center gap-1 min-w-0">
-                <span className="text-[10px] font-bold text-slate-600 tabular-nums">{t.value}</span>
+                <span className="text-[10px] font-bold text-slate-700 tabular-nums leading-none">
+                  {t.value}
+                </span>
                 <div
-                  className="w-full max-w-[28px] rounded-t-lg transition-all"
-                  style={{ height: `${h}%`, backgroundColor: color, minHeight: 6 }}
-                  title={`${t.value}`}
-                />
+                  className="w-full flex items-end justify-center"
+                  style={{ height: BAR_TRACK_PX }}
+                >
+                  <div
+                    className="w-full max-w-[32px] rounded-t-md transition-all"
+                    style={{ height: hPx, backgroundColor: color }}
+                    title={`${t.label}: ${t.value}`}
+                  />
+                </div>
                 <span className="text-[10px] font-semibold text-slate-500 truncate w-full text-center">
                   {t.label}
                 </span>
@@ -227,14 +235,7 @@ export default function TelecallerCrmHomePage() {
 
   // Same labels / filters as Leads — colors from leadStatusCardColors palette
   const kpiCards = [
-    { label: 'Fresh', value: kpis.new_leads, statusKey: 'Fresh', filter: 'new', href: `${base}/leads?filter=new` },
-    {
-      label: 'Incomplete',
-      value: kpis.incomplete,
-      statusKey: 'Incomplete',
-      filter: 'incomplete',
-      href: `${base}/leads?filter=incomplete`,
-    },
+    { label: 'Fresh', value: (kpis.new_leads || 0) + (kpis.incomplete || 0), statusKey: 'Fresh', filter: 'new', href: `${base}/leads?filter=new` },
     {
       label: 'Interested',
       value: kpis.interested,
@@ -435,9 +436,7 @@ export default function TelecallerCrmHomePage() {
             {/* KPI grid — 5×2 with Today due filling last cell */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-2.5">
               {kpiCards.map((k) => {
-                const tint = leadStatusKpiColors(
-                  k.label === 'Incomplete' ? { is_incomplete: true } : k.statusKey,
-                );
+                const tint = leadStatusKpiColors(k.statusKey);
                 return (
                   <Link
                     key={k.label}

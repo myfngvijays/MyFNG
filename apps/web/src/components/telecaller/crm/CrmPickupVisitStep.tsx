@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Briefcase, Calendar, Home, Loader2, MapPin, Navigation } from 'lucide-react';
 
 export type CrmPickupVisitValue = {
@@ -79,6 +79,8 @@ type Props = {
   pincode?: string;
   forcePickup?: boolean;
   quoteTotal?: number;
+  /** Lead edit already has vehicle# in Vehicle Details — hide duplicate. */
+  hideVehicleNumber?: boolean;
 };
 
 export default function CrmPickupVisitStep({
@@ -89,10 +91,12 @@ export default function CrmPickupVisitStep({
   pincode = '',
   forcePickup = false,
   quoteTotal,
+  hideVehicleNumber = false,
 }: Props) {
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [loadingWs, setLoadingWs] = useState(false);
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const todayStr = formatDateYMD(getIndiaDate());
   const tomorrow = new Date(getIndiaDate());
@@ -157,8 +161,10 @@ export default function CrmPickupVisitStep({
 
   return (
     <div>
-      <h3 className="text-base font-extrabold text-gray-900">Pickup Details</h3>
-      <p className="mt-1 text-sm text-gray-500">Choose doorstep pickup or visit a workshop.</p>
+      <h3 className="text-base font-extrabold text-gray-900">Pickup / Visit</h3>
+      <p className="mt-1 text-sm text-gray-500">
+        Doorstep pickup ya workshop visit — date & time dono modes mein.
+      </p>
 
       {!forcePickup ? (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -196,26 +202,28 @@ export default function CrmPickupVisitStep({
         </div>
       )}
 
-      <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <label className="mb-2 block text-sm font-bold text-gray-800">Vehicle Number *</label>
-        <input
-          type="text"
-          value={value.vehicle_number}
-          onChange={(e) =>
-            onChange({
-              vehicle_number: e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
-            })
-          }
-          placeholder="e.g. MH01BJ7842"
-          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-bold uppercase tracking-wider text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
-        />
-      </div>
+      {!hideVehicleNumber ? (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <label className="mb-2 block text-sm font-bold text-gray-800">Vehicle Number *</label>
+          <input
+            type="text"
+            value={value.vehicle_number}
+            onChange={(e) =>
+              onChange({
+                vehicle_number: e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12),
+              })
+            }
+            placeholder="e.g. MH01BJ7842"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-bold uppercase tracking-wider text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
+          />
+        </div>
+      ) : null}
 
       <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <label className="mb-2 block text-sm font-bold text-gray-800">
           {pickupRequired ? 'Pickup Date *' : 'Visit Date *'}
         </label>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           {dateOptions.map((opt) => {
             const active = value.pickup_date === opt.dateStr;
             return (
@@ -233,17 +241,29 @@ export default function CrmPickupVisitStep({
               </button>
             );
           })}
-          <label className="relative inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 hover:border-[#004AAD]/40">
-            <Calendar className="h-3.5 w-3.5" />
+          <div className="relative inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 hover:border-[#004AAD]/40 overflow-hidden">
+            <Calendar className="h-3.5 w-3.5 pointer-events-none" />
+            <span className="pointer-events-none">Pick date</span>
             <input
+              ref={dateInputRef}
               type="date"
-              value={value.pickup_date}
+              value={value.pickup_date || ''}
               min={todayClosed ? tomorrowStr : todayStr}
               onChange={(e) => onChange({ pickup_date: e.target.value, pickup_time: '' })}
-              className="absolute inset-0 cursor-pointer opacity-0"
+              onClick={(e) => {
+                const el = e.currentTarget;
+                try {
+                  if (typeof (el as any).showPicker === 'function') {
+                    (el as any).showPicker();
+                  }
+                } catch {
+                  /* native picker opens via click */
+                }
+              }}
+              className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+              aria-label="Pick calendar date"
             />
-            Pick date
-          </label>
+          </div>
         </div>
         {value.pickup_date ? (
           <p className="mt-2 text-xs text-gray-500">Selected: {formatDateDMShort(value.pickup_date)}</p>

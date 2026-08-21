@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, MessageCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-react';
 import WhatsAppMobilePreviewModal from '@/components/shared/WhatsAppMobilePreviewModal';
+import { isWhatsAppSessionWindowClosed } from '@/lib/whatsapp/sessionWindow';
 
 type ChatRow = {
   phone: string;
@@ -11,6 +12,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  last_inbound_at?: string | null;
   unread_count?: number | null;
   customer_name?: string | null;
   assigned_telecaller_id?: string | null;
@@ -35,6 +37,40 @@ export type WaTheme = 'light' | 'dark';
 
 const THEME_KEY = 'myfng:wa-workspace-theme-v2';
 const READ_KEY = 'myfng:wa-chat-reads-v1';
+const CLOSED_KEY = 'myfng:wa-closed-chats-v1';
+
+type InboxTab = 'open' | 'awaiting' | 'closed';
+
+function loadClosedPhones(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(CLOSED_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map((p: string) => normalizePhone(String(p))) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveClosedPhones(phones: Set<string>) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CLOSED_KEY, JSON.stringify(Array.from(phones).slice(0, 800)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function isAwaitingReply(chat: ChatRow): boolean {
+  return String(chat.last_direction || '').toUpperCase() === 'INBOUND';
+}
+
+/** Closed tab = WhatsApp 24h window closed (template-only), or manually archived. */
+function isInboxClosed(chat: ChatRow, closedPhones: Set<string>): boolean {
+  const phone = normalizePhone(chat.phone);
+  if (phone && closedPhones.has(phone)) return true;
+  return isWhatsAppSessionWindowClosed(chat);
+}
 
 function formatPhone(phone: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -178,6 +214,8 @@ export default function WhatsAppWebWorkspace({
   const [theme, setTheme] = useState<WaTheme>('light');
   const [assigneeFilter, setAssigneeFilter] = useState(''); // '' | 'unassigned' | telecaller uuid
   const [peers, setPeers] = useState<PeerRow[]>([]);
+  const [inboxTab, setInboxTab] = useState<InboxTab>('open');
+  const [closedPhones, setClosedPhones] = useState<Set<string>>(() => new Set());
   const rowsRef = useRef<ChatRow[]>([]);
   rowsRef.current = rows;
 
@@ -188,12 +226,79 @@ export default function WhatsAppWebWorkspace({
     setMounted(true);
     try {
       const saved = localStorage.getItem(THEME_KEY);
-      // Default is light; only restore if user explicitly picked a theme before.
       if (saved === 'light' || saved === 'dark') setTheme(saved);
     } catch {
       /* ignore */
     }
+    setClosedPhones(loadClosedPhones());
   }, []);
+
+  const markChatClosed = useCallback((phone: string, closed: boolean) => {
+    const key = normalizePhone(phone);
+    if (!key) return;
+    setClosedPhones((prev) => {
+      const next = new Set(prev);
+      if (closed) next.add(key);
+      else next.delete(key);
+      saveClosedPhones(next);
+      return next;
+    });
+  }, []);
+
+  /** New inbound on a manually-closed chat → auto-reopen (DoubleTick-style). */
+  useEffect(() => {
+    if (!rows.length) return;
+    let changed = false;
+    const next = new Set(closedPhones);
+    for (const chat of rows) {
+      const phone = normalizePhone(chat.phone);
+      if (!phone || !next.has(phone)) continue;
+      if (isAwaitingReply(chat) && resolveUnreadCount(chat) > 0) {
+        next.delete(phone);
+        changed = true;
+      }
+    }
+    if (changed) {
+      setClosedPhones(next);
+      saveClosedPhones(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
+  const inboxCounts = useMemo(() => {
+    let open = 0;
+    let awaiting = 0;
+    let closed = 0;
+    for (const chat of rows) {
+      if (isInboxClosed(chat, closedPhones)) {
+        closed += 1;
+        continue;
+      }
+      if (isAwaitingReply(chat)) awaiting += 1;
+      else open += 1;
+    }
+    return { open, awaiting, closed };
+  }, [rows, closedPhones]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((chat) => {
+      const closed = isInboxClosed(chat, closedPhones);
+      const awaiting = isAwaitingReply(chat);
+      if (inboxTab === 'closed') return closed;
+      if (closed) return false;
+      if (inboxTab === 'awaiting') return awaiting;
+      // open = session open and not awaiting
+      return !awaiting;
+    });
+  }, [rows, closedPhones, inboxTab]);
+
+  const selectedIsClosed = selectedPhone
+    ? (() => {
+        const row = rows.find((r) => normalizePhone(r.phone) === normalizePhone(selectedPhone));
+        if (row) return isInboxClosed(row, closedPhones);
+        return closedPhones.has(normalizePhone(selectedPhone));
+      })()
+    : false;
 
   useEffect(() => {
     if (!mounted) return;
@@ -441,7 +546,7 @@ export default function WhatsAppWebWorkspace({
                     {title}
                   </p>
                   <p className="truncate text-[11px]" style={{ color: colors.muted }}>
-                    {hideLeadPool ? 'Your assigned leads' : 'Inbox'}
+                    {hideLeadPool ? 'All chats · assigned leads' : 'All chats'}
                   </p>
                 </div>
               </div>
@@ -497,6 +602,54 @@ export default function WhatsAppWebWorkspace({
                   style={{ color: colors.text }}
                 />
               </div>
+
+              <div
+                className="flex gap-1 rounded-lg p-1"
+                style={{ background: colors.searchBg }}
+                role="tablist"
+                aria-label="Inbox status"
+              >
+                {(
+                  [
+                    { id: 'open' as const, label: 'Open', count: inboxCounts.open },
+                    { id: 'awaiting' as const, label: 'Awaiting', count: inboxCounts.awaiting },
+                    { id: 'closed' as const, label: 'Closed', count: inboxCounts.closed },
+                  ] as const
+                ).map((tab) => {
+                  const active = inboxTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setInboxTab(tab.id)}
+                      className="flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] font-bold transition"
+                      style={{
+                        background: active ? colors.panel : 'transparent',
+                        color: active ? colors.text : colors.muted,
+                        boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                      }}
+                    >
+                      <span className="truncate">{tab.label}</span>
+                      <span
+                        className="tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                        style={{
+                          background: active
+                            ? tab.id === 'awaiting'
+                              ? '#25D366'
+                              : colors.listBorder
+                            : 'transparent',
+                          color: active && tab.id === 'awaiting' ? '#fff' : colors.muted,
+                        }}
+                      >
+                        {tab.count > 999 ? '999+' : tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
               {showAssigneeFilter ? (
                 <select
                   value={assigneeFilter}
@@ -530,12 +683,18 @@ export default function WhatsAppWebWorkspace({
                 </div>
               ) : loadError ? (
                 <div className="px-4 py-10 text-center text-sm text-red-500">{loadError}</div>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <div className="px-4 py-10 text-center text-sm" style={{ color: colors.muted }}>
-                  {hideLeadPool ? 'No assigned chats yet.' : 'No chats yet. Leads with phone numbers will show here.'}
+                  {inboxTab === 'closed'
+                    ? 'No window-closed chats.'
+                    : inboxTab === 'awaiting'
+                      ? 'No chats awaiting reply.'
+                      : hideLeadPool
+                        ? 'No open chats yet.'
+                        : 'No open chats. Leads with phone numbers will show here.'}
                 </div>
               ) : (
-                rows.map((chat) => {
+                filteredRows.map((chat) => {
                   const phone = normalizePhone(chat.phone);
                   const active = phone === normalizePhone(selectedPhone);
                   const unreadCount = resolveUnreadCount(chat);
@@ -643,6 +802,12 @@ export default function WhatsAppWebWorkspace({
                 customerName={selectedName || undefined}
                 title="WhatsApp Chat"
                 previewMessage={selectedPreview}
+                chatClosed={selectedIsClosed}
+                onMarkClosed={(closed) => {
+                  markChatClosed(selectedPhone, closed);
+                  if (closed) setInboxTab('closed');
+                  else setInboxTab('open');
+                }}
                 onClose={onClose}
                 onBack={() => {
                   setSelectedPhone('');

@@ -29,7 +29,8 @@ import {
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
-import { leadStatusCardColors } from '../../../lib/telecaller/leadStatusColors';
+import { leadStatusCardColors, leadStatusKpiColors, statusAccentColor } from '../../../lib/telecaller/leadStatusColors';
+import SimpleBarChart from '../../../components/telecaller/SimpleBarChart';
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'All priorities' },
@@ -59,7 +60,7 @@ type DropdownKey = 'date' | 'dateField' | 'status' | 'lostReason' | 'city' | 'pr
 const DEFAULT_STATUS_FILTERS = [
   { id: 'all', label: 'Lead Status' },
   { id: 'new', label: 'Fresh' },
-  { id: 'incomplete', label: 'Incomplete' },
+  { id: 'incomplete', label: 'Fresh' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
   { id: 'callback', label: 'Follow-up' },
@@ -91,12 +92,28 @@ function shortLeadStatusLabel(label: string): string {
 }
 
 function leadDisplayStatus(lead: any): string {
+  if (lead && Boolean(lead.is_incomplete)) {
+    const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+    const mapResultEarly: Record<string, string> = {
+      INTERESTED: 'Interested',
+      WILL_VISIT: 'He will visit',
+      CALLBACK: 'Follow-up',
+      BOOKING_CONFIRMED: 'Booking confirmed',
+      IN_SERVICE: 'In Service',
+      SERVICE_DONE: 'Service Done',
+      LOST: 'Lost',
+      FRESH: 'Fresh',
+    };
+    if (result && mapResultEarly[result] && result !== 'FRESH') return mapResultEarly[result];
+    return 'Fresh';
+  }
   const label = String(lead?.coupon_meta?.last_call_label || '').trim();
   // Keep "Web OTP Verified" / "Mob OTP Verified" as-is (don't shorten)
   if (label && /otp verified/i.test(label)) return label;
   if (label) return shortLeadStatusLabel(label);
   const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
   const mapResult: Record<string, string> = {
+    FRESH: 'Fresh',
     INTERESTED: 'Interested',
     WILL_VISIT: 'He will visit',
     CALLBACK: 'Follow-up',
@@ -127,6 +144,34 @@ function leadDisplayStatus(lead: any): string {
     ACCEPTED: 'Accepted',
   };
   return shortLeadStatusLabel(mapStatus[status] || status.replace(/_/g, ' ') || 'Fresh');
+}
+
+const ASSIGNEE_COLORS = [
+  '#7C3AED',
+  '#DB2777',
+  '#059669',
+  '#D97706',
+  '#2563EB',
+  '#DC2626',
+  '#0891B2',
+  '#4F46E5',
+  '#CA8A04',
+  '#0D9488',
+];
+
+function colorForAssignee(seed: string): string {
+  const s = String(seed || '').trim() || '?';
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return ASSIGNEE_COLORS[h % ASSIGNEE_COLORS.length];
+}
+
+function assigneeInitials(name: string): string {
+  const n = String(name || '').trim();
+  if (!n) return '?';
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
 }
 
 
@@ -175,6 +220,7 @@ export default function CrmQueueTab({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkWaOpen, setBulkWaOpen] = useState(false);
   const [bulkWaText, setBulkWaText] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
 
   const datePreset = datePresetProp ?? datePresetLocal;
   const customStart = customStartProp ?? customStartLocal;
@@ -207,7 +253,7 @@ export default function CrmQueueTab({
         setStatusFilters([
           { id: 'all', label: 'Lead Status' },
           { id: 'new', label: 'Fresh' },
-          { id: 'incomplete', label: 'Incomplete' },
+          { id: 'incomplete', label: 'Fresh' },
           ...dynamic.filter(
             (d: { id: string }) =>
               d.id !== 'fresh' && d.id !== 'ringing' && d.id !== 'new',
@@ -357,7 +403,10 @@ export default function CrmQueueTab({
     if (!localPrefsReady) return;
     try {
       const range = resolveCrmDateRange(datePreset, customStart, customEnd);
-      const params = new URLSearchParams({ limit: '80' });
+      const params = new URLSearchParams({
+        limit: viewMode === 'chart' ? '500' : '80',
+      });
+      if (viewMode === 'chart') params.set('for_chart', '1');
       if (filter && filter !== 'all') params.set('filter', filter);
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
       if (q.trim()) params.set('q', q.trim());
@@ -377,7 +426,19 @@ export default function CrmQueueTab({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [localPrefsReady, filter, lostReason, q, city, priority, dateField, datePreset, customStart, customEnd]);
+  }, [
+    localPrefsReady,
+    filter,
+    lostReason,
+    q,
+    city,
+    priority,
+    dateField,
+    datePreset,
+    customStart,
+    customEnd,
+    viewMode,
+  ]);
 
   useEffect(() => {
     if (!localPrefsReady) return;
@@ -426,6 +487,54 @@ export default function CrmQueueTab({
       return true;
     });
   }, [leads, advIncomplete, advFollowUp, advHasVehicle, advHasCoupon]);
+
+  const statusChartData = useMemo(() => {
+    const counts = new Map<string, number>();
+    const order = [
+      'Fresh',
+      'Interested',
+      'He will visit',
+      'Follow-up',
+      'Booking confirmed',
+      'In Service',
+      'Service Done',
+      'Lost',
+    ];
+    for (const key of order) counts.set(key, 0);
+    for (const lead of displayedLeads) {
+      const label = leadDisplayStatus(lead) || 'Fresh';
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    const known = new Set(order);
+    const extras = [...counts.keys()].filter((k) => !known.has(k)).sort();
+    return [...order, ...extras].map((label) => {
+      const tint = leadStatusKpiColors(label);
+      return {
+        label,
+        fullLabel: label,
+        value: counts.get(label) || 0,
+        color: statusAccentColor(tint),
+      };
+    });
+  }, [displayedLeads]);
+
+  const cityChartData = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const lead of displayedLeads) {
+      const cityName = String(lead.city || '').trim() || 'Unknown';
+      counts.set(cityName, (counts.get(cityName) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([label, value], i) => ({
+        label,
+        fullLabel: label,
+        value,
+        color: ASSIGNEE_COLORS[i % ASSIGNEE_COLORS.length],
+      }));
+  }, [displayedLeads]);
+
   const openShare = async (lead: any) => {
     setShareLead(lead);
     try {
@@ -532,6 +641,30 @@ export default function CrmQueueTab({
           }}
           placeholderTextColor={COLORS.textSecondary}
         />
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnOn]}
+            onPress={() => setViewMode('list')}
+            accessibilityLabel="List view"
+          >
+            <Ionicons
+              name="list"
+              size={16}
+              color={viewMode === 'list' ? '#fff' : COLORS.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'chart' && styles.viewToggleBtnOn]}
+            onPress={() => setViewMode('chart')}
+            accessibilityLabel="Chart view"
+          >
+            <Ionicons
+              name="bar-chart"
+              size={16}
+              color={viewMode === 'chart' ? '#fff' : COLORS.primary}
+            />
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.filterBtn}>
           <Ionicons name="options-outline" size={18} color={COLORS.primary} />
         </TouchableOpacity>
@@ -717,6 +850,40 @@ export default function CrmQueueTab({
 
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
+      ) : viewMode === 'chart' ? (
+        <ScrollView
+          contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100, gap: 12 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                load();
+              }}
+            />
+          }
+          onScrollBeginDrag={() => {
+            if (openDropdown) setOpenDropdown(null);
+          }}
+        >
+          <View style={styles.chartSummary}>
+            <Text style={styles.chartSummaryValue}>{displayedLeads.length}</Text>
+            <Text style={styles.chartSummaryLabel}>Leads in current filters</Text>
+            <TouchableOpacity onPress={() => setViewMode('list')} style={styles.chartBackBtn}>
+              <Text style={styles.chartBackText}>View list</Text>
+            </TouchableOpacity>
+          </View>
+          <SimpleBarChart title="By status" data={statusChartData} layout="horizontal" />
+          {managerOps && cityChartData.length > 0 ? (
+            <SimpleBarChart title="By city" data={cityChartData} layout="horizontal" />
+          ) : null}
+          {displayedLeads.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons name="bar-chart-outline" size={40} color={COLORS.gray[300]} />
+              <Text style={styles.emptyText}>No leads for chart</Text>
+            </View>
+          ) : null}
+        </ScrollView>
       ) : (
         <FlatList
           data={displayedLeads}
@@ -733,7 +900,25 @@ export default function CrmQueueTab({
           ListHeaderComponent={
             managerOps && selectedIds.size > 0 ? (
               <View style={styles.bulkBar}>
-                <Text style={styles.bulkTitle}>{selectedIds.size} selected</Text>
+                <View style={styles.bulkTopRow}>
+                  <Text style={styles.bulkTitle}>{selectedIds.size} selected</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const all = new Set(displayedLeads.map((l) => String(l.id)));
+                      const allSelected =
+                        displayedLeads.length > 0 &&
+                        displayedLeads.every((l) => selectedIds.has(String(l.id)));
+                      setSelectedIds(allSelected ? new Set() : all);
+                    }}
+                  >
+                    <Text style={styles.bulkSelectAll}>
+                      {displayedLeads.length > 0 &&
+                      displayedLeads.every((l) => selectedIds.has(String(l.id)))
+                        ? 'Clear all'
+                        : 'Select all'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {telecallers.map((t) => (
                     <TouchableOpacity
@@ -790,69 +975,73 @@ export default function CrmQueueTab({
                 : statusLabel,
             );
             const selected = selectedIds.has(String(item.id));
+            const selectionMode = managerOps && selectedIds.size > 0;
+            const assigneeName = String(
+              item.assigned_telecaller?.full_name ||
+                item.assigned_telecaller_name ||
+                '',
+            ).trim();
+            const assigneeSeed =
+              String(item.assigned_telecaller_id || item.assigned_telecaller?.id || '') ||
+              assigneeName;
             return (
-            <View
+            <TouchableOpacity
               style={[
                 styles.card,
                 { backgroundColor: tint.cardBg, borderColor: tint.border, borderWidth: 1 },
                 selected ? { borderColor: COLORS.primary, borderWidth: 2 } : null,
               ]}
+              activeOpacity={0.9}
+              delayLongPress={350}
+              onLongPress={() => {
+                if (!managerOps) return;
+                toggleSelect(String(item.id));
+              }}
+              onPress={() => {
+                if (selectionMode) {
+                  toggleSelect(String(item.id));
+                  return;
+                }
+                onOpenLead(item.id);
+              }}
             >
-              {managerOps ? (
-                <TouchableOpacity
-                  style={styles.selectRow}
-                  onPress={() => toggleSelect(String(item.id))}
-                >
-                  <Ionicons
-                    name={selected ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color={COLORS.primary}
-                  />
-                  <Text style={styles.selectLabel}>Select</Text>
-                </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity onPress={() => onOpenLead(item.id)} activeOpacity={0.85}>
-                <View style={styles.cardTop}>
-                  <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                    {(() => {
-                      const full = String(item.customer_name || 'Unknown').trim();
-                      return (
-                        <Text style={styles.name} numberOfLines={1}>
-                          {full}
-                        </Text>
-                      );
-                    })()}
-                    <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
-                  </View>
-                  <View style={styles.cardRight}>
-                    <View style={[styles.status, { backgroundColor: tint.badgeBg }]}>
-                      <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
-                        {statusLabel}
+              <View style={styles.cardTop}>
+                <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                  {(() => {
+                    const full = String(item.customer_name || 'Unknown').trim();
+                    return (
+                      <Text style={styles.name} numberOfLines={1}>
+                        {full}
                       </Text>
-                    </View>
-                    {managerOps ? (
-                      <View style={styles.assigneeWrap}>
-                        <View style={styles.assigneeAvatar}>
-                          <Text style={styles.assigneeInitials}>
-                            {(() => {
-                              const n = String(
-                                item.assigned_telecaller?.full_name ||
-                                  item.assigned_telecaller_name ||
-                                  '',
-                              ).trim();
-                              if (!n) return '?';
-                              const parts = n.split(/\s+/).filter(Boolean);
-                              if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-                              return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
-                            })()}
-                          </Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-                      </View>
-                    ) : null}
-                  </View>
+                    );
+                  })()}
+                  <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
                 </View>
-              </TouchableOpacity>
+                <View style={styles.cardRightCol}>
+                  <View style={[styles.statusCornerInline, { backgroundColor: tint.badgeBg }]}>
+                    <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
+                      {statusLabel}
+                    </Text>
+                  </View>
+                  {managerOps ? (
+                    <View style={styles.assigneeWrap}>
+                      <View
+                        style={[
+                          styles.assigneeAvatar,
+                          { backgroundColor: colorForAssignee(assigneeSeed) },
+                        ]}
+                      >
+                        <Text style={styles.assigneeInitials}>
+                          {assigneeInitials(assigneeName)}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                    </View>
+                  ) : (
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                  )}
+                </View>
+              </View>
               <View style={styles.actions}>
                 <TouchableOpacity
                   style={[styles.act, { backgroundColor: COLORS.primary }]}
@@ -866,15 +1055,21 @@ export default function CrmQueueTab({
                   <Ionicons name="call" size={14} color="#fff" />
                   <Text style={styles.actText}>Call</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.act, styles.actOutline]} onPress={() => onOpenLead(item.id)}>
+                <TouchableOpacity
+                  style={[styles.act, styles.actOutline]}
+                  onPress={() => onOpenLead(item.id)}
+                >
                   <Text style={styles.actOutlineText}>Open</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.act, styles.actOutline]} onPress={() => openShare(item)}>
+                <TouchableOpacity
+                  style={[styles.act, styles.actOutline]}
+                  onPress={() => openShare(item)}
+                >
                   <Ionicons name="share-outline" size={14} color={COLORS.primary} />
                   <Text style={styles.actOutlineText}>Share</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
             );
           }}
         />
@@ -966,7 +1161,7 @@ export default function CrmQueueTab({
                 [
                   {
                     key: 'advIncomplete' as const,
-                    label: 'Incomplete only',
+                    label: 'Fresh only',
                     value: advIncomplete,
                     set: setAdvIncomplete,
                   },
@@ -1154,7 +1349,55 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
+  viewToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    padding: 2,
+    gap: 2,
+  },
+  viewToggleBtn: {
+    width: 30,
+    height: 28,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewToggleBtnOn: {
+    backgroundColor: COLORS.primary,
+  },
   filterBtn: { padding: 6 },
+  chartSummary: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    ...SHADOWS.small,
+  },
+  chartSummaryValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  chartSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  chartBackBtn: {
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+  },
+  chartBackText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
   filterSection: {
     zIndex: 50,
     elevation: 50,
@@ -1264,8 +1507,25 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     ...SHADOWS.small,
   },
-  selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  selectLabel: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+  statusCornerInline: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: 110,
+    alignSelf: 'flex-end',
+  },
+  bulkTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  bulkSelectAll: {
+    color: '#BFDBFE',
+    fontWeight: '800',
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
   bulkBar: {
     backgroundColor: COLORS.primary,
     borderRadius: 14,
@@ -1295,14 +1555,14 @@ const styles = StyleSheet.create({
   bulkBtnOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
   bulkBtnOutlineText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   bulkClear: { color: '#fff', fontWeight: '600', fontSize: 12, marginLeft: 4 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   cardRight: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  cardRightCol: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
   assigneeWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   assigneeAvatar: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#5B21B6',
     alignItems: 'center',
     justifyContent: 'center',
   },

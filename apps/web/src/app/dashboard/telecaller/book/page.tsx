@@ -7,6 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
 import CrmBookingCatalog, { type CrmCatalogSelection } from '@/components/telecaller/crm/CrmBookingCatalog';
 import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
+import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import { createClient } from '@/lib/supabase/client';
 import {
   AlertCircle,
@@ -172,7 +173,7 @@ function TelecallerCrmBookContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { base, layoutRole } = getCrmDashboardBase(pathname);
+  const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
   const modeParam = searchParams?.get('mode');
 
   /** null = chooser (Booking / Add Lead), same as mobile CrmBookChooser */
@@ -193,6 +194,7 @@ function TelecallerCrmBookContent() {
   const [lostReason, setLostReason] = useState('');
   const [activityDate, setActivityDate] = useState(todayDateStr);
   const [activityTime, setActivityTime] = useState(nowTimeStr);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [quote, setQuote] = useState<any>(null);
@@ -548,6 +550,7 @@ function TelecallerCrmBookContent() {
           call_notes: form.problem_description || null,
           lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
           activity_at: activityIso,
+          tag_ids: selectedTagIds,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -916,6 +919,14 @@ function TelecallerCrmBookContent() {
                   </select>
                 </div>
               ) : null}
+
+              <div className="mb-3">
+                <LeadTagsPanel
+                  canManage={isLeadManager}
+                  compact
+                  onSelectionChange={setSelectedTagIds}
+                />
+              </div>
 
               <Field
                 label="Call Activity"

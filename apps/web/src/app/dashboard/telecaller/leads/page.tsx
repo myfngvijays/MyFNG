@@ -298,10 +298,12 @@ function TelecallerCrmLeadsContent() {
         setStatusFilters([
           { id: 'all', label: 'All' },
           { id: 'new', label: 'Fresh' },
-          { id: 'incomplete', label: 'Incomplete' },
           ...dynamic.filter(
             (d: { id: string }) =>
-              d.id !== 'fresh' && d.id !== 'ringing' && d.id !== 'new',
+              d.id !== 'fresh' &&
+              d.id !== 'ringing' &&
+              d.id !== 'new' &&
+              d.id !== 'incomplete',
           ),
         ]);
       } catch {
@@ -1061,7 +1063,7 @@ function TelecallerCrmLeadsContent() {
                   {[
                     {
                       id: 'incomplete',
-                      label: 'Incomplete only',
+                      label: 'Fresh only',
                       checked: advIncomplete,
                       set: setAdvIncomplete,
                       key: 'advIncomplete' as const,
@@ -1175,7 +1177,7 @@ function TelecallerCrmLeadsContent() {
               leads={displayedLeads}
               showManagerDimensions={isLeadManager}
               onViewLeads={() => setViewMode('list')}
-              totalOverride={totalLeads}
+              totalOverride={displayedLeads.length}
             />
           )
         ) : loading ? (

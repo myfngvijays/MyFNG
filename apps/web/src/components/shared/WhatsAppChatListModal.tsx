@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, MessageCircle, RefreshCw, Search, X } from 'lucide-react';
+import { isWhatsAppSessionWindowClosed } from '@/lib/whatsapp/sessionWindow';
 
 type ChatRow = {
   phone: string;
@@ -9,6 +10,7 @@ type ChatRow = {
   last_message_at: string | null;
   last_status: string | null;
   last_direction: string | null;
+  last_inbound_at?: string | null;
   unread_count?: number | null;
   customer_name?: string | null;
 };
@@ -47,54 +49,96 @@ function formatTime(value?: string | null): string {
   });
 }
 
-type FilterTab = 'all' | 'unread' | 'read';
+type FilterTab = 'open' | 'awaiting' | 'closed' | 'all' | 'unread' | 'read';
 type ModeTab = 'assigned' | 'unassigned';
+
+const CLOSED_KEY = 'myfng:wa-closed-chats-v1';
+
+function normalizePhoneLocal(phone: string): string {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (!d) return '';
+  const last10 = d.slice(-10);
+  if (last10.length === 10) return `91${last10}`;
+  return d.startsWith('91') ? d : `91${d}`;
+}
+
+function loadClosedPhonesModal(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(CLOSED_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map((p: string) => normalizePhoneLocal(String(p))) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function isInboxClosedModal(chat: ChatRow, closedPhones: Set<string>): boolean {
+  const phone = normalizePhoneLocal(chat.phone);
+  if (phone && closedPhones.has(phone)) return true;
+  return isWhatsAppSessionWindowClosed(chat);
+}
 
 export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, title, refreshSignal, hideLeadPool = false }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ChatRow[]>([]);
-  const [filter, setFilter] = useState<FilterTab>('all');
+  const [filter, setFilter] = useState<FilterTab>('open');
   const [mode, setMode] = useState<ModeTab>('assigned');
   const [unassignedRows, setUnassignedRows] = useState<ChatRow[]>([]);
   const [unassignedLoading, setUnassignedLoading] = useState(false);
   const [hasNewMessages, setHasNewMessages] = useState(false);
+  const [closedPhones, setClosedPhones] = useState<Set<string>>(() => new Set());
   const prevRefreshRef = useRef(refreshSignal);
+
+  useEffect(() => {
+    setClosedPhones(loadClosedPhonesModal());
+  }, []);
 
   const debouncedSearch = useMemo(() => search.trim(), [search]);
 
   const activeRows = mode === 'unassigned' ? unassignedRows : rows;
 
   const filteredRows = useMemo(() => {
-    if (filter === 'unread') {
-      return activeRows.filter((r) => {
-        const n =
-          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
-            ? r.unread_count
-            : (r.last_direction || '').toUpperCase() === 'INBOUND'
-              ? 1
-              : 0;
-        return n > 0;
-      });
+    return activeRows.filter((r) => {
+      const closed = isInboxClosedModal(r, closedPhones);
+      const awaiting = String(r.last_direction || '').toUpperCase() === 'INBOUND';
+      const unreadN =
+        typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
+          ? r.unread_count
+          : awaiting
+            ? 1
+            : 0;
+
+      if (filter === 'closed') return closed;
+      if (filter === 'open') return !closed && !awaiting;
+      if (filter === 'awaiting') return !closed && awaiting;
+      if (filter === 'unread') return !closed && unreadN > 0;
+      if (filter === 'read') return !closed && unreadN <= 0;
+      return !closed;
+    });
+  }, [activeRows, filter, closedPhones]);
+
+  const inboxCounts = useMemo(() => {
+    let open = 0;
+    let awaiting = 0;
+    let closed = 0;
+    for (const r of activeRows) {
+      if (isInboxClosedModal(r, closedPhones)) {
+        closed += 1;
+        continue;
+      }
+      if (String(r.last_direction || '').toUpperCase() === 'INBOUND') awaiting += 1;
+      else open += 1;
     }
-    if (filter === 'read') {
-      return activeRows.filter((r) => {
-        const n =
-          typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
-            ? r.unread_count
-            : (r.last_direction || '').toUpperCase() === 'INBOUND'
-              ? 1
-              : 0;
-        return n <= 0;
-      });
-    }
-    return activeRows;
-  }, [activeRows, filter]);
+    return { open, awaiting, closed };
+  }, [activeRows, closedPhones]);
 
   const unreadCount = useMemo(
     () =>
       activeRows.filter((r) => {
+        if (isInboxClosedModal(r, closedPhones)) return false;
         const n =
           typeof r.unread_count === 'number' && Number.isFinite(r.unread_count)
             ? r.unread_count
@@ -103,7 +147,7 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
               : 0;
         return n > 0;
       }).length,
-    [activeRows],
+    [activeRows, closedPhones],
   );
 
   const fetchChats = useCallback(async (fetchMode: ModeTab, searchText: string, signal?: AbortSignal) => {
@@ -263,8 +307,15 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
             ) : null}
           </div>
 
-          <div className="flex gap-1.5">
-            {([['all', 'All'], ['unread', 'Unread'], ['read', 'Read']] as const).map(([key, label]) => (
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ['open', 'Open', inboxCounts.open],
+                ['awaiting', 'Awaiting', inboxCounts.awaiting],
+                ['closed', 'Closed', inboxCounts.closed],
+                ['unread', 'Unread', unreadCount],
+              ] as const
+            ).map(([key, label, count]) => (
               <button
                 key={key}
                 type="button"
@@ -276,11 +327,15 @@ export default function WhatsAppChatListModal({ isOpen, onClose, onOpenChat, tit
                 }`}
               >
                 {label}
-                {key === 'unread' && unreadCount > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] font-bold text-white">
-                    {unreadCount}
+                {count > 0 ? (
+                  <span
+                    className={`ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                      filter === key ? 'bg-white/20 text-white' : 'bg-[#25D366] text-white'
+                    }`}
+                  >
+                    {count > 99 ? '99+' : count}
                   </span>
-                )}
+                ) : null}
               </button>
             ))}
           </div>

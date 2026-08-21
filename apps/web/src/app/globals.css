@@ -40,6 +40,25 @@
   h1, h2, h3, h4, h5, h6 {
     @apply text-[#023D95] font-semibold;
   }
+  /*
+   * Consistent dropdown chevron across dashboard + admin (replace thin native arrows).
+   * Selects wrapped in .relative with appearance-none keep a Lucide ChevronDown overlay —
+   * those hide this background so arrows don't double.
+   */
+  select:not([multiple]):not([size]) {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.65rem center;
+    background-size: 0.95rem 0.95rem;
+    padding-right: 2.15rem;
+  }
+  .relative > select.appearance-none,
+  select.select-no-chevron {
+    background-image: none;
+  }
   /* Prevent accidental horizontal pan in admin WebViews */
   img,
   video,
@@ -478,4 +497,9 @@
   .package-sheet-panel {
     animation: package-sheet-center 220ms ease-out both;
   }
+}
+
+/* Unlayered so padding-right wins over utility px-* on native <select>s */
+select:not([multiple]):not([size]) {
+  padding-right: 2.15rem;
 }

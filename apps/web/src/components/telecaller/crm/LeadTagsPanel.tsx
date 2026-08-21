@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Loader2, Search, Tag, X } from 'lucide-react';
+import { filterTagsForTelecaller } from '@/lib/telecaller/telecallerLeadTags';
 
 type TagRow = { id: string; name: string; color: string };
 
@@ -32,6 +33,9 @@ function contrastText(bg: string) {
  *
  * `fieldTrigger` — embed under Source (or similar): click trigger to open tag picker
  * (no separate Lead tags block).
+ *
+ * Without `leadId`, selection is local only (`onSelectionChange`) — use on Add Lead
+ * and apply tags after the lead is created.
  */
 export default function LeadTagsPanel({
   leadId,
@@ -39,13 +43,17 @@ export default function LeadTagsPanel({
   compact = false,
   label = 'Lead tags',
   fieldTrigger,
+  onSelectionChange,
+  /** field = same look as Priority/Created inputs (no nested card). */
+  variant = 'card',
 }: {
-  leadId: string;
+  leadId?: string | null;
   canManage: boolean;
   compact?: boolean;
   label?: string;
-  /** When set, UI is a clickable field (e.g. Source badges) that opens the tag picker. */
   fieldTrigger?: ReactNode;
+  onSelectionChange?: (tagIds: string[]) => void;
+  variant?: 'card' | 'field';
 }) {
   const [tags, setTags] = useState<TagRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -56,20 +64,22 @@ export default function LeadTagsPanel({
   const [saving, setSaving] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const hasLead = Boolean(leadId && String(leadId).trim());
 
   const load = async () => {
-    if (!leadId) {
-      setTags([]);
-      setSelected(new Set());
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
-      const res = await fetch(`/api/lead-manager/tags?lead_id=${encodeURIComponent(leadId)}`);
+      const qs = hasLead
+        ? `?lead_id=${encodeURIComponent(String(leadId))}`
+        : '';
+      const res = await fetch(`/api/lead-manager/tags${qs}`);
       const json = await res.json().catch(() => ({}));
-      setTags(Array.isArray(json?.tags) ? json.tags : []);
-      setSelected(new Set(Array.isArray(json?.lead_tag_ids) ? json.lead_tag_ids.map(String) : []));
+      const allTags: TagRow[] = Array.isArray(json?.tags) ? json.tags : [];
+      // Telecallers only see the 8 channel tags; managers see full catalog
+      setTags(canManage ? allTags : filterTagsForTelecaller(allTags));
+      if (hasLead) {
+        setSelected(new Set(Array.isArray(json?.lead_tag_ids) ? json.lead_tag_ids.map(String) : []));
+      }
     } catch {
       setTags([]);
     } finally {
@@ -79,7 +89,8 @@ export default function LeadTagsPanel({
 
   useEffect(() => {
     void load();
-  }, [leadId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, canManage]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +109,7 @@ export default function LeadTagsPanel({
   }, [open, fieldTrigger]);
 
   const persist = async (next: Set<string>) => {
+    if (!hasLead) return;
     setSaving(true);
     try {
       await fetch('/api/lead-manager/tags', {
@@ -120,6 +132,7 @@ export default function LeadTagsPanel({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       void persist(next);
+      onSelectionChange?.(Array.from(next));
       return next;
     });
   };
@@ -143,6 +156,7 @@ export default function LeadTagsPanel({
           const next = new Set(prev);
           next.add(createdId);
           void persist(next);
+          onSelectionChange?.(Array.from(next));
           return next;
         });
       }
@@ -293,29 +307,44 @@ export default function LeadTagsPanel({
   return (
     <div
       className={
-        compact
-          ? 'rounded-md border border-gray-200/80 bg-white px-2.5 py-1.5'
-          : 'rounded-2xl border border-slate-100 bg-white p-4 shadow-sm'
+        variant === 'field'
+          ? 'relative min-w-0'
+          : compact
+            ? 'rounded-md border border-gray-200/80 bg-white px-2.5 py-1.5'
+            : 'rounded-2xl border border-slate-100 bg-white p-4 shadow-sm'
       }
       ref={rootRef}
     >
-      <h3
-        className={
-          compact
-            ? 'mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500'
-            : 'mb-3 flex items-center gap-1.5 font-black text-[#023D95]'
-        }
-      >
-        <Tag className={compact ? 'h-3 w-3' : 'w-4 h-4'} /> {label}
-        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" /> : null}
-      </h3>
+      {variant === 'field' ? (
+        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          {label}
+          {saving ? (
+            <Loader2 className="ml-1.5 inline h-3 w-3 animate-spin text-slate-400" />
+          ) : null}
+        </label>
+      ) : (
+        <h3
+          className={
+            compact
+              ? 'mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500'
+              : 'mb-3 flex items-center gap-1.5 font-black text-[#023D95]'
+          }
+        >
+          <Tag className={compact ? 'h-3 w-3' : 'w-4 h-4'} /> {label}
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" /> : null}
+        </h3>
+      )}
 
       {loading ? (
         <p className="text-xs text-slate-400">Loading…</p>
       ) : (
         <>
           <div
-            className="min-h-[42px] rounded-xl border border-slate-200 bg-slate-50/80 px-2 py-1.5 flex flex-wrap items-center gap-1.5 cursor-text"
+            className={
+              variant === 'field'
+                ? 'min-h-[42px] rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 flex flex-wrap items-center gap-1.5 cursor-text focus-within:border-[#004AAD] focus-within:ring-2 focus-within:ring-[#004AAD]/15'
+                : 'min-h-[42px] rounded-xl border border-slate-200 bg-slate-50/80 px-2 py-1.5 flex flex-wrap items-center gap-1.5 cursor-text'
+            }
             onClick={() => setOpen(true)}
           >
             {selectedTags.map((t, idx) => {
@@ -341,11 +370,11 @@ export default function LeadTagsPanel({
                 </span>
               );
             })}
-            <div className="relative flex-1 min-w-[120px]">
-              <Search className="pointer-events-none absolute left-1 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <div className="relative flex-1 min-w-[100px]">
+              <Search className="pointer-events-none absolute left-0.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
-                className="w-full bg-transparent pl-6 pr-1 py-1 text-xs outline-none placeholder:text-slate-400"
-                placeholder="Search for a tag…"
+                className="w-full bg-transparent pl-5 pr-1 py-1 text-xs outline-none placeholder:text-slate-400"
+                placeholder={selectedTags.length ? 'Add…' : 'Search for a tag…'}
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
@@ -357,7 +386,13 @@ export default function LeadTagsPanel({
           </div>
 
           {open ? (
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+            <div
+              className={
+                variant === 'field'
+                  ? 'absolute left-0 right-0 top-full z-30 mt-1 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg'
+                  : 'mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg'
+              }
+            >
               {filtered.length === 0 ? (
                 <p className="px-3 py-3 text-xs text-slate-500">No tags match</p>
               ) : (
@@ -382,36 +417,40 @@ export default function LeadTagsPanel({
                   );
                 })
               )}
+              {canManage ? (
+                <div className="flex gap-2 border-t border-slate-100 p-2">
+                  <input
+                    className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+                    placeholder="Create new tag…"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void createTag();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={saving || !newName.trim()}
+                    onClick={() => void createTag()}
+                    className="rounded-lg bg-[#004AAD] px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
-          {canManage ? (
-            <div
-              className={`flex gap-2 ${compact ? 'mt-2 pt-2 border-t border-slate-100' : 'mt-3 border-t border-slate-100 pt-3'}`}
-            >
-              <input
-                className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
-                placeholder="Create new tag…"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void createTag();
-                }}
-              />
-              <button
-                type="button"
-                disabled={saving || !newName.trim()}
-                onClick={() => void createTag()}
-                className="rounded-lg bg-[#004AAD] px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-              >
-                Add
-              </button>
-            </div>
-          ) : compact ? null : (
+          {variant !== 'field' && !canManage && !compact ? (
+            <p className="mt-2 text-[10px] text-slate-400">
+              Website, Google, Reference, WhatsApp, Facebook, Instagram, Banner/Offline, Other
+            </p>
+          ) : null}
+          {variant !== 'field' && canManage && !compact ? (
             <p className="mt-2 text-[10px] text-slate-400">
               Select tags for Google / Meta / WhatsApp reference. Managers create new tags.
             </p>
-          )}
+          ) : null}
         </>
       )}
     </div>

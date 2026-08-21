@@ -47,6 +47,9 @@ interface WhatsAppMobilePreviewModalProps {
   embedded?: boolean;
   /** Workspace theme (web variant). */
   theme?: 'light' | 'dark';
+  /** Inbox closed state (Open / Closed / Awaiting). */
+  chatClosed?: boolean;
+  onMarkClosed?: (closed: boolean) => void;
 }
 
 function humanizeTemplateKey(name: string): string {
@@ -743,6 +746,8 @@ export default function WhatsAppMobilePreviewModal({
   variant = 'phone',
   embedded = false,
   theme = 'light',
+  chatClosed = false,
+  onMarkClosed,
 }: WhatsAppMobilePreviewModalProps) {
   const isWeb = variant === 'web';
   const isDark = isWeb && theme === 'dark';
@@ -2849,6 +2854,16 @@ export default function WhatsAppMobilePreviewModal({
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {onMarkClosed ? (
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 text-[10px] font-bold hover:bg-white/10"
+                  onClick={() => onMarkClosed(!chatClosed)}
+                  title={chatClosed ? 'Reopen chat' : 'Mark chat closed'}
+                >
+                  {chatClosed ? 'Reopen' : 'Close'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="rounded-md p-1 hover:bg-white/10 disabled:opacity-60"

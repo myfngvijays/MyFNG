@@ -210,7 +210,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
         {item.is_incomplete && (
           <View style={[styles.badge, { backgroundColor: COLORS.yellow + '30' }]}>
             <Icon name="alert-circle" size={12} color={COLORS.yellow} />
-            <Text style={[styles.badgeText, { color: COLORS.yellow }]}>Incomplete</Text>
+            <Text style={[styles.badgeText, { color: COLORS.yellow }]}>Fresh</Text>
           </View>
         )}
         {item.follow_up_required && (
@@ -379,7 +379,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
           color={COLORS.orange}
         />
         <FilterChip
-          label="Incomplete"
+          label="Fresh"
           active={activeFilter === 'incomplete'}
           onPress={() => setActiveFilter('incomplete')}
           color={COLORS.yellow}

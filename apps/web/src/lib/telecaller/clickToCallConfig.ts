@@ -22,6 +22,8 @@ export type DidAssignment = {
   telecaller_id: string | null;
 };
 
+export type ClickToCallDialMode = 'agent_first' | 'customer_first';
+
 export type ClickToCallConfig = {
   enabled: boolean;
   gateway_url: string;
@@ -34,6 +36,15 @@ export type ClickToCallConfig = {
   dids: string[];
   /** Which telecaller uses which DID */
   did_assignments: DidAssignment[];
+  /**
+   * agent_first (default): ring telecaller, then customer after answer.
+   * customer_first: Smartflo support-style (customer rings first).
+   */
+  dial_mode: ClickToCallDialMode;
+  /** Optional Smartflo Bearer token for direct /v1/click_to_call (agent-first). */
+  smartflo_api_token: string;
+  /** When Fresh/NEW lead is assigned, auto-start agent-first call. */
+  auto_dial_on_fresh_assign: boolean;
 };
 
 function digitsOnly(raw: unknown): string {
@@ -107,6 +118,9 @@ export function defaultClickToCallConfig(): ClickToCallConfig {
     ).trim(),
     dids,
     did_assignments: dids.map((did) => ({ did, telecaller_id: null })),
+    dial_mode: 'agent_first',
+    smartflo_api_token: String(process.env.SMARTFLO_API_TOKEN || '').trim(),
+    auto_dial_on_fresh_assign: true,
   };
 }
 
@@ -125,6 +139,11 @@ function parseConfig(raw: unknown): ClickToCallConfig {
 
   const dids = normalizeDidList(obj.dids, base.dids);
   const fallbackDid = digitsOnly(obj.did) || dids[0] || base.did;
+  const dialModeRaw = String(obj.dial_mode || base.dial_mode || 'agent_first')
+    .trim()
+    .toLowerCase();
+  const dial_mode: ClickToCallDialMode =
+    dialModeRaw === 'customer_first' ? 'customer_first' : 'agent_first';
 
   return {
     enabled: obj.enabled === undefined ? true : Boolean(obj.enabled),
@@ -137,6 +156,15 @@ function parseConfig(raw: unknown): ClickToCallConfig {
         : base.gateway_key,
     dids,
     did_assignments: normalizeAssignments(obj.did_assignments, dids),
+    dial_mode,
+    smartflo_api_token:
+      obj.smartflo_api_token !== undefined && obj.smartflo_api_token !== null
+        ? String(obj.smartflo_api_token).trim()
+        : base.smartflo_api_token,
+    auto_dial_on_fresh_assign:
+      obj.auto_dial_on_fresh_assign === undefined
+        ? base.auto_dial_on_fresh_assign
+        : Boolean(obj.auto_dial_on_fresh_assign),
   };
 }
 
@@ -154,11 +182,17 @@ export async function getClickToCallConfig(): Promise<ClickToCallConfig> {
   if (!fromDb.gateway_key) {
     fromDb.gateway_key = defaultClickToCallConfig().gateway_key;
   }
+  if (!fromDb.smartflo_api_token) {
+    fromDb.smartflo_api_token = defaultClickToCallConfig().smartflo_api_token;
+  }
   return fromDb;
 }
 
 export async function saveClickToCallConfig(
-  partial: Partial<ClickToCallConfig> & { clear_gateway_key?: boolean },
+  partial: Partial<ClickToCallConfig> & {
+    clear_gateway_key?: boolean;
+    clear_smartflo_api_token?: boolean;
+  },
 ): Promise<ClickToCallConfig> {
   const current = await getClickToCallConfig();
   const nextDids =
@@ -186,12 +220,32 @@ export async function saveClickToCallConfig(
       partial.did_assignments !== undefined
         ? normalizeAssignments(partial.did_assignments, nextDids)
         : normalizeAssignments(current.did_assignments, nextDids),
+    dial_mode:
+      partial.dial_mode === 'customer_first'
+        ? 'customer_first'
+        : partial.dial_mode === 'agent_first'
+          ? 'agent_first'
+          : current.dial_mode || 'agent_first',
+    smartflo_api_token: current.smartflo_api_token,
+    auto_dial_on_fresh_assign:
+      partial.auto_dial_on_fresh_assign !== undefined
+        ? Boolean(partial.auto_dial_on_fresh_assign)
+        : current.auto_dial_on_fresh_assign,
   };
 
   if (partial.clear_gateway_key) {
     next.gateway_key = '';
   } else if (partial.gateway_key !== undefined && String(partial.gateway_key).trim()) {
     next.gateway_key = String(partial.gateway_key).trim();
+  }
+
+  if (partial.clear_smartflo_api_token) {
+    next.smartflo_api_token = '';
+  } else if (
+    partial.smartflo_api_token !== undefined &&
+    String(partial.smartflo_api_token).trim()
+  ) {
+    next.smartflo_api_token = String(partial.smartflo_api_token).trim();
   }
 
   // Keep fallback did inside pool when possible
@@ -232,7 +286,7 @@ export function resolveDidForTelecaller(
   return digitsOnly(cfg.did) || cfg.dids[0] || DEFAULT_CLICK_TO_CALL_DID;
 }
 
-/** Public-safe view (mask key). */
+/** Public-safe view (mask secrets). */
 export function publicClickToCallConfig(cfg: ClickToCallConfig) {
   return {
     enabled: cfg.enabled,
@@ -242,5 +296,8 @@ export function publicClickToCallConfig(cfg: ClickToCallConfig) {
     has_gateway_key: Boolean(cfg.gateway_key),
     dids: cfg.dids,
     did_assignments: cfg.did_assignments,
+    dial_mode: cfg.dial_mode || 'agent_first',
+    has_smartflo_api_token: Boolean(cfg.smartflo_api_token),
+    auto_dial_on_fresh_assign: Boolean(cfg.auto_dial_on_fresh_assign),
   };
 }

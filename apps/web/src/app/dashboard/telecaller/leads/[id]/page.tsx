@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime, formatDateTimeIST } from '@/lib/utils';
 import {
   Phone, Mail, MapPin, Car, Calendar, Clock, FileText,
-  User, Building2, PhoneCall, MessageSquare, Edit, ArrowLeft,
+  User, Building2, PhoneCall, MessageSquare, ArrowLeft,
   CheckCircle, AlertCircle, TrendingUp, Share2, Users, Wrench, X
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -44,7 +44,7 @@ function LeadDetailContent() {
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(true);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -95,7 +95,7 @@ function LeadDetailContent() {
     call_status: 'ANSWERED',
     call_duration: '',
     outcome: 'INFO_COLLECTED',
-    activity: 'INTERESTED',
+    activity: 'FRESH',
     lost_reason: '',
     notes: ''
   });
@@ -180,19 +180,16 @@ function LeadDetailContent() {
     }
   }, [leadId]);
 
-  // View-first (admin-style). Edit only when ?edit=1
+  // TeleCRM-style: open lead directly in edit form (no separate Edit button / view mode)
   useEffect(() => {
-    setEditing(searchParams?.get('edit') === '1');
-  }, [leadId, searchParams]);
+    setEditing(true);
+  }, [leadId]);
 
   const exitEditing = () => {
-    setEditing(false);
-    router.replace(`${base}/leads/${leadId}`, { scroll: false });
+    router.push(`${base}/leads`);
   };
 
   const finishEditing = async () => {
-    setEditing(false);
-    router.replace(`${base}/leads/${leadId}`, { scroll: false });
     await fetchLeadDetails();
   };
 
@@ -418,7 +415,7 @@ function LeadDetailContent() {
           call_status: 'ANSWERED',
           call_duration: '',
           outcome: 'INFO_COLLECTED',
-          activity: 'INTERESTED',
+          activity: 'FRESH',
           lost_reason: '',
           notes: ''
         });
@@ -604,33 +601,247 @@ function LeadDetailContent() {
     <>
       <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-5 pb-8">
         {editing ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {lead.customer_phone ? (
-                <button
-                  type="button"
-                  disabled={calling}
-                  onClick={() => void handleClickToCall()}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60"
-                >
-                  <PhoneCall className="w-4 h-4" /> {calling ? 'Calling…' : 'Call'}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void openSharePanel()}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700 ring-1 ring-indigo-200"
-              >
-                <Share2 className="w-4 h-4" />
-                {isLeadManager ? 'Assign' : 'Share'}
-              </button>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+            <div className="lg:col-span-2 min-w-0">
+              <CrmLeadEditForm
+                leadId={leadId}
+                embedded
+                isLeadManagerRole={isLeadManager}
+                calling={calling}
+                onCancel={exitEditing}
+                onSaved={() => void finishEditing()}
+                onCall={() => void handleClickToCall()}
+                onWhatsApp={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('myfng:open-wa-chat', {
+                      detail: {
+                        phone: String(lead?.customer_phone || '').replace(/\D/g, ''),
+                        preview: lead?.problem_description || undefined,
+                      },
+                    }),
+                  );
+                }}
+                onShare={() => void openSharePanel()}
+              />
             </div>
-            <CrmLeadEditForm
-              leadId={leadId}
-              embedded
-              onCancel={exitEditing}
-              onSaved={() => void finishEditing()}
-            />
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
+                <div className="space-y-2.5">
+                  <StatItem
+                    label="Total calls"
+                    value={Math.max(Number(lead?.total_calls || 0), callLogs.length)}
+                    icon={<PhoneCall className="w-4 h-4" />}
+                  />
+                  {lead?.last_call_at ? (
+                    <StatItem
+                      label="Last call"
+                      value={formatDateTime(lead.last_call_at)}
+                      icon={<Clock className="w-4 h-4" />}
+                    />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  <h2 className="text-base font-black text-[#023D95] flex items-center gap-2">
+                    <PhoneCall className="w-5 h-5" /> Call history ({callLogs.length})
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowCallLogForm(!showCallLogForm)}
+                    className="rounded-xl bg-[#004AAD] text-white px-3 py-2 text-xs font-bold"
+                  >
+                    {showCallLogForm ? 'Close' : '+ Log call'}
+                  </button>
+                </div>
+                {showCallLogForm && (
+                  <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                    <select
+                      value={callLogData.activity}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        const opt = activityOptions.find((o) => o.id === next);
+                        const needsLost = Boolean(opt?.requires_lost_reason) || next === 'LOST';
+                        setCallLogData({
+                          ...callLogData,
+                          activity: next,
+                          lost_reason: needsLost ? callLogData.lost_reason : '',
+                        });
+                      }}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                    >
+                      {activityOptions.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    {(callLogData.activity === 'LOST' ||
+                      activityOptions.find((o) => o.id === callLogData.activity)?.requires_lost_reason) && (
+                      <select
+                        value={callLogData.lost_reason}
+                        onChange={(e) => setCallLogData({ ...callLogData, lost_reason: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                      >
+                        <option value="">Select lost reason</option>
+                        {lostReasons.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      type="number"
+                      placeholder="Duration (seconds)"
+                      value={callLogData.call_duration}
+                      onChange={(e) => setCallLogData({ ...callLogData, call_duration: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                    />
+                    <textarea
+                      placeholder="Notes / remarks..."
+                      value={callLogData.notes}
+                      onChange={(e) => setCallLogData({ ...callLogData, notes: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                      rows={3}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAddCallLog}
+                        className="flex-1 rounded-xl bg-emerald-600 text-white py-2 text-sm font-bold"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCallLogForm(false)}
+                        className="rounded-xl border px-4 py-2 text-sm font-bold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                  {callLogs.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-6">No call activity yet</p>
+                  ) : (
+                    callLogs.map((log) => (
+                      <div key={log.id} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                              log.call_status === 'ANSWERED'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : log.call_status === 'NO_ANSWER'
+                                  ? 'bg-orange-100 text-orange-700'
+                                  : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {String(log.notes || '').match(/^\[([^\]]+)\]/)?.[1] || log.call_status}
+                          </span>
+                          {log.call_duration ? (
+                            <span className="text-xs text-slate-500">
+                              {Math.floor(log.call_duration / 60)}m {log.call_duration % 60}s
+                            </span>
+                          ) : null}
+                        </div>
+                        {log.notes ? <p className="text-sm text-slate-700">{log.notes}</p> : null}
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {formatDateTime(log.created_at)} · {log.telecaller?.full_name || 'Telecaller'}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-black text-[#023D95] flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" /> Call reminders
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowFollowUpForm(!showFollowUpForm)}
+                    className="text-xs font-bold text-[#004AAD]"
+                  >
+                    + Create
+                  </button>
+                </div>
+                {showFollowUpForm && (
+                  <div className="mb-3 space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-100">
+                    <select
+                      value={followUpData.follow_up_type}
+                      onChange={(e) => setFollowUpData({ ...followUpData, follow_up_type: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
+                    >
+                      <option value="CALLBACK">Follow-up / Reminder</option>
+                      <option value="PRICE_CONFIRMATION">Price Confirmation</option>
+                      <option value="INFO_PENDING">Info Pending</option>
+                      <option value="SLOT_CONFIRMATION">Slot Confirmation</option>
+                    </select>
+                    <input
+                      type="datetime-local"
+                      value={followUpData.scheduled_time}
+                      onChange={(e) => setFollowUpData({ ...followUpData, scheduled_time: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
+                    />
+                    <textarea
+                      placeholder="Reason / notes..."
+                      value={followUpData.reason}
+                      onChange={(e) => setFollowUpData({ ...followUpData, reason: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
+                      rows={2}
+                    />
+                    <select
+                      value={followUpData.priority}
+                      onChange={(e) => setFollowUpData({ ...followUpData, priority: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border rounded-lg"
+                    >
+                      <option value="LOW">Low</option>
+                      <option value="NORMAL">Normal</option>
+                      <option value="HIGH">High</option>
+                      <option value="URGENT">Urgent</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddFollowUp}
+                      className="w-full rounded-lg bg-[#004AAD] text-white py-1.5 text-xs font-bold"
+                    >
+                      Schedule reminder
+                    </button>
+                  </div>
+                )}
+                {followUps.length === 0 ? (
+                  <p className="text-sm text-slate-400">No reminders yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {followUps.map((fu: any) => (
+                      <div
+                        key={fu.id}
+                        className={`rounded-lg p-2.5 text-xs border ${
+                          fu.status === 'PENDING'
+                            ? 'border-violet-200 bg-violet-50'
+                            : 'border-slate-200'
+                        }`}
+                      >
+                        <p className="font-bold text-violet-900">{fu.follow_up_type || 'Reminder'}</p>
+                        <p className="text-violet-800">
+                          {fu.scheduled_time ? formatDateTimeIST(fu.scheduled_time) : '—'}
+                        </p>
+                        {fu.reason ? <p className="text-slate-600 mt-0.5">{fu.reason}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <LeadTimelinePanel leadId={leadId} />
+            </div>
           </div>
         ) : (
           <>
@@ -692,18 +903,6 @@ function LeadDetailContent() {
                 ) : null}
                 <button
                   type="button"
-                  title="Edit"
-                  aria-label="Edit"
-                  onClick={() => {
-                    setEditing(true);
-                    router.replace(`${base}/leads/${leadId}?edit=1${isEmbed ? '&embed=1' : ''}`, { scroll: false });
-                  }}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#023D95]"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
                   title={isLeadManager ? 'Assign TC' : 'Share'}
                   aria-label={isLeadManager ? 'Assign TC' : 'Share'}
                   onClick={() => void openSharePanel()}
@@ -716,9 +915,6 @@ function LeadDetailContent() {
 
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold">{leadDisplayStatus(lead)}</span>
-              {lead.is_incomplete ? (
-                <span className="rounded-full bg-amber-400 text-amber-950 px-3 py-1 text-xs font-black">Incomplete</span>
-              ) : null}
               <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">Priority {lead.lead_priority || 'NORMAL'}</span>
               {lead.assigned_telecaller?.full_name ? (
                 <span className="rounded-full bg-indigo-300/30 px-3 py-1 text-xs font-semibold inline-flex items-center gap-1">
@@ -768,8 +964,13 @@ function LeadDetailContent() {
                 {lead.customer_alternate_phone ? <InfoItem icon={<Phone className="w-4 h-4" />} label="Alternate" value={lead.customer_alternate_phone} /> : null}
                 {lead.customer_email ? <InfoItem icon={<Mail className="w-4 h-4" />} label="Email" value={lead.customer_email} /> : null}
                 <InfoItem icon={<MapPin className="w-4 h-4" />} label="City" value={lead.city || 'N/A'} />
-                {lead.pincode ? <InfoItem icon={<MapPin className="w-4 h-4" />} label="Pincode" value={lead.pincode} /> : null}
-                {lead.customer_address ? <InfoItem icon={<MapPin className="w-4 h-4" />} label="Address" value={lead.customer_address} className="sm:col-span-2" /> : null}
+                <InfoItem icon={<MapPin className="w-4 h-4" />} label="Pincode" value={lead.pincode || 'N/A'} />
+                <InfoItem
+                  icon={<MapPin className="w-4 h-4" />}
+                  label="Address"
+                  value={lead.customer_address || lead.pickup_address || 'N/A'}
+                  className="sm:col-span-2"
+                />
               </div>
             </div>
 
@@ -777,8 +978,16 @@ function LeadDetailContent() {
               <h2 className="text-base sm:text-lg font-black text-[#023D95] flex items-center gap-2 mb-3"><Car className="w-5 h-5" /> Vehicle</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <InfoItem icon={<Car className="w-4 h-4" />} label="Registration" value={lead.vehicle_number || 'Not provided'} />
-                <InfoItem icon={<Car className="w-4 h-4" />} label="Make" value={lead.vehicle_make || 'N/A'} />
-                <InfoItem icon={<Car className="w-4 h-4" />} label="Model" value={lead.vehicle_model || 'N/A'} />
+                <InfoItem
+                  icon={<Car className="w-4 h-4" />}
+                  label="Make / Model"
+                  value={
+                    [lead.vehicle_make, lead.vehicle_model]
+                      .map((v) => String(v || '').trim())
+                      .filter((v) => v && v.toUpperCase() !== 'NA')
+                      .join(' ') || 'N/A'
+                  }
+                />
                 {lead.vehicle_variant ? <InfoItem icon={<Car className="w-4 h-4" />} label="Variant" value={lead.vehicle_variant} /> : null}
                 {lead.vehicle_year ? <InfoItem icon={<Calendar className="w-4 h-4" />} label="Year" value={String(lead.vehicle_year)} /> : null}
                 {lead.vehicle_fuel_type ? <InfoItem icon={<Car className="w-4 h-4" />} label="Fuel" value={lead.vehicle_fuel_type} /> : null}

@@ -21,6 +21,8 @@ import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import CrmBookingCatalog, { type CrmCatalogSelection } from '../../../components/telecaller/CrmBookingCatalog';
 import CrmPickupVisitStep from '../../../components/telecaller/CrmPickupVisitStep';
 import CarModelSearchField from '../../../components/CarModelSearchField';
+import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
+import { useAuth } from '../../../context/AuthContext';
 
 /**
  * Telecaller CRM booking — same flow as https://myfng.in/book-service
@@ -118,6 +120,10 @@ export default function CrmBookWizard({
   initialMode = 'book',
   hideModeSwitch = false,
 }: Props) {
+  const { user } = useAuth();
+  const canManageTags = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+    String((user as any)?.roles?.role_code || (user as any)?.role_code || '').toUpperCase(),
+  );
   /** book = full 5-step booking; lead = basic details → save incomplete lead */
   const [mode, setMode] = useState<'book' | 'lead'>(initialMode);
   const [step, setStep] = useState(0); // 0..4 like book-service
@@ -135,6 +141,7 @@ export default function CrmBookWizard({
   const [activityDate, setActivityDate] = useState(todayDateStr);
   const [activityTime, setActivityTime] = useState(nowTimeStr);
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     customer_name: '',
@@ -516,6 +523,7 @@ export default function CrmBookWizard({
           call_notes: form.problem_description || null,
           lost_reason: statusOpt.id === 'LOST' ? lostReason : null,
           activity_at: activityIso,
+          tag_ids: selectedTagIds,
           ...(statusOpt.id === 'CALLBACK'
             ? {
                 follow_up_required: true,
@@ -840,6 +848,11 @@ export default function CrmBookWizard({
                 </TouchableOpacity>
               </>
             ) : null}
+
+            <LeadTagsPicker
+              canManage={canManageTags}
+              onSelectionChange={setSelectedTagIds}
+            />
 
             <Field
               label="Call Activity"

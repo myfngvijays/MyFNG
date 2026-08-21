@@ -39,6 +39,7 @@ import {
   MapPin,
   Download,
   BookOpen,
+  UserPlus,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -94,7 +95,8 @@ function setAanshOptionalSkip(skip: boolean) {
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
-  role: string;
+  /** Optional — if omitted, resolved from auth profile after login. */
+  role?: string;
 }
 
 type MenuItem = {
@@ -106,10 +108,13 @@ type MenuItem = {
   action?: 'open-wa-inbox';
 };
 
-export default function DashboardLayout({ children, role }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, role: roleProp }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, userProfile, setUser, setUserProfile, setRole, logout } = useAuthStore();
+  const role = String(
+    roleProp || (userProfile as any)?.role?.role_code || '',
+  ).trim();
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     // Mobile: open/close. Default closed on small screens, open on lg+.
     try {
@@ -624,16 +629,19 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         const roleCode = (profile?.role as any)?.role_code;
         if (roleCode) setRole(roleCode);
 
-        const normalizedRole = role.toLowerCase();
-        const normalizedUserRole = roleCode.toLowerCase();
-        const superAdminOverride = normalizedUserRole === 'super_admin';
-        if (
-          !superAdminOverride &&
-          normalizedUserRole !== normalizedRole &&
-          normalizedRole !== 'sub_admin' &&
-          normalizedRole !== 'subadmin'
-        ) {
-          router.push(`/dashboard/${roleCode.toLowerCase()}`);
+        // Only enforce role mismatch when a role prop was explicitly passed
+        if (roleProp && roleCode) {
+          const normalizedRole = String(roleProp).toLowerCase();
+          const normalizedUserRole = String(roleCode).toLowerCase();
+          const superAdminOverride = normalizedUserRole === 'super_admin';
+          if (
+            !superAdminOverride &&
+            normalizedUserRole !== normalizedRole &&
+            normalizedRole !== 'sub_admin' &&
+            normalizedRole !== 'subadmin'
+          ) {
+            router.push(`/dashboard/${String(roleCode).toLowerCase()}`);
+          }
         }
       } else {
         setUser(authUser);
@@ -748,7 +756,10 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
   // Get role-specific menu items
   const getMenuItems = () => {
-    const roleCode = role.toUpperCase();
+    const roleCode = String(role || '').toUpperCase();
+    if (!roleCode) {
+      return [{ href: '/dashboard', icon: <Home className="w-5 h-5" />, label: 'Dashboard' }];
+    }
     
     const menus: Record<string, MenuItem[]> = {
       'SUPER_ADMIN': [
@@ -848,15 +859,39 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         },
         { href: '/dashboard/lead_manager/team-whatsapp', icon: <MessageCircle className="w-5 h-5" />, label: 'Team WA' },
         { href: '/dashboard/lead_manager/floor', icon: <Activity className="w-5 h-5" />, label: 'Live floor' },
+        {
+          href: '/dashboard/lead_manager/login-activity',
+          icon: <Clock className="w-5 h-5" />,
+          label: 'Login activity',
+        },
         { href: '/dashboard/lead_manager/whatsapp-dnd', icon: <AlertTriangle className="w-5 h-5" />, label: 'WA DND' },
         { href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
         { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
         { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
+        {
+          href: '/dashboard/lead_manager/telecallers',
+          icon: <UserPlus className="w-5 h-5" />,
+          label: 'Telecaller IDs',
+        },
         { href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         { href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
         { href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
+        {
+          href: '/dashboard/lead_manager/templates',
+          icon: <MessageSquare className="w-5 h-5" />,
+          label: 'Msg Templates',
+          children: [
+            { href: '/dashboard/lead_manager/templates', icon: <Phone className="w-5 h-5" />, label: 'Call scripts' },
+            {
+              href: '/dashboard/lead_manager/templates?tab=whatsapp',
+              icon: <MessageSquare className="w-5 h-5" />,
+              label: 'WhatsApp templates',
+            },
+          ],
+        },
+        { href: '/dashboard/lead_manager/reports/pipeline', icon: <BarChart3 className="w-5 h-5" />, label: 'Pipeline' },
         {
           href: '/dashboard/lead_manager/reports',
           icon: <TrendingUp className="w-5 h-5" />,
@@ -867,7 +902,6 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             { href: '/dashboard/lead_manager/reports/calls', icon: <Phone className="w-5 h-5" />, label: 'Call activity' },
             { href: '/dashboard/lead_manager/reports/exports', icon: <Download className="w-5 h-5" />, label: 'Exports' },
             { href: '/dashboard/lead_manager/reports/duplicates', icon: <Users className="w-5 h-5" />, label: 'Duplicates' },
-            { href: '/dashboard/lead_manager/reports/pipeline', icon: <BarChart3 className="w-5 h-5" />, label: 'Pipeline' },
           ],
         },
         { href: '/dashboard/lead_manager/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
@@ -931,6 +965,19 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         },
         { href: '/dashboard/telecaller/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
         { href: '/dashboard/telecaller/workshops', icon: <MapPin className="w-5 h-5" />, label: 'Workshops' },
+        {
+          href: '/dashboard/telecaller/templates',
+          icon: <MessageSquare className="w-5 h-5" />,
+          label: 'Msg Templates',
+          children: [
+            { href: '/dashboard/telecaller/templates', icon: <Phone className="w-5 h-5" />, label: 'Call scripts' },
+            {
+              href: '/dashboard/telecaller/templates?tab=whatsapp',
+              icon: <MessageSquare className="w-5 h-5" />,
+              label: 'WhatsApp templates',
+            },
+          ],
+        },
         {
           href: '/dashboard/telecaller/reports',
           icon: <BarChart3 className="w-5 h-5" />,
@@ -1000,8 +1047,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     };
 
     return menus[roleCode] || [
-      { href: `/dashboard/${role.toLowerCase()}`, icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
-      { href: `/dashboard/${role.toLowerCase()}/profile`, icon: <Users className="w-5 h-5" />, label: 'Profile' },
+      { href: `/dashboard/${roleCode.toLowerCase()}`, icon: <Home className="w-5 h-5" />, label: 'Dashboard' },
+      { href: `/dashboard/${roleCode.toLowerCase()}/profile`, icon: <Users className="w-5 h-5" />, label: 'Profile' },
     ];
   };
 
@@ -1029,7 +1076,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
               {sidebarOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
 
-            <Link href={`/dashboard/${role.toLowerCase()}`} className="flex items-center min-w-0">
+            <Link href={`/dashboard/${String(role || 'lead_manager').toLowerCase()}`} className="flex items-center min-w-0">
               <img
                 src="/logo.png"
                 alt="MyFNG"

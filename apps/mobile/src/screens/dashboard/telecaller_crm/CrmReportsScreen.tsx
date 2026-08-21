@@ -99,6 +99,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
   const compact = width < 400;
 
   const [isLeadManager, setIsLeadManager] = useState(false);
+  const [roleReady, setRoleReady] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [permissions, setPermissions] = useState<CrmPerms>(DEFAULT_PERMS);
   const [tab, setTab] = useState<TabId>(normalizeTab(route?.params?.tab));
@@ -119,6 +120,8 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
   const [searchDebounced, setSearchDebounced] = useState('');
   const [exportKind, setExportKind] = useState<'leads' | 'calls'>('leads');
   const [exporting, setExporting] = useState(false);
+  const [sectionOpen, setSectionOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
 
   const teamMode = Boolean(isLeadManager || permissions.reports_team_leaderboard);
   const canExport = Boolean(isLeadManager || permissions.reports_export);
@@ -167,6 +170,8 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
         }
       } catch {
         /* keep defaults */
+      } finally {
+        if (!cancelled) setRoleReady(true);
       }
     })();
     return () => {
@@ -181,18 +186,26 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
     ];
     if (canExport) base.push({ id: 'exports', label: 'Export', icon: 'download-outline' });
     if (canDupes) base.push({ id: 'duplicates', label: 'Duplicates', icon: 'git-network-outline' });
-    if (isLeadManager) base.push({ id: 'pipeline', label: 'Pipeline', icon: 'stats-chart-outline' });
+    // Pipeline is a separate top-level menu for Lead Manager (not under Reports)
     return base;
   }, [isLeadManager, teamMode, canExport, canDupes]);
 
   useEffect(() => {
+    if (route?.params?.tab) setTab(normalizeTab(route.params.tab));
+  }, [route?.params?.tab]);
+
+  useEffect(() => {
+    // Wait for role — otherwise pipeline deep-link resets to leaderboard while isLeadManager is still false.
+    if (!roleReady) return;
     if (tab === 'exports' && !canExport) setTab('leaderboard');
     if (tab === 'duplicates' && !canDupes) setTab('leaderboard');
     if (tab === 'pipeline' && !isLeadManager) setTab('leaderboard');
-  }, [tab, canExport, canDupes, isLeadManager]);
+  }, [tab, canExport, canDupes, isLeadManager, roleReady]);
 
   const loadTab = useCallback(async () => {
     if (tab === 'exports') return;
+    // Don't fetch pipeline until we know the user is a lead manager
+    if (tab === 'pipeline' && (!roleReady || !isLeadManager)) return;
     setLoading(true);
     setLoadError('');
     try {
@@ -225,7 +238,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [tab, period, date, searchDebounced, isLeadManager]);
+  }, [tab, period, date, searchDebounced, isLeadManager, roleReady]);
 
   useEffect(() => {
     void loadTab();
@@ -268,68 +281,54 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
   const dupGroups = Array.isArray(duplicates?.groups) ? duplicates.groups : [];
   const dupSelected = dupGroups.find((g: any) => g.key === selectedDup) || null;
 
+  const tabMeta =
+    tab === 'pipeline'
+      ? { id: 'pipeline' as const, label: 'Pipeline', icon: 'stats-chart-outline' as const }
+      : tabs.find((t) => t.id === tab) || tabs[0];
+  const showRange = tab === 'leaderboard' || tab === 'calls' || tab === 'exports';
+  const pipelineOnly = tab === 'pipeline';
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textHeading} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Reports</Text>
-          <Text style={styles.subtitle}>{rangeLabel}</Text>
-        </View>
+        {pipelineOnly ? (
+          <View style={styles.titleBtn}>
+            <Text style={styles.title} numberOfLines={1}>
+              Pipeline
+            </Text>
+            <Text style={styles.subtitle}>Lead funnel · last 7 days</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.titleBtn}
+            onPress={() => setSectionOpen(true)}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.title} numberOfLines={1}>
+              {tabMeta?.label || 'Reports'}
+            </Text>
+            <View style={styles.titleMeta}>
+              <Text style={styles.subtitle}>{showRange ? rangeLabel : 'Tap to switch'}</Text>
+              <Ionicons name="chevron-down" size={13} color={COLORS.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        )}
+        {showRange ? (
+          <TouchableOpacity onPress={() => setRangeOpen(true)} style={styles.iconBtn} hitSlop={8}>
+            <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 36 }} />
+        )}
         {tab !== 'exports' ? (
           <TouchableOpacity onPress={onRefresh} style={styles.iconBtn}>
             <Ionicons name="refresh" size={20} color={COLORS.primary} />
           </TouchableOpacity>
         ) : null}
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabsRow}
-        style={styles.tabsScroll}
-      >
-        {tabs.map((t) => {
-          const active = tab === t.id;
-          return (
-            <TouchableOpacity
-              key={t.id}
-              style={[styles.tabChip, active && styles.tabChipOn]}
-              onPress={() => setTab(t.id)}
-            >
-              <Ionicons name={t.icon} size={14} color={active ? '#fff' : COLORS.textSecondary} />
-              <Text style={[styles.tabChipText, active && styles.tabChipTextOn]}>{t.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {(tab === 'leaderboard' || tab === 'calls' || tab === 'exports') && (
-        <View style={styles.filterBlock}>
-          <View style={styles.periodRow}>
-            {(['day', 'week', 'month', 'year'] as Period[]).map((p) => (
-              <TouchableOpacity
-                key={p}
-                style={[styles.periodChip, period === p && styles.periodChipOn]}
-                onPress={() => setPeriod(p)}
-              >
-                <Text style={[styles.periodText, period === p && styles.periodTextOn]}>
-                  {p === 'day' ? 'Day' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {period === 'day' ? (
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.dateBtnText}>{date === istYmd() ? `Today · ${date}` : date}</Text>
-              <Ionicons name="chevron-down" size={14} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      )}
 
       <ScrollView
         style={styles.body}
@@ -611,6 +610,92 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
         ) : null}
       </ScrollView>
 
+
+      <Modal
+        visible={sectionOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSectionOpen(false)}
+      >
+        <Pressable style={styles.pickerOverlay} onPress={() => setSectionOpen(false)}>
+          <Pressable style={styles.sectionSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sectionTitle}>Report section</Text>
+            {tabs.map((t) => {
+              const active = tab === t.id;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[styles.sectionRow, active && styles.sectionRowOn]}
+                  onPress={() => {
+                    setTab(t.id);
+                    setSectionOpen(false);
+                  }}
+                >
+                  <Ionicons
+                    name={t.icon}
+                    size={18}
+                    color={active ? COLORS.primary : COLORS.textSecondary}
+                  />
+                  <Text style={[styles.sectionRowText, active && styles.sectionRowTextOn]}>
+                    {t.label}
+                  </Text>
+                  {active ? <Ionicons name="checkmark" size={18} color={COLORS.primary} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={rangeOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRangeOpen(false)}
+      >
+        <Pressable style={styles.pickerOverlay} onPress={() => setRangeOpen(false)}>
+          <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sectionTitle}>Period</Text>
+            <View style={styles.periodRow}>
+              {(['day', 'week', 'month', 'year'] as Period[]).map((p) => (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.periodChip, period === p && styles.periodChipOn]}
+                  onPress={() => setPeriod(p)}
+                >
+                  <Text style={[styles.periodText, period === p && styles.periodTextOn]}>
+                    {p === 'day' ? 'Day' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {period === 'day' ? (
+              <TouchableOpacity
+                style={[styles.dateBtn, { marginTop: 12 }]}
+                onPress={() => {
+                  setRangeOpen(false);
+                  setShowDatePicker(true);
+                }}
+              >
+                <Ionicons name="calendar-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.dateBtnText}>
+                  {date === istYmd() ? `Today · ${date}` : date}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.muted, { marginTop: 12 }]}>{rangeLabel}</Text>
+            )}
+            <TouchableOpacity
+              style={[styles.primaryBtn, { marginTop: 16 }]}
+              onPress={() => setRangeOpen(false)}
+            >
+              <Text style={styles.primaryBtnText}>Done</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {showDatePicker && Platform.OS === 'android' ? (
         <DateTimePicker
           value={ymdToDate(date)}
@@ -699,8 +784,31 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   iconBtn: { padding: 8 },
   kicker: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase' },
-  title: { fontSize: 22, fontWeight: '800', color: COLORS.textHeading, fontFamily: 'Poppins' },
-  subtitle: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 1 },
+  title: { fontSize: 20, fontWeight: '800', color: COLORS.textHeading },
+  titleBtn: { flex: 1, minWidth: 0, paddingRight: 4 },
+  titleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  sectionSheet: {
+    backgroundColor: '#fff',
+    marginHorizontal: 24,
+    borderRadius: 16,
+    padding: 16,
+    maxWidth: 400,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  sectionRowOn: { backgroundColor: '#EFF6FF' },
+  sectionRowText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#334155' },
+  sectionRowTextOn: { color: COLORS.primary, fontWeight: '800' },
+
+  subtitle: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 0 },
   tabsScroll: { maxHeight: 48, flexGrow: 0 },
   tabsRow: { paddingHorizontal: SPACING.md, gap: 8, paddingBottom: 8 },
   tabChip: {

@@ -4,6 +4,7 @@ import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { toServiceLeadType } from '@/lib/customer-service-leads';
 import { parseServiceIdList } from '@/lib/telecaller/crmQuote';
+import { addLeadTags } from '@/lib/telecaller/crmLeadTagsApply';
 
 export const dynamic = 'force-dynamic';
 
@@ -185,9 +186,54 @@ export async function POST(request: NextRequest) {
             { status: 400 },
           );
         }
+        // Continue with retry lead (same post-create hooks)
+        const leadFixed = retry.data as typeof lead;
+        try {
+          await db.from('telecaller_call_logs').insert([
+            {
+              lead_id: leadFixed.id,
+              telecaller_id: profile?.id,
+              call_type: 'OUTBOUND',
+              call_status: callStatus,
+              outcome: outcome || null,
+              notes: callNotes || callLabel || 'Advanced CRM — saved as lead',
+              phone_number: customerPhone,
+              created_at: activityAt,
+            },
+          ]);
+        } catch {
+          /* optional */
+        }
+        if (nextFollowUpAt) {
+          try {
+            await db.from('telecaller_follow_ups').insert([
+              {
+                lead_id: leadFixed.id,
+                telecaller_id: profile?.id,
+                follow_up_type: 'CALLBACK',
+                scheduled_time: nextFollowUpAt,
+                reason: callNotes || callLabel || 'Follow-up',
+                priority: 'NORMAL',
+                status: 'PENDING',
+              },
+            ]);
+          } catch {
+            /* optional */
+          }
+        }
+        const tagIdsRetry = Array.isArray(body?.tag_ids)
+          ? body.tag_ids.map((x: unknown) => String(x || '').trim()).filter(Boolean)
+          : [];
+        if (tagIdsRetry.length) {
+          try {
+            await addLeadTags(String(leadFixed.id), tagIdsRetry, profile?.id || null);
+          } catch {
+            /* optional */
+          }
+        }
         return NextResponse.json({
           success: true,
-          lead: retry.data,
+          lead: leadFixed,
           message: 'Lead saved (incomplete flag skipped on schema).',
         });
       }
@@ -249,6 +295,17 @@ export async function POST(request: NextRequest) {
       ]);
     } catch {
       /* optional */
+    }
+
+    const tagIds = Array.isArray(body?.tag_ids)
+      ? body.tag_ids.map((x: unknown) => String(x || '').trim()).filter(Boolean)
+      : [];
+    if (tagIds.length && lead?.id) {
+      try {
+        await addLeadTags(String(lead.id), tagIds, profile?.id || null);
+      } catch {
+        /* optional */
+      }
     }
 
     return NextResponse.json({

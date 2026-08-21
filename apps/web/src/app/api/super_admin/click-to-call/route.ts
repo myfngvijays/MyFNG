@@ -4,7 +4,6 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   getClickToCallConfig,
   publicClickToCallConfig,
-  resolveDidForTelecaller,
   saveClickToCallConfig,
   type DidAssignment,
 } from '@/lib/telecaller/clickToCallConfig';
@@ -108,8 +107,14 @@ export async function POST(request: NextRequest) {
         provider: body.provider,
         dids: body.dids,
         did_assignments: body.did_assignments,
+        dial_mode: body.dial_mode,
+        auto_dial_on_fresh_assign: body.auto_dial_on_fresh_assign,
         gateway_key: canEditSecrets ? body.gateway_key : undefined,
         clear_gateway_key: canEditSecrets ? Boolean(body.clear_gateway_key) : false,
+        smartflo_api_token: canEditSecrets ? body.smartflo_api_token : undefined,
+        clear_smartflo_api_token: canEditSecrets
+          ? Boolean(body.clear_smartflo_api_token)
+          : false,
       });
       return NextResponse.json({
         success: true,
@@ -198,43 +203,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'to (customer) number required' }, { status: 400 });
     }
 
-    const cfg = await getClickToCallConfig();
-    if (!cfg.enabled) {
-      return NextResponse.json({ error: 'Click-to-call is disabled in settings' }, { status: 400 });
-    }
-
     const telecallerId = String(body.telecaller_id || '').trim() || null;
-    const didOverride = String(body.did || '').replace(/\D/g, '');
-    const did =
-      didOverride ||
-      resolveDidForTelecaller(cfg, telecallerId) ||
-      cfg.did;
+    const didOverride = String(body.did || '').replace(/\D/g, '') || null;
 
-    const url = new URL(cfg.gateway_url);
-    url.searchParams.set('from', from10);
-    url.searchParams.set('to', to10);
-    url.searchParams.set('did', did);
-    url.searchParams.set('provider', cfg.provider);
+    const { initiateClickToCall } = await import('@/lib/telecaller/initiateClickToCall');
+    const result = await initiateClickToCall({
+      from: from10,
+      to: to10,
+      telecallerId,
+      did: didOverride,
+    });
 
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (cfg.gateway_key) headers.Authorization = `Bearer ${cfg.gateway_key}`;
-
-    const upstream = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
-    const text = await upstream.text().catch(() => '');
-    let json: any = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      json = null;
-    }
-
-    if (!upstream.ok) {
+    if (!result.ok) {
       return NextResponse.json(
         {
-          error: (json && (json.error || json.message)) || text || `Gateway ${upstream.status}`,
-          from: from10,
-          to: to10,
-          did,
+          error: result.error || 'Test call failed',
+          from: result.from || from10,
+          to: result.to || to10,
+          did: result.did,
+          via: result.via,
         },
         { status: 502 },
       );
@@ -242,11 +229,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Test call initiated — answer the from phone first',
-      from: from10,
-      to: to10,
-      did,
-      gateway: json || { raw: text || 'ok' },
+      message:
+        'Test call initiated — answer the FROM (telecaller) phone first; customer connects after pickup',
+      from: result.from,
+      to: result.to,
+      did: result.did,
+      via: result.via,
+      gateway: result.upstream,
     });
   }
 

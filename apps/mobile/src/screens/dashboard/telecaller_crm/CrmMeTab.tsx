@@ -43,7 +43,7 @@ type Props = {
   isLeadManager?: boolean;
 };
 
-export default function CrmMeTab({ navigation, active = true, isLeadManager = false }: Props) {
+export default function CrmMeTab({ navigation, active = true }: Props) {
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [attendance, setAttendance] = useState<any>(null);
@@ -256,8 +256,7 @@ export default function CrmMeTab({ navigation, active = true, isLeadManager = fa
     >
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>My Profile</Text>
-          <Text style={styles.sub}>Profile & attendance together</Text>
+          <Text style={styles.sub}>Profile & attendance</Text>
         </View>
         {!isEditing ? (
           <TouchableOpacity style={styles.editBtn} onPress={() => setIsEditing(true)}>
@@ -280,39 +279,6 @@ export default function CrmMeTab({ navigation, active = true, isLeadManager = fa
         )}
       </View>
 
-      {isLeadManager ? (
-        <View style={styles.mgrLinks}>
-          <TouchableOpacity
-            style={styles.mgrLink}
-            onPress={() => navigation.navigate('LeadManagerFloor')}
-          >
-            <Ionicons name="people-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.mgrLinkText}>Live floor</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.mgrLink}
-            onPress={() => navigation.navigate('LeadManagerTeamWhatsApp')}
-          >
-            <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
-            <Text style={styles.mgrLinkText}>Team WA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.mgrLink}
-            onPress={() => navigation.navigate('LeadManagerWhatsAppDnd')}
-          >
-            <Ionicons name="ban-outline" size={18} color="#DC2626" />
-            <Text style={styles.mgrLinkText}>WA DND</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.mgrLink}
-            onPress={() => navigation.navigate('LeadManagerStatuses')}
-          >
-            <Ionicons name="ellipse-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.mgrLinkText}>Lead status</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
       {/* Profile card — MyFNG premium blue */}
       <View style={styles.premiumCard}>
         <View style={styles.premiumTop}>
@@ -322,9 +288,11 @@ export default function CrmMeTab({ navigation, active = true, isLeadManager = fa
                 {profileImage ? (
                   <Image source={{ uri: profileImage }} style={styles.avatarImg} />
                 ) : (
-                  <Text style={styles.avatarText}>
-                    {(firstName || lastName || profile?.full_name || '?').charAt(0).toUpperCase()}
-                  </Text>
+                  <Image
+                    source={require('../../../../assets/profile-default.png')}
+                    style={styles.avatarLogo}
+                    resizeMode="cover"
+                  />
                 )}
               </View>
               <TouchableOpacity
@@ -564,19 +532,6 @@ const styles = StyleSheet.create({
   },
   editBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   cancelBtnText: { color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 },
-  mgrLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  mgrLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  mgrLinkText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 14,
@@ -634,7 +589,7 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -642,7 +597,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.45)',
   },
   avatarImg: { width: 76, height: 76, borderRadius: 38 },
-  avatarText: { fontSize: 26, fontWeight: '800', color: '#FFFFFF' },
+  avatarLogo: { width: 76, height: 76 },
   cameraBtn: {
     position: 'absolute',
     right: -2,

@@ -28,6 +28,7 @@ import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
+import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
 import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanPicker';
 import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
@@ -41,20 +42,6 @@ import {
   extractInboundCustomerMessage,
   redactLeadSourceForTelecaller,
 } from '../../../lib/redactLeadSource';
-
-const EDITABLE_LEAD_STATUSES = new Set([
-  'NEW',
-  'CONTACTED',
-  'INCOMPLETE',
-  'ASSIGNED',
-  'VALIDATED',
-  'PENDING',
-  'IN_PROGRESS',
-  'REJECTED', // Lost — telecallers must still edit & re-quote
-  'ACCEPTED',
-  'HOLD',
-  'COMPLETED',
-]);
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'CNG', 'Hybrid'];
 
@@ -408,7 +395,7 @@ export default function TelecallerLeadDetailScreen({
   route,
   navigation,
   embedded = false,
-  initialEditing = false,
+  initialEditing = true,
 }: any) {
   const { user } = useAuth();
   const { leadId } = route.params;
@@ -418,7 +405,7 @@ export default function TelecallerLeadDetailScreen({
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [editing, setEditing] = useState(Boolean(initialEditing));
+  const [editing, setEditing] = useState(true);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
@@ -609,32 +596,6 @@ export default function TelecallerLeadDetailScreen({
       ...(modelId ? { model_id: modelId } : {}),
       ...(vehicleClass ? { vehicle_class: vehicleClass } : {}),
     }));
-  };
-
-  const startEditing = async () => {
-    if (!lead) return;
-    seedEditForm(lead);
-    setActivityData({
-      result: 'RINGING',
-      lostReason: '',
-      notes: '',
-      date: '',
-      time: '',
-    });
-    setEditing(true);
-    void enrichEditFormForPricing(lead);
-    if (cities.length === 0) {
-      try {
-        const { data: cityRows } = await supabase
-          .from('cities')
-          .select('id, name, state')
-          .eq('is_active', true)
-          .order('name');
-        setCities(cityRows || []);
-      } catch {
-        /* ignore */
-      }
-    }
   };
 
   const cancelEditing = () => {
@@ -1033,7 +994,7 @@ export default function TelecallerLeadDetailScreen({
         date: '',
         time: '',
       });
-      setEditing(false);
+      setEditing(true);
       await fetchLeadDetails();
       Alert.alert('Updated', `Lead saved successfully.${waNote}`);
     } catch (e: any) {
@@ -1200,27 +1161,24 @@ export default function TelecallerLeadDetailScreen({
   }, []);
 
   useEffect(() => {
-    if (initialEditing && lead) {
-      seedEditForm(lead);
-      setEditing(true);
-      void enrichEditFormForPricing(lead);
-      (async () => {
-        if (cities.length > 0) return;
-        try {
-          const { data: cityRows } = await supabase
-            .from('cities')
-            .select('id, name, state')
-            .eq('is_active', true)
-            .order('name');
-          setCities(cityRows || []);
-        } catch {
-          /* ignore */
-        }
-      })();
-    } else if (!initialEditing) {
-      setEditing(Boolean(initialEditing));
-    }
-  }, [initialEditing, leadId, lead?.id]);
+    if (!lead) return;
+    seedEditForm(lead);
+    setEditing(true);
+    void enrichEditFormForPricing(lead);
+    (async () => {
+      if (cities.length > 0) return;
+      try {
+        const { data: cityRows } = await supabase
+          .from('cities')
+          .select('id, name, state')
+          .eq('is_active', true)
+          .order('name');
+        setCities(cityRows || []);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [leadId, lead?.id]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -1554,11 +1512,11 @@ export default function TelecallerLeadDetailScreen({
       : inferLeadPricingCategories(meta, lead?.service_type);
 
     if (!/^\d{6}$/.test(pincode)) {
-      Alert.alert('Pricing', 'Enter 6-digit pincode first (Edit → City / Pincode).');
+      Alert.alert('Pricing', 'Enter 6-digit pincode first (City / Pincode).');
       return;
     }
     if (!carModel) {
-      Alert.alert('Pricing', 'Select car model first (Edit → Vehicle).');
+      Alert.alert('Pricing', 'Select car model first (Vehicle section).');
       return;
     }
 
@@ -1729,8 +1687,6 @@ export default function TelecallerLeadDetailScreen({
     );
   }
 
-  const canEdit = EDITABLE_LEAD_STATUSES.has(String(lead?.status || '').toUpperCase());
-
   const headerStatus = resolveLeadDisplayStatus(lead, callLogs);
   const badge = getCallStatusBadge(headerStatus);
 
@@ -1800,20 +1756,6 @@ export default function TelecallerLeadDetailScreen({
           <Icon name="whatsapp" size={18} color={COLORS.green} />
           <Text style={styles.actionButtonTextSecondary}>WhatsApp</Text>
         </TouchableOpacity>
-
-        {canEdit ? (
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              styles.actionButtonEdit,
-              styles.actionButtonIconOnly,
-            ]}
-            onPress={() => (editing ? cancelEditing() : startEditing())}
-            accessibilityLabel={editing ? 'Back' : 'Edit'}
-          >
-            <Icon name={editing ? 'close' : 'pencil'} size={18} color={COLORS.primary} />
-          </TouchableOpacity>
-        ) : null}
       </View>
 
       <View style={styles.pricingSendWrap}>
@@ -2104,17 +2046,17 @@ export default function TelecallerLeadDetailScreen({
               {lead.customer_email ? (
                 <DetailRow icon="email" label="Email" value={lead.customer_email} />
               ) : null}
-              {(lead.pickup_address || lead.customer_address) ? (
-                <DetailRow
-                  icon="map-marker"
-                  label="Address"
-                  value={formatLeadAddress(
+              <DetailRow
+                icon="map-marker"
+                label="Address"
+                value={
+                  formatLeadAddress(
                     lead.pickup_address || lead.customer_address,
                     lead.city,
                     lead.pincode,
-                  )}
-                />
-              ) : null}
+                  ) || '—'
+                }
+              />
               <View style={styles.detailGrid}>
                 <DetailRow icon="city" label="City" value={lead.city || '—'} compact />
                 <DetailRow
@@ -2178,6 +2120,18 @@ export default function TelecallerLeadDetailScreen({
           ) : (
             <DetailRow icon="flag-outline" label="Priority" value={lead?.lead_priority || 'NORMAL'} />
           )}
+          {leadId ? (
+            <LeadTagsPicker
+              leadId={leadId}
+              canManage={['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+                String(
+                  (user as any)?.role?.role_code ||
+                    (user as any)?.roles?.role_code ||
+                    '',
+                ).toUpperCase(),
+              )}
+            />
+          ) : null}
           <DetailRow
             icon="clock-outline"
             label="Created"
@@ -2299,8 +2253,14 @@ export default function TelecallerLeadDetailScreen({
                 value={lead.vehicle_number || 'Not provided'}
               />
               <View style={styles.detailGrid}>
-                <DetailRow icon="car-side" label="Make" value={lead.vehicle_make || '—'} compact />
-                <DetailRow icon="car-info" label="Model" value={lead.vehicle_model || '—'} compact />
+                <DetailRow
+                  icon="car-side"
+                  label="Make / Model"
+                  value={
+                    [lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ') || '—'
+                  }
+                  compact
+                />
               </View>
               <View style={styles.detailGrid}>
                 <DetailRow
@@ -2344,7 +2304,7 @@ export default function TelecallerLeadDetailScreen({
                 return (
                   <View style={styles.priceEmpty}>
                     <Text style={styles.priceEmptyText}>
-                      Price not set yet — tap Edit to add services & quote
+                      Price not set yet — add services & quote below
                     </Text>
                   </View>
                 );

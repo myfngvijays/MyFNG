@@ -47,12 +47,16 @@ export default function LoginPage() {
         throw new Error('Your account is inactive. Please contact support.');
       }
 
-      const { recordLoginHistory } = await import('@/lib/auth/recordLoginHistory');
-      await recordLoginHistory({
-        supabase,
-        userId: authData.user.id,
+      const { getLoginGeoHint, postRecordLogin } = await import('@/lib/auth/postRecordLogin');
+      const geo = await getLoginGeoHint(3500);
+      await postRecordLogin({
         platform: 'web',
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+        accessToken: authData.session?.access_token || null,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        location_label: geo.location_label,
+        city: geo.city,
       });
 
       // Redirect based on role

@@ -18,13 +18,41 @@ import {
   X,
   AlertCircle,
   Loader2,
+  PhoneCall,
+  Share2,
+  Users,
 } from 'lucide-react';
-import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 import { extractInboundCustomerMessage } from '@/lib/telecaller/redactLeadSource';
 import CrmServicePlanPicker from '@/components/telecaller/crm/CrmServicePlanPicker';
 import CrmCarSearch from '@/components/telecaller/crm/CrmCarSearch';
+import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
+import CrmPickupVisitStep from '@/components/telecaller/crm/CrmPickupVisitStep';
+import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import { formatDateTime } from '@/lib/utils';
+
+const PIPELINE = [
+  { id: 'FRESH', label: 'Fresh' },
+  { id: 'INTERESTED', label: 'Interested' },
+  { id: 'WILL_VISIT', label: 'Will Visit' },
+  { id: 'CONFIRMED', label: 'Confirmed' },
+  { id: 'IN_SERVICE', label: 'In Service' },
+  { id: 'DONE', label: 'Done' },
+] as const;
+
+function pipelineActiveIndex(lead: any, activityResult: string): number {
+  const result = String(activityResult || lead?.coupon_meta?.last_call_result || '').toUpperCase();
+  const status = String(lead?.status || '').toUpperCase();
+  if (status === 'REJECTED' || result === 'LOST') return -1;
+  if (status === 'COMPLETED' || result === 'SERVICE_DONE') return 5;
+  if (status === 'IN_PROGRESS' || result === 'IN_SERVICE') return 4;
+  if (status === 'VALIDATED' || result === 'BOOKING_CONFIRMED') return 3;
+  if (result === 'WILL_VISIT') return 2;
+  if (result === 'INTERESTED' || result === 'CALLBACK') return 1;
+  return 0;
+}
 
 const ACTIVITY_OPTIONS = [
+  { id: 'FRESH', label: 'Fresh', lead_status: null as string | null },
   { id: 'INTERESTED', label: 'Interested', lead_status: null as string | null },
   { id: 'WILL_VISIT', label: 'He will visit', lead_status: null },
   { id: 'CALLBACK', label: 'Follow-up', lead_status: null },
@@ -159,6 +187,11 @@ export type CrmLeadEditFormProps = {
   embedded?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
+  onCall?: () => void;
+  onWhatsApp?: () => void;
+  onShare?: () => void;
+  calling?: boolean;
+  isLeadManagerRole?: boolean;
 };
 
 export default function CrmLeadEditForm({
@@ -166,14 +199,20 @@ export default function CrmLeadEditForm({
   embedded = false,
   onCancel,
   onSaved,
+  onCall,
+  onWhatsApp,
+  onShare,
+  calling = false,
+  isLeadManagerRole,
 }: CrmLeadEditFormProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { base } = getCrmDashboardBase(pathname);
+  const { base, isLeadManager: isLmFromPath } = getCrmDashboardBase(pathname);
+  const isLeadManager = isLeadManagerRole ?? isLmFromPath;
 
   const handleCancel = () => {
     if (onCancel) onCancel();
-    else router.push(`${base}/leads/${leadId}`);
+    else router.push(`${base}/leads`);
   };
 
   const [lead, setLead] = useState<any>(null);
@@ -237,10 +276,13 @@ export default function CrmLeadEditForm({
     pickup_landmark: '',
     pickup_date: '',
     pickup_time: '',
+    workshop_id: '',
+    workshop_name: '',
+    address_type: 'home' as 'home' | 'work' | 'other',
 
     notes: '',
     lead_priority: 'NORMAL',
-    activity_result: 'INTERESTED',
+    activity_result: 'FRESH',
     lost_reason: '',
     activity_notes: '',
     callback_date: '',
@@ -469,7 +511,9 @@ export default function CrmLeadEditForm({
     try {
       const { data: leadData, error: leadError } = await supabase
         .from('service_leads')
-        .select('*')
+        .select(
+          `*, assigned_telecaller:assigned_telecaller_id(id, full_name, phone), workshop:workshops(name)`,
+        )
         .eq('id', leadId)
         .single();
 
@@ -600,10 +644,19 @@ export default function CrmLeadEditForm({
             return '';
           }
         })(),
+        workshop_id: String(leadData.workshop_id || ''),
+        workshop_name: String(leadData.workshop?.name || leadData.workshop_name || ''),
+        address_type: (['home', 'work', 'other'].includes(String(meta.address_type || ''))
+          ? String(meta.address_type)
+          : 'home') as 'home' | 'work' | 'other',
 
         notes: leadData.notes || '',
         lead_priority: leadData.lead_priority || 'NORMAL',
-        activity_result: String(leadData?.coupon_meta?.last_call_result || 'INTERESTED').toUpperCase() || 'INTERESTED',
+        activity_result: (() => {
+          const raw = String(leadData?.coupon_meta?.last_call_result || '').toUpperCase().trim();
+          if (raw && ACTIVITY_OPTIONS.some((o) => o.id === raw)) return raw;
+          return 'FRESH';
+        })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
         activity_notes: String(leadData?.coupon_meta?.telecaller_remarks || ''),
       });
@@ -805,6 +858,7 @@ export default function CrmLeadEditForm({
         description: customerMessage,
 
         pickup_required: formData.pickup_required,
+        workshop_id: formData.pickup_required ? null : formData.workshop_id || null,
         pickup_address: formData.pickup_required
           ? composeSmartAddress({
               flat_number: formData.pickup_flat,
@@ -814,15 +868,14 @@ export default function CrmLeadEditForm({
               pincode: formData.pincode,
             }) || composedAddress
           : formData.pickup_address || composedAddress || null,
-        preferred_slot_start:
-          formData.pickup_required && formData.pickup_date
-            ? (() => {
-                const local = new Date(
-                  `${formData.pickup_date}T${formData.pickup_time || '10:00'}:00`,
-                );
-                return Number.isNaN(local.getTime()) ? null : local.toISOString();
-              })()
-            : null,
+        preferred_slot_start: formData.pickup_date
+          ? (() => {
+              const local = new Date(
+                `${formData.pickup_date}T${formData.pickup_time || '10:00'}:00`,
+              );
+              return Number.isNaN(local.getTime()) ? null : local.toISOString();
+            })()
+          : null,
 
         notes: formData.notes || null,
         lead_priority: formData.lead_priority,
@@ -905,29 +958,135 @@ export default function CrmLeadEditForm({
     <div
       className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} space-y-4 pb-28 ${embedded ? '' : 'px-3 sm:px-4'}`}
     >
-      <div className="relative overflow-hidden rounded-2xl bg-[#023D95] text-white p-4 sm:p-5 shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-[#023D95] text-white p-4 sm:p-6 shadow-lg">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.12),_transparent_55%)]" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0 transition"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-blue-100">Edit lead</p>
-              <h1 className="text-xl sm:text-2xl font-black truncate mt-0.5">
-                {lead.customer_name || 'Lead'}
-              </h1>
-              <p className="text-sm text-blue-100/90 mt-1 font-mono font-semibold">#{lead.lead_number}</p>
+        <div className="relative flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="rounded-xl bg-white/15 hover:bg-white/25 p-2 shrink-0 transition"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-blue-100">
+                  {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
+                </p>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate mt-0.5 text-white">
+                  {formData.customer_name || lead.customer_name || 'Lead'}
+                </h1>
+                <p className="text-sm text-blue-50 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                  <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
+                  {formData.customer_phone || lead.customer_phone ? (
+                    <span className="text-white/95">{formData.customer_phone || lead.customer_phone}</span>
+                  ) : null}
+                  {lead.created_at ? (
+                    <span className="text-white/90">Created {formatDateTime(lead.created_at)}</span>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {onCall && (formData.customer_phone || lead.customer_phone) ? (
+                <button
+                  type="button"
+                  disabled={calling}
+                  title="Click to call"
+                  onClick={onCall}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white shadow disabled:opacity-60"
+                >
+                  <PhoneCall className="w-4 h-4" />
+                </button>
+              ) : null}
+              {onWhatsApp && (formData.customer_phone || lead.customer_phone) ? (
+                <button
+                  type="button"
+                  title="WhatsApp"
+                  onClick={onWhatsApp}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25D366] hover:bg-[#1ebe57] text-white shadow"
+                >
+                  <WhatsAppIcon className="w-4 h-4" />
+                </button>
+              ) : null}
+              {onShare ? (
+                <button
+                  type="button"
+                  title={isLeadManager ? 'Assign TC' : 'Share'}
+                  onClick={onShare}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              ) : null}
+              <select
+                name="activity_result"
+                value={formData.activity_result}
+                onChange={handleChange}
+                className="h-10 min-w-[140px] rounded-xl bg-white text-[#023D95] pl-3 pr-9 text-xs font-bold shadow-sm outline-none cursor-pointer"
+                aria-label="Change lead status"
+              >
+                {ACTIVITY_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-white/20 px-3 py-1.5 text-xs font-bold ring-1 ring-white/30">
-            <AlertCircle className="w-3.5 h-3.5" />
-            {leadDisplayStatus(lead)}
-          </span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {lead.is_incomplete ? (
+              <span className="rounded-full bg-amber-400 text-amber-950 px-3 py-1 text-xs font-black">
+                Fresh
+              </span>
+            ) : null}
+            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
+              Priority {formData.lead_priority || 'NORMAL'}
+            </span>
+            {lead.assigned_telecaller?.full_name ? (
+              <span className="rounded-full bg-indigo-300/30 px-3 py-1 text-xs font-semibold inline-flex items-center gap-1">
+                <Users className="w-3.5 h-3.5" /> TC: {lead.assigned_telecaller.full_name}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl bg-white/10 p-3 overflow-x-auto">
+            <div className="flex items-center gap-1 min-w-[520px]">
+              {PIPELINE.map((step, idx) => {
+                const active = pipelineActiveIndex(lead, formData.activity_result);
+                const lost = active < 0;
+                const done = !lost && idx <= active;
+                const current = !lost && idx === active;
+                return (
+                  <div key={step.id} className="flex items-center flex-1 min-w-0">
+                    <div
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-center text-[10px] sm:text-[11px] font-bold truncate ${
+                        lost
+                          ? 'bg-rose-500/40 text-white'
+                          : done
+                            ? current
+                              ? 'bg-white text-[#023D95]'
+                              : 'bg-emerald-400/80 text-emerald-950'
+                            : 'bg-white/10 text-blue-100'
+                      }`}
+                    >
+                      {step.label}
+                    </div>
+                    {idx < PIPELINE.length - 1 ? (
+                      <div
+                        className={`w-2 h-0.5 shrink-0 ${done ? 'bg-emerald-300' : 'bg-white/20'}`}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            {pipelineActiveIndex(lead, formData.activity_result) < 0 ? (
+              <p className="text-[11px] text-rose-100 mt-2 font-semibold">Lead marked Lost / Rejected</p>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -1063,12 +1222,7 @@ export default function CrmLeadEditForm({
               />
             </div>
             <div>
-              <FieldLabel>Activity / Disposition</FieldLabel>
-              <select name="activity_result" value={formData.activity_result} onChange={handleChange} className={fieldCls()}>
-                {ACTIVITY_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>{o.label}</option>
-                ))}
-              </select>
+              <LeadTagsPanel leadId={leadId} canManage={isLeadManager} variant="field" />
             </div>
             {formData.activity_result === 'LOST' ? (
               <div className="sm:col-span-2">
@@ -1304,77 +1458,49 @@ export default function CrmLeadEditForm({
           </div>
         </SectionCard>
 
-        <SectionCard title="Pickup Details" icon={Calendar} tone="violet">
-          <div className="space-y-3">
-            <label className="flex items-center gap-3 rounded-xl border border-violet-200 bg-white px-4 py-3 cursor-pointer hover:bg-violet-50/50 transition">
-              <input type="checkbox" name="pickup_required" checked={formData.pickup_required} onChange={handleChange} className="h-4 w-4 rounded border-slate-300 text-[#023D95]" />
-              <span className="text-sm font-bold text-slate-800">Pickup required</span>
-            </label>
-            {formData.pickup_required ? (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <div>
-                  <FieldLabel>Flat / Building</FieldLabel>
-                  <input
-                    type="text"
-                    name="pickup_flat"
-                    value={formData.pickup_flat}
-                    onChange={handleChange}
-                    className={fieldCls()}
-                    placeholder="Flat / house no."
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Area / Street</FieldLabel>
-                  <input
-                    type="text"
-                    name="pickup_area"
-                    value={formData.pickup_area}
-                    onChange={handleChange}
-                    className={fieldCls()}
-                    placeholder="Society, road, locality"
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Landmark</FieldLabel>
-                  <input
-                    type="text"
-                    name="pickup_landmark"
-                    value={formData.pickup_landmark}
-                    onChange={handleChange}
-                    className={fieldCls()}
-                    placeholder="Near …"
-                  />
-                </div>
-                <div className="hidden lg:block" />
-                <div>
-                  <FieldLabel>Pickup Date</FieldLabel>
-                  <input
-                    type="date"
-                    name="pickup_date"
-                    value={formData.pickup_date}
-                    onChange={handleChange}
-                    className={fieldCls()}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Pickup Time</FieldLabel>
-                  <input
-                    type="time"
-                    name="pickup_time"
-                    value={formData.pickup_time}
-                    onChange={handleChange}
-                    className={fieldCls()}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <p className="text-[11px] text-slate-500 pt-6">
-                    Leave area blank to reuse customer address area. Date + time save as preferred slot.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </SectionCard>
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
+          <CrmPickupVisitStep
+            value={{
+              pickup_required: formData.pickup_required,
+              vehicle_number: formData.vehicle_number || '',
+              pickup_date: formData.pickup_date,
+              pickup_time: formData.pickup_time,
+              pickup_address: formData.pickup_area || formData.pickup_address || '',
+              address_type: formData.address_type || 'home',
+              flat_number: formData.pickup_flat,
+              landmark: formData.pickup_landmark,
+              workshop_id: formData.workshop_id || '',
+              workshop_name: formData.workshop_name || '',
+            }}
+            onChange={(patch) => {
+              setFormData((prev) => ({
+                ...prev,
+                ...(patch.pickup_required !== undefined
+                  ? { pickup_required: patch.pickup_required }
+                  : {}),
+                ...(patch.pickup_date !== undefined ? { pickup_date: patch.pickup_date } : {}),
+                ...(patch.pickup_time !== undefined ? { pickup_time: patch.pickup_time } : {}),
+                ...(patch.pickup_address !== undefined
+                  ? { pickup_area: patch.pickup_address, pickup_address: patch.pickup_address }
+                  : {}),
+                ...(patch.flat_number !== undefined ? { pickup_flat: patch.flat_number } : {}),
+                ...(patch.landmark !== undefined ? { pickup_landmark: patch.landmark } : {}),
+                ...(patch.workshop_id !== undefined ? { workshop_id: patch.workshop_id } : {}),
+                ...(patch.workshop_name !== undefined
+                  ? { workshop_name: patch.workshop_name || '' }
+                  : {}),
+                ...(patch.address_type !== undefined ? { address_type: patch.address_type } : {}),
+                ...(patch.vehicle_number !== undefined
+                  ? { vehicle_number: patch.vehicle_number }
+                  : {}),
+              }));
+            }}
+            city={formData.city}
+            cityId={formData.city_id}
+            pincode={formData.pincode}
+            hideVehicleNumber
+          />
+        </div>
 
         <SectionCard title="Additional Information" icon={FileText} tone="indigo">
           <div>
@@ -1386,7 +1512,7 @@ export default function CrmLeadEditForm({
         <div className="fixed bottom-0 inset-x-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur px-3 py-3 sm:px-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)]">
           <div className="mx-auto flex max-w-5xl flex-col sm:flex-row gap-2 sm:gap-3">
             <button type="button" onClick={handleCancel} className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-              <X className="w-4 h-4" /> Cancel
+              <X className="w-4 h-4" /> Back
             </button>
             <button type="submit" disabled={saving} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#023D95] px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#012f73] disabled:opacity-60">
               {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>) : (<><Save className="w-4 h-4" /> Save Changes</>)}

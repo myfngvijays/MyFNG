@@ -300,11 +300,18 @@ export default function LinksListSection() {
                 const active = selected?.id === link.id;
                 const mode = String(link.meta?.create_mode || '');
                 return (
-                  <button
+                  <div
                     key={link.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelected(link)}
-                    className={`w-full px-4 py-3.5 text-left transition hover:bg-blue-50/50 ${
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelected(link);
+                      }
+                    }}
+                    className={`w-full cursor-pointer px-4 py-3.5 text-left transition hover:bg-blue-50/50 ${
                       active ? 'bg-blue-50' : 'bg-white'
                     }`}
                   >
@@ -391,7 +398,7 @@ export default function LinksListSection() {
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

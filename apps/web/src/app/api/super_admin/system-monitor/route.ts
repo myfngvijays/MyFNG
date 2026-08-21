@@ -1859,7 +1859,7 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
       status: ok ? (responseTime > 5000 ? 'degraded' : 'healthy') : 'degraded',
       responseTime,
       message: ok ? 'Click-to-call gateway host reachable' : 'Gateway probe inconclusive',
-      reason: `Call buttons use ${gateway} (DID ${did}, provider ${provider}). Set telecaller from-numbers on Click to Call setup.`,
+      reason: `Hits gateway URL with ?from=&to=&did= (DID ${did}). Fresh auto-dial uses the same URL when enabled.`,
       lastChecked: new Date().toISOString(),
       quickFix: {
         label: 'Open Click to Call setup',
@@ -1871,6 +1871,7 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
         did,
         provider,
         enabled: true,
+        auto_dial_on_fresh_assign: Boolean(cfg.auto_dial_on_fresh_assign),
         has_gateway_key: Boolean(cfg.gateway_key),
         env: {
           CLICK_TO_CALL_GATEWAY_URL: Boolean(process.env.CLICK_TO_CALL_GATEWAY_URL),
@@ -2065,6 +2066,19 @@ async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
       }
     }
 
+    const { error: loginGeoErr } = await supabaseAdmin
+      .from('user_login_history')
+      .select('id, ip_address, latitude, device_label')
+      .limit(1);
+    if (
+      loginGeoErr &&
+      /does not exist|relation|Could not find|column|ip_address|latitude|device_label/i.test(
+        String(loginGeoErr.message || ''),
+      )
+    ) {
+      missing.push('user_login_history.geo (330)');
+    }
+
     if (missing.length) {
       return {
         name: 'CRM Manager Ops Tables',
@@ -2072,7 +2086,7 @@ async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
         status: 'degraded',
         responseTime: Date.now() - start,
         message: `Missing: ${missing.join(', ')}`,
-        reason: 'Run database/317…, 322, 323, 325, 326_crm_lead_tags_parent_meta_ads.sql',
+        reason: 'Run CRM SQL migrations incl. database/330_user_login_history_geo.sql',
         quickFix: {
           label: 'Open SQL migrations',
           action: 'external-link',
@@ -2087,7 +2101,7 @@ async function checkCrmManagerOpsTables(): Promise<HealthCheck> {
       category: 'Operations',
       status: 'healthy',
       responseTime: Date.now() - start,
-      message: 'Tags, saved views, WA DND tables OK',
+      message: 'Tags, saved views, WA DND, login geo OK',
       lastChecked: new Date().toISOString(),
     };
   } catch (e: any) {

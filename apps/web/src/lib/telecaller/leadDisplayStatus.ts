@@ -3,7 +3,6 @@
 export const LEAD_STATUS_FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'new', label: 'Fresh' },
-  { id: 'incomplete', label: 'Incomplete' },
   { id: 'interested', label: 'Interested' },
   { id: 'will_visit', label: 'He will visit' },
   { id: 'callback', label: 'Follow-up' },
@@ -57,11 +56,23 @@ const PIPELINE_LABEL: Record<string, string> = {
   ASSIGNED: 'Assigned',
   ACCEPTED: 'Accepted',
   PENDING: 'Pending',
-  INCOMPLETE: 'Incomplete',
+  INCOMPLETE: 'Fresh',
 };
 
 /** Friendly CRM status for list/detail badges (not raw ANSWERED / NEW). */
 export function leadDisplayStatus(lead: any): string {
+  if (lead && typeof lead === 'object' && Boolean(lead.is_incomplete)) {
+    const result = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+    if (result && RESULT_LABEL[result] && result !== 'FRESH') {
+      return RESULT_LABEL[result];
+    }
+    const label = String(lead?.coupon_meta?.last_call_label || '').trim();
+    if (label && !/^fresh$/i.test(label) && !/^new$/i.test(label) && !/^incomplete$/i.test(label)) {
+      return shortLeadStatusLabel(label);
+    }
+    return 'Fresh';
+  }
+
   const label = String(lead?.coupon_meta?.last_call_label || '').trim();
   if (label && /otp verified/i.test(label)) return label;
   if (label) return shortLeadStatusLabel(label);

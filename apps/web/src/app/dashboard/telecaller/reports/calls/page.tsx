@@ -217,7 +217,7 @@ export default function CrmReportsCallsPage() {
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Badge>{c.call_status || '—'}</Badge>
                       <Badge tone="soft">{c.call_type || 'OUT'}</Badge>
-                      {c.lead?.is_incomplete ? <Badge tone="warn">Incomplete</Badge> : null}
+                      {c.lead?.is_incomplete ? <Badge tone="warn">Fresh</Badge> : null}
                       {isLeadManager && c.lead?.telecaller_name ? (
                         <Badge tone="soft">{c.lead.telecaller_name}</Badge>
                       ) : null}

@@ -247,13 +247,7 @@ export default function CrmHomeTab({
 
       <View style={styles.kpiGrid}>
         {[
-          { label: 'Fresh', value: kpis.new_leads, statusKey: 'Fresh', filter: 'new' },
-          {
-            label: 'Incomplete',
-            value: kpis.incomplete,
-            statusKey: 'Incomplete',
-            filter: 'incomplete',
-          },
+          { label: 'Fresh', value: (kpis.new_leads || 0) + (kpis.incomplete || 0), statusKey: 'Fresh', filter: 'new' },
           {
             label: 'Interested',
             value: kpis.interested,
@@ -291,15 +285,19 @@ export default function CrmHomeTab({
             filter: 'service_done',
           },
           {
+            label: 'Today due',
+            value: kpis.followups_today,
+            statusKey: 'Follow-up',
+            filter: 'followups',
+          },
+          {
             label: 'Lost',
             value: kpis.lost ?? kpis.rejected,
             statusKey: 'Lost',
             filter: 'lost',
           },
         ].map((k) => {
-          const tint = leadStatusKpiColors(
-            k.label === 'Incomplete' ? { is_incomplete: true } : k.statusKey,
-          );
+          const tint = leadStatusKpiColors(k.statusKey);
           const accent = statusAccentColor(tint);
           return (
             <TouchableOpacity
@@ -308,7 +306,13 @@ export default function CrmHomeTab({
                 styles.kpiCard,
                 { backgroundColor: tint.cardBg, borderColor: tint.border, borderWidth: 1 },
               ]}
-              onPress={() => onNavigate('queue', { filter: k.filter })}
+              onPress={() => {
+                if (k.filter === 'followups') {
+                  onNavigate('TelecallerFollowUps');
+                  return;
+                }
+                onNavigate('queue', { filter: k.filter });
+              }}
               activeOpacity={0.85}
             >
               <Text style={[styles.kpiValue, { color: accent }]}>{k.value ?? 0}</Text>
@@ -340,6 +344,7 @@ export default function CrmHomeTab({
 
       <SimpleBarChart
         title="7-Day Call Trend"
+        layout="vertical"
         data={trend.map((t: any) => ({
           label: t.label || t.date?.slice(5) || '',
           value: Number(t.calls || 0),
@@ -351,6 +356,7 @@ export default function CrmHomeTab({
 
       <SimpleBarChart
         title="7-Day Bookings Created"
+        layout="vertical"
         data={trend.map((t: any) => ({
           label: t.label || t.date?.slice(5) || '',
           value: Number(t.leads_created || 0),

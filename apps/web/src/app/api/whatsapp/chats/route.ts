@@ -189,24 +189,22 @@ async function loadTelecallerLeadPhones(
     const phone = normalizePhone(String(row.customer_phone || ''));
     if (!phone || byPhone.has(phone)) continue;
     const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
-    const leadInboundAt =
-      String(meta.last_inbound_at || meta.inbound_at || '').trim() ||
-      row.updated_at ||
-      row.created_at ||
-      null;
+    // Real inbound only — do not fall back to updated_at (breaks 24h window Closed tab).
+    const metaInboundAt = String(meta.last_inbound_at || meta.inbound_at || '').trim() || null;
     const preview = leadMessagePreview(row);
     const waInbound = Boolean(meta.whatsapp_inbound || meta.whatsapp_enquiry);
     byPhone.set(phone, {
       phone,
       customer_name: String(row.customer_name || '').trim() || null,
       lead_message_preview: preview,
-      lead_inbound_at: leadInboundAt,
+      lead_inbound_at: metaInboundAt,
       whatsapp_inbound: waInbound,
       last_message_preview: preview,
       last_message_type: null,
       last_direction: waInbound ? 'INBOUND' : null,
       last_status: null,
-      last_message_at: leadInboundAt,
+      last_message_at: metaInboundAt || row.updated_at || row.created_at || null,
+      last_inbound_at: metaInboundAt,
     });
   }
 
@@ -277,11 +275,7 @@ async function loadAllCrmLeadPhones(
     const customerName = String(row.customer_name || '').trim() || null;
     if (nameQ && !String(customerName || '').toLowerCase().includes(nameQ)) continue;
     const meta = row?.coupon_meta && typeof row.coupon_meta === 'object' ? row.coupon_meta : {};
-    const leadInboundAt =
-      String(meta.last_inbound_at || meta.inbound_at || '').trim() ||
-      row.updated_at ||
-      row.created_at ||
-      null;
+    const metaInboundAt = String(meta.last_inbound_at || meta.inbound_at || '').trim() || null;
     const preview = leadMessagePreview(row);
     const waInbound = Boolean(meta.whatsapp_inbound || meta.whatsapp_enquiry);
     const assignee = row?.assigned_telecaller;
@@ -294,11 +288,22 @@ async function loadAllCrmLeadPhones(
       last_message_type: null,
       last_direction: waInbound ? 'INBOUND' : null,
       last_status: null,
-      last_message_at: leadInboundAt,
+      last_message_at: metaInboundAt || row.updated_at || row.created_at || null,
+      last_inbound_at: metaInboundAt,
     });
   }
 
   return byPhone;
+}
+
+function touchLastInbound(chat: any, direction: string, createdAt: unknown) {
+  if (String(direction || '').trim().toUpperCase() !== 'INBOUND') return;
+  const rowTs = ts(createdAt);
+  if (!Number.isFinite(rowTs) || rowTs <= 0) return;
+  const prevTs = ts(chat?.last_inbound_at);
+  if (!chat.last_inbound_at || rowTs >= prevTs) {
+    chat.last_inbound_at = createdAt;
+  }
 }
 
 async function getTelecallerWhatsappChats(
@@ -378,6 +383,7 @@ async function getTelecallerWhatsappChats(
           existing.last_direction = row?.direction || existing.last_direction;
           existing.last_message_at = row?.created_at || existing.last_message_at;
         }
+        if (existing) touchLastInbound(existing, String(row?.direction || ''), row?.created_at);
       }
     }
   } catch {
@@ -387,8 +393,9 @@ async function getTelecallerWhatsappChats(
   // Skip N+1 whatsapp_messages enrich — lead preview is enough for inbox list.
   // Opening a chat loads full history separately.
   const chats = Array.from(byPhone.values())
-    .map(({ lead_message_preview: _lp, lead_inbound_at: _la, whatsapp_inbound: _wi, ...rest }) => ({
+    .map(({ lead_message_preview: _lp, lead_inbound_at, whatsapp_inbound: _wi, ...rest }) => ({
       ...rest,
+      last_inbound_at: rest.last_inbound_at || lead_inbound_at || null,
       unread_count: unreadCountForChat(rest, unreadStreak, rest.phone, readMap),
     }))
     .sort((a, b) => ts(b.last_message_at) - ts(a.last_message_at));
@@ -557,8 +564,11 @@ export async function GET(request: NextRequest) {
                 last_direction: row?.direction || null,
                 last_status: row?.status || null,
                 last_message_at: row?.created_at || existing?.last_message_at || null,
+                last_inbound_at: existing?.last_inbound_at || null,
               });
             }
+            const merged = byPhone.get(phone);
+            if (merged) touchLastInbound(merged, String(row?.direction || ''), row?.created_at);
           }
         } catch (mergeErr) {
           console.warn('[whatsapp/chats] message merge skipped', mergeErr);
@@ -592,6 +602,7 @@ export async function GET(request: NextRequest) {
               existing.last_status = row?.status || existing.last_status;
               existing.last_message_at = row?.created_at || existing.last_message_at;
             }
+            if (existing) touchLastInbound(existing, String(row?.direction || ''), row?.created_at);
           }
         } catch {
           /* optional */

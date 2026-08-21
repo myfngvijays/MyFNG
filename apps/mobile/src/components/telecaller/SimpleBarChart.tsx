@@ -2,18 +2,59 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { COLORS } from '../../constants/theme';
 
-type Point = { label: string; value: number; color?: string };
+type Point = { label: string; value: number; color?: string; fullLabel?: string };
 
 export default function SimpleBarChart({
   data,
   height = 140,
   title,
+  layout = 'auto',
 }: {
   data: Point[];
   height?: number;
   title?: string;
+  /** vertical = classic columns; horizontal = label + bar (best for long names); auto picks by count */
+  layout?: 'vertical' | 'horizontal' | 'auto';
 }) {
   const max = Math.max(1, ...data.map((d) => Number(d.value || 0)));
+  const useHorizontal =
+    layout === 'horizontal' || (layout === 'auto' && data.length > 5);
+
+  if (useHorizontal) {
+    return (
+      <View style={styles.wrap}>
+        {title ? <Text style={styles.title}>{title}</Text> : null}
+        <View style={styles.hList}>
+          {data.map((d, i) => {
+            const value = Number(d.value || 0);
+            const pct = Math.max(value > 0 ? 6 : 0, Math.round((value / max) * 100));
+            const name = String(d.fullLabel || d.label || '').trim() || '—';
+            return (
+              <View key={`${name}-${i}`} style={styles.hRow}>
+                <Text style={styles.hLabel} numberOfLines={2}>
+                  {name}
+                </Text>
+                <View style={styles.hTrack}>
+                  <View
+                    style={[
+                      styles.hBar,
+                      {
+                        width: `${pct}%`,
+                        backgroundColor: d.color || COLORS.primary,
+                        opacity: value > 0 ? 1 : 0.25,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.hValue}>{value}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
   const barArea = Math.max(48, height - 44);
 
   return (
@@ -21,10 +62,11 @@ export default function SimpleBarChart({
       {title ? <Text style={styles.title}>{title}</Text> : null}
       <View style={[styles.row, { minHeight: height }]}>
         {data.map((d, i) => {
-          const h = Math.max(4, Math.round((Number(d.value || 0) / max) * (barArea - 4)));
+          const value = Number(d.value || 0);
+          const h = Math.max(value > 0 ? 8 : 3, Math.round((value / max) * (barArea - 4)));
           return (
             <View key={`${d.label}-${i}`} style={styles.col}>
-              <Text style={styles.value}>{d.value}</Text>
+              <Text style={styles.value}>{value}</Text>
               <View style={[styles.barTrack, { height: barArea }]}>
                 <View
                   style={[
@@ -36,8 +78,8 @@ export default function SimpleBarChart({
                   ]}
                 />
               </View>
-              <Text style={styles.label} numberOfLines={1}>
-                {d.label}
+              <Text style={styles.label} numberOfLines={2}>
+                {d.fullLabel || d.label}
               </Text>
             </View>
           );
@@ -91,13 +133,49 @@ const styles = StyleSheet.create({
     maxWidth: 28,
     borderTopLeftRadius: 6,
     borderTopRightRadius: 6,
-    minHeight: 4,
+    minHeight: 3,
   },
   label: {
-    fontSize: 10,
+    fontSize: 9,
     color: COLORS.textSecondary,
     marginTop: 8,
     fontWeight: '600',
     textAlign: 'center',
+    lineHeight: 11,
+  },
+  hList: {
+    gap: 10,
+  },
+  hRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hLabel: {
+    width: 108,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textHeading,
+    lineHeight: 15,
+  },
+  hTrack: {
+    flex: 1,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#F1F5F9',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  hBar: {
+    height: 14,
+    borderRadius: 7,
+    minWidth: 0,
+  },
+  hValue: {
+    width: 36,
+    textAlign: 'right',
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textHeading,
   },
 });

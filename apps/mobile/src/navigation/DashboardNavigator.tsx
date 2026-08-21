@@ -120,9 +120,14 @@ import LeadManagerWorkshopsScreen from '../screens/dashboard/lead_manager/LeadMa
 import LeadManagerWorkshopDetailScreen from '../screens/dashboard/lead_manager/LeadManagerWorkshopDetailScreen';
 import {
   LeadManagerFloorScreen,
+  LeadManagerLoginActivityScreen,
   LeadManagerTeamWhatsAppScreen,
   LeadManagerWhatsAppDndScreen,
   LeadManagerStatusesScreen,
+  LeadManagerTeamScreen,
+  LeadManagerTagsScreen,
+  LeadManagerClickToCallScreen,
+  LeadManagerTelecallerIdsScreen,
 } from '../screens/dashboard/lead_manager/LeadManagerOpsScreens';
 
 // Super Admin screens
@@ -274,6 +279,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={require('../screens/dashboard/telecaller_crm/CrmReportsScreen').default}
           options={{ title: 'Reports', headerShown: false }}
         />
+        <Stack.Screen
+          name="CrmWhatsAppTemplates"
+          component={require('../screens/dashboard/telecaller_crm/CrmWhatsAppTemplatesScreen').default}
+          options={{ title: 'WhatsApp templates', headerShown: false }}
+        />
+        <Stack.Screen
+          name="CrmReadMe"
+          component={require('../screens/dashboard/telecaller_crm/CrmReadMeScreen').default}
+          options={{ title: 'ReadMe', headerShown: false }}
+        />
       </Stack.Navigator>
     );
   }
@@ -318,6 +333,16 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={require('../screens/dashboard/telecaller_crm/CrmReportsScreen').default}
           options={{ title: 'Reports', headerShown: false }}
         />
+        <Stack.Screen
+          name="CrmWhatsAppTemplates"
+          component={require('../screens/dashboard/telecaller_crm/CrmWhatsAppTemplatesScreen').default}
+          options={{ title: 'WhatsApp templates', headerShown: false }}
+        />
+        <Stack.Screen
+          name="CrmReadMe"
+          component={require('../screens/dashboard/telecaller_crm/CrmReadMeScreen').default}
+          options={{ title: 'ReadMe', headerShown: false }}
+        />
         <Stack.Screen 
           name="LeadManagerReports" 
           component={LeadManagerReportsScreen}
@@ -334,6 +359,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           options={{ title: 'Live floor' }}
         />
         <Stack.Screen
+          name="LeadManagerLoginActivity"
+          component={LeadManagerLoginActivityScreen}
+          options={{ title: 'Login activity', headerShown: false }}
+        />
+        <Stack.Screen
           name="LeadManagerTeamWhatsApp"
           component={LeadManagerTeamWhatsAppScreen}
           options={{ title: 'Team WhatsApp' }}
@@ -347,6 +377,26 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="LeadManagerStatuses"
           component={LeadManagerStatusesScreen}
           options={{ title: 'Lead status' }}
+        />
+        <Stack.Screen
+          name="LeadManagerTeam"
+          component={LeadManagerTeamScreen}
+          options={{ title: 'Team' }}
+        />
+        <Stack.Screen
+          name="LeadManagerTelecallerIds"
+          component={LeadManagerTelecallerIdsScreen}
+          options={{ title: 'Telecaller IDs', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerTags"
+          component={LeadManagerTagsScreen}
+          options={{ title: 'Lead tags' }}
+        />
+        <Stack.Screen
+          name="LeadManagerClickToCall"
+          component={LeadManagerClickToCallScreen}
+          options={{ title: 'Click to Call' }}
         />
         <Stack.Screen 
           name="LeadManagerWorkshopDetail" 
@@ -367,6 +417,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="TelecallerFollowUps"
           component={TelecallerFollowUpsScreen}
           options={{ title: 'Reminders' }}
+        />
+        <Stack.Screen
+          name="TelecallerScripts"
+          component={TelecallerScriptsScreen}
+          options={{ title: 'Call Scripts' }}
         />
         <Stack.Screen
           name="Notifications"

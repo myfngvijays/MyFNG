@@ -72,7 +72,7 @@ function buildMonthCells(year: number, month0: number) {
 }
 
 export default function TelecallerFollowUpsScreen({ navigation, route, embedded = false }: any) {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const initialFilter = route?.params?.filter;
 
   const [followUps, setFollowUps] = useState<any[]>([]);
@@ -186,7 +186,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
 
   useEffect(() => {
     fetchFollowUps();
-  }, [filter, searchTerm, typeFilter, customStart, customEnd]);
+  }, [filter, searchTerm, typeFilter, customStart, customEnd, role, user?.email]);
 
   // Handle hardware back button
   useEffect(() => {
@@ -205,12 +205,17 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     try {
       const { data: profile } = await supabase
         .from('users_login')
-        .select('id')
+        .select('id, roles!role_id(role_code)')
         .eq('email', user?.email)
         .single();
 
+      const profileRole = String(
+        (profile as any)?.roles?.role_code || role || '',
+      ).toUpperCase();
+      const canSeeTeam = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(profileRole);
+
       // Always load pending for accurate stats + to hide superseded Done rows
-      const pendingQuery = supabase
+      let pendingQuery = supabase
         .from('telecaller_follow_ups')
         .select(`
           *,
@@ -224,11 +229,16 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
           ),
           telecaller:telecaller_id(full_name)
         `)
-        .eq('telecaller_id', profile?.id)
         .eq('status', 'PENDING')
         .order('scheduled_time', { ascending: true });
 
-      const { data: pendingRaw, error: pendingErr } = await pendingQuery;
+      if (!canSeeTeam && profile?.id) {
+        pendingQuery = pendingQuery.eq('telecaller_id', profile.id);
+      }
+
+      const { data: pendingRaw, error: pendingErr } = await pendingQuery.limit(
+        canSeeTeam ? 500 : 200,
+      );
       if (pendingErr) throw pendingErr;
 
       const pendingList = (pendingRaw || []).filter((fu: any) => !fu.lead?.deleted_at);
@@ -245,7 +255,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
       let list: any[] = [];
 
       if (filter === 'completed') {
-        const { data: doneRaw, error: doneErr } = await supabase
+        let doneQuery = supabase
           .from('telecaller_follow_ups')
           .select(`
             *,
@@ -259,9 +269,12 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             ),
             telecaller:telecaller_id(full_name)
           `)
-          .eq('telecaller_id', profile?.id)
           .eq('status', 'COMPLETED')
           .order('completed_at', { ascending: false });
+        if (!canSeeTeam && profile?.id) {
+          doneQuery = doneQuery.eq('telecaller_id', profile.id);
+        }
+        const { data: doneRaw, error: doneErr } = await doneQuery.limit(canSeeTeam ? 500 : 200);
         if (doneErr) throw doneErr;
         // Active pending follow-up wale leads ko Done se hatao — warna same lead dono jagah dikhe
         list = (doneRaw || []).filter(
@@ -293,6 +306,7 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             fu.lead?.customer_name?.toLowerCase().includes(search) ||
             fu.lead?.customer_phone?.includes(search) ||
             fu.lead?.lead_number?.toLowerCase().includes(search) ||
+            fu.telecaller?.full_name?.toLowerCase().includes(search) ||
             fu.reason?.toLowerCase().includes(search),
         );
       }
@@ -559,8 +573,10 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
     const isToday = isPending && isScheduledIstToday(item.scheduled_time);
     const whenLabel = formatDateTime(item.scheduled_time) || scheduledTime.toLocaleString();
     const rawType = String(item.follow_up_type || 'CALLBACK').toUpperCase();
-    const typeLabel = rawType === 'CALLBACK' ? 'FOLLOW-UP' : rawType.replace(/_/g, ' ');
+    const typeLabel = rawType === 'CALLBACK' ? 'CALLBACK' : rawType.replace(/_/g, ' ');
     const phone = String(item.lead?.customer_phone || '').replace(/\D/g, '').slice(-10);
+    const assignee = String(item.telecaller?.full_name || '').trim();
+    const phoneLine = [phone || null, assignee || null].filter(Boolean).join(' · ') || '—';
     const pillLabel = isDone
       ? 'Done'
       : isCancelled
@@ -601,36 +617,43 @@ export default function TelecallerFollowUpsScreen({ navigation, route, embedded 
             </Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.customerName} numberOfLines={1}>
-              {item.lead?.customer_name || 'Customer'}
-            </Text>
+            <View style={styles.nameRow}>
+              <Text style={styles.customerName} numberOfLines={1}>
+                {item.lead?.customer_name || 'Customer'}
+              </Text>
+              {item.lead?.lead_number ? (
+                <Text style={styles.leadChip} numberOfLines={1}>
+                  {item.lead.lead_number}
+                </Text>
+              ) : null}
+            </View>
             <Text style={styles.leadMeta} numberOfLines={1}>
-              #{item.lead?.lead_number || '—'}
-              {phone ? ` · ${phone}` : ''}
+              {phoneLine}
             </Text>
+            <View style={styles.detailBlock}>
+              <Text style={styles.detailLine} numberOfLines={1}>
+                <Text style={styles.detailKey}>Type </Text>
+                {typeLabel}
+              </Text>
+              <Text
+                style={[styles.detailLine, isOverdue && styles.overdueText]}
+                numberOfLines={1}
+              >
+                <Text style={styles.detailKey}>When </Text>
+                {whenLabel}
+              </Text>
+              {item.reason ? (
+                <Text style={styles.detailLine} numberOfLines={3}>
+                  <Text style={styles.detailKey}>Reason </Text>
+                  {item.reason}
+                </Text>
+              ) : null}
+            </View>
           </View>
           <View style={[styles.timePill, pillStyle]}>
             <Text style={[styles.timePillText, pillTextStyle]}>{pillLabel}</Text>
           </View>
         </View>
-
-        <View style={styles.scheduleRow}>
-          <Icon
-            name="clock-outline"
-            size={15}
-            color={isOverdue ? '#B91C1C' : isDone ? '#059669' : '#0369A1'}
-          />
-          <Text style={[styles.scheduleText, isOverdue && styles.overdueText]}>{whenLabel}</Text>
-          <View style={styles.typePill}>
-            <Text style={styles.typePillText}>{typeLabel}</Text>
-          </View>
-        </View>
-
-        {item.reason ? (
-          <Text style={styles.noteText} numberOfLines={2}>
-            {item.reason}
-          </Text>
-        ) : null}
 
         {isPending ? (
           <View style={styles.actionsRow}>
@@ -1528,13 +1551,14 @@ const styles = StyleSheet.create({
   },
   cardTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     marginBottom: 10,
   },
   avatar: {
     width: 42,
     height: 42,
+    marginTop: 2,
     borderRadius: 14,
     backgroundColor: '#E8F1FF',
     alignItems: 'center',
@@ -1545,17 +1569,49 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
   customerName: {
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '800',
     color: COLORS.textHeading,
     letterSpacing: -0.2,
+  },
+  leadChip: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   leadMeta: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
     fontWeight: '600',
+  },
+  detailBlock: {
+    marginTop: 6,
+    gap: 2,
+  },
+  detailLine: {
+    fontSize: 12,
+    color: COLORS.textHeading,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  detailKey: {
+    fontWeight: '800',
+    color: '#64748B',
   },
   timePill: {
     paddingHorizontal: 10,

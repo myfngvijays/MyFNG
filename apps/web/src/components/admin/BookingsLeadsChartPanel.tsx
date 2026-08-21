@@ -13,6 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Download } from 'lucide-react';
+import { leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 
 type Lead = Record<string, any>;
 
@@ -167,6 +168,12 @@ function getAssignee(lead: Lead): string {
 }
 
 function getStatus(lead: Lead): string {
+  try {
+    const display = String(leadDisplayStatus(lead) || '').trim();
+    if (display) return display;
+  } catch {
+    /* fall through */
+  }
   const raw = String(lead?.status || 'UNKNOWN').trim().toUpperCase();
   if (raw === 'VALIDATED') return 'Booking confirmed';
   if (raw === 'ASSIGNED_TO_WORKSHOP') return 'Assigned to workshop';
@@ -176,7 +183,10 @@ function getStatus(lead: Lead): string {
   if (raw === 'REWORK_REQUIRED') return 'Rework required';
   if (raw === 'ON_THE_WAY') return 'On the way';
   if (raw === 'QC_APPROVED') return 'QC approved';
-  if (raw === 'IN_PROGRESS') return 'In progress';
+  if (raw === 'IN_PROGRESS') return 'In Service';
+  if (raw === 'COMPLETED') return 'Service Done';
+  if (raw === 'REJECTED') return 'Lost';
+  if (raw === 'NEW') return 'Fresh';
   return titleCaseWords(raw) || 'Unknown';
 }
 
@@ -320,6 +330,19 @@ function formatPct(pct: number) {
 
 const CALLS_ORDER = ['0', '1', '2', '3', '4', '5 - 10', '10+'];
 
+/** Same order as home KPI tiles — always show these status bars (incl. 0). */
+const STATUS_CHART_ORDER = [
+  'Fresh',
+  'Incomplete',
+  'Interested',
+  'He will visit',
+  'Follow-up',
+  'Booking confirmed',
+  'In Service',
+  'Service Done',
+  'Lost',
+];
+
 function aggregateLeads(
   leads: Lead[],
   dimension: ChartDimension,
@@ -331,7 +354,15 @@ function aggregateLeads(
     if (!key) continue;
     counts.set(key, (counts.get(key) || 0) + 1);
   }
-  const total = Array.from(counts.values()).reduce((a, b) => a + b, 0) || 1;
+
+  if (dimension === 'status') {
+    for (const key of STATUS_CHART_ORDER) {
+      if (!counts.has(key)) counts.set(key, 0);
+    }
+  }
+
+  const totalCounted = Array.from(counts.values()).reduce((a, b) => a + b, 0);
+  const total = totalCounted || 1;
   let entries = Array.from(counts.entries()).map(([key, count]) => ({
     key,
     label: key,
@@ -345,19 +376,28 @@ function aggregateLeads(
       (a, b) => CALLS_ORDER.indexOf(a.key) - CALLS_ORDER.indexOf(b.key),
     );
   } else if (dimension === 'created_on') {
-    // Keep chronological for time series when month/week/day labels sort poorly —
-    // fall back to count order for Unknown.
     entries = entries.sort((a, b) => {
       if (a.key === 'Unknown') return 1;
       if (b.key === 'Unknown') return -1;
+      return b.count - a.count;
+    });
+  } else if (dimension === 'status') {
+    const orderIdx = (k: string) => {
+      const i = STATUS_CHART_ORDER.indexOf(k);
+      return i >= 0 ? i : STATUS_CHART_ORDER.length + 1;
+    };
+    entries = entries.sort((a, b) => {
+      const oa = orderIdx(a.key);
+      const ob = orderIdx(b.key);
+      if (oa !== ob) return oa - ob;
       return b.count - a.count;
     });
   } else {
     entries = entries.sort((a, b) => b.count - a.count);
   }
 
-  // Cap crowded charts: keep top N, roll rest into Other
-  if (dimension !== 'calls_placed' && entries.length > MAX_BARS) {
+  // Cap crowded charts: keep top N, roll rest into Other (never collapse KPI statuses)
+  if (dimension !== 'calls_placed' && dimension !== 'status' && entries.length > MAX_BARS) {
     const head = entries.slice(0, MAX_BARS - 1);
     const tail = entries.slice(MAX_BARS - 1);
     const otherCount = tail.reduce((s, r) => s + r.count, 0);
@@ -565,7 +605,10 @@ export default function BookingsLeadsChartPanel({
             </p>
             <p className="text-xs font-medium text-slate-500">
               Total {total.toLocaleString('en-IN')}
-              {grainHint ? ` · ${grainHint}` : ''} · Vertical bar chart
+              {grainHint ? ` · ${grainHint}` : ''}
+              {activeDimension === 'status'
+                ? ' · KPI statuses always listed (0 = empty bar)'
+                : ' · Vertical bar chart'}
               {onBarClick ? ' · click a bar to open leads' : ''}
               {rows.length > 8 ? ' · scroll → for all labels' : ''}
             </p>
@@ -605,6 +648,7 @@ export default function BookingsLeadsChartPanel({
                   />
                   <YAxis
                     type="number"
+                    domain={[0, 'auto']}
                     allowDecimals={false}
                     tick={{ fontSize: 11, fill: '#64748B' }}
                     width={48}

@@ -24,6 +24,7 @@ type ConfigPublic = {
   has_gateway_key: boolean;
   dids: string[];
   did_assignments: DidAssignment[];
+  auto_dial_on_fresh_assign?: boolean;
 };
 
 type TelecallerRow = {
@@ -47,6 +48,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
   const [did, setDid] = useState('');
   const [provider, setProvider] = useState('smartflo');
   const [enabled, setEnabled] = useState(true);
+  const [autoDialFresh, setAutoDialFresh] = useState(true);
   const [gatewayKey, setGatewayKey] = useState('');
   const [clearKey, setClearKey] = useState(false);
   const [didAssignments, setDidAssignments] = useState<DidAssignment[]>([]);
@@ -73,6 +75,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       setGatewayUrl(String(cfg.gateway_url || ''));
       setDid(String(cfg.did || ''));
       setProvider(String(cfg.provider || 'smartflo'));
+      setAutoDialFresh(Boolean(cfg.auto_dial_on_fresh_assign));
       setDidAssignments(
         Array.isArray(cfg.did_assignments)
           ? cfg.did_assignments.map((a) => ({
@@ -119,6 +122,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           gateway_url: gatewayUrl,
           did,
           provider,
+          auto_dial_on_fresh_assign: autoDialFresh,
           gateway_key: canEditSecrets && gatewayKey.trim() ? gatewayKey.trim() : undefined,
           clear_gateway_key: canEditSecrets && clearKey,
         }),
@@ -275,9 +279,10 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
               <PhoneCall className="w-5 h-5 text-indigo-600" />
               Gateway settings
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Smartflo click-to-call: agent phone rings first (<code className="text-xs">from</code>), then
-              customer (<code className="text-xs">to</code>).
+                        <p className="text-sm text-slate-500 mt-1">
+              Sirf tumhara gateway URL hit hota hai (
+              <code className="text-xs">?from=&amp;to=&amp;did=&amp;provider=</code>
+              ). Call button aur Fresh auto-dial dono same URL use karte hain.
             </p>
           </div>
           <button
@@ -290,14 +295,30 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           </button>
         </div>
 
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-800 mb-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-800 mb-3">
           <input
             type="checkbox"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
             className="rounded border-slate-300"
           />
-          Enabled (Call buttons use gateway when on)
+          Enabled (Call + Fresh auto-dial use this URL when on)
+        </label>
+
+        <label className="mb-4 flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            checked={autoDialFresh}
+            onChange={(e) => setAutoDialFresh(e.target.checked)}
+            className="mt-1 rounded border-slate-300"
+          />
+          <span>
+            <span className="font-semibold">Auto-dial Fresh leads</span>
+            <span className="block text-xs text-slate-600 mt-0.5">
+              Naya Fresh/NEW lead assign hote hi same gateway URL hit — pehle telecaller
+              phone, uthane pe customer (jaise Call button).
+            </span>
+          </span>
         </label>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -306,9 +327,15 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             <input
               value={gatewayUrl}
               onChange={(e) => setGatewayUrl(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
               placeholder="https://….supabase.co/functions/v1/click-to-call-gateway"
             />
+            <span className="mt-1 block text-[11px] text-slate-500">
+              Example:{' '}
+              <code className="text-[10px] break-all">
+                …/click-to-call-gateway?from=TELECALLER&amp;to=CUSTOMER&amp;did=DID&amp;provider=smartflo
+              </code>
+            </span>
           </label>
           <label className="block">
             <span className="text-xs font-medium text-slate-600">Fallback DID</span>
@@ -339,7 +366,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           {canEditSecrets ? (
             <label className="block sm:col-span-2">
               <span className="text-xs font-medium text-slate-600">
-                Gateway Bearer key {config?.has_gateway_key ? '(saved — leave blank to keep)' : '(optional)'}
+                Gateway Bearer key{' '}
+                {config?.has_gateway_key ? '(saved — leave blank to keep)' : '(optional)'}
               </span>
               <input
                 type="password"
@@ -360,6 +388,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             </label>
           ) : null}
         </div>
+
 
         <button
           type="button"

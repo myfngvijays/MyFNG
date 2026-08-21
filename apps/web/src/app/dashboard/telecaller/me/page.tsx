@@ -299,13 +299,13 @@ export default function TelecallerMyProfilePage() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex flex-col items-center gap-2 shrink-0">
                   <div className="relative">
-                    <div className="flex h-[5.5rem] w-[5.5rem] items-center justify-center overflow-hidden rounded-full border-[3px] border-white/40 bg-white/15 text-3xl font-extrabold text-white">
-                      {avatarSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        (displayFirst || displayLast || '?').charAt(0).toUpperCase()
-                      )}
+                    <div className="flex h-[5.5rem] w-[5.5rem] items-center justify-center overflow-hidden rounded-full border-[3px] border-white/40 bg-white text-3xl font-extrabold text-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={avatarSrc || '/profile-default.png'}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
                     </div>
                     <button
                       type="button"

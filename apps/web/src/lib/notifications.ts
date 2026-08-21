@@ -300,6 +300,35 @@ export async function notifyTelecallerNewLeadAssignedSafe(params: {
   } catch (err) {
     console.warn('[notifyTelecallerNewLeadAssignedSafe] WhatsApp hook failed (non-blocking):', err);
   }
+
+  // Agent-first click-to-call when Auto-dial Fresh is enabled (telecaller rings first).
+  try {
+    const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+    const { autoDialFreshLeadIfEnabled } = await import(
+      '@/lib/telecaller/initiateClickToCall'
+    );
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (supabaseAdmin) {
+      const { data: leadRow } = await supabaseAdmin
+        .from('service_leads')
+        .select('id, customer_phone, status')
+        .eq('id', leadId)
+        .maybeSingle();
+      void autoDialFreshLeadIfEnabled({
+        leadId,
+        customerPhone: (leadRow as any)?.customer_phone,
+        telecallerId,
+        leadStatus: (leadRow as any)?.status,
+      }).then((r) => {
+        if (r && 'skipped' in r && r.skipped) return;
+        if (r && !r.ok) {
+          console.warn('[notifyTelecallerNewLeadAssignedSafe] auto-dial failed:', r.error);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[notifyTelecallerNewLeadAssignedSafe] auto-dial hook failed (non-blocking):', err);
+  }
 }
 
 export async function notifyTelecallerTeamlead(params: {

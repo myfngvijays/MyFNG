@@ -398,13 +398,40 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
       if (profileError) throw profileError;
 
       try {
-        const now = new Date().toISOString();
-        await supabase.from('users_login').update({ last_login: now }).eq('id', authData.user.id);
-        await supabase.from('user_login_history').insert({
-          user_id: authData.user.id,
-          logged_in_at: now,
-          platform: 'mobile',
-          user_agent: 'MyFNG Mobile App',
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+        let location_label: string | null = null;
+        try {
+          const Location = await import('expo-location');
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            const last = await Location.getLastKnownPositionAsync().catch(() => null);
+            const loc =
+              last ||
+              (await Promise.race([
+                Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+                new Promise<null>((r) => setTimeout(() => r(null), 3500)),
+              ]));
+            if (loc?.coords) {
+              latitude = loc.coords.latitude;
+              longitude = loc.coords.longitude;
+              location_label = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+            }
+          }
+        } catch {
+          /* geo optional */
+        }
+        await apiFetch('/api/auth/record-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform: 'mobile',
+            user_agent: 'MyFNG Mobile App',
+            device_label: 'MyFNG Mobile App',
+            latitude,
+            longitude,
+            location_label,
+          }),
         });
       } catch (histErr) {
         console.warn('Login history write skipped', histErr);
