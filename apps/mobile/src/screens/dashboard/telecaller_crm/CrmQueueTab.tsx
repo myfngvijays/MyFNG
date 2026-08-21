@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '../../../lib/api';
+import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { supabase } from '../../../lib/supabase';
 import { COLORS, SPACING, SHADOWS } from '../../../constants/theme';
 import {
@@ -82,8 +83,10 @@ const LOST_REASON_FILTERS = [
 /** UI badge only — keep full "Lost · reason" in meta for filters/history. */
 function shortLeadStatusLabel(label: string): string {
   const s = String(label || '').trim();
-  if (/^lost\b/i.test(s)) return 'Lost';
+  if (/^lost\b/i.test(s) || /^lost\s*[·•\-:|]/i.test(s)) return 'Lost';
   if (/^callback\b/i.test(s)) return 'Follow-up';
+  const beforeDot = s.split(/\s*[·•|]\s*/)[0]?.trim();
+  if (beforeDot && /^lost\b/i.test(beforeDot)) return 'Lost';
   return s;
 }
 
@@ -652,23 +655,6 @@ export default function CrmQueueTab({
           </View>
         </View>
 
-        <View style={{ zIndex: openDropdown === 'dateField' ? 45 : 1, marginBottom: 8 }}>
-          {renderSelect(
-            'dateField',
-            'Date type',
-            dateField,
-            [
-              { value: 'created', label: 'Created on' },
-              { value: 'modified', label: 'Modified' },
-            ],
-            (v) => {
-              const next = v === 'modified' ? 'modified' : 'created';
-              setDateField(next);
-              persistLocalFilters({ dateField: next });
-            },
-          )}
-        </View>
-
         {filter === 'lost' ? (
           <View
             style={[
@@ -825,111 +811,57 @@ export default function CrmQueueTab({
                   <Text style={styles.selectLabel}>Select</Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity onPress={() => onOpenLead(item.id)}>
+              <TouchableOpacity onPress={() => onOpenLead(item.id)} activeOpacity={0.85}>
                 <View style={styles.cardTop}>
                   <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                     {(() => {
                       const full = String(item.customer_name || 'Unknown').trim();
-                      const parts = full.split(/\s+/).filter(Boolean);
-                      const line1 = parts[0] || full;
-                      const line2 = parts.length > 1 ? parts.slice(1).join(' ') : null;
                       return (
-                        <>
-                          <Text style={styles.name}>{line1}</Text>
-                          {line2 ? <Text style={styles.nameSecond}>{line2}</Text> : null}
-                        </>
+                        <Text style={styles.name} numberOfLines={1}>
+                          {full}
+                        </Text>
                       );
                     })()}
+                    <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
                   </View>
-                  <View style={[styles.status, { backgroundColor: tint.badgeBg }]}>
-                    <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
-                      {statusLabel}
-                    </Text>
+                  <View style={styles.cardRight}>
+                    <View style={[styles.status, { backgroundColor: tint.badgeBg }]}>
+                      <Text style={[styles.statusText, { color: tint.badgeText }]} numberOfLines={1}>
+                        {statusLabel}
+                      </Text>
+                    </View>
+                    {managerOps ? (
+                      <View style={styles.assigneeWrap}>
+                        <View style={styles.assigneeAvatar}>
+                          <Text style={styles.assigneeInitials}>
+                            {(() => {
+                              const n = String(
+                                item.assigned_telecaller?.full_name ||
+                                  item.assigned_telecaller_name ||
+                                  '',
+                              ).trim();
+                              if (!n) return '?';
+                              const parts = n.split(/\s+/).filter(Boolean);
+                              if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                              return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+                            })()}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                      </View>
+                    ) : null}
                   </View>
                 </View>
-                <Text style={styles.meta}>{item.customer_phone || '—'}</Text>
-                <Text style={styles.meta}>
-                  {item.city || '—'} · {item.workshop?.name || 'No workshop'}
-                </Text>
-                {item.vehicle_number && String(item.vehicle_number).toUpperCase() !== 'NA' ? (
-                  <Text style={styles.meta}>{String(item.vehicle_number).toUpperCase()}</Text>
-                ) : null}
-                {item.vehicle_make || item.vehicle_model ? (
-                  <View style={{ marginTop: 2 }}>
-                    {String(item.vehicle_make || '')
-                      .trim()
-                      .toUpperCase() !== 'NA' && String(item.vehicle_make || '').trim() ? (
-                      <Text style={styles.meta}>{String(item.vehicle_make).trim().toUpperCase()}</Text>
-                    ) : null}
-                    {String(item.vehicle_model || '')
-                      .trim()
-                      .toUpperCase() !== 'NA' && String(item.vehicle_model || '').trim() ? (
-                      <Text style={styles.meta}>{String(item.vehicle_model).trim().toUpperCase()}</Text>
-                    ) : null}
-                  </View>
-                ) : null}
-                <Text style={styles.meta}>
-                  Created{' '}
-                  {item.created_at
-                    ? `${new Date(item.created_at).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                      })}\n${new Date(item.created_at).toLocaleTimeString('en-IN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true,
-                      })}`
-                    : '—'}
-                </Text>
-                <Text style={styles.meta}>
-                  Modified{' '}
-                  {item.updated_at || item.created_at
-                    ? `${new Date(item.updated_at || item.created_at).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                      })}\n${new Date(item.updated_at || item.created_at).toLocaleTimeString(
-                        'en-IN',
-                        {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: true,
-                        },
-                      )}`
-                    : '—'}
-                </Text>
-                {item.message_preview || item.coupon_meta?.last_inbound_message || item.problem_description ? (
-                  <View style={styles.msgRow}>
-                    <Ionicons
-                      name={item.is_whatsapp_lead ? 'logo-whatsapp' : 'chatbubble-ellipses-outline'}
-                      size={13}
-                      color={item.is_whatsapp_lead ? '#25D366' : COLORS.textSecondary}
-                    />
-                    <Text style={styles.msgPreview} numberOfLines={2}>
-                      {item.message_preview ||
-                        item.coupon_meta?.last_inbound_message ||
-                        item.problem_description}
-                    </Text>
-                  </View>
-                ) : null}
-                {Array.isArray(item.history_preview) && item.history_preview.length > 0 ? (
-                  <View style={styles.histBox}>
-                    <Text style={styles.histTitle}>History</Text>
-                    {item.history_preview.slice(0, 2).map((h: any, idx: number) => (
-                      <Text key={`${h.at || idx}`} style={styles.histLine} numberOfLines={2}>
-                        • {h.summary || 'Updated'}
-                        {h.previous_label ? ` (was ${h.previous_label})` : ''}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-                {item.coupon_code ? (
-                  <Text style={styles.coupon}>Coupon: {item.coupon_code}</Text>
-                ) : null}
               </TouchableOpacity>
               <View style={styles.actions}>
                 <TouchableOpacity
                   style={[styles.act, { backgroundColor: COLORS.primary }]}
-                  onPress={() => Linking.openURL(`tel:${item.customer_phone}`)}
+                  onPress={() =>
+                    void clickToCallCustomer({
+                      customerPhone: item.customer_phone,
+                      leadId: item.id,
+                    })
+                  }
                 >
                   <Ionicons name="call" size={14} color="#fff" />
                   <Text style={styles.actText}>Call</Text>
@@ -961,6 +893,21 @@ export default function CrmQueueTab({
             </View>
 
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {renderSelect(
+                'dateField',
+                'Date type',
+                dateField,
+                [
+                  { value: 'created', label: 'Created on' },
+                  { value: 'modified', label: 'Modified' },
+                ],
+                (v) => {
+                  const next = v === 'modified' ? 'modified' : 'created';
+                  setDateField(next);
+                  persistLocalFilters({ dateField: next });
+                },
+              )}
+
               <View style={styles.selectWrap}>
                 <Text style={styles.filterLabel}>Date range</Text>
                 <TouchableOpacity
@@ -1072,6 +1019,7 @@ export default function CrmQueueTab({
                     setAdvFollowUp(false);
                     setAdvHasVehicle(false);
                     setAdvHasCoupon(false);
+                    setDateField('created');
                     setDatePreset('today');
                     setCustomStart(istYmd());
                     setCustomEnd(istYmd());
@@ -1082,6 +1030,7 @@ export default function CrmQueueTab({
                       advFollowUp: false,
                       advHasVehicle: false,
                       advHasCoupon: false,
+                      dateField: 'created',
                     });
                     setOpenDropdown(null);
                   }}
@@ -1099,6 +1048,7 @@ export default function CrmQueueTab({
                       advFollowUp,
                       advHasVehicle,
                       advHasCoupon,
+                      dateField,
                     });
                     closeFilters();
                     setLoading(true);
@@ -1310,8 +1260,8 @@ const styles = StyleSheet.create({
   customRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   card: {
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
     ...SHADOWS.small,
   },
   selectRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
@@ -1345,12 +1295,23 @@ const styles = StyleSheet.create({
   bulkBtnOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
   bulkBtnOutlineText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   bulkClear: { color: '#fff', fontWeight: '600', fontSize: 12, marginLeft: 4 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  cardRight: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  assigneeWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  assigneeAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#5B21B6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assigneeInitials: { color: '#fff', fontSize: 10, fontWeight: '800' },
   name: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
   nameSecond: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginTop: 1 },
-  status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: '46%', flexShrink: 0 },
+  status: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: 120, flexShrink: 1 },
   statusText: { fontSize: 10, fontWeight: '700' },
-  meta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3 },
+  meta: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
   msgRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1385,14 +1346,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   coupon: { fontSize: 12, color: COLORS.orange, fontWeight: '600', marginTop: 4 },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 8 },
   act: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   actText: { color: '#fff', fontWeight: '700', fontSize: 12 },

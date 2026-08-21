@@ -1,11 +1,29 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, DollarSign, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, List, LineChart } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
-import BookingsLeadsChartPanel from '@/components/admin/BookingsLeadsChartPanel';
+import BookingsLeadsChartPanel, {
+  chartDimensionLabel,
+  leadMatchesChartBucket,
+  type ChartDimension,
+} from '@/components/admin/BookingsLeadsChartPanel';
+import {
+  FUEL_OPTIONS,
+  InlineBooleanField,
+  InlineCarField,
+  InlineCityField,
+  InlineDateField,
+  InlineEmailField,
+  InlineSelectField,
+  InlineTextField,
+  InlineTimeField,
+  InlineYearField,
+  parseAddressParts,
+  useServiceCities,
+} from '@/components/admin/bookings/ServiceLeadInlineFields';
 import {
   filterBookingLeads,
   enrichBookingLead,
@@ -21,7 +39,8 @@ import {
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
-import { leadStatusCardColors } from '@/lib/telecaller/leadDisplayStatus';
+import { leadStatusCardColors, leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
+import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import {
   getMisaOtpVerifiedLabel,
   inferMisaOtpChannel,
@@ -57,49 +76,52 @@ const EDIT_LEAD_SOURCES = [
 
 /** Core list cols default on; detail-only fields default off — toggle via Columns menu. */
 const BOOKINGS_TABLE_COLUMNS = [
-  { key: 'leadNumber', label: 'Lead #', group: 'Core', onByDefault: true, width: 100 },
-  { key: 'source', label: 'Source', group: 'Core', onByDefault: true, width: 150 },
-  { key: 'assignee', label: 'Assignee', group: 'Core', onByDefault: true, width: 140 },
-  { key: 'tcUpdate', label: 'TC Update', group: 'Core', onByDefault: true, width: 180 },
+  // Default visible (order = table order)
+  { key: 'leadStatus', label: 'Lead Status', group: 'Core', onByDefault: true, width: 130 },
+  { key: 'leadNumber', label: 'Lead #', group: 'Core', onByDefault: false, width: 120 },
   { key: 'customer', label: 'Customer', group: 'Core', onByDefault: true, width: 180 },
-  { key: 'phone', label: 'Phone', group: 'Core', onByDefault: true, width: 120 },
-  { key: 'message', label: 'Message', group: 'Core', onByDefault: true, width: 220 },
-  { key: 'leadsCount', label: 'Leads #', group: 'Core', onByDefault: true, width: 90 },
-  { key: 'vehicle', label: 'Vehicle', group: 'Core', onByDefault: true, width: 110 },
-  { key: 'city', label: 'City', group: 'Core', onByDefault: true, width: 100 },
+  { key: 'message', label: 'Message', group: 'Core', onByDefault: true, width: 140 },
+  { key: 'leadsCount', label: 'Leads #', group: 'Core', onByDefault: true, width: 100 },
+  { key: 'vehicle', label: 'Vehicle', group: 'Core', onByDefault: false, width: 120 },
+  { key: 'city', label: 'City', group: 'Core', onByDefault: false, width: 120 },
   { key: 'service', label: 'Service', group: 'Core', onByDefault: true, width: 180 },
-  { key: 'utmCampaign', label: 'UTM Campaign', group: 'Core', onByDefault: true, width: 130 },
   { key: 'discount', label: 'Discount', group: 'Core', onByDefault: true, width: 100 },
-  { key: 'status', label: 'Status', group: 'Core', onByDefault: true, width: 140 },
   { key: 'amount', label: 'Amount', group: 'Core', onByDefault: true, width: 100 },
-  { key: 'date', label: 'Date', group: 'Core', onByDefault: true, width: 150 },
+  { key: 'date', label: 'Date', group: 'Core', onByDefault: true, width: 110 },
+  { key: 'time', label: 'Time', group: 'Core', onByDefault: true, width: 90 },
+  { key: 'status', label: 'Status', group: 'Core', onByDefault: true, width: 150 },
+  // Optional (columns menu)
+  { key: 'source', label: 'Source', group: 'Core', onByDefault: false, width: 120 },
+  { key: 'assignee', label: 'Assignee', group: 'Core', onByDefault: false, width: 120 },
+  { key: 'phone', label: 'Phone', group: 'Core', onByDefault: false, width: 120 },
+  { key: 'utmCampaign', label: 'UTM Campaign', group: 'Core', onByDefault: false, width: 120 },
   // Detail-panel fields (optional)
-  { key: 'leadType', label: 'Lead Type', group: 'Lead', onByDefault: false, width: 110 },
-  { key: 'priority', label: 'Priority', group: 'Lead', onByDefault: false, width: 100 },
-  { key: 'createdFrom', label: 'Created From', group: 'Lead', onByDefault: false, width: 130 },
-  { key: 'email', label: 'Email', group: 'Customer', onByDefault: false, width: 180 },
-  { key: 'address', label: 'Address', group: 'Customer', onByDefault: false, width: 220 },
+  { key: 'leadType', label: 'Lead Type', group: 'Lead', onByDefault: false, width: 120 },
+  { key: 'priority', label: 'Priority', group: 'Lead', onByDefault: false, width: 120 },
+  { key: 'createdFrom', label: 'Created From', group: 'Lead', onByDefault: false, width: 120 },
+  { key: 'email', label: 'Email', group: 'Customer', onByDefault: false, width: 120 },
+  { key: 'address', label: 'Address', group: 'Customer', onByDefault: false, width: 120 },
   { key: 'pickupRequired', label: 'Pickup Required', group: 'Customer', onByDefault: false, width: 120 },
-  { key: 'make', label: 'Make', group: 'Vehicle', onByDefault: false, width: 110 },
+  { key: 'make', label: 'Make', group: 'Vehicle', onByDefault: false, width: 120 },
   { key: 'model', label: 'Model', group: 'Vehicle', onByDefault: false, width: 120 },
   { key: 'variant', label: 'Variant', group: 'Vehicle', onByDefault: false, width: 120 },
-  { key: 'year', label: 'Year', group: 'Vehicle', onByDefault: false, width: 80 },
-  { key: 'fuelType', label: 'Fuel Type', group: 'Vehicle', onByDefault: false, width: 100 },
-  { key: 'odometer', label: 'Odometer', group: 'Vehicle', onByDefault: false, width: 100 },
-  { key: 'serviceType', label: 'Service Type', group: 'Service', onByDefault: false, width: 130 },
+  { key: 'year', label: 'Year', group: 'Vehicle', onByDefault: false, width: 120 },
+  { key: 'fuelType', label: 'Fuel Type', group: 'Vehicle', onByDefault: false, width: 120 },
+  { key: 'odometer', label: 'Odometer', group: 'Vehicle', onByDefault: false, width: 120 },
+  { key: 'serviceType', label: 'Service Type', group: 'Service', onByDefault: false, width: 120 },
   { key: 'preferredDate', label: 'Preferred Date', group: 'Service', onByDefault: false, width: 120 },
   { key: 'preferredTime', label: 'Preferred Time', group: 'Service', onByDefault: false, width: 120 },
-  { key: 'preferredSlot', label: 'Preferred Slot', group: 'Service', onByDefault: false, width: 150 },
-  { key: 'problemDescription', label: 'Problem', group: 'Service', onByDefault: false, width: 200 },
-  { key: 'notes', label: 'Notes', group: 'Service', onByDefault: false, width: 200 },
+  { key: 'preferredSlot', label: 'Preferred Slot', group: 'Service', onByDefault: false, width: 120 },
+  { key: 'problemDescription', label: 'Problem', group: 'Service', onByDefault: false, width: 120 },
+  { key: 'notes', label: 'Notes', group: 'Service', onByDefault: false, width: 120 },
   { key: 'utmSource', label: 'UTM Source', group: 'Campaign', onByDefault: false, width: 120 },
   { key: 'utmMedium', label: 'UTM Medium', group: 'Campaign', onByDefault: false, width: 120 },
   { key: 'utmTerm', label: 'UTM Term', group: 'Campaign', onByDefault: false, width: 120 },
   { key: 'utmContent', label: 'UTM Content', group: 'Campaign', onByDefault: false, width: 120 },
-  { key: 'estimatedAmount', label: 'Estimated Amt', group: 'Payment', onByDefault: false, width: 110 },
-  { key: 'actualAmount', label: 'Actual Amt', group: 'Payment', onByDefault: false, width: 110 },
+  { key: 'estimatedAmount', label: 'Estimated Amt', group: 'Payment', onByDefault: false, width: 120 },
+  { key: 'actualAmount', label: 'Actual Amt', group: 'Payment', onByDefault: false, width: 120 },
   { key: 'paymentMode', label: 'Payment Mode', group: 'Payment', onByDefault: false, width: 120 },
-  { key: 'paymentStatus', label: 'Payment Status', group: 'Payment', onByDefault: false, width: 130 },
+  { key: 'paymentStatus', label: 'Payment Status', group: 'Payment', onByDefault: false, width: 120 },
 ] as const;
 
 type BookingsTableColumnKey = (typeof BOOKINGS_TABLE_COLUMNS)[number]['key'];
@@ -112,21 +134,22 @@ const DEFAULT_BOOKINGS_COLUMNS: BookingsColumnVisibility = BOOKINGS_TABLE_COLUMN
   return acc;
 }, {} as BookingsColumnVisibility);
 
-const BOOKINGS_COLUMNS_STORAGE_KEY = 'super_admin_bookings_visible_columns_v2';
+const BOOKINGS_COLUMNS_STORAGE_KEY = 'super_admin_bookings_visible_columns_v4';
 
 function loadBookingsColumnVisibility(): BookingsColumnVisibility {
   if (typeof window === 'undefined') return { ...DEFAULT_BOOKINGS_COLUMNS };
   try {
-    const raw =
-      window.localStorage.getItem(BOOKINGS_COLUMNS_STORAGE_KEY) ||
-      window.localStorage.getItem('super_admin_bookings_visible_columns_v1');
+    const raw = window.localStorage.getItem(BOOKINGS_COLUMNS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_BOOKINGS_COLUMNS };
-    const parsed = JSON.parse(raw) as Partial<BookingsColumnVisibility>;
+    const parsed = JSON.parse(raw) as Partial<BookingsColumnVisibility> & { tcUpdate?: boolean };
     const next = { ...DEFAULT_BOOKINGS_COLUMNS };
     for (const col of BOOKINGS_TABLE_COLUMNS) {
       if (typeof parsed[col.key] === 'boolean') next[col.key] = parsed[col.key]!;
     }
-    // Keep at least one data column visible
+    // Migrate old key name if present in a pasted prefs object
+    if (typeof parsed.tcUpdate === 'boolean' && parsed.leadStatus === undefined) {
+      next.leadStatus = parsed.tcUpdate;
+    }
     if (!BOOKINGS_TABLE_COLUMNS.some((c) => next[c.key])) {
       next.leadNumber = true;
     }
@@ -171,7 +194,7 @@ function LeadStatusSelect({
         onChange={(e) => onChange(e.target.value, e)}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
-        className={`max-w-[148px] text-[11px] font-semibold rounded-full pl-2 pr-6 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 ${leadStatusSelectClass(value)}`}
+        className={`min-w-[132px] text-[11px] font-semibold rounded-full pl-2 pr-6 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 ${leadStatusSelectClass(value)}`}
         aria-label="Change lead status"
       >
         {LEAD_STATUS_ENUM.map((status) => (
@@ -192,6 +215,27 @@ function formatDateTime(value?: string | null) {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDateOnly(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatTimeOnly(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -595,11 +639,19 @@ function prettifyKey(key: string) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function DetailFieldCard({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailFieldCard({
+  label,
+  value,
+  className = '',
+}: {
+  label: string;
+  value: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="rounded-lg border border-gray-200/80 bg-white p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-      <div className="mt-1 text-sm text-gray-900 break-words">{value ?? '-'}</div>
+    <div className={`rounded-md border border-gray-200/80 bg-white px-2.5 py-1.5 ${className}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 leading-tight">{label}</p>
+      <div className="relative mt-0.5 text-[13px] leading-snug text-gray-900 break-words">{value ?? '-'}</div>
     </div>
   );
 }
@@ -608,20 +660,28 @@ function DetailSection({
   title,
   icon: Icon,
   className,
+  cols = 2,
   children,
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
   className: string;
+  cols?: 2 | 3 | 4;
   children: React.ReactNode;
 }) {
+  const gridCols =
+    cols === 4
+      ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+      : cols === 3
+        ? 'grid-cols-2 sm:grid-cols-3'
+        : 'grid-cols-1 sm:grid-cols-2';
   return (
-    <section className={`rounded-xl border p-4 ${className}`}>
-      <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide">
-        <Icon className="h-4 w-4 shrink-0" />
+    <section className={`rounded-xl border p-3 ${className}`}>
+      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
         {title}
       </p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+      <div className={`grid gap-2 ${gridCols}`}>{children}</div>
     </section>
   );
 }
@@ -678,43 +738,32 @@ function getLatestTelecallerUpdate(lead: Record<string, any>) {
   const meta = getLeadCouponMeta(lead);
   const history = getProfileHistory(lead);
   const latest = history[0];
-  const status =
-    prettifyDisposition(
-      (latest?.status as string) ||
-        (meta.last_call_label as string) ||
-        (meta.last_call_result as string) ||
-        null,
-    ) || null;
+  // Prefer live CRM disposition — list badge shows primary status only (no Lost · reason)
+  const status = leadDisplayStatus(lead) || null;
   const remark = String(latest?.remark || meta.telecaller_remarks || '').trim() || null;
-  const at = String(latest?.at || meta.last_call_at || '').trim() || null;
+  const at = String(meta.last_call_at || latest?.at || '').trim() || null;
   const summary = String(latest?.summary || '').trim() || null;
-  return { status, remark, at, summary, count: history.length };
+  const fullLabel = prettifyDisposition(
+    (meta.last_call_label as string) || (meta.last_call_result as string) || null,
+  );
+  return { status, remark, at, summary, count: history.length, fullLabel };
 }
 
 function TelecallerUpdateCell({ lead }: { lead: Record<string, any> }) {
   const latest = getLatestTelecallerUpdate(lead);
-  if (!latest.status && !latest.remark && latest.count === 0) {
+  if (!latest.status) {
     return <span className="text-gray-300">—</span>;
   }
   return (
-    <div className="min-w-[160px] max-w-[220px]" title={[latest.status, latest.remark, latest.at ? formatDateTime(latest.at) : ''].filter(Boolean).join(' · ')}>
-      {latest.status ? (
-        <span
-          className="inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold"
-          style={dispositionBadgeStyle(latest.status)}
-        >
-          {latest.status}
-        </span>
-      ) : null}
-      {latest.remark ? (
-        <p className="mt-1 truncate text-xs text-gray-600">{latest.remark}</p>
-      ) : latest.summary ? (
-        <p className="mt-1 truncate text-xs text-gray-500">{latest.summary}</p>
-      ) : null}
-      {latest.count > 1 ? (
-        <p className="mt-0.5 text-[10px] font-medium text-gray-400">{latest.count} updates</p>
-      ) : null}
-    </div>
+    <span
+      className="inline-flex max-w-[140px] truncate rounded-full px-2 py-0.5 text-[11px] font-semibold"
+      style={dispositionBadgeStyle(latest.status)}
+      title={[latest.fullLabel || latest.status, latest.remark, latest.at ? formatDateTime(latest.at) : '']
+        .filter(Boolean)
+        .join(' · ')}
+    >
+      {latest.status}
+    </span>
   );
 }
 
@@ -761,7 +810,7 @@ function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
     <section className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
       <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-teal-900">
         <History className="h-4 w-4 shrink-0" />
-        Telecaller History
+        Telecaller History / Activity
         {profileHistory.length > 0 ? (
           <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
             {profileHistory.length}
@@ -770,7 +819,7 @@ function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
       </p>
 
       {(latestLabel || latestRemark || couponMeta.last_call_at) && (
-        <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <DetailFieldCard label="Latest Status" value={latestLabel || '-'} />
           <DetailFieldCard label="Latest Remark" value={latestRemark || '-'} />
           <DetailFieldCard
@@ -891,11 +940,42 @@ function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
   );
 }
 
-function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
+function ServiceLeadDetailContent({
+  item,
+  onPatch,
+}: {
+  item: Record<string, any>;
+  onPatch: (patch: Record<string, unknown>) => Promise<void>;
+}) {
   const meta = item.meta && typeof item.meta === 'object' ? (item.meta as Record<string, unknown>) : {};
   const serviceLabel = getServiceLabel(item);
   const misaServices = extractMisaServices(item);
   const payable = getLeadDisplayAmount(item);
+  const [showMore, setShowMore] = useState(false);
+  const cities = useServiceCities();
+
+  const addrParts = parseAddressParts(
+    String(item.customer_address || item.pickup_address || item.address || ''),
+    meta,
+  );
+  const pincode = String(item.pincode || '').replace(/\D/g, '').slice(0, 6);
+
+  const saveAddressPart = async (key: 'flat_number' | 'area' | 'landmark' | 'pincode', next: string) => {
+    const nextParts = {
+      flat_number: key === 'flat_number' ? next : addrParts.flat_number,
+      area: key === 'area' ? next : addrParts.area,
+      landmark: key === 'landmark' ? next : addrParts.landmark,
+      city: String(item.city || ''),
+      city_id: item.city_id || undefined,
+      pincode: key === 'pincode' ? next.replace(/\D/g, '').slice(0, 6) : pincode,
+    };
+    await onPatch({
+      address_parts: nextParts,
+      pincode: nextParts.pincode || null,
+      city: nextParts.city || null,
+      city_id: nextParts.city_id || null,
+    });
+  };
 
   const paymentExtras: Array<{ label: string; value: React.ReactNode }> = [];
   if (meta.service_subtotal) {
@@ -908,12 +988,12 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
     paymentExtras.push({
       label: 'Referral Reward',
       value: (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           <p className="font-semibold text-amber-900">Refer & Rise · {item.referral_reward_family || 'Reward'}</p>
-          {item.referral_reward_text ? <p className="text-sm text-gray-700">{item.referral_reward_text}</p> : null}
+          {item.referral_reward_text ? <p className="text-xs text-gray-700">{item.referral_reward_text}</p> : null}
           {Number(item.referral_reward_discount || 0) > 0 ? (
-            <p className="text-sm font-medium text-emerald-700">
-              Discount applied: {formatCurrency(Number(item.referral_reward_discount))}
+            <p className="text-xs font-medium text-emerald-700">
+              Discount: {formatCurrency(Number(item.referral_reward_discount))}
             </p>
           ) : null}
         </div>
@@ -936,151 +1016,305 @@ function ServiceLeadDetailContent({ item }: { item: Record<string, any> }) {
     });
   }
 
+  const metaEntries = Object.entries(meta).filter(
+    ([key]) =>
+      ![
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
+        'utm_term',
+        'utm_content',
+        'tracking',
+        'customer_id',
+        'referral_reward',
+        'flat_number',
+        'area',
+        'landmark',
+      ].includes(key),
+  );
+
+  const statusOptions = LEAD_STATUS_ENUM.map((s) => ({ value: s, label: s }));
+  const fuelValue = item.vehicle_fuel_type || item.fuel_type || '';
+
   return (
-    <div className="space-y-4">
-      <LeadTrackingSection item={item} />
+    <div className="space-y-3">
+      <DetailSection title="Customer Details" icon={UserRound} cols={4} className="border-emerald-200 bg-emerald-50/50">
+        <InlineTextField label="Customer Name" field="customer_name" value={item.customer_name} onPatch={onPatch} />
+        <InlineTextField label="Phone" field="customer_phone" value={item.customer_phone} onPatch={onPatch} />
+        <InlineEmailField label="Email" value={item.customer_email} onPatch={onPatch} />
+        <InlineBooleanField
+          label="Pickup Required"
+          field="pickup_required"
+          value={item.pickup_required}
+          onPatch={onPatch}
+        />
+        <InlineTextField
+          label="Flat / Building"
+          field="flat_number"
+          value={addrParts.flat_number}
+          onPatch={async (p) => saveAddressPart('flat_number', String(p.flat_number ?? ''))}
+        />
+        <InlineTextField
+          label="Area / Street"
+          field="area"
+          value={addrParts.area}
+          onPatch={async (p) => saveAddressPart('area', String(p.area ?? ''))}
+        />
+        <InlineTextField
+          label="Landmark"
+          field="landmark"
+          value={addrParts.landmark}
+          onPatch={async (p) => saveAddressPart('landmark', String(p.landmark ?? ''))}
+        />
+        <InlineTextField
+          label="Pincode"
+          field="pincode"
+          value={pincode}
+          onPatch={async (p) => saveAddressPart('pincode', String(p.pincode ?? ''))}
+          placeholder="6-digit PIN"
+        />
+      </DetailSection>
+
+      <DetailSection title="Vehicle & Location" icon={MapPin} cols={4} className="border-blue-200 bg-blue-50/50">
+        <InlineTextField label="Reg. No" field="vehicle_number" value={item.vehicle_number} onPatch={onPatch} />
+        <InlineCarField
+          label="Make / Model"
+          make={item.vehicle_make}
+          model={item.vehicle_model}
+          onPatch={onPatch}
+          className="sm:col-span-2"
+        />
+        <InlineTextField label="Variant" field="vehicle_variant" value={item.vehicle_variant} onPatch={onPatch} />
+        <InlineYearField label="Year" value={item.vehicle_year} onPatch={onPatch} />
+        <InlineSelectField
+          label="Fuel"
+          field="vehicle_fuel_type"
+          value={fuelValue}
+          options={FUEL_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          onPatch={onPatch}
+        />
+        <InlineCityField
+          label="City"
+          value={item.city}
+          cityId={item.city_id}
+          cities={cities}
+          onPatch={onPatch}
+        />
+        <InlineTextField
+          label="Odometer"
+          field="odometer_reading"
+          value={item.odometer_reading}
+          onPatch={onPatch}
+        />
+      </DetailSection>
+
+      <div className="sticky top-0 z-20 -mx-1 px-1 py-1 bg-white/95 backdrop-blur-sm border-y border-gray-100">
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className="mx-auto flex w-full max-w-xs items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+        >
+          {showMore ? (
+            <>
+              Show less <ChevronUp className="h-3.5 w-3.5" />
+            </>
+          ) : (
+            <>
+              Show more <ChevronDown className="h-3.5 w-3.5" />
+            </>
+          )}
+        </button>
+      </div>
+
+      {showMore ? (
+        <div className="space-y-3">
+          <DetailSection title="Lead Overview" icon={Hash} cols={4} className="border-slate-200 bg-slate-50/80">
+            <DetailFieldCard label="Lead Number" value={item.lead_number} />
+            <InlineSelectField
+              label="Status"
+              field="status"
+              value={item.status}
+              options={statusOptions}
+              onPatch={onPatch}
+            />
+            <InlineTextField label="Lead Type" field="lead_type" value={item.lead_type} onPatch={onPatch} />
+            <InlineTextField
+              label="Priority"
+              field="lead_priority"
+              value={item.lead_priority || item.priority}
+              onPatch={onPatch}
+            />
+            <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
+            <InlineTextField label="Created From" field="created_from" value={item.created_from} onPatch={onPatch} />
+            <DetailFieldCard
+              label="Source"
+              className="relative z-10 overflow-visible"
+              value={
+                <LeadTagsPanel
+                  leadId={String(item.id || '')}
+                  canManage
+                  fieldTrigger={<SourceCell lead={item} />}
+                />
+              }
+            />
+            <DetailFieldCard
+              label="Assignee"
+              value={
+                item.assigned_telecaller_name ? (
+                  <AssigneeBadge name={item.assigned_telecaller_name} />
+                ) : item.assigned_telecaller_id ? (
+                  'Assigned'
+                ) : (
+                  'Unassigned'
+                )
+              }
+            />
+            <DetailFieldCard label="Internal ID" value={item.id} className="sm:col-span-2 lg:col-span-2" />
+          </DetailSection>
+
+          <DetailSection title="Service & Schedule" icon={Wrench} cols={3} className="border-violet-200 bg-violet-50/50">
+            {misaServices.length > 0 ? (
+              <div className="col-span-full rounded-md border border-gray-200/80 bg-white px-2.5 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Services</p>
+                <ul className="mt-1 space-y-1">
+                  {misaServices.map((service, index) => (
+                    <li key={`${service.name}-${index}`} className="flex items-start justify-between gap-3 text-[13px]">
+                      <span className="text-gray-900">{service.name}</span>
+                      {service.price > 0 ? (
+                        <span className="shrink-0 font-semibold text-gray-900">{formatCurrency(service.price)}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <InlineTextField label="Service" field="service_type" value={serviceLabel} onPatch={onPatch} />
+            )}
+            <InlineTextField label="Service Type" field="service_type" value={item.service_type} onPatch={onPatch} />
+            <DetailFieldCard label="Preferred Slot" value={formatDateTime(item.preferred_slot_start)} />
+            <InlineDateField
+              label="Preferred Date"
+              field="preferred_date"
+              value={item.preferred_date || String(item.preferred_slot_start || '').slice(0, 10)}
+              onPatch={onPatch}
+            />
+            <InlineTimeField
+              label="Preferred Time"
+              field="preferred_time_slot"
+              value={
+                item.preferred_time_slot ||
+                item.preferred_service_slot ||
+                (item.preferred_slot_start ? String(item.preferred_slot_start).slice(11, 16) : '')
+              }
+              onPatch={onPatch}
+            />
+            <DetailFieldCard
+              label="WhatsApp Message"
+              value={getLeadInboundWhatsAppMessage(item)}
+              className="sm:col-span-2 lg:col-span-3"
+            />
+            <InlineTextField
+              label="Problem"
+              field="problem_description"
+              value={item.problem_description}
+              multiline
+              onPatch={onPatch}
+              className="sm:col-span-2"
+            />
+            <InlineTextField
+              label="Notes"
+              field="description"
+              value={item.description}
+              multiline
+              onPatch={onPatch}
+              className="sm:col-span-2"
+            />
+          </DetailSection>
+
+          <DetailSection title="Payment & Pricing" icon={IndianRupee} cols={4} className="border-amber-200 bg-amber-50/50">
+            <DetailFieldCard label="Payable Amount" value={formatCurrency(payable)} />
+            <InlineTextField
+              label="Estimated Amount"
+              field="estimated_amount"
+              value={item.estimated_amount}
+              onPatch={onPatch}
+            />
+            <InlineTextField
+              label="Actual Amount"
+              field="actual_amount"
+              value={item.actual_amount}
+              onPatch={onPatch}
+            />
+            <InlineTextField label="Payment Mode" field="payment_mode" value={item.payment_mode} onPatch={onPatch} />
+            <InlineTextField
+              label="Payment Status"
+              field="payment_status"
+              value={item.payment_status}
+              onPatch={onPatch}
+            />
+            <InlineTextField
+              label="Discount"
+              field="discount_amount"
+              value={item.discount_amount}
+              onPatch={onPatch}
+            />
+            <InlineTextField
+              label="Coupon Code"
+              field="coupon_code"
+              value={item.coupon_code || item.coupon_display_code}
+              onPatch={onPatch}
+            />
+            {item.referral_reward_applied ? (
+              <DetailFieldCard
+                label="Referral Source"
+                value={`Refer & Rise${item.referral_reward_family ? ` · ${item.referral_reward_family}` : ''}`}
+              />
+            ) : null}
+            {paymentExtras.map((field) => (
+              <DetailFieldCard key={field.label} label={field.label} value={field.value} />
+            ))}
+          </DetailSection>
+
+          <LeadTrackingSection item={item} compact />
+
+          {metaEntries.length > 0 ? (
+            <DetailSection title="Additional Info" icon={ClipboardList} cols={3} className="border-gray-200 bg-gray-50/80">
+              {metaEntries.map(([key, value]) => (
+                <DetailFieldCard key={key} label={prettifyKey(key)} value={formatDetailScalar(value)} />
+              ))}
+            </DetailSection>
+          ) : null}
+        </div>
+      ) : null}
 
       <TelecallerHistorySection item={item} />
-
-      <DetailSection title="Lead Overview" icon={Hash} className="border-slate-200 bg-slate-50/80">
-        <DetailFieldCard label="Lead Number" value={item.lead_number} />
-        <DetailFieldCard label="Status" value={item.status} />
-        <DetailFieldCard label="Lead Type" value={item.lead_type} />
-        <DetailFieldCard label="Priority" value={item.lead_priority} />
-        <DetailFieldCard label="Created At" value={formatDateTime(item.created_at)} />
-        <DetailFieldCard label="Created From" value={item.created_from} />
-        <DetailFieldCard label="Booking Channel" value={<SourceCell lead={item} />} />
-        <DetailFieldCard
-          label="Assignee"
-          value={
-            item.assigned_telecaller_name ? (
-              <AssigneeBadge name={item.assigned_telecaller_name} />
-            ) : item.assigned_telecaller_id ? (
-              'Assigned'
-            ) : (
-              'Unassigned'
-            )
-          }
-        />
-        <DetailFieldCard label="Internal ID" value={item.id} />
-      </DetailSection>
-
-      <DetailSection title="Customer Details" icon={UserRound} className="border-emerald-200 bg-emerald-50/50">
-        <DetailFieldCard label="Customer Name" value={item.customer_name} />
-        <DetailFieldCard label="Phone" value={item.customer_phone} />
-        <DetailFieldCard label="Email" value={item.customer_email} />
-        <DetailFieldCard label="Pickup Required" value={formatDetailScalar(item.pickup_required)} />
-        <DetailFieldCard label="Customer Address" value={item.customer_address} />
-        <DetailFieldCard label="Address" value={item.address} />
-        <DetailFieldCard label="Pickup Address" value={item.pickup_address} />
-      </DetailSection>
-
-      <DetailSection title="Vehicle & Location" icon={Car} className="border-blue-200 bg-blue-50/50">
-        <DetailFieldCard label="Vehicle Number" value={item.vehicle_number} />
-        <DetailFieldCard label="Make" value={item.vehicle_make} />
-        <DetailFieldCard label="Model" value={item.vehicle_model} />
-        <DetailFieldCard label="Variant" value={item.vehicle_variant} />
-        <DetailFieldCard label="Year" value={item.vehicle_year} />
-        <DetailFieldCard label="Fuel Type" value={item.fuel_type} />
-        <DetailFieldCard label="City" value={item.city} />
-        <DetailFieldCard label="Odometer" value={item.odometer_reading} />
-      </DetailSection>
-
-      <DetailSection title="Service & Schedule" icon={Wrench} className="border-violet-200 bg-violet-50/50">
-        {misaServices.length > 0 ? (
-          <div className="md:col-span-2 rounded-lg border border-gray-200/80 bg-white p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Services</p>
-            <ul className="mt-2 space-y-2">
-              {misaServices.map((service, index) => (
-                <li key={`${service.name}-${index}`} className="flex items-start justify-between gap-3 text-sm">
-                  <span className="text-gray-900">{service.name}</span>
-                  {service.price > 0 ? (
-                    <span className="shrink-0 font-semibold text-gray-900">{formatCurrency(service.price)}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <DetailFieldCard label="Service" value={serviceLabel} />
-        )}
-        <DetailFieldCard label="Service Type" value={item.service_type} />
-        <DetailFieldCard
-          label="WhatsApp Message"
-          value={getLeadInboundWhatsAppMessage(item)}
-        />
-        <DetailFieldCard label="Preferred Slot" value={formatDateTime(item.preferred_slot_start)} />
-        <DetailFieldCard label="Preferred Date" value={item.preferred_date} />
-        <DetailFieldCard label="Preferred Time" value={item.preferred_time_slot || item.preferred_service_slot} />
-        <DetailFieldCard label="Problem Description" value={item.problem_description} />
-        <DetailFieldCard label="Notes" value={item.description} />
-      </DetailSection>
-
-      <DetailSection title="Payment & Pricing" icon={DollarSign} className="border-amber-200 bg-amber-50/50">
-        <DetailFieldCard label="Payable Amount" value={formatCurrency(payable)} />
-        <DetailFieldCard label="Estimated Amount" value={formatCurrency(item.estimated_amount)} />
-        <DetailFieldCard label="Actual Amount" value={formatCurrency(item.actual_amount)} />
-        <DetailFieldCard label="Payment Mode" value={item.payment_mode} />
-        <DetailFieldCard label="Payment Status" value={item.payment_status} />
-        <DetailFieldCard label="Discount" value={formatCurrency(item.discount_amount)} />
-        {item.referral_reward_applied ? (
-          <DetailFieldCard
-            label="Referral Source"
-            value={`Refer & Rise${item.referral_reward_family ? ` · ${item.referral_reward_family}` : ''}`}
-          />
-        ) : null}
-        {paymentExtras.map((field) => (
-          <DetailFieldCard key={field.label} label={field.label} value={field.value} />
-        ))}
-      </DetailSection>
-
-      {Object.keys(meta).length > 0 ? (
-        <DetailSection title="Additional Info" icon={ClipboardList} className="border-gray-200 bg-gray-50/80">
-          {Object.entries(meta)
-            .filter(([key]) =>
-              ![
-                'utm_source',
-                'utm_medium',
-                'utm_campaign',
-                'utm_term',
-                'utm_content',
-                'tracking',
-                'customer_id',
-                'referral_reward',
-              ].includes(key),
-            )
-            .map(([key, value]) => (
-              <DetailFieldCard key={key} label={prettifyKey(key)} value={formatDetailScalar(value)} />
-            ))}
-        </DetailSection>
-      ) : null}
     </div>
   );
 }
 
-function LeadTrackingSection({ item }: { item: Record<string, any> }) {
+function LeadTrackingSection({ item, compact = false }: { item: Record<string, any>; compact?: boolean }) {
   const utm = getLeadUtmParams(item);
   const hasUtm = UTM_KEYS.some((key) => Boolean(utm[key]));
 
   return (
-    <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/70 p-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-blue-800 mb-3">Campaign Tracking</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-white border border-blue-100 rounded-lg p-3">
-          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Lead Source</p>
-          <div className="mt-1.5">
+    <div className={`rounded-xl border border-blue-200 bg-blue-50/70 ${compact ? 'p-3' : 'p-4'}`}>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-blue-800">Campaign Tracking</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="rounded-md border border-blue-100 bg-white px-2.5 py-1.5">
+          <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Lead Source</p>
+          <div className="mt-0.5">
             <SourceCell lead={item} />
           </div>
         </div>
         {UTM_KEYS.map((key) => (
-          <div key={key} className="bg-white border border-blue-100 rounded-lg p-3">
-            <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">{UTM_DISPLAY_LABELS[key]}</p>
-            <p className="text-sm text-gray-900 mt-1 break-words">{utm[key] || '-'}</p>
+          <div key={key} className="rounded-md border border-blue-100 bg-white px-2.5 py-1.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{UTM_DISPLAY_LABELS[key]}</p>
+            <p className="text-[13px] text-gray-900 mt-0.5 break-words">{utm[key] || '-'}</p>
           </div>
         ))}
       </div>
       {!hasUtm ? (
-        <p className="text-xs text-amber-700 mt-3">
+        <p className="text-[11px] text-amber-700 mt-2">
           No UTM params captured for this lead. User must land via ad URL with utm_* query params before booking.
         </p>
       ) : null}
@@ -1219,7 +1453,7 @@ export default function SuperAdminBookingsPage() {
   const [assigneeFilter, setAssigneeFilter] = useState('ALL');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
-  const [datePreset, setDatePreset] = useState<ReportDatePreset>('last_30_days');
+  const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -1268,11 +1502,18 @@ export default function SuperAdminBookingsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkAssignTcId, setBulkAssignTcId] = useState('');
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<string>('');
+  const [bulkStatusUpdating, setBulkStatusUpdating] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [visibleColumns, setVisibleColumns] = useState<BookingsColumnVisibility>(DEFAULT_BOOKINGS_COLUMNS);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
+  const [chartDrill, setChartDrill] = useState<{
+    dimension: ChartDimension;
+    key: string;
+  } | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement>(null);
 
   // CSV upload state
@@ -1416,7 +1657,7 @@ export default function SuperAdminBookingsPage() {
     return assigneeOptions.filter((name) => name.toLowerCase().includes(q));
   }, [assigneeOptions, assigneeSearch]);
 
-  const displayedServiceLeads = useMemo(() => {
+  const baseFilteredServiceLeads = useMemo(() => {
     let leads = filterBookingLeads(serviceLeads, {
       source: sourceFilter,
       hasCoupon: couponFilter,
@@ -1447,6 +1688,13 @@ export default function SuperAdminBookingsPage() {
     }
     return leads;
   }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter, assigneeFilter, assigneeSearch]);
+
+  const displayedServiceLeads = useMemo(() => {
+    if (!chartDrill) return baseFilteredServiceLeads;
+    return baseFilteredServiceLeads.filter((lead) =>
+      leadMatchesChartBucket(lead, chartDrill.dimension, chartDrill.key, baseFilteredServiceLeads),
+    );
+  }, [baseFilteredServiceLeads, chartDrill]);
 
   /** All loaded leads for a phone (for Bookings count + modal). */
   const bookingsByPhone = useMemo(() => {
@@ -1551,7 +1799,8 @@ export default function SuperAdminBookingsPage() {
     statusFilter !== 'ALL' ||
     assigneeFilter !== 'ALL' ||
     Boolean(assigneeSearch.trim()) ||
-    Boolean(searchTerm.trim());
+    Boolean(searchTerm.trim()) ||
+    Boolean(chartDrill);
 
   const dateRangeLabel = useMemo(
     () => resolveReportDateRange(datePreset, customStart, customEnd).label,
@@ -1736,6 +1985,25 @@ export default function SuperAdminBookingsPage() {
     await saveAssigneeForLead(detailItem, assignTelecallerId);
   };
 
+  const saveDetailPatch = async (patch: Record<string, unknown>) => {
+    if (!detailItem?.id) return;
+    const res = await fetch(`/api/super_admin/leads/${detailItem.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(patch),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(json?.error || 'Update failed');
+      throw new Error(json?.error || 'Update failed');
+    }
+    const updatedLead = enrichBookingLead(json.lead || { ...detailItem, ...patch });
+    setDetailItem(updatedLead);
+    setServiceLeads((prev) => prev.map((row) => (row.id === detailItem.id ? updatedLead : row)));
+    toast.success('Saved');
+  };
+
   const openQuickAssign = (lead: ServiceLead, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -1913,7 +2181,7 @@ export default function SuperAdminBookingsPage() {
     }
   };
 
-  const bulkAssignTelecaller = async (clear = false) => {
+  const bulkAssignTelecaller = async (clear = false, opts?: { keepSelection?: boolean }) => {
     if (selectedIds.size === 0) return;
     if (!clear && !bulkAssignTcId) {
       toast.error('Pick a telecaller');
@@ -1921,12 +2189,13 @@ export default function SuperAdminBookingsPage() {
     }
     setBulkAssigning(true);
     try {
+      const ids = Array.from(selectedIds);
       const res = await fetch('/api/lead-manager/bulk-assign-telecaller', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lead_ids: Array.from(selectedIds),
+          lead_ids: ids,
           telecaller_id: clear ? undefined : bulkAssignTcId,
           clear,
         }),
@@ -1935,9 +2204,10 @@ export default function SuperAdminBookingsPage() {
       if (!res.ok) throw new Error(json?.error || 'Bulk assign failed');
       const tcName =
         telecallers.find((t) => t.id === bulkAssignTcId)?.full_name || 'telecaller';
+      const idSet = new Set(ids);
       setServiceLeads((prev) =>
         prev.map((l) => {
-          if (!selectedIds.has(String(l.id))) return l;
+          if (!idSet.has(String(l.id))) return l;
           return {
             ...l,
             assigned_telecaller_id: clear ? null : bulkAssignTcId,
@@ -1945,13 +2215,74 @@ export default function SuperAdminBookingsPage() {
           } as any;
         }),
       );
-      toast.success(json?.message || `Updated ${json?.updated || selectedIds.size}`);
-      setSelectedIds(new Set());
-      setBulkAssignTcId('');
+      toast.success(json?.message || `Updated ${json?.updated || ids.length}`);
+      if (!opts?.keepSelection) {
+        setSelectedIds(new Set());
+        setBulkAssignTcId('');
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Bulk assign failed');
+      throw e;
     } finally {
       setBulkAssigning(false);
+    }
+  };
+
+  const bulkUpdateLeadStatus = async (opts?: { keepSelection?: boolean }) => {
+    if (selectedIds.size === 0) return;
+    if (!bulkStatus) {
+      toast.error('Pick a status');
+      return;
+    }
+    setBulkStatusUpdating(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const res = await fetch('/api/super_admin/leads/bulk-status', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: ids,
+          status: bulkStatus,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'Bulk status update failed');
+      const idSet = new Set(ids);
+      setServiceLeads((prev) => {
+        if (statusFilter !== 'ALL' && bulkStatus !== statusFilter) {
+          return prev.filter((l) => !idSet.has(String(l.id)));
+        }
+        return prev.map((l) => (idSet.has(String(l.id)) ? ({ ...l, status: bulkStatus } as any) : l));
+      });
+      toast.success(json?.message || `Updated ${ids.length} lead(s)`);
+      if (!opts?.keepSelection) {
+        setSelectedIds(new Set());
+        setBulkStatus('');
+        setBulkEditOpen(false);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Bulk status update failed');
+      throw e;
+    } finally {
+      setBulkStatusUpdating(false);
+    }
+  };
+
+  const proceedBulkEdit = async () => {
+    if (!bulkStatus && !bulkAssignTcId) {
+      toast.error('Pick a status or telecaller');
+      return;
+    }
+    try {
+      if (bulkStatus) await bulkUpdateLeadStatus({ keepSelection: Boolean(bulkAssignTcId) });
+      if (bulkAssignTcId) await bulkAssignTelecaller(false, { keepSelection: false });
+      setBulkStatus('');
+      setBulkAssignTcId('');
+      setSelectedIds(new Set());
+      setBulkEditOpen(false);
+    } catch {
+      /* toasts already shown */
     }
   };
 
@@ -2047,7 +2378,10 @@ export default function SuperAdminBookingsPage() {
                   <div className="inline-flex shrink-0 items-center rounded-full border-2 border-[#004AAD] bg-white p-0.5">
                     <button
                       type="button"
-                      onClick={() => setViewMode('chart')}
+                      onClick={() => {
+                        setChartDrill(null);
+                        setViewMode('chart');
+                      }}
                       title="Chart view"
                       aria-pressed={viewMode === 'chart'}
                       style={
@@ -2341,7 +2675,8 @@ export default function SuperAdminBookingsPage() {
                   couponFilter !== 'ALL' ||
                   statusFilter !== 'ALL' ||
                   assigneeFilter !== 'ALL' ||
-                  assigneeSearch.trim()) ? (
+                  assigneeSearch.trim() ||
+                  chartDrill) ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -2350,6 +2685,7 @@ export default function SuperAdminBookingsPage() {
                       setStatusFilter('ALL');
                       setAssigneeFilter('ALL');
                       setAssigneeSearch('');
+                      setChartDrill(null);
                     }}
                     className="mb-0.5 px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
                   >
@@ -2374,6 +2710,32 @@ export default function SuperAdminBookingsPage() {
                   </p>
                 ) : null}
               </div>
+
+              {chartDrill && viewMode === 'list' ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-800 ring-1 ring-violet-200">
+                    Chart: {chartDimensionLabel(chartDrill.dimension)} → {chartDrill.key}
+                    <button
+                      type="button"
+                      className="rounded-full p-0.5 hover:bg-violet-100"
+                      aria-label="Clear chart filter"
+                      onClick={() => setChartDrill(null)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-blue-700 hover:underline"
+                    onClick={() => {
+                      setChartDrill(null);
+                      setViewMode('chart');
+                    }}
+                  >
+                    Back to chart
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -2381,25 +2743,38 @@ export default function SuperAdminBookingsPage() {
 
       {/* Bulk action bar */}
       {!showUploadCrm && selectedIds.size > 0 ? (
-        <div className="sticky top-[200px] z-10 mx-4 sm:mx-6 lg:mx-8 mt-2 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 text-white px-5 py-3 shadow-lg flex flex-wrap items-center justify-between gap-3">
+        <div className="sticky top-[200px] z-10 mx-4 sm:mx-6 lg:mx-8 mt-2 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 px-5 py-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <CheckSquare className="w-5 h-5" />
-            <span className="text-sm font-bold">{selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} selected</span>
+            <CheckSquare className="w-5 h-5 text-slate-600" />
+            <span className="text-sm font-bold">{selectedIds.size} Selected</span>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700"
+            >
+              Deselect All
+            </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setBulkEditOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 hover:bg-slate-50"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Bulk Edit
+            </button>
             <select
-              className="rounded-lg border-0 bg-white/20 px-3 py-1.5 text-xs font-semibold text-white min-w-[140px]"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 min-w-[140px]"
               value={bulkAssignTcId}
               onChange={(e) => setBulkAssignTcId(e.target.value)}
               onFocus={() => {
                 if (!telecallers.length) void loadTelecallers(null);
               }}
             >
-              <option value="" className="text-slate-900">
-                Assign telecaller…
-              </option>
+              <option value="">Assign telecaller…</option>
               {telecallers.map((t) => (
-                <option key={t.id} value={t.id} className="text-slate-900">
+                <option key={t.id} value={t.id}>
                   {t.full_name}
                   {!t.is_active ? ' (inactive)' : ''}
                 </option>
@@ -2409,7 +2784,7 @@ export default function SuperAdminBookingsPage() {
               type="button"
               disabled={bulkAssigning}
               onClick={() => void bulkAssignTelecaller(false)}
-              className="px-3 py-1.5 rounded-lg bg-white text-rose-700 text-xs font-bold hover:bg-rose-50 disabled:opacity-60"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
             >
               {bulkAssigning ? 'Assigning…' : 'Bulk assign'}
             </button>
@@ -2417,26 +2792,86 @@ export default function SuperAdminBookingsPage() {
               type="button"
               disabled={bulkAssigning}
               onClick={() => void bulkAssignTelecaller(true)}
-              className="px-3 py-1.5 rounded-lg border border-white/30 text-xs font-semibold hover:bg-white/10 disabled:opacity-60"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold hover:bg-slate-50 disabled:opacity-60"
             >
               Unassign
             </button>
             <button
               type="button"
-              onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1.5 rounded-lg border border-white/30 text-xs font-semibold hover:bg-white/10 transition"
-            >
-              Clear Selection
-            </button>
-            <button
-              type="button"
               disabled={bulkDeleting}
               onClick={bulkDelete}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-white text-rose-700 text-xs font-bold hover:bg-rose-50 transition disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition disabled:opacity-60"
             >
               {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} Lead${selectedIds.size > 1 ? 's' : ''}`}
+              {bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size}`}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {bulkEditOpen && selectedIds.size > 0 ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setBulkEditOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <button type="button" onClick={() => setBulkEditOpen(false)} className="p-1 rounded hover:bg-slate-100" aria-label="Close">
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+              <p className="text-sm text-slate-700">
+                Selected leads: <span className="font-bold">{selectedIds.size}</span>
+              </p>
+              <span className="w-6" />
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-800">Update Lead Status</span>
+                  <select
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value)}
+                    className={`text-[11px] font-semibold rounded-full pl-3 pr-8 py-1.5 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                      bulkStatus ? leadStatusSelectClass(bulkStatus) : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}
+                  >
+                    <option value="">Stage</option>
+                    {LEAD_STATUS_ENUM.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                  <span className="text-sm font-medium text-slate-800">Re/assign telecaller</span>
+                  <select
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 max-w-[160px]"
+                    value={bulkAssignTcId}
+                    onChange={(e) => setBulkAssignTcId(e.target.value)}
+                    onFocus={() => {
+                      if (!telecallers.length) void loadTelecallers(null);
+                    }}
+                  >
+                    <option value="">Select…</option>
+                    {telecallers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={bulkStatusUpdating || bulkAssigning || (!bulkStatus && !bulkAssignTcId)}
+                onClick={() => void proceedBulkEdit()}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-sm font-bold py-3 disabled:opacity-60"
+              >
+                {(bulkStatusUpdating || bulkAssigning) ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                PROCEED WITH {selectedIds.size} LEADS
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -2648,73 +3083,81 @@ export default function SuperAdminBookingsPage() {
           </div>
         ) : viewMode === 'chart' ? (
           <BookingsLeadsChartPanel
-            leads={displayedServiceLeads}
+            leads={baseFilteredServiceLeads}
             showManagerDimensions
-            onViewLeads={() => setViewMode('list')}
+            onViewLeads={() => {
+              setChartDrill(null);
+              setViewMode('list');
+            }}
+            onBarClick={({ dimension, key, count }) => {
+              setChartDrill({ dimension, key });
+              setViewMode('list');
+              toast.success(`Opened ${count.toLocaleString('en-IN')} lead${count === 1 ? '' : 's'} · ${key}`);
+            }}
           />
-        ) : (
-          <>
+        ) : (          <>
             <div className="hidden lg:block bg-white border border-gray-200 rounded-2xl overflow-x-auto shadow-sm">
                 <table className="w-full" style={{ minWidth: tableMinWidthPx }}>
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      <th className="px-3 py-3 w-10">
-                        <button type="button" onClick={toggleSelectAll} className="p-0.5 rounded hover:bg-gray-200 transition" title="Select all on this page">
+                      <th className="sticky left-0 z-20 bg-gray-50 px-2 py-3 w-12 min-w-[48px] border-r border-gray-200">
+                        <button type="button" onClick={toggleSelectAll} className="p-1 rounded hover:bg-gray-200 transition" title="Select all on this page">
                           {!somePageSelected ? (
-                            <Square className="w-4.5 h-4.5 text-gray-400" />
+                            <Square className="w-5 h-5 text-gray-500" />
                           ) : allPageSelected ? (
-                            <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
+                            <CheckSquare className="w-5 h-5 text-blue-600" />
                           ) : (
-                            <MinusSquare className="w-4.5 h-4.5 text-blue-600" />
+                            <MinusSquare className="w-5 h-5 text-blue-600" />
                           )}
                         </button>
                       </th>
-                      {showCol('leadNumber') ? <th className="px-4 py-3 whitespace-nowrap">Lead #</th> : null}
-                      {showCol('source') ? <th className="px-4 py-3 whitespace-nowrap">Source</th> : null}
-                      {showCol('assignee') ? <th className="px-4 py-3 whitespace-nowrap min-w-[140px]">Assignee</th> : null}
-                      {showCol('tcUpdate') ? <th className="px-4 py-3 whitespace-nowrap min-w-[180px]">TC Update</th> : null}
-                      {showCol('customer') ? <th className="px-4 py-3 whitespace-nowrap min-w-[200px]">Customer</th> : null}
-                      {showCol('phone') ? <th className="px-4 py-3 whitespace-nowrap">Phone</th> : null}
-                      {showCol('message') ? <th className="px-4 py-3 min-w-[220px]">Message</th> : null}
+                      {showCol('leadStatus') ? <th className="px-3 py-3 whitespace-nowrap min-w-[130px]">Lead Status</th> : null}
+                      {showCol('leadNumber') ? <th className="px-3 py-3 whitespace-nowrap min-w-[120px]">Lead #</th> : null}
+                      {showCol('customer') ? <th className="px-3 py-3 whitespace-nowrap min-w-[180px]">Customer</th> : null}
+                      {showCol('message') ? <th className="px-3 py-3 whitespace-nowrap min-w-[140px]">Message</th> : null}
                       {showCol('leadsCount') ? (
-                        <th className="px-4 py-3 whitespace-nowrap" title="How many lead rows exist for this phone (not confirmed bookings count)">
+                        <th className="px-3 py-3 whitespace-nowrap min-w-[100px]" title="How many lead rows exist for this phone">
                           Leads #
                         </th>
                       ) : null}
-                      {showCol('vehicle') ? <th className="px-4 py-3 whitespace-nowrap">Vehicle</th> : null}
-                      {showCol('city') ? <th className="px-4 py-3 whitespace-nowrap">City</th> : null}
-                      {showCol('service') ? <th className="px-4 py-3 min-w-[180px]">Service</th> : null}
-                      {showCol('utmCampaign') ? <th className="px-4 py-3 whitespace-nowrap min-w-[120px]">UTM Campaign</th> : null}
-                      {showCol('discount') ? <th className="px-4 py-3 whitespace-nowrap">Discount</th> : null}
-                      {showCol('status') ? <th className="px-4 py-3 whitespace-nowrap">Status</th> : null}
-                      {showCol('amount') ? <th className="px-4 py-3 whitespace-nowrap">Amount</th> : null}
-                      {showCol('date') ? <th className="px-4 py-3 whitespace-nowrap">Date</th> : null}
-                      {showCol('leadType') ? <th className="px-4 py-3 whitespace-nowrap">Lead Type</th> : null}
-                      {showCol('priority') ? <th className="px-4 py-3 whitespace-nowrap">Priority</th> : null}
-                      {showCol('createdFrom') ? <th className="px-4 py-3 whitespace-nowrap">Created From</th> : null}
-                      {showCol('email') ? <th className="px-4 py-3 whitespace-nowrap">Email</th> : null}
-                      {showCol('address') ? <th className="px-4 py-3 min-w-[180px]">Address</th> : null}
-                      {showCol('pickupRequired') ? <th className="px-4 py-3 whitespace-nowrap">Pickup</th> : null}
-                      {showCol('make') ? <th className="px-4 py-3 whitespace-nowrap">Make</th> : null}
-                      {showCol('model') ? <th className="px-4 py-3 whitespace-nowrap">Model</th> : null}
-                      {showCol('variant') ? <th className="px-4 py-3 whitespace-nowrap">Variant</th> : null}
-                      {showCol('year') ? <th className="px-4 py-3 whitespace-nowrap">Year</th> : null}
-                      {showCol('fuelType') ? <th className="px-4 py-3 whitespace-nowrap">Fuel</th> : null}
-                      {showCol('odometer') ? <th className="px-4 py-3 whitespace-nowrap">Odometer</th> : null}
-                      {showCol('serviceType') ? <th className="px-4 py-3 whitespace-nowrap">Service Type</th> : null}
-                      {showCol('preferredDate') ? <th className="px-4 py-3 whitespace-nowrap">Pref. Date</th> : null}
-                      {showCol('preferredTime') ? <th className="px-4 py-3 whitespace-nowrap">Pref. Time</th> : null}
-                      {showCol('preferredSlot') ? <th className="px-4 py-3 whitespace-nowrap">Pref. Slot</th> : null}
-                      {showCol('problemDescription') ? <th className="px-4 py-3 min-w-[160px]">Problem</th> : null}
-                      {showCol('notes') ? <th className="px-4 py-3 min-w-[160px]">Notes</th> : null}
-                      {showCol('utmSource') ? <th className="px-4 py-3 whitespace-nowrap">UTM Source</th> : null}
-                      {showCol('utmMedium') ? <th className="px-4 py-3 whitespace-nowrap">UTM Medium</th> : null}
-                      {showCol('utmTerm') ? <th className="px-4 py-3 whitespace-nowrap">UTM Term</th> : null}
-                      {showCol('utmContent') ? <th className="px-4 py-3 whitespace-nowrap">UTM Content</th> : null}
-                      {showCol('estimatedAmount') ? <th className="px-4 py-3 whitespace-nowrap">Est. Amt</th> : null}
-                      {showCol('actualAmount') ? <th className="px-4 py-3 whitespace-nowrap">Actual Amt</th> : null}
-                      {showCol('paymentMode') ? <th className="px-4 py-3 whitespace-nowrap">Pay Mode</th> : null}
-                      {showCol('paymentStatus') ? <th className="px-4 py-3 whitespace-nowrap">Pay Status</th> : null}
+                      {showCol('vehicle') ? <th className="px-3 py-3 whitespace-nowrap min-w-[120px]">Vehicle</th> : null}
+                      {showCol('city') ? <th className="px-3 py-3 whitespace-nowrap min-w-[120px]">City</th> : null}
+                      {showCol('service') ? <th className="px-3 py-3 whitespace-nowrap min-w-[180px]">Service</th> : null}
+                      {showCol('discount') ? <th className="px-3 py-3 whitespace-nowrap min-w-[100px]">Discount</th> : null}
+                      {showCol('amount') ? <th className="px-3 py-3 whitespace-nowrap min-w-[100px]">Amount</th> : null}
+                      {showCol('date') ? <th className="px-3 py-3 whitespace-nowrap min-w-[110px]">Date</th> : null}
+                      {showCol('time') ? <th className="px-3 py-3 whitespace-nowrap min-w-[90px]">Time</th> : null}
+                      {showCol('status') ? <th className="px-3 py-3 whitespace-nowrap min-w-[150px]">Status</th> : null}
+                      {showCol('source') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Source</th> : null}
+                      {showCol('assignee') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Assignee</th> : null}
+                      {showCol('phone') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Phone</th> : null}
+                      {showCol('utmCampaign') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">UTM Campaign</th> : null}
+                      {showCol('leadType') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Lead Type</th> : null}
+                      {showCol('priority') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Priority</th> : null}
+                      {showCol('createdFrom') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Created From</th> : null}
+                      {showCol('email') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Email</th> : null}
+                      {showCol('address') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Address</th> : null}
+                      {showCol('pickupRequired') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pickup</th> : null}
+                      {showCol('make') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Make</th> : null}
+                      {showCol('model') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Model</th> : null}
+                      {showCol('variant') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Variant</th> : null}
+                      {showCol('year') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Year</th> : null}
+                      {showCol('fuelType') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Fuel</th> : null}
+                      {showCol('odometer') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Odometer</th> : null}
+                      {showCol('serviceType') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Service Type</th> : null}
+                      {showCol('preferredDate') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pref. Date</th> : null}
+                      {showCol('preferredTime') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pref. Time</th> : null}
+                      {showCol('preferredSlot') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pref. Slot</th> : null}
+                      {showCol('problemDescription') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Problem</th> : null}
+                      {showCol('notes') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Notes</th> : null}
+                      {showCol('utmSource') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">UTM Source</th> : null}
+                      {showCol('utmMedium') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">UTM Medium</th> : null}
+                      {showCol('utmTerm') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">UTM Term</th> : null}
+                      {showCol('utmContent') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">UTM Content</th> : null}
+                      {showCol('estimatedAmount') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Est. Amt</th> : null}
+                      {showCol('actualAmount') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Actual Amt</th> : null}
+                      {showCol('paymentMode') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pay Mode</th> : null}
+                      {showCol('paymentStatus') ? <th className="px-3 py-3 whitespace-nowrap w-[120px]">Pay Status</th> : null}
                       <th className="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
@@ -2739,61 +3182,50 @@ export default function SuperAdminBookingsPage() {
                             : `${zebra} hover:bg-sky-50/80`
                         }`}
                       >
-                        <td className="px-3 py-3 w-10">
+                        <td
+                          className={`sticky left-0 z-10 px-2 py-3 w-12 min-w-[48px] border-r border-gray-100 ${
+                            isSelected ? 'bg-blue-50' : zebra === 'bg-white' ? 'bg-white' : 'bg-slate-50'
+                          }`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {leadId ? (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); toggleSelect(leadId); }}
-                              className="p-0.5 rounded hover:bg-gray-200 transition"
+                              className="p-1 rounded hover:bg-gray-200 transition"
+                              title="Select lead"
+                              aria-label="Select lead"
                             >
                               {isSelected ? (
-                                <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
+                                <CheckSquare className="w-5 h-5 text-blue-600" />
                               ) : (
-                                <Square className="w-4.5 h-4.5 text-gray-400" />
+                                <Square className="w-5 h-5 text-gray-500" />
                               )}
                             </button>
                           ) : null}
                         </td>
-                        {showCol('leadNumber') ? (
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap">{lead.lead_number || '-'}</td>
-                        ) : null}
-                        {showCol('source') ? (
-                          <td className="px-4 py-3 text-sm whitespace-nowrap">
-                            <SourceCell lead={lead} />
-                          </td>
-                        ) : null}
-                        {showCol('assignee') ? (
-                          <td className="px-4 py-3 text-sm whitespace-nowrap min-w-[140px]">
-                            <AssigneeBadge
-                              name={lead.assigned_telecaller_name}
-                              onClick={(e) => openQuickAssign(lead, e)}
-                            />
-                          </td>
-                        ) : null}
-                        {showCol('tcUpdate') ? (
-                          <td className="px-4 py-3 text-sm">
+                        {showCol('leadStatus') ? (
+                          <td className="px-3 py-3 text-sm min-w-[130px]">
                             <TelecallerUpdateCell lead={lead} />
                           </td>
                         ) : null}
+                        {showCol('leadNumber') ? (
+                          <td className="px-3 py-3 text-sm font-semibold text-gray-900 whitespace-nowrap min-w-[120px]">{lead.lead_number || '-'}</td>
+                        ) : null}
                         {showCol('customer') ? (
-                          <td className="px-4 py-3 text-sm text-gray-800 min-w-[200px]">
-                            <span className="block whitespace-nowrap" title={lead.customer_name || ''}>
-                              {lead.customer_name || '-'}
-                            </span>
+                          <td className="px-3 py-3 text-sm text-gray-800 min-w-[180px] whitespace-normal break-words">
+                            {lead.customer_name || '-'}
                           </td>
                         ) : null}
-                        {showCol('phone') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.customer_phone || '-'}</td>
-                        ) : null}
                         {showCol('message') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
+                          <td className="px-3 py-3 text-sm text-gray-700 min-w-[140px] max-w-[220px]">
                             <span className="block truncate" title={getLeadInboundWhatsAppMessage(lead) || ''}>
                               {getLeadInboundWhatsAppMessage(lead) || '—'}
                             </span>
                           </td>
                         ) : null}
                         {showCol('leadsCount') ? (
-                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm whitespace-nowrap w-[120px] max-w-[120px]">
                             {phoneBookingCount > 0 ? (
                               <button
                                 type="button"
@@ -2810,38 +3242,42 @@ export default function SuperAdminBookingsPage() {
                           </td>
                         ) : null}
                         {showCol('vehicle') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.vehicle_number || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{lead.vehicle_number || '-'}</td>
                         ) : null}
                         {showCol('city') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{lead.city || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{lead.city || '-'}</td>
                         ) : null}
                         {showCol('service') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[260px]">
+                          <td className="px-3 py-3 text-sm text-gray-700 min-w-[180px] whitespace-normal break-words">
                             {misaServices.length > 1 ? (
-                              <div className="space-y-0.5" title={serviceLabel}>
+                              <div className="space-y-0.5">
                                 {misaServices.map((service, index) => (
-                                  <div key={`${service.name}-${index}`} className="truncate text-xs leading-4">
+                                  <div key={`${service.name}-${index}`} className="text-xs leading-4">
                                     {service.name}
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <span className="block truncate" title={serviceLabel}>{serviceLabel}</span>
+                              <span>{serviceLabel || '—'}</span>
                             )}
                           </td>
                         ) : null}
-                        {showCol('utmCampaign') ? (
-                          <td className="px-4 py-3 text-sm whitespace-nowrap">
-                            <UtmCampaignCell lead={lead} />
-                          </td>
-                        ) : null}
                         {showCol('discount') ? (
-                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm whitespace-nowrap min-w-[100px]">
                             <LeadDiscountBadge lead={lead} />
                           </td>
                         ) : null}
+                        {showCol('amount') ? (
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap min-w-[100px]">{formatCurrency(getLeadDisplayAmount(lead))}</td>
+                        ) : null}
+                        {showCol('date') ? (
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap min-w-[110px]">{formatDateOnly(lead.created_at)}</td>
+                        ) : null}
+                        {showCol('time') ? (
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap min-w-[90px]">{formatTimeOnly(lead.created_at)}</td>
+                        ) : null}
                         {showCol('status') ? (
-                          <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm whitespace-nowrap min-w-[150px]">
                             <LeadStatusSelect
                               value={String(lead.status || 'NEW')}
                               updating={statusUpdatingId === leadId}
@@ -2849,111 +3285,126 @@ export default function SuperAdminBookingsPage() {
                             />
                           </td>
                         ) : null}
-                        {showCol('amount') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(getLeadDisplayAmount(lead))}</td>
+                        {showCol('source') ? (
+                          <td className="px-3 py-3 text-sm whitespace-nowrap w-[120px] max-w-[120px]">
+                            <SourceCell lead={lead} />
+                          </td>
                         ) : null}
-                        {showCol('date') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDateTime(lead.created_at)}</td>
+                        {showCol('assignee') ? (
+                          <td className="px-3 py-3 text-sm whitespace-nowrap w-[120px] max-w-[120px]">
+                            <AssigneeBadge
+                              name={lead.assigned_telecaller_name}
+                              onClick={(e) => openQuickAssign(lead, e)}
+                            />
+                          </td>
+                        ) : null}
+                        {showCol('phone') ? (
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">{lead.customer_phone || '-'}</td>
+                        ) : null}
+                        {showCol('utmCampaign') ? (
+                          <td className="px-3 py-3 text-sm whitespace-nowrap w-[120px] max-w-[120px]">
+                            <UtmCampaignCell lead={lead} />
+                          </td>
                         ) : null}
                         {showCol('leadType') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.lead_type)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.lead_type)}</td>
                         ) : null}
                         {showCol('priority') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.lead_priority)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.lead_priority)}</td>
                         ) : null}
                         {showCol('createdFrom') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.created_from)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.created_from)}</td>
                         ) : null}
                         {showCol('email') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.customer_email)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.customer_email)}</td>
                         ) : null}
                         {showCol('address') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[240px]">
+                          <td className="px-3 py-3 text-sm text-gray-700 w-[120px] max-w-[120px]">
                             <span className="block truncate" title={leadAddressText(lead) || ''}>
                               {leadAddressText(lead) || '—'}
                             </span>
                           </td>
                         ) : null}
                         {showCol('pickupRequired') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.pickup_required)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">{formatDetailScalar(lead.pickup_required)}</td>
                         ) : null}
                         {showCol('make') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_make)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.vehicle_make)}</td>
                         ) : null}
                         {showCol('model') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_model)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.vehicle_model)}</td>
                         ) : null}
                         {showCol('variant') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_variant)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.vehicle_variant)}</td>
                         ) : null}
                         {showCol('year') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.vehicle_year)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">{formatDetailScalar(lead.vehicle_year)}</td>
                         ) : null}
                         {showCol('fuelType') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">
                             {formatDetailScalar(lead.vehicle_fuel_type || lead.fuel_type)}
                           </td>
                         ) : null}
                         {showCol('odometer') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">
                             {formatDetailScalar(lead.odometer_km ?? lead.odometer_reading)}
                           </td>
                         ) : null}
                         {showCol('serviceType') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.service_type)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.service_type)}</td>
                         ) : null}
                         {showCol('preferredDate') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.preferred_date)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">{formatDetailScalar(lead.preferred_date)}</td>
                         ) : null}
                         {showCol('preferredTime') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">
                             {formatDetailScalar(lead.preferred_time_slot || lead.preferred_service_slot)}
                           </td>
                         ) : null}
                         {showCol('preferredSlot') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">
                             {lead.preferred_slot_start ? formatDateTime(lead.preferred_slot_start) : '—'}
                           </td>
                         ) : null}
                         {showCol('problemDescription') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
+                          <td className="px-3 py-3 text-sm text-gray-700 w-[120px] max-w-[120px]">
                             <span className="block truncate" title={String(lead.problem_description || '')}>
                               {String(lead.problem_description || '').trim() || '—'}
                             </span>
                           </td>
                         ) : null}
                         {showCol('notes') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 max-w-[220px]">
+                          <td className="px-3 py-3 text-sm text-gray-700 w-[120px] max-w-[120px]">
                             <span className="block truncate" title={String(lead.description || '')}>
                               {String(lead.description || '').trim() || '—'}
                             </span>
                           </td>
                         ) : null}
                         {showCol('utmSource') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_source') || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{leadUtmValue(lead, 'utm_source') || '—'}</td>
                         ) : null}
                         {showCol('utmMedium') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_medium') || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{leadUtmValue(lead, 'utm_medium') || '—'}</td>
                         ) : null}
                         {showCol('utmTerm') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_term') || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{leadUtmValue(lead, 'utm_term') || '—'}</td>
                         ) : null}
                         {showCol('utmContent') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{leadUtmValue(lead, 'utm_content') || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{leadUtmValue(lead, 'utm_content') || '—'}</td>
                         ) : null}
                         {showCol('estimatedAmount') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(lead.estimated_amount)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">{formatCurrency(lead.estimated_amount)}</td>
                         ) : null}
                         {showCol('actualAmount') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatCurrency(lead.actual_amount)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px]">{formatCurrency(lead.actual_amount)}</td>
                         ) : null}
                         {showCol('paymentMode') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.payment_mode)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.payment_mode)}</td>
                         ) : null}
                         {showCol('paymentStatus') ? (
-                          <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatDetailScalar(lead.payment_status)}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap w-[120px] max-w-[120px] truncate">{formatDetailScalar(lead.payment_status)}</td>
                         ) : null}
-                        <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
+                                                <td className="px-4 py-3 text-sm text-right whitespace-nowrap">
                           <div className="inline-flex items-center gap-1">
                             <button
                               type="button"
@@ -3483,64 +3934,28 @@ export default function SuperAdminBookingsPage() {
             aria-label={detailTitle || 'Lead details'}
             className="relative z-10 flex h-full w-full sm:w-[min(96vw,1280px)] flex-col bg-white shadow-2xl border-l border-gray-200"
           >
-            <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5 shrink-0">
-              <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 min-w-0">
-                <Car className="w-5 h-5 text-brand-primary shrink-0" />
-                <span className="truncate">{detailTitle}</span>
-              </h3>
-              <div className="flex items-center gap-2 shrink-0">
-                {detailItem.id ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDetailOpen(false);
-                        openEdit(detailItem);
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteLead(detailItem)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"
-                    >
-                      Delete
-                    </button>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setDetailOpen(false)}
-                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 sm:p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <UserPlus className="w-4 h-4 text-indigo-700" />
-                  <p className="text-sm font-semibold text-indigo-900">
-                    {detailItem.assigned_telecaller_id ? 'Reassign telecaller' : 'Assign telecaller'}
+            <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-2.5 sm:px-5 shrink-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 min-w-0">
+                  <Car className="w-5 h-5 text-brand-primary shrink-0" />
+                  <span className="truncate">{detailTitle}</span>
+                </h3>
+                {detailItem.customer_name || detailItem.customer_phone ? (
+                  <p className="mt-0.5 text-xs text-gray-500 truncate pl-7">
+                    {[detailItem.customer_name, detailItem.customer_phone].filter(Boolean).join(' · ')}
                   </p>
-                </div>
-                <p className="text-xs text-indigo-800/80 mb-3">
-                  Current:{' '}
-                  <span className="font-medium">
-                    {detailItem.assigned_telecaller_name ||
-                      (detailItem.assigned_telecaller_id ? 'Assigned' : 'Unassigned')}
-                  </span>
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2">
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Compact TeleCRM-style assignee on the side */}
+                <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 pl-2 pr-1 py-1">
+                  <UserPlus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                   <select
                     value={assignTelecallerId}
                     onChange={(e) => setAssignTelecallerId(e.target.value)}
                     disabled={telecallersLoading || assigning}
-                    className="flex-1 min-w-0 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    title={detailItem.assigned_telecaller_id ? 'Reassign telecaller' : 'Assign telecaller'}
+                    className="max-w-[9.5rem] bg-transparent text-xs font-semibold text-indigo-900 focus:outline-none"
                   >
                     <option value="">Unassigned</option>
                     {visibleTelecallers.map((t) => (
@@ -3554,34 +3969,69 @@ export default function SuperAdminBookingsPage() {
                     type="button"
                     onClick={() => void saveAssignee()}
                     disabled={assigning || telecallersLoading}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    className="rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {assigning ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Saving…
-                      </>
-                    ) : detailItem.assigned_telecaller_id ? (
-                      'Reassign'
-                    ) : (
-                      'Assign'
-                    )}
+                    {assigning ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
                   </button>
                 </div>
-                {inactiveTelecallerCount > 0 ? (
+                {detailItem.id ? (
                   <button
                     type="button"
-                    onClick={() => setShowInactiveTelecallers((v) => !v)}
-                    className="mt-2 text-xs font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+                    onClick={() => deleteLead(detailItem)}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"
                   >
-                    {showInactiveTelecallers
-                      ? 'Hide inactive'
-                      : `Show inactive (${inactiveTelecallerCount})`}
+                    Delete
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setDetailOpen(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
+            </div>
 
-              <ServiceLeadDetailContent item={detailItem} />
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3">
+              {/* Mobile-only compact assign */}
+              <div className="sm:hidden flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50/70 p-2">
+                <select
+                  value={assignTelecallerId}
+                  onChange={(e) => setAssignTelecallerId(e.target.value)}
+                  disabled={telecallersLoading || assigning}
+                  className="min-w-0 flex-1 rounded-md border border-indigo-200 bg-white px-2 py-1.5 text-xs"
+                >
+                  <option value="">Unassigned</option>
+                  {visibleTelecallers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.full_name}
+                      {!t.is_active ? ' (inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void saveAssignee()}
+                  disabled={assigning || telecallersLoading}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {assigning ? '…' : 'Save'}
+                </button>
+              </div>
+              {inactiveTelecallerCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowInactiveTelecallers((v) => !v)}
+                  className="text-[11px] font-semibold text-red-600 hover:text-red-700 underline underline-offset-2"
+                >
+                  {showInactiveTelecallers
+                    ? 'Hide inactive telecallers'
+                    : `Show inactive (${inactiveTelecallerCount})`}
+                </button>
+              ) : null}
+
+              <ServiceLeadDetailContent item={detailItem} onPatch={saveDetailPatch} />
             </div>
           </aside>
         </div>

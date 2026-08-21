@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { resolveBookingSource } from '@/lib/booking-lead-utils';
 
@@ -62,12 +62,26 @@ async function assertSuperAdmin(supabase: any) {
     return { ok: false, status: 401, error: 'Unauthorized', user: null };
   }
 
-  const { data: userData, error: roleError } = await supabase
+  const selectRole = 'id, roles!inner(role_code)';
+  let userData: any = null;
+
+  const { data: byId } = await supabase
     .from('users_login')
-    .select('id, roles!inner(role_code)')
+    .select(selectRole)
     .eq('id', user.id)
-    .single();
-  if (roleError || !userData) {
+    .maybeSingle();
+  userData = byId;
+
+  if (!userData && user.email) {
+    const { data: byEmail } = await supabase
+      .from('users_login')
+      .select(selectRole)
+      .ilike('email', user.email)
+      .maybeSingle();
+    userData = byEmail;
+  }
+
+  if (!userData) {
     return { ok: false, status: 403, error: 'Forbidden - Role check failed', user };
   }
   const roleCode = (userData as any).roles?.role_code;
@@ -374,7 +388,7 @@ async function fetchLeadsForCharts(db: any, cfg: PeriodConfig, chartStartIso: st
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = await createClientFromRequest(request);
     const auth = await assertSuperAdmin(supabase);
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });

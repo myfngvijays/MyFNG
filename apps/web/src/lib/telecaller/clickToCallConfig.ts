@@ -1,0 +1,246 @@
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+
+export const CLICK_TO_CALL_SETTING_KEY = 'click_to_call_smartflo';
+
+export const DEFAULT_CLICK_TO_CALL_GATEWAY =
+  'https://qzmhqiwviyftoppuhkpy.supabase.co/functions/v1/click-to-call-gateway';
+export const DEFAULT_CLICK_TO_CALL_DID = '919262190064';
+export const DEFAULT_CLICK_TO_CALL_PROVIDER = 'smartflo';
+
+/** Smartflo DIDs available for assignment (numbers_assign). */
+export const DEFAULT_CLICK_TO_CALL_DIDS = [
+  '919262190064',
+  '919262183526',
+  '919240213316',
+  '919240204288',
+  '919240203202',
+] as const;
+
+export type DidAssignment = {
+  did: string;
+  /** users_login id of TELECALLER (or null = unassigned) */
+  telecaller_id: string | null;
+};
+
+export type ClickToCallConfig = {
+  enabled: boolean;
+  gateway_url: string;
+  /** Fallback DID when telecaller has no assignment */
+  did: string;
+  provider: string;
+  /** Optional Bearer for Supabase edge function */
+  gateway_key: string;
+  /** Pool of DIDs (typically 5) */
+  dids: string[];
+  /** Which telecaller uses which DID */
+  did_assignments: DidAssignment[];
+};
+
+function digitsOnly(raw: unknown): string {
+  return String(raw || '').replace(/\D/g, '');
+}
+
+function normalizeDidList(raw: unknown, fallback: string[]): string[] {
+  const list = Array.isArray(raw) ? raw : fallback;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    const d = digitsOnly(item);
+    if (!d || seen.has(d)) continue;
+    seen.add(d);
+    out.push(d);
+  }
+  return out.length ? out : [...fallback];
+}
+
+function normalizeAssignments(
+  raw: unknown,
+  dids: string[],
+): DidAssignment[] {
+  const byDid = new Map<string, string | null>();
+  for (const did of dids) byDid.set(did, null);
+
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue;
+      const did = digitsOnly((row as any).did);
+      if (!did || !byDid.has(did)) continue;
+      const tid = (row as any).telecaller_id;
+      byDid.set(did, tid ? String(tid).trim() || null : null);
+    }
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    // legacy map { telecallerId: did } or { did: telecallerId }
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      const kDigits = digitsOnly(k);
+      const vDigits = digitsOnly(v);
+      if (dids.includes(kDigits)) {
+        byDid.set(kDigits, v ? String(v).trim() || null : null);
+      } else if (dids.includes(vDigits)) {
+        byDid.set(vDigits, String(k).trim() || null);
+      }
+    }
+  }
+
+  // Ensure one telecaller → at most one DID (last wins if duplicates)
+  const usedTc = new Set<string>();
+  const ordered = dids.map((did) => {
+    let tid = byDid.get(did) || null;
+    if (tid && usedTc.has(tid)) tid = null;
+    if (tid) usedTc.add(tid);
+    return { did, telecaller_id: tid };
+  });
+  return ordered;
+}
+
+export function defaultClickToCallConfig(): ClickToCallConfig {
+  const dids = [...DEFAULT_CLICK_TO_CALL_DIDS];
+  return {
+    enabled: true,
+    gateway_url:
+      String(process.env.CLICK_TO_CALL_GATEWAY_URL || '').trim() || DEFAULT_CLICK_TO_CALL_GATEWAY,
+    did: String(process.env.CLICK_TO_CALL_DID || '').replace(/\D/g, '') || DEFAULT_CLICK_TO_CALL_DID,
+    provider:
+      String(process.env.CLICK_TO_CALL_PROVIDER || '').trim().toLowerCase() ||
+      DEFAULT_CLICK_TO_CALL_PROVIDER,
+    gateway_key: String(
+      process.env.CLICK_TO_CALL_GATEWAY_KEY || process.env.CLICK_TO_CALL_ANON_KEY || '',
+    ).trim(),
+    dids,
+    did_assignments: dids.map((did) => ({ did, telecaller_id: null })),
+  };
+}
+
+function parseConfig(raw: unknown): ClickToCallConfig {
+  const base = defaultClickToCallConfig();
+  if (!raw) return base;
+  let obj: any = raw;
+  if (typeof raw === 'string') {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return base;
+    }
+  }
+  if (!obj || typeof obj !== 'object') return base;
+
+  const dids = normalizeDidList(obj.dids, base.dids);
+  const fallbackDid = digitsOnly(obj.did) || dids[0] || base.did;
+
+  return {
+    enabled: obj.enabled === undefined ? true : Boolean(obj.enabled),
+    gateway_url: String(obj.gateway_url || base.gateway_url).trim() || base.gateway_url,
+    did: fallbackDid,
+    provider: String(obj.provider || base.provider).trim().toLowerCase() || base.provider,
+    gateway_key:
+      obj.gateway_key !== undefined && obj.gateway_key !== null
+        ? String(obj.gateway_key).trim()
+        : base.gateway_key,
+    dids,
+    did_assignments: normalizeAssignments(obj.did_assignments, dids),
+  };
+}
+
+export async function getClickToCallConfig(): Promise<ClickToCallConfig> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return defaultClickToCallConfig();
+
+  const { data } = await supabaseAdmin
+    .from('system_settings')
+    .select('setting_value')
+    .eq('setting_key', CLICK_TO_CALL_SETTING_KEY)
+    .maybeSingle();
+
+  const fromDb = parseConfig(data?.setting_value);
+  if (!fromDb.gateway_key) {
+    fromDb.gateway_key = defaultClickToCallConfig().gateway_key;
+  }
+  return fromDb;
+}
+
+export async function saveClickToCallConfig(
+  partial: Partial<ClickToCallConfig> & { clear_gateway_key?: boolean },
+): Promise<ClickToCallConfig> {
+  const current = await getClickToCallConfig();
+  const nextDids =
+    partial.dids !== undefined
+      ? normalizeDidList(partial.dids, current.dids)
+      : current.dids;
+
+  const next: ClickToCallConfig = {
+    enabled: partial.enabled !== undefined ? Boolean(partial.enabled) : current.enabled,
+    gateway_url:
+      partial.gateway_url !== undefined
+        ? String(partial.gateway_url || '').trim() || DEFAULT_CLICK_TO_CALL_GATEWAY
+        : current.gateway_url,
+    did:
+      partial.did !== undefined
+        ? digitsOnly(partial.did) || nextDids[0] || DEFAULT_CLICK_TO_CALL_DID
+        : current.did,
+    provider:
+      partial.provider !== undefined
+        ? String(partial.provider || '').trim().toLowerCase() || DEFAULT_CLICK_TO_CALL_PROVIDER
+        : current.provider,
+    gateway_key: current.gateway_key,
+    dids: nextDids,
+    did_assignments:
+      partial.did_assignments !== undefined
+        ? normalizeAssignments(partial.did_assignments, nextDids)
+        : normalizeAssignments(current.did_assignments, nextDids),
+  };
+
+  if (partial.clear_gateway_key) {
+    next.gateway_key = '';
+  } else if (partial.gateway_key !== undefined && String(partial.gateway_key).trim()) {
+    next.gateway_key = String(partial.gateway_key).trim();
+  }
+
+  // Keep fallback did inside pool when possible
+  if (!next.dids.includes(next.did) && next.dids[0]) {
+    next.did = next.dids[0];
+  }
+
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) throw new Error('Admin client unavailable');
+
+  const { error } = await supabaseAdmin.from('system_settings').upsert(
+    {
+      setting_key: CLICK_TO_CALL_SETTING_KEY,
+      setting_value: JSON.stringify(next),
+      setting_type: 'JSON',
+      category: 'TELEPHONY',
+      description: 'Smartflo click-to-call gateway, DID pool & telecaller assignments',
+      is_editable: true,
+      requires_restart: false,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'setting_key' },
+  );
+  if (error) throw new Error(error.message || 'Failed to save click-to-call settings');
+  return next;
+}
+
+/** Resolve DID for a telecaller; falls back to default DID. */
+export function resolveDidForTelecaller(
+  cfg: ClickToCallConfig,
+  telecallerId: string | null | undefined,
+): string {
+  const tid = String(telecallerId || '').trim();
+  if (tid) {
+    const hit = cfg.did_assignments.find((a) => a.telecaller_id === tid && a.did);
+    if (hit?.did) return hit.did;
+  }
+  return digitsOnly(cfg.did) || cfg.dids[0] || DEFAULT_CLICK_TO_CALL_DID;
+}
+
+/** Public-safe view (mask key). */
+export function publicClickToCallConfig(cfg: ClickToCallConfig) {
+  return {
+    enabled: cfg.enabled,
+    gateway_url: cfg.gateway_url,
+    did: cfg.did,
+    provider: cfg.provider,
+    has_gateway_key: Boolean(cfg.gateway_key),
+    dids: cfg.dids,
+    did_assignments: cfg.did_assignments,
+  };
+}

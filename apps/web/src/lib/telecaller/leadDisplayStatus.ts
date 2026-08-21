@@ -39,8 +39,11 @@ const RESULT_LABEL: Record<string, string> = {
 
 function shortLeadStatusLabel(label: string): string {
   const s = String(label || '').trim();
-  if (/^lost\b/i.test(s)) return 'Lost';
+  if (/^lost\b/i.test(s) || /^lost\s*[·•\-:|]/i.test(s)) return 'Lost';
   if (/^callback\b/i.test(s)) return 'Follow-up';
+  // Strip "Status · detail" for list badges (keep primary status only)
+  const beforeDot = s.split(/\s*[·•|]\s*/)[0]?.trim();
+  if (beforeDot && /^lost\b/i.test(beforeDot)) return 'Lost';
   return s;
 }
 
@@ -78,8 +81,30 @@ export function leadDisplayStatus(lead: any): string {
   return shortLeadStatusLabel(PIPELINE_LABEL[status] || status.replace(/_/g, ' ') || 'Fresh');
 }
 
-/** Same palette as mobile CrmQueueTab.leadStatusCardColors */
+/** Lead list cards: only Lost + Booking keep accent; others neutral. */
 export function leadStatusCardColors(leadOrLabel: any): {
+  cardBg: string;
+  border: string;
+  badgeBg: string;
+  badgeText: string;
+} {
+  const label =
+    typeof leadOrLabel === 'string'
+      ? leadOrLabel
+      : leadDisplayStatus(leadOrLabel);
+  const s = String(label || '').toUpperCase();
+
+  if (s.includes('LOST') || s === 'REJECTED') {
+    return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
+  }
+  if (s.includes('BOOKING')) {
+    return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
+  }
+  return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
+}
+
+/** Home KPI tiles — full status palette (previous look). */
+export function leadStatusKpiColors(leadOrLabel: any): {
   cardBg: string;
   border: string;
   badgeBg: string;
@@ -97,12 +122,7 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (s.includes('LOST') || s === 'REJECTED') {
     return { cardBg: '#FEF2F2', border: '#FECACA', badgeBg: '#FEE2E2', badgeText: '#B91C1C' };
   }
-  if (
-    s.includes('BOOKING') ||
-    s === 'SERVICE DONE' ||
-    s.startsWith('SERVICE DONE') ||
-    s === 'COMPLETED'
-  ) {
+  if (s.includes('BOOKING') || s === 'SERVICE DONE' || s.startsWith('SERVICE DONE') || s === 'COMPLETED') {
     return { cardBg: '#ECFDF5', border: '#A7F3D0', badgeBg: '#D1FAE5', badgeText: '#047857' };
   }
   if (s.includes('IN SERVICE') || s === 'IN_PROGRESS') {
@@ -117,51 +137,25 @@ export function leadStatusCardColors(leadOrLabel: any): {
   if (s.includes('INTERESTED')) {
     return { cardBg: '#FFF7ED', border: '#FED7AA', badgeBg: '#FFEDD5', badgeText: '#C2410C' };
   }
-  if (s.includes('OTP') || s.includes('MISA')) {
-    return { cardBg: '#FFFBEB', border: '#F59E0B', badgeBg: '#B45309', badgeText: '#FFFFFF' };
-  }
   if (incomplete) {
     return { cardBg: '#FFFBEB', border: '#FDE68A', badgeBg: '#B45309', badgeText: '#FFFFFF' };
   }
-  if (s === 'NEW' || s === 'FRESH') {
+  if (s === 'NEW' || s === 'FRESH' || s.includes('FRESH')) {
     return { cardBg: '#EFF6FF', border: '#BFDBFE', badgeBg: '#1D4ED8', badgeText: '#FFFFFF' };
   }
   return { cardBg: '#FFFFFF', border: '#E5E7EB', badgeBg: '#F1F5F9', badgeText: '#475569' };
 }
 
 export function leadStatusBannerClass(lead: any): string {
-  const c = leadStatusCardColors(lead);
-  // Tailwind-friendly approximations for banner (detail page)
   const s = leadDisplayStatus(lead).toUpperCase();
   if (s.includes('LOST') || s === 'REJECTED') return 'bg-red-50 border-red-200';
-  if (s.includes('BOOKING') || s === 'SERVICE DONE' || s.startsWith('SERVICE DONE') || s === 'COMPLETED') {
-    return 'bg-emerald-50 border-emerald-200';
-  }
-  if (s.includes('IN SERVICE')) return 'bg-blue-50 border-blue-200';
-  if (s.includes('WILL VISIT')) return 'bg-violet-50 border-violet-200';
-  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) return 'bg-sky-50 border-sky-200';
-  if (s.includes('INTERESTED')) return 'bg-orange-50 border-orange-200';
-  if (s.includes('OTP')) return 'bg-amber-50 border-amber-200';
-  if (s === 'NEW' || s === 'FRESH' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
-    return 'bg-slate-50 border-slate-200';
-  }
-  void c;
-  return 'bg-gray-50 border-gray-200';
+  if (s.includes('BOOKING')) return 'bg-emerald-50 border-emerald-200';
+  return 'bg-slate-50 border-slate-200';
 }
 
 export function leadStatusPillClass(lead: any): string {
   const s = leadDisplayStatus(lead).toUpperCase();
   if (s.includes('LOST')) return 'bg-red-100 text-red-700';
-  if (s.includes('BOOKING') || s === 'SERVICE DONE' || s.startsWith('SERVICE DONE')) {
-    return 'bg-emerald-100 text-emerald-800';
-  }
-  if (s.includes('IN SERVICE')) return 'bg-blue-100 text-blue-700';
-  if (s.includes('WILL VISIT')) return 'bg-violet-100 text-violet-800';
-  if (s.includes('CALLBACK') || s.includes('FOLLOW-UP') || s.includes('FOLLOW UP')) return 'bg-sky-100 text-sky-800';
-  if (s.includes('INTERESTED')) return 'bg-orange-100 text-orange-700';
-  if (s.includes('OTP')) return 'bg-amber-100 text-amber-800';
-  if (s === 'NEW' || s === 'FRESH' || s.includes('FRESH') || s.includes('INCOMPLETE')) {
-    return 'bg-slate-200 text-slate-700';
-  }
+  if (s.includes('BOOKING')) return 'bg-emerald-100 text-emerald-800';
   return 'bg-slate-100 text-slate-600';
 }

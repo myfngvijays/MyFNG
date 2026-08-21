@@ -61,6 +61,7 @@ import {
   Clock3,
   Link2,
   Workflow,
+  PhoneCall,
 } from 'lucide-react';
 
 type NavItem = {
@@ -110,6 +111,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/telecaller-distribution',
     icon: Users,
     description: 'Auto-assignment allocation settings'
+  },
+  {
+    name: 'Click to Call',
+    href: '/dashboard/super_admin/click-to-call',
+    icon: PhoneCall,
+    description: 'Smartflo gateway & telecaller from-numbers'
   },
   {
     name: 'Manual Invoice',
@@ -207,8 +214,14 @@ const navigationItems: NavItem[] = [
   {
     name: 'App Content & Display',
     icon: Smartphone,
-    description: 'Banners, carousel, reviews & footer',
+    description: 'Banners, carousel, reviews, popups & footer',
     children: [
+      {
+        name: 'App Popups',
+        href: '/dashboard/super_admin/app-popups',
+        icon: Megaphone,
+        description: 'Create & manage app popups',
+      },
       {
         name: 'Home Carousel Images',
         href: '/dashboard/super_admin/website-images/home-carousel',
@@ -314,12 +327,6 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/advance-coupons',
     icon: Ticket,
     description: 'PCMS — campaigns & automation',
-  },
-  {
-    name: 'App Popups',
-    href: '/dashboard/super_admin/app-popups',
-    icon: Megaphone,
-    description: 'Create & manage app popups',
   },
   {
     name: 'App Settings Menu',
@@ -707,30 +714,44 @@ function SuperAdminLayoutInner({
   React.useEffect(() => {
     let active = true;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace('/login');
-        return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          router.replace('/login');
+          return;
+        }
+        let profile: any = null;
+        const { data: byId } = await supabase
+          .from('users_login')
+          .select('is_active, email, roles!inner(role_code)')
+          .eq('id', user.id)
+          .maybeSingle();
+        profile = byId;
+        if (!profile && user.email) {
+          const { data: byEmail } = await supabase
+            .from('users_login')
+            .select('is_active, email, roles!inner(role_code)')
+            .ilike('email', user.email)
+            .maybeSingle();
+          profile = byEmail;
+        }
+        const roleCode = String((profile?.roles as { role_code?: string } | null)?.role_code || '');
+        if (!profile?.is_active || !roleCode) {
+          router.replace('/login');
+          return;
+        }
+        if (roleCode === 'APP_OPERATIONS') {
+          router.replace('/dashboard/app_operations');
+          return;
+        }
+        if (roleCode !== 'SUPER_ADMIN') {
+          router.replace(`/dashboard/${roleCode.toLowerCase()}`);
+          return;
+        }
+        if (active) setAuthReady(true);
+      } catch {
+        if (active) router.replace('/login');
       }
-      const { data: profile } = await supabase
-        .from('users_login')
-        .select('is_active, roles!inner(role_code)')
-        .eq('id', user.id)
-        .maybeSingle();
-      const roleCode = String((profile?.roles as { role_code?: string } | null)?.role_code || '');
-      if (!profile?.is_active || !roleCode) {
-        router.replace('/login');
-        return;
-      }
-      if (roleCode === 'APP_OPERATIONS') {
-        router.replace('/dashboard/app_operations');
-        return;
-      }
-      if (roleCode !== 'SUPER_ADMIN') {
-        router.replace(`/dashboard/${roleCode.toLowerCase()}`);
-        return;
-      }
-      if (active) setAuthReady(true);
     })();
     return () => { active = false; };
   }, [router, supabase]);
@@ -752,6 +773,7 @@ function SuperAdminLayoutInner({
       setOpenGroups((prev) => ({ ...prev, 'Smart Tools': true }));
     }
     if (
+      pathname?.startsWith('/dashboard/super_admin/app-popups') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/home-carousel') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/promo-banners') ||
       pathname?.startsWith('/dashboard/super_admin/website-images/customer-reviews') ||
@@ -852,6 +874,12 @@ function SuperAdminLayoutInner({
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout?')) {
+      try {
+        const { clearTelecallerCrmFilterPrefs } = await import('@/lib/telecaller/crmFilterPrefs');
+        clearTelecallerCrmFilterPrefs();
+      } catch {
+        /* ignore */
+      }
       await supabase.auth.signOut();
       router.push('/login');
     }

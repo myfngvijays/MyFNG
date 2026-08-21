@@ -15,7 +15,7 @@ import {
   loadTelecallerCrmFilterPrefs,
   saveTelecallerCrmFilterPrefs,
 } from '@/lib/telecaller/crmFilterPrefs';
-import { leadStatusCardColors } from '@/lib/telecaller/leadDisplayStatus';
+import { leadStatusKpiColors } from '@/lib/telecaller/leadDisplayStatus';
 import {
   Phone,
   Calendar,
@@ -29,7 +29,6 @@ import {
   CalendarDays,
   Clock,
   MapPin,
-  Truck,
   TrendingUp,
   LogIn,
   LogOut,
@@ -436,7 +435,7 @@ export default function TelecallerCrmHomePage() {
             {/* KPI grid — 5×2 with Today due filling last cell */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-2.5">
               {kpiCards.map((k) => {
-                const tint = leadStatusCardColors(
+                const tint = leadStatusKpiColors(
                   k.label === 'Incomplete' ? { is_incomplete: true } : k.statusKey,
                 );
                 return (
@@ -507,23 +506,16 @@ export default function TelecallerCrmHomePage() {
                     icon: MapPin,
                     color: '#0EA5E9',
                   },
-                  ...(!isLeadManager
+                  ...(isLeadManager
                     ? [
-                        {
-                          href: `${base}/rsa`,
-                          label: 'RSA',
-                          icon: Truck,
-                          color: '#EA580C',
-                        },
-                      ]
-                    : [
                         {
                           href: `${base}/floor`,
                           label: 'Floor',
                           icon: TrendingUp,
                           color: '#7C3AED',
                         },
-                      ]),
+                      ]
+                    : []),
                   {
                     href: isLeadManager ? `${base}/assignment` : `${base}/reports`,
                     label: isLeadManager ? 'Assignment' : 'Reports',

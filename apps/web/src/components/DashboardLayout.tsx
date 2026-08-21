@@ -551,21 +551,20 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
   const checkAuth = async () => {
     try {
       const supabase = createClient();
-      // On some navigations the auth store can take a moment to hydrate.
-      // Use a timeout guard so the dashboard doesn't get stuck on spinner.
+      // Keep auth gate snappy — long waits make every login feel stuck on spinner.
+      const AUTH_MS = 4500;
       let authUser: { id: string; email?: string | null; phone?: string | null } | null = null;
 
       try {
-        const sessionRes = await withTimeout(supabase.auth.getSession(), 8000, 'auth.getSession');
+        const sessionRes = await withTimeout(supabase.auth.getSession(), AUTH_MS, 'auth.getSession');
         authUser = sessionRes?.data?.session?.user || null;
       } catch (sessionErr) {
         console.warn('auth.getSession slow/failed, retrying via getUser:', sessionErr);
       }
 
-      // Retry once — brief null/timeout during token refresh must NOT force login
       if (!authUser) {
         try {
-          const userRes = await withTimeout(supabase.auth.getUser(), 8000, 'auth.getUser');
+          const userRes = await withTimeout(supabase.auth.getUser(), AUTH_MS, 'auth.getUser');
           authUser = userRes?.data?.user || null;
         } catch (userErr) {
           console.warn('auth.getUser retry failed:', userErr);
@@ -577,54 +576,40 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         return;
       }
 
-      // Get user profile
       const selectProfile = `
           *,
           role:roles(role_code, role_name),
           workshop:workshops(*)
         `;
 
-      // Primary: users_login.id == auth user id (some installs)
+      const email = (authUser.email || '').trim();
+      const phone = (authUser.phone || '').trim();
+
+      // Parallel profile lookup — don't wait id then email then phone serially (was up to 24s).
       let profile: any = null;
       try {
-        const byId = await withTimeout(
+        const lookups: PromiseLike<any>[] = [
           supabase.from('users_login').select(selectProfile).eq('id', authUser.id).maybeSingle(),
-          8000,
-          'users_login by id'
-        );
-        profile = byId?.data || null;
+        ];
+        if (email) {
+          lookups.push(
+            supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle(),
+          );
+        }
+        if (phone) {
+          lookups.push(
+            supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle(),
+          );
+        }
+        const results = await withTimeout(Promise.all(lookups), AUTH_MS, 'users_login profile');
+        for (const r of results) {
+          if (r?.data) {
+            profile = r.data;
+            break;
+          }
+        }
       } catch {
         profile = null;
-      }
-
-      // Fallback: users_login mapped by email/phone (common in this codebase)
-      if (!profile) {
-        const email = (authUser.email || '').trim();
-        const phone = (authUser.phone || '').trim();
-        try {
-          if (email) {
-            const byEmail = await withTimeout(
-              supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle(),
-              8000,
-              'users_login by email'
-            );
-            profile = byEmail?.data || null;
-          }
-        } catch {
-          // ignore
-        }
-        try {
-          if (!profile && phone) {
-            const byPhone = await withTimeout(
-              supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle(),
-              8000,
-              'users_login by phone'
-            );
-            profile = byPhone?.data || null;
-          }
-        } catch {
-          // ignore
-        }
       }
 
       if (profile) {
@@ -639,8 +624,6 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         const roleCode = (profile?.role as any)?.role_code;
         if (roleCode) setRole(roleCode);
 
-        // Check if user has correct role for this page
-        // For SUB_ADMIN, allow access to sub_admin routes
         const normalizedRole = role.toLowerCase();
         const normalizedUserRole = roleCode.toLowerCase();
         const superAdminOverride = normalizedUserRole === 'super_admin';
@@ -653,12 +636,10 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
           router.push(`/dashboard/${roleCode.toLowerCase()}`);
         }
       } else {
-        // If profile lookup fails (timeout/RLS), still allow rendering so navigation doesn't get stuck.
         setUser(authUser);
       }
     } catch (error) {
-      // Network/timeout errors must not look like a logout — only redirect when session is truly gone.
-      console.error('Auth check failed:', error);
+      console.warn('Auth check failed:', error);
       try {
         const supabase = createClient();
         const { data } = await supabase.auth.getSession();
@@ -699,6 +680,12 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
       } catch {
         /* continue logout */
       }
+    }
+    try {
+      const { clearTelecallerCrmFilterPrefs } = await import('@/lib/telecaller/crmFilterPrefs');
+      clearTelecallerCrmFilterPrefs();
+    } catch {
+      /* ignore */
     }
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -773,6 +760,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/super_admin/advance-coupons', icon: <Tag className="w-5 h-5" />, label: 'Advance Coupon Management' },
         { href: '/dashboard/super_admin/manual-invoices', icon: <FileText className="w-5 h-5" />, label: 'Manual Invoices' },
         { href: '/dashboard/super_admin/telecaller-distribution', icon: <Phone className="w-5 h-5" />, label: 'Telecaller Distribution' },
+        { href: '/dashboard/super_admin/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         {
           href: '/dashboard/super_admin/whatsapp-templates',
           icon: <MessageSquare className="w-5 h-5" />,
@@ -866,6 +854,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
         { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
+        { href: '/dashboard/lead_manager/click-to-call', icon: <Phone className="w-5 h-5" />, label: 'Click to Call' },
         { href: '/dashboard/lead_manager/tags', icon: <Tag className="w-5 h-5" />, label: 'Lead tags' },
         { href: '/dashboard/lead_manager/statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead status' },
         {

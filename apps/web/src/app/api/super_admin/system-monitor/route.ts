@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
+  getClickToCallConfig,
+} from '@/lib/telecaller/clickToCallConfig';
+import {
   createHealthAlertTemplate,
   getHealthAlertTemplateStatus,
   sendHealthAlertMessage,
@@ -1815,6 +1818,89 @@ async function checkSARVTelephony(): Promise<HealthCheck> {
   }
 }
 
+async function checkSmartfloClickToCall(): Promise<HealthCheck> {
+  const start = Date.now();
+  const cfg = await getClickToCallConfig();
+  const gateway = cfg.gateway_url;
+  const did = cfg.did;
+  const provider = cfg.provider;
+
+  if (!cfg.enabled) {
+    return {
+      name: 'Smartflo Click-to-Call',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Click-to-call disabled in admin settings',
+      reason: 'Enable under Super Admin → Click to Call.',
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open Click to Call setup',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+      },
+      details: { enabled: false, gateway, did, provider },
+    };
+  }
+
+  try {
+    // Probe host only — do not initiate a real call
+    const u = new URL(gateway);
+    const probe = await checkWithTimeout(() =>
+      fetch(`${u.origin}/functions/v1`, { method: 'GET' }).catch(() =>
+        fetch(u.origin, { method: 'HEAD' }),
+      ),
+    );
+    const responseTime = Date.now() - start;
+    const ok = Boolean(probe);
+    return {
+      name: 'Smartflo Click-to-Call',
+      category: 'Third Party',
+      status: ok ? (responseTime > 5000 ? 'degraded' : 'healthy') : 'degraded',
+      responseTime,
+      message: ok ? 'Click-to-call gateway host reachable' : 'Gateway probe inconclusive',
+      reason: `Call buttons use ${gateway} (DID ${did}, provider ${provider}). Set telecaller from-numbers on Click to Call setup.`,
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open Click to Call setup',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+      },
+      details: {
+        gateway,
+        did,
+        provider,
+        enabled: true,
+        has_gateway_key: Boolean(cfg.gateway_key),
+        env: {
+          CLICK_TO_CALL_GATEWAY_URL: Boolean(process.env.CLICK_TO_CALL_GATEWAY_URL),
+          CLICK_TO_CALL_DID: Boolean(process.env.CLICK_TO_CALL_DID),
+          CLICK_TO_CALL_PROVIDER: Boolean(process.env.CLICK_TO_CALL_PROVIDER),
+          CLICK_TO_CALL_GATEWAY_KEY: Boolean(
+            process.env.CLICK_TO_CALL_GATEWAY_KEY || process.env.CLICK_TO_CALL_ANON_KEY,
+          ),
+        },
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Smartflo Click-to-Call',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Click-to-call gateway unreachable',
+      reason: `${e.message}. Check gateway URL on Click to Call setup.`,
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open Click to Call setup',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+      },
+      details: { gateway, did, provider },
+    };
+  }
+}
+
 async function countActiveInstances(
   client: any,
   agentType: string,
@@ -2432,6 +2518,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkFeatureCrons(),
     checkSSL(),
     checkSARVTelephony(),
+    checkSmartfloClickToCall(),
   ]);
 }
 
@@ -2477,6 +2564,8 @@ export async function GET() {
       SMTP_HOST: !!(process.env.SMTP_HOST || process.env.EMAIL_HOST),
       SYSTEM_ALERT_WHATSAPP_NUMBERS: ADMIN_WHATSAPP_NUMBERS.length > 0,
       ANDROID_APP_LINK_SHA256: !!String(process.env.ANDROID_APP_LINK_SHA256 || '').trim(),
+      CLICK_TO_CALL_GATEWAY_URL: !!String(process.env.CLICK_TO_CALL_GATEWAY_URL || '').trim(),
+      CLICK_TO_CALL_DID: !!String(process.env.CLICK_TO_CALL_DID || '').trim(),
     };
 
     const healthAlertTemplate = await getHealthAlertTemplateStatus();

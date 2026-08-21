@@ -133,6 +133,29 @@ export async function addLeadTags(
   return { ok: true, tag_ids: Array.from(expanded) };
 }
 
+/** Move / merge tags from soft-deleted duplicate leads onto the surviving lead. */
+export async function mergeLeadTagsFromLosers(
+  winnerLeadId: string,
+  loserLeadIds: string[],
+): Promise<void> {
+  const winner = String(winnerLeadId || '').trim();
+  const losers = Array.from(new Set(loserLeadIds.map((x) => String(x || '').trim()).filter(Boolean)));
+  if (!winner || !losers.length) return;
+
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+
+  const { data: maps } = await supabaseAdmin
+    .from('crm_lead_tag_map')
+    .select('tag_id')
+    .in('lead_id', losers);
+  const tagIds = Array.from(
+    new Set((maps || []).map((m: any) => String(m.tag_id || '').trim()).filter(Boolean)),
+  );
+  if (!tagIds.length) return;
+  await addLeadTags(winner, tagIds);
+}
+
 /**
  * TeleCRM-style Meta Ads tags from lead_source / trigger label / referral.
  * Always includes common "Meta Ads" when Meta channel; plus specific child when known.

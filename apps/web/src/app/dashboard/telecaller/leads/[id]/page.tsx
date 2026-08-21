@@ -21,7 +21,9 @@ import {
 import { redactLeadSourceForTelecaller } from '@/lib/telecaller/redactLeadSource';
 import { parseCallDisposition } from '@/lib/telecaller/callDisposition';
 import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
+import { requestClickToCall } from '@/lib/telecaller/clickToCall';
 import WhatsAppIcon from '@/components/icons/WhatsAppIcon';
+import toast from 'react-hot-toast';
 
 function LeadDetailContent() {
   const params = useParams();
@@ -47,6 +49,7 @@ function LeadDetailContent() {
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [sendingPricing, setSendingPricing] = useState(false);
+  const [calling, setCalling] = useState(false);
   const [serviceGroups, setServiceGroups] = useState<Array<{ category: string; names: string[] }>>([]);
   const [subserviceNames, setSubserviceNames] = useState<string[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
@@ -358,6 +361,27 @@ function LeadDetailContent() {
     }
   }
 
+  async function handleClickToCall() {
+    if (!lead?.customer_phone || calling) return;
+    setCalling(true);
+    try {
+      const result = await requestClickToCall({
+        to: String(lead.customer_phone),
+        leadId,
+      });
+      if (!result.ok) {
+        toast.error(result.error || 'Click-to-call failed');
+        if (result.code === 'MISSING_AGENT_PHONE') {
+          window.open(`tel:${lead.customer_phone}`, '_self');
+        }
+        return;
+      }
+      toast.success(result.message || 'Call initiated — answer your phone');
+    } finally {
+      setCalling(false);
+    }
+  }
+
   async function handleAddCallLog() {
     try {
       const selected =
@@ -583,12 +607,14 @@ function LeadDetailContent() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-end gap-2">
               {lead.customer_phone ? (
-                <a
-                  href={`tel:${lead.customer_phone}`}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-white shadow-sm"
+                <button
+                  type="button"
+                  disabled={calling}
+                  onClick={() => void handleClickToCall()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-60"
                 >
-                  <PhoneCall className="w-4 h-4" /> Call
-                </a>
+                  <PhoneCall className="w-4 h-4" /> {calling ? 'Calling…' : 'Call'}
+                </button>
               ) : null}
               <button
                 type="button"
@@ -633,14 +659,16 @@ function LeadDetailContent() {
               </div>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 {lead.customer_phone ? (
-                  <a
-                    href={`tel:${lead.customer_phone}`}
-                    title="Call"
+                  <button
+                    type="button"
+                    disabled={calling}
+                    title="Click to call"
                     aria-label="Call"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white shadow"
+                    onClick={() => void handleClickToCall()}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white shadow disabled:opacity-60"
                   >
                     <PhoneCall className="w-4 h-4" />
-                  </a>
+                  </button>
                 ) : null}
                 {lead.customer_phone ? (
                   <button

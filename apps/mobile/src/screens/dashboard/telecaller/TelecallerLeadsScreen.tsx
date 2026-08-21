@@ -20,6 +20,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { parseIds } from '../../../lib/parseIds';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../../constants/theme';
 import { redactLeadSourceForTelecaller } from '../../../lib/redactLeadSource';
+import { clickToCallCustomer } from '../../../lib/clickToCall';
 
 export default function TelecallerLeadsScreen({ navigation, route }: any) {
   const { user } = useAuth();
@@ -185,8 +186,8 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
     return phone.slice(0, 2) + '****' + phone.slice(-2);
   };
 
-  const makeCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
+  const makeCall = (phone: string, leadId?: string) => {
+    void clickToCallCustomer({ customerPhone: phone, leadId });
   };
 
   const renderLeadCard = ({ item }: { item: any }) => (
@@ -280,7 +281,7 @@ export default function TelecallerLeadsScreen({ navigation, route }: any) {
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={[styles.actionButton, styles.primaryButton]}
-          onPress={() => makeCall(item.customer_phone)}
+          onPress={() => makeCall(item.customer_phone, item.id)}
         >
           <Icon name="phone" size={18} color="#fff" />
           <Text style={styles.primaryButtonText}>Call Now</Text>

@@ -83,7 +83,9 @@ export async function apiFetch<T = JsonValue>(
   }
   if (!res.ok) {
     const message = String(json?.error || 'Request failed');
-    throw new Error(message);
+    const err = new Error(message) as Error & { code?: string };
+    if (json?.code) err.code = String(json.code);
+    throw err;
   }
 
   return json as T;

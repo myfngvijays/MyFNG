@@ -10,7 +10,7 @@ import {
 } from '@/lib/chatbot_v2/misaLeadSource';
 import type { LeadDistributionChannelId } from '@/lib/enquiry/leadChannels';
 import { notifyTelecallerNewLeadAssignedSafe } from '@/lib/notifications';
-import { addLeadTags, ensureTagIdsByNames } from '@/lib/telecaller/crmLeadTagsApply';
+import { addLeadTags, ensureTagIdsByNames, mergeLeadTagsFromLosers } from '@/lib/telecaller/crmLeadTagsApply';
 
 export type LeadHistoryEntry = {
   at: string;
@@ -1106,6 +1106,11 @@ export async function consolidateDuplicateLeadsByPhones(
       }
 
       const loserIds = losers.map((r: any) => String(r.id)).filter(Boolean);
+      try {
+        await mergeLeadTagsFromLosers(String(winner.id), loserIds);
+      } catch (tagErr) {
+        console.warn('[consolidateDuplicateLeadsByPhones] tag merge skipped:', tagErr);
+      }
       const { error: delErr } = await supabaseAdmin
         .from('service_leads')
         .update({ deleted_at: nowIso, updated_at: nowIso })

@@ -709,13 +709,19 @@ function isInvalidStoredMessage(value: unknown): boolean {
   return !t || t === 'undefined' || t === 'null';
 }
 
-/** Latest inbound WhatsApp text for TeleCRM / WACA enquiry rows. */
+/** Original enquiry text for list — not latest chat reply. */
 export function getLeadInboundWhatsAppMessage(lead: Record<string, any>): string | null {
   const meta =
     lead?.coupon_meta && typeof lead.coupon_meta === 'object'
       ? (lead.coupon_meta as Record<string, unknown>)
       : {};
-  for (const value of [lead.problem_description, meta.last_inbound_message, meta.first_message]) {
+  for (const value of [
+    lead.problem_description,
+    meta.first_message,
+    meta.original_message,
+    meta.enquiry_message,
+    meta.inbound_message,
+  ]) {
     if (!isInvalidStoredMessage(value)) return String(value).trim();
   }
   return null;

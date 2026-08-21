@@ -1,6 +1,12 @@
 import { istYmd, type CrmDatePreset } from '@/lib/telecaller/crmDateRange';
 
-const STORAGE_KEY = 'myfng:telecaller_crm_filters_v2';
+const STORAGE_KEY = 'myfng:telecaller_crm_filters_v3';
+const LEGACY_KEYS = ['myfng:telecaller_crm_filters_v2', 'myfng:telecaller_crm_filters_v1'] as const;
+
+/** Whole filter bag expires after this (logout also clears). */
+const PREFS_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+/** Search text clears sooner even if other filters remain. */
+const SEARCH_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 const VALID_PRESETS = new Set<CrmDatePreset>([
   'today',
@@ -32,6 +38,12 @@ export type TelecallerCrmFilterPrefs = {
   advHasVehicle: boolean;
   advHasCoupon: boolean;
   advNoAssignee: boolean;
+};
+
+type StoredBag = {
+  savedAt: number;
+  searchAt?: number;
+  prefs: Partial<TelecallerCrmFilterPrefs>;
 };
 
 export function defaultTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
@@ -82,24 +94,83 @@ function normalizePrefs(raw: Partial<TelecallerCrmFilterPrefs> | null | undefine
   };
 }
 
-function readRaw(): Partial<TelecallerCrmFilterPrefs> | null {
+function readStored(): StoredBag | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-    // Migrate v1 key if present
-    const legacy = window.localStorage.getItem('myfng:telecaller_crm_filters_v1');
-    if (legacy) return JSON.parse(legacy);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && parsed.prefs) {
+        return {
+          savedAt: Number(parsed.savedAt) || 0,
+          searchAt: parsed.searchAt != null ? Number(parsed.searchAt) : undefined,
+          prefs: parsed.prefs,
+        };
+      }
+      // Accidentally saved bare prefs under v3
+      return { savedAt: Date.now(), prefs: parsed };
+    }
+
+    // Migrate legacy flat prefs → wrap with now so TTL starts fresh
+    for (const key of LEGACY_KEYS) {
+      const legacy = window.localStorage.getItem(key);
+      if (!legacy) continue;
+      try {
+        const prefs = JSON.parse(legacy);
+        return { savedAt: Date.now(), searchAt: Date.now(), prefs };
+      } catch {
+        /* continue */
+      }
+    }
     return null;
   } catch {
     return null;
   }
 }
 
+function writeStored(stored: StoredBag) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    for (const key of LEGACY_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function clearTelecallerCrmFilterPrefs() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+    for (const key of LEGACY_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function loadTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
   if (typeof window === 'undefined') return defaultTelecallerCrmFilterPrefs();
   try {
-    return normalizePrefs(readRaw());
+    const stored = readStored();
+    if (!stored?.savedAt) return defaultTelecallerCrmFilterPrefs();
+
+    const age = Date.now() - stored.savedAt;
+    if (age > PREFS_TTL_MS) {
+      clearTelecallerCrmFilterPrefs();
+      return defaultTelecallerCrmFilterPrefs();
+    }
+
+    const prefs = normalizePrefs(stored.prefs);
+    const searchAge = Date.now() - (stored.searchAt ?? stored.savedAt);
+    if (searchAge > SEARCH_TTL_MS && prefs.q) {
+      prefs.q = '';
+      writeStored({ ...stored, prefs: { ...stored.prefs, q: '' }, searchAt: undefined });
+    }
+    return prefs;
   } catch {
     return defaultTelecallerCrmFilterPrefs();
   }
@@ -108,13 +179,18 @@ export function loadTelecallerCrmFilterPrefs(): TelecallerCrmFilterPrefs {
 export function saveTelecallerCrmFilterPrefs(
   partial: Partial<TelecallerCrmFilterPrefs>,
 ): TelecallerCrmFilterPrefs {
-  const next = normalizePrefs({ ...loadTelecallerCrmFilterPrefs(), ...partial });
-  if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // ignore quota / private mode
-    }
-  }
+  const prevStored = readStored();
+  const base =
+    prevStored && Date.now() - prevStored.savedAt <= PREFS_TTL_MS
+      ? normalizePrefs(prevStored.prefs)
+      : defaultTelecallerCrmFilterPrefs();
+  const next = normalizePrefs({ ...base, ...partial });
+  const now = Date.now();
+  const searchChanged = Object.prototype.hasOwnProperty.call(partial, 'q');
+  writeStored({
+    savedAt: now,
+    searchAt: searchChanged ? now : prevStored?.searchAt ?? (next.q ? now : undefined),
+    prefs: next,
+  });
   return next;
 }

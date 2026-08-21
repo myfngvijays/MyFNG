@@ -181,9 +181,15 @@ export default function SuperAdminDashboard() {
         params.set('start', customStart);
         params.set('end', customEnd);
       }
-      const res = await fetch(`/api/super_admin/dashboard?${params.toString()}`);
+      const res = await fetch(`/api/super_admin/dashboard?${params.toString()}`, {
+        credentials: 'include',
+      });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.details || 'Failed to load dashboard');
+      if (!res.ok) {
+        // Soft fail — avoid Next.js error overlay from throw + console.error(Error)
+        setError(String(json?.error || json?.details || 'Failed to load dashboard'));
+        return;
+      }
 
       const gm = json?.globalMetrics || {};
       const dm = json?.departmentMetrics || {};
@@ -199,7 +205,7 @@ export default function SuperAdminDashboard() {
       setRecentLeads(Array.isArray(json?.recentLeads) ? json.recentLeads : []);
       setAlerts(Array.isArray(json?.alerts) ? json.alerts : []);
     } catch (err: any) {
-      console.error('Error fetching dashboard data:', err);
+      console.warn('Dashboard fetch failed:', err?.message || err);
       setError(err?.message || 'Failed to load dashboard');
     } finally {
       setLoading(false);
@@ -290,6 +296,14 @@ export default function SuperAdminDashboard() {
               type="button"
               onClick={async () => {
                 if (!confirm('Are you sure you want to logout?')) return;
+                try {
+                  const { clearTelecallerCrmFilterPrefs } = await import(
+                    '@/lib/telecaller/crmFilterPrefs'
+                  );
+                  clearTelecallerCrmFilterPrefs();
+                } catch {
+                  /* ignore */
+                }
                 const supabase = createClient();
                 await supabase.auth.signOut();
                 router.push('/login');

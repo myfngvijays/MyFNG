@@ -275,6 +275,7 @@ function TelecallerCrmLeadsContent() {
     advNoAssignee,
     advHasPhone,
     advOverdueReminder,
+    dateField === 'modified',
   ].filter(Boolean).length;
 
   useEffect(() => {
@@ -922,24 +923,6 @@ function TelecallerCrmLeadsContent() {
             <div className="relative min-w-0">
               <select
                 className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
-                value={dateField}
-                onChange={(e) => {
-                  const v = e.target.value === 'modified' ? 'modified' : 'created';
-                  setDateField(v);
-                  persistAll({ dateField: v });
-                  syncFiltersToUrl({ dateField: v });
-                }}
-                aria-label="Date type"
-              >
-                <option value="created">Created on</option>
-                <option value="modified">Modified</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            </div>
-
-            <div className="relative min-w-0">
-              <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-2.5 pr-9 text-sm font-semibold text-slate-800"
                 value={city}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -1058,6 +1041,23 @@ function TelecallerCrmLeadsContent() {
               </button>
               {showAdvanced ? (
                 <div className="absolute left-0 right-0 z-40 mt-1.5 min-w-[240px] rounded-xl border border-slate-200 bg-white p-2 shadow-lg sm:right-auto sm:w-72">
+                  <label className="block px-2 pt-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Date type
+                  </label>
+                  <select
+                    className="mb-2 w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-2.5 pr-8 text-sm font-semibold text-slate-800"
+                    value={dateField}
+                    onChange={(e) => {
+                      const v = e.target.value === 'modified' ? 'modified' : 'created';
+                      setDateField(v);
+                      persistAll({ dateField: v });
+                      syncFiltersToUrl({ dateField: v });
+                    }}
+                    aria-label="Date type"
+                  >
+                    <option value="created">Created on</option>
+                    <option value="modified">Modified</option>
+                  </select>
                   {[
                     {
                       id: 'incomplete',
@@ -1491,35 +1491,17 @@ function TelecallerCrmLeadsContent() {
               {displayedLeads.map((lead) => {
                 const tint = leadStatusCardColors(lead);
                 const statusLabel = leadDisplayStatus(lead);
-                const reminder = lead.reminder || null;
-                const reminderAt = reminder?.at || lead.next_follow_up_at || null;
-                const reminderOverdue =
-                  Boolean(reminder?.overdue) ||
-                  (reminderAt ? new Date(reminderAt).getTime() < Date.now() : false);
                 return (
                   <div
                     key={lead.id}
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => openLead(String(lead.id))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        openLead(String(lead.id));
-                      }
-                    }}
-                    className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004AAD]"
+                    className="rounded-2xl border p-3 shadow-sm"
                     style={{
                       backgroundColor: tint.cardBg,
                       borderColor: tint.border,
                     }}
                   >
                     {isLeadManager ? (
-                      <div
-                        className="mb-2"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
+                      <div className="mb-2">
                         <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
                           <input
                             type="checkbox"
@@ -1530,166 +1512,72 @@ function TelecallerCrmLeadsContent() {
                         </label>
                       </div>
                     ) : null}
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-bold text-slate-900 leading-snug">
-                            {(() => {
-                              const [line1, line2] = splitCustomerNameLines(
-                                lead.customer_name || 'Unknown',
-                              );
-                              return (
-                                <>
-                                  <span className="block">{line1}</span>
-                                  {line2 ? <span className="block">{line2}</span> : null}
-                                </>
-                              );
-                            })()}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span
-                              className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
-                              style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
-                            >
-                              {statusLabel}
-                            </span>
-                            {lead.is_incomplete ? (
-                              <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white">
-                                Incomplete
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                              Phone
-                            </p>
-                            <p className="font-semibold text-slate-800">
-                              {lead.customer_phone || '—'}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                              Reg. No
-                            </p>
-                            <p className="font-semibold uppercase text-slate-800">
-                              {lead.vehicle_number &&
-                              String(lead.vehicle_number).trim().toUpperCase() !== 'NA'
-                                ? String(lead.vehicle_number).trim().toUpperCase()
-                                : '—'}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                              Make / Model
-                            </p>
-                            <p className="font-semibold text-slate-800 leading-snug">
-                              {(() => {
-                                const make = String(lead.vehicle_make || '')
-                                  .trim()
-                                  .toUpperCase();
-                                const model = String(lead.vehicle_model || '')
-                                  .trim()
-                                  .toUpperCase();
-                                const makeOk = make && make !== 'NA';
-                                const modelOk = model && model !== 'NA';
-                                if (!makeOk && !modelOk) return '—';
-                                return (
-                                  <>
-                                    {makeOk ? <span className="block">{make}</span> : null}
-                                    {modelOk ? (
-                                      <span className="block text-slate-500">{model}</span>
-                                    ) : null}
-                                  </>
-                                );
-                              })()}
-                            </p>
-                          </div>
-                        </div>
-                        {lead.city ? (
-                          <p className="mt-2 text-xs text-slate-500">{lead.city}</p>
-                        ) : null}
-                        {isLeadManager ? (
-                          <p className="text-[11px] font-semibold text-indigo-700 mt-0.5">
-                            {lead.assigned_telecaller?.full_name
-                              ? `Telecaller: ${lead.assigned_telecaller.full_name}`
-                              : 'Telecaller: Unassigned'}
-                          </p>
-                        ) : null}
-                        <p className="mt-1 text-xs text-slate-500 leading-snug">
-                          <span className="font-semibold text-slate-600">Created</span>
-                          <br />
-                          <StackedDateTime iso={lead.created_at} />
-                          {lead.updated_at ? (
-                            <>
-                              <br />
-                              <span className="font-semibold text-slate-600">Modified</span>
-                              <br />
-                              <StackedDateTime iso={lead.updated_at} />
-                            </>
-                          ) : null}
+                        <p className="font-bold text-slate-900 leading-snug truncate">
+                          {lead.customer_name || 'Unknown'}
                         </p>
-                        {reminderAt ? (
-                          <div
-                            className={`mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold ring-1 ${
-                              reminderOverdue
-                                ? 'bg-red-50 text-red-700 ring-red-200'
-                                : 'bg-violet-50 text-violet-800 ring-violet-200'
-                            }`}
-                          >
-                            <Bell className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                            <span className="min-w-0">
-                              <span className="font-bold">
-                                {reminderOverdue ? 'Overdue reminder' : 'Reminder'}
-                                {reminder?.type
-                                  ? ` · ${String(reminder.type).replace(/_/g, ' ')}`
-                                  : ''}
-                              </span>
-                              <span className="block text-[10px] font-medium opacity-90">
-                                {new Date(reminderAt).toLocaleString('en-IN')}
-                                {reminder?.reason ? ` — ${reminder.reason}` : ''}
-                              </span>
-                            </span>
-                          </div>
-                        ) : null}
+                        <p className="mt-1 text-sm font-semibold text-slate-700">
+                          {lead.customer_phone || '—'}
+                        </p>
                       </div>
-                      <div
-                        className="flex flex-wrap gap-2 sm:justify-end shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
-                        {lead.customer_phone ? (
-                          <a
-                            href={`tel:${lead.customer_phone}`}
-                            title="Call"
-                            aria-label="Call"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm"
-                          >
-                            <Phone className="h-4 w-4 fill-current" strokeWidth={0} />
-                          </a>
-                        ) : null}
-                        {lead.customer_phone ? (
-                          <button
-                            type="button"
-                            onClick={() => openLeadWhatsApp(lead)}
-                            title="WhatsApp"
-                            aria-label="WhatsApp"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
-                          >
-                            <WhatsAppIcon className="h-4 w-4" />
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => openShare(lead)}
-                          title="Share"
-                          aria-label="Share"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-600 text-white shadow-sm"
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span
+                          className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                          style={{ backgroundColor: tint.badgeBg, color: tint.badgeText }}
                         >
-                          <Share2 className="h-3.5 w-3.5 fill-current" strokeWidth={2.5} />
-                        </button>
+                          {statusLabel}
+                        </span>
+                        {isLeadManager ? (
+                          <span
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-violet-700 text-[10px] font-extrabold text-white"
+                            title={
+                              lead.assigned_telecaller?.full_name ||
+                              lead.assigned_telecaller_name ||
+                              'Unassigned'
+                            }
+                          >
+                            {(() => {
+                              const n = String(
+                                lead.assigned_telecaller?.full_name ||
+                                  lead.assigned_telecaller_name ||
+                                  '',
+                              ).trim();
+                              if (!n) return '?';
+                              const parts = n.split(/\s+/).filter(Boolean);
+                              if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                              return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
+                            })()}
+                          </span>
+                        ) : null}
                       </div>
+                    </div>
+                    <div className="mt-2.5 flex gap-2">
+                      {lead.customer_phone ? (
+                        <a
+                          href={`tel:${lead.customer_phone}`}
+                          title="Call"
+                          className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-[#004AAD] px-2 py-2 text-xs font-bold text-white"
+                        >
+                          <Phone className="h-3.5 w-3.5 fill-current" strokeWidth={0} />
+                          Call
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openLead(String(lead.id))}
+                        className="inline-flex flex-1 items-center justify-center rounded-xl bg-blue-50 px-2 py-2 text-xs font-bold text-[#004AAD]"
+                      >
+                        Open
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openShare(lead)}
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-xl bg-blue-50 px-2 py-2 text-xs font-bold text-[#004AAD]"
+                      >
+                        <Share2 className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        Share
+                      </button>
                     </div>
                   </div>
                 );

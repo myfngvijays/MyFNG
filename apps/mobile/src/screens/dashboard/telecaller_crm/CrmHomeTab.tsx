@@ -20,13 +20,15 @@ import {
   istYmd,
 } from '../../../lib/crmDateRange';
 import {
-  leadStatusCardColors,
+  leadStatusKpiColors,
   statusAccentColor,
 } from '../../../lib/telecaller/leadStatusColors';
 
 type Props = {
   onNavigate: (screen: string, params?: any) => void;
   onOpenWhatsApp: () => void;
+  /** When true, hide notif/alarm (parent top bar already has them). */
+  embedInShell?: boolean;
   datePreset?: CrmDatePreset;
   customStart?: string;
   customEnd?: string;
@@ -38,6 +40,7 @@ type Props = {
 export default function CrmHomeTab({
   onNavigate,
   onOpenWhatsApp,
+  embedInShell = false,
   datePreset: datePresetProp,
   customStart: customStartProp,
   customEnd: customEndProp,
@@ -144,25 +147,29 @@ export default function CrmHomeTab({
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={styles.name}>{data?.profile?.name || 'Telecaller'}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.remindBtn}
-          onPress={() => onNavigate('Notifications')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="notifications-outline" size={18} color="#0369A1" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.remindBtn}
-          onPress={() => onNavigate('TelecallerFollowUps')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="alarm-outline" size={18} color="#0369A1" />
-          {Number(kpis.followups_today || 0) > 0 ? (
-            <View style={styles.remindBadge}>
-              <Text style={styles.remindBadgeText}>{kpis.followups_today}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
+        {!embedInShell ? (
+          <>
+            <TouchableOpacity
+              style={styles.remindBtn}
+              onPress={() => onNavigate('Notifications')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="notifications-outline" size={18} color="#0369A1" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.remindBtn}
+              onPress={() => onNavigate('TelecallerFollowUps')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="alarm-outline" size={18} color="#0369A1" />
+              {Number(kpis.followups_today || 0) > 0 ? (
+                <View style={styles.remindBadge}>
+                  <Text style={styles.remindBadgeText}>{kpis.followups_today}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          </>
+        ) : null}
         <View style={[styles.badge, onFloor ? styles.badgeOn : styles.badgeOff]}>
           <View style={[styles.dot, { backgroundColor: onFloor ? COLORS.green : COLORS.orange }]} />
           <Text style={styles.badgeText}>{onFloor ? 'On Floor' : 'Off Duty'}</Text>
@@ -290,7 +297,7 @@ export default function CrmHomeTab({
             filter: 'lost',
           },
         ].map((k) => {
-          const tint = leadStatusCardColors(
+          const tint = leadStatusKpiColors(
             k.label === 'Incomplete' ? { is_incomplete: true } : k.statusKey,
           );
           const accent = statusAccentColor(tint);

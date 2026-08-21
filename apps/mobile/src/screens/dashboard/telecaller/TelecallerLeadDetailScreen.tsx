@@ -25,6 +25,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../lib/api';
 import { parseIds } from '../../../lib/parseIds';
 import { openPhoneCall } from '../../../lib/phone';
+import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { COLORS, SPACING } from '../../../constants/theme';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanPicker';
@@ -1780,15 +1781,20 @@ export default function TelecallerLeadDetailScreen({
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonPrimary]}
-          onPress={() => openPhoneCall(editing ? editForm.customer_phone : lead.customer_phone)}
+          style={[styles.actionButton, styles.actionButtonPrimary, styles.actionButtonCall]}
+          onPress={() =>
+            void clickToCallCustomer({
+              customerPhone: editing ? editForm.customer_phone : lead.customer_phone,
+              leadId: lead?.id,
+            })
+          }
         >
           <Icon name="phone" size={18} color="#fff" />
           <Text style={styles.actionButtonTextPrimary}>Call</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonSecondary]}
+          style={[styles.actionButton, styles.actionButtonSecondary, styles.actionButtonWa]}
           onPress={handleOpenWhatsApp}
         >
           <Icon name="whatsapp" size={18} color={COLORS.green} />
@@ -1797,11 +1803,15 @@ export default function TelecallerLeadDetailScreen({
 
         {canEdit ? (
           <TouchableOpacity
-            style={[styles.actionButton, styles.actionButtonEdit]}
+            style={[
+              styles.actionButton,
+              styles.actionButtonEdit,
+              styles.actionButtonIconOnly,
+            ]}
             onPress={() => (editing ? cancelEditing() : startEditing())}
+            accessibilityLabel={editing ? 'Back' : 'Edit'}
           >
-            <Icon name={editing ? 'close' : 'pencil'} size={16} color={COLORS.primary} />
-            <Text style={styles.actionButtonTextEdit}>{editing ? 'Back' : 'Edit'}</Text>
+            <Icon name={editing ? 'close' : 'pencil'} size={18} color={COLORS.primary} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -3380,7 +3390,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
   },
   headerBarEmbedded: {
-    paddingTop: 12,
+    paddingTop: 14,
   },
   backButton: {
     width: 40,
@@ -3389,6 +3399,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 20,
+    zIndex: 2,
   },
   headerBarTitle: {
     fontSize: 18,
@@ -3400,7 +3411,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: 40,
   },
   loadingContainer: {
     flex: 1,
@@ -3436,6 +3447,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    overflow: 'hidden',
   },
   headerTitle: {
     fontSize: 22,
@@ -3467,13 +3479,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 13,
     borderRadius: 14,
     gap: 6,
+  },
+  actionButtonCall: {
+    flex: 0.9,
+    paddingHorizontal: 10,
+  },
+  actionButtonWa: {
+    flex: 1.35,
+    paddingHorizontal: 12,
+  },
+  actionButtonIconOnly: {
+    flex: 0,
+    width: 48,
+    paddingHorizontal: 0,
   },
   actionButtonPrimary: {
     backgroundColor: COLORS.primary,

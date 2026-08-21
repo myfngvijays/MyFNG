@@ -43,17 +43,43 @@ async function assertBookingsAdmin(request: NextRequest) {
 const EDITABLE_FIELDS = [
   'customer_name',
   'customer_phone',
+  'customer_email',
+  'customer_address',
+  'address',
+  'pickup_address',
+  'pickup_required',
   'vehicle_number',
+  'vehicle_make',
+  'vehicle_model',
+  'vehicle_variant',
+  'vehicle_year',
+  'fuel_type',
+  'vehicle_fuel_type',
   'city',
+  'city_id',
+  'pincode',
+  'model_id',
+  'odometer_reading',
   'status',
   'lead_source',
   'created_from',
-  'estimated_amount',
-  'coupon_code',
-  'discount_amount',
+  'lead_type',
+  'lead_priority',
+  'priority',
   'service_type',
-  'customer_email',
-  'customer_address',
+  'preferred_date',
+  'preferred_time_slot',
+  'preferred_service_slot',
+  'preferred_slot_start',
+  'problem_description',
+  'description',
+  'notes',
+  'estimated_amount',
+  'actual_amount',
+  'discount_amount',
+  'coupon_code',
+  'payment_mode',
+  'payment_status',
 ] as const;
 
 export async function PATCH(
@@ -94,10 +120,108 @@ export async function PATCH(
         : Number(body.estimated_amount);
     }
 
+    if (body.actual_amount !== undefined) {
+      update.actual_amount =
+        body.actual_amount === '' || body.actual_amount == null
+          ? null
+          : Number(body.actual_amount);
+    }
+
+    if (body.vehicle_year !== undefined) {
+      update.vehicle_year =
+        body.vehicle_year === '' || body.vehicle_year == null
+          ? null
+          : Number(body.vehicle_year);
+    }
+
+    if (body.odometer_reading !== undefined) {
+      update.odometer_reading =
+        body.odometer_reading === '' || body.odometer_reading == null
+          ? null
+          : Number(body.odometer_reading);
+    }
+
+    if (body.pickup_required !== undefined) {
+      const raw = body.pickup_required;
+      update.pickup_required =
+        raw === true || raw === 'true' || raw === 'Yes' || raw === '1' || raw === 1;
+    }
+
     if (body.discount_amount !== undefined) {
       update.discount_amount = body.discount_amount === '' || body.discount_amount == null
         ? 0
         : Number(body.discount_amount);
+    }
+
+    // Keep fuel_type / vehicle_fuel_type in sync (schemas differ by install)
+    if (body.fuel_type !== undefined || body.vehicle_fuel_type !== undefined) {
+      const fuel = String(body.vehicle_fuel_type ?? body.fuel_type ?? '')
+        .trim()
+        .toUpperCase();
+      if (fuel) {
+        update.fuel_type = fuel;
+        update.vehicle_fuel_type = fuel;
+      }
+    }
+
+    // Segregated address → compose customer_address + merge meta
+    if (body.address_parts && typeof body.address_parts === 'object') {
+      const parts = body.address_parts as Record<string, unknown>;
+      const flat = String(parts.flat_number || '').trim();
+      const area = String(parts.area || '').trim();
+      const landmark = String(parts.landmark || '').trim();
+      const cityName = String(parts.city || body.city || '').trim();
+      const pin = String(parts.pincode || body.pincode || '')
+        .replace(/\D/g, '')
+        .slice(0, 6);
+      const composed = [
+        flat,
+        area,
+        landmark ? `Near ${landmark}` : '',
+        [cityName, pin].filter(Boolean).join(' '),
+      ]
+        .filter(Boolean)
+        .join(', ');
+      if (composed) update.customer_address = composed;
+      if (pin) update.pincode = pin;
+      if (cityName) update.city = cityName;
+      if (parts.city_id) update.city_id = String(parts.city_id);
+
+      const { data: current } = await supabaseAdmin
+        .from('service_leads')
+        .select('meta')
+        .eq('id', id)
+        .maybeSingle();
+      const prevMeta =
+        current?.meta && typeof current.meta === 'object' && !Array.isArray(current.meta)
+          ? { ...(current.meta as Record<string, unknown>) }
+          : {};
+      update.meta = {
+        ...prevMeta,
+        flat_number: flat || null,
+        area: area || null,
+        landmark: landmark || null,
+      };
+    }
+
+    // Preferred date + time → preferred_slot_start when both available
+    if (body.preferred_date !== undefined || body.preferred_time_slot !== undefined) {
+      const { data: current } = await supabaseAdmin
+        .from('service_leads')
+        .select('preferred_date, preferred_time_slot, preferred_slot_start')
+        .eq('id', id)
+        .maybeSingle();
+      const dateStr = String(
+        body.preferred_date !== undefined ? body.preferred_date : current?.preferred_date || '',
+      ).slice(0, 10);
+      const timeStr = String(
+        body.preferred_time_slot !== undefined
+          ? body.preferred_time_slot
+          : current?.preferred_time_slot || '',
+      ).slice(0, 5);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) && /^\d{2}:\d{2}/.test(timeStr)) {
+        update.preferred_slot_start = `${dateStr}T${timeStr}:00+05:30`;
+      }
     }
 
     let previousAssigneeId: string | null = null;

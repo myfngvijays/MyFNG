@@ -40,6 +40,25 @@ const HEADER: Record<string, MenuHelpEntry> = {
 };
 
 const BY_HREF: Record<string, MenuHelpEntry> = {
+  '/dashboard/lead_manager/click-to-call': {
+    title: 'Click to Call',
+    body:
+      'Smartflo click-to-call: har telecaller ka from number set karo aur test call chalao.\n\nCall button pehle agent phone ring karta hai, phir customer connect hota hai. Gateway URL / DID Super Admin manage karta hai.',
+    tips: [
+      'Mahendra jaise agents ke liye users_login.phone = unka mobile (e.g. 9594050288).',
+      'Phone missing ho to Call fail hoga — dialer fallback sirf mobile app pe.',
+    ],
+  },
+  '/dashboard/super_admin/click-to-call': {
+    title: 'Click to Call',
+    body:
+      'Smartflo gateway setup: URL, provider, 5 DIDs assign (kis telecaller ko kaunsa DID), aur from-numbers.\n\nCall pe telecaller ka assigned DID use hota hai; nahi mila to fallback DID.',
+    tips: [
+      'Example: 919262190064 → Sitaram — DID assignment table se set/change karo.',
+      'Env vars (CLICK_TO_CALL_*) defaults hain jab DB me save na ho.',
+      'System Monitor me bhi is gateway ki health check dikhegi.',
+    ],
+  },
   '/dashboard/lead_manager': {
     title: 'Home',
     body:
@@ -94,7 +113,8 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   },
   '/dashboard/lead_manager/team': {
     title: 'Team',
-    body: 'Telecaller team members, permissions aur team management.',
+    body:
+      'Telecaller phones, CRM access templates, aur team management. From-numbers Click to Call page pe bhi set ho sakte hain.',
   },
   '/dashboard/lead_manager/tags': {
     title: 'Lead tags',

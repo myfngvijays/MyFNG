@@ -1,8 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, StatusBar } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  View,
+  StyleSheet,
+  StatusBar,
+  Modal,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import BottomNav from '../../../components/BottomNav';
+import { Ionicons } from '@expo/vector-icons';
 import TelecallerWhatsAppInbox, {
   TelecallerWhatsAppFab,
 } from '../../../components/telecaller/TelecallerWhatsAppInbox';
@@ -22,16 +31,26 @@ import {
   saveTelecallerCrmFilterPrefs,
 } from '../../../lib/crmFilterPrefs';
 
+const MENU_TABS = [
+  { id: 'home', label: 'Home', icon: 'home-outline' as const },
+  { id: 'queue', label: 'Leads', icon: 'clipboard-outline' as const },
+  { id: 'book', label: 'Book', icon: 'add-circle-outline' as const },
+  { id: 'workshops', label: 'Workshops', icon: 'location-outline' as const },
+  { id: 'me', label: 'My Profile', icon: 'person-outline' as const },
+];
+
 /**
- * Advanced Telecaller CRM — Home | Leads | Book | Workshops | Me
+ * Advanced Telecaller CRM — hamburger menu + Home | Leads | Book | Workshops | Me
  * Date + status filters are shared between Home and Leads and persisted.
  */
 export default function TelecallerAdvancedCRM() {
   const stackNav = useNavigation<any>();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const isLeadManager = String(route?.name || '').includes('LeadManager');
   const defaults = defaultTelecallerCrmFilterPrefs();
   const [tab, setTab] = useState('home');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
   const [engageSegment, setEngageSegment] = useState('followups');
   const [bookMode, setBookMode] = useState<'book' | 'lead' | null>(null);
@@ -105,16 +124,14 @@ export default function TelecallerAdvancedCRM() {
         screen === 'TelecallerRSACreateComplaint' ||
         screen === 'TelecallerRSAComplaintDetail'
       ) {
-        setTab('engage');
-        setEngageSegment('rsa');
+        // Engage / RSA entry disabled from CRM menu
         return;
       }
       if (screen === 'followups' || screen === 'TelecallerFollowUps') {
         try {
           stackNav.navigate('TelecallerFollowUps', params);
         } catch {
-          setTab('engage');
-          setEngageSegment('followups');
+          /* ignore */
         }
         return;
       }
@@ -127,8 +144,7 @@ export default function TelecallerAdvancedCRM() {
         return;
       }
       if (screen === 'scripts' || screen === 'TelecallerScripts') {
-        setTab('engage');
-        setEngageSegment('scripts');
+        // Engage / scripts entry disabled from CRM menu
         return;
       }
       if (screen === 'queue' || screen === 'leads' || screen === 'TelecallerLeads') {
@@ -182,22 +198,78 @@ export default function TelecallerAdvancedCRM() {
   };
 
   const handleTabChange = (id: string) => {
+    if (id === 'engage') {
+      setMenuOpen(false);
+      return;
+    }
     setDetailLeadId(null);
     setDetailEditing(false);
     setBookMode(null);
     setTab(id);
-    // Do not reset queueFilter — keep Home/Leads selection in sync
+    setMenuOpen(false);
   };
 
   const showQueue = prefsReady && tab === 'queue';
+  const activeTitle =
+    MENU_TABS.find((t) => t.id === (detailLeadId ? 'queue' : tab))?.label ||
+    (isLeadManager ? 'Lead Manager' : 'Telecaller CRM');
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle={detailLeadId ? 'light-content' : 'dark-content'} />
+
+      {!detailLeadId ? (
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={() => setMenuOpen(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+          >
+            <Ionicons name="menu" size={26} color={COLORS.primary} />
+          </TouchableOpacity>
+          <Text
+            style={[styles.topTitle, tab === 'home' && styles.topTitleHome]}
+            numberOfLines={1}
+          >
+            {activeTitle}
+          </Text>
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={() => {
+              try {
+                stackNav.navigate('TelecallerFollowUps');
+              } catch {
+                /* Follow-ups screen unavailable */
+              }
+            }}
+            accessibilityLabel="Reminders"
+          >
+            <Ionicons name="alarm-outline" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={() => {
+              try {
+                stackNav.navigate('Notifications');
+              } catch {
+                /* ignore */
+              }
+            }}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications-outline" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <View style={styles.body}>
         {prefsReady && tab === 'home' && !detailLeadId && (
           <CrmHomeTab
             {...dateProps}
+            embedInShell
             onNavigate={(screen, params) => {
               if (screen === 'queue') {
                 persistQueueFilter(params?.filter || 'all');
@@ -212,8 +284,7 @@ export default function TelecallerAdvancedCRM() {
                 return;
               }
               if (screen === 'engage') {
-                setEngageSegment(params?.segment || 'followups');
-                setTab('engage');
+                // Engage / RSA temporarily disabled from CRM shell
                 return;
               }
               if (screen === 'workshops' || screen === 'workshopLocator') {
@@ -230,13 +301,20 @@ export default function TelecallerAdvancedCRM() {
           />
         )}
 
-        {/* Keep Leads queue mounted while viewing a lead so filters survive back */}
         {showQueue ? (
           <View
             style={[
               styles.body,
               detailLeadId
-                ? { position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', left: -20 }
+                ? {
+                    position: 'absolute',
+                    width: 0,
+                    height: 0,
+                    opacity: 0,
+                    overflow: 'hidden',
+                    left: 0,
+                    top: 0,
+                  }
                 : null,
             ]}
             pointerEvents={detailLeadId ? 'none' : 'auto'}
@@ -314,27 +392,184 @@ export default function TelecallerAdvancedCRM() {
 
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
       {!detailLeadId && tab !== 'book' ? (
-        <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} bottomOffset={108} />
+        <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} bottomOffset={28} />
       ) : null}
 
-      <BottomNav
-        activeTab={detailLeadId ? 'queue' : tab === 'engage' ? 'workshops' : tab}
-        onTabChange={handleTabChange}
-        tabs={tabs}
-      />
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <View style={styles.drawerRoot}>
+          <View style={styles.drawerPanel}>
+            <View style={[styles.drawerHead, { paddingTop: Math.max(insets.top, 12) + 12 }]}>
+              <View style={styles.drawerHeadSafe}>
+                <View>
+                  <Text style={styles.drawerEyebrow}>MyFNG</Text>
+                  <Text style={styles.drawerBrand}>
+                    {isLeadManager ? 'Lead Manager' : 'Telecaller CRM'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setMenuOpen(false)}
+                  hitSlop={12}
+                  style={styles.drawerClose}
+                >
+                  <Ionicons name="close" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView
+              style={styles.drawerSafe}
+              contentContainerStyle={styles.drawerList}
+              keyboardShouldPersistTaps="handled"
+            >
+              {MENU_TABS.map((item) => {
+                const active = tab === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.drawerItem, active && styles.drawerItemActive]}
+                    onPress={() => handleTabChange(item.id)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.drawerIconWrap, active && styles.drawerIconWrapActive]}>
+                      <Ionicons
+                        name={item.icon}
+                        size={18}
+                        color={active ? '#fff' : COLORS.primary}
+                      />
+                    </View>
+                    <Text
+                      style={[styles.drawerItemText, active && styles.drawerItemTextActive]}
+                    >
+                      {item.label}
+                    </Text>
+                    {active ? (
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+          <Pressable style={styles.drawerScrim} onPress={() => setMenuOpen(false)} />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const tabs = [
-  { id: 'home', label: 'Home', icon: 'home' },
-  { id: 'queue', label: 'Leads', icon: 'clipboard' },
-  { id: 'book', label: 'Book', icon: 'plus' },
-  { id: 'workshops', label: 'Workshops', icon: 'map-marker' },
-  { id: 'me', label: 'My Profile', icon: 'account' },
-];
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
-  body: { flex: 1, minHeight: 0 },
+  body: { flex: 1, minHeight: 0, overflow: 'hidden' },
+  topBar: {
+    zIndex: 20,
+    elevation: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#fff',
+  },
+  menuBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.textHeading,
+    textAlign: 'center',
+  },
+  topTitleHome: {
+    color: COLORS.primary,
+  },
+  drawerRoot: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: 'transparent',
+  },
+  drawerScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+  },
+  drawerPanel: {
+    width: 300,
+    maxWidth: '82%',
+    backgroundColor: '#F8FAFC',
+    elevation: 16,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
+    shadowOffset: { width: 6, height: 0 },
+    overflow: 'hidden',
+  },
+  drawerHead: {
+    backgroundColor: COLORS.primary,
+    paddingBottom: 20,
+    paddingHorizontal: 18,
+  },
+  drawerHeadSafe: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  drawerEyebrow: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  drawerClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  drawerBrand: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  drawerSafe: { flex: 1, backgroundColor: '#F8FAFC' },
+  drawerList: { padding: 14, paddingBottom: 40 },
+  drawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 6,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  drawerItemActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: COLORS.primary + '55',
+  },
+  drawerIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary + '14',
+  },
+  drawerIconWrapActive: {
+    backgroundColor: COLORS.primary,
+  },
+  drawerItemText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  drawerItemTextActive: { color: COLORS.primary, fontWeight: '800' },
 });
