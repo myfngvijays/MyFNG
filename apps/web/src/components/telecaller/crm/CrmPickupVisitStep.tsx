@@ -81,6 +81,8 @@ type Props = {
   quoteTotal?: number;
   /** Lead edit already has vehicle# in Vehicle Details — hide duplicate. */
   hideVehicleNumber?: boolean;
+  /** When true, show * on date/time (booking confirmed). Soft leads = optional. */
+  requireSchedule?: boolean;
 };
 
 export default function CrmPickupVisitStep({
@@ -92,6 +94,7 @@ export default function CrmPickupVisitStep({
   forcePickup = false,
   quoteTotal,
   hideVehicleNumber = false,
+  requireSchedule = false,
 }: Props) {
   const pickupRequired = forcePickup ? true : value.pickup_required;
   const [workshops, setWorkshops] = useState<any[]>([]);
@@ -121,6 +124,14 @@ export default function CrmPickupVisitStep({
       onChange({ pickup_required: true, workshop_id: '', workshop_name: '' });
     }
   }, [forcePickup, value.pickup_required, onChange]);
+
+  // Drop past dates so native date min=today never blocks form Save
+  useEffect(() => {
+    if (value.pickup_date && value.pickup_date < todayStr) {
+      onChange({ pickup_date: '', pickup_time: '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when date is stale
+  }, [todayStr]);
 
   useEffect(() => {
     if (pickupRequired) return;
@@ -159,48 +170,59 @@ export default function CrmPickupVisitStep({
     });
   };
 
+  const reqMark = requireSchedule ? (
+    <span className="text-rose-500"> *</span>
+  ) : (
+    <span className="text-xs font-normal text-gray-400"> (optional)</span>
+  );
+
   return (
     <div>
-      <h3 className="text-base font-extrabold text-gray-900">Pickup / Visit</h3>
-      <p className="mt-1 text-sm text-gray-500">
-        Doorstep pickup ya workshop visit — date & time dono modes mein.
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-extrabold text-gray-900">Pickup / Visit</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {pickupRequired ? 'Doorstep pickup' : 'Workshop visit'}
+            {!requireSchedule ? ' — date/time optional until booking confirmed' : ' — date & time required'}
+          </p>
+        </div>
 
-      {!forcePickup ? (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <p className="mb-3 text-sm font-bold text-gray-800">Service Preference *</p>
-          <div className="grid grid-cols-2 gap-3">
+        {!forcePickup ? (
+          <div className="flex shrink-0 flex-col items-end gap-1">
             <button
               type="button"
-              onClick={() => setMode(true)}
-              className={`flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3 text-sm font-bold transition ${
-                pickupRequired
-                  ? 'border-[#004AAD] bg-[#004AAD] text-white'
-                  : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-[#004AAD]/40'
+              role="switch"
+              aria-checked={pickupRequired}
+              aria-label={pickupRequired ? 'Doorstep pickup on' : 'Visit workshop'}
+              onClick={() => setMode(!pickupRequired)}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                pickupRequired ? 'bg-[#004AAD]' : 'bg-slate-300'
               }`}
             >
-              <Navigation className="h-4 w-4" />
-              Doorstep Pickup
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                  pickupRequired ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
             </button>
-            <button
-              type="button"
-              onClick={() => setMode(false)}
-              className={`flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3 text-sm font-bold transition ${
-                !pickupRequired
-                  ? 'border-[#023D95] bg-[#023D95] text-white'
-                  : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-[#023D95]/40'
-              }`}
-            >
-              <MapPin className="h-4 w-4" />
-              Visit Workshop
-            </button>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              {pickupRequired ? (
+                <span className="inline-flex items-center gap-0.5 text-[#004AAD]">
+                  <Navigation className="h-3 w-3" /> Pickup
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5">
+                  <MapPin className="h-3 w-3" /> Visit
+                </span>
+              )}
+            </span>
           </div>
-        </div>
-      ) : (
-        <div className="mt-4 rounded-xl bg-[#004AAD]/10 px-4 py-3 text-sm font-semibold text-[#004AAD]">
-          Home service — doorstep pickup is required.
-        </div>
-      )}
+        ) : (
+          <div className="rounded-full bg-[#004AAD]/10 px-3 py-1 text-[11px] font-bold text-[#004AAD]">
+            Pickup required
+          </div>
+        )}
+      </div>
 
       {!hideVehicleNumber ? (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -221,7 +243,8 @@ export default function CrmPickupVisitStep({
 
       <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <label className="mb-2 block text-sm font-bold text-gray-800">
-          {pickupRequired ? 'Pickup Date *' : 'Visit Date *'}
+          {pickupRequired ? 'Pickup Date' : 'Visit Date'}
+          {reqMark}
         </label>
         <div className="flex flex-wrap gap-2 items-center">
           {dateOptions.map((opt) => {
@@ -247,7 +270,7 @@ export default function CrmPickupVisitStep({
             <input
               ref={dateInputRef}
               type="date"
-              value={value.pickup_date || ''}
+              value={value.pickup_date && value.pickup_date >= todayStr ? value.pickup_date : ''}
               min={todayClosed ? tomorrowStr : todayStr}
               onChange={(e) => onChange({ pickup_date: e.target.value, pickup_time: '' })}
               onClick={(e) => {
@@ -264,6 +287,15 @@ export default function CrmPickupVisitStep({
               aria-label="Pick calendar date"
             />
           </div>
+          {value.pickup_date ? (
+            <button
+              type="button"
+              onClick={() => onChange({ pickup_date: '', pickup_time: '' })}
+              className="text-[11px] font-semibold text-slate-500 underline"
+            >
+              Clear
+            </button>
+          ) : null}
         </div>
         {value.pickup_date ? (
           <p className="mt-2 text-xs text-gray-500">Selected: {formatDateDMShort(value.pickup_date)}</p>
@@ -273,7 +305,8 @@ export default function CrmPickupVisitStep({
       {value.pickup_date ? (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <label className="mb-2 block text-sm font-bold text-gray-800">
-            {pickupRequired ? 'Pickup Time *' : 'Visit Time *'}
+            {pickupRequired ? 'Pickup Time' : 'Visit Time'}
+            {reqMark}
           </label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {slots.map((slot) => {
@@ -323,13 +356,14 @@ export default function CrmPickupVisitStep({
           </div>
 
           <label className="mb-2 block text-sm font-bold text-gray-800">
-            Address * <span className="text-xs font-normal text-gray-500">(PIN {pincode || '—'})</span>
+            Address{' '}
+            <span className="text-xs font-normal text-gray-500">(PIN {pincode || '—'})</span>
           </label>
           <textarea
             value={value.pickup_address}
             onChange={(e) => onChange({ pickup_address: e.target.value })}
             rows={3}
-            placeholder="Area, street, locality"
+            placeholder="Area, street, locality (optional until booking)"
             className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-[#004AAD] focus:outline-none focus:ring-2 focus:ring-[#004AAD]/20"
           />
 
@@ -347,7 +381,7 @@ export default function CrmPickupVisitStep({
               />
 
               <label className="mb-2 mt-3 block text-sm font-bold text-gray-800">
-                Landmark * <span className="text-xs font-normal text-red-500">(Required)</span>
+                Landmark <span className="text-xs font-normal text-gray-500">(Optional)</span>
               </label>
               <input
                 type="text"

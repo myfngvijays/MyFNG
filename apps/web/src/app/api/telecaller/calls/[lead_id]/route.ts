@@ -75,10 +75,24 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch call logs' }, { status: 500 });
     }
 
+    const redactDirectUrl = roleCode === 'TELECALLER';
+    const call_logs = (callLogs || []).map((row: any) => {
+      const url = String(row?.call_recording_url || '').trim();
+      const has = Boolean(url);
+      if (!redactDirectUrl) {
+        return { ...row, has_call_recording: has };
+      }
+      return {
+        ...row,
+        has_call_recording: has,
+        call_recording_url: null,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      call_logs: callLogs || [],
-      total: callLogs?.length || 0,
+      call_logs,
+      total: call_logs.length,
     }, { status: 200 });
 
   } catch (error) {

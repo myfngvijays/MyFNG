@@ -40,28 +40,57 @@ const PIPELINE = [
 ] as const;
 
 function pipelineActiveIndex(lead: any, activityResult: string): number {
-  const result = String(activityResult || lead?.coupon_meta?.last_call_result || '').toUpperCase();
-  const status = String(lead?.status || '').toUpperCase();
-  if (status === 'REJECTED' || result === 'LOST') return -1;
-  if (status === 'COMPLETED' || result === 'SERVICE_DONE') return 5;
-  if (status === 'IN_PROGRESS' || result === 'IN_SERVICE') return 4;
-  if (status === 'VALIDATED' || result === 'BOOKING_CONFIRMED') return 3;
+  const result = String(activityResult || '').toUpperCase();
+  if (result === 'LOST') return -1;
+  if (result === 'SERVICE_DONE') return 5;
+  if (result === 'IN_SERVICE') return 4;
+  if (result === 'BOOKING_CONFIRMED') return 3;
   if (result === 'WILL_VISIT') return 2;
-  if (result === 'INTERESTED' || result === 'CALLBACK') return 1;
+  if (result === 'INTERESTED' || result === 'CALLBACK' || result === 'RINGING') return 1;
+  if (result === 'FRESH') return 0;
+
+  const fromMeta = String(lead?.coupon_meta?.last_call_result || '').toUpperCase();
+  if (fromMeta === 'LOST') return -1;
+  if (fromMeta === 'SERVICE_DONE') return 5;
+  if (fromMeta === 'IN_SERVICE') return 4;
+  if (fromMeta === 'BOOKING_CONFIRMED') return 3;
+  if (fromMeta === 'WILL_VISIT') return 2;
+  if (fromMeta === 'INTERESTED' || fromMeta === 'CALLBACK') return 1;
+
+  const status = String(lead?.status || '').toUpperCase();
+  if (status === 'REJECTED') return -1;
+  if (status === 'COMPLETED') return 5;
+  if (status === 'IN_PROGRESS') return 4;
+  if (status === 'VALIDATED') return 3;
   return 0;
 }
 
 const ACTIVITY_OPTIONS = [
-  { id: 'FRESH', label: 'Fresh', lead_status: null as string | null },
-  { id: 'INTERESTED', label: 'Interested', lead_status: null as string | null },
-  { id: 'WILL_VISIT', label: 'He will visit', lead_status: null },
-  { id: 'CALLBACK', label: 'Follow-up', lead_status: null },
-  { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', lead_status: 'VALIDATED' },
-  { id: 'IN_SERVICE', label: 'In Service', lead_status: 'IN_PROGRESS' },
-  { id: 'SERVICE_DONE', label: 'Service Done', lead_status: 'COMPLETED' },
-  { id: 'LOST', label: 'Lost', lead_status: 'REJECTED' },
-  { id: 'RINGING', label: 'Ringing / No answer', lead_status: null },
+  // Soft CRM stages live in coupon_meta.last_call_result; DB enum has no CONTACTED.
+  { id: 'FRESH', label: 'Fresh', lead_status: 'NEW' as string | null },
+  { id: 'INTERESTED', label: 'Interested', lead_status: 'NEW' as string | null },
+  { id: 'WILL_VISIT', label: 'He will visit', lead_status: 'NEW' as string | null },
+  { id: 'CALLBACK', label: 'Follow-up', lead_status: 'NEW' as string | null },
+  { id: 'BOOKING_CONFIRMED', label: 'Booking confirmed', lead_status: 'VALIDATED' as string | null },
+  { id: 'IN_SERVICE', label: 'In Service', lead_status: 'IN_PROGRESS' as string | null },
+  { id: 'SERVICE_DONE', label: 'Service Done', lead_status: 'COMPLETED' as string | null },
+  { id: 'LOST', label: 'Lost', lead_status: 'REJECTED' as string | null },
+  { id: 'RINGING', label: 'Ringing / No answer', lead_status: 'NEW' as string | null },
 ] as const;
+
+function headerCardClass(activityResult: string): string {
+  const a = String(activityResult || '').toUpperCase();
+  if (a === 'LOST') return 'bg-rose-700';
+  if (a === 'BOOKING_CONFIRMED') return 'bg-emerald-700';
+  if (a === 'IN_SERVICE') return 'bg-blue-800';
+  if (a === 'SERVICE_DONE') return 'bg-teal-800';
+  if (a === 'WILL_VISIT') return 'bg-violet-700';
+  if (a === 'CALLBACK') return 'bg-sky-700';
+  if (a === 'INTERESTED') return 'bg-orange-700';
+  if (a === 'RINGING') return 'bg-slate-600';
+  if (a === 'FRESH') return 'bg-[#1D4ED8]';
+  return 'bg-[#023D95]';
+}
 
 const LOST_REASONS = [
   'Not Interested',
@@ -626,7 +655,12 @@ export default function CrmLeadEditForm({
             const yyyy = d.getFullYear();
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const dd = String(d.getDate()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}`;
+            const ymd = `${yyyy}-${mm}-${dd}`;
+            // Past dates trip HTML5 min=today and block Save — clear for soft-lead edits
+            const now = new Date();
+            const tYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            if (ymd < tYmd) return '';
+            return ymd;
           } catch {
             return '';
           }
@@ -655,6 +689,12 @@ export default function CrmLeadEditForm({
         activity_result: (() => {
           const raw = String(leadData?.coupon_meta?.last_call_result || '').toUpperCase().trim();
           if (raw && ACTIVITY_OPTIONS.some((o) => o.id === raw)) return raw;
+          const st = String(leadData?.status || '').toUpperCase();
+          if (st === 'VALIDATED') return 'BOOKING_CONFIRMED';
+          if (st === 'IN_PROGRESS') return 'IN_SERVICE';
+          if (st === 'COMPLETED') return 'SERVICE_DONE';
+          if (st === 'REJECTED') return 'LOST';
+          if (st === 'CONTACTED' || st === 'ASSIGNED' || st === 'ACCEPTED') return 'INTERESTED';
           return 'FRESH';
         })(),
         lost_reason: String(leadData?.coupon_meta?.last_lost_reason || ''),
@@ -760,6 +800,12 @@ export default function CrmLeadEditForm({
 
     // Service validation
     if (formData.service_types.length === 0) newErrors.service_types = 'Please select at least one service type';
+
+    // Soft leads: date/time not mandatory. Only when marking Booking confirmed.
+    if (formData.activity_result === 'BOOKING_CONFIRMED') {
+      if (!formData.pickup_date) newErrors.pickup_date = 'Pickup / visit date required for booking';
+      if (!formData.pickup_time) newErrors.pickup_time = 'Pickup / visit time required for booking';
+    }
 
     if (formData.activity_result === 'CALLBACK') {
       if (!formData.callback_date) newErrors.callback_date = 'Follow-up date required';
@@ -879,7 +925,9 @@ export default function CrmLeadEditForm({
 
         notes: formData.notes || null,
         lead_priority: formData.lead_priority,
-        ...(selectedActivity.lead_status ? { status: selectedActivity.lead_status } : {}),
+        ...(selectedActivity.lead_status
+          ? { status: selectedActivity.lead_status }
+          : { status: 'NEW' }),
         coupon_meta: nextMeta,
 
         coupon_codes: selectedCodes,
@@ -958,7 +1006,9 @@ export default function CrmLeadEditForm({
     <div
       className={`${embedded ? 'w-full' : 'max-w-5xl mx-auto'} space-y-4 pb-28 ${embedded ? '' : 'px-3 sm:px-4'}`}
     >
-      <div className="relative overflow-hidden rounded-2xl bg-[#023D95] text-white p-4 sm:p-6 shadow-lg">
+      <div
+        className={`relative overflow-hidden rounded-2xl text-white p-4 sm:p-6 shadow-lg transition-colors ${headerCardClass(formData.activity_result)}`}
+      >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.12),_transparent_55%)]" />
         <div className="relative flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
@@ -971,13 +1021,13 @@ export default function CrmLeadEditForm({
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-blue-100">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">
                   {isLeadManager ? 'Lead Manager · Service Lead Details' : 'Telecaller · Service Lead Details'}
                 </p>
                 <h1 className="text-xl sm:text-2xl md:text-3xl font-black truncate mt-0.5 text-white">
                   {formData.customer_name || lead.customer_name || 'Lead'}
                 </h1>
-                <p className="text-sm text-blue-50 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                <p className="text-sm text-white/90 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   <span className="font-mono font-bold text-white">#{lead.lead_number}</span>
                   {formData.customer_phone || lead.customer_phone ? (
                     <span className="text-white/95">{formData.customer_phone || lead.customer_phone}</span>
@@ -1059,21 +1109,31 @@ export default function CrmLeadEditForm({
                 const lost = active < 0;
                 const done = !lost && idx <= active;
                 const current = !lost && idx === active;
+                const activityId =
+                  step.id === 'CONFIRMED'
+                    ? 'BOOKING_CONFIRMED'
+                    : step.id === 'DONE'
+                      ? 'SERVICE_DONE'
+                      : step.id;
                 return (
                   <div key={step.id} className="flex items-center flex-1 min-w-0">
-                    <div
-                      className={`flex-1 rounded-lg px-2 py-1.5 text-center text-[10px] sm:text-[11px] font-bold truncate ${
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({ ...prev, activity_result: activityId }))
+                      }
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-center text-[10px] sm:text-[11px] font-bold truncate transition ${
                         lost
                           ? 'bg-rose-500/40 text-white'
                           : done
                             ? current
                               ? 'bg-white text-[#023D95]'
                               : 'bg-emerald-400/80 text-emerald-950'
-                            : 'bg-white/10 text-blue-100'
+                            : 'bg-white/10 text-blue-100 hover:bg-white/20'
                       }`}
                     >
                       {step.label}
-                    </div>
+                    </button>
                     {idx < PIPELINE.length - 1 ? (
                       <div
                         className={`w-2 h-0.5 shrink-0 ${done ? 'bg-emerald-300' : 'bg-white/20'}`}
@@ -1090,7 +1150,7 @@ export default function CrmLeadEditForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <SectionCard title="Customer Details" icon={User} tone="emerald">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1499,6 +1559,7 @@ export default function CrmLeadEditForm({
             cityId={formData.city_id}
             pincode={formData.pincode}
             hideVehicleNumber
+            requireSchedule={formData.activity_result === 'BOOKING_CONFIRMED'}
           />
         </div>
 

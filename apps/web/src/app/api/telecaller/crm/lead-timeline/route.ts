@@ -3,6 +3,7 @@ import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { consolidateDuplicateLeadsByPhones } from '@/lib/service-lead-reopen';
 import { normalizeCustomerPhone } from '@/lib/customer-service-leads';
+import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,12 +42,8 @@ async function requireCrmUser(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (error || !user) return { ok: false as const, status: 401, error: 'Unauthorized' };
 
-  const { data: profile } = await supabase
-    .from('users_login')
-    .select('id, roles!role_id(role_code)')
-    .eq('id', user.id)
-    .maybeSingle();
-
+  // Same robust resolution as /api/telecaller/calls (email → phone → auth id)
+  const profile = await resolveUserProfile(supabase, user);
   const roleCode = String((profile as { roles?: { role_code?: string } } | null)?.roles?.role_code || '')
     .trim()
     .toUpperCase();
@@ -55,7 +52,11 @@ async function requireCrmUser(request: NextRequest) {
     return { ok: false as const, status: 403, error: 'Forbidden' };
   }
 
-  return { ok: true as const, userId: String((profile as any)?.id || user.id), roleCode };
+  return {
+    ok: true as const,
+    userId: String((profile as any)?.id || user.id),
+    roleCode,
+  };
 }
 
 /**
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
       supabaseAdmin
         .from('telecaller_call_logs')
         .select(
-          'id, call_status, call_duration, outcome, notes, created_at, telecaller_id, telecaller:telecaller_id(full_name)',
+          'id, call_status, call_duration, outcome, notes, created_at, telecaller_id, call_recording_url, telecaller:telecaller_id(full_name)',
         )
         .eq('lead_id', leadId)
         .order('created_at', { ascending: false })
@@ -184,16 +185,29 @@ export async function GET(request: NextRequest) {
     for (const log of callsRes.data || []) {
       const note = String((log as any).notes || '');
       const label = note.match(/^\[([^\]]+)\]/)?.[1] || String((log as any).call_status || 'Call');
+      const dur = (log as any).call_duration;
+      const durLabel =
+        dur != null && Number.isFinite(Number(dur))
+          ? Number(dur) >= 60
+            ? `${Math.floor(Number(dur) / 60)}m ${Number(dur) % 60}s`
+            : `${Number(dur)}s`
+          : null;
+      const recUrl = String((log as any).call_recording_url || '').trim();
+      const hasRec = Boolean(recUrl);
       items.push({
         id: `call-${(log as any).id}`,
         kind: 'call',
         at: String((log as any).created_at),
-        title: label,
+        title: durLabel ? `Call · ${label} · ${durLabel}` : `Call · ${label}`,
         body: note || null,
         meta: {
+          call_log_id: (log as any).id,
           call_status: (log as any).call_status,
           outcome: (log as any).outcome,
           duration: (log as any).call_duration,
+          // Telecallers may play via proxy; never expose Smartflo CDN URL for download
+          has_call_recording: hasRec,
+          call_recording_url: gate.roleCode === 'TELECALLER' ? null : recUrl || null,
           by: (log as any).telecaller?.full_name || null,
         },
       });

@@ -196,13 +196,13 @@ export default function CrmServicePlanPicker({
     }
   }, [categories, selectedCategory]);
 
+  // Only auto-jump to a selected service's category when no tab is chosen yet
   useEffect(() => {
+    if (selectedCategory) return;
     if (!selectedIds.length || !categories.length) return;
-    const selectedCats = new Set(
-      allServices.filter((s) => selectedIds.includes(s.id)).map((s) => s.category),
+    const preferred = categories.find((c) =>
+      allServices.some((s) => selectedIds.includes(s.id) && s.category === c),
     );
-    if (selectedCategory && selectedCats.has(selectedCategory)) return;
-    const preferred = categories.find((c) => selectedCats.has(c));
     if (preferred) setSelectedCategory(preferred);
   }, [selectedIds, categories, allServices, selectedCategory]);
 

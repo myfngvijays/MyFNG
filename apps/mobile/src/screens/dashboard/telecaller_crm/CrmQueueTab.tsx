@@ -192,6 +192,8 @@ export default function CrmQueueTab({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
+  /** Debounced search text (matches web ~350ms) — drives API loads */
+  const [appliedQ, setAppliedQ] = useState('');
   const [filter, setFilter] = useState(initialFilter);
   const [statusFilters, setStatusFilters] = useState(DEFAULT_STATUS_FILTERS);
   const [lostReason, setLostReason] = useState('');
@@ -273,7 +275,9 @@ export default function CrmQueueTab({
     (async () => {
       const prefs = await loadTelecallerCrmFilterPrefs();
       if (cancelled) return;
-      setQ(prefs.q || '');
+      const nextQ = prefs.q || '';
+      setQ(nextQ);
+      setAppliedQ(nextQ.trim());
       setCity(prefs.city || '');
       setPriority(prefs.priority || '');
       setDateField(prefs.dateField === 'modified' ? 'modified' : 'created');
@@ -399,6 +403,17 @@ export default function CrmQueueTab({
     }
   };
 
+  // Search-as-you-type (debounce) — same as web CRM leads
+  useEffect(() => {
+    if (!localPrefsReady) return;
+    const handle = setTimeout(() => {
+      const nextQ = q.trim();
+      setAppliedQ((prev) => (prev === nextQ ? prev : nextQ));
+      void saveTelecallerCrmFilterPrefs({ q: nextQ });
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [q, localPrefsReady]);
+
   const load = useCallback(async () => {
     if (!localPrefsReady) return;
     try {
@@ -409,11 +424,13 @@ export default function CrmQueueTab({
       if (viewMode === 'chart') params.set('for_chart', '1');
       if (filter && filter !== 'all') params.set('filter', filter);
       if (filter === 'lost' && lostReason.trim()) params.set('lost_reason', lostReason.trim());
-      if (q.trim()) params.set('q', q.trim());
+      if (appliedQ.trim()) params.set('q', appliedQ.trim());
       if (city.trim()) params.set('city', city.trim());
       if (priority.trim()) params.set('priority', priority.trim());
       if (dateField === 'modified') params.set('date_field', 'updated_at');
-      if (!range.allTime) {
+      // Name / phone / lead# search must not be limited by Last 7 Days — match web
+      const searching = Boolean(appliedQ.trim());
+      if (!searching && !range.allTime) {
         params.set('from', range.start);
         params.set('to', range.end);
       }
@@ -430,7 +447,7 @@ export default function CrmQueueTab({
     localPrefsReady,
     filter,
     lostReason,
-    q,
+    appliedQ,
     city,
     priority,
     dateField,
@@ -636,8 +653,9 @@ export default function CrmQueueTab({
           value={q}
           onChangeText={setQ}
           onSubmitEditing={() => {
-            persistLocalFilters({ q: q.trim() });
-            load();
+            const nextQ = q.trim();
+            setAppliedQ(nextQ);
+            persistLocalFilters({ q: nextQ });
           }}
           placeholderTextColor={COLORS.textSecondary}
         />

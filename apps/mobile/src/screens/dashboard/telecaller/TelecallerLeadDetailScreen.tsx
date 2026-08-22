@@ -15,6 +15,7 @@ import {
   Modal,
   Pressable,
   KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
@@ -27,6 +28,7 @@ import { parseIds } from '../../../lib/parseIds';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { COLORS, SPACING } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
 import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanPicker';
@@ -1013,6 +1015,8 @@ export default function TelecallerLeadDetailScreen({
     const calls = (callLogs || []).map((log) => ({
       id: `call-${log.id}`,
       kind: 'call' as const,
+      callLogId: String(log.id || ''),
+      hasRecording: Boolean(log.call_recording_url) || Boolean(log.has_call_recording),
       sortAt: log.created_at,
       title: formatCallLogLabel(log.call_status, log.outcome, log.notes),
       notes: stripDispositionPrefix(log.notes || ''),
@@ -1022,6 +1026,8 @@ export default function TelecallerLeadDetailScreen({
     const fus = (followUps || []).map((fu) => ({
       id: `fu-${fu.id}`,
       kind: 'followup' as const,
+      callLogId: '',
+      hasRecording: false,
       sortAt: fu.scheduled_time || fu.created_at,
       title: 'Follow-up',
       notes: fu.reason || '',
@@ -1034,6 +1040,27 @@ export default function TelecallerLeadDetailScreen({
       (a, b) => new Date(b.sortAt || 0).getTime() - new Date(a.sortAt || 0).getTime(),
     );
   }, [callLogs, followUps]);
+
+  const playCallRecording = async (callLogId: string) => {
+    if (!callLogId) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        Alert.alert('Sign in required', 'Recording play ke liye login chahiye.');
+        return;
+      }
+      const url = `${ENV.API_URL}/api/telecaller/calls/recording/${callLogId}?access_token=${encodeURIComponent(token)}`;
+      const can = await Linking.canOpenURL(url);
+      if (!can) {
+        Alert.alert('Cannot open', 'Recording player open nahi ho paya.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (e: any) {
+      Alert.alert('Recording', e?.message || 'Failed to open recording');
+    }
+  };
 
   const customerMessage = React.useMemo(() => {
     const meta = lead?.coupon_meta && typeof lead.coupon_meta === 'object' ? lead.coupon_meta : {};
@@ -2801,6 +2828,22 @@ export default function TelecallerLeadDetailScreen({
                   <View style={[styles.logBadge, { backgroundColor: item.badgeColor }]}>
                     <Text style={styles.logBadgeText}>{item.title}</Text>
                   </View>
+                  {item.kind === 'call' && item.hasRecording && item.callLogId ? (
+                    <TouchableOpacity
+                      onPress={() => void playCallRecording(item.callLogId)}
+                      style={{
+                        marginLeft: 'auto',
+                        backgroundColor: '#EDE9FE',
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 999,
+                      }}
+                    >
+                      <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>
+                        ▶ Play
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
                 {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
                 <Text style={styles.logTime}>{item.timeLabel}</Text>

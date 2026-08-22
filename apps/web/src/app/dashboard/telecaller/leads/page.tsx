@@ -550,7 +550,9 @@ function TelecallerCrmLeadsContent() {
       if (dateField === 'modified') baseParams.set('date_field', 'updated_at');
       if (isLeadManager && telecallerId.trim()) baseParams.set('telecaller_id', telecallerId.trim());
       if (isLeadManager && unassignedOnly) baseParams.set('unassigned', '1');
-      if (!range.allTime) {
+      // Name / phone / lead# search must not be limited by Last 7 Days — match across all time
+      const searching = Boolean(appliedQ.trim());
+      if (!searching && !range.allTime) {
         baseParams.set('from', range.start);
         baseParams.set('to', range.end);
       }
@@ -657,6 +659,22 @@ function TelecallerCrmLeadsContent() {
     persistAll({ q: nextQ });
     syncFiltersToUrl({ q: nextQ });
   };
+
+  // Search-as-you-type (debounce) — no need to press Search
+  useEffect(() => {
+    if (!prefsReady) return;
+    const handle = window.setTimeout(() => {
+      const nextQ = q.trim();
+      setAppliedQ((prev) => {
+        if (prev === nextQ) return prev;
+        return nextQ;
+      });
+      persistAll({ q: nextQ });
+      syncFiltersToUrl({ q: nextQ });
+    }, 350);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce on q only
+  }, [q, prefsReady]);
 
   const openShare = async (lead: any) => {
     setShareLead(lead);
@@ -882,13 +900,6 @@ function TelecallerCrmLeadsContent() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
               >
                 <X className="h-4 w-4" /> Clear
-              </button>
-              <button
-                type="button"
-                onClick={runSearch}
-                className="rounded-xl bg-[#004AAD] px-4 py-2 text-sm font-bold text-white"
-              >
-                Search
               </button>
             </div>
           </div>

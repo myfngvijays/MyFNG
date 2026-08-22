@@ -20,6 +20,8 @@ export interface TelecallerCallLog {
   next_action_time: string | null;
   phone_number: string | null;
   call_recording_url: string | null;
+  smartflo_call_id?: string | null;
+  smartflo_recording_synced_at?: string | null;
   created_at: string;
 }
 

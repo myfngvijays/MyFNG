@@ -10,13 +10,15 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
-  BackHandler
+  BackHandler,
+  Linking,
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
+import { ENV } from '../../../config/environment';
 
 export default function LeadManagerLeadDetailScreen({ navigation, route }: any) {
   const { leadId, mode = 'view' } = route.params;
@@ -61,10 +63,9 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
   });
 
   const [internalNotes, setInternalNotes] = useState('');
-  const [callLogs, setCallLogs] = useState<any[]>([]);
   const [leadEvents, setLeadEvents] = useState<any[]>([]);
-  const [statusHistory, setStatusHistory] = useState<any[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [activityItems, setActivityItems] = useState<any[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [validationNotes, setValidationNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
@@ -112,7 +113,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
 
   useEffect(() => {
     fetchLeadDetails();
-    fetchLeadHistory();
+    fetchActivityTimeline();
   }, []);
 
   // Handle hardware back button
@@ -182,17 +183,6 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
         status: leadData.status || 'NEW'
       });
 
-      // Fetch call logs if telecaller assigned
-      if (leadData.assigned_telecaller_id) {
-        const { data: callsData } = await supabase
-          .from('telecaller_call_logs')
-          .select('*, telecaller:telecaller_id(full_name)')
-          .eq('lead_id', leadId)
-          .order('created_at', { ascending: false });
-        
-        setCallLogs(callsData || []);
-      }
-
       // Fetch lead events
       const { data: eventsData } = await supabase
         .from('lead_events')
@@ -212,23 +202,42 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
     }
   };
 
-  const fetchLeadHistory = async () => {
+  const fetchActivityTimeline = async () => {
     try {
-      setHistoryLoading(true);
-      const data = await apiFetch<{ status_history: any[] }>(`/api/audit/lead-history/${leadId}`);
-      setStatusHistory(Array.isArray(data?.status_history) ? data.status_history : []);
+      setActivityLoading(true);
+      const data = await apiFetch<{ items?: any[] }>(
+        `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
+      );
+      setActivityItems(Array.isArray(data?.items) ? data.items : []);
     } catch (error) {
-      console.error('Error fetching lead history:', error);
-      setStatusHistory([]);
+      console.error('Error fetching activity timeline:', error);
+      setActivityItems([]);
     } finally {
-      setHistoryLoading(false);
+      setActivityLoading(false);
+    }
+  };
+
+  const playCallRecording = async (callLogId: string) => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        Alert.alert('Sign in required', 'Recording play ke liye login chahiye.');
+        return;
+      }
+      const url = `${ENV.API_URL}/api/telecaller/calls/recording/${callLogId}?access_token=${encodeURIComponent(token)}`;
+      await Linking.openURL(url);
+    } catch (e: any) {
+      Alert.alert('Recording', e?.message || 'Failed to open');
     }
   };
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchLeadDetails();
-    fetchLeadHistory();
+    fetchActivityTimeline();
   };
 
   const handleSave = async () => {
@@ -322,7 +331,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
       setShowValidation(false);
       setValidationNotes('');
       fetchLeadDetails();
-      fetchLeadHistory();
+      fetchActivityTimeline();
     } catch (error) {
       console.error('Validation error:', error);
       Alert.alert('Error', 'Failed to validate lead');
@@ -868,61 +877,72 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
           </View>
         )}
 
-        {/* Status History */}
+        {/* Activity — TeleCRM-style: updates + calls + recordings */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="history" size={24} color={COLORS.primary} />
-            <Text style={styles.sectionTitle}>Status Timeline</Text>
+            <Text style={styles.sectionTitle}>
+              Activity{activityItems.length > 0 ? ` (${activityItems.length})` : ''}
+            </Text>
           </View>
           <View style={styles.sectionContent}>
-            {historyLoading ? (
+            {activityLoading ? (
               <ActivityIndicator color={COLORS.primary} />
-            ) : statusHistory.length === 0 ? (
-              <Text style={styles.emptyTimeline}>No status history available</Text>
+            ) : activityItems.length === 0 ? (
+              <Text style={styles.emptyTimeline}>No activity yet</Text>
             ) : (
-              statusHistory.map((item: any) => (
-                <View key={item.id || `${item.new_status}-${item.changed_at}`} style={styles.timelineItem}>
-                  <View style={styles.timelineHeader}>
-                    <Text style={styles.timelineStatus}>{item.new_status}</Text>
+              activityItems.map((item: any) => {
+                const isCall = item.kind === 'call';
+                const callLogId = String(item?.meta?.call_log_id || '').trim();
+                const hasRec =
+                  (Boolean(item?.meta?.call_recording_url) ||
+                    Boolean(item?.meta?.has_call_recording)) &&
+                  Boolean(callLogId);
+                const by = item?.meta?.by ? String(item.meta.by) : null;
+                return (
+                  <View key={item.id || `${item.kind}-${item.at}`} style={styles.timelineItem}>
+                    <View style={styles.timelineHeader}>
+                      <Text style={styles.timelineStatus}>
+                        {isCall ? `📞 ${item.title}` : item.title}
+                      </Text>
+                      {hasRec ? (
+                        <TouchableOpacity
+                          onPress={() => void playCallRecording(callLogId)}
+                          style={{
+                            backgroundColor: '#EDE9FE',
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 999,
+                            marginLeft: 8,
+                          }}
+                        >
+                          <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>▶ Play</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {item.body ? (
+                      <Text style={styles.timelineMeta}>
+                        {String(item.body)
+                          .replace(/\[Smartflo\]\s*/gi, '')
+                          .replace(/\bSmartflo\b/gi, '')
+                          .trim()}
+                      </Text>
+                    ) : null}
                     <Text style={styles.timelineTime}>
-                      {item.changed_at ? formatDateTime(item.changed_at) : '—'}
+                      {item.at ? formatDateTime(item.at) : '—'}
+                      {by ? ` · ${by}` : ''}
                     </Text>
+                    {isCall && !hasRec ? (
+                      <Text style={[styles.timelineMeta, { color: COLORS.textSecondary }]}>
+                        No recording yet
+                      </Text>
+                    ) : null}
                   </View>
-                  {item.reason && <Text style={styles.timelineMeta}>Reason: {item.reason}</Text>}
-                  {item.notes && <Text style={styles.timelineMeta}>Notes: {item.notes}</Text>}
-                </View>
-              ))
+                );
+              })
             )}
           </View>
         </View>
-
-        {/* Call Logs Section */}
-        {callLogs.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Icon name="phone-log" size={24} color={COLORS.primary} />
-              <Text style={styles.sectionTitle}>Call History ({callLogs.length})</Text>
-            </View>
-            <View style={styles.sectionContent}>
-              {callLogs.map((log) => (
-                <View key={log.id} style={styles.logCard}>
-                  <View style={styles.logHeader}>
-                    <View style={[styles.logBadge, { backgroundColor: getCallStatusColor(log.call_status) + '30' }]}>
-                      <Text style={styles.logBadgeText}>{log.call_status}</Text>
-                    </View>
-                    {log.call_duration && (
-                      <Text style={styles.logDuration}>
-                        {Math.floor(log.call_duration / 60)}m {log.call_duration % 60}s
-                      </Text>
-                    )}
-                  </View>
-                  {log.notes && <Text style={styles.logNotes}>{log.notes}</Text>}
-                  <Text style={styles.logTime}>{formatDateTime(log.created_at)}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
 
         {/* Internal Notes Section */}
         <View style={styles.section}>
@@ -1035,14 +1055,6 @@ function getPriorityColor(priority: string): string {
     case 'MEDIUM':
     case 'NORMAL': return COLORS.blue;
     case 'LOW': return COLORS.gray[500];
-    default: return COLORS.gray[500];
-  }
-}
-
-function getCallStatusColor(status: string): string {
-  switch (status) {
-    case 'ANSWERED': return COLORS.green;
-    case 'NO_ANSWER': return COLORS.orange;
     default: return COLORS.gray[500];
   }
 }

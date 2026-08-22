@@ -76,6 +76,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const leadId = body?.lead_id ? String(body.lead_id).trim() : '';
+    let callLogId: string | null = null;
+    if (leadId && profileId) {
+      try {
+        const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+        const { supabaseAdmin } = getSupabaseAdmin();
+        const db = supabaseAdmin ?? supabase;
+        const { data: inserted } = await db
+          .from('telecaller_call_logs')
+          .insert({
+            lead_id: leadId,
+            telecaller_id: profileId,
+            call_type: 'OUTBOUND',
+            call_status: 'RINGING',
+            notes: '[Click-to-call] Dial initiated — recording syncs after hangup',
+            phone_number: to,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .maybeSingle();
+        callLogId = inserted?.id ? String(inserted.id) : null;
+      } catch (logErr) {
+        console.warn('[click-to-call] pending log insert failed:', logErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message:
@@ -86,7 +112,8 @@ export async function POST(request: NextRequest) {
       provider: result.provider,
       via: result.via,
       gateway: result.upstream,
-      lead_id: body?.lead_id ? String(body.lead_id) : null,
+      lead_id: leadId || null,
+      call_log_id: callLogId,
     });
   } catch (e: any) {
     return NextResponse.json(

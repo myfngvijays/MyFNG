@@ -187,5 +187,22 @@ export async function autoDialFreshLeadIfEnabled(input: {
     from,
     telecallerId,
     cfg,
+  }).then(async (result) => {
+    if (result.ok && input.leadId && telecallerId) {
+      try {
+        await supabaseAdmin.from('telecaller_call_logs').insert({
+          lead_id: String(input.leadId),
+          telecaller_id: telecallerId,
+          call_type: 'OUTBOUND',
+          call_status: 'RINGING',
+          notes: '[Click-to-call] Auto-dial Fresh — recording syncs after hangup',
+          phone_number: to,
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('[autoDialFresh] pending log insert failed:', e);
+      }
+    }
+    return result;
   });
 }

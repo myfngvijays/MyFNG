@@ -22,6 +22,7 @@ type ConfigPublic = {
   did: string;
   provider: string;
   has_gateway_key: boolean;
+  has_smartflo_api_token?: boolean;
   dids: string[];
   did_assignments: DidAssignment[];
   auto_dial_on_fresh_assign?: boolean;
@@ -51,6 +52,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
   const [autoDialFresh, setAutoDialFresh] = useState(true);
   const [gatewayKey, setGatewayKey] = useState('');
   const [clearKey, setClearKey] = useState(false);
+  const [smartfloToken, setSmartfloToken] = useState('');
+  const [clearSmartfloToken, setClearSmartfloToken] = useState(false);
   const [didAssignments, setDidAssignments] = useState<DidAssignment[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
   const [testTo, setTestTo] = useState('');
   const [testDid, setTestDid] = useState('');
   const [testing, setTesting] = useState(false);
+  const [syncingRec, setSyncingRec] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
 
   const load = useCallback(async () => {
@@ -86,6 +90,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       );
       setGatewayKey('');
       setClearKey(false);
+      setSmartfloToken('');
+      setClearSmartfloToken(false);
       const list = (data.telecallers || []) as TelecallerRow[];
       setTelecallers(list);
       const d: Record<string, string> = {};
@@ -125,6 +131,9 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           auto_dial_on_fresh_assign: autoDialFresh,
           gateway_key: canEditSecrets && gatewayKey.trim() ? gatewayKey.trim() : undefined,
           clear_gateway_key: canEditSecrets && clearKey,
+          smartflo_api_token:
+            canEditSecrets && smartfloToken.trim() ? smartfloToken.trim() : undefined,
+          clear_smartflo_api_token: canEditSecrets && clearSmartfloToken,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -133,6 +142,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       setConfig(data.config);
       setGatewayKey('');
       setClearKey(false);
+      setSmartfloToken('');
+      setClearSmartfloToken(false);
     } catch (e: any) {
       setError(e?.message || 'Save failed');
     } finally {
@@ -234,6 +245,39 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       setError(e?.message || 'Test call failed');
     } finally {
       setTesting(false);
+    }
+  };
+
+  const syncRecordings = async () => {
+    setSyncingRec(true);
+    setMessage(null);
+    setError(null);
+    const controller = new AbortController();
+    const kill = setTimeout(() => controller.abort(), 70_000);
+    try {
+      const res = await fetch('/api/super_admin/click-to-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync_recordings', hours_back: 6, max_pages: 3 }),
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Recording sync failed');
+      setMessage(
+        data.message ||
+          `Synced ${data.with_recording ?? 0} recording(s) from ${data.fetched ?? 0} CDR row(s)`,
+      );
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        setError(
+          'Sync timed out (~70s). Smartflo CDR slow hai — cron har 15 min auto-try karega, ya thodi der baad dubara Sync dabao.',
+        );
+      } else {
+        setError(e?.message || 'Recording sync failed');
+      }
+    } finally {
+      clearTimeout(kill);
+      setSyncingRec(false);
     }
   };
 
@@ -364,28 +408,63 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             />
           </label>
           {canEditSecrets ? (
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-slate-600">
-                Gateway Bearer key{' '}
-                {config?.has_gateway_key ? '(saved — leave blank to keep)' : '(optional)'}
-              </span>
-              <input
-                type="password"
-                value={gatewayKey}
-                onChange={(e) => setGatewayKey(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
-                placeholder={config?.has_gateway_key ? '••••••••' : 'Supabase anon / function key'}
-                autoComplete="new-password"
-              />
-              <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+            <>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-medium text-slate-600">
+                  Gateway Bearer key{' '}
+                  {config?.has_gateway_key ? '(saved — leave blank to keep)' : '(optional)'}
+                </span>
                 <input
-                  type="checkbox"
-                  checked={clearKey}
-                  onChange={(e) => setClearKey(e.target.checked)}
+                  type="password"
+                  value={gatewayKey}
+                  onChange={(e) => setGatewayKey(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
+                  placeholder={config?.has_gateway_key ? '••••••••' : 'Supabase anon / function key'}
+                  autoComplete="new-password"
                 />
-                Clear saved key
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={clearKey}
+                    onChange={(e) => setClearKey(e.target.checked)}
+                  />
+                  Clear saved gateway key
+                </label>
               </label>
-            </label>
+
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-medium text-slate-600">
+                  Smartflo API token (`c2c`){' '}
+                  {config?.has_smartflo_api_token
+                    ? '(saved — leave blank to keep)'
+                    : '(for CDR / recordings)'}
+                </span>
+                <input
+                  type="password"
+                  value={smartfloToken}
+                  onChange={(e) => setSmartfloToken(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono"
+                  placeholder={
+                    config?.has_smartflo_api_token
+                      ? '••••••••'
+                      : 'Paste token from Smartflo → API Connect → API Tokens'
+                  }
+                  autoComplete="new-password"
+                />
+                <span className="mt-1 block text-[11px] text-slate-500">
+                  Smartflo portal → API Connect → API Tokens → copy <code>c2c</code> token. Used for
+                  call recordings / CDR (not the Supabase gateway key above).
+                </span>
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={clearSmartfloToken}
+                    onChange={(e) => setClearSmartfloToken(e.target.checked)}
+                  />
+                  Clear saved Smartflo token
+                </label>
+              </label>
+            </>
           ) : null}
         </div>
 
@@ -621,6 +700,45 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             Place test call
           </button>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-1">
+          <RefreshCw className="w-5 h-5 text-sky-600" />
+          Call recordings
+        </h2>
+        <p className="text-sm text-slate-500 mb-3">
+          Smartflo CDR se <code className="text-xs bg-slate-100 px-1 rounded">recording_url</code>{' '}
+          pull karke lead Call history pe Play dikhata hai. Manual sync ~last 6h (fast); cron har 15
+          min auto continue karta hai.
+        </p>
+        <ul className="text-xs text-slate-600 space-y-1 mb-4 list-disc pl-5">
+          <li>
+            Token: Smartflo API token (<code>c2c</code>) upar save hona chahiye
+          </li>
+          <li>
+            Optional webhook:{' '}
+            <code className="bg-slate-100 px-1 rounded break-all">
+              https://www.myfng.in/api/webhooks/smartflo
+            </code>{' '}
+            — event <strong>Call hangup (Missed or Answered)</strong>
+          </li>
+          <li>
+            Migration: <code className="bg-slate-100 px-1 rounded">337_smartflo_call_recordings.sql</code>
+          </li>
+        </ul>
+        <button
+          type="button"
+          disabled={syncingRec || !config?.has_smartflo_api_token}
+          onClick={() => void syncRecordings()}
+          className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2 text-sm font-medium hover:bg-sky-700 disabled:opacity-50"
+        >
+          {syncingRec ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {syncingRec ? 'Syncing (max ~1 min)…' : 'Sync last 6h recordings'}
+        </button>
+        {!config?.has_smartflo_api_token ? (
+          <p className="mt-2 text-xs text-amber-700">Pehle c2c token save karo, phir sync.</p>
+        ) : null}
       </div>
 
       {message ? (

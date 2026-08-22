@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Copy, Loader2, MessageSquare, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import ToggleSwitch from '@/components/shared/ToggleSwitch';
+import { getCrmDashboardBase } from '@/lib/telecaller/crmRoles';
 
 type ScriptRow = {
   id: string;
@@ -40,6 +41,10 @@ function isShownToTelecaller(row: {
 }
 
 export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: string }) {
+  const pathname = usePathname();
+  const { isLeadManager } = getCrmDashboardBase(pathname);
+  /** Telecaller ON/OFF is manager/admin only — telecallers just browse allowed templates. */
+  const canManageTelecallerVisibility = isLeadManager;
   const searchParams = useSearchParams();
   const tabParam = String(searchParams.get('tab') || '').toLowerCase();
   const [tab, setTab] = useState<'scripts' | 'whatsapp'>(
@@ -164,8 +169,10 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
       <div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-[#023D95]">Msg Templates</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Call scripts + WhatsApp templates. On WhatsApp tab, turn Telecaller ON/OFF to control what
-          your team sees in chat.
+          Call scripts + WhatsApp templates.
+          {canManageTelecallerVisibility
+            ? ' On WhatsApp tab, turn Telecaller ON/OFF to control what your team sees in chat.'
+            : ' Templates shown here are enabled for your role.'}
         </p>
       </div>
 
@@ -278,28 +285,30 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
                   Use this template from WhatsApp chat send picker.
                 </p>
               )}
-              <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <ToggleSwitch
-                    enabled={t.crm_telecaller}
-                    busy={togglingId === t.id}
-                    size="sm"
-                    onChange={(next) => void toggleTelecaller(t, next)}
-                    label={`Show ${t.template_name} to telecallers`}
-                  />
-                  <span
-                    className={`text-xs font-bold ${
-                      t.crm_telecaller ? 'text-[#004AAD]' : 'text-slate-400'
-                    }`}
-                  >
-                    {togglingId === t.id
-                      ? 'Saving…'
-                      : t.crm_telecaller
-                        ? 'Telecaller ON'
-                        : 'Telecaller OFF'}
-                  </span>
+              {canManageTelecallerVisibility ? (
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ToggleSwitch
+                      enabled={t.crm_telecaller}
+                      busy={togglingId === t.id}
+                      size="sm"
+                      onChange={(next) => void toggleTelecaller(t, next)}
+                      label={`Show ${t.template_name} to telecallers`}
+                    />
+                    <span
+                      className={`text-xs font-bold ${
+                        t.crm_telecaller ? 'text-[#004AAD]' : 'text-slate-400'
+                      }`}
+                    >
+                      {togglingId === t.id
+                        ? 'Saving…'
+                        : t.crm_telecaller
+                          ? 'Telecaller ON'
+                          : 'Telecaller OFF'}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           ))}
           {!templates.length ? (

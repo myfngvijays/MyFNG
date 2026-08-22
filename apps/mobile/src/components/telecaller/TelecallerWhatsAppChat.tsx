@@ -169,13 +169,7 @@ function resolveFrictionlessTemplate(rows: WaTemplate[]): WaTemplate | null {
     String((row?.meta as any)?.status || '')
       .trim()
       .toUpperCase();
-  const preferredNames = [
-    'myfng_quick_note',
-    'myfng_support_note',
-    'myfng_closed_window_note',
-    'myfng_msg_note_safe',
-    'myfng_msg_note',
-  ];
+  const preferredNames = ['myfng_quick_note'];
   for (const name of preferredNames) {
     const row = byName(name);
     if (row && metaStatus(row) === 'APPROVED') return row;
@@ -218,6 +212,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
   const [draft, setDraft] = useState('');
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [telecallerScopedTemplates, setTelecallerScopedTemplates] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [templateMode, setTemplateMode] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WaTemplate | null>(null);
@@ -245,6 +240,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
       const cat = String(row.category || '').toLowerCase();
       const name = String(row.template_name || '').toLowerCase();
       if (cat.includes('auth') || name.includes('otp') || name.startsWith('auth_')) return false;
+      // Telecaller API only returns Quick note — keep client in sync
+      if (telecallerScopedTemplates && name !== 'myfng_quick_note') return false;
       if (!q) return true;
       return (
         name.includes(q) ||
@@ -256,16 +253,21 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
           .includes(q)
       );
     });
-  }, [templates, templateSearch]);
+  }, [templates, templateSearch, telecallerScopedTemplates]);
 
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     try {
-      const data = await apiFetch<{ templates?: WaTemplate[] }>('/api/whatsapp/templates');
+      const data = await apiFetch<{
+        templates?: WaTemplate[];
+        telecaller_scoped?: boolean;
+      }>('/api/whatsapp/templates');
       setTemplates(Array.isArray(data.templates) ? data.templates : []);
+      setTelecallerScopedTemplates(Boolean(data.telecaller_scoped));
     } catch (e) {
       console.warn('WA templates failed', e);
       setTemplates([]);
+      setTelecallerScopedTemplates(false);
     } finally {
       setTemplatesLoading(false);
     }

@@ -43,6 +43,7 @@ function LeadDetailContent() {
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
+  const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(true);
   const [showCallLogForm, setShowCallLogForm] = useState(false);
@@ -421,6 +422,7 @@ function LeadDetailContent() {
         });
         setShowCallLogForm(false);
         fetchLeadDetails();
+        setTimelineRefreshKey((k) => k + 1);
         alert('Call log added successfully!');
       } else {
         const errJson = await res.json().catch(() => ({}));
@@ -494,6 +496,7 @@ function LeadDetailContent() {
         });
         setShowFollowUpForm(false);
         fetchLeadDetails();
+        setTimelineRefreshKey((k) => k + 1);
         alert('Follow-up scheduled successfully!');
       }
     } catch (error) {
@@ -624,7 +627,7 @@ function LeadDetailContent() {
                 onShare={() => void openSharePanel()}
               />
             </div>
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                 <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
                 <div className="space-y-2.5">
@@ -646,7 +649,7 @@ function LeadDetailContent() {
               <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                   <h2 className="text-base font-black text-[#023D95] flex items-center gap-2">
-                    <PhoneCall className="w-5 h-5" /> Call history ({callLogs.length})
+                    <PhoneCall className="w-5 h-5" /> Log call
                   </h2>
                   <button
                     type="button"
@@ -657,7 +660,7 @@ function LeadDetailContent() {
                   </button>
                 </div>
                 {showCallLogForm && (
-                  <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                  <div className="mb-2 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
                     <select
                       value={callLogData.activity}
                       onChange={(e) => {
@@ -725,38 +728,9 @@ function LeadDetailContent() {
                     </div>
                   </div>
                 )}
-                <div className="space-y-2 max-h-[360px] overflow-y-auto">
-                  {callLogs.length === 0 ? (
-                    <p className="text-sm text-slate-400 text-center py-6">No call activity yet</p>
-                  ) : (
-                    callLogs.map((log) => (
-                      <div key={log.id} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                              log.call_status === 'ANSWERED'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : log.call_status === 'NO_ANSWER'
-                                  ? 'bg-orange-100 text-orange-700'
-                                  : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {String(log.notes || '').match(/^\[([^\]]+)\]/)?.[1] || log.call_status}
-                          </span>
-                          {log.call_duration ? (
-                            <span className="text-xs text-slate-500">
-                              {Math.floor(log.call_duration / 60)}m {log.call_duration % 60}s
-                            </span>
-                          ) : null}
-                        </div>
-                        {log.notes ? <p className="text-sm text-slate-700">{log.notes}</p> : null}
-                        <p className="text-[11px] text-slate-500 mt-1">
-                          {formatDateTime(log.created_at)} · {log.telecaller?.full_name || 'Telecaller'}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <p className="text-[11px] text-slate-500">
+                  Calls and recordings appear in the Activity feed below (newest first).
+                </p>
               </div>
 
               <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -840,7 +814,12 @@ function LeadDetailContent() {
                 )}
               </div>
 
-              <LeadTimelinePanel leadId={leadId} />
+              <LeadTimelinePanel
+                leadId={leadId}
+                lead={lead}
+                callLogs={callLogs}
+                refreshKey={timelineRefreshKey}
+              />
             </div>
           </div>
         ) : (
@@ -1130,14 +1109,14 @@ function LeadDetailContent() {
             <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-5 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <h2 className="text-base sm:text-lg font-black text-[#023D95] flex items-center gap-2">
-                  <PhoneCall className="w-5 h-5" /> Activity · Calls ({callLogs.length})
+                  <PhoneCall className="w-5 h-5" /> Log disposition
                 </h2>
                 <button type="button" onClick={() => setShowCallLogForm(!showCallLogForm)} className="rounded-xl bg-[#004AAD] text-white px-3 py-2 text-xs font-bold">
                   {showCallLogForm ? 'Close' : '+ Log disposition'}
                 </button>
               </div>
               {showCallLogForm && (
-                <div className="mb-4 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                <div className="mb-2 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
                   <select
                     value={callLogData.activity}
                     onChange={(e) => {
@@ -1173,27 +1152,13 @@ function LeadDetailContent() {
                   </div>
                 </div>
               )}
-              <div className="space-y-2">
-                {callLogs.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-6">No call activity yet</p>
-                ) : callLogs.map((log) => (
-                  <div key={log.id} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${log.call_status === 'ANSWERED' ? 'bg-emerald-100 text-emerald-700' : log.call_status === 'NO_ANSWER' ? 'bg-orange-100 text-orange-700' : 'bg-slate-200 text-slate-700'}`}>
-                        {String(log.notes || '').match(/^\[([^\]]+)\]/)?.[1] || log.call_status}
-                      </span>
-                      {log.call_duration ? <span className="text-xs text-slate-500">{Math.floor(log.call_duration / 60)}m {log.call_duration % 60}s</span> : null}
-                      {log.outcome ? <span className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">{log.outcome}</span> : null}
-                    </div>
-                    {log.notes ? <p className="text-sm text-slate-700">{log.notes}</p> : null}
-                    <p className="text-[11px] text-slate-500 mt-1">{formatDateTime(log.created_at)} · {log.telecaller?.full_name || 'Telecaller'}</p>
-                  </div>
-                ))}
-              </div>
+              <p className="text-[11px] text-slate-500">
+                Calls and recordings appear in the Activity feed on the right (newest first).
+              </p>
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <h3 className="font-black text-[#023D95] mb-3">Quick stats</h3>
               <div className="space-y-2.5">
@@ -1203,7 +1168,12 @@ function LeadDetailContent() {
             </div>
 
             <LeadTagsPanel leadId={leadId} canManage={isLeadManager} />
-            <LeadTimelinePanel leadId={leadId} />
+            <LeadTimelinePanel
+              leadId={leadId}
+              lead={lead}
+              callLogs={callLogs}
+              refreshKey={timelineRefreshKey}
+            />
 
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-2">

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin } from 'lucide-react';
+import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
@@ -37,6 +37,10 @@ import {
   computeServiceLeadOverview,
   type LeadSourceBadgeKind,
 } from '@/lib/booking-lead-utils';
+import {
+  CallRecordingCardRow,
+  formatCallLogDuration,
+} from '@/components/telecaller/CallRecordingPlayer';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
 import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
@@ -52,6 +56,7 @@ type CsvRow = Record<string, string>;
 
 const STATUS_OPTIONS = ['ALL', 'NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
 const LEAD_STATUS_ENUM = ['NEW', 'ASSIGNED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HOLD', 'READY_FOR_DELIVERY'] as const;
+const RECORDING_OPTIONS = ['ALL', 'YES', 'NO'] as const;
 const SOURCE_OPTIONS = [
   'ALL',
   'APP',
@@ -801,20 +806,51 @@ function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
     (couponMeta.last_call_label as string) || (couponMeta.last_call_result as string) || null,
   );
   const latestRemark = String(couponMeta.telecaller_remarks || '').trim() || null;
+
+  /** TeleCRM-style: updates + calls in one chronological feed (newest first). */
+  const activityFeed = useMemo(() => {
+    type FeedItem =
+      | { kind: 'update'; at: number; key: string; entry: ProfileHistoryItem }
+      | { kind: 'call'; at: number; key: string; log: any };
+
+    const items: FeedItem[] = [];
+
+    profileHistory.forEach((entry, index) => {
+      const t = entry.at ? Date.parse(String(entry.at)) : NaN;
+      items.push({
+        kind: 'update',
+        at: Number.isFinite(t) ? t : 0,
+        key: `upd-${entry.at || 'x'}-${index}`,
+        entry,
+      });
+    });
+
+    callLogs.forEach((log, index) => {
+      const t = log?.created_at ? Date.parse(String(log.created_at)) : NaN;
+      items.push({
+        kind: 'call',
+        at: Number.isFinite(t) ? t : 0,
+        key: `call-${log?.id || index}`,
+        log,
+      });
+    });
+
+    items.sort((a, b) => b.at - a.at);
+    return items;
+  }, [profileHistory, callLogs]);
+
   const hasAny =
-    profileHistory.length > 0 ||
-    callLogs.length > 0 ||
-    Boolean(latestLabel) ||
-    Boolean(latestRemark);
+    activityFeed.length > 0 || Boolean(latestLabel) || Boolean(latestRemark);
 
   return (
     <section className="rounded-xl border border-teal-200 bg-teal-50/50 p-4">
       <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-teal-900">
         <History className="h-4 w-4 shrink-0" />
-        Telecaller History / Activity
-        {profileHistory.length > 0 ? (
+        Activity timeline
+        {loadingLogs ? <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" /> : null}
+        {!loadingLogs && activityFeed.length > 0 ? (
           <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
-            {profileHistory.length}
+            {activityFeed.length}
           </span>
         ) : null}
       </p>
@@ -825,118 +861,138 @@ function TelecallerHistorySection({ item }: { item: Record<string, any> }) {
           <DetailFieldCard label="Latest Remark" value={latestRemark || '-'} />
           <DetailFieldCard
             label="Last Activity"
-            value={formatDateTime(String(couponMeta.last_call_at || profileHistory[0]?.at || '') || null)}
+            value={formatDateTime(
+              String(couponMeta.last_call_at || profileHistory[0]?.at || callLogs[0]?.created_at || '') ||
+                null,
+            )}
           />
         </div>
       )}
 
       {!hasAny && !loadingLogs ? (
-        <p className="text-sm text-gray-500">No telecaller status or remarks logged for this lead yet.</p>
+        <p className="text-sm text-gray-500">No telecaller activity logged for this lead yet.</p>
       ) : null}
 
-      {profileHistory.length > 0 ? (
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">Update timeline</p>
-          <ol className="space-y-2">
-            {profileHistory.map((entry, index) => {
+      {activityFeed.length > 0 ? (
+        <ol className="relative space-y-2 border-l-2 border-teal-200 pl-4 ml-1.5">
+          {activityFeed.map((item) => {
+            if (item.kind === 'update') {
+              const entry = item.entry;
               const status = prettifyDisposition(entry.status || entry.previous_label || null);
-              const key = `${entry.at || 'row'}-${index}`;
               return (
-                <li
-                  key={key}
-                  className="rounded-lg border border-teal-100 bg-white px-3 py-2.5 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    {status ? (
-                      <span
-                        className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                        style={dispositionBadgeStyle(status)}
-                      >
-                        {status}
+                <li key={item.key} className="relative">
+                  <span className="absolute -left-[1.4rem] top-3 flex h-5 w-5 items-center justify-center rounded-full bg-teal-100 text-teal-800 ring-2 ring-teal-50">
+                    <History className="h-3 w-3" />
+                  </span>
+                  <div className="rounded-lg border border-teal-100 bg-white px-3 py-2.5 shadow-sm">
+                    <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                        {status ? (
+                          <span
+                            className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                            style={dispositionBadgeStyle(status)}
+                          >
+                            {status}
+                          </span>
+                        ) : null}
+                        {entry.event ? (
+                          <span className="truncate text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                            {String(entry.event).replace(/_/g, ' ')}
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 whitespace-nowrap pt-0.5 text-[11px] tabular-nums text-gray-400">
+                        {formatDateTime(entry.at || null)}
                       </span>
+                    </div>
+                    {entry.summary ? (
+                      <p className="mt-1 text-sm font-medium text-gray-900">{entry.summary}</p>
                     ) : null}
-                    {entry.event ? (
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                        {String(entry.event).replace(/_/g, ' ')}
-                      </span>
+                    {entry.remark ? (
+                      <p className="mt-1 text-sm text-gray-700">
+                        <span className="font-semibold text-gray-500">Remark:</span> {entry.remark}
+                      </p>
                     ) : null}
-                    <span className="text-[11px] text-gray-400">{formatDateTime(entry.at || null)}</span>
+                    {(entry.workshop_name || entry.city || entry.pincode || entry.lost_reason) && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        {[
+                          entry.workshop_name ? `Workshop: ${entry.workshop_name}` : null,
+                          entry.city ? `City: ${entry.city}` : null,
+                          entry.pincode ? `Pincode: ${entry.pincode}` : null,
+                          entry.lost_reason ? `Lost reason: ${entry.lost_reason}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    )}
                   </div>
-                  {entry.summary ? (
-                    <p className="mt-1 text-sm font-medium text-gray-900">{entry.summary}</p>
-                  ) : null}
-                  {entry.remark ? (
-                    <p className="mt-1 text-sm text-gray-700">
-                      <span className="font-semibold text-gray-500">Remark:</span> {entry.remark}
-                    </p>
-                  ) : null}
-                  {(entry.workshop_name || entry.city || entry.pincode || entry.lost_reason) && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      {[
-                        entry.workshop_name ? `Workshop: ${entry.workshop_name}` : null,
-                        entry.city ? `City: ${entry.city}` : null,
-                        entry.pincode ? `Pincode: ${entry.pincode}` : null,
-                        entry.lost_reason ? `Lost reason: ${entry.lost_reason}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
-                  )}
                 </li>
               );
-            })}
-          </ol>
-        </div>
-      ) : null}
+            }
 
-      <div className="mt-4">
-        <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-teal-800">
-          Call logs
-          {loadingLogs ? <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" /> : null}
-          {!loadingLogs && callLogs.length > 0 ? (
-            <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
-              {callLogs.length}
-            </span>
-          ) : null}
-        </p>
-        {!loadingLogs && callLogs.length === 0 ? (
-          <p className="text-sm text-gray-500">No call logs for this lead.</p>
-        ) : (
-          <ol className="space-y-2">
-            {callLogs.map((log) => {
-              const telecallerName =
-                log?.telecaller?.full_name || log?.telecaller_name || null;
-              return (
-                <li
-                  key={String(log.id || `${log.created_at}-${log.notes}`)}
-                  className="rounded-lg border border-teal-100 bg-white px-3 py-2.5 shadow-sm"
+            const log = item.log;
+            const telecallerName =
+              log?.telecaller?.full_name || log?.telecaller_name || null;
+            const hasRec = Boolean(log.call_recording_url);
+            const durLabel = formatCallLogDuration(log.call_duration);
+            return (
+              <li key={item.key} className="relative">
+                <span className="absolute -left-[1.4rem] top-3 flex h-5 w-5 items-center justify-center rounded-full bg-violet-100 text-violet-800 ring-2 ring-teal-50">
+                  <Phone className="h-3 w-3" />
+                </span>
+                <CallRecordingCardRow
+                  callLogId={String(log.id || '')}
+                  hasRecording={hasRec}
+                  durationSeconds={
+                    log.call_duration != null ? Number(log.call_duration) : null
+                  }
                 >
-                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 font-bold uppercase tracking-wide text-violet-800 ring-1 ring-violet-200">
+                      Call
+                    </span>
                     {log.call_status ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
                         {String(log.call_status).replace(/_/g, ' ')}
                       </span>
                     ) : null}
                     {log.outcome ? (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">
+                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">
                         {String(log.outcome).replace(/_/g, ' ')}
                       </span>
                     ) : null}
-                    {telecallerName ? (
-                      <span className="font-medium text-teal-800">{telecallerName}</span>
-                    ) : null}
-                    <span className="text-gray-400">{formatDateTime(log.created_at)}</span>
+                    <span className="shrink-0 rounded-full bg-slate-50 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200">
+                      {durLabel === '—' ? 'Duration —' : durLabel}
+                    </span>
                   </div>
-                  {log.notes ? <p className="mt-1 text-sm text-gray-700">{log.notes}</p> : null}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                    {telecallerName ? (
+                      <span className="whitespace-nowrap font-medium text-teal-800">{telecallerName}</span>
+                    ) : null}
+                    <span className="whitespace-nowrap text-gray-400">
+                      {formatDateTime(log.created_at)}
+                    </span>
+                  </div>
+                  {log.notes ? (
+                    <p className="mt-1 break-words text-sm text-gray-700">
+                      {String(log.notes)
+                        .replace(/\[Smartflo\]\s*/gi, '')
+                        .replace(/\bSmartflo\b/gi, '')
+                        .trim()}
+                    </p>
+                  ) : null}
                   {log.customer_response ? (
                     <p className="mt-1 text-xs text-gray-500">Response: {log.customer_response}</p>
                   ) : null}
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </div>
+                  {!hasRec ? (
+                    <p className="mt-1 text-[11px] text-gray-400">No recording yet</p>
+                  ) : null}
+                </CallRecordingCardRow>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
     </section>
   );
 }
@@ -1444,6 +1500,17 @@ function couponFilterLabel(coupon: (typeof COUPON_OPTIONS)[number]) {
   }
 }
 
+function recordingFilterLabel(v: (typeof RECORDING_OPTIONS)[number]) {
+  switch (v) {
+    case 'YES':
+      return 'Has recording';
+    case 'NO':
+      return 'No recording';
+    default:
+      return 'All recordings';
+  }
+}
+
 export default function SuperAdminBookingsPage() {
   const searchParams = useSearchParams();
   const [showUploadCrm, setShowUploadCrm] = useState(false);
@@ -1453,6 +1520,9 @@ export default function SuperAdminBookingsPage() {
   const [sourceLabelFilter, setSourceLabelFilter] = useState('');
   const [leadTypeFilter, setLeadTypeFilter] = useState('');
   const [couponFilter, setCouponFilter] = useState<(typeof COUPON_OPTIONS)[number]>('ALL');
+  const [recordingFilter, setRecordingFilter] = useState<(typeof RECORDING_OPTIONS)[number]>('ALL');
+  const [recordingLeadIds, setRecordingLeadIds] = useState<Set<string> | null>(null);
+  const [loadingRecordingIds, setLoadingRecordingIds] = useState(false);
   /** ALL | UNASSIGNED | exact assignee name */
   const [assigneeFilter, setAssigneeFilter] = useState('ALL');
   const [assigneeSearch, setAssigneeSearch] = useState('');
@@ -1696,6 +1766,17 @@ export default function SuperAdminBookingsPage() {
         );
       }
     }
+    if (recordingFilter !== 'ALL') {
+      if (!recordingLeadIds) {
+        // Wait until recording index loads — avoid flashing full list
+        return [];
+      }
+      leads = leads.filter((lead) => {
+        const id = String(lead.id || '').trim();
+        const has = recordingLeadIds.has(id);
+        return recordingFilter === 'YES' ? has : !has;
+      });
+    }
     return leads;
   }, [
     serviceLeads,
@@ -1707,6 +1788,8 @@ export default function SuperAdminBookingsPage() {
     leadTypeFilter,
     assigneeFilter,
     assigneeSearch,
+    recordingFilter,
+    recordingLeadIds,
   ]);
 
   const displayedServiceLeads = useMemo(() => {
@@ -1765,7 +1848,7 @@ export default function SuperAdminBookingsPage() {
   // Reset to first page whenever filters / search change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, assigneeSearch, searchTerm, datePreset, customStart, customEnd]);
+  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, assigneeSearch, searchTerm, datePreset, customStart, customEnd, recordingFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1817,6 +1900,7 @@ export default function SuperAdminBookingsPage() {
     sourceFilter !== 'ALL' ||
     couponFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
+    recordingFilter !== 'ALL' ||
     assigneeFilter !== 'ALL' ||
     Boolean(assigneeSearch.trim()) ||
     Boolean(searchTerm.trim()) ||
@@ -1857,6 +1941,8 @@ export default function SuperAdminBookingsPage() {
 
     setLoading(true);
     setError(null);
+    // Refresh recording index when leads reload (after sync / date change)
+    setRecordingLeadIds(null);
 
     try {
       const query = new URLSearchParams();
@@ -1927,6 +2013,13 @@ export default function SuperAdminBookingsPage() {
     const search = String(searchParams.get('search') || '').trim();
     if (search) setSearchTerm(search);
 
+    const hasRec = String(searchParams.get('has_recording') || '')
+      .trim()
+      .toUpperCase();
+    if ((RECORDING_OPTIONS as readonly string[]).includes(hasRec)) {
+      setRecordingFilter(hasRec as (typeof RECORDING_OPTIONS)[number]);
+    }
+
     setUrlFiltersReady(true);
   }, [searchParams]);
 
@@ -1938,6 +2031,35 @@ export default function SuperAdminBookingsPage() {
     }, 250);
     return () => clearTimeout(timer);
   }, [fetchData, urlFiltersReady]);
+
+  useEffect(() => {
+    if (recordingFilter === 'ALL') return;
+    if (recordingLeadIds) return;
+    let cancelled = false;
+    setLoadingRecordingIds(true);
+    fetch('/api/super_admin/leads/with-recordings', { credentials: 'include', cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to load recording filter');
+        const ids = new Set<string>(
+          (Array.isArray(json?.lead_ids) ? json.lead_ids : []).map((id: unknown) => String(id)),
+        );
+        if (!cancelled) setRecordingLeadIds(ids);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[bookings] recording filter load failed', err);
+          setRecordingLeadIds(new Set());
+          toast.error(err?.message || 'Could not load recording filter');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecordingIds(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recordingFilter, recordingLeadIds]);
 
   const loadTelecallers = useCallback(async (forLead?: Record<string, any> | null) => {
     setTelecallersLoading(true);
@@ -2638,6 +2760,24 @@ export default function SuperAdminBookingsPage() {
                       ))}
                     </FilterSelect>
 
+                    <FilterSelect
+                      label="Recording"
+                      value={recordingFilter}
+                      onChange={(v) => setRecordingFilter(v as (typeof RECORDING_OPTIONS)[number])}
+                      className="min-w-[160px]"
+                    >
+                      {RECORDING_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {recordingFilterLabel(opt)}
+                        </option>
+                      ))}
+                    </FilterSelect>
+                    {recordingFilter !== 'ALL' && loadingRecordingIds ? (
+                      <span className="mb-0.5 inline-flex items-center gap-1 text-[11px] text-violet-700">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+                      </span>
+                    ) : null}
+
                     <div className="flex flex-col gap-1 min-w-[220px] flex-1 max-w-sm relative">
                       <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Assignee</span>
                       <div className="relative">
@@ -2737,6 +2877,7 @@ export default function SuperAdminBookingsPage() {
                 {(sourceFilter !== 'ALL' ||
                   couponFilter !== 'ALL' ||
                   statusFilter !== 'ALL' ||
+                  recordingFilter !== 'ALL' ||
                   assigneeFilter !== 'ALL' ||
                   assigneeSearch.trim() ||
                   sourceLabelFilter.trim() ||
@@ -2750,6 +2891,7 @@ export default function SuperAdminBookingsPage() {
                       setLeadTypeFilter('');
                       setCouponFilter('ALL');
                       setStatusFilter('ALL');
+                      setRecordingFilter('ALL');
                       setAssigneeFilter('ALL');
                       setAssigneeSearch('');
                       setChartDrill(null);

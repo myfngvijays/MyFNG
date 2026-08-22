@@ -1377,6 +1377,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/telecaller-leads-shift-summary',
     '/api/cron/telecrm-push',
     '/api/cron/notifications?task=followup_reminder',
+    '/api/cron/smartflo-recordings',
   ];
 
   if (!cronSecret) {
@@ -1873,6 +1874,7 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
         enabled: true,
         auto_dial_on_fresh_assign: Boolean(cfg.auto_dial_on_fresh_assign),
         has_gateway_key: Boolean(cfg.gateway_key),
+        has_smartflo_api_token: Boolean(cfg.smartflo_api_token),
         env: {
           CLICK_TO_CALL_GATEWAY_URL: Boolean(process.env.CLICK_TO_CALL_GATEWAY_URL),
           CLICK_TO_CALL_DID: Boolean(process.env.CLICK_TO_CALL_DID),
@@ -1880,6 +1882,7 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
           CLICK_TO_CALL_GATEWAY_KEY: Boolean(
             process.env.CLICK_TO_CALL_GATEWAY_KEY || process.env.CLICK_TO_CALL_ANON_KEY,
           ),
+          SMARTFLO_API_TOKEN: Boolean(process.env.SMARTFLO_API_TOKEN),
         },
       },
     };
@@ -1898,6 +1901,120 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
         actionPayload: { url: '/dashboard/super_admin/click-to-call' },
       },
       details: { gateway, did, provider },
+    };
+  }
+}
+
+async function checkSmartfloRecordings(): Promise<HealthCheck> {
+  const start = Date.now();
+  const cfg = await getClickToCallConfig();
+  const hasToken = Boolean(cfg.smartflo_api_token || process.env.SMARTFLO_API_TOKEN);
+
+  if (!hasToken) {
+    return {
+      name: 'Smartflo Call Recordings',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Smartflo API token (c2c) missing',
+      reason:
+        'Save the c2c token under Super Admin → Click to Call to pull CDR recording_url into CRM.',
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open Click to Call setup',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+      },
+      details: {
+        has_token: false,
+        cron: '/api/cron/smartflo-recordings',
+        webhook: '/api/webhooks/smartflo',
+      },
+    };
+  }
+
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return {
+        name: 'Smartflo Call Recordings',
+        category: 'Third Party',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Admin DB client unavailable',
+        reason: 'Cannot verify smartflo_call_recordings table.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const { error: tableErr } = await supabaseAdmin
+      .from('smartflo_call_recordings')
+      .select('id', { count: 'exact', head: true })
+      .limit(1);
+
+    if (tableErr) {
+      const missing =
+        /does not exist|schema cache|relation/i.test(tableErr.message || '') ||
+        tableErr.code === '42P01' ||
+        tableErr.code === 'PGRST205';
+      return {
+        name: 'Smartflo Call Recordings',
+        category: 'Third Party',
+        status: missing ? 'degraded' : 'healthy',
+        responseTime: Date.now() - start,
+        message: missing
+          ? 'Migration pending: smartflo_call_recordings'
+          : 'Token saved; table probe inconclusive',
+        reason: missing
+          ? 'Run database/337_smartflo_call_recordings.sql on Supabase, then Sync recordings.'
+          : tableErr.message,
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open Click to Call setup',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+        },
+        details: { table_error: tableErr.message, has_token: true },
+      };
+    }
+
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { count: withRec } = await supabaseAdmin
+      .from('smartflo_call_recordings')
+      .select('id', { count: 'exact', head: true })
+      .not('recording_url', 'is', null)
+      .gte('created_at', since);
+
+    return {
+      name: 'Smartflo Call Recordings',
+      category: 'Third Party',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'CDR sync ready (token + table OK)',
+      reason: `${withRec || 0} recording URL(s) ingested in last 48h. Cron /api/cron/smartflo-recordings every 15m; webhook /api/webhooks/smartflo optional.`,
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open Click to Call setup',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+      },
+      details: {
+        has_token: true,
+        recordings_48h: withRec || 0,
+        cron: '/api/cron/smartflo-recordings',
+        webhook: '/api/webhooks/smartflo',
+        SMARTFLO_WEBHOOK_SECRET: Boolean(process.env.SMARTFLO_WEBHOOK_SECRET),
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Smartflo Call Recordings',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Recordings check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
     };
   }
 }
@@ -2533,6 +2650,7 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkSSL(),
     checkSARVTelephony(),
     checkSmartfloClickToCall(),
+    checkSmartfloRecordings(),
   ]);
 }
 
@@ -2580,6 +2698,8 @@ export async function GET() {
       ANDROID_APP_LINK_SHA256: !!String(process.env.ANDROID_APP_LINK_SHA256 || '').trim(),
       CLICK_TO_CALL_GATEWAY_URL: !!String(process.env.CLICK_TO_CALL_GATEWAY_URL || '').trim(),
       CLICK_TO_CALL_DID: !!String(process.env.CLICK_TO_CALL_DID || '').trim(),
+      SMARTFLO_API_TOKEN: !!String(process.env.SMARTFLO_API_TOKEN || '').trim(),
+      SMARTFLO_WEBHOOK_SECRET: !!String(process.env.SMARTFLO_WEBHOOK_SECRET || '').trim(),
     };
 
     const healthAlertTemplate = await getHealthAlertTemplateStatus();

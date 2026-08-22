@@ -191,11 +191,14 @@ export async function GET() {
       templates = templates.filter((row: any) => !isAuthRow(row));
     }
 
-    // Telecallers: only Active + explicitly "Telecaller ON" (meta.crm_telecaller).
-    // No name-based fallback — hide in admin must actually hide in app.
+    // Telecallers: only Active + Quick note (Frictionless). Closed-window / other templates stay admin/LM.
     if (roleCode === 'TELECALLER') {
       templates = templates.filter((row: any) => {
         if (row?.is_active === false) return false;
+        const name = String(row?.template_name || '')
+          .trim()
+          .toLowerCase();
+        if (name !== 'myfng_quick_note') return false;
         const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
         return meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1;
       });

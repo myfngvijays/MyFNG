@@ -10,6 +10,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 90;
 
 async function requireAdmin(request: NextRequest) {
   const supabase = await createClientFromRequest(request);
@@ -236,6 +237,32 @@ export async function POST(request: NextRequest) {
       did: result.did,
       via: result.via,
       gateway: result.upstream,
+    });
+  }
+
+  if (action === 'sync_recordings') {
+    const hoursBack = Number(body.hours_back ?? body.hours ?? 6);
+    const maxPages = Number(body.max_pages ?? 6);
+    const { syncSmartfloRecordings } = await import('@/lib/telecaller/smartfloCdr');
+    const result = await syncSmartfloRecordings({
+      hoursBack: Number.isFinite(hoursBack) ? hoursBack : 6,
+      maxPages: Number.isFinite(maxPages) ? maxPages : 6,
+      timeBudgetMs: 55_000,
+      concurrency: 6,
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error || 'Sync failed', ...result },
+        { status: 502 },
+      );
+    }
+    const truncNote = result.truncated
+      ? ' (partial — Smartflo slow; cron will continue)'
+      : '';
+    return NextResponse.json({
+      success: true,
+      message: `Synced ${result.with_recording} recording(s) from ${result.fetched} CDR row(s) in ${Math.round((result.elapsed_ms || 0) / 1000)}s${truncNote}`,
+      ...result,
     });
   }
 

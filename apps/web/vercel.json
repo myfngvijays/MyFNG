@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/notifications?task=followup_reminder",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/smartflo-recordings",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
