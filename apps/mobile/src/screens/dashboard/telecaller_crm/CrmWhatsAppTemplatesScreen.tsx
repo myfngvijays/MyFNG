@@ -9,21 +9,27 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
+  Switch,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
 import { COLORS, SPACING } from '../../../constants/theme';
 
 type WaTemplate = {
+  id?: string;
   template_name: string;
   display_name?: string | null;
   body?: string | null;
   body_text?: string | null;
   language?: string | null;
+  language_code?: string | null;
   is_active?: boolean;
+  meta?: Record<string, unknown> | null;
+  crm_telecaller?: boolean;
 };
 
 function humanize(name: string): string {
@@ -34,20 +40,39 @@ function humanize(name: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function isShownToTelecaller(row: WaTemplate): boolean {
+  if (row.is_active === false) return false;
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  const flag = (meta as any).crm_telecaller;
+  return flag === true || flag === '1' || flag === 1;
+}
+
 export default function CrmWhatsAppTemplatesScreen() {
   const navigation = useNavigation<any>();
+  const { role } = useAuth();
+  const roleCode = String(role || '').toUpperCase();
+  const canManageTelecallerVisibility = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
+    roleCode,
+  );
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await apiFetch<{ templates?: WaTemplate[] }>('/api/whatsapp/templates');
       const list = Array.isArray(data?.templates) ? data.templates : [];
       setTemplates(
-        list.filter((t) => t?.is_active !== false && String(t?.template_name || '').trim()),
+        list
+          .filter((t) => t?.is_active !== false && String(t?.template_name || '').trim())
+          .map((t) => ({
+            ...t,
+            crm_telecaller: isShownToTelecaller(t),
+          })),
       );
     } catch (e: any) {
       Alert.alert('Templates', e?.message || 'Failed to load WhatsApp templates');
@@ -81,6 +106,43 @@ export default function CrmWhatsAppTemplatesScreen() {
     Alert.alert('Copied', humanize(row.display_name || row.template_name));
   };
 
+  const toggleTelecaller = async (row: WaTemplate, next: boolean) => {
+    if (!row.id) {
+      Alert.alert('Templates', 'Missing template id — refresh and try again.');
+      return;
+    }
+    setTogglingId(row.id);
+    setTemplates((prev) =>
+      prev.map((item) =>
+        item.id === row.id
+          ? {
+              ...item,
+              crm_telecaller: next,
+              meta: { ...(item.meta || {}), crm_telecaller: next },
+            }
+          : item,
+      ),
+    );
+    try {
+      await apiFetch(`/api/whatsapp/templates/${row.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crm_telecaller: next }),
+      });
+    } catch (e: any) {
+      setTemplates((prev) =>
+        prev.map((item) =>
+          item.id === row.id
+            ? { ...item, crm_telecaller: row.crm_telecaller, meta: row.meta }
+            : item,
+        ),
+      );
+      Alert.alert('Templates', e?.message || 'Failed to update telecaller visibility');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.shell} edges={['top']}>
       <View style={styles.topBar}>
@@ -96,6 +158,12 @@ export default function CrmWhatsAppTemplatesScreen() {
         </Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {canManageTelecallerVisibility ? (
+        <Text style={styles.hint}>
+          Telecaller ON/OFF controls which templates your team sees in WhatsApp chat.
+        </Text>
+      ) : null}
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={16} color="#94A3B8" />
@@ -116,7 +184,7 @@ export default function CrmWhatsAppTemplatesScreen() {
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item.template_name}
+          keyExtractor={(item) => item.id || item.template_name}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -134,14 +202,13 @@ export default function CrmWhatsAppTemplatesScreen() {
           renderItem={({ item }) => {
             const title = String(item.display_name || '').trim() || humanize(item.template_name);
             const body = String(item.body || item.body_text || '').trim();
+            const lang = item.language || item.language_code;
             const open = expanded === item.template_name;
             return (
               <TouchableOpacity
                 style={styles.card}
                 activeOpacity={0.75}
-                onPress={() =>
-                  setExpanded(open ? null : item.template_name)
-                }
+                onPress={() => setExpanded(open ? null : item.template_name)}
               >
                 <View style={styles.cardTop}>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -150,7 +217,7 @@ export default function CrmWhatsAppTemplatesScreen() {
                     </Text>
                     <Text style={styles.cardMeta} numberOfLines={1}>
                       {item.template_name}
-                      {item.language ? ` · ${item.language}` : ''}
+                      {lang ? ` · ${lang}` : ''}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -172,6 +239,29 @@ export default function CrmWhatsAppTemplatesScreen() {
                   <Text style={styles.preview} numberOfLines={2}>
                     {body}
                   </Text>
+                ) : null}
+                {canManageTelecallerVisibility && item.id ? (
+                  <View style={styles.toggleRow}>
+                    <Text
+                      style={[
+                        styles.toggleLabel,
+                        item.crm_telecaller ? styles.toggleOn : styles.toggleOff,
+                      ]}
+                    >
+                      {togglingId === item.id
+                        ? 'Saving…'
+                        : item.crm_telecaller
+                          ? 'Telecaller ON'
+                          : 'Telecaller OFF'}
+                    </Text>
+                    <Switch
+                      value={Boolean(item.crm_telecaller)}
+                      disabled={togglingId === item.id}
+                      onValueChange={(next) => void toggleTelecaller(item, next)}
+                      trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
+                      thumbColor={item.crm_telecaller ? COLORS.primary : '#F8FAFC'}
+                    />
+                  </View>
                 ) : null}
               </TouchableOpacity>
             );
@@ -205,6 +295,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: COLORS.textHeading,
+  },
+  hint: {
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
   },
   searchWrap: {
     flexDirection: 'row',
@@ -250,4 +347,17 @@ const styles = StyleSheet.create({
   preview: { marginTop: 8, fontSize: 13, color: '#64748B', lineHeight: 18 },
   body: { marginTop: 10, fontSize: 13, color: '#334155', lineHeight: 20 },
   bodyMuted: { marginTop: 10, fontSize: 12, color: '#94A3B8', fontStyle: 'italic' },
+  toggleRow: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  toggleLabel: { fontSize: 12, fontWeight: '700' },
+  toggleOn: { color: COLORS.primary },
+  toggleOff: { color: '#94A3B8' },
 });

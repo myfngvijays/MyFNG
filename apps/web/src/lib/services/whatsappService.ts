@@ -276,9 +276,15 @@ export async function sendTemplateMessage(input: TemplateMessageInput): Promise<
   if (!to) return { success: false, error: 'Invalid recipient phone number' };
   if (!input.templateName?.trim()) return { success: false, error: 'Template name is required' };
 
-  const bodyParams = (input.templateParams || [])
-    .map((value) => String(value ?? '').trim())
-    .filter(Boolean)
+  // Keep empty slots — do NOT filter(Boolean); Meta counts positional params strictly.
+  // Also: never split a single free-text param on commas (common #132000 cause).
+  const rawParams = (input.templateParams || []).map((value) => String(value ?? '').trim());
+  const bodyParams = rawParams
+    .filter((text, idx, arr) => {
+      // Drop only trailing empties; keep middle empties if multiple vars
+      if (text) return true;
+      return arr.slice(idx + 1).some((v) => Boolean(v));
+    })
     .map((text): TemplateBodyParam => ({ type: 'text', text }));
 
   const buttonParams = (input.buttonUrlParams || [])

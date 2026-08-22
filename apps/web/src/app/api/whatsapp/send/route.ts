@@ -62,11 +62,83 @@ function normalizeMessageType(value: unknown): MessageType | null {
   return null;
 }
 
+/** Count {{1}}..{{n}} placeholders in template body. */
+function countBodyVariables(bodyText: string): number {
+  const matches = String(bodyText || '').match(/\{\{\s*\d+\s*\}\}/g);
+  if (!matches?.length) return 0;
+  let max = 0;
+  for (const m of matches) {
+    const n = Number(String(m).replace(/\D/g, ''));
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max;
+}
+
+/**
+ * Parse template body params without breaking free-text that contains commas.
+ * (#132000 often = "Hello Sir, Apki…" split into 2 params via .split(','))
+ */
+function parseTemplateParams(raw: unknown, expectedVars = 0): string[] {
+  let list: string[] = [];
+  if (Array.isArray(raw)) {
+    list = raw.map((v) => String(v ?? ''));
+  } else if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      list = [];
+    } else if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        list = Array.isArray(parsed) ? parsed.map((v) => String(v ?? '')) : [trimmed];
+      } catch {
+        list = [raw];
+      }
+    } else if (expectedVars <= 1) {
+      // Single free-text / frictionless — never comma-split
+      list = [raw];
+    } else {
+      list = trimmed.split(',').map((v) => String(v || '').trim());
+    }
+  }
+
+  if (expectedVars > 0) {
+    if (list.length > expectedVars) {
+      // Too many (e.g. comma-split accident): join back into first N-1 slots + rest
+      if (expectedVars === 1) {
+        list = [list.join(', ')];
+      } else {
+        list = [...list.slice(0, expectedVars - 1), list.slice(expectedVars - 1).join(', ')];
+      }
+    }
+    while (list.length < expectedVars) list.push('');
+  }
+  return list.map((v) => String(v ?? '').trim());
+}
+
 async function parseIncomingBody(request: NextRequest): Promise<ParsedSendBody> {
   const contentType = request.headers.get('content-type') || '';
   if (contentType.includes('multipart/form-data')) {
     const form = await request.formData();
     const fileEntry = form.get('file');
+    const rawTemplateParams = form.get('template_params');
+    let templateParams: unknown = rawTemplateParams ? String(rawTemplateParams) : '';
+    // Prefer JSON array from client: '["hello, world"]'
+    if (typeof templateParams === 'string' && templateParams.trim().startsWith('[')) {
+      try {
+        templateParams = JSON.parse(templateParams);
+      } catch {
+        /* keep string */
+      }
+    }
+    const rawButtonParams = form.get('button_url_params');
+    let buttonUrlParams: unknown = rawButtonParams ? String(rawButtonParams) : '';
+    if (typeof buttonUrlParams === 'string' && buttonUrlParams.trim().startsWith('[')) {
+      try {
+        buttonUrlParams = JSON.parse(buttonUrlParams);
+      } catch {
+        /* keep string */
+      }
+    }
     const body: ParsedSendBody = {
       lead_id: form.get('lead_id') ? String(form.get('lead_id')) : '',
       invoice_id: form.get('invoice_id') ? String(form.get('invoice_id')) : '',
@@ -80,8 +152,8 @@ async function parseIncomingBody(request: NextRequest): Promise<ParsedSendBody> 
       text: form.get('text') ? String(form.get('text')) : '',
       template_name: form.get('template_name') ? String(form.get('template_name')) : '',
       language: form.get('language') ? String(form.get('language')) : '',
-      template_params: form.get('template_params') ? String(form.get('template_params')) : '',
-      button_url_params: form.get('button_url_params') ? String(form.get('button_url_params')) : '',
+      template_params: templateParams,
+      button_url_params: buttonUrlParams,
       __file: fileEntry instanceof File ? fileEntry : null,
     };
     return body;
@@ -303,25 +375,41 @@ export async function POST(request: NextRequest) {
     } else {
       const templateName = String(body?.template_name || '').trim();
       const languageCode = String(body?.language || 'en').trim() || 'en';
-      const templateParams = Array.isArray(body?.template_params)
-        ? body.template_params.map((v: unknown) => String(v ?? ''))
-        : typeof body?.template_params === 'string'
-        ? body.template_params
-            .split(',')
-            .map((v: string) => String(v || '').trim())
-            .filter(Boolean)
-        : [];
-      const buttonUrlParams = Array.isArray(body?.button_url_params)
-        ? body.button_url_params.map((v: unknown) => String(v ?? ''))
-        : typeof body?.button_url_params === 'string'
-        ? body.button_url_params
-            .split(',')
-            .map((v: string) => String(v || '').trim())
-            .filter(Boolean)
-        : [];
       if (!templateName) {
         return NextResponse.json({ error: 'template_name is required for template type' }, { status: 400 });
       }
+
+      // Resolve expected {{n}} count from local template (frictionless = 1)
+      let expectedVars = 0;
+      try {
+        const { data: tplRow } = await db
+          .from('whatsapp_templates')
+          .select('body_text, variable_keys, meta')
+          .ilike('template_name', templateName)
+          .maybeSingle();
+        const fromBody = countBodyVariables(String(tplRow?.body_text || ''));
+        const fromKeys = Array.isArray(tplRow?.variable_keys) ? tplRow.variable_keys.length : 0;
+        expectedVars = Math.max(fromBody, fromKeys);
+        if (tplRow?.meta && (tplRow.meta as any).frictionless) {
+          expectedVars = Math.max(expectedVars, 1);
+        }
+        if (
+          templateName.toLowerCase() === 'myfng_quick_note' ||
+          templateName.toLowerCase() === 'myfng_msg_note' ||
+          templateName.toLowerCase() === 'myfng_msg_note_safe' ||
+          templateName.toLowerCase() === 'myfng_support_note' ||
+          templateName.toLowerCase() === 'myfng_closed_window_note' ||
+          templateName.toLowerCase() === 'myfng_frictionless_chat'
+        ) {
+          expectedVars = 1;
+        }
+      } catch {
+        expectedVars = 0;
+      }
+
+      const templateParams = parseTemplateParams(body?.template_params, expectedVars);
+      const buttonUrlParams = parseTemplateParams(body?.button_url_params, 0);
+
       messageForLog = `template:${templateName}`;
       requestPayload = {
         message_type: 'template',
@@ -338,7 +426,13 @@ export async function POST(request: NextRequest) {
         languageCode,
       });
       if (!result.success) {
-        console.error('[WA Template Send] Failed:', { templateName, paramsCount: templateParams.length, error: result.error, raw: result.raw });
+        console.error('[WA Template Send] Failed:', {
+          templateName,
+          paramsCount: templateParams.length,
+          expectedVars,
+          error: result.error,
+          raw: result.raw,
+        });
       }
     }
 

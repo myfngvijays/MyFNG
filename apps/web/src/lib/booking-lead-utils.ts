@@ -660,18 +660,27 @@ export function filterBookingLeads(
   leads: Record<string, any>[],
   filters: {
     source?: string;
+    sourceLabel?: string;
     hasCoupon?: string;
     search?: string;
   },
 ) {
   const search = String(filters.search || '').trim().toLowerCase();
   const source = String(filters.source || 'ALL').toUpperCase();
+  const sourceLabel = String(filters.sourceLabel || '').trim().toLowerCase();
   const hasCoupon = String(filters.hasCoupon || 'ALL').toUpperCase();
 
   return leads.filter((lead) => {
     const enriched = lead.booking_source ? lead : enrichBookingLead(lead);
 
     if (!matchesBookingSourceFilter(enriched, source)) return false;
+
+    if (sourceLabel) {
+      const label = String(enriched.booking_source_label || enriched.lead_source || '')
+        .trim()
+        .toLowerCase();
+      if (label !== sourceLabel) return false;
+    }
 
     if (hasCoupon === 'YES' && !enriched.has_coupon_applied) return false;
     if (hasCoupon === 'NO' && enriched.has_coupon_applied) return false;

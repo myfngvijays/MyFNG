@@ -81,14 +81,21 @@ function messageText(m: Msg): string {
     try {
       const parsed = JSON.parse(body);
       if (parsed && typeof parsed === 'object') {
-        return String(parsed.text || parsed.payload || body);
+        const fromJson = String(parsed.text || parsed.payload || parsed.body || '').trim();
+        if (fromJson) return fromJson;
       }
     } catch {
       /* plain text */
     }
+    // Avoid dumping internal template keys as the visible message
+    if (/^template:\s*/i.test(body)) {
+      const rest = body.replace(/^template:\s*/i, '').trim();
+      if (rest && !/^[a-z0-9_]+$/i.test(rest.split(/\s|\(/)[0] || '')) return rest;
+      return 'Template message';
+    }
     return body;
   }
-  if (m.template_name) return `Template: ${m.template_name}`;
+  if (m.template_name) return humanizeTemplateKey(String(m.template_name));
   const type = String(m.message_type || '').toUpperCase();
   if (type && type !== 'TEXT') return type;
   return '—';
@@ -148,6 +155,42 @@ function fillTemplateBody(template?: WaTemplate | null, params: string[] = []): 
   });
 }
 
+function isExplicitTelecallerTemplate(row: WaTemplate): boolean {
+  if (!row || row.is_active === false) return false;
+  const meta = row.meta && typeof row.meta === 'object' ? (row.meta as any) : {};
+  return meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1;
+}
+
+function resolveFrictionlessTemplate(rows: WaTemplate[]): WaTemplate | null {
+  const active = rows.filter((row) => isExplicitTelecallerTemplate(row));
+  const byName = (name: string) =>
+    active.find((row) => String(row.template_name || '').trim().toLowerCase() === name) || null;
+  const metaStatus = (row: WaTemplate) =>
+    String((row?.meta as any)?.status || '')
+      .trim()
+      .toUpperCase();
+  const preferredNames = [
+    'myfng_quick_note',
+    'myfng_support_note',
+    'myfng_closed_window_note',
+    'myfng_msg_note_safe',
+    'myfng_msg_note',
+  ];
+  for (const name of preferredNames) {
+    const row = byName(name);
+    if (row && metaStatus(row) === 'APPROVED') return row;
+  }
+  for (const name of preferredNames) {
+    const row = byName(name);
+    if (row) return row;
+  }
+  return (
+    active.find((row) => Boolean(row?.meta && (row.meta as any).frictionless) && metaStatus(row) === 'APPROVED') ||
+    active.find((row) => Boolean(row?.meta && (row.meta as any).frictionless)) ||
+    null
+  );
+}
+
 function defaultParamsForTemplate(template: WaTemplate | null, customerName?: string | null): string[] {
   const count = getTemplateVariableCount(template);
   const examples = Array.isArray(template?.example_values) ? template!.example_values : [];
@@ -181,7 +224,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
   const [templateParams, setTemplateParams] = useState<string[]>([]);
   const [templateSearch, setTemplateSearch] = useState('');
   const normalized = normalizePhone(phone);
-  const composerPad = Math.max(insets.bottom, 10) + 10;
+  // Modal often reports insets.bottom=0 — force home-indicator room on iOS.
+  const bottomSafe = Math.max(insets.bottom, Platform.OS === 'ios' ? 34 : 12);
 
   const isTemplateOnlyMode = useMemo(() => {
     const lastInbound = messages.find(
@@ -196,7 +240,8 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
   const filteredTemplates = useMemo(() => {
     const q = templateSearch.trim().toLowerCase();
     return templates.filter((row) => {
-      if (!row || row.is_active === false) return false;
+      // Match API telecaller scope: Active + Telecaller ON only
+      if (!isExplicitTelecallerTemplate(row)) return false;
       const cat = String(row.category || '').toLowerCase();
       const name = String(row.template_name || '').toLowerCase();
       if (cat.includes('auth') || name.includes('otp') || name.startsWith('auth_')) return false;
@@ -263,8 +308,13 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
   }, [normalized, load]);
 
   useEffect(() => {
-    if (isTemplateOnlyMode) setTemplateMode(true);
-  }, [isTemplateOnlyMode]);
+    // Closed window: keep free-text composer (frictionless). Don't force template panel.
+    if (!isTemplateOnlyMode && templateMode && !selectedTemplate) {
+      setTemplateMode(false);
+    }
+  }, [isTemplateOnlyMode, templateMode, selectedTemplate]);
+
+  const frictionlessTemplate = useMemo(() => resolveFrictionlessTemplate(templates), [templates]);
 
   const openTemplatePicker = () => {
     setTemplateMode(true);
@@ -283,11 +333,36 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
     const text = draft.trim();
     if (!text || sending) return;
     if (isTemplateOnlyMode) {
-      Alert.alert(
-        '24h window closed',
-        'Customer ne 24 hours me reply nahi kiya. Pehle Template (Hello) bhejo.',
-      );
-      openTemplatePicker();
+      const fr = frictionlessTemplate;
+      if (!fr?.template_name) {
+        Alert.alert(
+          'Frictionless template missing',
+          'Run SQL 332 and Push myfng_closed_window_note (UTILITY), then Sync templates.',
+        );
+        openTemplatePicker();
+        return;
+      }
+      setSending(true);
+      try {
+        const safeText = text.replace(/\r\n/g, ' ').replace(/[\r\n]+/g, ' ').trim();
+        await apiFetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipient_phone: normalized,
+            message_type: 'template',
+            template_name: fr.template_name,
+            language: fr.language_code || 'en',
+            template_params: [safeText],
+          }),
+        });
+        setDraft('');
+        await load();
+      } catch (e: any) {
+        Alert.alert('Send failed', String(e?.message || 'Could not send message'));
+      } finally {
+        setSending(false);
+      }
       return;
     }
     setSending(true);
@@ -375,8 +450,13 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
       </View>
 
       {isTemplateOnlyMode ? (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>Messaging window closed · only templates can be sent</Text>
+        <View style={styles.bannerClosed}>
+          <Text style={styles.bannerClosedTitle}>
+            Send a message to customer in closed window using Frictionless messaging
+          </Text>
+          <Text style={styles.bannerClosedSub}>
+            Type below · or Send a template
+          </Text>
         </View>
       ) : null}
 
@@ -389,7 +469,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
           keyExtractor={(item, idx) => item.id || `${idx}`}
           contentContainerStyle={styles.list}
           keyboardShouldPersistTaps="handled"
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          style={{ flex: 1 }}
           ListEmptyComponent={
             <View style={styles.empty}>
               <View style={styles.emptyCard}>
@@ -400,14 +480,19 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
           }
           renderItem={({ item }) => {
             const outbound = String(item.direction || '').toUpperCase() === 'OUTBOUND';
+            const body = messageText(item);
+            const tpl = String(item.template_name || '').trim();
             return (
               <View style={[styles.bubbleRow, outbound ? styles.bubbleRowOut : styles.bubbleRowIn]}>
-                {!outbound ? <View style={styles.tailIn} /> : null}
                 <View style={[styles.bubble, outbound ? styles.bubbleOut : styles.bubbleIn]}>
-                  {item.template_name ? (
-                    <Text style={styles.templateTag}>{item.template_name}</Text>
+                  {tpl ? (
+                    <Text style={styles.templateTag} numberOfLines={1}>
+                      {humanizeTemplateKey(tpl)}
+                    </Text>
                   ) : null}
-                  <Text style={styles.bubbleText}>{messageText(item)}</Text>
+                  <Text style={styles.bubbleText} selectable>
+                    {body}
+                  </Text>
                   <View style={styles.metaRow}>
                     <Text style={styles.bubbleTime}>{formatBubbleTime(item.created_at)}</Text>
                     {outbound ? (
@@ -420,7 +505,6 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
                     ) : null}
                   </View>
                 </View>
-                {outbound ? <View style={styles.tailOut} /> : null}
               </View>
             );
           }}
@@ -428,7 +512,7 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
       )}
 
       {templateMode && selectedTemplate ? (
-        <View style={[styles.templatePanel, { paddingBottom: composerPad }]}>
+        <View style={[styles.templatePanel, { paddingBottom: bottomSafe + 12 }]}>
           <View style={styles.templatePanelHeader}>
             <View style={{ flex: 1 }}>
               <Text style={styles.templatePanelTitle}>Template</Text>
@@ -447,7 +531,17 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
               >
                 <Text style={styles.changeLink}>Close</Text>
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  setTemplateMode(false);
+                  setSelectedTemplate(null);
+                }}
+                style={{ marginLeft: 12 }}
+              >
+                <Text style={styles.changeLink}>Type msg</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <Text style={styles.previewBody}>{fillTemplateBody(selectedTemplate, templateParams)}</Text>
           {varCount > 0
@@ -491,50 +585,55 @@ export default function TelecallerWhatsAppChat({ phone, customerName, onBack }: 
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={[styles.composer, { paddingBottom: composerPad }]}>
-          <View style={styles.inputShell}>
-            <TouchableOpacity style={styles.plusBtn} onPress={openTemplatePicker}>
-              <Ionicons name="add" size={26} color={WA.meta} />
-            </TouchableOpacity>
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={isTemplateOnlyMode ? 'Only templates allowed…' : 'Message'}
-              placeholderTextColor={WA.meta}
-              multiline
-              editable={!isTemplateOnlyMode}
-            />
-            <TouchableOpacity onPress={openTemplatePicker} hitSlop={8}>
-              <Ionicons name="document-text-outline" size={22} color={WA.meta} />
+        <View style={[styles.composerWrap, { paddingBottom: bottomSafe + (isTemplateOnlyMode ? 12 : 8) }]}>
+          <View style={styles.composer}>
+            <View style={styles.inputShell}>
+              <TouchableOpacity style={styles.plusBtn} onPress={openTemplatePicker}>
+                <Ionicons name="add" size={26} color={WA.meta} />
+              </TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={isTemplateOnlyMode ? 'Type message' : 'Message'}
+                placeholderTextColor={WA.meta}
+                multiline
+              />
+              <TouchableOpacity onPress={openTemplatePicker} hitSlop={8}>
+                <Ionicons name="document-text-outline" size={22} color={WA.meta} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[styles.sendBtn, (!draft.trim() || sending) && { opacity: 0.45 }]}
+              onPress={sendText}
+              disabled={!draft.trim() || sending}
+            >
+              {sending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="send" size={18} color="#fff" />
+              )}
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.sendBtn,
-              (isTemplateOnlyMode || !draft.trim() || sending) && { opacity: 0.45 },
-            ]}
-            onPress={sendText}
-            disabled={isTemplateOnlyMode || !draft.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Ionicons name="send" size={18} color="#fff" />
-            )}
-          </TouchableOpacity>
+          {isTemplateOnlyMode ? (
+            <TouchableOpacity onPress={openTemplatePicker} style={styles.orTemplateLink} activeOpacity={0.7}>
+              <Text style={styles.orTemplateText}>or Send a template</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
 
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setPickerOpen(false)}>
           <Pressable
-            style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}
+            style={[styles.modalSheet, { paddingBottom: bottomSafe + 12 }]}
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Templates</Text>
-            <Text style={styles.modalSub}>CRM Hello / session open templates</Text>
+            <Text style={styles.modalSub}>
+              Templates enabled for telecallers (Telecaller ON in admin)
+            </Text>
             <TextInput
               style={styles.searchInput}
               value={templateSearch}
@@ -616,7 +715,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bannerText: { fontSize: 12, fontWeight: '600', color: '#5C4B1F', textAlign: 'center' },
-  list: { paddingHorizontal: 10, paddingVertical: 10, flexGrow: 1 },
+  bannerClosed: {
+    backgroundColor: '#FEF2F2',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#FECACA',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  bannerClosedTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#991B1B',
+    textAlign: 'center',
+  },
+  bannerClosedSub: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B91C1C',
+    textAlign: 'center',
+  },
+  composerWrap: {
+    backgroundColor: WA.composerBg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: WA.divider,
+    paddingTop: 8,
+  },
+  orTemplateLink: {
+    marginTop: 14,
+    marginHorizontal: 16,
+    marginBottom: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: '#E7F8F1',
+  },
+  orTemplateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: WA.send,
+  },
+  list: { paddingHorizontal: 10, paddingVertical: 12, flexGrow: 1 },
   empty: { alignItems: 'center', paddingTop: 40, transform: [{ scaleY: -1 }] },
   emptyCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',
@@ -627,67 +768,42 @@ const styles = StyleSheet.create({
   emptyText: { color: WA.meta, fontWeight: '600', textAlign: 'center' },
   emptyHint: { color: WA.meta, fontSize: 12, marginTop: 4, textAlign: 'center' },
   bubbleRow: {
-    maxWidth: '88%',
-    marginBottom: 4,
+    maxWidth: '82%',
+    marginBottom: 6,
     position: 'relative',
   },
-  bubbleRowIn: { alignSelf: 'flex-start', marginLeft: 4 },
-  bubbleRowOut: { alignSelf: 'flex-end', marginRight: 4 },
+  bubbleRowIn: { alignSelf: 'flex-start', marginLeft: 8 },
+  bubbleRowOut: { alignSelf: 'flex-end', marginRight: 8 },
   bubble: {
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 4,
-    minWidth: 80,
+    paddingTop: 7,
+    paddingBottom: 5,
+    minWidth: 88,
+    maxWidth: '100%',
   },
   bubbleIn: {
     backgroundColor: WA.bubbleIn,
-    borderTopLeftRadius: 0,
+    borderTopLeftRadius: 2,
   },
   bubbleOut: {
     backgroundColor: WA.bubbleOut,
-    borderTopRightRadius: 0,
-  },
-  tailIn: {
-    position: 'absolute',
-    left: -6,
-    top: 0,
-    width: 0,
-    height: 0,
-    borderTopWidth: 0,
-    borderRightWidth: 8,
-    borderBottomWidth: 8,
-    borderLeftWidth: 0,
-    borderRightColor: WA.bubbleIn,
-    borderBottomColor: 'transparent',
-    zIndex: 1,
-  },
-  tailOut: {
-    position: 'absolute',
-    right: -6,
-    top: 0,
-    width: 0,
-    height: 0,
-    borderTopWidth: 0,
-    borderLeftWidth: 8,
-    borderBottomWidth: 8,
-    borderRightWidth: 0,
-    borderLeftColor: WA.bubbleOut,
-    borderBottomColor: 'transparent',
-    zIndex: 1,
+    borderTopRightRadius: 2,
   },
   templateTag: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    color: '#06CF9C',
-    marginBottom: 2,
+    color: WA.send,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
   },
   bubbleText: { fontSize: 15, color: WA.text, lineHeight: 21 },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 2,
+    marginTop: 3,
     gap: 2,
   },
   bubbleTime: { fontSize: 11, color: WA.meta },
@@ -695,7 +811,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 6,
-    paddingTop: 8,
+    paddingTop: 4,
+    paddingBottom: 4,
     paddingHorizontal: 8,
     backgroundColor: WA.composerBg,
   },

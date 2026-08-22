@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   Store,
@@ -28,7 +29,6 @@ import {
   LogOut,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 import {
   BarChart,
   Bar,
@@ -46,6 +46,76 @@ import {
 } from 'recharts';
 
 const CHART_COLORS = ['#004AAD', '#0066FF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
+
+/** Wrap long axis labels onto multiple lines so vertical bars don't overlap. */
+function wrapLeadSourceLabel(raw: string, maxChars = 9, maxLines = 3): string[] {
+  const text = String(raw || '').trim();
+  if (!text) return [''];
+  if (text.length <= maxChars) return [text];
+
+  const parts = text.split(/[\s·•|/]+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+
+  const flush = () => {
+    if (current && lines.length < maxLines) lines.push(current);
+    current = '';
+  };
+
+  for (const part of parts) {
+    if (lines.length >= maxLines) break;
+
+    // Phone / very long token: hard-break; otherwise keep whole word (never "TELECAL LER")
+    if (part.length > maxChars && (/^\(?\d[\d\s-]{5,}\)?$/.test(part) || part.length > maxChars + 5)) {
+      flush();
+      let rest = part.replace(/[()]/g, '');
+      while (rest.length > 0 && lines.length < maxLines) {
+        lines.push(rest.slice(0, maxChars));
+        rest = rest.slice(maxChars);
+      }
+      continue;
+    }
+
+    if (!current) {
+      current = part.length > maxChars ? `${part.slice(0, maxChars - 1)}…` : part;
+      continue;
+    }
+
+    if (`${current} ${part}`.length <= maxChars) {
+      current = `${current} ${part}`;
+      continue;
+    }
+
+    flush();
+    if (lines.length >= maxLines) break;
+    current = part.length > maxChars ? `${part.slice(0, maxChars - 1)}…` : part;
+  }
+  flush();
+  return lines.length ? lines.slice(0, maxLines) : [text.slice(0, maxChars)];
+}
+
+function LeadSourceAxisTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+  index?: number;
+  visibleTicksCount?: number;
+}) {
+  const { x = 0, y = 0, payload, visibleTicksCount = 1 } = props;
+  const crowded = visibleTicksCount > 6;
+  const lines = wrapLeadSourceLabel(String(payload?.value || ''), crowded ? 7 : 10, crowded ? 3 : 2);
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text textAnchor="middle" fill="#374151" fontSize={crowded ? 9 : 10}>
+        {lines.map((line, i) => (
+          <tspan key={`${line}-${i}`} x={0} dy={i === 0 ? 12 : 11}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
 
 type DashboardPeriod =
   | 'today'
@@ -78,6 +148,59 @@ const QUICK_LINKS = [
   { href: '/dashboard/super_admin/workshops', label: 'Workshops', icon: Store },
   { href: '/dashboard/super_admin/advance-notifications?section=dashboard', label: 'Push Dashboard', icon: Bell },
 ];
+
+function mapDashboardPeriodToBookingsPreset(period: DashboardPeriod): {
+  preset: string;
+  start?: string;
+  end?: string;
+} {
+  switch (period) {
+    case 'today':
+      return { preset: 'today' };
+    case 'yesterday':
+      return { preset: 'yesterday' };
+    case '7d':
+      return { preset: 'last_7_days' };
+    case '30d':
+      return { preset: 'last_30_days' };
+    case 'this_month':
+      return { preset: 'this_month' };
+    case '1y':
+      return { preset: 'this_year' };
+    case 'all':
+      return { preset: 'all_time' };
+    case '90d': {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 89);
+      const ymd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { preset: 'custom', start: ymd(start), end: ymd(end) };
+    }
+    case 'custom':
+      return { preset: 'custom' };
+    default:
+      return { preset: 'today' };
+  }
+}
+
+function statusLabelToCode(label: string): string | null {
+  const raw = String(label || '').trim();
+  if (!raw || /^other$/i.test(raw)) return null;
+  const code = raw.toUpperCase().replace(/\s+/g, '_');
+  const allowed = new Set([
+    'NEW',
+    'ASSIGNED',
+    'ACCEPTED',
+    'REJECTED',
+    'IN_PROGRESS',
+    'COMPLETED',
+    'CANCELLED',
+    'HOLD',
+    'READY_FOR_DELIVERY',
+  ]);
+  return allowed.has(code) ? code : null;
+}
 
 function todayInputValue() {
   const d = new Date();
@@ -158,6 +281,40 @@ export default function SuperAdminDashboard() {
   const [topWorkshops, setTopWorkshops] = useState<{ id: string; name: string; leads: number }[]>([]);
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
+
+  const openBookingsLeads = useCallback(
+    (opts: {
+      sourceLabel?: string;
+      status?: string;
+      leadType?: string;
+      startYmd?: string;
+      endYmd?: string;
+      search?: string;
+    } = {}) => {
+      const params = new URLSearchParams();
+      if (opts.startYmd && opts.endYmd) {
+        params.set('preset', 'custom');
+        params.set('start', opts.startYmd);
+        params.set('end', opts.endYmd);
+      } else {
+        const mapped = mapDashboardPeriodToBookingsPreset(period);
+        params.set('preset', mapped.preset);
+        if (period === 'custom') {
+          params.set('start', customStart);
+          params.set('end', customEnd);
+        } else if (mapped.start && mapped.end) {
+          params.set('start', mapped.start);
+          params.set('end', mapped.end);
+        }
+      }
+      if (opts.sourceLabel) params.set('source_label', opts.sourceLabel);
+      if (opts.status) params.set('status', opts.status);
+      if (opts.leadType) params.set('lead_type', opts.leadType);
+      if (opts.search) params.set('search', opts.search);
+      router.push(`/dashboard/super_admin/bookings?${params.toString()}`);
+    },
+    [router, period, customStart, customEnd]
+  );
 
   useEffect(() => {
     if (period === 'custom') return;
@@ -507,7 +664,10 @@ export default function SuperAdminDashboard() {
 
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ChartCard title={`Leads Trend (${periodLabel})`} subtitle="New leads, accepted into pipeline & rejected">
+          <ChartCard
+            title={`Leads Trend (${periodLabel})`}
+            subtitle="Click a bar to open those leads — New / Accepted / Rejected"
+          >
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={charts.dailyLeadsTrend} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
@@ -515,9 +675,50 @@ export default function SuperAdminDashboard() {
                 <YAxis fontSize={11} tick={{ fill: '#6B7280' }} />
                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="total" name="Total" fill="#004AAD" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="accepted" name="Accepted" fill="#10B981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="rejected" name="Rejected" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="total"
+                  name="Total"
+                  fill="#004AAD"
+                  radius={[4, 4, 0, 0]}
+                  cursor="pointer"
+                  onClick={(data: any) => {
+                    const row = data?.payload || data;
+                    openBookingsLeads({
+                      startYmd: row?.startYmd,
+                      endYmd: row?.endYmd,
+                    });
+                  }}
+                />
+                <Bar
+                  dataKey="accepted"
+                  name="Accepted"
+                  fill="#10B981"
+                  radius={[4, 4, 0, 0]}
+                  cursor="pointer"
+                  onClick={(data: any) => {
+                    const row = data?.payload || data;
+                    openBookingsLeads({
+                      startYmd: row?.startYmd,
+                      endYmd: row?.endYmd,
+                      status: 'ACCEPTED',
+                    });
+                  }}
+                />
+                <Bar
+                  dataKey="rejected"
+                  name="Rejected"
+                  fill="#EF4444"
+                  radius={[4, 4, 0, 0]}
+                  cursor="pointer"
+                  onClick={(data: any) => {
+                    const row = data?.payload || data;
+                    openBookingsLeads({
+                      startYmd: row?.startYmd,
+                      endYmd: row?.endYmd,
+                      status: 'REJECTED',
+                    });
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -548,26 +749,47 @@ export default function SuperAdminDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard
             title={`Lead Sources (${periodLabel})`}
-            subtitle="Where leads came from (App, Website, Ads, MISA…)"
+            subtitle="Click a bar to open leads from that source"
           >
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={320}>
               <BarChart
                 data={charts.leadSourceBreakdown}
-                layout="vertical"
-                margin={{ top: 5, right: 16, left: 8, bottom: 5 }}
+                margin={{ top: 5, right: 10, left: -10, bottom: 64 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis type="number" fontSize={11} tick={{ fill: '#6B7280' }} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" width={110} fontSize={10} tick={{ fill: '#374151' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                <Bar dataKey="value" name="Leads" fill="#004AAD" radius={[0, 6, 6, 0]} />
+                <XAxis
+                  dataKey="name"
+                  interval={0}
+                  height={72}
+                  tick={<LeadSourceAxisTick />}
+                />
+                <YAxis fontSize={11} tick={{ fill: '#6B7280' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                  labelFormatter={(label) => String(label || '')}
+                />
+                <Bar
+                  dataKey="value"
+                  name="Leads"
+                  fill="#004AAD"
+                  radius={[6, 6, 0, 0]}
+                  cursor="pointer"
+                  onClick={(data: any) => {
+                    const row = data?.payload || data;
+                    const name = String(row?.name || '').trim();
+                    if (!name) return;
+                    openBookingsLeads({ sourceLabel: name });
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           <div className="bg-white rounded-xl shadow-sm border p-5">
             <h3 className="text-sm font-bold text-gray-900">Lead Source Breakdown</h3>
-            <p className="text-xs text-gray-500 mt-0.5 mb-4">Count by origin for {periodLabel}</p>
+            <p className="text-xs text-gray-500 mt-0.5 mb-4">
+              Count by origin for {periodLabel} · click a row to open leads
+            </p>
             {charts.leadSourceBreakdown.length === 0 ? (
               <p className="text-sm text-gray-500 py-8 text-center">No leads in this period</p>
             ) : (
@@ -577,7 +799,12 @@ export default function SuperAdminDashboard() {
                     charts.leadSourceBreakdown.reduce((s: number, r: any) => s + (r.value || 0), 0) || 1;
                   const pct = Math.round(((row.value || 0) / total) * 100);
                   return (
-                    <div key={row.name} className="flex items-center gap-3">
+                    <button
+                      key={row.name}
+                      type="button"
+                      onClick={() => openBookingsLeads({ sourceLabel: String(row.name || '') })}
+                      className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left hover:bg-blue-50/80"
+                    >
                       <span
                         className="w-2.5 h-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
@@ -599,7 +826,7 @@ export default function SuperAdminDashboard() {
                           />
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -609,11 +836,25 @@ export default function SuperAdminDashboard() {
 
         {/* Pie charts */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <ChartCard title={`Lead Status (${periodLabel})`} subtitle="Distribution by status">
-            <DonutWithLegend data={charts.leadStatusDistribution} />
+          <ChartCard title={`Lead Status (${periodLabel})`} subtitle="Click a slice or legend to open leads">
+            <DonutWithLegend
+              data={charts.leadStatusDistribution}
+              onSelect={(name) => {
+                const status = statusLabelToCode(name);
+                if (status) openBookingsLeads({ status });
+                else openBookingsLeads();
+              }}
+            />
           </ChartCard>
-          <ChartCard title={`Service Types (${periodLabel})`} subtitle="Leads by service category">
-            <DonutWithLegend data={charts.serviceTypeBreakdown} />
+          <ChartCard title={`Service Types (${periodLabel})`} subtitle="Click a slice to open that lead type">
+            <DonutWithLegend
+              data={charts.serviceTypeBreakdown}
+              onSelect={(name) => {
+                const leadType = String(name || '').trim().toUpperCase();
+                if (leadType && leadType !== 'OTHER') openBookingsLeads({ leadType });
+                else openBookingsLeads();
+              }}
+            />
           </ChartCard>
           <ChartCard title="Membership Plans" subtitle="Active plan distribution (live)">
             <DonutWithLegend data={charts.membershipPlanDistribution} />
@@ -885,7 +1126,13 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle: str
   );
 }
 
-function DonutWithLegend({ data }: { data: { name: string; value: number }[] }) {
+function DonutWithLegend({
+  data,
+  onSelect,
+}: {
+  data: { name: string; value: number }[];
+  onSelect?: (name: string) => void;
+}) {
   const rows = (data || []).filter((d) => (d?.value || 0) > 0);
   const total = rows.reduce((s, r) => s + (r.value || 0), 0) || 1;
 
@@ -908,6 +1155,11 @@ function DonutWithLegend({ data }: { data: { name: string; value: number }[] }) 
             label={({ percent }) => (percent >= 0.08 ? `${(percent * 100).toFixed(0)}%` : '')}
             labelLine={false}
             fontSize={11}
+            cursor={onSelect ? 'pointer' : undefined}
+            onClick={(_: any, index: number) => {
+              const name = rows[index]?.name;
+              if (name && onSelect) onSelect(name);
+            }}
           >
             {rows.map((_, i) => (
               <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
@@ -924,7 +1176,15 @@ function DonutWithLegend({ data }: { data: { name: string; value: number }[] }) 
       </ResponsiveContainer>
       <div className="w-full sm:w-40 space-y-1.5 shrink-0 max-h-[180px] overflow-y-auto">
         {rows.map((row, i) => (
-          <div key={row.name} className="flex items-center gap-2 text-xs">
+          <button
+            key={row.name}
+            type="button"
+            disabled={!onSelect}
+            onClick={() => onSelect?.(row.name)}
+            className={`flex w-full items-center gap-2 text-xs text-left rounded-md px-0.5 py-0.5 ${
+              onSelect ? 'hover:bg-blue-50 cursor-pointer' : ''
+            }`}
+          >
             <span
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
@@ -933,7 +1193,7 @@ function DonutWithLegend({ data }: { data: { name: string; value: number }[] }) 
               {row.name}
             </span>
             <span className="text-gray-500 shrink-0">{Math.round((row.value / total) * 100)}%</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>

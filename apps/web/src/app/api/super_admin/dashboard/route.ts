@@ -746,8 +746,14 @@ export async function GET(request: NextRequest) {
         const t = new Date(l.created_at).getTime();
         return t >= bucket.startMs && t < bucket.endMs;
       });
+      const startIst = new Date(bucket.startMs + IST_OFFSET_MS);
+      const endIst = new Date(bucket.endMs - 1 + IST_OFFSET_MS);
+      const ymd = (d: Date) =>
+        `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
       return {
         date: bucket.label,
+        startYmd: ymd(startIst),
+        endYmd: ymd(endIst),
         total: dayLeads.length,
         accepted: dayLeads.filter((l: any) => isPipelineAccepted(l.status, l.accepted_at)).length,
         rejected: dayLeads.filter((l: any) => isRejected(l.status)).length,

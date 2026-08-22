@@ -17,6 +17,7 @@ export type WhatsAppTemplatePushRow = {
   body_text: string;
   variable_keys?: string[] | null;
   example_values?: string[] | null;
+  meta?: Record<string, unknown> | null;
 };
 
 export type WhatsAppTemplatePushResult = {
@@ -80,11 +81,65 @@ async function createTemplateOnMeta(
     category: string;
     body_text: string;
     example_values?: string[];
+    meta?: Record<string, unknown> | null;
   },
 ) {
   const exampleValues = Array.isArray(payload.example_values)
     ? payload.example_values.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
+
+  const components: Array<Record<string, unknown>> = [
+    {
+      type: 'BODY',
+      text: payload.body_text,
+      ...(exampleValues.length > 0
+        ? {
+            example: {
+              body_text: [exampleValues],
+            },
+          }
+        : {}),
+    },
+  ];
+
+  // FOOTER / BUTTONS from meta (footer = small gray line under body in WhatsApp)
+  const metaComponents = Array.isArray(payload.meta?.meta_components)
+    ? (payload.meta?.meta_components as Array<Record<string, unknown>>)
+    : null;
+  const footerFromMeta = String(payload.meta?.footer || '').trim().slice(0, 60);
+  if (metaComponents?.length) {
+    const footerComp = metaComponents.find(
+      (c) => String(c?.type || '').toUpperCase() === 'FOOTER',
+    );
+    if (footerComp) {
+      components.push(footerComp);
+    } else if (footerFromMeta) {
+      components.push({ type: 'FOOTER', text: footerFromMeta });
+    }
+    const buttonsComp = metaComponents.find(
+      (c) => String(c?.type || '').toUpperCase() === 'BUTTONS',
+    );
+    if (buttonsComp) components.push(buttonsComp);
+  } else if (footerFromMeta) {
+    components.push({ type: 'FOOTER', text: footerFromMeta });
+  } else if (payload.meta?.cta && typeof payload.meta.cta === 'object') {
+    const cta = payload.meta.cta as { type?: string; text?: string; url?: string };
+    const ctaUrl = String(cta?.url || '').trim();
+    const ctaText = String(cta?.text || 'Open').trim().slice(0, 25);
+    const isWaLink = /wa\.me|api\.whatsapp\.com|whatsapp\.com\/send/i.test(ctaUrl);
+    if (ctaUrl && /^https?:\/\//i.test(ctaUrl) && !isWaLink) {
+      components.push({
+        type: 'BUTTONS',
+        buttons: [
+          {
+            type: 'URL',
+            text: ctaText || 'Open',
+            url: ctaUrl,
+          },
+        ],
+      });
+    }
+  }
 
   const response = await fetch(
     `${creds.whatsapp_api_url}/${creds.whatsapp_business_account_id}/message_templates`,
@@ -98,19 +153,7 @@ async function createTemplateOnMeta(
         name: payload.template_name,
         language: payload.language_code,
         category: payload.category,
-        components: [
-          {
-            type: 'BODY',
-            text: payload.body_text,
-            ...(exampleValues.length > 0
-              ? {
-                  example: {
-                    body_text: [exampleValues],
-                  },
-                }
-              : {}),
-          },
-        ],
+        components,
       }),
       cache: 'no-store',
     },
@@ -183,6 +226,7 @@ export async function pushWhatsAppTemplateToMeta(
       example_values: Array.isArray(localTemplate.example_values)
         ? localTemplate.example_values.map((value) => String(value || '').trim()).filter(Boolean)
         : [],
+      meta: (localTemplate.meta || null) as Record<string, unknown> | null,
     });
   } catch (error: unknown) {
     const message = String((error as { message?: string })?.message || '');
@@ -217,11 +261,22 @@ async function updateLocalTemplateMeta(
   if (!supabaseAdmin) throw new Error('Supabase admin client is not available');
 
   const metaStatus = String(verified?.status || 'PENDING').toUpperCase();
+  const { data: existing } = await supabaseAdmin
+    .from('whatsapp_templates')
+    .select('meta')
+    .eq('id', templateId)
+    .maybeSingle();
+  const prevMeta =
+    existing?.meta && typeof existing.meta === 'object' && !Array.isArray(existing.meta)
+      ? (existing.meta as Record<string, unknown>)
+      : {};
+
   const { error } = await supabaseAdmin
     .from('whatsapp_templates')
     .update({
-      is_active: metaStatus === 'APPROVED',
+      is_active: true,
       meta: {
+        ...prevMeta,
         source,
         status: metaStatus,
         template_id: verified?.id || null,

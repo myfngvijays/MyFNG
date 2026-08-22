@@ -191,23 +191,13 @@ export async function GET() {
       templates = templates.filter((row: any) => !isAuthRow(row));
     }
 
-    // Telecallers only get basic CRM hello / explicitly flagged templates — not admin catalog.
+    // Telecallers: only Active + explicitly "Telecaller ON" (meta.crm_telecaller).
+    // No name-based fallback — hide in admin must actually hide in app.
     if (roleCode === 'TELECALLER') {
       templates = templates.filter((row: any) => {
+        if (row?.is_active === false) return false;
         const meta = row?.meta && typeof row.meta === 'object' ? row.meta : {};
-        if (meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1) {
-          return true;
-        }
-        const name = String(row?.template_name || '').trim().toLowerCase();
-        if (name.startsWith('admin_') || name.includes('admin_daily') || name.includes('daily_summary')) {
-          return false;
-        }
-        return (
-          name === 'crm_hello' ||
-          name.startsWith('crm_hello') ||
-          name === 'telecaller_hello' ||
-          name.startsWith('hello_customer')
-        );
+        return meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1;
       });
     }
 

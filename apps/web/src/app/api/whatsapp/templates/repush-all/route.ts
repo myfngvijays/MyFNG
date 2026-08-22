@@ -45,7 +45,7 @@ export async function POST() {
 
     const { data: templates, error: fetchError } = await db
       .from('whatsapp_templates')
-      .select('id, template_name, display_name, language_code, category, body_text, variable_keys, example_values')
+      .select('id, template_name, display_name, language_code, category, body_text, variable_keys, example_values, meta')
       .order('template_name', { ascending: true });
 
     if (fetchError) {

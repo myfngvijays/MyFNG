@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Copy, Loader2, MessageSquare, Phone } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
+import ToggleSwitch from '@/components/shared/ToggleSwitch';
 
 type ScriptRow = {
   id: string;
@@ -16,12 +18,26 @@ type ScriptRow = {
 };
 
 type WaTemplate = {
+  id: string;
   template_name: string;
   display_name?: string | null;
   body?: string | null;
   language?: string | null;
   is_active?: boolean;
+  crm_telecaller: boolean;
+  meta?: Record<string, unknown> | null;
 };
+
+function isShownToTelecaller(row: {
+  template_name: string;
+  is_active?: boolean;
+  meta?: Record<string, unknown> | null;
+}): boolean {
+  if (row.is_active === false) return false;
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  const flag = (meta as any).crm_telecaller;
+  return flag === true || flag === '1' || flag === 1;
+}
 
 export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: string }) {
   const searchParams = useSearchParams();
@@ -34,6 +50,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (tabParam === 'whatsapp') setTab('whatsapp');
@@ -63,14 +80,21 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
         const list = Array.isArray(waRes.j?.templates) ? waRes.j.templates : [];
         setTemplates(
           list
-            .filter((t: any) => t?.is_active !== false)
-            .map((t: any) => ({
-              template_name: String(t.template_name || ''),
-              display_name: t.display_name || null,
-              body: t.body || t.body_text || null,
-              language: t.language || null,
-              is_active: t.is_active !== false,
-            }))
+            .filter((t: any) => t?.is_active !== false && t?.id)
+            .map((t: any) => {
+              const mapped = {
+                id: String(t.id),
+                template_name: String(t.template_name || ''),
+                display_name: t.display_name || null,
+                body: t.body || t.body_text || null,
+                language: t.language || t.language_code || null,
+                is_active: t.is_active !== false,
+                meta: t.meta && typeof t.meta === 'object' ? t.meta : null,
+                crm_telecaller: false,
+              };
+              mapped.crm_telecaller = isShownToTelecaller(mapped);
+              return mapped;
+            })
             .filter((t: WaTemplate) => t.template_name),
         );
       }
@@ -95,12 +119,53 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
     }
   };
 
+  const toggleTelecaller = async (row: WaTemplate, next: boolean) => {
+    setTogglingId(row.id);
+    setTemplates((prev) =>
+      prev.map((item) =>
+        item.id === row.id
+          ? {
+              ...item,
+              crm_telecaller: next,
+              meta: { ...(item.meta || {}), crm_telecaller: next },
+            }
+          : item,
+      ),
+    );
+    try {
+      const res = await fetch(`/api/whatsapp/templates/${row.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crm_telecaller: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to update');
+      toast.success(next ? 'Telecaller can see this template' : 'Hidden from telecallers');
+    } catch (e: any) {
+      setTemplates((prev) =>
+        prev.map((item) =>
+          item.id === row.id
+            ? {
+                ...item,
+                crm_telecaller: row.crm_telecaller,
+                meta: row.meta,
+              }
+            : item,
+        ),
+      );
+      toast.error(e?.message || 'Failed to update telecaller visibility');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-[#023D95]">Msg Templates</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Call scripts + WhatsApp templates — copy and use while talking to leads.
+          Call scripts + WhatsApp templates. On WhatsApp tab, turn Telecaller ON/OFF to control what
+          your team sees in chat.
         </p>
       </div>
 
@@ -180,15 +245,15 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
         <div className="grid gap-3 sm:grid-cols-2">
           {templates.map((t) => (
             <div
-              key={t.template_name}
+              key={t.id || t.template_name}
               className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
             >
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-extrabold text-[#023D95]">
                     {t.display_name || t.template_name}
                   </h3>
-                  <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                  <p className="text-[11px] font-mono text-slate-400 mt-0.5 break-all">
                     {t.template_name}
                     {t.language ? ` · ${t.language}` : ''}
                   </p>
@@ -197,7 +262,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
                   <button
                     type="button"
                     onClick={() => void copy(t.template_name, String(t.body))}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-[#004AAD]"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-[#004AAD]"
                   >
                     <Copy className="h-3 w-3" />
                     {copied === t.template_name ? 'Copied' : 'Copy'}
@@ -205,7 +270,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
                 ) : null}
               </div>
               {t.body ? (
-                <p className="mt-2 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                <p className="mt-2 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed line-clamp-4">
                   {t.body}
                 </p>
               ) : (
@@ -213,6 +278,28 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
                   Use this template from WhatsApp chat send picker.
                 </p>
               )}
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ToggleSwitch
+                    enabled={t.crm_telecaller}
+                    busy={togglingId === t.id}
+                    size="sm"
+                    onChange={(next) => void toggleTelecaller(t, next)}
+                    label={`Show ${t.template_name} to telecallers`}
+                  />
+                  <span
+                    className={`text-xs font-bold ${
+                      t.crm_telecaller ? 'text-[#004AAD]' : 'text-slate-400'
+                    }`}
+                  >
+                    {togglingId === t.id
+                      ? 'Saving…'
+                      : t.crm_telecaller
+                        ? 'Telecaller ON'
+                        : 'Telecaller OFF'}
+                  </span>
+                </div>
+              </div>
             </div>
           ))}
           {!templates.length ? (

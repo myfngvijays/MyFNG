@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Bot, Car, ClipboardList, Loader2, Search, UserRound, Upload, X, CheckCircle2, AlertCircle, FileSpreadsheet, Smartphone, Globe, Ticket, Pencil, Trash2, CheckSquare, Square, MinusSquare, Download, MessageCircle, Wrench, IndianRupee, Hash, Megaphone, Gift, ChevronLeft, ChevronRight, UserPlus, History, Columns3, ChevronDown, ChevronUp, List, LineChart, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminPageRefresh from '@/components/admin/AdminPageRefresh';
@@ -38,7 +39,7 @@ import {
 } from '@/lib/booking-lead-utils';
 import { UTM_DISPLAY_LABELS, UTM_KEYS } from '@/lib/utm';
 import { LEAD_SOURCES } from '@/lib/enquiry/createLead';
-import { resolveReportDateRange, type ReportDatePreset } from '@/lib/report-date-range';
+import { resolveReportDateRange, REPORT_DATE_PRESETS, type ReportDatePreset } from '@/lib/report-date-range';
 import { leadStatusCardColors, leadDisplayStatus } from '@/lib/telecaller/leadDisplayStatus';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import {
@@ -1444,10 +1445,13 @@ function couponFilterLabel(coupon: (typeof COUPON_OPTIONS)[number]) {
 }
 
 export default function SuperAdminBookingsPage() {
+  const searchParams = useSearchParams();
   const [showUploadCrm, setShowUploadCrm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>('ALL');
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_OPTIONS)[number]>('ALL');
+  const [sourceLabelFilter, setSourceLabelFilter] = useState('');
+  const [leadTypeFilter, setLeadTypeFilter] = useState('');
   const [couponFilter, setCouponFilter] = useState<(typeof COUPON_OPTIONS)[number]>('ALL');
   /** ALL | UNASSIGNED | exact assignee name */
   const [assigneeFilter, setAssigneeFilter] = useState('ALL');
@@ -1456,6 +1460,7 @@ export default function SuperAdminBookingsPage() {
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [urlFiltersReady, setUrlFiltersReady] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1660,11 +1665,16 @@ export default function SuperAdminBookingsPage() {
   const baseFilteredServiceLeads = useMemo(() => {
     let leads = filterBookingLeads(serviceLeads, {
       source: sourceFilter,
+      sourceLabel: sourceLabelFilter,
       hasCoupon: couponFilter,
       search: searchTerm,
     });
     if (statusFilter !== 'ALL') {
       leads = leads.filter((lead) => String(lead.status || 'NEW').toUpperCase() === statusFilter);
+    }
+    if (leadTypeFilter) {
+      const want = leadTypeFilter.toUpperCase();
+      leads = leads.filter((lead) => String(lead.lead_type || '').toUpperCase() === want);
     }
     if (assigneeFilter === 'UNASSIGNED') {
       leads = leads.filter((lead) => !String((lead as any).assigned_telecaller_name || '').trim());
@@ -1687,7 +1697,17 @@ export default function SuperAdminBookingsPage() {
       }
     }
     return leads;
-  }, [serviceLeads, sourceFilter, couponFilter, searchTerm, statusFilter, assigneeFilter, assigneeSearch]);
+  }, [
+    serviceLeads,
+    sourceFilter,
+    sourceLabelFilter,
+    couponFilter,
+    searchTerm,
+    statusFilter,
+    leadTypeFilter,
+    assigneeFilter,
+    assigneeSearch,
+  ]);
 
   const displayedServiceLeads = useMemo(() => {
     if (!chartDrill) return baseFilteredServiceLeads;
@@ -1800,6 +1820,8 @@ export default function SuperAdminBookingsPage() {
     assigneeFilter !== 'ALL' ||
     Boolean(assigneeSearch.trim()) ||
     Boolean(searchTerm.trim()) ||
+    Boolean(sourceLabelFilter.trim()) ||
+    Boolean(leadTypeFilter.trim()) ||
     Boolean(chartDrill);
 
   const dateRangeLabel = useMemo(
@@ -1869,12 +1891,53 @@ export default function SuperAdminBookingsPage() {
   }, [showUploadCrm, datePreset, customStart, customEnd]);
 
   useEffect(() => {
+    const presetRaw = String(searchParams.get('preset') || '')
+      .trim()
+      .toLowerCase() as ReportDatePreset;
+    const validPreset = REPORT_DATE_PRESETS.some((p) => p.value === presetRaw);
+    if (validPreset) setDatePreset(presetRaw);
+
+    const start = String(searchParams.get('start') || '').trim();
+    const end = String(searchParams.get('end') || '').trim();
+    if (start) setCustomStart(start.slice(0, 10));
+    if (end) setCustomEnd(end.slice(0, 10));
+
+    const status = String(searchParams.get('status') || '')
+      .trim()
+      .toUpperCase();
+    if ((STATUS_OPTIONS as readonly string[]).includes(status)) {
+      setStatusFilter(status as (typeof STATUS_OPTIONS)[number]);
+    }
+
+    const source = String(searchParams.get('source') || '')
+      .trim()
+      .toUpperCase();
+    if ((SOURCE_OPTIONS as readonly string[]).includes(source)) {
+      setSourceFilter(source as (typeof SOURCE_OPTIONS)[number]);
+    }
+
+    const sourceLabel = String(searchParams.get('source_label') || '').trim();
+    if (sourceLabel) setSourceLabelFilter(sourceLabel);
+
+    const leadType = String(searchParams.get('lead_type') || '')
+      .trim()
+      .toUpperCase();
+    if (leadType) setLeadTypeFilter(leadType);
+
+    const search = String(searchParams.get('search') || '').trim();
+    if (search) setSearchTerm(search);
+
+    setUrlFiltersReady(true);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!urlFiltersReady) return;
     setSelectedIds(new Set());
     const timer = setTimeout(() => {
       fetchData();
     }, 250);
     return () => clearTimeout(timer);
-  }, [fetchData]);
+  }, [fetchData, urlFiltersReady]);
 
   const loadTelecallers = useCallback(async (forLead?: Record<string, any> | null) => {
     setTelecallersLoading(true);
@@ -2676,11 +2739,15 @@ export default function SuperAdminBookingsPage() {
                   statusFilter !== 'ALL' ||
                   assigneeFilter !== 'ALL' ||
                   assigneeSearch.trim() ||
+                  sourceLabelFilter.trim() ||
+                  leadTypeFilter.trim() ||
                   chartDrill) ? (
                   <button
                     type="button"
                     onClick={() => {
                       setSourceFilter('ALL');
+                      setSourceLabelFilter('');
+                      setLeadTypeFilter('');
                       setCouponFilter('ALL');
                       setStatusFilter('ALL');
                       setAssigneeFilter('ALL');
@@ -2734,6 +2801,37 @@ export default function SuperAdminBookingsPage() {
                   >
                     Back to chart
                   </button>
+                </div>
+              ) : null}
+
+              {(sourceLabelFilter || leadTypeFilter) && viewMode === 'list' ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {sourceLabelFilter ? (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 ring-1 ring-blue-200">
+                      Source: {sourceLabelFilter}
+                      <button
+                        type="button"
+                        className="rounded-full p-0.5 hover:bg-blue-100"
+                        aria-label="Clear source label filter"
+                        onClick={() => setSourceLabelFilter('')}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ) : null}
+                  {leadTypeFilter ? (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+                      Type: {leadTypeFilter}
+                      <button
+                        type="button"
+                        className="rounded-full p-0.5 hover:bg-emerald-100"
+                        aria-label="Clear lead type filter"
+                        onClick={() => setLeadTypeFilter('')}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
             </div>

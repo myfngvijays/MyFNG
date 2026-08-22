@@ -259,12 +259,33 @@ export async function POST() {
 
     const rowsToUpsert = normalizedRows
       .filter((row) => !doNotOverwrite.has(row.template_name))
-      .map((row) => ({
-        ...row,
-        is_active: existingActiveByName.has(row.template_name)
-          ? existingActiveByName.get(row.template_name)!
-          : row.is_active,
-      }));
+      .map((row) => {
+        const priorMeta = existingMetaByName.get(row.template_name) || {};
+        const preserveKeys = [
+          'crm_telecaller',
+          'frictionless',
+          'opens_session',
+          'purpose',
+          'footer',
+          'meta_components',
+          'deprecated',
+        ] as const;
+        const preserved: Record<string, unknown> = {};
+        for (const key of preserveKeys) {
+          if (priorMeta[key] !== undefined) preserved[key] = priorMeta[key];
+        }
+        return {
+          ...row,
+          is_active: existingActiveByName.has(row.template_name)
+            ? existingActiveByName.get(row.template_name)!
+            : row.is_active,
+          meta: {
+            ...preserved,
+            ...row.meta,
+            ...preserved,
+          },
+        };
+      });
 
     let linkedProtected = 0;
 

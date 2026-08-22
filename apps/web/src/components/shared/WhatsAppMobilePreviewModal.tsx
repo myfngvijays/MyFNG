@@ -242,6 +242,38 @@ function resolveCallingPermissionTemplateName(rows: TemplateOption[]): string | 
   return fuzzy ? String(fuzzy.template_name || '').trim() || null : null;
 }
 
+function resolveFrictionlessTemplate(rows: TemplateOption[]): TemplateOption | null {
+  const active = rows.filter((row) => row && row.is_active !== false);
+  const byName = (name: string) =>
+    active.find((row) => String(row.template_name || '').trim().toLowerCase() === name) || null;
+  const metaStatus = (row: TemplateOption) =>
+    String(row?.meta?.status || row?.meta?.raw?.status || '')
+      .trim()
+      .toUpperCase();
+
+  // Prefer Meta-approved first so closed-window send actually works
+  const preferredNames = [
+    'myfng_quick_note',
+    'myfng_support_note',
+    'myfng_closed_window_note',
+    'myfng_msg_note_safe',
+    'myfng_msg_note',
+  ];
+  for (const name of preferredNames) {
+    const row = byName(name);
+    if (row && metaStatus(row) === 'APPROVED') return row;
+  }
+  for (const name of preferredNames) {
+    const row = byName(name);
+    if (row) return row;
+  }
+  return (
+    active.find((row) => Boolean(row?.meta?.frictionless) && metaStatus(row) === 'APPROVED') ||
+    active.find((row) => Boolean(row?.meta?.frictionless)) ||
+    null
+  );
+}
+
 function resolvePaymentTemplateName(rows: TemplateOption[]): string | null {
   const exactNames = new Set([
     'payment_collect',
@@ -1363,6 +1395,10 @@ export default function WhatsAppMobilePreviewModal({
     () => resolveCallingPermissionTemplateName(templateOptions),
     [templateOptions]
   );
+  const frictionlessTemplate = useMemo(
+    () => resolveFrictionlessTemplate(templateOptions),
+    [templateOptions]
+  );
   const paymentTemplateName = useMemo(
     () => resolvePaymentTemplateName(templateOptions),
     [templateOptions]
@@ -1429,8 +1465,10 @@ export default function WhatsAppMobilePreviewModal({
 
     if (isTemplateOnlyMode) {
       setShowAttachMenu(false);
+      // Always land on DoubleTick-style free-text composer for closed window
+      // (unless user already opened template picker).
       if (activeType !== 'template') {
-        setActiveType('template');
+        setActiveType('text');
       }
       return;
     }
@@ -2386,7 +2424,28 @@ export default function WhatsAppMobilePreviewModal({
         toast.error('Type a message first');
         return;
       }
-      payload = { ...payload, text };
+      // Closed 24h window: free text goes out as frictionless Utility template ({{1}})
+      if (isTemplateOnlyMode) {
+        const fr = frictionlessTemplate;
+        if (!fr?.template_name) {
+          toast.error(
+            'Frictionless template missing. Run SQL 332 and Push myfng_closed_window_note (UTILITY).',
+          );
+          setActiveType('template');
+          return;
+        }
+        // Meta body params cannot contain newlines; keep as ONE param (commas OK)
+        const safeText = text.replace(/\r\n/g, ' ').replace(/[\r\n]+/g, ' ').trim();
+        payload = {
+          ...payload,
+          message_type: 'template',
+          template_name: fr.template_name,
+          language: resolveTemplateLanguageCode(fr),
+          template_params: [safeText],
+        };
+      } else {
+        payload = { ...payload, text };
+      }
     } else if (activeType === 'media') {
       if (!selectedMediaFile) {
         toast.error('Please choose media file');
@@ -2583,7 +2642,8 @@ export default function WhatsAppMobilePreviewModal({
         Object.entries(payload).forEach(([key, value]) => {
           if (value === undefined || value === null) return;
           if (Array.isArray(value)) {
-            form.append(key, value.join(','));
+            // JSON — never join(',') (breaks "Hello Sir, …" into multiple Meta params)
+            form.append(key, JSON.stringify(value));
             return;
           }
           form.append(key, String(value));
@@ -2621,8 +2681,10 @@ export default function WhatsAppMobilePreviewModal({
       setPaymentAmount('');
       setPaymentNote('');
       setShowAttachMenu(false);
-      // Stay in template mode when 24h window is closed (text send is blocked)
-      if (!isTemplateOnlyMode) {
+      // Stay in text composer after frictionless send; keep template step after normal template send
+      if (isTemplateOnlyMode && activeType === 'text') {
+        toast.success('Frictionless message sent');
+      } else if (!isTemplateOnlyMode) {
         setActiveType('text');
         setTemplateStep(1);
       } else {
@@ -3755,6 +3817,8 @@ export default function WhatsAppMobilePreviewModal({
             className={
               activeType === 'template'
                 ? 'absolute inset-y-0 right-0 z-[45] flex flex-col overflow-hidden border-l border-[#d5dbe1] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.08)]'
+                : isTemplateOnlyMode && activeType === 'text'
+                ? `border-t border-[#e9edef] bg-[#f0f2f5] flex flex-col shrink-0 ${selectMode ? 'hidden' : ''}`
                 : `border-t border-gray-200 bg-white flex flex-col max-h-[62%] ${selectMode ? 'hidden' : ''}`
             }
             style={
@@ -3763,12 +3827,94 @@ export default function WhatsAppMobilePreviewModal({
                 : undefined
             }
           >
-            <div className={`overflow-y-auto overflow-x-hidden min-h-0 min-w-0 flex-1 px-3 pt-3 space-y-2 ${activeType === 'template' ? 'pb-3' : ''}`}>
-            {isTemplateOnlyMode && activeType !== 'template' ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
-                Normal chat window closed. Only template messages can be sent.
+            {isTemplateOnlyMode && activeType === 'text' ? (
+              <div className="shrink-0 px-3 py-2.5 space-y-2">
+                <div className="flex items-center gap-2 rounded-lg bg-[#f7f8fa] px-2.5 py-2">
+                  <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ef4444] text-[10px] font-black text-white shadow-sm">
+                    24
+                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#f7f8fa] bg-[#ef4444]" />
+                  </span>
+                  <p className="min-w-0 flex-1 text-[12px] leading-snug text-[#3b4a54]">
+                    <span className="font-semibold text-[#111b21]">Send a message</span>
+                    {' '}to customer in{' '}
+                    <span className="font-semibold text-[#111b21]">closed window</span>
+                    {' '}using{' '}
+                    <span className="font-semibold text-[#111b21]">Frictionless messaging</span>
+                  </p>
+                  <span title="Typed text sends as Utility template when 24h window is closed">
+                    <Info className="h-4 w-4 shrink-0 text-[#8696a0]" />
+                  </span>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1 rounded-2xl border border-[#d1d7db] bg-white px-3 py-2 shadow-sm">
+                    <input
+                      value={textMessage}
+                      onChange={(e) => setTextMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (!sending) void handleSend();
+                        }
+                      }}
+                      disabled={sending || paymentGenerating}
+                      placeholder="Type message"
+                      className="w-full bg-transparent text-[14px] text-[#111b21] outline-none placeholder:text-[#8696a0] disabled:opacity-60"
+                    />
+                    {!textMessage.trim() ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTextMessage('I see you requested support via our online chat')
+                        }
+                        className="mt-1 w-full truncate text-left text-[12px] italic text-[#8696a0] hover:text-[#54656f]"
+                      >
+                        I see you requested support via our online chat
+                      </button>
+                    ) : (
+                      <p className="mt-1 line-clamp-2 text-[11px] text-[#667781]">
+                        Sent using Frictionless messaging
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAttachMenu((prev) => !prev)}
+                    disabled
+                    title="Attachments unavailable in closed window"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#8696a0] opacity-50"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSend()}
+                    disabled={sending || paymentGenerating || !textMessage.trim()}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white hover:bg-[#008f72] disabled:cursor-not-allowed disabled:bg-[#c5c9cc]"
+                    title="Send frictionless message"
+                  >
+                    {sending || paymentGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveType('template');
+                    setTemplateStep(1);
+                  }}
+                  className="mt-2.5 w-full rounded-lg px-2 py-2.5 text-center text-[13px] font-semibold text-[#008069] hover:bg-[#f0f2f5] hover:underline"
+                >
+                  or Send a template
+                </button>
               </div>
-            ) : null}
+            ) : (
+              <>
+            <div className={`overflow-y-auto overflow-x-hidden min-h-0 min-w-0 flex-1 px-3 pt-3 space-y-2 ${activeType === 'template' ? 'pb-3' : ''}`}>
             {activeType === 'template' ? (
               <div className="mb-2 min-w-0 max-w-full overflow-hidden rounded-xl border border-[#d8dee3] bg-[#f8fafc] p-3">
                 {isTemplateOnlyMode ? (
@@ -3788,7 +3934,7 @@ export default function WhatsAppMobilePreviewModal({
                     onClick={() => { setActiveType('text'); setShowAttachMenu(false); }}
                     className="shrink-0 text-[11px] font-semibold text-[#128c7e]"
                   >
-                    Close
+                    {isTemplateOnlyMode ? '← Type message' : 'Close'}
                   </button>
                 </div>
 
@@ -4108,13 +4254,14 @@ export default function WhatsAppMobilePreviewModal({
             ) : null}
             </div>
             {activeType === 'template' ? null : (
-            <div className="shrink-0 px-3 pb-3 pt-2 flex items-center gap-2">
+            <div className="shrink-0 px-3 pb-3 pt-2 space-y-1.5">
+              <div className="flex items-center gap-2">
               <div className="relative">
                 <button
                   ref={attachButtonRef}
                   type="button"
                   onClick={() => setShowAttachMenu((prev) => !prev)}
-                  disabled={sending}
+                  disabled={sending || isTemplateOnlyMode}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Attach file"
                 >
@@ -4210,7 +4357,7 @@ export default function WhatsAppMobilePreviewModal({
                   activeType === 'payment'
                     ? 'Payment mode enabled'
                     : isTemplateOnlyMode
-                    ? 'Only templates can be sent'
+                    ? 'Type message'
                     : 'Type a message'
                 }
                 className="w-full rounded-full border border-gray-300 px-4 py-2 text-sm outline-none ring-green-200 focus:border-green-500 focus:ring disabled:cursor-not-allowed disabled:bg-gray-100"
@@ -4247,7 +4394,22 @@ export default function WhatsAppMobilePreviewModal({
                   e.currentTarget.value = '';
                 }}
               />
+              </div>
+              {isTemplateOnlyMode ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveType('template');
+                    setTemplateStep(1);
+                  }}
+                  className="mt-2 w-full rounded-lg px-2 py-2 text-center text-[12px] font-semibold text-[#128c7e] hover:bg-[#f0f2f5] hover:underline"
+                >
+                  or Send a template
+                </button>
+              ) : null}
             </div>
+            )}
+              </>
             )}
           </div>
         </div>

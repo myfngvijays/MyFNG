@@ -18,10 +18,22 @@ type TemplateRow = {
   variable_keys: string[];
   example_values: string[];
   is_active: boolean;
-  meta?: { status?: string; template_id?: string; source?: string } | null;
+  meta?: {
+    status?: string;
+    template_id?: string;
+    source?: string;
+    crm_telecaller?: boolean | string | number;
+  } | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Matches GET /api/whatsapp/templates telecaller filter — explicit Telecaller ON only. */
+function isShownToTelecaller(row: TemplateRow): boolean {
+  if (row.is_active === false) return false;
+  const meta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+  return meta.crm_telecaller === true || meta.crm_telecaller === '1' || meta.crm_telecaller === 1;
+}
 
 /** Push is for drafts not yet linked / rejected by Meta / missing on current WABA. */
 function canPushTemplateToMeta(row: TemplateRow) {
@@ -120,6 +132,7 @@ export default function WhatsAppTemplateManager() {
   const viewOptionsRef = useRef<HTMLDivElement | null>(null);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingTelecallerId, setTogglingTelecallerId] = useState<string | null>(null);
   const [form, setForm] = useState({
     template_name: '',
     display_name: '',
@@ -330,6 +343,36 @@ export default function WhatsAppTemplateManager() {
     }
   };
 
+  const handleToggleTelecaller = async (row: TemplateRow, nextVisible: boolean) => {
+    setTogglingTelecallerId(row.id);
+    const prevMeta = row.meta && typeof row.meta === 'object' ? row.meta : {};
+    setTemplates((prev) =>
+      prev.map((item) =>
+        item.id === row.id
+          ? { ...item, meta: { ...prevMeta, crm_telecaller: nextVisible } }
+          : item
+      )
+    );
+    try {
+      const res = await fetch(`/api/whatsapp/templates/${row.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crm_telecaller: nextVisible }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Failed to update telecaller visibility');
+      if (data?.template) {
+        setTemplates((prev) => prev.map((item) => (item.id === row.id ? { ...item, ...data.template } : item)));
+      }
+      toast.success(nextVisible ? 'Visible to telecallers' : 'Hidden from telecallers');
+    } catch (error: any) {
+      setTemplates((prev) => prev.map((item) => (item.id === row.id ? { ...item, meta: row.meta } : item)));
+      toast.error(error?.message || 'Failed to update telecaller visibility');
+    } finally {
+      setTogglingTelecallerId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this template?')) return;
     try {
@@ -435,7 +478,9 @@ export default function WhatsAppTemplateManager() {
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Templates</h2>
-            <p className="text-xs text-gray-500">Use Preview to see WhatsApp-style message on phone mockup</p>
+            <p className="text-xs text-gray-500">
+              Active = usable in CRM. Telecaller ON/OFF = which templates telecallers see in chat.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -887,6 +932,25 @@ export default function WhatsAppTemplateManager() {
                     </span>
                     <span>{new Date(row.updated_at).toLocaleDateString()}</span>
                   </div>
+                  <div
+                    className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <ToggleSwitch
+                      enabled={isShownToTelecaller(row)}
+                      busy={togglingTelecallerId === row.id}
+                      size="sm"
+                      onChange={(next) => handleToggleTelecaller(row, next)}
+                      label={`Show ${row.template_name} to telecallers`}
+                    />
+                    <span
+                      className={`text-xs font-semibold ${
+                        isShownToTelecaller(row) ? 'text-blue-700' : 'text-gray-400'
+                      }`}
+                    >
+                      {isShownToTelecaller(row) ? 'Telecaller ON' : 'Telecaller OFF'}
+                    </span>
+                  </div>
                 </div>
               ))
             )}
@@ -962,6 +1026,26 @@ export default function WhatsAppTemplateManager() {
                           />
                           <span className={`text-xs font-semibold ${row.is_active ? 'text-emerald-600' : 'text-gray-400'}`}>
                             {togglingId === row.id ? 'Saving...' : row.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <ToggleSwitch
+                            enabled={isShownToTelecaller(row)}
+                            busy={togglingTelecallerId === row.id}
+                            size="sm"
+                            onChange={(next) => handleToggleTelecaller(row, next)}
+                            label={`Show ${row.template_name} to telecallers`}
+                          />
+                          <span
+                            className={`text-xs font-semibold ${
+                              isShownToTelecaller(row) ? 'text-blue-700' : 'text-gray-400'
+                            }`}
+                          >
+                            {togglingTelecallerId === row.id
+                              ? 'Saving...'
+                              : isShownToTelecaller(row)
+                                ? 'Telecaller ON'
+                                : 'Telecaller OFF'}
                           </span>
                         </div>
                         <span
