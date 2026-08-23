@@ -912,6 +912,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           ],
         },
         { href: '/dashboard/lead_manager/readme', icon: <BookOpen className="w-5 h-5" />, label: 'ReadMe' },
+        { href: '/dashboard/lead_manager/me', icon: <User className="w-5 h-5" />, label: 'My Profile' },
       ],
       'RSA_MANAGER': [
         { href: '/dashboard/rsa_manager', icon: <Home className="w-5 h-5" />, label: 'Dashboard' },

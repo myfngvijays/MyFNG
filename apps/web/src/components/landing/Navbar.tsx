@@ -303,14 +303,27 @@ export default function Navbar({
                 localStorage.setItem('detected_city_timestamp', Date.now().toString());
               }
             }
-          } catch (error) {
-            console.error('Error reverse geocoding:', error);
+          } catch {
+            // Reverse geocode failed — keep previous / empty city silently
           } finally {
             setIsDetecting(false);
           }
         },
         (error) => {
-          console.error('Geolocation error:', error);
+          // Permission denied / timeout / unavailable is normal; do not console.error
+          // (Next.js overlays treat console.error as a runtime error).
+          if (process.env.NODE_ENV === 'development') {
+            const code = typeof error?.code === 'number' ? error.code : null;
+            const msg =
+              code === 1
+                ? 'permission_denied'
+                : code === 2
+                  ? 'position_unavailable'
+                  : code === 3
+                    ? 'timeout'
+                    : 'unknown';
+            console.debug(`[Navbar] geolocation skipped (${msg})`);
+          }
           setIsDetecting(false);
         },
         {
@@ -319,8 +332,7 @@ export default function Navbar({
           maximumAge: 300000 // 5 minutes
         }
       );
-    } catch (error) {
-      console.error('Location detection error:', error);
+    } catch {
       setIsDetecting(false);
     }
   };

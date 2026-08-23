@@ -243,6 +243,10 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     title: 'My Profile',
     body: 'Profile, punch status, aur personal settings.',
   },
+  '/dashboard/lead_manager/me': {
+    title: 'My Profile',
+    body: 'Profile, punch status, aur personal settings.',
+  },
   '/dashboard/telecaller/readme': {
     title: 'ReadMe',
     body:

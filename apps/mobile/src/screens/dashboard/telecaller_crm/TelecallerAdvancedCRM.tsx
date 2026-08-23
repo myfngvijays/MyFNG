@@ -99,6 +99,22 @@ const LM_NAV: NavRow[] = [
   },
   {
     type: 'item',
+    id: 'recordings',
+    label: 'Recordings',
+    icon: 'headset-outline',
+    kind: 'stack',
+    screen: 'LeadManagerRecordings',
+  },
+  {
+    type: 'item',
+    id: 'call_intelligence',
+    label: 'Call Intelligence',
+    icon: 'pulse-outline',
+    kind: 'stack',
+    screen: 'LeadManagerCallIntelligence',
+  },
+  {
+    type: 'item',
     id: 'whatsapp',
     label: 'WhatsApp Chat',
     icon: 'logo-whatsapp',

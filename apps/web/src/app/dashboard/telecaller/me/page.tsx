@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { formatDateDMY, formatDateTime } from '@/lib/utils';
 import {
@@ -58,6 +58,8 @@ function joinName(first: string, last: string): string {
 
 export default function TelecallerMyProfilePage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const layoutRole = pathname?.includes('/lead_manager') ? 'LEAD_MANAGER' : 'telecaller';
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [attendance, setAttendance] = useState<any>(null);
@@ -231,7 +233,7 @@ export default function TelecallerMyProfilePage() {
   const displayLast = formData.last_name || splitFullName(profile?.full_name || '').last_name;
 
   return (
-    <DashboardLayout role="telecaller">
+    <DashboardLayout role={layoutRole}>
       <div className="mx-auto max-w-3xl space-y-4 pb-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

@@ -129,6 +129,10 @@ import {
   LeadManagerClickToCallScreen,
   LeadManagerTelecallerIdsScreen,
 } from '../screens/dashboard/lead_manager/LeadManagerOpsScreens';
+import {
+  LeadManagerRecordingsScreen,
+  LeadManagerCallIntelligenceScreen,
+} from '../screens/dashboard/lead_manager/LeadManagerCallOpsScreens';
 
 // Super Admin screens
 import WorkshopManagementScreen from '../screens/dashboard/superadmin/WorkshopManagementScreen';
@@ -408,7 +412,17 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={LeadManagerClickToCallScreen}
           options={{ title: 'Click to Call' }}
         />
-        <Stack.Screen 
+        <Stack.Screen
+          name="LeadManagerRecordings"
+          component={LeadManagerRecordingsScreen}
+          options={{ title: 'Recordings', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerCallIntelligence"
+          component={LeadManagerCallIntelligenceScreen}
+          options={{ title: 'Call Intelligence', headerShown: false }}
+        />
+        <Stack.Screen
           name="LeadManagerWorkshopDetail" 
           component={LeadManagerWorkshopDetailScreen}
           options={{ title: 'Workshop Details' }}

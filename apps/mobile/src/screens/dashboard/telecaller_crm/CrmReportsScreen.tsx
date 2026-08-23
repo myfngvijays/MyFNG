@@ -210,7 +210,7 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
     setLoadError('');
     try {
       if (tab === 'leaderboard') {
-        const params = new URLSearchParams({ period, date });
+        const params = new URLSearchParams({ period, date, sort: 'score' });
         const res = await apiFetch<any>(`/api/telecaller/crm/reports/leaderboard?${params}`);
         setLeaderboard(res);
       } else if (tab === 'calls') {
@@ -272,9 +272,14 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
   };
 
   const members = Array.isArray(leaderboard?.members) ? leaderboard.members : [];
-  const totals = leaderboard?.totals || { calls: 0, duration_seconds: 0, bookings: 0 };
+  const totals = leaderboard?.totals || { calls: 0, duration_seconds: 0, bookings: 0, score: 0 };
+  const delta = leaderboard?.delta || {};
+  const insights = leaderboard?.insights || {};
   const selected =
     selectedMember === 'total' ? null : members.find((m: any) => m.id === selectedMember) || null;
+  const pct = (n: number) => `${Math.round((Number(n) || 0) * 100)}%`;
+  const hourlyLb = Array.isArray(insights?.hourly) ? insights.hourly : [];
+  const maxHourLb = Math.max(1, ...hourlyLb.map((h: any) => h.count || 0));
   const hourly = Array.isArray(calls?.hourly) ? calls.hourly : [];
   const maxHour = Math.max(1, ...hourly.map((h: any) => h.count || 0));
   const callRows = Array.isArray(calls?.calls) ? calls.calls : [];
@@ -357,78 +362,151 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
 
         {tab === 'leaderboard' && !loading && !loadError ? (
           <View>
-            {teamMode ? (
-            <TouchableOpacity
-              style={[styles.memberCard, selectedMember === 'total' && styles.memberCardOn]}
-              onPress={() => setSelectedMember('total')}
-            >
-              <Text style={styles.memberName}>Team totals</Text>
-              <Text style={styles.muted}>{leaderboard.team_size || 0} people</Text>
-              <View style={styles.metricsRow}>
-                <Metric label="Calls" value={String(totals.calls || 0)} />
-                <Metric label="Talk" value={formatDuration(totals.duration_seconds || 0)} />
-                <Metric label="Bookings" value={String(totals.bookings || 0)} />
+            <View style={styles.scoreHero}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scoreHeroLabel}>
+                  {teamMode && !selected
+                    ? 'Team score'
+                    : selected
+                      ? selected.full_name
+                      : personalBoard}
+                </Text>
+                <Text style={styles.scoreHeroSub}>{rangeLabel} · live call logs</Text>
+                {insights?.peak_hour_ist != null ? (
+                  <Text style={styles.peakHint}>
+                    Peak {insights.peak_hour_ist}:00 IST · {insights.peak_hour_calls} calls
+                  </Text>
+                ) : null}
               </View>
-            </TouchableOpacity>
-            ) : (
-            <View style={styles.memberCard}>
-              <Text style={styles.memberName}>{personalBoard}</Text>
-              <Text style={styles.muted}>{rangeLabel} · your calls & bookings</Text>
-              <View style={styles.metricsRow}>
-                <Metric label="Calls" value={String(totals.calls || members[0]?.calls || 0)} />
-                <Metric
-                  label="Talk"
-                  value={formatDuration(
-                    totals.duration_seconds || members[0]?.duration_seconds || 0,
-                  )}
-                />
-                <Metric
-                  label="Bookings"
-                  value={String(totals.bookings || members[0]?.bookings || 0)}
-                />
+              <View style={styles.scoreCircle}>
+                <Text style={styles.scoreCircleVal}>
+                  {selected?.score ?? totals.score ?? 0}
+                </Text>
               </View>
             </View>
+
+            {hourlyLb.some((h: any) => (h.count || 0) > 0) ? (
+              <View style={styles.hourCard}>
+                <Text style={styles.sectionTitle}>Hourly (IST)</Text>
+                <View style={styles.hourRow}>
+                  {hourlyLb.map((h: any) => (
+                    <View key={h.hour} style={styles.hourBarWrap}>
+                      <View
+                        style={[
+                          styles.hourBar,
+                          { height: Math.max(4, ((h.count || 0) / maxHourLb) * 48) },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {teamMode ? (
+              <TouchableOpacity
+                style={[styles.memberCard, selectedMember === 'total' && styles.memberCardOn]}
+                onPress={() => setSelectedMember('total')}
+              >
+                <Text style={styles.memberName}>Team totals</Text>
+                <Text style={styles.muted}>{leaderboard.team_size || 0} people</Text>
+                <View style={styles.metricsRow}>
+                  <Metric label="Score" value={String(totals.score || 0)} />
+                  <Metric label="Calls" value={String(totals.calls || 0)} />
+                  <Metric label="Connect" value={pct(totals.connect_rate || 0)} />
+                  <Metric label="Books" value={String(totals.bookings || 0)} />
+                </View>
+                {delta.calls != null ? (
+                  <Text style={styles.deltaLine}>
+                    vs prev: {delta.calls >= 0 ? '+' : ''}
+                    {delta.calls} calls · {delta.answered >= 0 ? '+' : ''}
+                    {delta.answered || 0} answered · {delta.bookings >= 0 ? '+' : ''}
+                    {delta.bookings || 0} bookings
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.memberCard}>
+                <Text style={styles.memberName}>{personalBoard}</Text>
+                <Text style={styles.muted}>{rangeLabel} · advanced performance</Text>
+                <View style={styles.metricsRow}>
+                  <Metric label="Score" value={String(totals.score || members[0]?.score || 0)} />
+                  <Metric label="Calls" value={String(totals.calls || members[0]?.calls || 0)} />
+                  <Metric
+                    label="Connect"
+                    value={pct(totals.connect_rate || members[0]?.connect_rate || 0)}
+                  />
+                  <Metric
+                    label="Books"
+                    value={String(totals.bookings || members[0]?.bookings || 0)}
+                  />
+                </View>
+                {delta.calls != null ? (
+                  <Text style={styles.deltaLine}>
+                    vs prev: {delta.calls >= 0 ? '+' : ''}
+                    {delta.calls} calls · {delta.answered >= 0 ? '+' : ''}
+                    {delta.answered || 0} answered · {delta.bookings >= 0 ? '+' : ''}
+                    {delta.bookings || 0} bookings
+                  </Text>
+                ) : null}
+              </View>
             )}
+
             {teamMode
               ? members.map((m: any) => (
-              <TouchableOpacity
-                key={m.id}
-                style={[styles.memberCard, selectedMember === m.id && styles.memberCardOn]}
-                onPress={() => setSelectedMember(m.id)}
-              >
-                <View style={styles.memberTop}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{initials(m.full_name)}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.memberName}>
-                      #{m.rank} {m.full_name}
-                    </Text>
-                    <Text style={styles.muted}>Telecaller</Text>
-                  </View>
-                </View>
-                <View style={styles.metricsRow}>
-                  <Metric label="Calls" value={String(m.calls)} />
-                  <Metric label="Talk" value={formatDuration(m.duration_seconds)} />
-                  <Metric label="Bookings" value={String(m.bookings)} />
-                </View>
-              </TouchableOpacity>
-            ))
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[styles.memberCard, selectedMember === m.id && styles.memberCardOn]}
+                    onPress={() => setSelectedMember(m.id)}
+                  >
+                    <View style={styles.memberTop}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{initials(m.full_name)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.memberName}>
+                          #{m.rank} {m.full_name}
+                        </Text>
+                        <Text style={styles.muted}>
+                          Score {m.score ?? 0} · {pct(m.connect_rate || 0)} connect
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.metricsRow}>
+                      <Metric label="Calls" value={String(m.calls)} />
+                      <Metric label="Talk" value={formatDuration(m.duration_seconds)} />
+                      <Metric label="Avg" value={formatDuration(m.avg_talk_seconds || 0)} />
+                      <Metric label="Books" value={String(m.bookings)} />
+                    </View>
+                  </TouchableOpacity>
+                ))
               : null}
-            {teamMode ? (
+
             <View style={styles.detailCard}>
-              <Text style={styles.detailTitle}>{selected ? selected.full_name : 'Team totals'}</Text>
+              <Text style={styles.detailTitle}>
+                {selected ? selected.full_name : teamMode ? 'Team detail' : 'Your detail'}
+              </Text>
               {(selected
                 ? [
-                    ['Calls', String(selected.calls)],
+                    ['Score', String(selected.score ?? 0)],
                     ['Answered', String(selected.answered)],
+                    ['Missed', String(selected.missed ?? 0)],
                     ['Talk', formatDuration(selected.duration_seconds)],
+                    ['Avg talk', formatDuration(selected.avg_talk_seconds || 0)],
                     ['Bookings', String(selected.bookings)],
+                    ['Book rate', pct(selected.book_rate || 0)],
+                    ['Recording', pct(selected.recording_rate || 0)],
+                    ['Notes', pct(selected.notes_rate || 0)],
                   ]
                 : [
-                    ['Calls', String(totals.calls || 0)],
+                    ['Score', String(totals.score || 0)],
+                    ['Answered', String(totals.answered || 0)],
+                    ['Missed', String(totals.missed || 0)],
                     ['Talk', formatDuration(totals.duration_seconds || 0)],
+                    ['Avg talk', formatDuration(totals.avg_talk_seconds || 0)],
                     ['Bookings', String(totals.bookings || 0)],
+                    ['Connect', pct(totals.connect_rate || 0)],
+                    ['Recording', pct(totals.recording_rate || 0)],
                   ]
               ).map(([label, value]) => (
                 <View key={label} style={styles.detailRow}>
@@ -437,7 +515,6 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
                 </View>
               ))}
             </View>
-            ) : null}
           </View>
         ) : null}
 
@@ -462,16 +539,33 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
                 compact={compact}
               />
               <SummaryTile
+                label="Connect"
+                value={`${Math.round((calls?.summary?.connect_rate || 0) * 100)}%`}
+                compact={compact}
+              />
+              <SummaryTile
                 label="Talk"
                 value={formatDuration(calls?.summary?.duration_seconds ?? 0)}
                 compact={compact}
               />
               <SummaryTile
-                label="Leads"
-                value={String(calls?.summary?.unique_leads ?? 0)}
+                label="Avg"
+                value={formatDuration(calls?.summary?.avg_talk_seconds ?? 0)}
                 compact={compact}
               />
             </View>
+            {(calls?.delta || calls?.insights?.peak_hour_ist != null) ? (
+              <Text style={styles.deltaLine}>
+                {calls?.insights?.peak_hour_ist != null
+                  ? `Peak ${calls.insights.peak_hour_ist}:00 IST · `
+                  : ''}
+                vs prev:{' '}
+                {(calls?.delta?.calls ?? 0) >= 0 ? '+' : ''}
+                {calls?.delta?.calls ?? 0} calls ·{' '}
+                {(calls?.delta?.connected ?? 0) >= 0 ? '+' : ''}
+                {calls?.delta?.connected ?? 0} connected
+              </Text>
+            ) : null}
             <View style={styles.chartCard}>
               <Text style={styles.sectionTitle}>Calls by hour (IST)</Text>
               <View style={styles.bars}>
@@ -502,8 +596,15 @@ export default function CrmReportsScreen({ navigation, route }: Props) {
                   <Text style={styles.muted}>{c.lead?.customer_phone || c.lead?.lead_number || '—'}</Text>
                   <View style={styles.badgeRow}>
                     <Badge text={c.call_status || '—'} />
-                    <Badge text={formatDuration(c.call_duration || 0)} soft />
+                    <Badge text={c.call_type || 'OUT'} soft />
+                    {c.has_recording ? <Badge text="Rec" /> : null}
+                    <Badge text={formatDuration(Number(c.call_duration) || 0)} soft />
                   </View>
+                  {c.notes ? (
+                    <Text style={styles.muted} numberOfLines={2}>
+                      {c.notes}
+                    </Text>
+                  ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -1008,5 +1109,58 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     padding: 16,
     paddingBottom: 28,
+  },
+  scoreHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#023D95',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+  },
+  scoreHeroLabel: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  scoreHeroSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
+  peakHint: {
+    marginTop: 6,
+    color: '#FDE68A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  scoreCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreCircleVal: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  hourCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    ...SHADOWS.small,
+  },
+  hourRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 56,
+    gap: 1,
+  },
+  hourBarWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
+  hourBar: {
+    width: '100%',
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    backgroundColor: '#004AAD',
+    opacity: 0.85,
+  },
+  deltaLine: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
 });

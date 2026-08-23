@@ -624,15 +624,29 @@ export default function CrmDialerPanel() {
         </div>
       ) : (
         <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-md">
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="mb-3 flex items-center gap-2">
+            <div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <Search className="h-4 w-4 shrink-0 text-slate-400" />
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search name, phone, lead #"
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${q ? 'pr-6' : ''}`}
               />
+              {q ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQ('');
+                    setQApplied('');
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
             <button
               type="button"
