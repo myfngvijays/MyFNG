@@ -357,26 +357,12 @@ const TC_NAV: NavRow[] = [
     kind: 'tab',
   },
   {
-    type: 'group',
-    id: 'templates_group',
-    label: 'Msg Templates',
-    icon: 'chatbox-ellipses-outline',
-    children: [
-      {
-        id: 'scripts',
-        label: 'Call scripts',
-        icon: 'document-text-outline',
-        kind: 'stack',
-        screen: 'TelecallerScripts',
-      },
-      {
-        id: 'wa_templates',
-        label: 'WhatsApp templates',
-        icon: 'logo-whatsapp',
-        kind: 'stack',
-        screen: 'CrmWhatsAppTemplates',
-      },
-    ],
+    type: 'item',
+    id: 'scripts',
+    label: 'Call scripts',
+    icon: 'document-text-outline',
+    kind: 'stack',
+    screen: 'TelecallerScripts',
   },
   {
     type: 'group',
@@ -733,12 +719,25 @@ export default function TelecallerAdvancedCRM() {
               {activeTitle}
             </Text>
           </View>
-          <View style={styles.topCenter} pointerEvents="none">
-            <Image
-              source={require('../../../../assets/logo.png')}
-              style={styles.topLogo}
-              resizeMode="contain"
-            />
+          <View style={styles.topCenter} pointerEvents="box-none">
+            <TouchableOpacity
+              onPress={() => {
+                setDetailLeadId(null);
+                setDetailEditing(false);
+                setBookMode(null);
+                setWhatsAppOpen(false);
+                setTab('home');
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go to home"
+            >
+              <Image
+                source={require('../../../../assets/logo.png')}
+                style={styles.topLogo}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
           </View>
           <View style={styles.topSideRight}>
             <TouchableOpacity

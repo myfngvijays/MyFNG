@@ -153,7 +153,7 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
     if (!visible || activePhone) return;
     const id = setInterval(() => {
       void fetchChats({ silent: true });
-    }, 3000);
+    }, 8000);
     return () => clearInterval(id);
   }, [visible, activePhone, fetchChats]);
 
@@ -161,6 +161,8 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
     if (!visible) {
       setActivePhone(null);
       setActiveCustomerName(null);
+      setSearch('');
+      setInboxTab('open');
     }
   }, [visible]);
 

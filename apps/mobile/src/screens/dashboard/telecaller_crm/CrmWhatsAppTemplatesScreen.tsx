@@ -54,6 +54,7 @@ export default function CrmWhatsAppTemplatesScreen() {
   const canManageTelecallerVisibility = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
     roleCode,
   );
+  const isTelecaller = roleCode === 'TELECALLER';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,7 +63,19 @@ export default function CrmWhatsAppTemplatesScreen() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isTelecaller) return;
+    Alert.alert('WhatsApp templates', 'Templates are available inside WhatsApp chat only.', [
+      { text: 'OK', onPress: () => navigation.goBack() },
+    ]);
+  }, [isTelecaller, navigation]);
+
   const load = useCallback(async () => {
+    if (isTelecaller) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const data = await apiFetch<{ templates?: WaTemplate[] }>('/api/whatsapp/templates');
       const list = Array.isArray(data?.templates) ? data.templates : [];
@@ -80,7 +93,7 @@ export default function CrmWhatsAppTemplatesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isTelecaller]);
 
   useEffect(() => {
     void load();
@@ -142,6 +155,31 @@ export default function CrmWhatsAppTemplatesScreen() {
       setTogglingId(null);
     }
   };
+
+  if (isTelecaller) {
+    return (
+      <SafeAreaView style={styles.shell} edges={['top']}>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            hitSlop={12}
+          >
+            <Ionicons name="arrow-back" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+          <Text style={styles.topTitle} numberOfLines={1}>
+            WhatsApp templates
+          </Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.empty}>
+            Templates are available inside WhatsApp chat only.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.shell} edges={['top']}>

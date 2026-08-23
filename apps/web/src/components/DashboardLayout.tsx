@@ -977,15 +977,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         {
           href: '/dashboard/telecaller/templates',
           icon: <MessageSquare className="w-5 h-5" />,
-          label: 'Msg Templates',
-          children: [
-            { href: '/dashboard/telecaller/templates', icon: <Phone className="w-5 h-5" />, label: 'Call scripts' },
-            {
-              href: '/dashboard/telecaller/templates?tab=whatsapp',
-              icon: <MessageSquare className="w-5 h-5" />,
-              label: 'WhatsApp templates',
-            },
-          ],
+          label: 'Call scripts',
         },
         {
           href: '/dashboard/telecaller/reports',

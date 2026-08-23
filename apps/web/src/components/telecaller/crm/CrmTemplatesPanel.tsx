@@ -45,10 +45,12 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
   const { isLeadManager } = getCrmDashboardBase(pathname);
   /** Telecaller ON/OFF is manager/admin only — telecallers just browse allowed templates. */
   const canManageTelecallerVisibility = isLeadManager;
+  /** Telecallers use WhatsApp templates only inside chat — no catalog screen/tab. */
+  const showWhatsAppTemplatesTab = isLeadManager;
   const searchParams = useSearchParams();
   const tabParam = String(searchParams.get('tab') || '').toLowerCase();
   const [tab, setTab] = useState<'scripts' | 'whatsapp'>(
-    tabParam === 'whatsapp' ? 'whatsapp' : 'scripts',
+    showWhatsAppTemplatesTab && tabParam === 'whatsapp' ? 'whatsapp' : 'scripts',
   );
   const [scripts, setScripts] = useState<ScriptRow[]>([]);
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
@@ -58,22 +60,36 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!showWhatsAppTemplatesTab) {
+      setTab('scripts');
+      return;
+    }
     if (tabParam === 'whatsapp') setTab('whatsapp');
     else if (tabParam === 'scripts') setTab('scripts');
-  }, [tabParam]);
+  }, [tabParam, showWhatsAppTemplatesTab]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const supabase = createClient();
+      const scriptsPromise = supabase
+        .from('telecaller_scripts')
+        .select('id, script_title, script_content, category, script_type, is_active')
+        .eq('is_active', true)
+        .order('script_type', { ascending: true })
+        .limit(100);
+
+      if (!showWhatsAppTemplatesTab) {
+        const { data: scriptRows, error: sErr } = await scriptsPromise;
+        if (sErr) throw new Error(sErr.message);
+        setScripts((scriptRows || []) as ScriptRow[]);
+        setTemplates([]);
+        return;
+      }
+
       const [{ data: scriptRows, error: sErr }, waRes] = await Promise.all([
-        supabase
-          .from('telecaller_scripts')
-          .select('id, script_title, script_content, category, script_type, is_active')
-          .eq('is_active', true)
-          .order('script_type', { ascending: true })
-          .limit(100),
+        scriptsPromise,
         fetch('/api/whatsapp/templates').then(async (r) => {
           const j = await r.json().catch(() => ({}));
           return { ok: r.ok, j };
@@ -108,7 +124,7 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showWhatsAppTemplatesTab]);
 
   useEffect(() => {
     void load();
@@ -169,19 +185,23 @@ export default function CrmTemplatesPanel({ basePath: _basePath }: { basePath: s
       <div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-[#023D95]">Msg Templates</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Call scripts + WhatsApp templates.
+          {showWhatsAppTemplatesTab
+            ? 'Call scripts + WhatsApp templates.'
+            : 'Call scripts for your dialer conversations.'}
           {canManageTelecallerVisibility
             ? ' On WhatsApp tab, turn Telecaller ON/OFF to control what your team sees in chat.'
-            : ' Templates shown here are enabled for your role.'}
+            : null}
         </p>
       </div>
 
       <div className="flex gap-2">
         {(
-          [
-            { id: 'scripts' as const, label: 'Call scripts', icon: Phone },
-            { id: 'whatsapp' as const, label: 'WhatsApp templates', icon: MessageSquare },
-          ] as const
+          showWhatsAppTemplatesTab
+            ? ([
+                { id: 'scripts' as const, label: 'Call scripts', icon: Phone },
+                { id: 'whatsapp' as const, label: 'WhatsApp templates', icon: MessageSquare },
+              ] as const)
+            : ([{ id: 'scripts' as const, label: 'Call scripts', icon: Phone }] as const)
         ).map((t) => (
           <button
             key={t.id}

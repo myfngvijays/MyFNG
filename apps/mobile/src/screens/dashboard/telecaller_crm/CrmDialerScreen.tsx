@@ -229,7 +229,6 @@ export default function CrmDialerScreen() {
   const [historyGroup, setHistoryGroup] = useState<ContactGroup | null>(null);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const pulse = useRef(new Animated.Value(1)).current;
-  const digitPop = useRef(new Animated.Value(1)).current;
 
   const display = useMemo(() => {
     const d = digits.replace(/\D/g, '');
@@ -238,28 +237,13 @@ export default function CrmDialerScreen() {
     return d;
   }, [digits]);
 
-  const bumpDigitAnim = useCallback(() => {
-    digitPop.setValue(0.88);
-    Animated.spring(digitPop, {
-      toValue: 1,
-      friction: 4,
-      tension: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [digitPop]);
-
-  const appendDigit = useCallback(
-    (k: string) => {
-      setDigits((p) => `${p}${k}`.slice(0, 15));
-      bumpDigitAnim();
-    },
-    [bumpDigitAnim],
-  );
+  const appendDigit = useCallback((k: string) => {
+    setDigits((p) => `${p}${k}`.slice(0, 15));
+  }, []);
 
   const backspaceDigit = useCallback(() => {
     setDigits((p) => p.slice(0, -1));
-    bumpDigitAnim();
-  }, [bumpDigitAnim]);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setQApplied(q.trim()), 300);
@@ -765,15 +749,9 @@ export default function CrmDialerScreen() {
         <View style={[styles.keypadPane, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <View style={styles.keypadCard}>
             <View style={styles.numberRow}>
-              <Animated.Text
-                style={[
-                  styles.numberDisplay,
-                  { flex: 1, transform: [{ scale: digitPop }] },
-                ]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.numberDisplay, { flex: 1 }]} numberOfLines={1}>
                 {display || ' '}
-              </Animated.Text>
+              </Text>
               <TouchableOpacity
                 style={[styles.backspaceBtn, (!digits || calling) && { opacity: 0.35 }]}
                 onPress={backspaceDigit}
@@ -790,7 +768,6 @@ export default function CrmDialerScreen() {
               value={digits}
               onChangeText={(t) => {
                 setDigits(t.replace(/[^\d*#+]/g, '').slice(0, 15));
-                bumpDigitAnim();
               }}
               keyboardType="phone-pad"
               placeholder="Type or paste number"

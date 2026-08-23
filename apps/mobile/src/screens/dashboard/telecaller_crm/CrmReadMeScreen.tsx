@@ -19,8 +19,8 @@ const TC_SECTIONS = [
     body: 'Naya lead / booking banao. Workshops se nearby workshop dhoondo.',
   },
   {
-    title: 'Msg Templates',
-    body: 'Call scripts copy karo. WhatsApp templates list dekho aur body copy karo.',
+    title: 'Call scripts',
+    body: 'Call scripts copy karo. WhatsApp templates chat ke andar hi milenge (Quick note).',
   },
   {
     title: 'Reports',
