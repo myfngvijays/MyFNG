@@ -1,12 +1,8 @@
 /**
- * Click-to-call via the configured gateway URL only
- * (e.g. Supabase edge `click-to-call-gateway?from=&to=&did=&provider=`).
+ * Click-to-call: prefer Smartflo direct API (fast async ACK), else gateway.
  *
- * Same URL for:
- * - Manual Call button
- * - Auto-dial when a Fresh lead is assigned
- *
- * Gateway itself rings telecaller (`from`) first, then customer (`to`).
+ * Flow (agent_first): ring telecaller (`from`) first, then customer (`to`).
+ * Same path for Manual Call + Auto-dial Fresh.
  */
 
 import {
@@ -14,6 +10,7 @@ import {
   resolveDidForTelecaller,
   type ClickToCallConfig,
 } from '@/lib/telecaller/clickToCallConfig';
+import { SMARTFLO_API_BASE } from '@/lib/telecaller/smartfloCdr';
 
 export type ClickToCallDialResult = {
   ok: boolean;
@@ -23,9 +20,11 @@ export type ClickToCallDialResult = {
   to?: string;
   did?: string;
   provider?: string;
-  via?: 'gateway';
+  via?: 'smartflo' | 'gateway';
   upstream?: unknown;
   url?: string;
+  /** Gateway still running after we returned — phone may ring shortly */
+  pending?: boolean;
 };
 
 function digitsOnly(raw: unknown): string {
@@ -38,6 +37,155 @@ export function normalizePhone10(raw: unknown): string | null {
   if (d.length >= 10) return d.slice(-10);
   if (d.length >= 8) return d;
   return null;
+}
+
+/** Smartflo usually wants 91XXXXXXXXXX */
+function toE164In(raw10: string): string {
+  const d = digitsOnly(raw10);
+  if (d.startsWith('91') && d.length >= 12) return d;
+  if (d.length === 10) return `91${d}`;
+  return d;
+}
+
+function toCallerId(did: string): string {
+  const d = digitsOnly(did);
+  if (!d) return d;
+  if (d.startsWith('91')) return d;
+  if (d.length === 10) return `91${d}`;
+  return d;
+}
+
+async function hitSmartfloDirect(input: {
+  cfg: ClickToCallConfig;
+  from10: string;
+  to10: string;
+  did: string;
+}): Promise<ClickToCallDialResult> {
+  const token = String(input.cfg.smartflo_api_token || '').trim();
+  if (!token) {
+    return { ok: false, error: 'Smartflo API token missing', status: 503 };
+  }
+
+  const url = `${SMARTFLO_API_BASE}/click_to_call`;
+  const body = {
+    agent_number: toE164In(input.from10),
+    destination_number: toE164In(input.to10),
+    caller_id: toCallerId(input.did),
+    async: 1,
+  };
+
+  try {
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    const text = await upstream.text().catch(() => '');
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+
+    const msg = String(json?.message || json?.error || text || '').trim();
+    const successFlag =
+      upstream.ok &&
+      (json?.success === true ||
+        json?.success === 'true' ||
+        /success|accepted|ok|initiated/i.test(msg) ||
+        Boolean(json?.ref_id || json?.call_id || json?.uuid) ||
+        (!json?.error && upstream.status < 300));
+
+    // Some Smartflo accounts return 200 with { success: false, message: "All providers failed" }
+    if (!upstream.ok || json?.success === false || /providers?\s+failed/i.test(msg)) {
+      return {
+        ok: false,
+        status: upstream.ok ? 502 : upstream.status,
+        error: msg || `Smartflo click_to_call failed (${upstream.status})`,
+        from: input.from10,
+        to: input.to10,
+        did: input.did,
+        provider: input.cfg.provider,
+        via: 'smartflo',
+        url,
+        upstream: json || { raw: text },
+      };
+    }
+
+    if (!successFlag && msg && /fail|error|invalid|denied/i.test(msg)) {
+      return {
+        ok: false,
+        status: 502,
+        error: msg,
+        from: input.from10,
+        to: input.to10,
+        did: input.did,
+        provider: input.cfg.provider,
+        via: 'smartflo',
+        url,
+        upstream: json || { raw: text },
+      };
+    }
+
+    return {
+      ok: true,
+      from: input.from10,
+      to: input.to10,
+      did: input.did,
+      provider: input.cfg.provider,
+      via: 'smartflo',
+      url,
+      upstream: json || { raw: text || 'ok' },
+    };
+  } catch (e: any) {
+    const timedOut =
+      e?.name === 'TimeoutError' ||
+      e?.name === 'AbortError' ||
+      /aborted|timeout/i.test(String(e?.message || ''));
+    return {
+      ok: false,
+      status: timedOut ? 504 : 502,
+      error: timedOut
+        ? 'Smartflo API timed out'
+        : String(e?.message || 'Smartflo click_to_call error'),
+      from: input.from10,
+      to: input.to10,
+      did: input.did,
+      provider: input.cfg.provider,
+      via: 'smartflo',
+      url,
+    };
+  }
+}
+
+function explainDialFailure(json: any, from10: string, fallback: string): string {
+  const nested = String(
+    json?.last_error?.message ||
+      json?.attempts?.[0]?.raw?.message ||
+      json?.attempts?.[0]?.reason ||
+      json?.error ||
+      json?.message ||
+      fallback ||
+      '',
+  ).trim();
+
+  if (/missed by agent/i.test(nested)) {
+    return `Smartflo ne aapke number (${from10}) pe ring try kiya, lekin pick nahi hua (Call missed by agent). Phone silent/DND/offline to nahi? Click to Call setup mein yahi number save hai na verify karo.`;
+  }
+  if (/providers?\s+failed/i.test(nested) || /providers?\s+failed/i.test(String(json?.error || ''))) {
+    return nested.includes('missed by agent')
+      ? nested
+      : `${nested || 'All providers failed'} — aksar agent phone unreachable / galat number hota hai (${from10}).`;
+  }
+  return nested || fallback || 'Click-to-call failed';
 }
 
 async function hitGatewayUrl(input: {
@@ -57,51 +205,82 @@ async function hitGatewayUrl(input: {
     headers.Authorization = `Bearer ${input.cfg.gateway_key}`;
   }
 
-  const upstream = await fetch(url.toString(), {
-    method: 'GET',
-    headers,
-    cache: 'no-store',
-  });
-
-  const text = await upstream.text().catch(() => '');
-  let json: any = null;
+  // Gateway often takes 15–25s (Smartflo rings agent, then ACK).
+  // Never soft-ACK early and never abort mid-flight — that hid "Call missed by agent".
   try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = null;
-  }
+    const upstream = await fetch(url.toString(), {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(28_000),
+    });
 
-  if (!upstream.ok) {
+    const text = await upstream.text().catch(() => '');
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+
+    const failedExplicit =
+      !upstream.ok ||
+      json?.success === false ||
+      /providers?\s+failed|missed by agent/i.test(
+        String(json?.error || json?.message || json?.last_error?.message || ''),
+      );
+
+    if (failedExplicit) {
+      return {
+        ok: false,
+        status: upstream.ok ? 502 : upstream.status || 502,
+        error: explainDialFailure(
+          json,
+          input.from10,
+          text || `Click-to-call gateway failed (${upstream.status})`,
+        ),
+        from: input.from10,
+        to: input.to10,
+        did: input.did,
+        provider: input.cfg.provider,
+        via: 'gateway',
+        url: url.toString(),
+        upstream: json || { raw: text },
+      };
+    }
+
     return {
-      ok: false,
-      status: upstream.status,
-      error:
-        (json && (json.error || json.message)) ||
-        text ||
-        `Click-to-call gateway failed (${upstream.status})`,
+      ok: true,
       from: input.from10,
       to: input.to10,
       did: input.did,
       provider: input.cfg.provider,
       via: 'gateway',
       url: url.toString(),
-      upstream: json || { raw: text },
+      upstream: json || { raw: text || 'ok' },
+    };
+  } catch (e: any) {
+    const timedOut =
+      e?.name === 'TimeoutError' ||
+      e?.name === 'AbortError' ||
+      /aborted|timeout/i.test(String(e?.message || ''));
+    return {
+      ok: false,
+      status: timedOut ? 504 : 502,
+      error: timedOut
+        ? `Gateway 28s mein reply nahi diya — Smartflo/agent side check karo (from ${input.from10}).`
+        : String(e?.message || 'Click-to-call gateway error'),
+      from: input.from10,
+      to: input.to10,
+      did: input.did,
+      provider: input.cfg.provider,
+      via: 'gateway',
+      url: url.toString(),
     };
   }
-
-  return {
-    ok: true,
-    from: input.from10,
-    to: input.to10,
-    did: input.did,
-    provider: input.cfg.provider,
-    via: 'gateway',
-    url: url.toString(),
-    upstream: json || { raw: text || 'ok' },
-  };
 }
 
-/** Manual Call + Fresh auto-dial — always the same gateway URL hit. */
+/** Manual Call + Fresh auto-dial */
 export async function initiateClickToCall(input: {
   to: string;
   from: string;
@@ -130,11 +309,36 @@ export async function initiateClickToCall(input: {
     resolveDidForTelecaller(cfg, input.telecallerId) ||
     digitsOnly(cfg.did);
 
-  return hitGatewayUrl({ cfg, from10, to10, did });
+  // Prefer gateway first — it maps agent phone correctly; Smartflo direct
+  // often needs agent *ID* not mobile and can hang.
+  const gatewayResult = await hitGatewayUrl({ cfg, from10, to10, did });
+  if (gatewayResult.ok) return gatewayResult;
+
+  // Optional direct Smartflo fallback when token exists
+  if (cfg.smartflo_api_token && (cfg.dial_mode || 'agent_first') !== 'customer_first') {
+    console.warn('[click-to-call] gateway failed, trying smartflo direct:', gatewayResult.error);
+    const direct = await hitSmartfloDirect({ cfg, from10, to10, did });
+    if (direct.ok) return direct;
+    if (/providers?\s+failed|busy|try again|temporarily/i.test(String(direct.error || ''))) {
+      await new Promise((r) => setTimeout(r, 1200));
+      const retry = await hitSmartfloDirect({ cfg, from10, to10, did });
+      if (retry.ok) return retry;
+    }
+    return {
+      ...gatewayResult,
+      error: gatewayResult.error || direct.error,
+      upstream: {
+        gateway: gatewayResult.upstream,
+        smartflo: direct.upstream,
+      },
+    };
+  }
+
+  return gatewayResult;
 }
 
 /**
- * Same gateway URL as Call button — when Fresh/NEW lead is assigned
+ * Same dial path as Call button — when Fresh/NEW lead is assigned
  * and Auto-dial Fresh is ON.
  */
 export async function autoDialFreshLeadIfEnabled(input: {

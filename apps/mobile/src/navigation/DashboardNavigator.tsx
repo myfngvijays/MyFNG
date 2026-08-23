@@ -289,6 +289,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           component={require('../screens/dashboard/telecaller_crm/CrmReadMeScreen').default}
           options={{ title: 'ReadMe', headerShown: false }}
         />
+        <Stack.Screen
+          name="CrmDialer"
+          component={require('../screens/dashboard/telecaller_crm/CrmDialerScreen').default}
+          options={{ title: 'Dialer', headerShown: false }}
+        />
       </Stack.Navigator>
     );
   }
@@ -342,6 +347,11 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
           name="CrmReadMe"
           component={require('../screens/dashboard/telecaller_crm/CrmReadMeScreen').default}
           options={{ title: 'ReadMe', headerShown: false }}
+        />
+        <Stack.Screen
+          name="CrmDialer"
+          component={require('../screens/dashboard/telecaller_crm/CrmDialerScreen').default}
+          options={{ title: 'Dialer', headerShown: false }}
         />
         <Stack.Screen 
           name="LeadManagerReports" 

@@ -844,12 +844,30 @@ function TelecallerCrmLeadsContent() {
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
+                className={`w-full rounded-xl border border-slate-200 py-2 pl-9 text-sm ${
+                  q ? 'pr-9' : 'pr-3'
+                }`}
                 placeholder="Search name, phone, lead #"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && runSearch()}
               />
+              {q ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQ('');
+                    setAppliedQ('');
+                    persistAll({ q: '' });
+                    syncFiltersToUrl({ q: '' });
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
             </div>
             <div className="flex gap-2 shrink-0">
               <button

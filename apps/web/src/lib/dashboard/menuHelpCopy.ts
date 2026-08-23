@@ -40,6 +40,20 @@ const HEADER: Record<string, MenuHelpEntry> = {
 };
 
 const BY_HREF: Record<string, MenuHelpEntry> = {
+  '/dashboard/telecaller/dialer': {
+    title: 'Dialer',
+    body:
+      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.',
+    tips: [
+      'Click to Call setup me aapka from-number set hona chahiye.',
+      'Agar number pe pehle se lead hai to call log us lead pe attach ho sakta hai.',
+    ],
+  },
+  '/dashboard/lead_manager/dialer': {
+    title: 'Dialer',
+    body:
+      'Phone keypad se kisi bhi number pe Smartflo click-to-call. Lead optional — pehle aapka phone ring hota hai, uthane ke baad customer connect.',
+  },
   '/dashboard/lead_manager/click-to-call': {
     title: 'Click to Call',
     body:
@@ -58,6 +72,35 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Smartflo API token ki zaroorat nahi — sirf tumhara gateway URL.',
       'System Monitor me bhi is gateway ki health check dikhegi.',
     ],
+  },
+  '/dashboard/super_admin/recordings': {
+    title: 'Recordings',
+    body:
+      'Saari click-to-call recordings ek jagah — search by phone/name, date filter, Play / download.\n\nBookings & Leads pe bhi recording dikhti hai; yeh dedicated list hai audits / QA ke liye.',
+    tips: [
+      'Play pe click = in-page player (same as lead timeline).',
+      'Lead history link se full activity khulti hai.',
+      'Call Intelligence menu pe free quality / sentiment analytics milti hai.',
+    ],
+  },
+  '/dashboard/super_admin/call-intelligence': {
+    title: 'Call Intelligence',
+    body:
+      'Free call analytics: connect rate, talk time, recording coverage, call quality score, Hinglish sentiment & conversation tags, agent performance.\n\nPaid speech-to-text / OpenAI use nahi hota — notes + call metadata se insights.',
+    tips: [
+      'Migration 339_telecaller_call_analyses.sql run karo taaki scores save ho.',
+      'Recordings page pe Analyze se single call bhi score ho sakta hai.',
+    ],
+  },
+  '/dashboard/lead_manager/recordings': {
+    title: 'Recordings',
+    body:
+      'Team ki saari call recordings — search, date filter, Play.\n\nLeads pe bhi recording dikhti hai; yahan se alag se browse / QA kar sakte ho.',
+  },
+  '/dashboard/lead_manager/call-intelligence': {
+    title: 'Call Intelligence',
+    body:
+      'Team call analytics + agent performance + sentiment (free heuristics). Paid AI nahi.',
   },
   '/dashboard/lead_manager': {
     title: 'Home',

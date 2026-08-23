@@ -62,6 +62,8 @@ import {
   Link2,
   Workflow,
   PhoneCall,
+  Headphones,
+  Brain,
 } from 'lucide-react';
 
 type NavItem = {
@@ -99,6 +101,18 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/bookings',
     icon: ClipboardList,
     description: 'Service Leads & AI Bookings'
+  },
+  {
+    name: 'Recordings',
+    href: '/dashboard/super_admin/recordings',
+    icon: Headphones,
+    description: 'Call recordings play & search'
+  },
+  {
+    name: 'Call Intelligence',
+    href: '/dashboard/super_admin/call-intelligence',
+    icon: Brain,
+    description: 'Free call analytics, quality & sentiment'
   },
   {
     name: 'RSA',

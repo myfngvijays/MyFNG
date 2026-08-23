@@ -18,7 +18,9 @@ export async function clickToCallCustomer(opts: {
   customerPhone: string | null | undefined;
   leadId?: string | null;
   fallbackToDialer?: boolean;
-}): Promise<{ ok: boolean; error?: string }> {
+  /** When true, skip success Alert — caller shows its own UI (e.g. Dialer ringing sheet). */
+  silent?: boolean;
+}): Promise<{ ok: boolean; error?: string; message?: string; code?: string; sessionId?: string }> {
   const to = normalizePhone10(opts.customerPhone);
   if (!to) {
     Alert.alert('Call', 'Customer phone missing');
@@ -31,6 +33,7 @@ export async function clickToCallCustomer(opts: {
       error?: string;
       code?: string;
       message?: string;
+      session_id?: string;
     }>('/api/telecaller/click-to-call', {
       method: 'POST',
       body: JSON.stringify({
@@ -45,17 +48,24 @@ export async function clickToCallCustomer(opts: {
       });
     }
 
-    Alert.alert(
-      'Calling…',
-      String(
-        (json as any)?.message ||
-          'Answer your phone first — customer will be connected after you pick up.',
-      ),
+    const message = String(
+      (json as any)?.message ||
+        'Answer your phone first — customer will be connected after you pick up.',
     );
-    return { ok: true };
+
+    if (!opts.silent) {
+      Alert.alert('Calling…', message);
+    }
+    return {
+      ok: true,
+      message,
+      sessionId: (json as any)?.session_id ? String((json as any).session_id) : undefined,
+    };
   } catch (e: any) {
     const msg = String(e?.message || 'Click-to-call failed');
-    const missingAgent = e?.code === 'MISSING_AGENT_PHONE' || /from|agent phone|calling number/i.test(msg);
+    const code = e?.code ? String(e.code) : undefined;
+    const missingAgent =
+      code === 'MISSING_AGENT_PHONE' || /from|agent phone|calling number/i.test(msg);
 
     if (opts.fallbackToDialer !== false) {
       Alert.alert(
@@ -72,10 +82,12 @@ export async function clickToCallCustomer(opts: {
           },
         ],
       );
-      return { ok: false, error: msg };
+      return { ok: false, error: msg, code };
     }
 
-    Alert.alert('Call failed', msg);
-    return { ok: false, error: msg };
+    if (!opts.silent) {
+      Alert.alert('Call failed', msg);
+    }
+    return { ok: false, error: msg, code };
   }
 }

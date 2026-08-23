@@ -401,30 +401,46 @@ export default function TelecallerWhatsAppInbox({ visible, onClose }: Props) {
   );
 }
 
-/** Floating action button for telecaller WhatsApp inbox */
+/** Floating action buttons: Call (dialer) + WhatsApp — CRM shell */
 export function TelecallerWhatsAppFab({
   onPress,
+  onCallPress,
   badge,
   bottomOffset = 108,
 }: {
   onPress: () => void;
+  /** Opens CRM dialer when set */
+  onCallPress?: () => void;
   badge?: number;
   /** Clearance above bottom nav (CRM pill is taller) */
   bottomOffset?: number;
 }) {
   return (
-    <TouchableOpacity
-      style={[styles.fab, { bottom: bottomOffset }]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <Ionicons name="logo-whatsapp" size={26} color={COLORS.white} />
-      {badge && badge > 0 ? (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
-        </View>
+    <View style={[styles.fabStack, { bottom: bottomOffset }]} pointerEvents="box-none">
+      {onCallPress ? (
+        <TouchableOpacity
+          style={[styles.fab, styles.fabCall]}
+          onPress={onCallPress}
+          activeOpacity={0.85}
+          accessibilityLabel="Open dialer"
+        >
+          <Ionicons name="call" size={24} color={COLORS.white} />
+        </TouchableOpacity>
       ) : null}
-    </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.fab, styles.fabWhatsApp]}
+        onPress={onPress}
+        activeOpacity={0.85}
+        accessibilityLabel="Open WhatsApp"
+      >
+        <Ionicons name="logo-whatsapp" size={26} color={COLORS.white} />
+        {badge && badge > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -611,18 +627,27 @@ const styles = StyleSheet.create({
     color: WA.meta,
     fontSize: 15,
   },
-  fab: {
+  fabStack: {
     position: 'absolute',
     right: 18,
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 50,
+    elevation: 18,
+  },
+  fab: {
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#25D366',
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.large,
-    zIndex: 50,
-    elevation: 18,
+  },
+  fabCall: {
+    backgroundColor: COLORS.primary,
+  },
+  fabWhatsApp: {
+    backgroundColor: '#25D366',
   },
   badge: {
     position: 'absolute',

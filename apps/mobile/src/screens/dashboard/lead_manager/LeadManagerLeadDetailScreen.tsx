@@ -11,14 +11,13 @@ import {
   TextInput,
   Alert,
   BackHandler,
-  Linking,
 } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
 import { Icon } from '../../../components/Icon';
 import { supabase } from '../../../lib/supabase';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
-import { ENV } from '../../../config/environment';
+import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 
 export default function LeadManagerLeadDetailScreen({ navigation, route }: any) {
   const { leadId, mode = 'view' } = route.params;
@@ -66,6 +65,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
   const [leadEvents, setLeadEvents] = useState<any[]>([]);
   const [activityItems, setActivityItems] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [validationNotes, setValidationNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
@@ -214,23 +214,6 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
       setActivityItems([]);
     } finally {
       setActivityLoading(false);
-    }
-  };
-
-  const playCallRecording = async (callLogId: string) => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        Alert.alert('Sign in required', 'Recording play ke liye login chahiye.');
-        return;
-      }
-      const url = `${ENV.API_URL}/api/telecaller/calls/recording/${callLogId}?access_token=${encodeURIComponent(token)}`;
-      await Linking.openURL(url);
-    } catch (e: any) {
-      Alert.alert('Recording', e?.message || 'Failed to open');
     }
   };
 
@@ -899,6 +882,7 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                     Boolean(item?.meta?.has_call_recording)) &&
                   Boolean(callLogId);
                 const by = item?.meta?.by ? String(item.meta.by) : null;
+                const isPlaying = hasRec && playingCallLogId === callLogId;
                 return (
                   <View key={item.id || `${item.kind}-${item.at}`} style={styles.timelineItem}>
                     <View style={styles.timelineHeader}>
@@ -907,16 +891,20 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                       </Text>
                       {hasRec ? (
                         <TouchableOpacity
-                          onPress={() => void playCallRecording(callLogId)}
+                          onPress={() =>
+                            setPlayingCallLogId((prev) => (prev === callLogId ? null : callLogId))
+                          }
                           style={{
-                            backgroundColor: '#EDE9FE',
+                            backgroundColor: isPlaying ? '#DDD6FE' : '#EDE9FE',
                             paddingHorizontal: 10,
                             paddingVertical: 4,
                             borderRadius: 999,
                             marginLeft: 8,
                           }}
                         >
-                          <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>▶ Play</Text>
+                          <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>
+                            {isPlaying ? '■ Stop' : '▶ Play'}
+                          </Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
@@ -936,6 +924,12 @@ export default function LeadManagerLeadDetailScreen({ navigation, route }: any) 
                       <Text style={[styles.timelineMeta, { color: COLORS.textSecondary }]}>
                         No recording yet
                       </Text>
+                    ) : null}
+                    {isPlaying ? (
+                      <CallRecordingInlinePlayer
+                        callLogId={callLogId}
+                        onClose={() => setPlayingCallLogId(null)}
+                      />
                     ) : null}
                   </View>
                 );

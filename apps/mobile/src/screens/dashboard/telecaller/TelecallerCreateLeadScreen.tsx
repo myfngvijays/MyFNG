@@ -19,15 +19,19 @@ import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
 import * as Location from 'expo-location';
 
-export default function TelecallerCreateLeadScreen({ navigation }: any) {
+export default function TelecallerCreateLeadScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const prefillPhone = String(route?.params?.phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+
   const [formData, setFormData] = useState({
     // Customer Details
     customer_name: '',
-    customer_phone: '',
+    customer_phone: prefillPhone.length === 10 ? prefillPhone : '',
     customer_alternate_phone: '',
     customer_email: '',
     customer_address: '',

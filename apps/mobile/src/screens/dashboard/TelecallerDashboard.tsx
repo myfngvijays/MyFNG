@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import DashboardHeader from '../../components/DashboardHeader';
 import BottomNav from '../../components/BottomNav';
@@ -32,6 +33,7 @@ const GAP = 10;
 const KPI_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP) / 2;
 
 export default function TelecallerDashboard() {
+  const stackNav = useNavigation<any>();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [screenHistory, setScreenHistory] = useState<string[]>([]);
@@ -703,7 +705,16 @@ export default function TelecallerDashboard() {
         />
       )}
 
-      <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} />
+      <TelecallerWhatsAppFab
+        onPress={() => setWhatsAppOpen(true)}
+        onCallPress={() => {
+          try {
+            stackNav.navigate('CrmDialer');
+          } catch {
+            /* classic shell without dialer route */
+          }
+        }}
+      />
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
 
       <BottomNav

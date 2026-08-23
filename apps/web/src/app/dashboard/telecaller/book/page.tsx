@@ -175,6 +175,9 @@ function TelecallerCrmBookContent() {
   const pathname = usePathname();
   const { base, layoutRole, isLeadManager } = getCrmDashboardBase(pathname);
   const modeParam = searchParams?.get('mode');
+  const phoneParam = String(searchParams?.get('phone') || '')
+    .replace(/\D/g, '')
+    .slice(-10);
 
   /** null = chooser (Booking / Add Lead), same as mobile CrmBookChooser */
   const [mode, setMode] = useState<'book' | 'lead' | null>(
@@ -196,7 +199,10 @@ function TelecallerCrmBookContent() {
   const [activityTime, setActivityTime] = useState(nowTimeStr);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
-  const [form, setForm] = useState<FormState>(initialForm);
+  const [form, setForm] = useState<FormState>(() => ({
+    ...initialForm,
+    customer_phone: phoneParam.length === 10 ? phoneParam : '',
+  }));
   const [quote, setQuote] = useState<any>(null);
   const [catalogMeta, setCatalogMeta] = useState<Partial<CrmCatalogSelection>>({});
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -206,6 +212,13 @@ function TelecallerCrmBookContent() {
   useEffect(() => {
     if (modeParam === 'book' || modeParam === 'lead') setMode(modeParam);
   }, [modeParam]);
+
+  useEffect(() => {
+    if (phoneParam.length !== 10) return;
+    setForm((prev) =>
+      prev.customer_phone === phoneParam ? prev : { ...prev, customer_phone: phoneParam },
+    );
+  }, [phoneParam]);
 
   useEffect(() => {
     (async () => {

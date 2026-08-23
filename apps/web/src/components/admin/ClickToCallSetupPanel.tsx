@@ -709,8 +709,12 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
         </h2>
         <p className="text-sm text-slate-500 mb-3">
           Smartflo CDR se <code className="text-xs bg-slate-100 px-1 rounded">recording_url</code>{' '}
-          pull karke lead Call history pe Play dikhata hai. Manual sync ~last 6h (fast); cron har 15
-          min auto continue karta hai.
+          pull karke lead Call history pe Play dikhata hai. Only recordings from{' '}
+          <strong>22 Aug 2026</strong> onwards. Cron ON/OFF + interval:{' '}
+          <a href="/dashboard/super_admin/whatsapp-cron" className="text-sky-700 underline font-medium">
+            WhatsApp Cron Jobs
+          </a>{' '}
+          → Call recordings (Smartflo). Manual sync yahan se bhi.
         </p>
         <ul className="text-xs text-slate-600 space-y-1 mb-4 list-disc pl-5">
           <li>

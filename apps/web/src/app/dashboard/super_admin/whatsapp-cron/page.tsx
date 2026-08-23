@@ -69,6 +69,28 @@ type CronPayload = {
     canSendTemplate: boolean;
     body_preview?: string;
   } | null;
+  smartflo_recordings_cron?: {
+    id: string;
+    title: string;
+    description: string;
+    provider: string;
+    endpoint_path: string;
+    endpoint_url: string;
+    vercel_tick: string;
+    vercel_tick_label: string;
+    cutoff_ist: string;
+    allowed_intervals: number[];
+    setup_link: string;
+    enabled: boolean;
+    interval_minutes: number;
+    hours_back: number;
+    last_run_at: string | null;
+    last_run_ok: boolean | null;
+    last_run_summary: string | null;
+    last_skipped_at: string | null;
+    last_skip_reason: string | null;
+    schedule_label: string;
+  } | null;
 };
 
 export default function WhatsAppCronPage() {
@@ -82,6 +104,8 @@ export default function WhatsAppCronPage() {
   const [addingPhone, setAddingPhone] = useState(false);
   const [lastRun, setLastRun] = useState<Record<string, string>>({});
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [smartfloBusy, setSmartfloBusy] = useState(false);
+  const [smartfloRunning, setSmartfloRunning] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -157,6 +181,60 @@ export default function WhatsAppCronPage() {
       await load();
     } finally {
       setJobBusyId(null);
+    }
+  };
+
+  const updateSmartfloCron = async (patch: {
+    enabled?: boolean;
+    interval_minutes?: number;
+    hours_back?: number;
+  }) => {
+    setSmartfloBusy(true);
+    try {
+      const res = await fetch('/api/super_admin/whatsapp-cron', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-smartflo-recordings-cron', ...patch }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Failed to update Smartflo cron');
+      if (json?.smartflo_recordings_cron) {
+        setData((prev) =>
+          prev ? { ...prev, smartflo_recordings_cron: json.smartflo_recordings_cron } : prev,
+        );
+      }
+      toast.success('Smartflo recordings cron updated');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+      await load();
+    } finally {
+      setSmartfloBusy(false);
+    }
+  };
+
+  const runSmartfloCronNow = async () => {
+    setSmartfloRunning(true);
+    try {
+      const res = await fetch('/api/super_admin/whatsapp-cron', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run-smartflo-recordings-cron' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Smartflo sync failed');
+      if (json?.smartflo_recordings_cron) {
+        setData((prev) =>
+          prev ? { ...prev, smartflo_recordings_cron: json.smartflo_recordings_cron } : prev,
+        );
+      }
+      toast.success(
+        json?.message ||
+          `Synced ${json?.with_recording ?? 0} recording(s) from ${json?.fetched ?? 0} CDR row(s)`,
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Sync failed');
+    } finally {
+      setSmartfloRunning(false);
     }
   };
 
@@ -485,6 +563,155 @@ export default function WhatsAppCronPage() {
             Loading cron jobs…
           </div>
         ) : (
+          <>
+            {data?.smartflo_recordings_cron ? (
+              <div className="mb-4 overflow-hidden rounded-xl border border-sky-200 bg-white shadow-sm">
+                <div className="border-b border-sky-100 bg-sky-50/70 px-4 py-3">
+                  <p className="text-sm font-semibold text-sky-950">Call recordings (Smartflo)</p>
+                  <p className="text-xs text-sky-900/80">
+                    Vercel tick every 5 min — yahan se ON/OFF aur effective interval set karo.
+                  </p>
+                </div>
+                <div className="px-4 py-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-sm font-bold text-gray-900">
+                          {data.smartflo_recordings_cron.title}
+                        </h2>
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-800">
+                          vercel
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            data.smartflo_recordings_cron.enabled
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {data.smartflo_recordings_cron.enabled ? 'Will sync' : 'Off'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {data.smartflo_recordings_cron.description}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <span className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 font-semibold text-sky-900">
+                          <Clock3 className="h-3.5 w-3.5" />
+                          {data.smartflo_recordings_cron.schedule_label}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-lg border bg-gray-50 px-2.5 py-1 font-mono text-gray-700">
+                          tick: {data.smartflo_recordings_cron.vercel_tick}
+                        </span>
+                        <span className="rounded-lg border bg-gray-50 px-2.5 py-1 text-gray-600">
+                          Cutoff ≥ {data.smartflo_recordings_cron.cutoff_ist} IST
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-end gap-3">
+                        <label className="text-xs text-gray-600">
+                          Interval
+                          <select
+                            className="mt-1 block rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
+                            value={data.smartflo_recordings_cron.interval_minutes}
+                            disabled={smartfloBusy}
+                            onChange={(e) =>
+                              void updateSmartfloCron({
+                                interval_minutes: Number(e.target.value),
+                              })
+                            }
+                          >
+                            {(data.smartflo_recordings_cron.allowed_intervals || [5, 15, 30, 60]).map(
+                              (m) => (
+                                <option key={m} value={m}>
+                                  Every {m} min
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </label>
+                        <label className="text-xs text-gray-600">
+                          CDR lookback
+                          <select
+                            className="mt-1 block rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
+                            value={data.smartflo_recordings_cron.hours_back}
+                            disabled={smartfloBusy}
+                            onChange={(e) =>
+                              void updateSmartfloCron({ hours_back: Number(e.target.value) })
+                            }
+                          >
+                            {[3, 6, 12, 24, 48].map((h) => (
+                              <option key={h} value={h}>
+                                Last {h}h
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Link
+                          href={data.smartflo_recordings_cron.setup_link}
+                          className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100"
+                        >
+                          Click to Call setup
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
+
+                      {data.smartflo_recordings_cron.last_run_at ? (
+                        <p className="mt-2 text-[11px] text-gray-500">
+                          Last run:{' '}
+                          {new Date(data.smartflo_recordings_cron.last_run_at).toLocaleString('en-IN', {
+                            timeZone: 'Asia/Kolkata',
+                          })}
+                          {data.smartflo_recordings_cron.last_run_ok === false ? ' · failed' : ''}
+                          {data.smartflo_recordings_cron.last_run_summary
+                            ? ` · ${data.smartflo_recordings_cron.last_run_summary}`
+                            : ''}
+                        </p>
+                      ) : null}
+                      {data.smartflo_recordings_cron.last_skip_reason ? (
+                        <p className="mt-1 text-[11px] text-amber-700">
+                          Last skip: {data.smartflo_recordings_cron.last_skip_reason}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[11px] font-semibold ${
+                            data.smartflo_recordings_cron.enabled
+                              ? 'text-sky-700'
+                              : 'text-gray-400'
+                          }`}
+                        >
+                          {data.smartflo_recordings_cron.enabled ? 'ON' : 'OFF'}
+                        </span>
+                        <ToggleSwitch
+                          enabled={data.smartflo_recordings_cron.enabled}
+                          busy={smartfloBusy}
+                          onChange={(v) => void updateSmartfloCron({ enabled: v })}
+                          label="Toggle Smartflo recordings cron"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void runSmartfloCronNow()}
+                        disabled={smartfloRunning || smartfloBusy}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {smartfloRunning ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                        Run now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
           <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
             <div className="border-b bg-violet-50/60 px-4 py-3">
               <p className="text-sm font-semibold text-violet-950">Scheduled jobs (Supabase)</p>
@@ -628,6 +855,7 @@ export default function WhatsAppCronPage() {
               })}
             </div>
           </div>
+          </>
         )}
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">

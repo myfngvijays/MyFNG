@@ -15,7 +15,6 @@ import {
   Modal,
   Pressable,
   KeyboardAvoidingView,
-  Linking,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 // import { MaterialCommunityIcons } from '@expo/vector-icons'; // Removed - using emojis
@@ -28,7 +27,6 @@ import { parseIds } from '../../../lib/parseIds';
 import { openPhoneCall } from '../../../lib/phone';
 import { clickToCallCustomer } from '../../../lib/clickToCall';
 import { COLORS, SPACING } from '../../../constants/theme';
-import { ENV } from '../../../config/environment';
 import CarModelSearchField from '../../../components/CarModelSearchField';
 import LeadTagsPicker from '../../../components/telecaller/LeadTagsPicker';
 import CrmServicePlanPicker from '../../../components/telecaller/CrmServicePlanPicker';
@@ -36,6 +34,7 @@ import CrmPickupVisitStep, {
   type CrmPickupVisitValue,
 } from '../../../components/telecaller/CrmPickupVisitStep';
 import TelecallerWhatsAppChat from '../../../components/telecaller/TelecallerWhatsAppChat';
+import CallRecordingInlinePlayer from '../../../components/telecaller/CallRecordingInlinePlayer';
 import {
   resolveVehicleClass,
   resolveVehicleClassByMakeModel,
@@ -405,6 +404,9 @@ export default function TelecallerLeadDetailScreen({
   const [lead, setLead] = useState<any>(null);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [followUps, setFollowUps] = useState<any[]>([]);
+  const [timelineItems, setTimelineItems] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(true);
@@ -998,6 +1000,7 @@ export default function TelecallerLeadDetailScreen({
       });
       setEditing(true);
       await fetchLeadDetails();
+      void fetchActivityTimeline();
       Alert.alert('Updated', `Lead saved successfully.${waNote}`);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to update lead');
@@ -1012,53 +1015,153 @@ export default function TelecallerLeadDetailScreen({
       : statusOptions.find((r) => r.id === activityData.result) || RINGING;
 
   const activityItems = React.useMemo(() => {
-    const calls = (callLogs || []).map((log) => ({
-      id: `call-${log.id}`,
-      kind: 'call' as const,
-      callLogId: String(log.id || ''),
-      hasRecording: Boolean(log.call_recording_url) || Boolean(log.has_call_recording),
-      sortAt: log.created_at,
-      title: formatCallLogLabel(log.call_status, log.outcome, log.notes),
-      notes: stripDispositionPrefix(log.notes || ''),
-      badgeColor: getCallStatusColor(log.call_status, log.outcome),
-      timeLabel: formatDateTime(log.created_at),
-    }));
-    const fus = (followUps || []).map((fu) => ({
-      id: `fu-${fu.id}`,
-      kind: 'followup' as const,
-      callLogId: '',
-      hasRecording: false,
-      sortAt: fu.scheduled_time || fu.created_at,
-      title: 'Follow-up',
-      notes: fu.reason || '',
-      badgeColor: COLORS.primary + '22',
-      timeLabel: fu.scheduled_time
-        ? `Due ${formatDateTime(fu.scheduled_time)}`
-        : formatDateTime(fu.created_at),
-    }));
-    return [...calls, ...fus].sort(
+    type Item = {
+      id: string;
+      kind: 'call' | 'update' | 'followup' | 'other';
+      callLogId: string;
+      hasRecording: boolean;
+      sortAt: string;
+      title: string;
+      notes: string;
+      badgeColor: string;
+      timeLabel: string;
+      noRecordingYet: boolean;
+    };
+
+    const dedupeKey = (title: string, at: string) =>
+      `${String(title || '')
+        .trim()
+        .toLowerCase()
+        .slice(0, 80)}|${String(at || '').slice(0, 16)}`;
+
+    const seen = new Set<string>();
+    const pushUnique = (list: Item[], item: Item) => {
+      const key = dedupeKey(item.title, item.sortAt || '');
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(item);
+    };
+
+    const out: Item[] = [];
+
+    // 1) CRM timeline (calls + system + hist from API)
+    for (const item of timelineItems || []) {
+      const isCall = item.kind === 'call';
+      const callLogId = String(item?.meta?.call_log_id || '').trim();
+      const hasRecording =
+        (Boolean(item?.meta?.call_recording_url) ||
+          Boolean(item?.meta?.has_call_recording)) &&
+        Boolean(callLogId);
+      const isHist =
+        String(item.id || '').startsWith('hist-') ||
+        item.kind === 'system' ||
+        item.kind === 'booking';
+      pushUnique(out, {
+        id: String(item.id || `${item.kind}-${item.at}`),
+        kind: isCall ? 'call' : isHist ? 'update' : 'other',
+        callLogId,
+        hasRecording,
+        sortAt: String(item.at || ''),
+        title: String(item.title || 'Update'),
+        notes: String(item.body || '')
+          .replace(/\[Smartflo\]\s*/gi, '')
+          .replace(/\bSmartflo\b/gi, '')
+          .trim(),
+        badgeColor: isCall
+          ? getCallStatusColor(item?.meta?.call_status, item?.meta?.outcome)
+          : COLORS.orange + '22',
+        timeLabel: item.at
+          ? `${formatDateTime(item.at)}${item?.meta?.by ? ` · ${item.meta.by}` : ''}`
+          : '',
+        noRecordingYet: isCall && !hasRecording,
+      });
+    }
+
+    // 2) Local User History (coupon_meta.profile_history) — merge into Activity
+    for (let i = 0; i < (profileHistory || []).length; i++) {
+      const h = profileHistory[i] || {};
+      const at = String(h.at || '').trim();
+      if (!at) continue;
+      const title = String(h.summary || h.event || 'Updated').slice(0, 160);
+      const notes = [
+        h.previous_label || h.previous_status
+          ? `Before: ${h.previous_label || h.previous_status}`
+          : null,
+        h.workshop_name ? `Workshop: ${h.workshop_name}` : null,
+        [h.city, h.pincode].filter(Boolean).join(' · ') || null,
+        h.remark ? String(h.remark) : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      pushUnique(out, {
+        id: `hist-local-${i}-${at}`,
+        kind: 'update',
+        callLogId: '',
+        hasRecording: false,
+        sortAt: at,
+        title,
+        notes,
+        badgeColor: COLORS.orange + '22',
+        timeLabel: formatDateTime(at),
+        noRecordingYet: false,
+      });
+    }
+
+    // 3) Call logs fallback / fill gaps when timeline empty or missing a log
+    for (const log of callLogs || []) {
+      const id = String(log.id || '');
+      if (id && out.some((x) => x.callLogId === id)) continue;
+      const hasRecording =
+        Boolean(log.call_recording_url) || Boolean(log.has_call_recording);
+      pushUnique(out, {
+        id: `call-${id || log.created_at}`,
+        kind: 'call',
+        callLogId: id,
+        hasRecording,
+        sortAt: String(log.created_at || ''),
+        title: formatCallLogLabel(log.call_status, log.outcome, log.notes),
+        notes: stripDispositionPrefix(log.notes || ''),
+        badgeColor: getCallStatusColor(log.call_status, log.outcome),
+        timeLabel: formatDateTime(log.created_at),
+        noRecordingYet: !hasRecording,
+      });
+    }
+
+    for (const fu of followUps || []) {
+      pushUnique(out, {
+        id: `fu-${fu.id}`,
+        kind: 'followup',
+        callLogId: '',
+        hasRecording: false,
+        sortAt: String(fu.scheduled_time || fu.created_at || ''),
+        title: 'Follow-up',
+        notes: fu.reason || '',
+        badgeColor: COLORS.primary + '22',
+        timeLabel: fu.scheduled_time
+          ? `Due ${formatDateTime(fu.scheduled_time)}`
+          : formatDateTime(fu.created_at),
+        noRecordingYet: false,
+      });
+    }
+
+    return out.sort(
       (a, b) => new Date(b.sortAt || 0).getTime() - new Date(a.sortAt || 0).getTime(),
     );
-  }, [callLogs, followUps]);
+  }, [timelineItems, callLogs, followUps, profileHistory]);
 
-  const playCallRecording = async (callLogId: string) => {
-    if (!callLogId) return;
+  const fetchActivityTimeline = async () => {
+    if (!leadId) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        Alert.alert('Sign in required', 'Recording play ke liye login chahiye.');
-        return;
-      }
-      const url = `${ENV.API_URL}/api/telecaller/calls/recording/${callLogId}?access_token=${encodeURIComponent(token)}`;
-      const can = await Linking.canOpenURL(url);
-      if (!can) {
-        Alert.alert('Cannot open', 'Recording player open nahi ho paya.');
-        return;
-      }
-      await Linking.openURL(url);
-    } catch (e: any) {
-      Alert.alert('Recording', e?.message || 'Failed to open recording');
+      setTimelineLoading(true);
+      const data = await apiFetch<{ items?: any[] }>(
+        `/api/telecaller/crm/lead-timeline?lead_id=${encodeURIComponent(leadId)}`,
+      );
+      setTimelineItems(Array.isArray(data?.items) ? data.items : []);
+    } catch (error) {
+      console.error('Error fetching activity timeline:', error);
+      setTimelineItems([]);
+    } finally {
+      setTimelineLoading(false);
     }
   };
 
@@ -1185,7 +1288,9 @@ export default function TelecallerLeadDetailScreen({
 
   useEffect(() => {
     fetchLeadDetails();
-  }, []);
+    void fetchActivityTimeline();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]);
 
   useEffect(() => {
     if (!lead) return;
@@ -1333,10 +1438,15 @@ export default function TelecallerLeadDetailScreen({
         }
       }
 
-      // Fetch call logs via API (matches web behavior)
+      // Fetch call logs via API (matches web behavior; mobile Bearer auth)
       try {
-        const callData = await apiFetch<{ call_logs: any[] }>(`/api/telecaller/calls/${leadId}`);
-        setCallLogs(callData.call_logs || []);
+        const callData = await apiFetch<{ call_logs: any[]; total?: number }>(
+          `/api/telecaller/calls/${leadId}`,
+        );
+        const logs = Array.isArray(callData.call_logs) ? callData.call_logs : [];
+        setCallLogs(logs);
+        const total = Number(callData.total ?? logs.length) || 0;
+        setLead((prev: any) => (prev ? { ...prev, total_calls: total } : prev));
       } catch (err) {
         console.error('Error fetching call logs:', err);
         setCallLogs([]);
@@ -1362,6 +1472,7 @@ export default function TelecallerLeadDetailScreen({
   const onRefresh = () => {
     setRefreshing(true);
     fetchLeadDetails();
+    void fetchActivityTimeline();
   };
 
   const handlePickerChange = (_event: any, selectedDate?: Date) => {
@@ -1498,6 +1609,7 @@ export default function TelecallerLeadDetailScreen({
       });
       setShowActivityForm(false);
       fetchLeadDetails();
+      void fetchActivityTimeline();
       Alert.alert('Saved', statusLabel);
     } catch (error) {
       console.error('Error saving activity:', error);
@@ -1808,7 +1920,7 @@ export default function TelecallerLeadDetailScreen({
           <View style={[styles.statIconWrap, { backgroundColor: COLORS.primary + '15' }]}>
             <Icon name="phone" size={18} color={COLORS.primary} />
           </View>
-          <Text style={styles.statValue}>{lead.total_calls || 0}</Text>
+          <Text style={styles.statValue}>{callLogs.length || lead.total_calls || 0}</Text>
           <Text style={styles.statLabel}>Total Calls</Text>
         </View>
         <View style={styles.statDivider} />
@@ -2383,7 +2495,7 @@ export default function TelecallerLeadDetailScreen({
                 title=""
               />
 
-              <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Activity</Text>
+              <Text style={[styles.fieldCaption, { marginTop: 14 }]}>Call result</Text>
               <Text style={styles.formLabel}>Quick</Text>
               <View style={styles.chipRow}>
                 <TouchableOpacity
@@ -2660,34 +2772,24 @@ export default function TelecallerLeadDetailScreen({
         </View>
       </View>
 
-      {/* Workshop Info */}
-      {lead.workshop && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Workshop Assigned</Text>
-          <View style={styles.sectionContent}>
-            <InfoRow icon="store" label="Name" value={lead.workshop.name} />
-            <InfoRow icon="map-marker" label="City" value={lead.workshop.city} />
-            <InfoRow icon="phone" label="Phone" value={lead.workshop.phone} />
-          </View>
-        </View>
-      )}
-
-      {/* Activity — calls + call-later in one place */}
-      {!editing ? (
-      <>
+      {/* Activity timeline — always visible in edit + view (same CRM API as web / LM) */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Activity ({activityItems.length})</Text>
-          <TouchableOpacity
-            style={styles.addIconBtn}
-            onPress={() => setShowActivityForm(!showActivityForm)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Icon name="plus-circle" size={26} color={COLORS.primary} />
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>
+            Activity{activityItems.length > 0 ? ` (${activityItems.length})` : ''}
+          </Text>
+          {!editing ? (
+            <TouchableOpacity
+              style={styles.addIconBtn}
+              onPress={() => setShowActivityForm(!showActivityForm)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Icon name="plus-circle" size={26} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {showActivityForm && (
+        {!editing && showActivityForm ? (
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>Log Call</Text>
 
@@ -2804,7 +2906,10 @@ export default function TelecallerLeadDetailScreen({
             <View style={styles.formButtons}>
               <TouchableOpacity
                 style={[styles.formButton, styles.formButtonPrimary]}
-                onPress={handleSaveActivity}
+                onPress={async () => {
+                  await handleSaveActivity();
+                  void fetchActivityTimeline();
+                }}
               >
                 <Text style={styles.formButtonTextPrimary}>Save</Text>
               </TouchableOpacity>
@@ -2816,88 +2921,78 @@ export default function TelecallerLeadDetailScreen({
               </TouchableOpacity>
             </View>
           </View>
-        )}
+        ) : null}
 
         <View style={styles.sectionContent}>
-          {activityItems.length === 0 ? (
+          {timelineLoading && activityItems.length === 0 ? (
+            <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
+          ) : activityItems.length === 0 ? (
             <Text style={styles.emptyText}>No activity yet</Text>
           ) : (
-            activityItems.map((item) => (
-              <View key={item.id} style={styles.logCard}>
-                <View style={styles.logHeader}>
-                  <View style={[styles.logBadge, { backgroundColor: item.badgeColor }]}>
-                    <Text style={styles.logBadgeText}>{item.title}</Text>
+            activityItems.map((item) => {
+              const isPlaying =
+                item.kind === 'call' &&
+                item.hasRecording &&
+                item.callLogId &&
+                playingCallLogId === item.callLogId;
+              return (
+                <View key={item.id} style={styles.logCard}>
+                  <View style={styles.logHeader}>
+                    <View style={[styles.logBadge, { backgroundColor: item.badgeColor }]}>
+                      <Text style={styles.logBadgeText}>{item.title}</Text>
+                    </View>
+                    {item.kind === 'call' && item.hasRecording && item.callLogId ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          setPlayingCallLogId((prev) =>
+                            prev === item.callLogId ? null : item.callLogId,
+                          )
+                        }
+                        style={{
+                          marginLeft: 'auto',
+                          backgroundColor: isPlaying ? '#DDD6FE' : '#EDE9FE',
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                        }}
+                      >
+                        <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>
+                          {isPlaying ? '■ Stop' : '▶ Play'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
-                  {item.kind === 'call' && item.hasRecording && item.callLogId ? (
-                    <TouchableOpacity
-                      onPress={() => void playCallRecording(item.callLogId)}
-                      style={{
-                        marginLeft: 'auto',
-                        backgroundColor: '#EDE9FE',
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
-                        borderRadius: 999,
-                      }}
-                    >
-                      <Text style={{ color: '#5B21B6', fontSize: 11, fontWeight: '700' }}>
-                        ▶ Play
-                      </Text>
-                    </TouchableOpacity>
+                  {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
+                  <Text style={styles.logTime}>{item.timeLabel}</Text>
+                  {item.noRecordingYet ? (
+                    <Text style={[styles.logNotes, { color: COLORS.textSecondary }]}>
+                      No recording yet
+                    </Text>
+                  ) : null}
+                  {isPlaying ? (
+                    <CallRecordingInlinePlayer
+                      callLogId={item.callLogId}
+                      onClose={() => setPlayingCallLogId(null)}
+                    />
                   ) : null}
                 </View>
-                {item.notes ? <Text style={styles.logNotes}>{item.notes}</Text> : null}
-                <Text style={styles.logTime}>{item.timeLabel}</Text>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
       </View>
 
-      {/* User History — TeleCRM-style timeline (status, rebook, profile) */}
-      <View style={styles.section}>
-        <View style={styles.sectionTitleRow}>
-          <View style={[styles.sectionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-            <Icon name="history" size={16} color={COLORS.orange} />
+      {/* Workshop Info */}
+      {lead.workshop && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Workshop Assigned</Text>
+          <View style={styles.sectionContent}>
+            <InfoRow icon="store" label="Name" value={lead.workshop.name} />
+            <InfoRow icon="map-marker" label="City" value={lead.workshop.city} />
+            <InfoRow icon="phone" label="Phone" value={lead.workshop.phone} />
           </View>
-          <Text style={styles.sectionTitle}>
-            User History ({profileHistory.length})
-          </Text>
         </View>
-        <View style={styles.sectionContent}>
-          {profileHistory.length === 0 ? (
-            <Text style={styles.emptyText}>No history yet</Text>
-          ) : (
-            profileHistory.map((item: any, idx: number) => (
-              <View key={`${item.at || idx}-${idx}`} style={styles.logCard}>
-                <View style={styles.logHeader}>
-                  <View style={[styles.logBadge, { backgroundColor: COLORS.orange + '22' }]}>
-                    <Text style={styles.logBadgeText}>{item.summary || 'Updated'}</Text>
-                  </View>
-                </View>
-                {item.previous_label || item.previous_status ? (
-                  <Text style={styles.logNotes}>
-                    Before: {item.previous_label || item.previous_status}
-                  </Text>
-                ) : null}
-                {item.workshop_name ? (
-                  <Text style={styles.logNotes}>Workshop: {item.workshop_name}</Text>
-                ) : null}
-                {item.city || item.pincode ? (
-                  <Text style={styles.logNotes}>
-                    {[item.city, item.pincode].filter(Boolean).join(' · ')}
-                  </Text>
-                ) : null}
-                {item.remark ? <Text style={styles.logNotes}>{item.remark}</Text> : null}
-                <Text style={styles.logTime}>
-                  {item.at ? formatDateTime(item.at) : '—'}
-                </Text>
-              </View>
-            ))
-          )}
-        </View>
-      </View>
-      </>
-      ) : null}
+      )}
     </ScrollView>
 
     {pickerMode ? (

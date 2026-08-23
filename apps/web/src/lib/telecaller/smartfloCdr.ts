@@ -9,6 +9,38 @@ import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
 
 export const SMARTFLO_API_BASE = 'https://api-smartflo.tatateleservices.com/v1';
 
+/**
+ * Only sync/attach call recordings on/after this IST calendar day.
+ * Older Smartflo CDRs are ignored (and detached from CRM call logs).
+ */
+export const SMARTFLO_RECORDINGS_CUTOFF_IST = '2026-08-22';
+
+/** Smartflo query from_date floor: start of cutoff day in IST wall clock. */
+export function smartfloRecordingsMinFrom(): string {
+  return `${SMARTFLO_RECORDINGS_CUTOFF_IST} 00:00:00`;
+}
+
+/** UTC instant for start of cutoff day (IST midnight). */
+export function smartfloRecordingsCutoffIso(): string {
+  return `${SMARTFLO_RECORDINGS_CUTOFF_IST}T00:00:00+05:30`;
+}
+
+export function isBeforeSmartfloRecordingsCutoff(
+  startedAt?: string | null,
+  endedAt?: string | null,
+  fallbackCreatedAt?: string | null,
+): boolean {
+  const cutoffMs = Date.parse(smartfloRecordingsCutoffIso());
+  if (!Number.isFinite(cutoffMs)) return false;
+  for (const raw of [startedAt, endedAt, fallbackCreatedAt]) {
+    const s = String(raw || '').trim();
+    if (!s) continue;
+    const t = Date.parse(s);
+    if (Number.isFinite(t)) return t < cutoffMs;
+  }
+  return false;
+}
+
 export type SmartfloCdrRecord = {
   id?: string;
   call_id?: string;
@@ -45,6 +77,8 @@ export type SyncSmartfloRecordingsResult = {
   pages: number;
   truncated?: boolean;
   elapsed_ms?: number;
+  repair?: { scanned: number; repaired: number; created_logs: number };
+  detach?: { cleared_logs: number; cleared_cdr_links: number };
 };
 
 function digitsOnly(raw: unknown): string {
@@ -267,17 +301,19 @@ async function findOrAttachCallLog(input: {
   // that was overwriting call #1 when call #2 synced.
   if (leadId || phone10) {
     const center = startedAt ? new Date(startedAt).getTime() : Date.now();
-    const fromIso = new Date(center - 2 * 60 * 60 * 1000).toISOString();
+    const fromIso = new Date(center - 6 * 60 * 60 * 1000).toISOString();
     const toIso = new Date(center + 2 * 60 * 60 * 1000).toISOString();
 
     let q = db
       .from('telecaller_call_logs')
-      .select('id, lead_id, phone_number, call_recording_url, created_at, smartflo_call_id, notes')
+      .select(
+        'id, lead_id, phone_number, call_recording_url, created_at, smartflo_call_id, notes, call_status',
+      )
       .gte('created_at', fromIso)
       .lte('created_at', toIso)
       .is('smartflo_call_id', null)
       .order('created_at', { ascending: false })
-      .limit(40);
+      .limit(60);
 
     if (leadId) q = q.eq('lead_id', leadId);
 
@@ -288,45 +324,69 @@ async function findOrAttachCallLog(input: {
       if (phone10 && r.phone_number) {
         return normalizePhone10(r.phone_number) === phone10;
       }
-      return true;
+      // lead-scoped pending RINGING / dialer stubs without phone still OK
+      const st = String(r.call_status || '').toUpperCase();
+      const notes = String(r.notes || '');
+      return (
+        st === 'RINGING' ||
+        notes.includes('Dial initiated') ||
+        notes.includes('Number dial') ||
+        notes.includes('Auto-dial')
+      );
     });
 
-    // Prefer closest in time to CDR start
+    // Prefer closest in time to CDR start; prefer RINGING dialer stubs
     rows.sort((a: any, b: any) => {
-      const da = Math.abs(new Date(a.created_at).getTime() - center);
-      const db_ = Math.abs(new Date(b.created_at).getTime() - center);
-      return da - db_;
+      const score = (r: any) => {
+        const da = Math.abs(new Date(r.created_at).getTime() - center);
+        const boost =
+          String(r.call_status || '').toUpperCase() === 'RINGING' ||
+          String(r.notes || '').includes('Dial')
+            ? -60_000
+            : 0;
+        return da + boost;
+      };
+      return score(a) - score(b);
     });
 
     const hit = rows[0];
     if (hit?.id) {
       const patch: Record<string, unknown> = {
         smartflo_call_id: callId,
-        smartflo_recording_synced_at: new Date().toISOString(),
+        smartflo_recording_synced_at: recordingUrl
+          ? new Date().toISOString()
+          : null,
       };
       if (recordingUrl) patch.call_recording_url = recordingUrl;
       if (duration != null) patch.call_duration = duration;
       if (phone10 && !hit.phone_number) patch.phone_number = phone10;
       const statusUpper = String(status || '').toUpperCase();
-      if (statusUpper.includes('ANSWER') || statusUpper === 'ANSWERED') {
+      if (
+        statusUpper.includes('ANSWER') ||
+        statusUpper === 'ANSWERED' ||
+        (duration != null && duration > 0)
+      ) {
         patch.call_status = 'ANSWERED';
       } else if (statusUpper.includes('MISS') || statusUpper.includes('NO_ANSWER')) {
         patch.call_status = 'NO_ANSWER';
       }
-      // Keep click-to-call pending note readable
-      if (String(hit.notes || '').includes('Dial initiated') || String(hit.notes || '').includes('Auto-dial')) {
-        patch.notes = 'Recording synced';
+      if (
+        String(hit.notes || '').includes('Dial initiated') ||
+        String(hit.notes || '').includes('Auto-dial') ||
+        String(hit.notes || '').includes('Number dial')
+      ) {
+        patch.notes = recordingUrl ? 'Recording synced' : 'Call synced from Smartflo CDR';
       }
       await db.from('telecaller_call_logs').update(patch).eq('id', hit.id);
       return { callLogId: String(hit.id), updated: true, created: false };
     }
   }
 
-  // 3) Always create a new call log for a new Smartflo call_id (2nd, 3rd call…)
-  if (leadId && recordingUrl) {
+  // 3) New Smartflo call_id → create log when we have recording OR answered duration
+  if (leadId && (recordingUrl || (duration != null && duration > 0))) {
     const statusUpper = String(status || '').toUpperCase();
     const callStatus =
-      statusUpper.includes('ANSWER') || statusUpper === 'ANSWERED'
+      statusUpper.includes('ANSWER') || statusUpper === 'ANSWERED' || (duration != null && duration > 0)
         ? 'ANSWERED'
         : statusUpper.includes('MISS') || statusUpper.includes('NO_ANSWER')
           ? 'NO_ANSWER'
@@ -361,11 +421,11 @@ async function findOrAttachCallLog(input: {
         call_type: 'OUTBOUND',
         call_status: callStatus,
         call_duration: duration,
-        notes: 'Recording synced',
+        notes: recordingUrl ? 'Recording synced' : 'Call synced from Smartflo CDR',
         phone_number: phone10,
         call_recording_url: recordingUrl,
         smartflo_call_id: callId,
-        smartflo_recording_synced_at: new Date().toISOString(),
+        smartflo_recording_synced_at: recordingUrl ? new Date().toISOString() : null,
         created_at: startedAt || new Date().toISOString(),
       })
       .select('id')
@@ -434,8 +494,27 @@ export async function upsertSmartfloRecording(
   const hasRecording = Boolean(recordingUrl);
   const onlyAttachIfRecording = opts?.onlyAttachIfRecording !== false;
 
-  // Fast path: no audio → light upsert only (no lead/log matching)
-  if (onlyAttachIfRecording && !hasRecording) {
+  // Hard product cutoff: ignore recordings before 22 Aug 2026 (IST)
+  if (isBeforeSmartfloRecordingsCutoff(startedAt, endedAt)) {
+    return {
+      recordingRowId: null,
+      callLogId: null,
+      leadId: null,
+      updatedLog: false,
+      createdLog: false,
+      hasRecording: false,
+      skippedAttach: true,
+    };
+  }
+
+  // Fast path: no audio AND no useful outcome → skip expensive lead/log matching.
+  // CDRs with duration/answered/missed must still heal pending RINGING stubs.
+  const statusStr = String(rec.status || rec.hangup_cause || '');
+  const meaningfulOutcome =
+    (duration != null && duration > 0) ||
+    /answer|miss|no[_\s-]?answer|not[_\s-]?connected|completed|hangup/i.test(statusStr);
+
+  if (onlyAttachIfRecording && !hasRecording && !meaningfulOutcome) {
     const { data: upserted, error: upErr } = await db
       .from('smartflo_call_recordings')
       .upsert(
@@ -565,6 +644,15 @@ export async function repairDetachedSmartfloRecordings(limit = 200): Promise<{
     const callId = String(row.smartflo_call_id || '').trim();
     const recordingUrl = String(row.recording_url || '').trim();
     if (!callId || !recordingUrl) continue;
+
+    if (
+      isBeforeSmartfloRecordingsCutoff(
+        row.started_at ? String(row.started_at) : null,
+        row.ended_at ? String(row.ended_at) : null,
+      )
+    ) {
+      continue;
+    }
 
     const { data: linked } = await db
       .from('telecaller_call_logs')
@@ -698,6 +786,84 @@ async function mapPool<T, R>(
   return out;
 }
 
+/**
+ * Strip recording URLs from CRM call logs that started before the cutoff,
+ * so already-synced older recordings disappear from Activity / Play.
+ */
+export async function detachPreCutoffSmartfloRecordings(): Promise<{
+  cleared_logs: number;
+  cleared_cdr_links: number;
+}> {
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return { cleared_logs: 0, cleared_cdr_links: 0 };
+  const db = supabaseAdmin;
+  const cutoffIso = new Date(smartfloRecordingsCutoffIso()).toISOString();
+
+  const { data: cleared, error } = await db
+    .from('telecaller_call_logs')
+    .update({
+      call_recording_url: null,
+      smartflo_recording_synced_at: null,
+    })
+    .not('call_recording_url', 'is', null)
+    .neq('call_recording_url', '')
+    .lt('created_at', cutoffIso)
+    .select('id');
+
+  if (error) {
+    console.warn('[smartfloCdr] detach pre-cutoff logs failed:', error.message);
+  }
+
+  const { data: oldCdr } = await db
+    .from('smartflo_call_recordings')
+    .select('id, call_log_id, smartflo_call_id, started_at, ended_at, created_at')
+    .not('recording_url', 'is', null)
+    .neq('recording_url', '')
+    .or(`started_at.lt.${cutoffIso},and(started_at.is.null,created_at.lt.${cutoffIso})`)
+    .limit(2000);
+
+  let cleared_cdr_links = 0;
+  for (const row of Array.isArray(oldCdr) ? oldCdr : []) {
+    if (
+      !isBeforeSmartfloRecordingsCutoff(
+        row.started_at ? String(row.started_at) : null,
+        row.ended_at ? String(row.ended_at) : null,
+        row.created_at ? String(row.created_at) : null,
+      )
+    ) {
+      continue;
+    }
+    const logId = String(row.call_log_id || '').trim();
+    const callId = String(row.smartflo_call_id || '').trim();
+    if (logId) {
+      await db
+        .from('telecaller_call_logs')
+        .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+        .eq('id', logId);
+    }
+    if (callId) {
+      await db
+        .from('telecaller_call_logs')
+        .update({ call_recording_url: null, smartflo_recording_synced_at: null })
+        .eq('smartflo_call_id', callId);
+    }
+    await db
+      .from('smartflo_call_recordings')
+      .update({
+        call_log_id: null,
+        matched_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+    cleared_cdr_links += 1;
+  }
+
+  return {
+    cleared_logs: Array.isArray(cleared) ? cleared.length : 0,
+    cleared_cdr_links,
+  };
+}
+
 export async function syncSmartfloRecordings(input?: {
   hoursBack?: number;
   fromDate?: string;
@@ -728,9 +894,27 @@ export async function syncSmartfloRecordings(input?: {
 
   const hoursBack = Math.min(72, Math.max(1, input?.hoursBack ?? 6));
   const to = input?.toDate || formatSmartfloDateTime(new Date());
-  const from =
+  const minFrom = smartfloRecordingsMinFrom();
+  let from =
     input?.fromDate ||
     formatSmartfloDateTime(new Date(Date.now() - hoursBack * 60 * 60 * 1000));
+  // Never request / sync CDR earlier than product cutoff (22 Aug 2026 IST)
+  if (from < minFrom) from = minFrom;
+  if (to < minFrom) {
+    return {
+      ok: true,
+      fetched: 0,
+      upserted: 0,
+      matched: 0,
+      updated_logs: 0,
+      created_logs: 0,
+      with_recording: 0,
+      from_date: minFrom,
+      to_date: to,
+      pages: 0,
+      elapsed_ms: Date.now() - started,
+    };
+  }
 
   const maxPages = Math.min(20, Math.max(1, input?.maxPages ?? 3));
   const timeBudgetMs = Math.min(110_000, Math.max(15_000, input?.timeBudgetMs ?? 55_000));
@@ -825,6 +1009,48 @@ export async function syncSmartfloRecordings(input?: {
     page += 1;
   }
 
+  // Heal: re-attach stored CDRs that never linked to a call log (RINGING stubs, late audio)
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (supabaseAdmin) {
+      const sinceIso = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+      const { data: orphans } = await supabaseAdmin
+        .from('smartflo_call_recordings')
+        .select('*')
+        .is('call_log_id', null)
+        .gte('started_at', sinceIso)
+        .order('started_at', { ascending: false })
+        .limit(80);
+      for (const row of orphans || []) {
+        if (Date.now() - started > timeBudgetMs) break;
+        const rec: SmartfloCdrRecord = {
+          call_id: String((row as any).smartflo_call_id || ''),
+          client_number: (row as any).client_number,
+          agent_number: (row as any).agent_number,
+          did_number: (row as any).did_number,
+          direction: (row as any).direction,
+          status: (row as any).status,
+          call_duration: (row as any).call_duration,
+          answered_seconds: (row as any).answered_seconds,
+          recording_url: (row as any).recording_url,
+          date: (row as any).started_at,
+        };
+        if (!rec.call_id) continue;
+        const r = await upsertSmartfloRecording(rec, 'cdr', {
+          leadCache,
+          onlyAttachIfRecording: false,
+          skipRaw: true,
+        });
+        if (r.callLogId) matched += 1;
+        if (r.updatedLog) updated_logs += 1;
+        if (r.createdLog) created_logs += 1;
+        if (r.hasRecording) with_recording += 1;
+      }
+    }
+  } catch (e) {
+    console.warn('[smartfloCdr] orphan heal failed:', e);
+  }
+
   // Split wrongly-merged CDRs onto separate call logs
   let repair = { scanned: 0, repaired: 0, created_logs: 0 };
   try {
@@ -832,6 +1058,13 @@ export async function syncSmartfloRecordings(input?: {
     created_logs += repair.created_logs;
   } catch (e) {
     console.warn('[smartfloCdr] repair failed:', e);
+  }
+
+  let detach = { cleared_logs: 0, cleared_cdr_links: 0 };
+  try {
+    detach = await detachPreCutoffSmartfloRecordings();
+  } catch (e) {
+    console.warn('[smartfloCdr] detach pre-cutoff failed:', e);
   }
 
   return {
@@ -848,6 +1081,7 @@ export async function syncSmartfloRecordings(input?: {
     truncated,
     elapsed_ms: Date.now() - started,
     repair,
+    detach,
   };
 }
 

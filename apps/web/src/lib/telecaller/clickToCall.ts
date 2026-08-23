@@ -18,6 +18,7 @@ export type ClickToCallResult = {
   from?: string;
   to?: string;
   message?: string;
+  sessionId?: string;
 };
 
 export async function requestClickToCall(input: {
@@ -54,6 +55,7 @@ export async function requestClickToCall(input: {
       from: json?.from ? String(json.from) : undefined,
       to: json?.to ? String(json.to) : to,
       message: String(json?.message || 'Call initiated'),
+      sessionId: json?.session_id ? String(json.session_id) : undefined,
     };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Network error' };

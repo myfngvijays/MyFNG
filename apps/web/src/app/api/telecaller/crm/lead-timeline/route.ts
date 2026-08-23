@@ -265,6 +265,25 @@ export async function GET(request: NextRequest) {
       const isMerge = event === 'PHONE_DUPLICATE_MERGED';
       if (isMerge && h.previous_label) histMergeIds.add(String(h.previous_label));
       const statusLabel = friendlyPipelineStatus(h.status || h.previous_status);
+      const histBody = isMerge
+        ? [
+            h.previous_label ? `Lead # ${h.previous_label}` : null,
+            `Status: ${statusLabel}`,
+            String(h.summary || '').replace(/^Earlier lead[^.]*merged[^·]*·?\s*/i, '').trim() ||
+              null,
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : [
+            h.previous_label || h.previous_status
+              ? `Before: ${h.previous_label || friendlyPipelineStatus(h.previous_status)}`
+              : null,
+            h.workshop_name ? `Workshop: ${h.workshop_name}` : null,
+            [h.city, h.pincode].filter(Boolean).join(' · ') || null,
+            h.remark ? String(h.remark) : null,
+          ]
+            .filter(Boolean)
+            .join('\n') || null;
       items.push({
         id: `hist-${leadId}-${i}`,
         kind: isMerge ? 'booking' : 'system',
@@ -272,22 +291,13 @@ export async function GET(request: NextRequest) {
         title: isMerge
           ? `Earlier booking merged · was ${statusLabel}`
           : String(h.summary || h.event || 'History').slice(0, 160),
-        body: isMerge
-          ? [
-              h.previous_label ? `Lead # ${h.previous_label}` : null,
-              `Status: ${statusLabel}`,
-              String(h.summary || '').replace(/^Earlier lead[^.]*merged[^·]*·?\s*/i, '').trim() ||
-                null,
-            ]
-              .filter(Boolean)
-              .join('\n')
-          : h.previous_label
-            ? `Previous: ${h.previous_label}${h.previous_status ? ` · ${friendlyPipelineStatus(h.previous_status)}` : ''}`
-            : null,
+        body: histBody,
         meta: {
           event: h.event || null,
           status: h.status || null,
           status_label: statusLabel,
+          workshop_name: h.workshop_name || null,
+          remark: h.remark || null,
         },
       });
     }

@@ -1985,22 +1985,41 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
       .not('recording_url', 'is', null)
       .gte('created_at', since);
 
+    let cronEnabled = true;
+    let cronInterval = 15;
+    try {
+      const { getSmartfloRecordingsCronSettings } = await import(
+        '@/lib/telecaller/smartfloRecordingsCronSettings'
+      );
+      const cron = await getSmartfloRecordingsCronSettings();
+      cronEnabled = cron.enabled;
+      cronInterval = cron.interval_minutes;
+    } catch {
+      /* ignore */
+    }
+
     return {
       name: 'Smartflo Call Recordings',
       category: 'Third Party',
-      status: 'healthy',
+      status: cronEnabled ? 'healthy' : 'degraded',
       responseTime: Date.now() - start,
-      message: 'CDR sync ready (token + table OK)',
-      reason: `${withRec || 0} recording URL(s) ingested in last 48h. Cron /api/cron/smartflo-recordings every 15m; webhook /api/webhooks/smartflo optional.`,
+      message: cronEnabled
+        ? `CDR sync ready · every ${cronInterval}m`
+        : 'CDR cron is OFF in admin',
+      reason: cronEnabled
+        ? `${withRec || 0} recording URL(s) ingested in last 48h. Cron /api/cron/smartflo-recordings every ${cronInterval}m (admin); webhook /api/webhooks/smartflo optional.`
+        : 'Enable Smartflo recordings cron on WhatsApp Cron Jobs page to resume auto-sync.',
       lastChecked: new Date().toISOString(),
       quickFix: {
-        label: 'Open Click to Call setup',
+        label: 'Open recordings cron controls',
         action: 'internal-link',
-        actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+        actionPayload: { url: '/dashboard/super_admin/whatsapp-cron' },
       },
       details: {
         has_token: true,
         recordings_48h: withRec || 0,
+        cron_enabled: cronEnabled,
+        cron_interval_minutes: cronInterval,
         cron: '/api/cron/smartflo-recordings',
         webhook: '/api/webhooks/smartflo',
         SMARTFLO_WEBHOOK_SECRET: Boolean(process.env.SMARTFLO_WEBHOOK_SECRET),
@@ -2013,6 +2032,168 @@ async function checkSmartfloRecordings(): Promise<HealthCheck> {
       status: 'degraded',
       responseTime: Date.now() - start,
       message: 'Recordings check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSmartfloDialSessions(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return {
+        name: 'Smartflo Live Dial UI',
+        category: 'Third Party',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Admin DB client unavailable',
+        reason: 'Cannot verify smartflo_dial_sessions.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const { error } = await supabaseAdmin
+      .from('smartflo_dial_sessions')
+      .select('id', { count: 'exact', head: true })
+      .limit(1);
+
+    if (error) {
+      const missing =
+        /does not exist|schema cache|relation/i.test(error.message || '') ||
+        error.code === '42P01' ||
+        error.code === 'PGRST205';
+      return {
+        name: 'Smartflo Live Dial UI',
+        category: 'Third Party',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: missing
+          ? 'Migration pending: smartflo_dial_sessions'
+          : 'Dial sessions probe inconclusive',
+        reason: missing
+          ? 'Run database/338_smartflo_dial_sessions.sql. Dialer waits for Smartflo answer webhook before showing duration.'
+          : error.message,
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open Click to Call setup',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/click-to-call' },
+        },
+        details: {
+          migration: 'database/338_smartflo_dial_sessions.sql',
+          webhook: '/api/webhooks/smartflo',
+          trigger: 'Call answered by Customer (Click to call)',
+        },
+      };
+    }
+
+    return {
+      name: 'Smartflo Live Dial UI',
+      category: 'Third Party',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'Dial sessions table ready',
+      reason:
+        'Live duration only after Smartflo webhook “Call answered by Customer (Click to call)” → /api/webhooks/smartflo.',
+      lastChecked: new Date().toISOString(),
+      details: {
+        table: 'smartflo_dial_sessions',
+        webhook: '/api/webhooks/smartflo',
+        poll: '/api/telecaller/crm/dial-session',
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Smartflo Live Dial UI',
+      category: 'Third Party',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Dial sessions check failed',
+      reason: e?.message || String(e),
+      lastChecked: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkCallIntelligence(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return {
+        name: 'Call Intelligence',
+        category: 'Database',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'Admin DB client unavailable',
+        reason: 'Cannot verify telecaller_call_analyses.',
+        lastChecked: new Date().toISOString(),
+      };
+    }
+
+    const { count, error } = await supabaseAdmin
+      .from('telecaller_call_analyses')
+      .select('id', { count: 'exact', head: true })
+      .limit(1);
+
+    if (error) {
+      const missing =
+        /does not exist|schema cache|relation/i.test(error.message || '') ||
+        error.code === '42P01' ||
+        error.code === 'PGRST205';
+      return {
+        name: 'Call Intelligence',
+        category: 'Database',
+        status: missing ? 'degraded' : 'healthy',
+        responseTime: Date.now() - start,
+        message: missing
+          ? 'Migration pending: telecaller_call_analyses'
+          : 'Analyses table probe inconclusive',
+        reason: missing
+          ? 'Run database/339_telecaller_call_analyses.sql so free quality/sentiment scores persist.'
+          : error.message,
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open Call Intelligence',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/call-intelligence' },
+        },
+        details: {
+          migration: 'database/339_telecaller_call_analyses.sql',
+          engine: 'free_heuristics_v1',
+          paid_ai: false,
+        },
+      };
+    }
+
+    return {
+      name: 'Call Intelligence',
+      category: 'Database',
+      status: 'healthy',
+      responseTime: Date.now() - start,
+      message: 'Free call analyses table ready',
+      reason: `${typeof count === 'number' ? count : 0} cached analyses. Engine uses call metadata + notes — no paid ASR.`,
+      lastChecked: new Date().toISOString(),
+      quickFix: {
+        label: 'Open Call Intelligence',
+        action: 'internal-link',
+        actionPayload: { url: '/dashboard/super_admin/call-intelligence' },
+      },
+      details: {
+        table: 'telecaller_call_analyses',
+        engine: 'free_heuristics_v1',
+        page: '/dashboard/super_admin/call-intelligence',
+      },
+    };
+  } catch (e: any) {
+    return {
+      name: 'Call Intelligence',
+      category: 'Database',
+      status: 'degraded',
+      responseTime: Date.now() - start,
+      message: 'Call Intelligence check failed',
       reason: e?.message || String(e),
       lastChecked: new Date().toISOString(),
     };
@@ -2651,6 +2832,8 @@ export async function runSystemMonitorChecks(): Promise<HealthCheck[]> {
     checkSARVTelephony(),
     checkSmartfloClickToCall(),
     checkSmartfloRecordings(),
+    checkSmartfloDialSessions(),
+    checkCallIntelligence(),
   ]);
 }
 

@@ -10,10 +10,8 @@ import {
   RefreshControl,
   TextInput,
   Image,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase';
@@ -55,7 +53,6 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [department, setDepartment] = useState('');
-  const [profileImage, setProfileImage] = useState('');
 
   const loadAansh = useCallback(async () => {
     try {
@@ -106,7 +103,14 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
         setLastName(parts.last);
         setPhone(profileData.phone || '');
         setDepartment(profileData.department || '');
-        setProfileImage(profileData.profile_image || '');
+        // Brand rule: telecaller CRM always uses MyFNG icon — clear any custom DP
+        if (profileData.profile_image) {
+          void supabase
+            .from('users_login')
+            .update({ profile_image: null, updated_at: new Date().toISOString() })
+            .eq('id', user.id)
+            .then(() => {});
+        }
       }
     } catch {
       /* ignore */
@@ -158,29 +162,26 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
     }
   };
 
-  const handleSave = async (imageOverride?: string) => {
+  const handleSave = async () => {
     setSaving(true);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      const image = imageOverride !== undefined ? imageOverride : profileImage;
       const { error } = await supabase
         .from('users_login')
         .update({
           full_name: joinName(firstName, lastName),
           phone,
           department,
-          profile_image: image || null,
+          profile_image: null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
       if (error) throw error;
-      if (imageOverride === undefined) {
-        Alert.alert('Saved', 'Profile updated');
-        setIsEditing(false);
-      }
+      Alert.alert('Saved', 'Profile updated');
+      setIsEditing(false);
       await loadProfile();
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to update');
@@ -196,37 +197,8 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
       setLastName(parts.last);
       setPhone(profile.phone || '');
       setDepartment(profile.department || '');
-      setProfileImage(profile.profile_image || '');
     }
     setIsEditing(false);
-  };
-
-  const pickProfileImage = async () => {
-    if (Platform.OS === 'ios') {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Permission needed', 'Allow photo library access to upload DP.');
-        return;
-      }
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.55,
-      base64: true,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    const mime = asset.mimeType || 'image/jpeg';
-    const dataUrl = asset.base64
-      ? `data:${mime};base64,${asset.base64}`
-      : asset.uri;
-    setProfileImage(dataUrl);
-    if (!isEditing) {
-      await handleSave(dataUrl);
-      Alert.alert('Saved', 'Photo updated');
-    }
   };
 
   const logout = async () => {
@@ -285,28 +257,12 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
           <View style={styles.avatarWrap}>
             <View style={styles.avatarBox}>
               <View style={styles.avatar}>
-                {profileImage ? (
-                  <Image source={{ uri: profileImage }} style={styles.avatarImg} />
-                ) : (
-                  <Image
-                    source={require('../../../../assets/profile-default.png')}
-                    style={styles.avatarLogo}
-                    resizeMode="cover"
-                  />
-                )}
+                <Image
+                  source={require('../../../../assets/profile-default.png')}
+                  style={styles.avatarLogo}
+                  resizeMode="cover"
+                />
               </View>
-              <TouchableOpacity
-                style={styles.cameraBtn}
-                onPress={pickProfileImage}
-                disabled={saving}
-                activeOpacity={0.85}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#023D95" size="small" />
-                ) : (
-                  <Ionicons name="camera" size={16} color="#023D95" />
-                )}
-              </TouchableOpacity>
             </View>
             <View style={[styles.floorBadge, punchedIn ? styles.floorOn : styles.floorOff]}>
               <Text
@@ -315,7 +271,7 @@ export default function CrmMeTab({ navigation, active = true }: Props) {
                 {punchedIn ? 'On Floor' : 'Off Duty'}
               </Text>
             </View>
-            <Text style={styles.premiumHint}>Tap camera to upload DP</Text>
+            <Text style={styles.premiumHint}>MyFNG brand icon</Text>
           </View>
 
           <View style={styles.field}>
@@ -598,19 +554,6 @@ const styles = StyleSheet.create({
   },
   avatarImg: { width: 76, height: 76, borderRadius: 38 },
   avatarLogo: { width: 76, height: 76 },
-  cameraBtn: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#FACC15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
   floorBadge: {
     marginTop: 10,
     borderRadius: 999,

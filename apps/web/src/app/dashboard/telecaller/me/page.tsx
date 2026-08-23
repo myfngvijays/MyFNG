@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
@@ -20,7 +20,6 @@ import {
   Building,
   Calendar,
   History,
-  Camera,
 } from 'lucide-react';
 
 type Profile = {
@@ -59,7 +58,6 @@ function joinName(first: string, last: string): string {
 
 export default function TelecallerMyProfilePage() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [punching, setPunching] = useState(false);
   const [attendance, setAttendance] = useState<any>(null);
@@ -73,7 +71,6 @@ export default function TelecallerMyProfilePage() {
     last_name: '',
     phone: '',
     department: '',
-    profile_image: '',
   });
 
   const loadAttendance = useCallback(async () => {
@@ -97,7 +94,6 @@ export default function TelecallerMyProfilePage() {
       last_name: parts.last_name,
       phone: p.phone || '',
       department: p.department || '',
-      profile_image: p.profile_image || '',
     });
   }, []);
 
@@ -108,6 +104,26 @@ export default function TelecallerMyProfilePage() {
       if (res.ok && data.profile) {
         setProfile(data.profile);
         applyProfileToForm(data.profile);
+        // Brand rule: always MyFNG icon — clear any custom DP once
+        if (data.profile.profile_image) {
+          void fetch('/api/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              full_name: data.profile.full_name,
+              phone: data.profile.phone,
+              department: data.profile.department,
+              profile_image: null,
+            }),
+          }).then(async (r) => {
+            if (!r.ok) return;
+            const updated = await r.json().catch(() => null);
+            if (updated?.profile) {
+              setProfile(updated.profile);
+              applyProfileToForm(updated.profile);
+            }
+          });
+        }
       }
     } catch {
       setProfile(null);
@@ -167,7 +183,7 @@ export default function TelecallerMyProfilePage() {
         full_name,
         phone: next.phone,
         department: next.department,
-        profile_image: next.profile_image || null,
+        profile_image: null,
       }),
     });
     const data = await res.json();
@@ -195,37 +211,6 @@ export default function TelecallerMyProfilePage() {
     setIsEditing(false);
   };
 
-  const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please choose an image');
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Image must be under 2MB');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const dataUrl = String(reader.result || '');
-      setFormData((f) => ({ ...f, profile_image: dataUrl }));
-      if (!isEditing) {
-        setSaving(true);
-        try {
-          await saveProfile({ profile_image: dataUrl });
-          toast.success('Photo updated');
-        } catch (err: any) {
-          toast.error(err?.message || 'Failed to upload photo');
-        } finally {
-          setSaving(false);
-        }
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-
   const logout = async () => {
     // Prefer shared punch-out helper (also covers header logout path)
     try {
@@ -244,7 +229,6 @@ export default function TelecallerMyProfilePage() {
   const history = Array.isArray(attendance?.history) ? attendance.history : [];
   const displayFirst = formData.first_name || splitFullName(profile?.full_name || '').first_name;
   const displayLast = formData.last_name || splitFullName(profile?.full_name || '').last_name;
-  const avatarSrc = formData.profile_image || profile?.profile_image || '';
 
   return (
     <DashboardLayout role="telecaller">
@@ -302,32 +286,11 @@ export default function TelecallerMyProfilePage() {
                     <div className="flex h-[5.5rem] w-[5.5rem] items-center justify-center overflow-hidden rounded-full border-[3px] border-white/40 bg-white text-3xl font-extrabold text-white">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={avatarSrc || '/profile-default.png'}
-                        alt=""
+                        src="/profile-default.png"
+                        alt="MyFNG"
                         className="h-full w-full object-cover"
                       />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={saving}
-                      className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-[#FACC15] text-[#023D95] shadow-md hover:bg-yellow-300 disabled:opacity-60"
-                      title="Upload photo"
-                      aria-label="Upload profile photo"
-                    >
-                      {saving ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Camera className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleImagePick}
-                    />
                   </div>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
@@ -338,7 +301,7 @@ export default function TelecallerMyProfilePage() {
                   >
                     {attendance?.is_punched_in ? 'On Floor' : 'Off Duty'}
                   </span>
-                  <p className="text-[10px] text-blue-100/80">Tap camera to upload DP</p>
+                  <p className="text-[10px] text-blue-100/80">MyFNG brand icon</p>
                 </div>
 
                 <div className="flex-1 min-w-0 space-y-3">

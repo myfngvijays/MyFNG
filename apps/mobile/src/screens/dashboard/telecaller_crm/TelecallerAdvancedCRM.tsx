@@ -107,6 +107,14 @@ const LM_NAV: NavRow[] = [
   { type: 'item', id: 'book', label: 'Add lead / Book', icon: 'person-add-outline', kind: 'tab' },
   {
     type: 'item',
+    id: 'dialer',
+    label: 'Dialer',
+    icon: 'keypad-outline',
+    kind: 'stack',
+    screen: 'CrmDialer',
+  },
+  {
+    type: 'item',
     id: 'workshops_stack',
     label: 'Workshops',
     icon: 'business-outline',
@@ -319,6 +327,14 @@ const TC_NAV: NavRow[] = [
   { type: 'item', id: 'book', label: 'Add lead / Book', icon: 'person-add-outline', kind: 'tab' },
   {
     type: 'item',
+    id: 'dialer',
+    label: 'Dialer',
+    icon: 'keypad-outline',
+    kind: 'stack',
+    screen: 'CrmDialer',
+  },
+  {
+    type: 'item',
     id: 'workshops',
     label: 'Workshops',
     icon: 'location-outline',
@@ -418,6 +434,7 @@ export default function TelecallerAdvancedCRM() {
   const [queueFilter, setQueueFilter] = useState(defaults.statusFilter);
   const [engageSegment, setEngageSegment] = useState('followups');
   const [bookMode, setBookMode] = useState<'book' | 'lead' | null>(null);
+  const [bookPrefillPhone, setBookPrefillPhone] = useState<string | null>(null);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
@@ -431,8 +448,23 @@ export default function TelecallerAdvancedCRM() {
   const [drawerUser, setDrawerUser] = useState<{
     name: string;
     email: string;
-    photo: string | null;
   } | null>(null);
+
+  useEffect(() => {
+    const phone = String((route.params as any)?.openAddLeadPhone || '')
+      .replace(/\D/g, '')
+      .slice(-10);
+    if (phone.length !== 10) return;
+    setBookPrefillPhone(phone);
+    setBookMode('lead');
+    setTab('book');
+    setDetailLeadId(null);
+    try {
+      stackNav.setParams({ openAddLeadPhone: undefined });
+    } catch {
+      /* ignore */
+    }
+  }, [(route.params as any)?.openAddLeadPhone, stackNav]);
 
   useEffect(() => {
     let cancelled = false;
@@ -461,13 +493,12 @@ export default function TelecallerAdvancedCRM() {
         if (!user || cancelled) return;
         const { data } = await supabase
           .from('users_login')
-          .select('full_name, email, profile_image')
+          .select('full_name, email')
           .eq('id', user.id)
           .maybeSingle();
         const name = String(data?.full_name || 'MyFNG').trim() || 'MyFNG';
         const email = String(data?.email || user.email || '').trim();
-        const photo = String(data?.profile_image || '').trim() || null;
-        if (!cancelled) setDrawerUser({ name, email, photo });
+        if (!cancelled) setDrawerUser({ name, email });
       } catch {
         /* ignore */
       }
@@ -817,14 +848,19 @@ export default function TelecallerAdvancedCRM() {
         )}
         {tab === 'book' && bookMode && !detailLeadId && (
           <CrmBookWizard
-            key={bookMode}
+            key={`${bookMode}-${bookPrefillPhone || 'x'}`}
             initialMode={bookMode}
+            initialPhone={bookPrefillPhone}
             hideModeSwitch
             onDone={(leadId) => {
               setBookMode(null);
+              setBookPrefillPhone(null);
               openLead(leadId, true);
             }}
-            onCancel={() => setBookMode(null)}
+            onCancel={() => {
+              setBookMode(null);
+              setBookPrefillPhone(null);
+            }}
           />
         )}
         {tab === 'workshops' && !detailLeadId && <CrmWorkshopLocatorTab navigation={navigation} />}
@@ -869,7 +905,11 @@ export default function TelecallerAdvancedCRM() {
 
       <TelecallerWhatsAppInbox visible={whatsAppOpen} onClose={() => setWhatsAppOpen(false)} />
       {!detailLeadId && tab !== 'book' ? (
-        <TelecallerWhatsAppFab onPress={() => setWhatsAppOpen(true)} bottomOffset={28} />
+        <TelecallerWhatsAppFab
+          onPress={() => setWhatsAppOpen(true)}
+          onCallPress={() => stackNav.navigate('CrmDialer')}
+          bottomOffset={28}
+        />
       ) : null}
 
       <Modal
@@ -883,22 +923,14 @@ export default function TelecallerAdvancedCRM() {
         <View style={styles.drawerRoot}>
           <View style={styles.drawerPanel}>
             <View style={styles.drawerSafe}>
-              {/* Profile photo + name */}
+              {/* Brand avatar — always MyFNG icon for telecaller / LM CRM */}
               <View style={[styles.tcHeader, { paddingTop: drawerTopPad }]}>
                 <View style={styles.tcAvatar}>
-                  {drawerUser?.photo ? (
-                    <Image
-                      source={{ uri: drawerUser.photo }}
-                      style={styles.tcAvatarImg}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <Image
-                      source={require('../../../../assets/profile-default.png')}
-                      style={styles.tcAvatarLogo}
-                      resizeMode="cover"
-                    />
-                  )}
+                  <Image
+                    source={require('../../../../assets/profile-default.png')}
+                    style={styles.tcAvatarLogo}
+                    resizeMode="cover"
+                  />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.tcName} numberOfLines={1}>

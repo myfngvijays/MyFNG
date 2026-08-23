@@ -22,6 +22,13 @@ import {
   setWhatsAppCronJobEnabled,
 } from '@/lib/services/whatsappCronJobFlags';
 import {
+  getSmartfloRecordingsCronSettings,
+  markSmartfloRecordingsCronRun,
+  smartfloRecordingsCronAdminPayload,
+  updateSmartfloRecordingsCronSettings,
+} from '@/lib/telecaller/smartfloRecordingsCronSettings';
+import { syncSmartfloRecordings } from '@/lib/telecaller/smartfloCdr';
+import {
   createTelecallerLeadsShiftTemplate,
   getTelecallerLeadsShiftTemplateStatus,
   TELECALLER_LEADS_SHIFT_TEMPLATE,
@@ -61,13 +68,14 @@ export async function GET(request: NextRequest) {
     const auth = await assertAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    const [cronMasterEnabled, settings, jobEnabledMap, alertNumbers, tcLeadsTemplate] =
+    const [cronMasterEnabled, settings, jobEnabledMap, alertNumbers, tcLeadsTemplate, smartfloCron] =
       await Promise.all([
         isWhatsAppAutomationCronMasterEnabled(),
         listAutomationSettings(),
         getWhatsAppCronJobEnabledMap(),
         listSystemAlertWhatsAppNumbers(),
         getTelecallerLeadsShiftTemplateStatus().catch(() => null),
+        getSmartfloRecordingsCronSettings(),
       ]);
 
     const byKey = new Map(settings.map((s) => [s.trigger_key, s]));
@@ -151,6 +159,7 @@ export async function GET(request: NextRequest) {
             body_preview: TELECALLER_LEADS_SHIFT_TEMPLATE.body_text,
           }
         : null,
+      smartflo_recordings_cron: smartfloRecordingsCronAdminPayload(smartfloCron, baseUrl),
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Internal server error';
@@ -207,6 +216,54 @@ export async function POST(request: NextRequest) {
         ...result,
         status,
       });
+    }
+
+    if (action === 'update-smartflo-recordings-cron') {
+      const result = await updateSmartfloRecordingsCronSettings(
+        {
+          enabled: body?.enabled,
+          interval_minutes: body?.interval_minutes,
+          hours_back: body?.hours_back,
+        },
+        auth.userId,
+      );
+      if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+      return NextResponse.json({
+        success: true,
+        smartflo_recordings_cron: smartfloRecordingsCronAdminPayload(
+          result.settings,
+          publicBaseUrl(request),
+        ),
+      });
+    }
+
+    if (action === 'run-smartflo-recordings-cron') {
+      if (auth.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Only Super Admin can run cron jobs' }, { status: 403 });
+      }
+      const settings = await getSmartfloRecordingsCronSettings();
+      const hoursBack = Number(body?.hours_back ?? settings.hours_back);
+      const result = await syncSmartfloRecordings({
+        hoursBack: Number.isFinite(hoursBack) ? hoursBack : settings.hours_back,
+        maxPages: Number(body?.max_pages ?? 6) || 6,
+        timeBudgetMs: 55_000,
+        concurrency: 6,
+      });
+      const summary = result.ok
+        ? `manual fetched=${result.fetched} with_recording=${result.with_recording}`
+        : result.error || 'sync failed';
+      await markSmartfloRecordingsCronRun({ ok: Boolean(result.ok), summary });
+      return NextResponse.json(
+        {
+          success: result.ok,
+          ...result,
+          smartflo_recordings_cron: smartfloRecordingsCronAdminPayload(
+            await getSmartfloRecordingsCronSettings(),
+            publicBaseUrl(request),
+          ),
+        },
+        { status: result.ok ? 200 : 502 },
+      );
     }
 
     // Default: run now

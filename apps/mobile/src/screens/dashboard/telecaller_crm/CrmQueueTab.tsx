@@ -658,7 +658,22 @@ export default function CrmQueueTab({
             persistLocalFilters({ q: nextQ });
           }}
           placeholderTextColor={COLORS.textSecondary}
+          returnKeyType="search"
         />
+        {q.length > 0 ? (
+          <TouchableOpacity
+            onPress={() => {
+              setQ('');
+              setAppliedQ('');
+              persistLocalFilters({ q: '' });
+            }}
+            style={styles.searchClearBtn}
+            accessibilityLabel="Clear search"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
         <View style={styles.viewToggle}>
           <TouchableOpacity
             style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnOn]}
@@ -1367,6 +1382,10 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   search: { flex: 1, paddingVertical: 10, color: COLORS.textPrimary },
+  searchClearBtn: {
+    padding: 2,
+    marginRight: 2,
+  },
   viewToggle: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -112,6 +112,8 @@ type Props = {
   onCancel?: () => void;
   initialMode?: 'book' | 'lead';
   hideModeSwitch?: boolean;
+  /** Prefill customer phone (e.g. from Dialer Add lead) */
+  initialPhone?: string | null;
 };
 
 export default function CrmBookWizard({
@@ -119,6 +121,7 @@ export default function CrmBookWizard({
   onCancel,
   initialMode = 'book',
   hideModeSwitch = false,
+  initialPhone = null,
 }: Props) {
   const { user } = useAuth();
   const canManageTags = ['LEAD_MANAGER', 'SUPER_ADMIN', 'SUB_ADMIN'].includes(
@@ -145,7 +148,9 @@ export default function CrmBookWizard({
 
   const [form, setForm] = useState({
     customer_name: '',
-    customer_phone: '',
+    customer_phone: String(initialPhone || '')
+      .replace(/\D/g, '')
+      .slice(-10),
     customer_address: '',
     pincode: '',
     city_id: '',

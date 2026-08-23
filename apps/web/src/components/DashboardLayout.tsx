@@ -23,6 +23,8 @@ import {
   Truck,
   Car,
   Phone,
+  PhoneCall,
+  Headphones,
   ClipboardList,
   Calendar,
   CheckCircle,
@@ -800,6 +802,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           ],
         },
         { href: '/dashboard/super_admin/bookings', icon: <FileText className="w-5 h-5" />, label: 'Bookings & Leads' },
+        { href: '/dashboard/super_admin/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
+        { href: '/dashboard/super_admin/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call Intelligence' },
         { href: '/dashboard/super_admin/lead-tags', icon: <Tag className="w-5 h-5" />, label: 'Lead Tags' },
         { href: '/dashboard/super_admin/lead-statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead Status' },
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
@@ -850,6 +854,8 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
       'LEAD_MANAGER': [
         { href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
+        { href: '/dashboard/lead_manager/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
+        { href: '/dashboard/lead_manager/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call Intelligence' },
         { href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         {
           href: '#whatsapp',
@@ -866,6 +872,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         },
         { href: '/dashboard/lead_manager/whatsapp-dnd', icon: <AlertTriangle className="w-5 h-5" />, label: 'WA DND' },
         { href: '/dashboard/lead_manager/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { href: '/dashboard/lead_manager/dialer', icon: <PhoneCall className="w-5 h-5" />, label: 'Dialer' },
         { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
         { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
@@ -964,6 +971,7 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           action: 'open-wa-inbox',
         },
         { href: '/dashboard/telecaller/book', icon: <Phone className="w-5 h-5" />, label: 'Book' },
+        { href: '/dashboard/telecaller/dialer', icon: <PhoneCall className="w-5 h-5" />, label: 'Dialer' },
         { href: '/dashboard/telecaller/workshops', icon: <MapPin className="w-5 h-5" />, label: 'Workshops' },
         {
           href: '/dashboard/telecaller/templates',

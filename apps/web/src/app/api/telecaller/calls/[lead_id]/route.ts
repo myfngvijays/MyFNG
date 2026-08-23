@@ -1,20 +1,26 @@
 /**
  * Get Call Logs for Lead API
+ * Auth: cookie session OR mobile Bearer (createClientFromRequest)
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createClientFromRequest } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { resolveUserProfile } from '@/lib/telecaller/resolveUserProfile';
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ lead_id: string }> }
+  { params }: { params: Promise<{ lead_id: string }> },
 ) {
   try {
-    const supabase = await createClient();
-    
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const supabase = await createClientFromRequest(request);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -25,29 +31,15 @@ export async function GET(
       return NextResponse.json({ error: 'Missing lead_id' }, { status: 400 });
     }
 
-    // Resolve users_login profile robustly (email -> phone -> id) + role_code
-    const email = (user.email || '').trim();
-    const phone = (user.phone || '').trim();
-    const selectProfile = 'id, email, phone, roles!inner(role_code)';
+    const profile = await resolveUserProfile(supabase, user);
+    const roleCode = String((profile?.roles as any)?.role_code || '')
+      .trim()
+      .toUpperCase();
 
-    const { data: byEmail } = email
-      ? await supabase.from('users_login').select(selectProfile).ilike('email', email).maybeSingle()
-      : { data: null as any };
-    const { data: byPhone } = !byEmail && phone
-      ? await supabase.from('users_login').select(selectProfile).eq('phone', phone).maybeSingle()
-      : { data: null as any };
-    const { data: byId } = !byEmail && !byPhone
-      ? await supabase.from('users_login').select(selectProfile).eq('id', user.id).maybeSingle()
-      : { data: null as any };
-    const userProfile = byEmail || byPhone || byId;
-    const roleCode = (userProfile?.roles as any)?.role_code || null;
-
-    // Prefer service-role client for reading call logs (avoids RLS mismatch)
     const { supabaseAdmin } = getSupabaseAdmin();
     const db = supabaseAdmin ?? supabase;
 
-    // Authorization: for TELECALLER, require that this lead is readable under RLS.
-    // This matches the UI (lead detail page uses the client/RLS to fetch the lead).
+    // TELECALLER must be able to read the lead (assigned / CRM scope)
     if (roleCode === 'TELECALLER') {
       const { data: canReadLead } = await supabase
         .from('service_leads')
@@ -59,16 +51,16 @@ export async function GET(
       }
     }
 
-    let logsQuery = db
+    const { data: callLogs, error: logsError } = await db
       .from('telecaller_call_logs')
-      .select(`
+      .select(
+        `
         *,
         telecaller:users_login!telecaller_id(id, full_name)
-      `)
+      `,
+      )
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });
-
-    const { data: callLogs, error: logsError } = await logsQuery;
 
     if (logsError) {
       console.error('Error fetching call logs:', logsError);
@@ -89,18 +81,27 @@ export async function GET(
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      call_logs,
-      total: call_logs.length,
-    }, { status: 200 });
+    // Keep service_leads.total_calls in sync for list UIs
+    const total = call_logs.length;
+    if (supabaseAdmin && total >= 0) {
+      void supabaseAdmin
+        .from('service_leads')
+        .update({ total_calls: total, updated_at: new Date().toISOString() })
+        .eq('id', leadId)
+        .then(() => undefined)
+        .catch(() => undefined);
+    }
 
+    return NextResponse.json(
+      {
+        success: true,
+        call_logs,
+        total,
+      },
+      { status: 200 },
+    );
   } catch (error) {
     console.error('Error in get call logs API:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

@@ -50,7 +50,7 @@
     },
     {
       "path": "/api/cron/smartflo-recordings",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
