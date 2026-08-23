@@ -92,6 +92,16 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Recordings page pe Analyze se single call bhi score ho sakta hai.',
     ],
   },
+  '/dashboard/super_admin/myfng-mcp': {
+    title: 'MyFNG MCP',
+    body:
+      'Read-only MCP package (packages/myfng-mcp) — CRM / calls / reports tools for any MCP host.\n\nYeh Cursor se auto-connect nahi hota. Admin page pe status, tool list, aur optional config JSON dikhta hai.',
+    tips: [
+      'Build: cd packages/myfng-mcp && npm install && npm run build',
+      'Env apps/web/.env.local se aati hai (run-with-env.mjs).',
+      'Sirf SELECT — koi write tool nahi.',
+    ],
+  },
   '/dashboard/lead_manager/recordings': {
     title: 'Recordings',
     body:

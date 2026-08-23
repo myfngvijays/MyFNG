@@ -103,7 +103,7 @@ const nextConfig = {
       { source: '/services/periodic-service', destination: '/car-services/periodic-car-service', permanent: true },
       { source: '/services/engine-service', destination: '/car-services/car-engine-service', permanent: true },
       { source: '/services/ac-service', destination: '/car-services/car-ac-service', permanent: true },
-      { source: '/services/battery-service', destination: '/car-services/car-battery', permanent: true },
+      { source: '/services/battery-service', destination: '/car-services/car-battery-service', permanent: true },
       { source: '/services/brake-service', destination: '/car-services/car-brake-service', permanent: true },
       { source: '/services/clutch-service', destination: '/car-services/car-clutch-service', permanent: true },
       { source: '/services/tyre-wheel-care', destination: '/car-services/tyre-wheel-care', permanent: true },
@@ -118,6 +118,9 @@ const nextConfig = {
       // Legacy PHP URLs
       { source: '/ai-booking', destination: '/misa-ai', permanent: true },
       { source: '/ai-experience', destination: '/misa-ai', permanent: true },
+      // Dead admin placeholder path — send to contact
+      { source: '/service-partner', destination: '/contact-us', permanent: true },
+      { source: '/service-partner/:path*', destination: '/contact-us', permanent: true },
     ];
   },
 
@@ -135,6 +138,28 @@ const nextConfig = {
       {
         source: '/:path*',
         headers: securityHeaders,
+      },
+      // Apple requires application/json (no charset) for AASA; file has no extension.
+      {
+        source: '/.well-known/apple-app-site-association',
+        headers: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Cache-Control', value: 'public, max-age=300' },
+        ],
+      },
+      {
+        source: '/apple-app-site-association',
+        headers: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Cache-Control', value: 'public, max-age=300' },
+        ],
+      },
+      {
+        source: '/.well-known/assetlinks.json',
+        headers: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Cache-Control', value: 'public, max-age=300' },
+        ],
       },
     ];
 

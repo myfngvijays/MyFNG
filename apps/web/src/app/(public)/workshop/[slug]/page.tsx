@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
@@ -72,7 +72,6 @@ const defaultFaqs = [
 
 export default function WorkshopPublicPage() {
   const params = useParams();
-  const router = useRouter();
   const slug = params?.slug as string;
   const [page, setPage] = useState<WorkshopPublicPageType | null>(null);
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
@@ -147,12 +146,6 @@ export default function WorkshopPublicPage() {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (!loading && (!page || !workshop)) {
-      router.replace('/');
-    }
-  }, [loading, page, workshop, router]);
 
   const fetchWorkshopPage = async () => {
     try {

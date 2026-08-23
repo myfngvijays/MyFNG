@@ -1,5 +1,5 @@
 import { buildCityPageSeoDefaults, isCityPagePath } from '@/lib/city-pages';
-import { buildPopularBrandSeoDefaults } from '@/lib/popular-brands';
+import { buildPopularBrandSeoDefaults, POPULAR_BRAND_PAGES } from '@/lib/popular-brands';
 import { isServicePagePath } from '@/lib/service-page-seo';
 import { unstable_cache } from 'next/cache';
 import type { Metadata } from 'next';
@@ -196,7 +196,6 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
       'Read MYFNG Privacy Policy. Learn how we collect, use and protect your personal data when you book car services on myfng.in.',
     keywords: ['MYFNG privacy policy', 'data protection', 'car service privacy'],
     canonicalPath: '/privacy-policy',
-    noindex: true,
   },
   {
     page_path: '/terms-and-conditions',
@@ -207,7 +206,6 @@ export const SITE_PAGE_SEO_DEFAULTS: SitePageSeoSeed[] = [
       'Read MYFNG Terms and Conditions for car service bookings, workshop policies, payments, cancellations and customer responsibilities.',
     keywords: ['MYFNG terms and conditions', 'car service terms', 'booking policy'],
     canonicalPath: '/terms-and-conditions',
-    noindex: true,
   },
   ...buildCityPageSeoDefaults(),
   ...buildPopularBrandSeoDefaults(),
@@ -378,10 +376,35 @@ export function classifySitePagePath(path: string): 'static' | 'service' | 'city
 
 export async function listSitePageSitemapEntries(): Promise<Array<{ path: string; lastModified?: Date }>> {
   const { supabaseAdmin } = getSupabaseAdmin();
+
+  const ensureAlwaysIndexed = (
+    entries: Array<{ path: string; lastModified?: Date }>,
+  ): Array<{ path: string; lastModified?: Date }> => {
+    const byPath = new Map<string, { path: string; lastModified?: Date }>();
+    for (const entry of entries) {
+      const path = normalizePagePath(entry.path);
+      if (!path) continue;
+      byPath.set(path, { ...entry, path });
+    }
+
+    // Always publish brand + legal pages even if missing/noindex in DB overrides.
+    for (const brand of POPULAR_BRAND_PAGES) {
+      const path = normalizePagePath(brand.pagePath);
+      if (!byPath.has(path)) byPath.set(path, { path });
+    }
+    for (const path of ['/privacy-policy', '/terms-and-conditions']) {
+      if (!byPath.has(path)) byPath.set(path, { path });
+    }
+
+    return [...byPath.values()];
+  };
+
   if (!supabaseAdmin) {
-    return SITE_PAGE_SEO_DEFAULTS.filter((row) => !row.noindex).map((row) => ({
-      path: row.canonicalPath || row.page_path,
-    }));
+    return ensureAlwaysIndexed(
+      SITE_PAGE_SEO_DEFAULTS.filter((row) => !row.noindex).map((row) => ({
+        path: row.canonicalPath || row.page_path,
+      })),
+    );
   }
 
   const { data, error } = await supabaseAdmin
@@ -391,15 +414,19 @@ export async function listSitePageSitemapEntries(): Promise<Array<{ path: string
     .eq('noindex', false);
 
   if (error || !data?.length) {
-    return SITE_PAGE_SEO_DEFAULTS.filter((row) => !row.noindex).map((row) => ({
-      path: row.canonicalPath || row.page_path,
-    }));
+    return ensureAlwaysIndexed(
+      SITE_PAGE_SEO_DEFAULTS.filter((row) => !row.noindex).map((row) => ({
+        path: row.canonicalPath || row.page_path,
+      })),
+    );
   }
 
-  return data.map((row: any) => ({
-    path: normalizePagePath(row.canonical_path || row.page_path),
-    lastModified: row.updated_at ? new Date(row.updated_at) : undefined,
-  }));
+  return ensureAlwaysIndexed(
+    data.map((row: any) => ({
+      path: normalizePagePath(row.canonical_path || row.page_path),
+      lastModified: row.updated_at ? new Date(row.updated_at) : undefined,
+    })),
+  );
 }
 
 export function sortSitePageSeoRows<T extends { display_order?: number; page_path?: string }>(rows: T[]): T[] {

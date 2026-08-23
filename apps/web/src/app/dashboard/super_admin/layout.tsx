@@ -64,6 +64,7 @@ import {
   PhoneCall,
   Headphones,
   Brain,
+  Plug,
 } from 'lucide-react';
 
 type NavItem = {
@@ -627,6 +628,12 @@ const navigationItems: NavItem[] = [
     href: '/dashboard/super_admin/api-services',
     icon: Layers,
     description: 'Free vs paid APIs & admin menu dependencies'
+  },
+  {
+    name: 'MyFNG MCP',
+    href: '/dashboard/super_admin/myfng-mcp',
+    icon: Plug,
+    description: 'Read-only MCP package — tools catalog & setup',
   },
   {
     name: 'Audit Logs',

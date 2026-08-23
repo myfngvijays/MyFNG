@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import JsonLd from '@/components/seo/JsonLd';
 import { breadcrumbSchema, workshopLocalBusinessSchema } from '@/lib/seo/schemas';
 import { SITE_URL } from '@/lib/seo/metadata';
@@ -11,6 +12,13 @@ type LayoutProps = {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
+  const record = await getWorkshopPageSeo(slug);
+  if (!record) {
+    return {
+      title: 'Workshop Not Found | MyFNG',
+      robots: { index: false, follow: false },
+    };
+  }
   return buildWorkshopPageMetadata(slug);
 }
 
@@ -19,7 +27,7 @@ export default async function WorkshopSlugLayout({ children, params }: LayoutPro
   const record = await getWorkshopPageSeo(slug);
 
   if (!record) {
-    return children;
+    notFound();
   }
 
   const seo = buildWorkshopPageSeoFallback(record);

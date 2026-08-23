@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "myfng": {
+      "command": "node",
+      "args": [
+        "/ABS/PATH/TO/MyFNG/packages/myfng-mcp/scripts/run-with-env.mjs"
+      ]
+    }
+  }
+}

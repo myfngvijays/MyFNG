@@ -1,0 +1,29 @@
+{
+  "name": "@myfng/mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only MyFNG MCP server for Cursor (CRM, calls, reports, bookings, system)",
+  "type": "module",
+  "bin": {
+    "myfng-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@supabase/supabase-js": "^2.112.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.2"
+  }
+}

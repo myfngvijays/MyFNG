@@ -80,6 +80,8 @@ export const LIVE_FILE_META: Record<
 };
 
 function priorityForPath(pathname: string): number {
+  if (pathname.startsWith('/popular-brands/')) return 0.8;
+  if (pathname === '/privacy-policy' || pathname === '/terms-and-conditions') return 0.4;
   if (pathname === '/') return 1;
   if (pathname === '/car-services' || pathname.startsWith('/car-services/')) return 0.9;
   if (pathname.startsWith('/car-service-in/')) return 0.85;
