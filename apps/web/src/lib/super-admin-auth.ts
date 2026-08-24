@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 
-export const APP_OPERATIONS_ROLE = 'APP_OPERATIONS';
-
 export const PANEL_ACCESS_ROLES = {
-  bookings: ['SUPER_ADMIN', 'SUB_ADMIN', APP_OPERATIONS_ROLE],
-  appCustomers: ['SUPER_ADMIN', 'SUB_ADMIN', APP_OPERATIONS_ROLE],
-  referral: ['SUPER_ADMIN', 'SUB_ADMIN', APP_OPERATIONS_ROLE],
+  bookings: ['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS'],
+  appCustomers: ['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS'],
+  referral: ['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS'],
 } as const;
 
 export type AdminPanel = keyof typeof PANEL_ACCESS_ROLES;

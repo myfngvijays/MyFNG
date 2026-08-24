@@ -132,7 +132,18 @@ import {
 import {
   LeadManagerRecordingsScreen,
   LeadManagerCallIntelligenceScreen,
+  LeadManagerAiSuiteScreen,
+  LeadManagerLeadIqScreen,
+  LeadManagerPlaybookScreen,
+  LeadManagerWorkflowScreen,
 } from '../screens/dashboard/lead_manager/LeadManagerCallOpsScreens';
+import {
+  LeadManagerAppBookingsScreen,
+  LeadManagerAppCustomersScreen,
+  LeadManagerWorkshopProximityScreen,
+  LeadManagerMembershipCustomersScreen,
+  LeadManagerReferralScreen,
+} from '../screens/dashboard/lead_manager/LeadManagerAppOpsScreens';
 
 // Super Admin screens
 import WorkshopManagementScreen from '../screens/dashboard/superadmin/WorkshopManagementScreen';
@@ -303,7 +314,7 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
   }
 
   // Lead Manager Navigation — CRM shell + ops screens
-  if (roleCode === 'LEAD_MANAGER') {
+  if (roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
     const TelecallerAdvancedCRM = require('../screens/dashboard/telecaller_crm/TelecallerAdvancedCRM').default;
     return (
       <Stack.Navigator screenOptions={screenOptions}>
@@ -420,12 +431,57 @@ export default function DashboardNavigator({ userProfile, onLogout }: DashboardN
         <Stack.Screen
           name="LeadManagerCallIntelligence"
           component={LeadManagerCallIntelligenceScreen}
-          options={{ title: 'Call Intelligence', headerShown: false }}
+          options={{ title: 'Call IQ', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerAiSuite"
+          component={LeadManagerAiSuiteScreen}
+          options={{ title: 'AI Suite', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerLeadIq"
+          component={LeadManagerLeadIqScreen}
+          options={{ title: 'Lead IQ', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerPlaybook"
+          component={LeadManagerPlaybookScreen}
+          options={{ title: 'Sales Playbook', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerWorkflow"
+          component={LeadManagerWorkflowScreen}
+          options={{ title: 'Workflow', headerShown: false }}
         />
         <Stack.Screen
           name="LeadManagerWorkshopDetail" 
           component={LeadManagerWorkshopDetailScreen}
           options={{ title: 'Workshop Details' }}
+        />
+        <Stack.Screen
+          name="LeadManagerAppBookings"
+          component={LeadManagerAppBookingsScreen}
+          options={{ title: 'Bookings & Leads', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerAppCustomers"
+          component={LeadManagerAppCustomersScreen}
+          options={{ title: 'App Customers', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerWorkshopProximity"
+          component={LeadManagerWorkshopProximityScreen}
+          options={{ title: 'Workshop Proximity', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerMembershipCustomers"
+          component={LeadManagerMembershipCustomersScreen}
+          options={{ title: 'Membership Customers', headerShown: false }}
+        />
+        <Stack.Screen
+          name="LeadManagerReferral"
+          component={LeadManagerReferralScreen}
+          options={{ title: 'Refer & Rise', headerShown: false }}
         />
         <Stack.Screen
           name="TelecallerLeadDetail"

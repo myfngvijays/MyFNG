@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Activity,
@@ -14,10 +14,14 @@ import {
   TrendingUp,
   Users,
   X,
+  BookOpen,
 } from 'lucide-react';
 import PageHelpIcon from '@/components/PageHelpIcon';
 import ReportDateRangeFilter from '@/components/admin/ReportDateRangeFilter';
 import { type ReportDatePreset } from '@/lib/report-date-range';
+import SopAuditCard from '@/components/admin/SopAuditCard';
+import type { CallIqSopAudit } from '@/lib/telecaller/callIqSop';
+import { toCrmSuggestedStatus } from '@/lib/telecaller/callIqSop';
 
 type AgentRow = {
   telecaller_id: string;
@@ -76,6 +80,7 @@ type AnalysisRow = {
   call_duration?: number | null;
   call_status?: string | null;
   has_recording?: boolean;
+  sop_audit?: CallIqSopAudit | null;
 };
 
 const PAGE_SIZE = 10;
@@ -238,9 +243,9 @@ function Kpi({
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 text-xl font-bold text-slate-900 tabular-nums">{value}</p>
+      <p className="text-lg font-bold text-slate-900 tabular-nums leading-tight">{value}</p>
       {sub ? <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p> : null}
     </div>
   );
@@ -249,9 +254,17 @@ function Kpi({
 export default function CallIntelligencePanel({
   helpHref,
   recordingsHref,
+  suiteHref,
+  playbookHref,
+  workflowHref,
+  embedded = false,
 }: {
   helpHref: string;
   recordingsHref: string;
+  suiteHref?: string;
+  playbookHref?: string;
+  workflowHref?: string;
+  embedded?: boolean;
 }) {
   const [preset, setPreset] = useState<ReportDatePreset>('last_7_days');
   const [customStart, setCustomStart] = useState('');
@@ -260,12 +273,14 @@ export default function CallIntelligencePanel({
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<
-    'overview' | 'agents' | 'sentiment' | 'quality' | 'recent'
-  >('overview');
+    'overview' | 'agents' | 'sentiment' | 'quality' | 'recent' | 'sop'
+  >('sop');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [agentDetail, setAgentDetail] = useState<any>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [openSopId, setOpenSopId] = useState<string | null>(null);
+  const [openIssueId, setOpenIssueId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -359,20 +374,48 @@ export default function CallIntelligencePanel({
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-[1400px]">
+    <div className={embedded ? 'px-4 sm:px-6 space-y-4 max-w-[1400px]' : 'p-4 sm:p-6 space-y-4 max-w-[1400px]'}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Brain className="h-7 w-7 text-violet-700" />
-            Call Intelligence
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Free analytics · quality · sentiment · conversation tags · agent performance.
-            No paid AI / speech-to-text.
-          </p>
-        </div>
+        {embedded ? (
+          <p className="text-sm text-slate-500">SOP scans, quality, sentiment, and telecaller scores.</p>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <Brain className="h-7 w-7 text-violet-700" />
+              Call IQ
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              MY FNG Sales SOP audit · qualification · USPs · objections · closing · intent · score /100.
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          <PageHelpIcon href={helpHref} label="Call Intelligence" />
+          {embedded ? null : <PageHelpIcon href={helpHref} label="Call IQ" />}
+          {suiteHref ? (
+            <Link
+              href={suiteHref}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              AI Suite
+            </Link>
+          ) : null}
+          {workflowHref ? (
+            <Link
+              href={workflowHref}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Workflow
+            </Link>
+          ) : null}
+          {playbookHref ? (
+            <Link
+              href={playbookHref}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <BookOpen className="h-4 w-4" />
+              Playbook
+            </Link>
+          ) : null}
           <Link
             href={recordingsHref}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -390,17 +433,15 @@ export default function CallIntelligencePanel({
         </div>
       </div>
 
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-        <strong>Deep query check:</strong> har customer question pe telecaller ka answer + RESOLVED /
-        PARTIAL / UNRESOLVED. Dashboard free multi-query engine use karta hai. Recordings pe{' '}
-        <strong>Deep AI</strong> (OpenAI, on-demand) notes ko aur deeply judge karta hai — audio
-        auto-transcribe nahi (cost control).
-        {data?.persist_warning ? (
-          <span className="block mt-1 text-amber-800">
-            Tip: run <code className="font-mono">database/341_call_analyses_query_resolutions.sql</code>
-          </span>
-        ) : null}
-      </div>
+      {data?.persist_warning ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {data.persist_warning}
+        </div>
+      ) : null}
+      <p className="text-[11px] text-slate-500">
+        <strong>Deep AI</strong> recording sunta hai (transcript) phir SOP. <strong>Free</strong> sirf
+        notes + lead fields — bina sunne.
+      </p>
 
       <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1 min-w-[160px]">
@@ -428,11 +469,12 @@ export default function CallIntelligencePanel({
       <div className="flex flex-wrap gap-1.5">
         {(
           [
-            ['overview', 'Call Analytics', Activity],
-            ['agents', 'Agent Performance', Users],
-            ['sentiment', 'Sentiment & Conversation', Megaphone],
-            ['quality', 'Query resolution', Sparkles],
-            ['recent', 'Recording Analysis', Brain],
+            ['sop', 'SOP Audit', BookOpen],
+            ['agents', 'Agents', Users],
+            ['quality', 'Queries', Sparkles],
+            ['overview', 'Analytics', Activity],
+            ['sentiment', 'Sentiment', Megaphone],
+            ['recent', 'Recordings', Brain],
           ] as const
         ).map(([id, label, Icon]) => (
           <button
@@ -469,7 +511,7 @@ export default function CallIntelligencePanel({
 
       {!loading && a ? (
         <>
-          {(tab === 'overview' || tab === 'quality') && (
+          {tab === 'overview' && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <Kpi label="Total calls" value={String(a.total_calls)} />
               <Kpi label="Connect rate" value={pct(a.connect_rate)} sub={`${a.answered} answered`} />
@@ -486,6 +528,7 @@ export default function CallIntelligencePanel({
                 sub={`Quality avg ${a.quality_avg}`}
               />
               <Kpi label="Not resolved" value={String(a.not_resolved_calls ?? 0)} sub="Needs coaching" />
+              <Kpi label="SOP avg" value={String(a.sop_avg ?? '—')} sub={`${a.sop_high_intent ?? 0} high intent`} />
             </div>
           )}
 
@@ -520,18 +563,33 @@ export default function CallIntelligencePanel({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-sm font-bold text-slate-900">Status mix</h2>
-                <ul className="mt-3 space-y-1.5">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <h2 className="text-sm font-bold text-slate-900">Call status</h2>
+                <ul className="mt-2 space-y-1 text-[13px]">
                   {Object.entries(a.status_mix || {})
                     .sort((x, y) => Number(y[1]) - Number(x[1]))
-                    .slice(0, 8)
+                    .slice(0, 6)
                     .map(([k, v]) => (
-                      <li key={k} className="flex justify-between text-sm">
+                      <li key={k} className="flex justify-between">
                         <span className="text-slate-600">{String(k).replace(/_/g, ' ')}</span>
-                        <span className="font-bold tabular-nums text-slate-900">{String(v)}</span>
+                        <span className="font-bold tabular-nums">{String(v)}</span>
                       </li>
                     ))}
+                </ul>
+                <h3 className="mt-3 text-[10px] font-bold uppercase text-slate-400">SOP suggested (CRM)</h3>
+                <ul className="mt-1 space-y-1 text-[13px]">
+                  {Object.entries(a.sop_status_mix || {})
+                    .sort((x, y) => Number(y[1]) - Number(x[1]))
+                    .slice(0, 6)
+                    .map(([k, v]) => (
+                      <li key={k} className="flex justify-between">
+                        <span className="text-slate-600">{k}</span>
+                        <span className="font-bold tabular-nums">{String(v)}</span>
+                      </li>
+                    ))}
+                  {!Object.keys(a.sop_status_mix || {}).length ? (
+                    <li className="text-slate-400">No SOP statuses yet</li>
+                  ) : null}
                 </ul>
               </div>
             </div>
@@ -815,6 +873,7 @@ export default function CallIntelligencePanel({
                             </div>
                           </div>
                           <QueryResolutionBoard queries={row.query_resolutions} />
+                          <SopAuditCard sop={row.sop_audit} compact />
                           {(row.coaching_tips || []).length ? (
                             <ul className="text-[11px] text-violet-800 space-y-0.5">
                               {(row.coaching_tips || []).map((t) => (
@@ -844,8 +903,8 @@ export default function CallIntelligencePanel({
           ) : null}
 
           {tab === 'sentiment' ? (
-            <div className="grid lg:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="grid lg:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm space-y-2">
                 <h2 className="text-sm font-bold text-slate-900">Sentiment mix</h2>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(a.sentiment_mix || {}).map(([k, v]) => (
@@ -869,9 +928,9 @@ export default function CallIntelligencePanel({
                   ))}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-sm font-bold text-slate-900">Conversation intelligence tags</h2>
-                <ul className="mt-3 space-y-1.5">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <h2 className="text-sm font-bold text-slate-900">Conversation tags</h2>
+                <ul className="mt-2 space-y-1">
                   {Object.entries(a.tag_mix || {})
                     .sort((x, y) => Number(y[1]) - Number(x[1]))
                     .map(([k, v]) => (
@@ -886,156 +945,257 @@ export default function CallIntelligencePanel({
           ) : null}
 
           {tab === 'quality' ? (
-            <div className="space-y-4">
-              <div className="grid lg:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h2 className="text-sm font-bold text-slate-900">Solution adequacy</h2>
-                  <div className="mt-3 flex flex-wrap gap-2">
+            <div className="space-y-3">
+              <div className="grid lg:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <h2 className="text-sm font-bold text-slate-900">Solution</h2>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {Object.entries(a.solution_mix || {}).map(([k, v]) => (
                       <span
                         key={k}
-                        className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${solutionTone(k)}`}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${solutionTone(k)}`}
                       >
                         {k.replace(/_/g, ' ')} · {String(v)}
                       </span>
                     ))}
                   </div>
-                  <p className="mt-3 text-[11px] text-slate-500">
-                    PROPER = customer problem + concrete offer (slot/price/workshop). MISSING =
-                    problem hai lekin solution notes mein nahi.
-                  </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <h2 className="text-sm font-bold text-slate-900">Top customer problem areas</h2>
-                  <ul className="mt-3 space-y-1.5">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <h2 className="text-sm font-bold text-slate-900">Problems</h2>
+                  <ul className="mt-2 space-y-1 text-[13px]">
                     {Object.entries(a.problem_category_mix || {})
                       .sort((x, y) => Number(y[1]) - Number(x[1]))
-                      .slice(0, 10)
+                      .slice(0, 6)
                       .map(([k, v]) => (
-                        <li key={k} className="flex justify-between text-sm">
-                          <span className="text-slate-600">{k}</span>
+                        <li key={k} className="flex justify-between">
+                          <span className="text-slate-600 truncate pr-2">{k}</span>
                           <span className="font-bold">{String(v)}</span>
                         </li>
                       ))}
-                    {!Object.keys(a.problem_category_mix || {}).length ? (
-                      <li className="text-sm text-slate-400">No problem categories detected yet</li>
-                    ) : null}
                   </ul>
                 </div>
               </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-100">
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Problem ↔ solution review
-                  </h2>
-                  <p className="text-[11px] text-slate-500">
-                    Missing / partial solutions & low quality — coaching list
-                  </p>
-                </div>
-                <ul className="divide-y divide-slate-100">
-                  {issuesPage.slice.map((row) => (
-                    <li key={row.call_log_id} className="px-4 py-3 space-y-2">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {row.customer_name || row.phone_number || 'Call'}
-                            {row.lead_number ? (
-                              <span className="ml-2 text-xs font-medium text-teal-700">
-                                #{row.lead_number}
-                              </span>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-1.5">Lead</th>
+                        <th className="px-3 py-1.5">Agent</th>
+                        <th className="px-3 py-1.5">Problem</th>
+                        <th className="px-3 py-1.5">Solution</th>
+                        <th className="px-3 py-1.5">Grade</th>
+                        <th className="px-3 py-1.5" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {issuesPage.slice.map((row, i) => {
+                        const open = openIssueId === String(row.call_log_id);
+                        return (
+                          <Fragment key={row.call_log_id}>
+                            <tr className={i % 2 ? 'bg-slate-50/70' : 'bg-white'}>
+                              <td className="px-3 py-1.5">
+                                <p className="font-semibold text-[13px] leading-tight">
+                                  {row.customer_name || row.phone_number || 'Call'}
+                                </p>
+                                <p className="text-[10px] text-teal-700">{row.lead_number || ''}</p>
+                              </td>
+                              <td className="px-3 py-1.5 text-xs text-slate-600">
+                                {row.telecaller_name || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-[11px] text-slate-700 max-w-[220px]">
+                                <span className="line-clamp-1">{row.customer_problem || '—'}</span>
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <span
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ring-1 ${solutionTone(row.solution_adequacy)}`}
+                                >
+                                  {(row.solution_adequacy || '—').replace(/_/g, ' ')}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${gradeTone(row.quality_grade)}`}>
+                                  {row.quality_grade} · {row.quality_score}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenIssueId(open ? null : String(row.call_log_id))
+                                  }
+                                  className="text-[11px] font-semibold text-violet-700"
+                                >
+                                  {open ? 'Hide' : 'Details'}
+                                </button>
+                              </td>
+                            </tr>
+                            {open ? (
+                              <tr className="bg-slate-50">
+                                <td colSpan={6} className="px-3 py-2 text-[12px]">
+                                  <p className="text-orange-800">
+                                    <strong>P:</strong> {row.customer_problem || '—'}
+                                  </p>
+                                  <p className="text-emerald-800 mt-0.5">
+                                    <strong>S:</strong> {row.agent_solution || '—'}
+                                  </p>
+                                  {row.sop_audit ? (
+                                    <div className="mt-2">
+                                      <SopAuditCard sop={row.sop_audit} hideHeader />
+                                    </div>
+                                  ) : null}
+                                </td>
+                              </tr>
                             ) : null}
-                          </p>
-                          {row.telecaller_id ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTab('agents');
-                                setSelectedAgentId(String(row.telecaller_id));
-                              }}
-                              className="text-[11px] font-medium text-violet-700 hover:underline"
-                            >
-                              {row.telecaller_name || 'Agent'}
-                            </button>
-                          ) : (
-                            <p className="text-[11px] text-slate-500">{row.telecaller_name || '—'}</p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-bold ${gradeTone(row.quality_grade)}`}
-                          >
-                            {row.quality_grade} · {row.quality_score}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${solutionTone(row.solution_adequacy)}`}
-                          >
-                            {(row.solution_adequacy || 'UNKNOWN').replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid sm:grid-cols-2 gap-2 text-xs">
-                        <div className="rounded-lg bg-orange-50/80 border border-orange-100 px-2.5 py-2">
-                          <p className="font-bold uppercase tracking-wide text-[10px] text-orange-700">
-                            Customer problem
-                          </p>
-                          <p className="mt-0.5 text-slate-800">
-                            {row.customer_problem || '— not captured —'}
-                          </p>
-                          {(row.customer_problem_categories || []).length ? (
-                            <p className="mt-1 text-[10px] text-orange-800/80">
-                              {(row.customer_problem_categories || []).join(' · ')}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="rounded-lg bg-emerald-50/80 border border-emerald-100 px-2.5 py-2">
-                          <p className="font-bold uppercase tracking-wide text-[10px] text-emerald-700">
-                            Telecaller solution
-                          </p>
-                          <p className="mt-0.5 text-slate-800">
-                            {row.agent_solution || '— no clear solution —'}
-                          </p>
-                          {row.overall_resolution ? (
-                            <span
-                              className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${resolutionTone(row.overall_resolution)}`}
-                            >
-                              {String(row.overall_resolution).replace(/_/g, ' ')}
-                              {row.queries_total
-                                ? ` · ${row.queries_resolved || 0}/${row.queries_total}`
-                                : ''}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <QueryResolutionBoard queries={row.query_resolutions} />
-                      {(row.unresolved_gaps || []).length ? (
-                        <ul className="text-[11px] text-red-700 space-y-0.5">
-                          {(row.unresolved_gaps || []).map((g) => (
-                            <li key={g}>✗ {g}</li>
-                          ))}
-                        </ul>
+                          </Fragment>
+                        );
+                      })}
+                      {!issues.length ? (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                            No coaching gaps in this range
+                          </td>
+                        </tr>
                       ) : null}
-                      {(row.coaching_tips || []).length ? (
-                        <ul className="text-[11px] text-violet-800 space-y-0.5">
-                          {(row.coaching_tips || []).map((t) => (
-                            <li key={t}>→ {t}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  ))}
-                  {issues.length === 0 ? (
-                    <li className="px-4 py-8 text-center text-sm text-slate-400">
-                      No problem/solution gaps in this range
-                    </li>
-                  ) : null}
-                </ul>
+                    </tbody>
+                  </table>
+                </div>
                 <PaginationBar
                   page={issuesPage.page}
                   totalPages={issuesPage.totalPages}
                   total={issuesPage.total}
                   onPage={issuesPage.setPage}
                   label="reviews"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {tab === 'sop' ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
+                  <p className="mt-1 text-[11px] text-slate-700 leading-relaxed">
+                    {Object.entries(a?.sop_status_mix || {})
+                      .sort((x, y) => Number(y[1]) - Number(x[1]))
+                      .slice(0, 4)
+                      .map(([k, v]) => `${k} ${v}`)
+                      .join(' · ') || '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Stage</p>
+                  <p className="mt-1 text-[11px] text-slate-700 leading-relaxed">
+                    {Object.entries(a?.sop_stage_mix || {})
+                      .map(([k, v]) => `${k} ${v}`)
+                      .join(' · ') || '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Close</p>
+                  <p className="mt-1 text-[11px] text-slate-700 leading-relaxed">
+                    {Object.entries(a?.sop_close_mix || {})
+                      .map(([k, v]) => `${k} ${v}`)
+                      .join(' · ') || '—'}
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-1.5">Lead</th>
+                        <th className="px-3 py-1.5">Agent</th>
+                        <th className="px-3 py-1.5">SOP</th>
+                        <th className="px-3 py-1.5">Status</th>
+                        <th className="px-3 py-1.5">Intent</th>
+                        <th className="px-3 py-1.5">Stage</th>
+                        <th className="px-3 py-1.5">Heard</th>
+                        <th className="px-3 py-1.5" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentPage.slice.map((row, i) => {
+                        const open = openSopId === String(row.call_log_id);
+                        return (
+                          <Fragment key={row.call_log_id}>
+                            <tr
+                              className={`border-b border-slate-100 ${i % 2 ? 'bg-slate-50/70' : 'bg-white'}`}
+                            >
+                              <td className="px-3 py-1.5">
+                                <p className="font-semibold text-slate-900 text-[13px] leading-tight">
+                                  {row.customer_name || row.phone_number || 'Call'}
+                                </p>
+                                <p className="text-[10px] text-teal-700 leading-tight">
+                                  {row.lead_number || ''}
+                                </p>
+                              </td>
+                              <td className="px-3 py-1.5 text-xs text-slate-600 whitespace-nowrap">
+                                {row.telecaller_name || '—'}
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <span className="rounded-full bg-violet-700 px-2 py-0.5 text-[10px] font-bold text-white">
+                                  {row.sop_audit?.overall_score ?? row.quality_score}/100
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-[11px] font-semibold text-slate-700 whitespace-nowrap">
+                                {row.sop_audit
+                                  ? toCrmSuggestedStatus(row.sop_audit.suggested_lead_status)
+                                  : '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-[11px]">
+                                {row.sop_audit?.customer_intent_level || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-[11px] text-slate-600">
+                                {row.sop_audit?.decision_stage || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-[10px] font-semibold">
+                                {row.sop_audit?.audit_source === 'transcript' ? (
+                                  <span className="text-emerald-700">Transcript</span>
+                                ) : (
+                                  <span className="text-slate-400">Notes</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-1.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenSopId(open ? null : String(row.call_log_id))
+                                  }
+                                  className="text-[11px] font-semibold text-violet-700 hover:underline"
+                                >
+                                  {open ? 'Hide' : 'Details'}
+                                </button>
+                              </td>
+                            </tr>
+                            {open && row.sop_audit ? (
+                              <tr className="bg-slate-50">
+                                <td colSpan={8} className="px-2 py-2">
+                                  <SopAuditCard sop={row.sop_audit} hideHeader />
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                      {!recent.length ? (
+                        <tr>
+                          <td colSpan={8} className="px-3 py-8 text-center text-slate-400">
+                            No SOP audits in this range
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationBar
+                  page={recentPage.page}
+                  totalPages={recentPage.totalPages}
+                  total={recentPage.total}
+                  onPage={recentPage.setPage}
+                  label="audits"
                 />
               </div>
             </div>

@@ -42,7 +42,7 @@ export const MYFNG_MCP_TOOLS: McpToolDef[] = [
   { name: 'search_call_logs', area: 'Calls', description: 'Filter telecaller_call_logs' },
   { name: 'get_call', area: 'Calls', description: 'Single call log by id' },
   { name: 'get_recordings', area: 'Calls', description: 'Calls that have recording URLs' },
-  { name: 'get_call_intelligence', area: 'Calls', description: 'telecaller_call_analyses rows' },
+  { name: 'get_call_intelligence', area: 'Calls', description: 'telecaller_call_analyses rows including Call IQ SOP audit' },
   { name: 'get_dial_sessions', area: 'Calls', description: 'smartflo_dial_sessions list' },
   { name: 'get_telecaller_activity', area: 'Calls', description: 'Day summary for one telecaller' },
 

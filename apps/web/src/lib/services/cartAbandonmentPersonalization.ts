@@ -25,19 +25,19 @@ export async function buildCartAbandonmentPersonalLine(
 
   if (stage === '3h') {
     if (walletBal >= 50) {
-      return `Use your wallet balance of ₹${walletBal} on this booking.`;
+      return `Account update: wallet balance ₹${walletBal} is available on your MyFNG account.`;
     }
     if (hasMembership) {
-      return 'Prime member benefit: extra savings apply when you book on the app.';
+      return 'Account update: your MyFNG Prime membership is active on this account.';
     }
-    return 'Book now on the app to unlock wallet rewards and live tracking.';
+    return 'Your saved booking is still open on your account.';
   }
 
   if (walletBal >= 50) {
-    return `Last reminder — ₹${walletBal} wallet balance waiting. Slots fill fast.`;
+    return `Account reminder: wallet balance ₹${walletBal} remains on your MyFNG account.`;
   }
   if (hasMembership) {
-    return 'Prime member: confirm today to keep your preferred pickup slot.';
+    return 'Account reminder: your MyFNG Prime membership is still active.';
   }
-  return 'Limited pickup slots today — complete booking to avoid reschedule.';
+  return 'Your booking draft is still incomplete on your account.';
 }

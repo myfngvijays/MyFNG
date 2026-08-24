@@ -6,7 +6,7 @@ import { syncRecentWhatsAppInboundLeads } from '@/lib/whatsappAgents/inboundServ
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const ALLOWED = new Set(['TELECALLER', 'SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS']);
+const ALLOWED = new Set(['TELECALLER', 'SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER']);
 
 /**
  * POST /api/telecaller/crm/sync-whatsapp-leads

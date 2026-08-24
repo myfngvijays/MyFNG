@@ -41,6 +41,7 @@ export async function notifyCartAbandonedWhatsApp(
 
   let templateParams: string[];
   if (stage === '5m') {
+    // Meta body: {{1}} name, {{2}} car, {{3}} service (no download link — user already has app)
     templateParams = [customerName, car, service];
   } else {
     const personalLine = await buildCartAbandonmentPersonalLine(
@@ -48,6 +49,7 @@ export async function notifyCartAbandonedWhatsApp(
       target.customerId,
       stage,
     );
+    // Meta body: {{1}}–{{3}} + {{4}} account status line
     templateParams = [customerName, car, service, personalLine];
   }
 

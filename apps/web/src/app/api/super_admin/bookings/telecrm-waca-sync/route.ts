@@ -6,7 +6,7 @@ import { mirrorTelecrmWacaInboundToBookings } from '@/lib/telecrm/wacaBookingsMi
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const ALLOWED = new Set(['SUPER_ADMIN', 'SUB_ADMIN', 'APP_OPERATIONS']);
+const ALLOWED = new Set(['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS']);
 
 /**
  * POST /api/super_admin/bookings/telecrm-waca-sync

@@ -15,6 +15,7 @@ import SendWhatsAppModal from '@/components/shared/SendWhatsAppModal';
 import CrmLeadEditForm from '@/components/telecaller/crm/CrmLeadEditForm';
 import LeadTagsPanel from '@/components/telecaller/crm/LeadTagsPanel';
 import LeadTimelinePanel from '@/components/telecaller/crm/LeadTimelinePanel';
+import LeadIqCard from '@/components/admin/LeadIqCard';
 import {
   leadDisplayStatus,
 } from '@/lib/telecaller/leadDisplayStatus';
@@ -1167,6 +1168,7 @@ function LeadDetailContent() {
               </div>
             </div>
 
+            <LeadIqCard leadId={leadId} />
             <LeadTagsPanel leadId={leadId} canManage={isLeadManager} />
             <LeadTimelinePanel
               leadId={leadId}

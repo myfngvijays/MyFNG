@@ -121,6 +121,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'phone is required for test-send' }, { status: 400 });
       }
 
+      // Refresh Meta status first so APPROVED templates aren't blocked by draft is_active=false.
+      try {
+        await syncAutomationTemplateFromSetting(triggerKey, auth.userProfile.id);
+      } catch {
+        /* send path still reports a clear error if template isn't ready */
+      }
+
       const templateParams =
         Array.isArray(body?.templateParams) && body.templateParams.length > 0
           ? body.templateParams.map((value: unknown) => String(value ?? '').trim())

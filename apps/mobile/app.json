@@ -3,7 +3,7 @@
     "name": "MyFNG",
     "slug": "myfng-app",
     "scheme": "myfng",
-    "version": "1.2.6",
+    "version": "1.2.7",
     "orientation": "portrait",
     "primaryColor": "#004AAD",
     "icon": "./assets/app-icon.png",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.myfng.app",
-      "buildNumber": "34",
+      "buildNumber": "35",
       "googleServicesFile": "./ios/MyFNG/GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:myfng.in",
@@ -63,7 +63,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.myfng.app",
-      "versionCode": 34,
+      "versionCode": 35,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "CAMERA",
@@ -78,10 +78,21 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "myfng.in", "pathPrefix": "/refer" },
-            { "scheme": "https", "host": "www.myfng.in", "pathPrefix": "/refer" }
+            {
+              "scheme": "https",
+              "host": "myfng.in",
+              "pathPrefix": "/refer"
+            },
+            {
+              "scheme": "https",
+              "host": "www.myfng.in",
+              "pathPrefix": "/refer"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },

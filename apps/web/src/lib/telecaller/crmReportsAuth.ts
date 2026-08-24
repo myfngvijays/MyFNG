@@ -32,7 +32,7 @@ export async function requireCrmReportsContext(
   const roleCode = normalizeRoleCode(
     (profile as { roles?: { role_code?: string } })?.roles?.role_code,
   );
-  if (!isTelecallerCrmRole(roleCode) && roleCode !== 'APP_OPERATIONS') {
+  if (!isTelecallerCrmRole(roleCode)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

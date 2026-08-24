@@ -28,5 +28,5 @@ export async function ensureTelecallerPunchOutOnLogout(): Promise<void> {
 
 export function isTelecallerFloorRole(roleCode: string | null | undefined): boolean {
   const r = String(roleCode || '').toUpperCase();
-  return r === 'TELECALLER' || r === 'LEAD_MANAGER';
+  return r === 'TELECALLER' || r === 'LEAD_MANAGER' || r === 'APP_OPERATIONS';
 }

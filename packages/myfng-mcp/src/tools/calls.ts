@@ -120,7 +120,7 @@ export function registerCallsTools(server: McpServer) {
 
   server.tool(
     'get_call_intelligence',
-    'Fetch telecaller_call_analyses (Call Intelligence) by call_log_id or recent analyses.',
+    'Fetch telecaller_call_analyses (Call IQ SOP + quality) by call_log_id or recent analyses.',
     {
       call_log_id: z.string().uuid().optional(),
       limit: z.number().int().min(1).max(100).optional(),
@@ -142,7 +142,7 @@ export function registerCallsTools(server: McpServer) {
         const { data, error } = await db
           .from('telecaller_call_analyses')
           .select(
-            'id, call_log_id, sentiment, quality_score, quality_grade, buying_intent, summary, analyzed_at',
+            'id, call_log_id, sentiment, quality_score, quality_grade, buying_intent, summary, sop_audit, analyzed_at',
           )
           .order('analyzed_at', { ascending: false })
           .limit(lim);

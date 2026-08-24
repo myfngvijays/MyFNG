@@ -121,6 +121,29 @@ const nextConfig = {
       // Dead admin placeholder path — send to contact
       { source: '/service-partner', destination: '/contact-us', permanent: true },
       { source: '/service-partner/:path*', destination: '/contact-us', permanent: true },
+      { source: '/dashboard/app_operations', destination: '/dashboard/lead_manager', permanent: false },
+      { source: '/dashboard/app_operations/bookings', destination: '/dashboard/lead_manager/bookings', permanent: false },
+      {
+        source: '/dashboard/app_operations/customer-insights',
+        destination: '/dashboard/lead_manager/customer-insights',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/app_operations/workshop-proximity',
+        destination: '/dashboard/lead_manager/workshop-proximity',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/app_operations/membership-customers',
+        destination: '/dashboard/lead_manager/membership-customers',
+        permanent: false,
+      },
+      { source: '/dashboard/app_operations/referral', destination: '/dashboard/lead_manager/referral', permanent: false },
+      {
+        source: '/dashboard/app_operations/:path*',
+        destination: '/dashboard/lead_manager/:path*',
+        permanent: false,
+      },
     ];
   },
 

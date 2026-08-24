@@ -83,13 +83,41 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Call Intelligence menu pe free quality / sentiment analytics milti hai.',
     ],
   },
-  '/dashboard/super_admin/call-intelligence': {
-    title: 'Call Intelligence',
+  '/dashboard/super_admin/ai-suite': {
+    title: 'AI Suite',
     body:
-      'Free call analytics: connect rate, talk time, recording coverage, call quality score, Hinglish sentiment & conversation tags, agent performance.\n\nPaid speech-to-text / OpenAI use nahi hota — notes + call metadata se insights.',
+      'Call IQ (Sales SOP audit), Lead IQ (lead brief + scripts), Workflow (auto SOP on recording), and Sales Playbook.',
     tips: [
-      'Migration 339_telecaller_call_analyses.sql run karo taaki scores save ho.',
-      'Recordings page pe Analyze se single call bhi score ho sakta hai.',
+      'Playbook save karo — Deep AI isi se ground hota hai.',
+      'Workflow page pe CRM lead statuses choose karo — flowchart Call IQ pe nahi dikhta.',
+    ],
+  },
+  '/dashboard/super_admin/ai-suite/workflow': {
+    title: 'Call IQ Workflow',
+    body:
+      'Recording complete → selected CRM lead statuses → duration ≥ N seconds → Call Audit SOP. Status chips Lead Status page se aate hain.',
+    tips: [
+      'Default open pipeline: Fresh, Interested, He will visit, Follow-up, Ringing / No answer.',
+      'Deep AI only when notes exist — audio auto-transcribe nahi.',
+    ],
+  },
+  '/dashboard/super_admin/ai-suite/playbook': {
+    title: 'Sales Playbook',
+    body:
+      'Voice & style, who we sell to, product features, pricing, objection handling, competitors, Call IQ / Lead IQ prompts.',
+  },
+  '/dashboard/super_admin/lead-iq': {
+    title: 'Lead IQ',
+    body:
+      'CRM leads search + status chips. Har row pe Free / Deep AI. Details pe compact brief + scripts.',
+  },
+  '/dashboard/super_admin/call-intelligence': {
+    title: 'Call IQ',
+    body:
+      'Agents tab: TeleCRM-style Call-IQ list + Version / Instruction / Response Type + Field Name overlay + View Flowchart.\nResults tab: SOP scans (Deep AI = transcript → SOP).',
+    tips: [
+      'Migration 351_call_iq_agents.sql se agents persist hote hain.',
+      '348_ai_suite_call_lead_iq.sql SOP fields ke liye.',
     ],
   },
   '/dashboard/super_admin/myfng-mcp': {
@@ -107,10 +135,26 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
     body:
       'Team ki saari call recordings — search, date filter, Play.\n\nLeads pe bhi recording dikhti hai; yahan se alag se browse / QA kar sakte ho.',
   },
+  '/dashboard/lead_manager/ai-suite': {
+    title: 'AI Suite',
+    body: 'Call IQ + Lead IQ + Workflow + Sales Playbook for the telecaller team.',
+  },
+  '/dashboard/lead_manager/ai-suite/workflow': {
+    title: 'Call IQ Workflow',
+    body: 'Auto SOP when a recording completes — filtered by your CRM lead statuses and min duration.',
+  },
+  '/dashboard/lead_manager/ai-suite/playbook': {
+    title: 'Sales Playbook',
+    body: 'Edit MY FNG SOP grounding used by Call IQ and Lead IQ.',
+  },
+  '/dashboard/lead_manager/lead-iq': {
+    title: 'Lead IQ',
+    body: 'Generate a strategist brief for any lead — intent, risk, next move, scripts.',
+  },
   '/dashboard/lead_manager/call-intelligence': {
-    title: 'Call Intelligence',
+    title: 'Call IQ',
     body:
-      'Team call analytics + agent performance + sentiment (free heuristics). Paid AI nahi.',
+      'TeleCRM-style Call-IQ agents: Name / Provider / Type. Overlay mein Version, Instruction, Response Type + Field Name, dropdown chips, aur View Flowchart. Results tab pe SOP scans.',
   },
   '/dashboard/lead_manager': {
     title: 'Home',
@@ -155,6 +199,26 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Need Assignment = NEW/VALIDATED, complete, abhi workshop nahi.',
       'Rejected = workshop ne reject kiya.',
     ],
+  },
+  '/dashboard/lead_manager/bookings': {
+    title: 'Bookings & Leads',
+    body: 'App bookings + service leads desk — search, filters, WhatsApp enquiry, chart, status update.',
+  },
+  '/dashboard/lead_manager/customer-insights': {
+    title: 'App Customers',
+    body: 'App customer list — search, platform, wallet / account / membership insight.',
+  },
+  '/dashboard/lead_manager/workshop-proximity': {
+    title: 'Workshop Proximity',
+    body: 'Customers who came near a workshop (walk-in alerts + geofence events).',
+  },
+  '/dashboard/lead_manager/membership-customers': {
+    title: 'Membership Customers',
+    body: 'Active / expired membership customers, claims, and benefit usage.',
+  },
+  '/dashboard/lead_manager/referral': {
+    title: 'Refer & Rise',
+    body: 'Referral programme — leaderboard, rewards, recent referral events. Config edit Super Admin only.',
   },
   '/dashboard/lead_manager/workshops': {
     title: 'Workshops',
@@ -331,6 +395,11 @@ export function getLeadManagerReadme(): ReadmeSection[] {
         { href: '/dashboard/lead_manager/book', ...BY_HREF['/dashboard/lead_manager/book'] },
         { href: '/dashboard/lead_manager/assignment', ...BY_HREF['/dashboard/lead_manager/assignment'] },
         { href: '/dashboard/lead_manager/workshops', ...BY_HREF['/dashboard/lead_manager/workshops'] },
+        { href: '/dashboard/lead_manager/bookings', ...BY_HREF['/dashboard/lead_manager/bookings'] },
+        { href: '/dashboard/lead_manager/customer-insights', ...BY_HREF['/dashboard/lead_manager/customer-insights'] },
+        { href: '/dashboard/lead_manager/workshop-proximity', ...BY_HREF['/dashboard/lead_manager/workshop-proximity'] },
+        { href: '/dashboard/lead_manager/membership-customers', ...BY_HREF['/dashboard/lead_manager/membership-customers'] },
+        { href: '/dashboard/lead_manager/referral', ...BY_HREF['/dashboard/lead_manager/referral'] },
         { href: '/dashboard/lead_manager/escalations', ...BY_HREF['/dashboard/lead_manager/escalations'] },
         { href: '/dashboard/lead_manager/team', ...BY_HREF['/dashboard/lead_manager/team'] },
         { href: '/dashboard/lead_manager/tags', ...BY_HREF['/dashboard/lead_manager/tags'] },

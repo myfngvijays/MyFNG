@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertCronAuth } from '@/lib/cron/assertCronAuth';
 import { syncSmartfloRecordings } from '@/lib/telecaller/smartfloCdr';
+import { sweepCallIqWorkflow } from '@/lib/telecaller/callIqWorkflow';
 import {
   getSmartfloRecordingsCronSettings,
   markSmartfloRecordingsCronRun,
@@ -52,12 +53,21 @@ async function handle(req: NextRequest) {
   const result = await syncSmartfloRecordings({
     hoursBack: Number.isFinite(hoursBack) ? hoursBack : 6,
     maxPages: 4,
-    timeBudgetMs: 50_000,
+    timeBudgetMs: 42_000,
     concurrency: 6,
   });
 
+  const iqSweep = result.ok
+    ? await sweepCallIqWorkflow(6).catch((e) => ({
+        scanned: 0,
+        ran: 0,
+        skipped: 0,
+        error: e?.message || 'sweep failed',
+      }))
+    : { scanned: 0, ran: 0, skipped: 0 };
+
   const summary = result.ok
-    ? `fetched=${result.fetched} with_recording=${result.with_recording} matched=${result.matched}`
+    ? `fetched=${result.fetched} with_recording=${result.with_recording} matched=${result.matched} call_iq=${iqSweep.ran}`
     : result.error || 'sync failed';
 
   await markSmartfloRecordingsCronRun({ ok: Boolean(result.ok), summary });
@@ -70,6 +80,7 @@ async function handle(req: NextRequest) {
       enabled: settings.enabled,
       interval_minutes: settings.interval_minutes,
       hours_back: hoursBack,
+      call_iq_sweep: iqSweep,
       timestamp: new Date().toISOString(),
     },
     { status: result.ok ? 200 : 502 },

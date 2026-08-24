@@ -14,6 +14,14 @@ import {
   analyzeCallWithQueryResolution,
   deepAnalyzeWithOpenAI,
 } from '@/lib/telecaller/callIntelligenceDeep';
+import {
+  analyzeSopFree,
+  analyzeSopWithOpenAI,
+  attachSopToAnalysis,
+  toCrmSuggestedStatus,
+} from '@/lib/telecaller/callIqSop';
+import { loadSalesPlaybook } from '@/lib/telecaller/loadSalesPlaybook';
+import { attachTranscriptToSopInput } from '@/lib/telecaller/callIqTranscript';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -58,7 +66,35 @@ function mapRow(r: any) {
     customer_name: r.lead?.customer_name || null,
     problem_description: r.lead?.problem_description || null,
     service_type: r.lead?.service_type || null,
+    lead_source: r.lead?.lead_source || null,
+    vehicle_number: r.lead?.vehicle_number || null,
+    vehicle_make: r.lead?.vehicle_make || null,
+    vehicle_model: r.lead?.vehicle_model || null,
+    city: r.lead?.city || null,
     telecaller_name: r.telecaller?.full_name || null,
+  };
+}
+
+function toSopInput(r: ReturnType<typeof mapRow>) {
+  return {
+    id: r.id,
+    call_status: r.call_status,
+    call_duration: r.call_duration,
+    outcome: r.outcome,
+    notes: r.notes,
+    customer_response: r.customer_response,
+    lead_id: r.lead_id,
+    call_recording_url: r.call_recording_url,
+    phone_number: r.phone_number,
+    created_at: r.created_at,
+    lead_status: r.lead_status,
+    problem_description: r.problem_description,
+    service_type: r.service_type,
+    lead_source: r.lead_source,
+    vehicle_number: r.vehicle_number,
+    vehicle_make: r.vehicle_make,
+    vehicle_model: r.vehicle_model,
+    city: r.city,
   };
 }
 
@@ -89,6 +125,7 @@ async function upsertAnalyses(db: any, analyses: CallAnalysisResult[]) {
     queries_unresolved: a.queries_unresolved ?? null,
     resolution_score: a.resolution_score ?? a.solution_score,
     unresolved_gaps: a.unresolved_gaps || [],
+    sop_audit: a.sop_audit || null,
     engine: a.engine,
     analyzed_at: a.analyzed_at,
     updated_at: new Date().toISOString(),
@@ -96,6 +133,18 @@ async function upsertAnalyses(db: any, analyses: CallAnalysisResult[]) {
   let { error } = await db.from('telecaller_call_analyses').upsert(payload, {
     onConflict: 'call_log_id',
   });
+  if (error && /sop_audit/i.test(error.message || '')) {
+    const noSop = payload.map(({ sop_audit, ...rest }) => rest);
+    const retry = await db.from('telecaller_call_analyses').upsert(noSop, { onConflict: 'call_log_id' });
+    error = retry.error;
+    if (!error) {
+      return {
+        ok: true,
+        persisted: true,
+        warning: 'Run database/348_ai_suite_call_lead_iq.sql to store Call IQ SOP fields',
+      };
+    }
+  }
   if (error && /query_resolutions|overall_resolution|unresolved_gaps|column/i.test(error.message || '')) {
     const mid = payload.map(
       ({
@@ -189,7 +238,7 @@ export async function GET(request: NextRequest) {
         `
         id, telecaller_id, lead_id, call_status, call_duration, outcome, notes,
         customer_response, phone_number, call_recording_url, created_at,
-        lead:service_leads!lead_id(id, lead_number, customer_name, status, problem_description, service_type),
+        lead:service_leads!lead_id(id, lead_number, customer_name, status, problem_description, service_type, lead_source, vehicle_number, vehicle_make, vehicle_model, city),
         telecaller:telecaller_id(id, full_name)
       `,
       )
@@ -207,21 +256,7 @@ export async function GET(request: NextRequest) {
 
     const rows = (Array.isArray(data) ? data : []).map(mapRow);
     const analyses = rows.map((r) =>
-      analyzeCallWithQueryResolution({
-        id: r.id,
-        call_status: r.call_status,
-        call_duration: r.call_duration,
-        outcome: r.outcome,
-        notes: r.notes,
-        customer_response: r.customer_response,
-        lead_id: r.lead_id,
-        call_recording_url: r.call_recording_url,
-        phone_number: r.phone_number,
-        created_at: r.created_at,
-        lead_status: r.lead_status,
-        problem_description: r.problem_description,
-        service_type: r.service_type,
-      }),
+      attachSopToAnalysis(analyzeCallWithQueryResolution(toSopInput(r)), analyzeSopFree(toSopInput(r))),
     );
 
     // Persist in background-ish (await for consistency)
@@ -240,6 +275,11 @@ export async function GET(request: NextRequest) {
     let queriesTotalSum = 0;
     let fullyResolvedCalls = 0;
     let notResolvedCalls = 0;
+    let sopScoreSum = 0;
+    let sopHighIntent = 0;
+    const sopStatusMix: Record<string, number> = {};
+    const sopStageMix: Record<string, number> = {};
+    const sopCloseMix: Record<string, number> = {};
     const statusMix: Record<string, number> = {};
     const sentimentMix: Record<string, number> = {};
     const tagMix: Record<string, number> = {};
@@ -265,6 +305,14 @@ export async function GET(request: NextRequest) {
       queriesTotalSum += Number(a.queries_total) || 0;
       if (a.overall_resolution === 'FULLY_RESOLVED') fullyResolvedCalls += 1;
       if (a.overall_resolution === 'NOT_RESOLVED') notResolvedCalls += 1;
+      if (a.sop_audit) {
+        sopScoreSum += a.sop_audit.overall_score;
+        if (a.sop_audit.customer_intent_level === 'High') sopHighIntent += 1;
+        const sug = toCrmSuggestedStatus(a.sop_audit.suggested_lead_status);
+        sopStatusMix[sug] = (sopStatusMix[sug] || 0) + 1;
+        sopStageMix[a.sop_audit.decision_stage] = (sopStageMix[a.sop_audit.decision_stage] || 0) + 1;
+        sopCloseMix[a.sop_audit.closing_attempt] = (sopCloseMix[a.sop_audit.closing_attempt] || 0) + 1;
+      }
       for (const t of a.conversation_tags) {
         tagMix[t] = (tagMix[t] || 0) + 1;
       }
@@ -397,7 +445,7 @@ export async function GET(request: NextRequest) {
       free: true,
       engine: 'free_query_v2',
       note:
-        'Free multi-query resolution from call notes + metadata. Deep AI is on-demand only.',
+        'Call IQ SOP + query resolution from notes + lead fields. Deep AI (SOP prompt + playbook) is on-demand only.',
       range_label: range.label,
       preset: range.preset,
       persisted: persist.persisted,
@@ -423,6 +471,11 @@ export async function GET(request: NextRequest) {
         query_resolve_rate: queriesTotalSum ? queriesResolvedSum / queriesTotalSum : 0,
         fully_resolved_calls: fullyResolvedCalls,
         not_resolved_calls: notResolvedCalls,
+        sop_avg: analyses.length ? Math.round(sopScoreSum / analyses.length) : 0,
+        sop_high_intent: sopHighIntent,
+        sop_status_mix: sopStatusMix,
+        sop_stage_mix: sopStageMix,
+        sop_close_mix: sopCloseMix,
         status_mix: statusMix,
         sentiment_mix: sentimentMix,
         tag_mix: tagMix,
@@ -452,6 +505,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     const { db } = auth;
+    const playbook = await loadSalesPlaybook(db);
     const body = await request.json().catch(() => ({}));
     const deep = Boolean(body?.deep);
     const ids = Array.isArray(body?.ids)
@@ -470,7 +524,7 @@ export async function POST(request: NextRequest) {
         `
         id, telecaller_id, lead_id, call_status, call_duration, outcome, notes,
         customer_response, phone_number, call_recording_url, created_at,
-        lead:service_leads!lead_id(id, lead_number, customer_name, status, problem_description, service_type),
+        lead:service_leads!lead_id(id, lead_number, customer_name, status, problem_description, service_type, lead_source, vehicle_number, vehicle_make, vehicle_model, city),
         telecaller:telecaller_id(id, full_name)
       `,
       )
@@ -486,28 +540,29 @@ export async function POST(request: NextRequest) {
     let usedOpenai = 0;
 
     for (const r of rows) {
-      const input = {
-        id: r.id,
-        call_status: r.call_status,
-        call_duration: r.call_duration,
-        outcome: r.outcome,
-        notes: r.notes,
-        customer_response: r.customer_response,
-        lead_id: r.lead_id,
-        call_recording_url: r.call_recording_url,
-        phone_number: r.phone_number,
-        created_at: r.created_at,
-        lead_status: r.lead_status,
-        problem_description: r.problem_description,
-        service_type: r.service_type,
-      };
+      const input = toSopInput(r);
       if (deep) {
-        const result = await deepAnalyzeWithOpenAI(input);
-        analyses.push(result.analysis);
-        if (result.used_openai) usedOpenai += 1;
+        const { data: existing } = await db
+          .from('telecaller_call_analyses')
+          .select('sop_audit')
+          .eq('call_log_id', r.id)
+          .maybeSingle();
+        const attached = await attachTranscriptToSopInput(
+          input,
+          (r as any).call_recording_url,
+          existing?.sop_audit?.call_transcript,
+        );
+        if (attached.warning) warnings.push(attached.warning);
+        const result = await deepAnalyzeWithOpenAI(attached.input);
+        const sopRes = await analyzeSopWithOpenAI(attached.input, playbook);
+        analyses.push(attachSopToAnalysis(result.analysis, sopRes.sop));
+        if (result.used_openai || sopRes.used_openai) usedOpenai += 1;
         if (result.warning) warnings.push(result.warning);
+        if (sopRes.warning) warnings.push(sopRes.warning);
       } else {
-        analyses.push(analyzeCallWithQueryResolution(input));
+        analyses.push(
+          attachSopToAnalysis(analyzeCallWithQueryResolution(input), analyzeSopFree(input)),
+        );
       }
     }
 

@@ -387,8 +387,8 @@ function PlatformTabButton({
 
 export default function MembershipCustomersApp() {
   const pathname = usePathname();
-  const dashboardBase = pathname?.startsWith('/dashboard/app_operations')
-    ? '/dashboard/app_operations'
+  const dashboardBase = pathname?.startsWith('/dashboard/lead_manager')
+    ? '/dashboard/lead_manager'
     : '/dashboard/super_admin';
   const [tab, setTab] = useState<'dashboard' | 'customers'>('dashboard');
   const [overview, setOverview] = useState<Overview | null>(null);

@@ -442,7 +442,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }: any) {
         const roleCode = String(
           (profile as any)?.role?.role_code || (profile as any)?.roles?.role_code || '',
         ).toUpperCase();
-        if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER') {
+        if (roleCode === 'TELECALLER' || roleCode === 'LEAD_MANAGER' || roleCode === 'APP_OPERATIONS') {
           await apiFetch('/api/telecaller/crm/attendance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

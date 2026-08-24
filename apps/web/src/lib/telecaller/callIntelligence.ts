@@ -71,6 +71,8 @@ export type CallAnalysisResult = {
   queries_unresolved?: number;
   resolution_score?: number;
   unresolved_gaps?: string[];
+  /** MY FNG Sales SOP structured audit (Call IQ) */
+  sop_audit?: import('@/lib/telecaller/callIqSop').CallIqSopAudit;
   analyzed_at: string;
   engine: 'free_heuristics_v1' | 'free_query_v2' | 'openai_deep_v1';
 };

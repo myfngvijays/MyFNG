@@ -6,6 +6,7 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import { getClickToCallConfig } from '@/lib/telecaller/clickToCallConfig';
 import { normalizePhone10 } from '@/lib/telecaller/initiateClickToCall';
+import { enqueueCallIqOnRecordingCompleted } from '@/lib/telecaller/callIqWorkflow';
 
 export const SMARTFLO_API_BASE = 'https://api-smartflo.tatateleservices.com/v1';
 
@@ -275,7 +276,7 @@ async function findOrAttachCallLog(input: {
   duration: number | null;
   startedAt: string | null;
   status: string | null;
-}): Promise<{ callLogId: string | null; updated: boolean; created: boolean }> {
+}): Promise<{ callLogId: string | null; updated: boolean; created: boolean; newRecording: boolean }> {
   const { db, leadId, phone10, callId, recordingUrl, duration, startedAt, status } = input;
 
   // 1) Already linked by smartflo_call_id → update same row only
@@ -292,7 +293,12 @@ async function findOrAttachCallLog(input: {
       if (recordingUrl && !byId.call_recording_url) patch.call_recording_url = recordingUrl;
       if (duration != null) patch.call_duration = duration;
       await db.from('telecaller_call_logs').update(patch).eq('id', byId.id);
-      return { callLogId: String(byId.id), updated: true, created: false };
+      return {
+        callLogId: String(byId.id),
+        updated: true,
+        created: false,
+        newRecording: Boolean(recordingUrl && !byId.call_recording_url),
+      };
     }
   }
 
@@ -378,7 +384,12 @@ async function findOrAttachCallLog(input: {
         patch.notes = recordingUrl ? 'Recording synced' : 'Call synced from Smartflo CDR';
       }
       await db.from('telecaller_call_logs').update(patch).eq('id', hit.id);
-      return { callLogId: String(hit.id), updated: true, created: false };
+      return {
+        callLogId: String(hit.id),
+        updated: true,
+        created: false,
+        newRecording: Boolean(recordingUrl),
+      };
     }
   }
 
@@ -410,7 +421,7 @@ async function findOrAttachCallLog(input: {
       telecallerId = String(prev?.telecaller_id || '').trim() || null;
     }
     if (!telecallerId) {
-      return { callLogId: null, updated: false, created: false };
+      return { callLogId: null, updated: false, created: false, newRecording: false };
     }
 
     const { data: inserted, error } = await db
@@ -433,12 +444,17 @@ async function findOrAttachCallLog(input: {
 
     if (error || !inserted?.id) {
       console.warn('[smartfloCdr] create call log failed:', error?.message);
-      return { callLogId: null, updated: false, created: false };
+      return { callLogId: null, updated: false, created: false, newRecording: false };
     }
-    return { callLogId: String(inserted.id), updated: false, created: true };
+    return {
+      callLogId: String(inserted.id),
+      updated: false,
+      created: true,
+      newRecording: Boolean(recordingUrl),
+    };
   }
 
-  return { callLogId: null, updated: false, created: false };
+  return { callLogId: null, updated: false, created: false, newRecording: false };
 }
 
 export async function upsertSmartfloRecording(
@@ -602,6 +618,10 @@ export async function upsertSmartfloRecording(
       .eq('id', upserted.id);
   }
 
+  if (attach.newRecording && attach.callLogId) {
+    enqueueCallIqOnRecordingCompleted(attach.callLogId, true);
+  }
+
   return {
     recordingRowId: upserted?.id ? String(upserted.id) : null,
     callLogId: attach.callLogId,
@@ -693,6 +713,9 @@ export async function repairDetachedSmartfloRecordings(limit = 200): Promise<{
     });
 
     if (attach.callLogId) {
+      if (attach.newRecording) {
+        enqueueCallIqOnRecordingCompleted(attach.callLogId, true);
+      }
       await db
         .from('smartflo_call_recordings')
         .update({

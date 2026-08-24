@@ -12,7 +12,7 @@ type RoleGroup = 'admin_roles' | 'manager_roles' | 'internal_staff' | 'workshop_
 const ROLE_HIERARCHY: Record<RoleGroup, string[]> = {
   admin_roles: ['SUPER_ADMIN', 'SUB_ADMIN'],
   manager_roles: ['LEAD_MANAGER', 'RSA_MANAGER', 'HOME_SERVICE_MANAGER'],
-  internal_staff: ['TELECALLER', 'CUSTOMER_SERVICE_EXECUTIVE', 'AUDITOR', 'ACCOUNTS_TEAM', 'DIGITAL_MARKETING', 'DIGITAL_AUTHOR', 'APP_OPERATIONS'],
+  internal_staff: ['TELECALLER', 'CUSTOMER_SERVICE_EXECUTIVE', 'AUDITOR', 'ACCOUNTS_TEAM', 'DIGITAL_MARKETING', 'DIGITAL_AUTHOR'],
   workshop_staff: ['WORKSHOP_ADMIN', 'WORKSHOP_SUPERVISOR', 'WORKSHOP_MECHANIC', 'WORKSHOP_PICKUP_BOY'],
   company_field_staff: ['COMPANY_MECHANIC_RSA', 'COMPANY_VAN_TECHNICIAN', 'COMPANY_VAN_DRIVER'],
   customers: ['CUSTOMER'],
@@ -30,7 +30,7 @@ const GROUP_LABELS: Record<RoleGroup, { label: string; color: string; bg: string
 const ROLE_MENU_ITEMS: Record<string, string[]> = {
   SUPER_ADMIN: ['Dashboard', 'User Management', 'Workshops', 'Bookings & Leads', 'RSA', 'Telecaller Distribution', 'Manual Invoices', 'Products & Inventory', 'Service Packages', 'Workshop Pricing', 'Service Pricing', 'Zones', 'App Customers', 'Membership Customers', 'Home Carousel', 'Promo Banners', 'Customer Reviews', 'Membership Plans', 'Advance Coupon Management', 'Notifications', 'WhatsApp Templates', 'WhatsApp Dashboard', 'Bot Flow', 'Blogs', 'All Leads', 'Lead History', 'KB Manager', 'Analytics', 'Reports', 'Finance', 'Audit Logs', 'System Settings', 'Roles & Permissions'],
   SUB_ADMIN: ['Dashboard', 'Team Management', 'WhatsApp Templates', 'Leads', 'Dialer Leads (CSE only)', 'Escalations', 'Performance', 'Profile'],
-  LEAD_MANAGER: ['Dashboard', 'Manage Leads', 'Workshops', 'Reports'],
+  LEAD_MANAGER: ['Dashboard', 'Manage Leads', 'Bookings & Leads', 'App Customers', 'Workshop Proximity', 'Membership Customers', 'Refer & Rise', 'Workshops', 'Reports'],
   RSA_MANAGER: ['Dashboard', 'View All Complaints', 'Create Complaint', 'Car Service Enquiry', 'View Registered', 'Active Aansh Sessions', 'Payment', 'Manage Mechanics', 'Service Partners', 'Membership Customer', 'Reports', 'Settings'],
   HOME_SERVICE_MANAGER: ['Dashboard', 'Leads', 'Service Vans', 'Technicians', 'Reports'],
   TELECALLER: ['Dashboard', 'Enquiry', 'My Leads', 'Create Lead', 'RSA', 'My Profile'],
@@ -46,7 +46,6 @@ const ROLE_MENU_ITEMS: Record<string, string[]> = {
   COMPANY_VAN_DRIVER: ['Dashboard', 'My Trips', 'History', 'Profile'],
   DIGITAL_MARKETING: ['Dashboard', 'Blogs', 'Blog Categories', 'Campaigns', 'Analytics', 'Leads', 'Profile'],
   DIGITAL_AUTHOR: ['Dashboard', 'My Blogs', 'Profile'],
-  APP_OPERATIONS: ['Dashboard', 'Bookings & Leads', 'App Customers', 'Membership Customers', 'Refer & Earn', 'Profile'],
   CUSTOMER: ['Dashboard', 'My Bookings', 'My Vehicles', 'Invoices', 'Support', 'Profile'],
 };
 
@@ -69,7 +68,6 @@ const ROLE_COLORS: Record<string, string> = {
   COMPANY_VAN_DRIVER: 'bg-green-100 text-green-800 border-green-200',
   DIGITAL_MARKETING: 'bg-pink-100 text-pink-800 border-pink-200',
   DIGITAL_AUTHOR: 'bg-rose-100 text-rose-800 border-rose-200',
-  APP_OPERATIONS: 'bg-cyan-100 text-cyan-800 border-cyan-200',
   CUSTOMER: 'bg-gray-100 text-gray-800 border-gray-200',
 };
 
@@ -123,7 +121,7 @@ export default function RolesPermissionsPage() {
       const res = await fetch('/api/admin/roles');
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed to load roles');
-      setRoles(json?.roles || []);
+      setRoles((json?.roles || []).filter((r: { role_code?: string }) => r.role_code !== 'APP_OPERATIONS'));
     } catch (err: any) {
       setError(err?.message || 'Failed to load roles');
     } finally {

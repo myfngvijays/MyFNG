@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
     }
 
     const code = String(role_code).trim().toUpperCase().replace(/\s+/g, '_');
+    if (code === 'APP_OPERATIONS') {
+      return NextResponse.json({ error: 'App Operations role is retired. Use Lead Manager.' }, { status: 400 });
+    }
 
     const { data: existing } = await supabaseAdmin
       .from('roles')
@@ -124,10 +127,12 @@ export async function GET(request: NextRequest) {
       countByRoleId[u.role_id] = (countByRoleId[u.role_id] || 0) + 1;
     }
 
-    const enriched = (roles || []).map((role: any) => ({
-      ...role,
-      user_count: countByRoleId[role.id] || 0,
-    }));
+    const enriched = (roles || [])
+      .filter((role: { role_code?: string }) => role.role_code !== 'APP_OPERATIONS')
+      .map((role: any) => ({
+        ...role,
+        user_count: countByRoleId[role.id] || 0,
+      }));
 
     return NextResponse.json({ roles: enriched });
   } catch (error: any) {

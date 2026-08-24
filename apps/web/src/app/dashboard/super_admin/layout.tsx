@@ -65,6 +65,7 @@ import {
   Headphones,
   Brain,
   Plug,
+  BookOpen,
 } from 'lucide-react';
 
 type NavItem = {
@@ -110,10 +111,17 @@ const navigationItems: NavItem[] = [
     description: 'Call recordings play & search'
   },
   {
-    name: 'Call Intelligence',
-    href: '/dashboard/super_admin/call-intelligence',
-    icon: Brain,
-    description: 'Free call analytics, quality & sentiment'
+    name: 'AI Suite',
+    href: '/dashboard/super_admin/ai-suite',
+    icon: Sparkles,
+    description: 'Call IQ, Lead IQ, Workflow, Sales Playbook',
+    children: [
+      { name: 'Overview', href: '/dashboard/super_admin/ai-suite', icon: Sparkles, description: 'Call IQ + Lead IQ hub' },
+      { name: 'Call IQ', href: '/dashboard/super_admin/call-intelligence', icon: Brain, description: 'Sales SOP audit on calls' },
+      { name: 'Lead IQ', href: '/dashboard/super_admin/lead-iq', icon: Sparkles, description: 'Lead brief, scripts, next move' },
+      { name: 'Workflow', href: '/dashboard/super_admin/ai-suite/workflow', icon: Workflow, description: 'Recording → CRM status → SOP' },
+      { name: 'Sales Playbook', href: '/dashboard/super_admin/ai-suite/playbook', icon: BookOpen, description: 'ICP, USPs, objections, prompts' },
+    ],
   },
   {
     name: 'RSA',
@@ -762,7 +770,7 @@ function SuperAdminLayoutInner({
           return;
         }
         if (roleCode === 'APP_OPERATIONS') {
-          router.replace('/dashboard/app_operations');
+          router.replace('/dashboard/lead_manager');
           return;
         }
         if (roleCode !== 'SUPER_ADMIN') {

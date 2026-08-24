@@ -19,6 +19,7 @@ export async function notifyWorkshopProximityWhatsApp(input: {
   }
 
   const customerName = String(input.customerName || 'Customer').trim() || 'Customer';
+  // Meta body (workshop_proximity_nearby): {{1}} name, {{2}} workshop
   const templateParams = [
     customerName,
     String(input.workshopName || 'MyFNG Workshop').trim(),

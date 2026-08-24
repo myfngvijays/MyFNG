@@ -213,9 +213,10 @@ function TriggerCard({
 
           {trigger.templateStatus.isApproved && !trigger.templateStatus.isUtilityCategory && (
             <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
-              Meta approved this as <strong>{trigger.templateStatus.metaCategory || 'MARKETING'}</strong>, not UTILITY.
-              Run SQL migration <code>257_whatsapp_automation_utility_templates.sql</code>, refresh this page, then
-              create the new template name shown below.
+              Meta approved <code>{trigger.template_name}</code> as{' '}
+              <strong>{trigger.templateStatus.metaCategory || 'MARKETING'}</strong>, not UTILITY.
+              Soften the copy (no book / offer / open-app CTA), run the latest workshop/cart SQL migration,
+              refresh this page so a <strong>new template name</strong> appears, then Create &amp; Submit again.
             </div>
           )}
 
@@ -229,7 +230,7 @@ function TriggerCard({
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => onRunAction(trigger.trigger_key, 'create-template')}
-              disabled={actionKey !== null || trigger.templateStatus.isApproved}
+              disabled={actionKey !== null || trigger.templateStatus.canSendTemplate}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
             >
               {isBusy && actionKey?.endsWith(':create-template') ? 'Submitting...' : 'Create & Submit to Meta'}
@@ -308,9 +309,27 @@ export default function WhatsAppAutomationPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Action failed');
-      const successText = json.message || json.result?.message || json.warning || 'Action completed successfully';
-      setMessage(successText);
-      setMessageIsError(false);
+
+      if (action === 'test-send') {
+        const result = json.result || {};
+        if (!json.success || result.skipped || result.deliveryStatus === 'FAILED') {
+          throw new Error(
+            result.error ||
+              result.skipReason ||
+              json.error ||
+              'Test send failed — check phone number and Meta template status.',
+          );
+        }
+        setMessage(
+          `Test sent via ${result.templateName || triggerKey} to ${result.phone || extra?.phone || 'recipient'}.`,
+        );
+        setMessageIsError(false);
+      } else {
+        const successText =
+          json.message || json.result?.message || json.warning || 'Action completed successfully';
+        setMessage(successText);
+        setMessageIsError(false);
+      }
       await loadTriggers(true);
     } catch (error: any) {
       setMessage(error.message || 'Action failed');

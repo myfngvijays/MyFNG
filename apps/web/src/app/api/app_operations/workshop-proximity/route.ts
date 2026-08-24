@@ -4,7 +4,7 @@ import { getWorkshopGeofenceRadiusM } from '@/lib/workshop-proximity';
 
 export const dynamic = 'force-dynamic';
 
-const ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'APP_OPERATIONS', 'SUB_ADMIN']);
+const ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'SUB_ADMIN', 'LEAD_MANAGER', 'APP_OPERATIONS']);
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();

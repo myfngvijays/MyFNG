@@ -30,7 +30,6 @@ const ROLE_DISPLAY_ORDER = [
   'SUPER_ADMIN',
   'SUB_ADMIN',
   'LEAD_MANAGER',
-  'APP_OPERATIONS',
   'TELECALLER',
   'RSA_MANAGER',
   'CSE',
@@ -146,6 +145,7 @@ export default function UserManagementPage() {
       const { data, error } = await supabase
         .from('roles')
         .select('id, role_name, role_code')
+        .neq('role_code', 'APP_OPERATIONS')
         .order('role_name');
       
       if (!error) {

@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -218,10 +220,14 @@ export function LeadManagerRecordingsScreen() {
 
 /** Lead Manager — Call Intelligence (agents + query gaps). */
 export function LeadManagerCallIntelligenceScreen() {
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<'agents' | 'issues'>('agents');
+  const [tab, setTab] = useState<'iq' | 'agents' | 'issues' | 'sop'>('iq');
+  const [recent, setRecent] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
+  const [iqAgents, setIqAgents] = useState<any[]>([]);
+  const [iqOpen, setIqOpen] = useState<any | null>(null);
   const [issues, setIssues] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -234,7 +240,14 @@ export function LeadManagerCallIntelligenceScreen() {
       const data = await apiFetch<any>(`/api/super_admin/call-intelligence?${params}`);
       setAgents(Array.isArray(data?.agents) ? data.agents : []);
       setIssues(Array.isArray(data?.top_issues) ? data.top_issues : []);
+      setRecent(Array.isArray(data?.recent) ? data.recent : []);
       setAnalytics(data?.analytics || null);
+      try {
+        const iq = await apiFetch<any>('/api/super_admin/call-iq-agents');
+        setIqAgents(Array.isArray(iq?.agents) ? iq.agents : []);
+      } catch {
+        setIqAgents([]);
+      }
     } catch (e: any) {
       Alert.alert('Call Intelligence', e?.message || 'Failed to load');
     } finally {
@@ -370,15 +383,25 @@ export function LeadManagerCallIntelligenceScreen() {
             <Text style={styles.kpiVal}>{analytics.quality_avg ?? '—'}</Text>
             <Text style={styles.kpiLbl}>Quality</Text>
           </View>
+          <View style={styles.kpi}>
+            <Text style={styles.kpiVal}>{analytics.sop_avg ?? '—'}</Text>
+            <Text style={styles.kpiLbl}>SOP</Text>
+          </View>
         </View>
       ) : null}
 
       <View style={styles.tabs}>
         <TouchableOpacity
+          style={[styles.tab, tab === 'iq' && styles.tabOn]}
+          onPress={() => setTab('iq')}
+        >
+          <Text style={[styles.tabText, tab === 'iq' && styles.tabTextOn]}>Call-IQ</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tab, tab === 'agents' && styles.tabOn]}
           onPress={() => setTab('agents')}
         >
-          <Text style={[styles.tabText, tab === 'agents' && styles.tabTextOn]}>Agents</Text>
+          <Text style={[styles.tabText, tab === 'agents' && styles.tabTextOn]}>Team</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, tab === 'issues' && styles.tabOn]}
@@ -388,12 +411,56 @@ export function LeadManagerCallIntelligenceScreen() {
             Query gaps
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, tab === 'sop' && styles.tabOn]}
+          onPress={() => setTab('sop')}
+        >
+          <Text style={[styles.tabText, tab === 'sop' && styles.tabTextOn]}>SOP</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.primary} />
         </View>
+      ) : tab === 'iq' ? (
+        <FlatList
+          data={iqAgents}
+          keyExtractor={(item) => String(item.id)}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void load();
+              }}
+            />
+          }
+          contentContainerStyle={{ paddingBottom: 40, gap: 8 }}
+          ListEmptyComponent={<Text style={styles.empty}>No Call-IQ agents</Text>}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.agentRow} onPress={() => setIqOpen(item)}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.cardTitle}>{item.name}</Text>
+                  <Text
+                    style={[
+                      styles.badge,
+                      item.is_active ? styles.badgeOn : styles.badgeOff,
+                    ]}
+                  >
+                    {item.is_active ? 'Active' : 'Inactive'}
+                  </Text>
+                </View>
+                <Text style={styles.cardSub}>
+                  {/openai/i.test(String(item.provider || '')) ? 'Deep AI' : item.provider || 'Deep AI'} ·{' '}
+                  {item.agent_type || 'Call-IQ'} · v{item.current_version}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
+        />
       ) : tab === 'agents' ? (
         <FlatList
           data={agents}
@@ -428,7 +495,7 @@ export function LeadManagerCallIntelligenceScreen() {
             </TouchableOpacity>
           )}
         />
-      ) : (
+      ) : tab === 'issues' ? (
         <FlatList
           data={issues}
           keyExtractor={(item) => String(item.call_log_id)}
@@ -463,11 +530,436 @@ export function LeadManagerCallIntelligenceScreen() {
                   ' ',
                 )}
                 {` · Grade ${item.quality_grade} ${item.quality_score}`}
+                {item.sop_audit?.overall_score != null
+                  ? ` · SOP ${item.sop_audit.overall_score}`
+                  : ''}
               </Text>
             </View>
           )}
         />
+      ) : (
+        <FlatList
+          data={recent}
+          keyExtractor={(item) => String(item.call_log_id)}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void load();
+              }}
+            />
+          }
+          contentContainerStyle={{ paddingBottom: 40, gap: 10 }}
+          ListEmptyComponent={<Text style={styles.empty}>No SOP audits in range</Text>}
+          renderItem={({ item }) => {
+            const sop = item.sop_audit || {};
+            return (
+              <View style={[styles.card, { paddingVertical: 8 }]}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {item.customer_name || item.phone_number || 'Call'}
+                </Text>
+                <Text style={styles.cardSub} numberOfLines={1}>
+                  SOP {sop.overall_score ?? '—'} · {sop.suggested_lead_status || '—'} ·{' '}
+                  {sop.customer_intent_level || '—'}
+                </Text>
+              </View>
+            );
+          }}
+        />
       )}
+      <Modal visible={!!iqOpen} animationType="slide" onRequestClose={() => setIqOpen(null)}>
+        <SafeAreaView style={styles.shell} edges={['top']}>
+          <View style={styles.topBar}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setIqOpen(null)}>
+              <Ionicons name="close" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <Text style={styles.topTitle} numberOfLines={1}>
+              {iqOpen?.name || 'Call-IQ'}
+            </Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: 40 }}>
+            <Text style={styles.cardSub}>Version {iqOpen?.current_version || 1}</Text>
+            <Text style={[styles.cardTitle, { marginTop: 12 }]}>Instruction</Text>
+            <Text style={styles.cardSub}>
+              {(iqOpen?.versions || []).find((v: any) => v.version === iqOpen?.current_version)
+                ?.instruction ||
+                iqOpen?.versions?.[0]?.instruction ||
+                '—'}
+            </Text>
+            <Text style={[styles.cardTitle, { marginTop: 16 }]}>Output fields</Text>
+            {(
+              (iqOpen?.versions || []).find((v: any) => v.version === iqOpen?.current_version)
+                ?.fields ||
+              iqOpen?.versions?.[0]?.fields ||
+              []
+            ).map((field: any) => (
+              <View key={String(field.id || field.key)} style={[styles.card, { marginTop: 8 }]}>
+                <Text style={styles.cardSub}>{String(field.response_type || 'text').toUpperCase()}</Text>
+                <Text style={styles.cardTitle}>{field.name}</Text>
+                {Array.isArray(field.options) && field.options.length ? (
+                  <Text style={styles.cardSub}>{field.options.join(' · ')}</Text>
+                ) : null}
+              </View>
+            ))}
+            <TouchableOpacity
+              style={[styles.card, { marginTop: 16 }]}
+              onPress={() => {
+                setIqOpen(null);
+                navigation.navigate('LeadManagerWorkflow');
+              }}
+            >
+              <Text style={styles.cardTitle}>Automation Flowchart</Text>
+              <Text style={styles.cardSub}>AI Workflow - Call Audit · View Flowchart</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </OpsShell>
+  );
+}
+
+export function LeadManagerAiSuiteScreen() {
+  const navigation = useNavigation<any>();
+  const cards = [
+    { title: 'Call IQ', screen: 'LeadManagerCallIntelligence', body: 'Sales SOP audit on every call' },
+    { title: 'Lead IQ', screen: 'LeadManagerLeadIq', body: 'Intent, risk, next move, scripts' },
+    { title: 'Workflow', screen: 'LeadManagerWorkflow', body: 'Recording → CRM status → SOP' },
+    { title: 'Sales Playbook', screen: 'LeadManagerPlaybook', body: 'ICP, USPs, objections, prompts' },
+  ];
+  return (
+    <OpsShell title="AI Suite">
+      <View style={{ gap: 10, paddingBottom: 40 }}>
+        {cards.map((c) => (
+          <TouchableOpacity
+            key={c.screen}
+            style={styles.card}
+            onPress={() => navigation.navigate(c.screen)}
+          >
+            <Text style={styles.cardTitle}>{c.title}</Text>
+            <Text style={styles.cardSub}>{c.body}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </OpsShell>
+  );
+}
+
+export function LeadManagerLeadIqScreen() {
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('All');
+  const [crmStatuses, setCrmStatuses] = useState<string[]>([
+    'Fresh',
+    'Interested',
+    'He will visit',
+    'Follow-up',
+    'Booking confirmed',
+    'In Service',
+    'Ringing / No answer',
+    'Service Done',
+    'Lost',
+  ]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ list: '1', limit: '40' });
+      if (q.trim()) params.set('q', q.trim());
+      if (status !== 'All') params.set('status', status);
+      const data = await apiFetch<any>(`/api/super_admin/lead-iq?${params}`);
+      setLeads(Array.isArray(data?.leads) ? data.leads : []);
+    } catch (e: any) {
+      Alert.alert('Lead IQ', e?.message || 'Failed');
+    }
+  }, [q, status]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const st = await apiFetch<any>('/api/lead-manager/statuses');
+        const names = (Array.isArray(st?.statuses) ? st.statuses : [])
+          .filter((s: any) => s?.is_active !== false)
+          .map((s: any) => String(s.name || '').trim())
+          .filter(Boolean);
+        if (names.length) setCrmStatuses(names);
+      } catch {
+        /* keep defaults */
+      }
+    })();
+  }, []);
+
+  async function generate(id: string, deep: boolean) {
+    setRunningId(id);
+    try {
+      const data = await apiFetch<any>('/api/super_admin/lead-iq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_id: id, deep }),
+      });
+      setLeads((prev) => prev.map((row) => (row.id === id ? { ...row, brief: data?.brief } : row)));
+      setOpenId(id);
+    } catch (e: any) {
+      Alert.alert('Lead IQ', e?.message || 'Failed');
+    } finally {
+      setRunningId(null);
+    }
+  }
+
+  return (
+    <OpsShell title="Lead IQ" onRefresh={() => void load()}>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.search}
+          value={q}
+          onChangeText={setQ}
+          placeholder="Name, phone, or L-number"
+          placeholderTextColor="#94A3B8"
+        />
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        {['All', ...crmStatuses].map((name) => {
+          const on = status === name;
+          return (
+            <TouchableOpacity
+              key={name}
+              onPress={() => setStatus(name)}
+              style={[styles.chip, on && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <FlatList
+        data={leads}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={{ paddingBottom: 40, gap: 6 }}
+        ListEmptyComponent={<Text style={styles.empty}>No leads in this filter</Text>}
+        renderItem={({ item }) => {
+          const open = openId === item.id;
+          const brief = item.brief;
+          return (
+            <View style={[styles.card, { paddingVertical: 8 }]}>
+              <TouchableOpacity onPress={() => setOpenId(open ? null : item.id)}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {item.customer_name || item.phone || 'Lead'}
+                </Text>
+                <Text style={styles.cardSub} numberOfLines={1}>
+                  {item.status || '—'} · {brief?.intent_level || 'no IQ'} · {item.lead_number || ''}
+                </Text>
+              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TouchableOpacity disabled={!!runningId} onPress={() => void generate(item.id, false)}>
+                  <Text style={styles.linkAgent}>{runningId === item.id ? '…' : 'Free'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity disabled={!!runningId} onPress={() => void generate(item.id, true)}>
+                  <Text style={styles.linkAgent}>Deep</Text>
+                </TouchableOpacity>
+              </View>
+              {open && brief ? (
+                <View style={{ marginTop: 6 }}>
+                  <Text style={styles.sol} numberOfLines={3}>
+                    {brief.next_move}
+                  </Text>
+                  <Text style={styles.prob} numberOfLines={2}>
+                    {brief.hidden_risk}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        }}
+      />
+    </OpsShell>
+  );
+}
+
+export function LeadManagerWorkflowScreen() {
+  const [enabled, setEnabled] = useState(true);
+  const [deep, setDeep] = useState(true);
+  const [minSec, setMinSec] = useState('90');
+  const [selected, setSelected] = useState<string[]>([
+    'Fresh',
+    'Interested',
+    'He will visit',
+    'Follow-up',
+    'Ringing / No answer',
+  ]);
+  const [crmStatuses, setCrmStatuses] = useState<string[]>([
+    'Fresh',
+    'Interested',
+    'He will visit',
+    'Follow-up',
+    'Booking confirmed',
+    'In Service',
+    'Ringing / No answer',
+    'Service Done',
+    'Lost',
+  ]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [pb, st] = await Promise.all([
+          apiFetch<any>('/api/super_admin/ai-suite/playbook'),
+          apiFetch<any>('/api/lead-manager/statuses'),
+        ]);
+        const wf = pb?.playbook?.call_iq_workflow;
+        if (wf) {
+          setEnabled(wf.enabled !== false);
+          setDeep(wf.use_deep_ai !== false);
+          setMinSec(String(wf.min_duration_sec || 90));
+          if (Array.isArray(wf.lead_statuses) && wf.lead_statuses.length) {
+            setSelected(wf.lead_statuses.map(String));
+          }
+        }
+        const names = (Array.isArray(st?.statuses) ? st.statuses : [])
+          .filter((s: any) => s?.is_active !== false)
+          .map((s: any) => String(s.name || s.code || '').trim())
+          .filter(Boolean);
+        if (names.length) setCrmStatuses(names);
+      } catch (e: any) {
+        Alert.alert('Workflow', e?.message || 'Failed');
+      }
+    })();
+  }, []);
+
+  function toggle(name: string) {
+    setSelected((prev) =>
+      prev.some((s) => s.toLowerCase() === name.toLowerCase())
+        ? prev.filter((s) => s.toLowerCase() !== name.toLowerCase())
+        : [...prev, name],
+    );
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const current = await apiFetch<any>('/api/super_admin/ai-suite/playbook');
+      await apiFetch<any>('/api/super_admin/ai-suite/playbook', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(current?.playbook || {}),
+          call_iq_workflow: {
+            enabled,
+            use_deep_ai: deep,
+            min_duration_sec: Number(minSec) || 90,
+            lead_statuses: selected,
+            skip_if_sop_exists: true,
+          },
+        }),
+      });
+      Alert.alert('Workflow', 'Saved');
+    } catch (e: any) {
+      Alert.alert('Workflow', e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <OpsShell title="Workflow">
+      <Text style={styles.cardSub}>
+        Recording complete → CRM lead status → duration ≥ {minSec || '90'}s → SOP
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 8 }}>
+        <TouchableOpacity
+          style={[styles.tab, enabled && styles.tabOn]}
+          onPress={() => setEnabled((v) => !v)}
+        >
+          <Text style={[styles.tabText, enabled && styles.tabTextOn]}>
+            {enabled ? 'Enabled' : 'Off'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tab, deep && styles.tabOn]} onPress={() => setDeep((v) => !v)}>
+          <Text style={[styles.tabText, deep && styles.tabTextOn]}>Deep AI</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.search}
+          value={minSec}
+          onChangeText={setMinSec}
+          keyboardType="number-pad"
+          placeholder="Min seconds"
+          placeholderTextColor="#94A3B8"
+        />
+      </View>
+      <Text style={[styles.cardSub, { marginBottom: 8 }]}>Lead statuses (CRM)</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        {crmStatuses.map((name) => {
+          const on = selected.some((s) => s.toLowerCase() === name.toLowerCase());
+          return (
+            <TouchableOpacity
+              key={name}
+              onPress={() => toggle(name)}
+              style={[styles.chip, on && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <TouchableOpacity style={styles.playBtn} disabled={saving} onPress={() => void save()}>
+        <Text style={styles.playText}>{saving ? 'Saving…' : 'Save flow'}</Text>
+      </TouchableOpacity>
+    </OpsShell>
+  );
+}
+
+export function LeadManagerPlaybookScreen() {
+  const [voice, setVoice] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiFetch<any>('/api/super_admin/ai-suite/playbook');
+        setVoice(String(data?.playbook?.voice_style || ''));
+      } catch (e: any) {
+        Alert.alert('Playbook', e?.message || 'Failed');
+      }
+    })();
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const current = await apiFetch<any>('/api/super_admin/ai-suite/playbook');
+      await apiFetch<any>('/api/super_admin/ai-suite/playbook', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(current?.playbook || {}), voice_style: voice }),
+      });
+      Alert.alert('Playbook', 'Voice & Style saved. Full editor is on web.');
+    } catch (e: any) {
+      Alert.alert('Playbook', e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <OpsShell title="Sales Playbook">
+      <Text style={styles.cardSub}>Voice & Style (web pe full playbook)</Text>
+      <TextInput
+        style={[styles.search, { minHeight: 160, textAlignVertical: 'top', backgroundColor: '#fff', borderRadius: 12, padding: 12, marginTop: 8 }]}
+        multiline
+        value={voice}
+        onChangeText={setVoice}
+      />
+      <TouchableOpacity style={[styles.playBtn, { marginTop: 12 }]} disabled={saving} onPress={() => void save()}>
+        <Text style={styles.playText}>{saving ? 'Saving…' : 'Save voice'}</Text>
+      </TouchableOpacity>
     </OpsShell>
   );
 }
@@ -520,8 +1012,18 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  cardTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary },
+  cardTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary, flexShrink: 1 },
   cardSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  badge: {
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  badgeOn: { backgroundColor: '#D1FAE5', color: '#065F46' },
+  badgeOff: { backgroundColor: '#E2E8F0', color: '#475569' },
   dur: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   statusLine: { fontSize: 11, color: '#64748B', marginTop: 6, textTransform: 'capitalize' },
   playBtn: {
@@ -562,6 +1064,17 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: '#4C1D95', borderColor: '#4C1D95' },
   tabText: { fontSize: 12, fontWeight: '800', color: '#475569' },
   tabTextOn: { color: '#fff' },
+  chip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  chipOn: { backgroundColor: '#4C1D95', borderColor: '#4C1D95' },
+  chipText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  chipTextOn: { color: '#fff' },
   agentRow: {
     flexDirection: 'row',
     alignItems: 'center',

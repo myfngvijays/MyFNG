@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     if (!teleCallerId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
     const roleCode = normalizeRoleCode((profile as { roles?: { role_code?: string } })?.roles?.role_code);
-    if (!isTelecallerCrmRole(roleCode) && roleCode !== 'APP_OPERATIONS') {
+    if (!isTelecallerCrmRole(roleCode)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const seesAll = crmSeesAllLeads(roleCode);

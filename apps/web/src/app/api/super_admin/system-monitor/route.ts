@@ -2138,6 +2138,19 @@ async function checkCallIntelligence(): Promise<HealthCheck> {
       .select('id', { count: 'exact', head: true })
       .limit(1);
 
+    const playbookProbe = await supabaseAdmin
+      .from('ai_sales_playbook')
+      .select('id', { count: 'exact', head: true })
+      .limit(1);
+    const leadIqProbe = await supabaseAdmin
+      .from('telecaller_lead_iq')
+      .select('id', { count: 'exact', head: true })
+      .limit(1);
+    const agentsProbe = await supabaseAdmin
+      .from('call_iq_agents')
+      .select('id', { count: 'exact', head: true })
+      .limit(1);
+
     if (error) {
       const missing =
         /does not exist|schema cache|relation/i.test(error.message || '') ||
@@ -2168,23 +2181,65 @@ async function checkCallIntelligence(): Promise<HealthCheck> {
       };
     }
 
+    const playbookMissing =
+      playbookProbe.error &&
+      (/does not exist|schema cache|relation/i.test(playbookProbe.error.message || '') ||
+        playbookProbe.error.code === '42P01' ||
+        playbookProbe.error.code === 'PGRST205');
+    const leadIqMissing =
+      leadIqProbe.error &&
+      (/does not exist|schema cache|relation/i.test(leadIqProbe.error.message || '') ||
+        leadIqProbe.error.code === '42P01' ||
+        leadIqProbe.error.code === 'PGRST205');
+
+    if (playbookMissing || leadIqMissing) {
+      return {
+        name: 'Call Intelligence',
+        category: 'Database',
+        status: 'degraded',
+        responseTime: Date.now() - start,
+        message: 'AI Suite migration pending',
+        reason: 'Run database/348_ai_suite_call_lead_iq.sql for Sales Playbook, SOP audit, and Lead IQ.',
+        lastChecked: new Date().toISOString(),
+        quickFix: {
+          label: 'Open AI Suite',
+          action: 'internal-link',
+          actionPayload: { url: '/dashboard/super_admin/ai-suite' },
+        },
+        details: {
+          migration: 'database/348_ai_suite_call_lead_iq.sql',
+          playbook: playbookMissing ? 'missing' : 'ok',
+          lead_iq: leadIqMissing ? 'missing' : 'ok',
+        },
+      };
+    }
+
     return {
       name: 'Call Intelligence',
       category: 'Database',
       status: 'healthy',
       responseTime: Date.now() - start,
-      message: 'Free call analyses table ready',
-      reason: `${typeof count === 'number' ? count : 0} cached analyses. Engine uses call metadata + notes — no paid ASR.`,
+      message: 'Call IQ + Lead IQ tables ready',
+      reason: `${typeof count === 'number' ? count : 0} call analyses. SOP + playbook + Lead IQ ready. Recording-complete workflow (duration ≥90s) auto-runs Call Audit SOP.`,
       lastChecked: new Date().toISOString(),
       quickFix: {
-        label: 'Open Call Intelligence',
+        label: 'Open AI Suite',
         action: 'internal-link',
-        actionPayload: { url: '/dashboard/super_admin/call-intelligence' },
+        actionPayload: { url: '/dashboard/super_admin/ai-suite' },
       },
       details: {
         table: 'telecaller_call_analyses',
-        engine: 'free_heuristics_v1',
-        page: '/dashboard/super_admin/call-intelligence',
+        playbook_table: 'ai_sales_playbook',
+        lead_iq_table: 'telecaller_lead_iq',
+        page: '/dashboard/super_admin/ai-suite',
+        agents_migration: 'database/351_call_iq_agents.sql',
+        call_iq_agents:
+          agentsProbe.error &&
+          (/does not exist|schema cache|relation/i.test(agentsProbe.error.message || '') ||
+            agentsProbe.error.code === '42P01' ||
+            agentsProbe.error.code === 'PGRST205')
+            ? 'missing'
+            : 'ok',
       },
     };
   } catch (e: any) {

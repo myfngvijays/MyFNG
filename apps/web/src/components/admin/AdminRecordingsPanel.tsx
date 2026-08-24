@@ -282,6 +282,13 @@ export default function AdminRecordingsPanel({
         overall_resolution?: string | null;
         queries_resolved?: number;
         queries_total?: number;
+        sop_audit?: {
+          overall_score?: number;
+          suggested_lead_status?: string;
+          customer_intent_level?: string;
+          decision_stage?: string;
+          closing_attempt?: string;
+        } | null;
       }
     >
   >({});
@@ -463,6 +470,7 @@ export default function AdminRecordingsPanel({
           overall_resolution: a.overall_resolution || null,
           queries_resolved: a.queries_resolved,
           queries_total: a.queries_total,
+          sop_audit: a.sop_audit || null,
         };
       }
       setAnalysisById(next);
@@ -1117,6 +1125,14 @@ function SectionRows({
                     <span className="inline-flex rounded-full bg-violet-700 px-2 py-0.5 text-[10px] font-bold text-white">
                       {analysisById[row.id].quality_grade} {analysisById[row.id].quality_score}
                     </span>
+                    {analysisById[row.id].sop_audit?.overall_score != null ? (
+                      <span className="ml-1 inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-800 ring-1 ring-indigo-200">
+                        SOP {analysisById[row.id].sop_audit?.overall_score}/100
+                        {analysisById[row.id].sop_audit?.suggested_lead_status
+                          ? ` · ${analysisById[row.id].sop_audit?.suggested_lead_status}`
+                          : ''}
+                      </span>
+                    ) : null}
                     <span className="block text-[10px] font-semibold text-slate-600">
                       {analysisById[row.id].overall_resolution
                         ? String(analysisById[row.id].overall_resolution).replace(/_/g, ' ')

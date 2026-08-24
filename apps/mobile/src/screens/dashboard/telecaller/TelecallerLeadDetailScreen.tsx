@@ -406,6 +406,8 @@ export default function TelecallerLeadDetailScreen({
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [timelineItems, setTimelineItems] = useState<any[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [leadIq, setLeadIq] = useState<any>(null);
+  const [leadIqRunning, setLeadIqRunning] = useState(false);
   const [playingCallLogId, setPlayingCallLogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1149,6 +1151,35 @@ export default function TelecallerLeadDetailScreen({
     );
   }, [timelineItems, callLogs, followUps, profileHistory]);
 
+  const fetchLeadIq = async () => {
+    if (!leadId) return;
+    try {
+      const data = await apiFetch<any>(
+        `/api/super_admin/lead-iq?lead_id=${encodeURIComponent(leadId)}`,
+      );
+      setLeadIq(data?.brief || null);
+    } catch {
+      setLeadIq(null);
+    }
+  };
+
+  const generateLeadIq = async (deep: boolean) => {
+    if (!leadId) return;
+    setLeadIqRunning(true);
+    try {
+      const data = await apiFetch<any>('/api/super_admin/lead-iq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_id: leadId, deep }),
+      });
+      setLeadIq(data?.brief || null);
+    } catch (e: any) {
+      Alert.alert('Lead IQ', e?.message || 'Failed');
+    } finally {
+      setLeadIqRunning(false);
+    }
+  };
+
   const fetchActivityTimeline = async () => {
     if (!leadId) return;
     try {
@@ -1289,6 +1320,7 @@ export default function TelecallerLeadDetailScreen({
   useEffect(() => {
     fetchLeadDetails();
     void fetchActivityTimeline();
+    void fetchLeadIq();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
@@ -1940,6 +1972,45 @@ export default function TelecallerLeadDetailScreen({
             {lead.city || '—'}
           </Text>
           <Text style={styles.statLabel}>City</Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Lead IQ</Text>
+        <View style={styles.sectionContent}>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonSecondary]}
+              disabled={leadIqRunning}
+              onPress={() => void generateLeadIq(false)}
+            >
+              <Text style={styles.actionButtonTextSecondary}>
+                {leadIqRunning ? '…' : 'Generate'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonPrimary]}
+              disabled={leadIqRunning}
+              onPress={() => void generateLeadIq(true)}
+            >
+              <Text style={styles.actionButtonTextPrimary}>Deep AI</Text>
+            </TouchableOpacity>
+          </View>
+          {leadIq ? (
+            <>
+              <Text style={{ fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 }}>
+                {leadIq.verdict}
+              </Text>
+              <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 6 }}>
+                {leadIq.intent_level} · {leadIq.decision_stage} · {leadIq.temperature}
+              </Text>
+              <Text style={{ fontSize: 12, color: COLORS.textPrimary }}>{leadIq.next_move}</Text>
+            </>
+          ) : (
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
+              History se intent + next move. Generate free, Deep AI playbook use karta hai.
+            </Text>
+          )}
         </View>
       </View>
 

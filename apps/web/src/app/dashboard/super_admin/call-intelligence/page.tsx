@@ -1,12 +1,15 @@
 'use client';
 
-import CallIntelligencePanel from '@/components/admin/CallIntelligencePanel';
+import CallIqWorkspace from '@/components/admin/CallIqWorkspace';
 
 export default function SuperAdminCallIntelligencePage() {
   return (
-    <CallIntelligencePanel
+    <CallIqWorkspace
       helpHref="/dashboard/super_admin/call-intelligence"
       recordingsHref="/dashboard/super_admin/recordings"
+      suiteHref="/dashboard/super_admin/ai-suite"
+      playbookHref="/dashboard/super_admin/ai-suite/playbook"
+      workflowHref="/dashboard/super_admin/ai-suite/workflow"
     />
   );
 }

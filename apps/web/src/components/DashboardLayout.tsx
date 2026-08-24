@@ -42,6 +42,11 @@ import {
   Download,
   BookOpen,
   UserPlus,
+  Sparkles,
+  GitBranch,
+  Smartphone,
+  Crown,
+  Gift,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
@@ -636,8 +641,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
           const normalizedRole = String(roleProp).toLowerCase();
           const normalizedUserRole = String(roleCode).toLowerCase();
           const superAdminOverride = normalizedUserRole === 'super_admin';
+          const retiredAppOpsAsLeadManager =
+            normalizedUserRole === 'app_operations' && normalizedRole === 'lead_manager';
           if (
             !superAdminOverride &&
+            !retiredAppOpsAsLeadManager &&
             normalizedUserRole !== normalizedRole &&
             normalizedRole !== 'sub_admin' &&
             normalizedRole !== 'subadmin'
@@ -803,7 +811,18 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         },
         { href: '/dashboard/super_admin/bookings', icon: <FileText className="w-5 h-5" />, label: 'Bookings & Leads' },
         { href: '/dashboard/super_admin/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
-        { href: '/dashboard/super_admin/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call Intelligence' },
+        {
+          href: '/dashboard/super_admin/ai-suite',
+          icon: <Sparkles className="w-5 h-5" />,
+          label: 'AI Suite',
+          children: [
+            { href: '/dashboard/super_admin/ai-suite', icon: <Sparkles className="w-5 h-5" />, label: 'Overview' },
+            { href: '/dashboard/super_admin/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call IQ' },
+            { href: '/dashboard/super_admin/lead-iq', icon: <Sparkles className="w-5 h-5" />, label: 'Lead IQ' },
+            { href: '/dashboard/super_admin/ai-suite/workflow', icon: <GitBranch className="w-5 h-5" />, label: 'Workflow' },
+            { href: '/dashboard/super_admin/ai-suite/playbook', icon: <BookOpen className="w-5 h-5" />, label: 'Sales Playbook' },
+          ],
+        },
         { href: '/dashboard/super_admin/lead-tags', icon: <Tag className="w-5 h-5" />, label: 'Lead Tags' },
         { href: '/dashboard/super_admin/lead-statuses', icon: <CircleDot className="w-5 h-5" />, label: 'Lead Status' },
         { href: '/dashboard/super_admin/analytics-hub?section=overview', icon: <TrendingUp className="w-5 h-5" />, label: 'Analytics Hub' },
@@ -855,7 +874,18 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/lead_manager', icon: <Home className="w-5 h-5" />, label: 'Home' },
         { href: '/dashboard/lead_manager/leads', icon: <ClipboardList className="w-5 h-5" />, label: 'Leads' },
         { href: '/dashboard/lead_manager/recordings', icon: <Headphones className="w-5 h-5" />, label: 'Recordings' },
-        { href: '/dashboard/lead_manager/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call Intelligence' },
+        {
+          href: '/dashboard/lead_manager/ai-suite',
+          icon: <Sparkles className="w-5 h-5" />,
+          label: 'AI Suite',
+          children: [
+            { href: '/dashboard/lead_manager/ai-suite', icon: <Sparkles className="w-5 h-5" />, label: 'Overview' },
+            { href: '/dashboard/lead_manager/call-intelligence', icon: <Activity className="w-5 h-5" />, label: 'Call IQ' },
+            { href: '/dashboard/lead_manager/lead-iq', icon: <Sparkles className="w-5 h-5" />, label: 'Lead IQ' },
+            { href: '/dashboard/lead_manager/ai-suite/workflow', icon: <GitBranch className="w-5 h-5" />, label: 'Workflow' },
+            { href: '/dashboard/lead_manager/ai-suite/playbook', icon: <BookOpen className="w-5 h-5" />, label: 'Sales Playbook' },
+          ],
+        },
         { href: '/dashboard/lead_manager/followups', icon: <Clock className="w-5 h-5" />, label: 'Reminders' },
         {
           href: '#whatsapp',
@@ -875,6 +905,11 @@ export default function DashboardLayout({ children, role: roleProp }: DashboardL
         { href: '/dashboard/lead_manager/dialer', icon: <PhoneCall className="w-5 h-5" />, label: 'Dialer' },
         { href: '/dashboard/lead_manager/assignment', icon: <FileText className="w-5 h-5" />, label: 'Assignment' },
         { href: '/dashboard/lead_manager/workshops', icon: <Building2 className="w-5 h-5" />, label: 'Workshops' },
+        { href: '/dashboard/lead_manager/bookings', icon: <ClipboardList className="w-5 h-5" />, label: 'Bookings & Leads' },
+        { href: '/dashboard/lead_manager/customer-insights', icon: <Smartphone className="w-5 h-5" />, label: 'App Customers' },
+        { href: '/dashboard/lead_manager/workshop-proximity', icon: <MapPin className="w-5 h-5" />, label: 'Workshop Proximity' },
+        { href: '/dashboard/lead_manager/membership-customers', icon: <Crown className="w-5 h-5" />, label: 'Membership Customers' },
+        { href: '/dashboard/lead_manager/referral', icon: <Gift className="w-5 h-5" />, label: 'Refer & Rise' },
         { href: '/dashboard/lead_manager/escalations', icon: <AlertTriangle className="w-5 h-5" />, label: 'Escalations' },
         { href: '/dashboard/lead_manager/team', icon: <Users className="w-5 h-5" />, label: 'Team' },
         {

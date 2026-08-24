@@ -37,19 +37,19 @@ export const WHATSAPP_AUTOMATION_TEMPLATE_EXAMPLES: Record<WhatsAppAutomationTri
   membership_claim_rejected: ['Rahul Sharma', 'Free Car Scanning', 'MH02FJ7371'],
   account_deleted: ['Rahul Sharma'],
   app_uninstalled: ['Rahul Sharma'],
-  workshop_proximity: ['Rahul Sharma', 'MyFNG Andheri West'],
-  cart_abandoned_5m: ['Rahul Sharma', 'Honda City', 'Periodic Service'],
+  workshop_proximity: ['Nikhil', 'MyFNG Thane Vartak Nagar'],
+  cart_abandoned_5m: ['Nikhil', 'Honda City', 'Periodic Service'],
   cart_abandoned_3h: [
-    'Rahul Sharma',
+    'Nikhil',
     'Honda City',
     'Periodic Service',
-    'Use your wallet balance of ₹500 on this booking.',
+    'Your saved booking is still open on your account.',
   ],
   cart_abandoned_12h: [
-    'Rahul Sharma',
+    'Nikhil',
     'Honda City',
     'Periodic Service',
-    'Limited pickup slots today — complete booking to avoid reschedule.',
+    'Your booking draft is still incomplete on your account.',
   ],
 };
 
@@ -212,6 +212,15 @@ async function upsertLocalTemplateFromSetting(
     .eq('template_name', setting.template_name)
     .maybeSingle();
 
+  const metaApproved =
+    metaStatus === 'APPROVED' || metaStatus === 'ACTIVE' || metaStatus.startsWith('ACTIVE');
+  // Once Meta approves, force active — do not keep draft is_active=false forever.
+  const nextActive = metaApproved
+    ? true
+    : existingTemplate?.is_active !== undefined && existingTemplate?.is_active !== null
+      ? Boolean(existingTemplate.is_active)
+      : false;
+
   const row = {
     template_name: setting.template_name,
     display_name: setting.display_name,
@@ -220,10 +229,7 @@ async function upsertLocalTemplateFromSetting(
     body_text: setting.template_body,
     variable_keys: setting.variable_keys,
     example_values: exampleValues,
-    is_active:
-      existingTemplate?.is_active !== undefined && existingTemplate?.is_active !== null
-        ? Boolean(existingTemplate.is_active)
-        : metaStatus === 'APPROVED',
+    is_active: nextActive,
     meta: {
       source: 'whatsapp_automation',
       trigger_key: setting.trigger_key,

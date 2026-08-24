@@ -202,11 +202,14 @@ export async function isAutomationTemplateApproved(templateName: string): Promis
 
   if (!data) return false;
 
-  if ((data as { is_active?: boolean }).is_active === false) return false;
-
-  const metaStatus = String((data as { meta?: { status?: string } }).meta?.status || '').toUpperCase();
-  const approved = Boolean((data as { is_active?: boolean }).is_active) || metaStatus === 'APPROVED';
-  if (!approved) return false;
+  const metaStatus = String((data as { meta?: { status?: string } }).meta?.status || '')
+    .trim()
+    .toUpperCase();
+  // Meta "Active" / APPROVED must win over local draft is_active=false (common after Create & Submit).
+  const metaApproved =
+    metaStatus === 'APPROVED' || metaStatus === 'ACTIVE' || metaStatus.startsWith('ACTIVE');
+  const locallyActive = (data as { is_active?: boolean }).is_active === true;
+  if (!metaApproved && !locallyActive) return false;
 
   const category = String(
     (data as { category?: string; meta?: { category?: string } }).category ||
@@ -214,7 +217,7 @@ export async function isAutomationTemplateApproved(templateName: string): Promis
       'UTILITY'
   ).toUpperCase();
 
-  return category === 'UTILITY';
+  return !category || category === 'UTILITY';
 }
 
 export async function isWithinAutomationCooldown(input: {

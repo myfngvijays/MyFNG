@@ -3,6 +3,7 @@
 export const TELECALLER_CRM_ROLES = [
   'TELECALLER',
   'LEAD_MANAGER',
+  'APP_OPERATIONS',
   'SUPER_ADMIN',
   'SUB_ADMIN',
   'RSA_MANAGER',
@@ -21,7 +22,7 @@ export function isTelecallerCrmRole(role: unknown): boolean {
 /** Lead Manager / admins see full pool; telecallers see only assigned-to-me. */
 export function crmSeesAllLeads(role: unknown): boolean {
   const code = normalizeRoleCode(role);
-  return code === 'LEAD_MANAGER' || code === 'SUPER_ADMIN' || code === 'SUB_ADMIN';
+  return code === 'LEAD_MANAGER' || code === 'APP_OPERATIONS' || code === 'SUPER_ADMIN' || code === 'SUB_ADMIN';
 }
 
 export function canCreateCrmBooking(role: unknown): boolean {
