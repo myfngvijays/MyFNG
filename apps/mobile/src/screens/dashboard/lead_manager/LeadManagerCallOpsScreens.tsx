@@ -781,17 +781,60 @@ export function LeadManagerLeadIqScreen() {
   );
 }
 
+type MobileWorkflow = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  min_duration_sec: number;
+  lead_statuses: string[];
+  use_deep_ai: boolean;
+  skip_if_sop_exists: boolean;
+  trigger: 'recording_completed';
+  canvas?: { nodes: any[]; edges: any[] };
+};
+
+function mobileWorkflowId() {
+  return `wf_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function listMobileWorkflows(raw: any): MobileWorkflow[] {
+  const toOne = (row: any, i: number): MobileWorkflow => ({
+    id: String(row?.id || `wf_${i + 1}`),
+    name: String(row?.name || `Workflow ${i + 1}`).trim() || `Workflow ${i + 1}`,
+    enabled: row?.enabled !== false,
+    min_duration_sec: Math.max(0, Number(row?.min_duration_sec) || 90),
+    lead_statuses: Array.isArray(row?.lead_statuses)
+      ? row.lead_statuses.map(String)
+      : ['Fresh', 'Interested', 'He will visit', 'Follow-up', 'Ringing / No answer'],
+    use_deep_ai: row?.use_deep_ai !== false,
+    skip_if_sop_exists: row?.skip_if_sop_exists !== false,
+    trigger: 'recording_completed',
+    canvas: row?.canvas,
+  });
+  if (Array.isArray(raw?.workflows) && raw.workflows.length) {
+    return raw.workflows.map(toOne);
+  }
+  if (raw && typeof raw === 'object') {
+    return [toOne({ ...raw, id: 'wf_call_audit', name: raw.name || 'AI Workflow — Call Audit' }, 0)];
+  }
+  return [toOne({ id: 'wf_call_audit', name: 'AI Workflow — Call Audit' }, 0)];
+}
+
+function persistMobileWorkflows(list: MobileWorkflow[]) {
+  const workflows = list.length ? list : listMobileWorkflows(null);
+  const pick = workflows.find((w) => w.enabled) || workflows[0];
+  return {
+    enabled: workflows.some((w) => w.enabled),
+    min_duration_sec: pick.min_duration_sec,
+    lead_statuses: pick.lead_statuses,
+    use_deep_ai: pick.use_deep_ai,
+    skip_if_sop_exists: pick.skip_if_sop_exists,
+    workflows,
+  };
+}
+
 export function LeadManagerWorkflowScreen() {
-  const [enabled, setEnabled] = useState(true);
-  const [deep, setDeep] = useState(true);
-  const [minSec, setMinSec] = useState('90');
-  const [selected, setSelected] = useState<string[]>([
-    'Fresh',
-    'Interested',
-    'He will visit',
-    'Follow-up',
-    'Ringing / No answer',
-  ]);
+  const [workflows, setWorkflows] = useState<MobileWorkflow[]>(() => listMobileWorkflows(null));
   const [crmStatuses, setCrmStatuses] = useState<string[]>([
     'Fresh',
     'Interested',
@@ -804,61 +847,44 @@ export function LeadManagerWorkflowScreen() {
     'Lost',
   ]);
   const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<MobileWorkflow | null>(null);
+  const [chatPrompt, setChatPrompt] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [pb, st] = await Promise.all([
-          apiFetch<any>('/api/super_admin/ai-suite/playbook'),
-          apiFetch<any>('/api/lead-manager/statuses'),
-        ]);
-        const wf = pb?.playbook?.call_iq_workflow;
-        if (wf) {
-          setEnabled(wf.enabled !== false);
-          setDeep(wf.use_deep_ai !== false);
-          setMinSec(String(wf.min_duration_sec || 90));
-          if (Array.isArray(wf.lead_statuses) && wf.lead_statuses.length) {
-            setSelected(wf.lead_statuses.map(String));
-          }
-        }
-        const names = (Array.isArray(st?.statuses) ? st.statuses : [])
-          .filter((s: any) => s?.is_active !== false)
-          .map((s: any) => String(s.name || s.code || '').trim())
-          .filter(Boolean);
-        if (names.length) setCrmStatuses(names);
-      } catch (e: any) {
-        Alert.alert('Workflow', e?.message || 'Failed');
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      const [pb, st] = await Promise.all([
+        apiFetch<any>('/api/super_admin/ai-suite/playbook'),
+        apiFetch<any>('/api/lead-manager/statuses'),
+      ]);
+      setWorkflows(listMobileWorkflows(pb?.playbook?.call_iq_workflow));
+      const names = (Array.isArray(st?.statuses) ? st.statuses : [])
+        .filter((s: any) => s?.is_active !== false)
+        .map((s: any) => String(s.name || s.code || '').trim())
+        .filter(Boolean);
+      if (names.length) setCrmStatuses(names);
+    } catch (e: any) {
+      Alert.alert('Workflow', e?.message || 'Failed');
+    }
   }, []);
 
-  function toggle(name: string) {
-    setSelected((prev) =>
-      prev.some((s) => s.toLowerCase() === name.toLowerCase())
-        ? prev.filter((s) => s.toLowerCase() !== name.toLowerCase())
-        : [...prev, name],
-    );
-  }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  async function save() {
+  async function persist(next: MobileWorkflow[]) {
     setSaving(true);
     try {
       const current = await apiFetch<any>('/api/super_admin/ai-suite/playbook');
-      await apiFetch<any>('/api/super_admin/ai-suite/playbook', {
+      const saved = await apiFetch<any>('/api/super_admin/ai-suite/playbook', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(current?.playbook || {}),
-          call_iq_workflow: {
-            enabled,
-            use_deep_ai: deep,
-            min_duration_sec: Number(minSec) || 90,
-            lead_statuses: selected,
-            skip_if_sop_exists: true,
-          },
+          call_iq_workflow: persistMobileWorkflows(next),
         }),
       });
-      Alert.alert('Workflow', 'Saved');
+      setWorkflows(listMobileWorkflows(saved?.playbook?.call_iq_workflow || persistMobileWorkflows(next)));
     } catch (e: any) {
       Alert.alert('Workflow', e?.message || 'Save failed');
     } finally {
@@ -866,52 +892,225 @@ export function LeadManagerWorkflowScreen() {
     }
   }
 
+  function toggleDraftStatus(name: string) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const has = prev.lead_statuses.some((s) => s.toLowerCase() === name.toLowerCase());
+      return {
+        ...prev,
+        lead_statuses: has
+          ? prev.lead_statuses.filter((s) => s.toLowerCase() !== name.toLowerCase())
+          : [...prev.lead_statuses, name],
+      };
+    });
+  }
+
   return (
-    <OpsShell title="Workflow">
+    <OpsShell title="Workflow" onRefresh={() => void load()}>
       <Text style={styles.cardSub}>
-        Recording complete → CRM lead status → duration ≥ {minSec || '90'}s → SOP
+        Recording complete → CRM lead status → duration → SOP. Add or edit flows.
       </Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 8 }}>
-        <TouchableOpacity
-          style={[styles.tab, enabled && styles.tabOn]}
-          onPress={() => setEnabled((v) => !v)}
-        >
-          <Text style={[styles.tabText, enabled && styles.tabTextOn]}>
-            {enabled ? 'Enabled' : 'Off'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, deep && styles.tabOn]} onPress={() => setDeep((v) => !v)}>
-          <Text style={[styles.tabText, deep && styles.tabTextOn]}>Deep AI</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.searchRow}>
-        <TextInput
-          style={styles.search}
-          value={minSec}
-          onChangeText={setMinSec}
-          keyboardType="number-pad"
-          placeholder="Min seconds"
-          placeholderTextColor="#94A3B8"
-        />
-      </View>
-      <Text style={[styles.cardSub, { marginBottom: 8 }]}>Lead statuses (CRM)</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {crmStatuses.map((name) => {
-          const on = selected.some((s) => s.toLowerCase() === name.toLowerCase());
-          return (
-            <TouchableOpacity
-              key={name}
-              onPress={() => toggle(name)}
-              style={[styles.chip, on && styles.chipOn]}
-            >
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      <TouchableOpacity style={styles.playBtn} disabled={saving} onPress={() => void save()}>
-        <Text style={styles.playText}>{saving ? 'Saving…' : 'Save flow'}</Text>
+      <TouchableOpacity
+        style={[styles.playBtn, { marginBottom: 10 }]}
+        disabled={saving}
+        onPress={() => {
+          const created: MobileWorkflow = {
+            id: mobileWorkflowId(),
+            name: `Workflow ${workflows.length + 1}`,
+            enabled: false,
+            min_duration_sec: 90,
+            lead_statuses: ['Fresh', 'Interested', 'He will visit', 'Follow-up', 'Ringing / No answer'],
+            use_deep_ai: true,
+            skip_if_sop_exists: true,
+            trigger: 'recording_completed',
+            canvas: { nodes: [], edges: [] },
+          };
+          setDraft(created);
+        }}
+      >
+        <Ionicons name="add" size={16} color={COLORS.primary} />
+        <Text style={styles.playText}>Add workflow</Text>
       </TouchableOpacity>
+      <ScrollView contentContainerStyle={{ paddingBottom: 24, gap: 10 }}>
+        {workflows.map((flow) => (
+          <View key={flow.id} style={styles.card}>
+            <View style={styles.cardTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>{flow.name}</Text>
+                <Text style={styles.cardSub}>
+                  {flow.enabled ? 'On' : 'Off'} · ≥ {flow.min_duration_sec}s
+                  {flow.use_deep_ai ? ' · Deep AI' : ''} · {flow.lead_statuses.length} statuses
+                </Text>
+              </View>
+              <Text style={[styles.badge, flow.enabled ? styles.badgeOn : styles.badgeOff]}>
+                {flow.enabled ? 'ON' : 'OFF'}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              <TouchableOpacity style={styles.playBtn} onPress={() => setDraft({ ...flow })}>
+                <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                <Text style={styles.playText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.playBtn}
+                disabled={saving}
+                onPress={() => void persist(workflows.map((w) => (w.id === flow.id ? { ...w, enabled: !w.enabled } : w)))}
+              >
+                <Text style={styles.playText}>{flow.enabled ? 'Turn off' : 'Turn on'}</Text>
+              </TouchableOpacity>
+              {workflows.length > 1 ? (
+                <TouchableOpacity
+                  style={styles.playBtn}
+                  disabled={saving}
+                  onPress={() =>
+                    Alert.alert('Delete workflow', `Delete “${flow.name}”?`, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => void persist(workflows.filter((w) => w.id !== flow.id)),
+                      },
+                    ])
+                  }
+                >
+                  <Text style={styles.playText}>Delete</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+
+      <Modal visible={!!draft} animationType="slide" onRequestClose={() => setDraft(null)}>
+        <SafeAreaView style={styles.shell} edges={['top']}>
+          <View style={styles.topBar}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setDraft(null)} hitSlop={12}>
+              <Ionicons name="close" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <Text style={styles.topTitle}>Edit workflow</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          {draft ? (
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              <Text style={styles.cardSub}>Name</Text>
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={styles.search}
+                  value={draft.name}
+                  onChangeText={(name) => setDraft({ ...draft, name })}
+                  placeholder="Workflow name"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <TouchableOpacity
+                  style={[styles.tab, draft.enabled && styles.tabOn]}
+                  onPress={() => setDraft({ ...draft, enabled: !draft.enabled })}
+                >
+                  <Text style={[styles.tabText, draft.enabled && styles.tabTextOn]}>
+                    {draft.enabled ? 'Enabled' : 'Off'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tab, draft.use_deep_ai && styles.tabOn]}
+                  onPress={() => setDraft({ ...draft, use_deep_ai: !draft.use_deep_ai })}
+                >
+                  <Text style={[styles.tabText, draft.use_deep_ai && styles.tabTextOn]}>Deep AI</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.cardSub}>Min seconds</Text>
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={styles.search}
+                  value={String(draft.min_duration_sec)}
+                  onChangeText={(v) => setDraft({ ...draft, min_duration_sec: Number(v) || 0 })}
+                  keyboardType="number-pad"
+                  placeholder="Min seconds"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <Text style={styles.cardSub}>AI Chat — flow bolo</Text>
+              <View style={styles.searchRow}>
+                <TextInput
+                  style={styles.search}
+                  value={chatPrompt}
+                  onChangeText={setChatPrompt}
+                  placeholder="Fresh, Interested, 90s Deep AI ON"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.playBtn, { marginBottom: 12 }]}
+                disabled={chatBusy || !chatPrompt.trim() || !draft}
+                onPress={async () => {
+                  if (!draft) return;
+                  setChatBusy(true);
+                  try {
+                    const json = await apiFetch<any>('/api/super_admin/call-iq-workflow-chat', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        message: chatPrompt,
+                        workflow: draft,
+                        crm_statuses: crmStatuses,
+                      }),
+                    });
+                    if (json?.workflow) {
+                      setDraft({
+                        ...draft,
+                        name: String(json.workflow.name || draft.name),
+                        enabled: json.workflow.enabled !== false,
+                        min_duration_sec: Number(json.workflow.min_duration_sec) || draft.min_duration_sec,
+                        lead_statuses: Array.isArray(json.workflow.lead_statuses)
+                          ? json.workflow.lead_statuses.map(String)
+                          : draft.lead_statuses,
+                        use_deep_ai: json.workflow.use_deep_ai !== false,
+                        skip_if_sop_exists: json.workflow.skip_if_sop_exists !== false,
+                      });
+                    }
+                    Alert.alert('AI Chat', json?.reply || 'Updated');
+                    setChatPrompt('');
+                  } catch (e: any) {
+                    Alert.alert('AI Chat', e?.message || 'Failed');
+                  } finally {
+                    setChatBusy(false);
+                  }
+                }}
+              >
+                <Text style={styles.playText}>{chatBusy ? 'AI…' : 'Ask AI'}</Text>
+              </TouchableOpacity>
+              <Text style={[styles.cardSub, { marginBottom: 8 }]}>Lead statuses (CRM)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {crmStatuses.map((name) => {
+                  const on = draft.lead_statuses.some((s) => s.toLowerCase() === name.toLowerCase());
+                  return (
+                    <TouchableOpacity
+                      key={name}
+                      onPress={() => toggleDraftStatus(name)}
+                      style={[styles.chip, on && styles.chipOn]}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TouchableOpacity
+                style={styles.playBtn}
+                disabled={saving}
+                onPress={async () => {
+                  const next = workflows.some((w) => w.id === draft.id)
+                    ? workflows.map((w) => (w.id === draft.id ? draft : w))
+                    : [...workflows, draft];
+                  await persist(next);
+                  setDraft(null);
+                }}
+              >
+                <Text style={styles.playText}>{saving ? 'Saving…' : 'Save flow'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </OpsShell>
   );
 }

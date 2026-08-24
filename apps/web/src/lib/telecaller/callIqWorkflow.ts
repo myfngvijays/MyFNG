@@ -9,14 +9,21 @@ import { analyzeSopFree, analyzeSopWithOpenAI, attachSopToAnalysis } from '@/lib
 import { attachTranscriptToSopInput } from '@/lib/telecaller/callIqTranscript';
 import { loadSalesPlaybook } from '@/lib/telecaller/loadSalesPlaybook';
 import {
+  listCallIqWorkflows,
   mergeCallIqWorkflow,
+  type CallIqNamedWorkflow,
   type SalesPlaybook,
-  type CallIqWorkflowConfig,
 } from '@/lib/telecaller/salesPlaybookDefaults';
 import type { CallAnalysisResult } from '@/lib/telecaller/callIntelligence';
 
-export { mergeCallIqWorkflow, defaultCallIqWorkflow, DEFAULT_CALL_IQ_LEAD_STATUSES } from '@/lib/telecaller/salesPlaybookDefaults';
-export type { CallIqWorkflowConfig } from '@/lib/telecaller/salesPlaybookDefaults';
+export {
+  mergeCallIqWorkflow,
+  defaultCallIqWorkflow,
+  listCallIqWorkflows,
+  persistCallIqWorkflows,
+  DEFAULT_CALL_IQ_LEAD_STATUSES,
+} from '@/lib/telecaller/salesPlaybookDefaults';
+export type { CallIqWorkflowConfig, CallIqNamedWorkflow } from '@/lib/telecaller/salesPlaybookDefaults';
 
 function normStatus(s?: string | null) {
   return String(s || '')
@@ -136,8 +143,9 @@ export async function runCallIqOnRecordingCompleted(
   const db = supabaseAdmin;
 
   const playbook = opts?.playbook || (await loadSalesPlaybook(db));
-  const cfg = mergeCallIqWorkflow((playbook as any).call_iq_workflow);
-  if (!playbook.call_iq_enabled || !cfg.enabled) {
+  const store = mergeCallIqWorkflow((playbook as any).call_iq_workflow);
+  const enabledFlows = listCallIqWorkflows(store).filter((w) => w.enabled);
+  if (!playbook.call_iq_enabled || !store.enabled || !enabledFlows.length) {
     return { ran: false, skipped: 'disabled', call_log_id: id };
   }
 
@@ -161,14 +169,18 @@ export async function runCallIqOnRecordingCompleted(
   if (!recording) return { ran: false, skipped: 'no_recording', call_log_id: id };
 
   const duration = Number(log.call_duration) || 0;
-  if (duration < cfg.min_duration_sec) {
-    return { ran: false, skipped: `duration_${duration}_lt_${cfg.min_duration_sec}`, call_log_id: id };
-  }
-
   const lead = Array.isArray(log.lead) ? log.lead[0] : log.lead;
   if (!lead?.id) return { ran: false, skipped: 'not_a_lead', call_log_id: id };
-  if (!leadMatchesWorkflow(lead, cfg)) {
-    return { ran: false, skipped: 'lead_status_filtered', call_log_id: id };
+
+  const cfg: CallIqNamedWorkflow | undefined = enabledFlows.find(
+    (w) => duration >= w.min_duration_sec && leadMatchesWorkflow(lead, w),
+  );
+  if (!cfg) {
+    if (!enabledFlows.some((w) => leadMatchesWorkflow(lead, w))) {
+      return { ran: false, skipped: 'lead_status_filtered', call_log_id: id };
+    }
+    const need = Math.min(...enabledFlows.map((w) => w.min_duration_sec));
+    return { ran: false, skipped: `duration_${duration}_lt_${need}`, call_log_id: id };
   }
 
   let existingTranscript: string | null = null;
@@ -240,15 +252,19 @@ export async function sweepCallIqWorkflow(limit = 6): Promise<{ scanned: number;
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) return { scanned: 0, ran: 0, skipped: 0 };
   const playbook = await loadSalesPlaybook(supabaseAdmin);
-  const cfg = mergeCallIqWorkflow((playbook as any).call_iq_workflow);
-  if (!playbook.call_iq_enabled || !cfg.enabled) return { scanned: 0, ran: 0, skipped: 0 };
+  const store = mergeCallIqWorkflow((playbook as any).call_iq_workflow);
+  const enabledFlows = listCallIqWorkflows(store).filter((w) => w.enabled);
+  if (!playbook.call_iq_enabled || !store.enabled || !enabledFlows.length) {
+    return { scanned: 0, ran: 0, skipped: 0 };
+  }
+  const minDur = Math.min(...enabledFlows.map((w) => w.min_duration_sec));
 
   const { data: logs } = await supabaseAdmin
     .from('telecaller_call_logs')
     .select('id, call_duration, call_recording_url, lead_id')
     .not('call_recording_url', 'is', null)
     .neq('call_recording_url', '')
-    .gte('call_duration', cfg.min_duration_sec)
+    .gte('call_duration', minDur)
     .not('lead_id', 'is', null)
     .order('created_at', { ascending: false })
     .limit(40);

@@ -95,10 +95,11 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/super_admin/ai-suite/workflow': {
     title: 'Call IQ Workflow',
     body:
-      'Recording complete → selected CRM lead statuses → duration ≥ N seconds → Call Audit SOP. Status chips Lead Status page se aate hain.',
+      'Multiple automation flows. Recording complete → selected CRM lead statuses → duration ≥ N seconds → Call Audit SOP. Add workflow / Edit / Duplicate / Delete.',
     tips: [
       'Default open pipeline: Fresh, Interested, He will visit, Follow-up, Ringing / No answer.',
-      'Deep AI only when notes exist — audio auto-transcribe nahi.',
+      'Pehla matching enabled flow chalta hai. Deep AI = transcript → SOP.',
+      'AI Chat se flow bolo — statuses, duration, ON/OFF canvas pe apply ho jate hain.',
     ],
   },
   '/dashboard/super_admin/ai-suite/playbook': {
@@ -141,7 +142,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   },
   '/dashboard/lead_manager/ai-suite/workflow': {
     title: 'Call IQ Workflow',
-    body: 'Auto SOP when a recording completes — filtered by your CRM lead statuses and min duration.',
+    body: 'Add or edit automation flows. Auto SOP when a recording completes — filtered by CRM status and min duration.',
   },
   '/dashboard/lead_manager/ai-suite/playbook': {
     title: 'Sales Playbook',

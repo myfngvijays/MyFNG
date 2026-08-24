@@ -188,7 +188,70 @@ export type CallIqWorkflowConfig = {
   lead_statuses: string[];
   use_deep_ai: boolean;
   skip_if_sop_exists: boolean;
+  workflows?: CallIqNamedWorkflow[];
 };
+
+export type CallIqCanvasKind = 'event' | 'lead' | 'duration' | 'ai';
+
+export type CallIqCanvasNode = {
+  id: string;
+  kind: CallIqCanvasKind;
+  x?: number;
+  y?: number;
+};
+
+export type CallIqCanvasEdge = {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+};
+
+export type CallIqCanvasState = {
+  nodes: CallIqCanvasNode[];
+  edges: CallIqCanvasEdge[];
+};
+
+export const BLANK_CALL_IQ_CANVAS: CallIqCanvasState = { nodes: [], edges: [] };
+
+export const DEFAULT_CALL_IQ_CANVAS: CallIqCanvasState = {
+  nodes: [
+    { id: 'event', kind: 'event', x: 40, y: 180 },
+    { id: 'lead', kind: 'lead', x: 380, y: 90 },
+    { id: 'duration', kind: 'duration', x: 760, y: 170 },
+    { id: 'ai', kind: 'ai', x: 1120, y: 190 },
+  ],
+  edges: [
+    { id: 'e1', source: 'event', target: 'lead' },
+    { id: 'e2', source: 'lead', target: 'duration' },
+    { id: 'e3', source: 'duration', target: 'ai' },
+  ],
+};
+
+export function resolveCallIqCanvas(wf?: Partial<CallIqNamedWorkflow> | null): CallIqCanvasState {
+  if (wf?.canvas && Array.isArray(wf.canvas.nodes)) {
+    return {
+      nodes: wf.canvas.nodes.map((n) => ({ ...n })),
+      edges: Array.isArray(wf.canvas.edges) ? wf.canvas.edges.map((e) => ({ ...e })) : [],
+    };
+  }
+  return {
+    nodes: DEFAULT_CALL_IQ_CANVAS.nodes.map((n) => ({ ...n })),
+    edges: DEFAULT_CALL_IQ_CANVAS.edges.map((e) => ({ ...e })),
+  };
+}
+
+export type CallIqNamedWorkflow = CallIqWorkflowConfig & {
+  id: string;
+  name: string;
+  trigger: 'recording_completed';
+  canvas?: CallIqCanvasState;
+};
+
+export function newCallIqWorkflowId() {
+  return `wf_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export function defaultCallIqWorkflow(): CallIqWorkflowConfig {
   return {
@@ -200,7 +263,23 @@ export function defaultCallIqWorkflow(): CallIqWorkflowConfig {
   };
 }
 
-export function mergeCallIqWorkflow(raw?: Partial<CallIqWorkflowConfig> | null): CallIqWorkflowConfig {
+export function defaultCallIqNamedWorkflow(overrides?: Partial<CallIqNamedWorkflow>): CallIqNamedWorkflow {
+  const base = parseCallIqWorkflowFields(overrides);
+  return {
+    ...base,
+    id: String(overrides?.id || newCallIqWorkflowId()),
+    name: String(overrides?.name || 'AI Workflow - Call Audit').trim() || 'AI Workflow - Call Audit',
+    trigger: 'recording_completed',
+    canvas: overrides && Object.prototype.hasOwnProperty.call(overrides, 'canvas')
+      ? {
+          nodes: Array.isArray(overrides.canvas?.nodes) ? overrides.canvas!.nodes.map((n) => ({ ...n })) : [],
+          edges: Array.isArray(overrides.canvas?.edges) ? overrides.canvas!.edges.map((e) => ({ ...e })) : [],
+        }
+      : undefined,
+  };
+}
+
+function parseCallIqWorkflowFields(raw?: Partial<CallIqWorkflowConfig> | null): CallIqWorkflowConfig {
   const base = defaultCallIqWorkflow();
   if (!raw || typeof raw !== 'object') return base;
   const incoming = Array.isArray(raw.lead_statuses)
@@ -215,6 +294,45 @@ export function mergeCallIqWorkflow(raw?: Partial<CallIqWorkflowConfig> | null):
     use_deep_ai: raw.use_deep_ai !== false,
     skip_if_sop_exists: raw.skip_if_sop_exists !== false,
   };
+}
+
+export function listCallIqWorkflows(raw?: Partial<CallIqWorkflowConfig> | null): CallIqNamedWorkflow[] {
+  if (raw && Array.isArray(raw.workflows) && raw.workflows.length) {
+    return raw.workflows.map((row, i) =>
+      defaultCallIqNamedWorkflow({
+        ...parseCallIqWorkflowFields(row),
+        id: String(row?.id || `wf_${i + 1}`),
+        name: String(row?.name || `Workflow ${i + 1}`).trim() || `Workflow ${i + 1}`,
+        trigger: 'recording_completed',
+        ...(row && Object.prototype.hasOwnProperty.call(row, 'canvas') ? { canvas: (row as any).canvas } : {}),
+      }),
+    );
+  }
+  const one = parseCallIqWorkflowFields(raw);
+  return [
+    defaultCallIqNamedWorkflow({
+      id: 'wf_call_audit',
+      name: 'AI Workflow - Call Audit',
+      ...one,
+    }),
+  ];
+}
+
+export function persistCallIqWorkflows(workflows: CallIqNamedWorkflow[]): CallIqWorkflowConfig {
+  const list = workflows.length ? workflows.map((w) => defaultCallIqNamedWorkflow(w)) : [defaultCallIqNamedWorkflow({ id: 'wf_call_audit' })];
+  const pick = list.find((w) => w.enabled) || list[0];
+  return {
+    enabled: list.some((w) => w.enabled),
+    min_duration_sec: pick.min_duration_sec,
+    lead_statuses: pick.lead_statuses,
+    use_deep_ai: pick.use_deep_ai,
+    skip_if_sop_exists: pick.skip_if_sop_exists,
+    workflows: list,
+  };
+}
+
+export function mergeCallIqWorkflow(raw?: Partial<CallIqWorkflowConfig> | null): CallIqWorkflowConfig {
+  return persistCallIqWorkflows(listCallIqWorkflows(raw));
 }
 
 export type SalesPlaybook = {
@@ -250,7 +368,7 @@ export function defaultSalesPlaybook(): SalesPlaybook {
     lead_iq_prompt: DEFAULT_LEAD_IQ_PROMPT,
     call_iq_enabled: true,
     lead_iq_enabled: true,
-    call_iq_workflow: defaultCallIqWorkflow(),
+    call_iq_workflow: mergeCallIqWorkflow(defaultCallIqWorkflow()),
   };
 }
 

@@ -63,7 +63,7 @@ export default function AiSuiteHub({
             AI Suite
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            TeleCRM-style Call IQ + Lead IQ — MY FNG Sales SOP prompt, structured fields, editable playbook.
+            Call IQ + Lead IQ — MY FNG Sales SOP, structured fields, editable playbook.
           </p>
         </div>
         <PageHelpIcon href={helpHref} label="AI Suite" />

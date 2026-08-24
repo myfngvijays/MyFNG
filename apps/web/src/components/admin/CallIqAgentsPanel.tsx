@@ -370,7 +370,7 @@ export default function CallIqAgentsPanel({
           <p className="flex items-center gap-2 text-sm font-semibold text-amber-100">
             <GitBranch className="h-4 w-4" /> Automation flowchart
           </p>
-          <p className="mt-1 text-xs text-slate-400">AI Workflow — Call Audit · View flowchart</p>
+          <p className="mt-1 text-xs text-slate-400">Add / edit automation flows · View flowchart</p>
         </Link>
       </div>
 

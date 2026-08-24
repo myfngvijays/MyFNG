@@ -50,6 +50,12 @@ export async function PUT(request: NextRequest) {
   const auth = await assertEditor(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const body = await request.json().catch(() => ({}));
+  const existing = await loadSalesPlaybook(auth.db);
+  const incomingWf = body.call_iq_workflow;
+  const call_iq_workflow =
+    incomingWf && typeof incomingWf === 'object'
+      ? incomingWf
+      : existing.call_iq_workflow;
   const next = mergePlaybook({
     workspace_key: 'myfng',
     detail_depth: body.detail_depth,
@@ -64,7 +70,7 @@ export async function PUT(request: NextRequest) {
     lead_iq_prompt: body.lead_iq_prompt,
     call_iq_enabled: body.call_iq_enabled,
     lead_iq_enabled: body.lead_iq_enabled,
-    call_iq_workflow: body.call_iq_workflow,
+    call_iq_workflow,
   });
 
   const payload = {
