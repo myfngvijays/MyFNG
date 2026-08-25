@@ -1436,25 +1436,27 @@ function StatCard({
     <Wrapper
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      className={`flex h-full min-h-[108px] w-[158px] shrink-0 flex-col rounded-2xl border bg-white p-3.5 text-left shadow-sm transition sm:w-auto sm:min-w-0 sm:p-4 ${
-        active ? 'border-[#004AAD] ring-2 ring-[#004AAD]/20' : 'border-gray-200'
-      } ${onClick ? 'cursor-pointer hover:border-[#004AAD]/40 hover:shadow-md' : ''}`}
+      className={`flex h-full min-h-[108px] w-[158px] shrink-0 flex-col rounded-2xl border p-3.5 text-left shadow-sm transition sm:w-auto sm:min-w-0 sm:p-4 ${
+        active
+          ? 'border-white bg-[#003A8C] ring-2 ring-white/70'
+          : 'border-[#003A8C] bg-[#004AAD]'
+      } ${onClick ? 'cursor-pointer hover:bg-[#003A8C]' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 text-[10px] font-bold uppercase tracking-wide text-gray-500 sm:text-[11px]">
+        <p className="min-w-0 flex-1 text-[10px] font-bold uppercase tracking-wide text-blue-100 sm:text-[11px]">
           {label}
         </p>
         <div
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-            accentClassName || 'bg-blue-50 text-blue-600'
+            accentClassName || 'bg-white/15 text-white'
           }`}
         >
           {icon}
         </div>
       </div>
-      <p className="mt-2 text-2xl font-extrabold tabular-nums leading-none text-gray-900">{value}</p>
+      <p className="mt-2 text-2xl font-extrabold tabular-nums leading-none text-white">{value}</p>
       {sub ? (
-        <p className="mt-auto pt-2 text-[11px] leading-snug text-gray-500 line-clamp-2">{sub}</p>
+        <p className="mt-auto pt-2 text-[11px] leading-snug text-blue-100 line-clamp-2">{sub}</p>
       ) : (
         <div className="mt-auto pt-2" aria-hidden />
       )}
@@ -1517,6 +1519,92 @@ function recordingFilterLabel(v: (typeof RECORDING_OPTIONS)[number]) {
   }
 }
 
+function FilterMultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+  allLabel,
+  className = '',
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  allLabel: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const firstLabel =
+    selected.length === 0
+      ? allLabel
+      : options.find((opt) => opt.value === selected[0])?.label || selected[0];
+  const display = selected.length <= 1 ? firstLabel : `${firstLabel} +${selected.length - 1}`;
+
+  const toggle = (value: string) => {
+    onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
+  };
+
+  return (
+    <div className={`relative flex flex-col gap-1 min-w-[180px] ${className}`} ref={ref}>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      >
+        <span className="truncate">{display}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+              selected.length === 0 ? 'bg-blue-50 font-semibold text-blue-800' : 'text-gray-700'
+            }`}
+            onClick={() => onChange([])}
+          >
+            <span className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 text-[10px] leading-none">
+              {selected.length === 0 ? '✓' : ''}
+            </span>
+            {allLabel}
+          </button>
+          {options.map((opt) => {
+            const checked = selected.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                  checked ? 'bg-blue-50 font-semibold text-blue-800' : 'text-gray-700'
+                }`}
+                onClick={() => toggle(opt.value)}
+              >
+                <span className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 text-[10px] leading-none">
+                  {checked ? '✓' : ''}
+                </span>
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SuperAdminBookingsPage() {
   const searchParams = useSearchParams();
   const [showUploadCrm, setShowUploadCrm] = useState(false);
@@ -1529,10 +1617,8 @@ export default function SuperAdminBookingsPage() {
   const [recordingFilter, setRecordingFilter] = useState<(typeof RECORDING_OPTIONS)[number]>('ALL');
   const [recordingLeadIds, setRecordingLeadIds] = useState<Set<string> | null>(null);
   const [loadingRecordingIds, setLoadingRecordingIds] = useState(false);
-  /** ALL | UNASSIGNED | exact assignee name */
-  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
-  const [assigneeSearch, setAssigneeSearch] = useState('');
-  const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
+  /** Empty = all assignees. Values: UNASSIGNED or telecaller name. */
+  const [assigneeFilter, setAssigneeFilter] = useState<string[]>([]);
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('all_time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -1732,12 +1818,6 @@ export default function SuperAdminBookingsPage() {
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [serviceLeads]);
 
-  const filteredAssigneeOptions = useMemo(() => {
-    const q = assigneeSearch.trim().toLowerCase();
-    if (!q) return assigneeOptions;
-    return assigneeOptions.filter((name) => name.toLowerCase().includes(q));
-  }, [assigneeOptions, assigneeSearch]);
-
   const baseFilteredServiceLeads = useMemo(() => {
     let leads = filterBookingLeads(serviceLeads, {
       source: sourceFilter,
@@ -1752,25 +1832,14 @@ export default function SuperAdminBookingsPage() {
       const want = leadTypeFilter.toUpperCase();
       leads = leads.filter((lead) => String(lead.lead_type || '').toUpperCase() === want);
     }
-    if (assigneeFilter === 'UNASSIGNED') {
-      leads = leads.filter((lead) => !String((lead as any).assigned_telecaller_name || '').trim());
-    } else if (assigneeFilter !== 'ALL') {
-      const want = assigneeFilter.trim().toLowerCase();
-      leads = leads.filter(
-        (lead) => String((lead as any).assigned_telecaller_name || '').trim().toLowerCase() === want
-      );
-    } else if (assigneeSearch.trim()) {
-      const q = assigneeSearch.trim().toLowerCase();
-      if (q === 'unassigned' || q === 'none') {
-        leads = leads.filter((lead) => !String((lead as any).assigned_telecaller_name || '').trim());
-      } else {
-        leads = leads.filter((lead) =>
-          String((lead as any).assigned_telecaller_name || '')
-            .trim()
-            .toLowerCase()
-            .includes(q)
-        );
-      }
+    if (assigneeFilter.length > 0) {
+      const selected = new Set(assigneeFilter.map((name) => name.trim().toLowerCase()));
+      const includeUnassigned = selected.has('unassigned');
+      leads = leads.filter((lead) => {
+        const name = String((lead as any).assigned_telecaller_name || '').trim();
+        if (!name) return includeUnassigned;
+        return selected.has(name.toLowerCase());
+      });
     }
     if (recordingFilter !== 'ALL') {
       if (!recordingLeadIds) {
@@ -1793,7 +1862,6 @@ export default function SuperAdminBookingsPage() {
     statusFilter,
     leadTypeFilter,
     assigneeFilter,
-    assigneeSearch,
     recordingFilter,
     recordingLeadIds,
   ]);
@@ -1854,7 +1922,7 @@ export default function SuperAdminBookingsPage() {
   // Reset to first page whenever filters / search change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, assigneeSearch, searchTerm, datePreset, customStart, customEnd, recordingFilter]);
+  }, [sourceFilter, couponFilter, statusFilter, assigneeFilter, searchTerm, datePreset, customStart, customEnd, recordingFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1907,8 +1975,7 @@ export default function SuperAdminBookingsPage() {
     couponFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
     recordingFilter !== 'ALL' ||
-    assigneeFilter !== 'ALL' ||
-    Boolean(assigneeSearch.trim()) ||
+    assigneeFilter.length > 0 ||
     Boolean(searchTerm.trim()) ||
     Boolean(sourceLabelFilter.trim()) ||
     Boolean(leadTypeFilter.trim()) ||
@@ -2530,21 +2597,6 @@ export default function SuperAdminBookingsPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full xl:flex-1 xl:justify-end min-w-0">
-              {!showUploadCrm ? (
-                <div className="w-full sm:flex-1 xl:max-w-md relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="bookings-search"
-                    name="bookings-search"
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by name, phone, vehicle, city, coupon..."
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              ) : null}
-
               {showUploadCrm ? (
                 <button
                   type="button"
@@ -2716,7 +2768,7 @@ export default function SuperAdminBookingsPage() {
           </div>
 
           {!showUploadCrm ? (
-            <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm space-y-3">
+            <div className="mt-3 rounded-xl border border-[#003A8C] bg-[#004AAD] px-3 py-3 space-y-3 shadow-sm [&_span.text-gray-400]:text-blue-100">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex flex-col gap-1 min-w-[160px]">
                   <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Date</span>
@@ -2784,108 +2836,23 @@ export default function SuperAdminBookingsPage() {
                       </span>
                     ) : null}
 
-                    <div className="flex flex-col gap-1 min-w-[220px] flex-1 max-w-sm relative">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Assignee</span>
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
-                        <input
-                          type="search"
-                          value={assigneeSearch}
-                          onChange={(e) => {
-                            setAssigneeSearch(e.target.value);
-                            setAssigneeFilter('ALL');
-                            setAssigneeMenuOpen(true);
-                          }}
-                          onFocus={() => setAssigneeMenuOpen(true)}
-                          onBlur={() => {
-                            window.setTimeout(() => setAssigneeMenuOpen(false), 150);
-                          }}
-                          placeholder={
-                            assigneeFilter === 'UNASSIGNED'
-                              ? 'Unassigned'
-                              : assigneeFilter !== 'ALL'
-                                ? assigneeFilter
-                                : 'Search assignee...'
-                          }
-                          className="w-full rounded-lg border border-gray-300 bg-white pl-8 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          autoComplete="off"
-                        />
-                        {(assigneeFilter !== 'ALL' || assigneeSearch.trim()) ? (
-                          <button
-                            type="button"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setAssigneeFilter('ALL');
-                              setAssigneeSearch('');
-                            }}
-                            aria-label="Clear assignee filter"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        ) : null}
-                        {assigneeMenuOpen ? (
-                          <div className="absolute left-0 right-0 top-full mt-1 z-30 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg py-1">
-                            <button
-                              type="button"
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                assigneeFilter === 'ALL' && !assigneeSearch.trim() ? 'bg-blue-50 text-blue-800 font-semibold' : 'text-gray-700'
-                              }`}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setAssigneeFilter('ALL');
-                                setAssigneeSearch('');
-                                setAssigneeMenuOpen(false);
-                              }}
-                            >
-                              All assignees
-                            </button>
-                            <button
-                              type="button"
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                assigneeFilter === 'UNASSIGNED' ? 'bg-blue-50 text-blue-800 font-semibold' : 'text-gray-700'
-                              }`}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setAssigneeFilter('UNASSIGNED');
-                                setAssigneeSearch('');
-                                setAssigneeMenuOpen(false);
-                              }}
-                            >
-                              Unassigned
-                            </button>
-                            {filteredAssigneeOptions.length === 0 ? (
-                              <p className="px-3 py-2 text-xs text-gray-400">No matching assignees</p>
-                            ) : (
-                              filteredAssigneeOptions.map((name) => (
-                                <button
-                                  key={name}
-                                  type="button"
-                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                    assigneeFilter === name ? 'bg-blue-50 text-blue-800 font-semibold' : 'text-gray-700'
-                                  }`}
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setAssigneeFilter(name);
-                                    setAssigneeSearch('');
-                                    setAssigneeMenuOpen(false);
-                                  }}
-                                >
-                                  {name}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
+                    <FilterMultiSelect
+                      label="Assignee"
+                      allLabel="All assignees"
+                      selected={assigneeFilter}
+                      onChange={setAssigneeFilter}
+                      className="min-w-[200px]"
+                      options={[
+                        { value: 'UNASSIGNED', label: 'Unassigned' },
+                        ...assigneeOptions.map((name) => ({ value: name, label: name })),
+                      ]}
+                    />
 
                 {(sourceFilter !== 'ALL' ||
                   couponFilter !== 'ALL' ||
                   statusFilter !== 'ALL' ||
                   recordingFilter !== 'ALL' ||
-                  assigneeFilter !== 'ALL' ||
-                  assigneeSearch.trim() ||
+                  assigneeFilter.length > 0 ||
                   sourceLabelFilter.trim() ||
                   leadTypeFilter.trim() ||
                   chartDrill) ? (
@@ -2898,30 +2865,46 @@ export default function SuperAdminBookingsPage() {
                       setCouponFilter('ALL');
                       setStatusFilter('ALL');
                       setRecordingFilter('ALL');
-                      setAssigneeFilter('ALL');
-                      setAssigneeSearch('');
+                      setAssigneeFilter([]);
                       setChartDrill(null);
                     }}
-                    className="mb-0.5 px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="mb-0.5 px-3 py-2 text-xs font-semibold text-white border border-white/40 rounded-lg hover:bg-white/10"
                   >
                     Clear filters
                   </button>
                 ) : null}
 
-                {!loading ? (
-                  <p className="text-[11px] text-gray-500 ml-auto shrink-0 pb-2 text-right">
-                    <span className="font-bold text-gray-800">{displayedServiceLeads.length}</span>
-                    {` / ${serviceLeads.length} loaded`}
-                    {typeof totalInRange === 'number' && totalInRange !== serviceLeads.length ? (
-                      <span className="text-gray-400"> · {totalInRange.toLocaleString('en-IN')} in range</span>
+                <label className="flex flex-col gap-1 min-w-[220px] flex-1 max-w-md">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Search</span>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      id="bookings-search"
+                      name="bookings-search"
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Name, phone, vehicle, city, coupon..."
+                      className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-9 py-2 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      autoComplete="off"
+                    />
+                    {searchTerm.trim() ? (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        onClick={() => setSearchTerm('')}
+                        aria-label="Clear search"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     ) : null}
-                    {datePreset !== 'all_time' ? <span className="text-gray-400"> · {dateRangeLabel}</span> : null}
-                    {leadsTruncated ? (
-                      <span className="block text-amber-600 font-medium mt-0.5">
-                        Showing latest {serviceLeads.length.toLocaleString('en-IN')} of{' '}
-                        {(totalInRange || 0).toLocaleString('en-IN')} — narrow the date range for the rest
-                      </span>
-                    ) : null}
+                  </div>
+                </label>
+
+                {leadsTruncated ? (
+                  <p className="text-[11px] font-medium text-amber-600 shrink-0 pb-2">
+                    Showing latest {serviceLeads.length.toLocaleString('en-IN')} of{' '}
+                    {(totalInRange || 0).toLocaleString('en-IN')} — narrow the date range for the rest
                   </p>
                 ) : null}
               </div>
@@ -3147,8 +3130,7 @@ export default function SuperAdminBookingsPage() {
                   setSourceFilter('ALL');
                   setCouponFilter('ALL');
                   setStatusFilter('ALL');
-                  setAssigneeFilter('ALL');
-                  setAssigneeSearch('');
+                  setAssigneeFilter([]);
                   setSearchTerm('');
                 }}
                 active={hasActiveLeadFilters}
@@ -3192,7 +3174,7 @@ export default function SuperAdminBookingsPage() {
                 label="Promo Coupon"
                 value={serviceLeadOverview.withPromoCoupon}
                 icon={<Ticket className="h-4 w-4" />}
-                accentClassName="bg-orange-50 text-orange-600"
+                accentClassName="bg-orange-300/30 text-orange-100"
                 onClick={() => setCouponFilter(couponFilter === 'PROMO' ? 'ALL' : 'PROMO')}
                 active={couponFilter === 'PROMO'}
               />
@@ -3200,7 +3182,7 @@ export default function SuperAdminBookingsPage() {
                 label="Refer & Rise"
                 value={serviceLeadOverview.withReferralReward}
                 icon={<Gift className="h-4 w-4" />}
-                accentClassName="bg-amber-50 text-amber-700"
+                accentClassName="bg-amber-300/30 text-amber-100"
                 onClick={() => setCouponFilter(couponFilter === 'REFERRAL' ? 'ALL' : 'REFERRAL')}
                 active={couponFilter === 'REFERRAL'}
               />
