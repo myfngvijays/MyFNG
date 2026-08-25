@@ -37,7 +37,11 @@ export function parseLeadReferralReward(meta: Record<string, unknown>): LeadRefe
   };
 }
 
-export type BookingSource = 'APP' | 'WEBSITE' | 'MISA' | 'OTHER';
+export type BookingSource = 'APP' | 'WEBSITE' | 'MISA' | 'SARV' | 'OTHER';
+
+export function isIncomingSarvLeadSource(value: string) {
+  return /incoming sarv call/i.test(value) || /^sarv call$/i.test(value);
+}
 
 function isMisaLeadSource(value: string) {
   return /^misa ai/i.test(value) || value === 'AI Chatbot' || /whatsapp misa ai/i.test(value);
@@ -89,7 +93,10 @@ export function resolveBookingSource(lead: Record<string, any>): {
   let booking_source: BookingSource;
   let booking_source_label: string;
 
-  if (isMisaLeadSource(rawSource)) {
+  if (isIncomingSarvLeadSource(rawSource) || createdFrom === 'SARV_CALL') {
+    booking_source = 'SARV';
+    booking_source_label = isIncomingSarvLeadSource(rawSource) ? rawSource : 'Incoming Sarv Call';
+  } else if (isMisaLeadSource(rawSource)) {
     booking_source = 'MISA';
     if (/whatsapp misa ai/i.test(rawSource)) booking_source_label = 'WhatsApp MISA AI';
     else if (/misa ai \(app\)/i.test(rawSource)) booking_source_label = 'MISA AI (App)';
@@ -164,6 +171,7 @@ export type LeadSourceBadgeKind =
   | 'app'
   | 'website'
   | 'misa'
+  | 'sarv'
   | 'other';
 
 export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
@@ -285,6 +293,18 @@ export function resolveLeadSourceBadgeTheme(lead: Record<string, any>): {
       source_badge_label: shortTail ? `WA · ${shortTail}` : 'WhatsApp',
       source_badge_title: waBiz ? `WhatsApp (${waBiz})` : 'WhatsApp',
       ...waTheme,
+    };
+  }
+
+  if (
+    bookingSource === 'SARV' ||
+    isIncomingSarvLeadSource(leadSource) ||
+    /incoming sarv/i.test(bookingLabel)
+  ) {
+    return {
+      source_badge_kind: 'sarv',
+      source_badge_label: leadSource || bookingLabel || 'Incoming Sarv Call',
+      source_badge_class: 'bg-orange-100 text-orange-800 ring-1 ring-orange-300',
     };
   }
 
@@ -633,6 +653,12 @@ export function matchesBookingSourceFilter(lead: Record<string, any>, sourceFilt
       );
     case 'MISA':
       return bookingSource === 'MISA' || kind === 'misa' || /misa ai/i.test(leadSource);
+    case 'SARV':
+      return (
+        bookingSource === 'SARV' ||
+        kind === 'sarv' ||
+        isIncomingSarvLeadSource(leadSource)
+      );
     case 'WHATSAPP':
       return (
         kind === 'whatsapp' ||

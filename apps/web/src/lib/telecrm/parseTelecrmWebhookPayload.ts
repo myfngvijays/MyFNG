@@ -18,6 +18,8 @@ export type ParsedTelecrmWebhookPayload = {
   assigneePhone: string | null;
   assigneeEmail: string | null;
   assigneeName: string | null;
+  leadSource: string | null;
+  createdFrom: string | null;
 };
 
 function isPlaceholderValue(text: string): boolean {
@@ -275,7 +277,49 @@ export function parseTelecrmWebhookPayload(body: Record<string, unknown>): Parse
       dig(fields, 'assignee_name', 'Assignee'),
       dig(body, 'assignee.name'),
     ),
+    leadSource: pickString(
+      body.lead_source,
+      body.LeadSource,
+      body.Source,
+      body.source,
+      body.channel,
+      body.lead_channel,
+      dig(fields, 'LeadSource', 'lead_source', 'Source'),
+      dig(data, 'LeadSource', 'lead_source'),
+    ),
+    createdFrom: pickString(
+      body.created_from,
+      body.CreatedFrom,
+      body.event,
+      body.trigger,
+      body.type,
+      dig(fields, 'CreatedFrom', 'created_from'),
+    ),
   };
+}
+
+/** True when TeleCRM is notifying MyFNG about an incoming Sarv/call lead (not WhatsApp). */
+export function isTelecrmIncomingCallPayload(
+  body: Record<string, unknown>,
+  parsed: ParsedTelecrmWebhookPayload,
+): boolean {
+  const hay = [
+    parsed.leadSource,
+    parsed.createdFrom,
+    parsed.leadTag,
+    parsed.disposition,
+    body.channel,
+    body.lead_channel,
+    body.event,
+    body.trigger,
+    body.type,
+  ]
+    .map((v) => String(v || '').toLowerCase())
+    .join(' ');
+
+  if (String(body.channel || body.lead_channel || '').toLowerCase() === 'sarv_incoming') return true;
+  if (/whatsapp|waca/.test(hay) && parsed.messageText) return false;
+  return /sarv|rsa_call|incoming sarv|incoming call|\bibd\b|inbound.?call|call.?hangup|sarv_call/.test(hay);
 }
 
 export function leadSourceLabelForWacaBusinessPhone(businessPhone: string): string {

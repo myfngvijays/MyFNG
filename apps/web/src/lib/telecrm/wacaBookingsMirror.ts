@@ -4,10 +4,13 @@ import {
   upsertServiceLeadFromTelecrmWhatsApp,
 } from './upsertServiceLeadFromTelecrm';
 import {
+  isTelecrmIncomingCallPayload,
   parseTelecrmWebhookPayload,
   TELECRM_WACA_BUSINESS_PHONE,
   type ParsedTelecrmWebhookPayload,
 } from './parseTelecrmWebhookPayload';
+import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import { upsertServiceLeadFromIncomingSarvCall } from '@/lib/sarv/upsertServiceLeadFromIncomingCall';
 
 export type TelecrmWacaMirrorResult = {
   ok: boolean;
@@ -47,6 +50,24 @@ export async function mirrorTelecrmWacaInboundToBookings(
   }
 
   const telecrmApi = await ensureTelecrmApiRowForInbound(parsed);
+
+  if (isTelecrmIncomingCallPayload(body, parsed)) {
+    const { supabaseAdmin } = getSupabaseAdmin();
+    const bookingsLead = await upsertServiceLeadFromIncomingSarvCall({
+      db: supabaseAdmin,
+      phone10: parsed.phone,
+      callid: String(parsed.telecrmId || `telecrm-${parsed.phone}-${Date.now()}`),
+      ctype: 'IBD',
+      disposition: parsed.disposition || parsed.leadStatus,
+    });
+    return {
+      ok: Boolean(bookingsLead.ok),
+      parsed,
+      telecrmApi,
+      bookingsLead,
+    };
+  }
+
   const bookingsLead = await upsertServiceLeadFromTelecrmWhatsApp({
     phone: parsed.phone,
     name: parsed.name,

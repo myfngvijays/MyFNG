@@ -33,7 +33,8 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     endpoint: '/api/webhooks/telecrm',
-    purpose: 'Mirror TeleCRM / WACA WhatsApp (9167779696) into Bookings & Leads admin',
+    purpose:
+      'Mirror TeleCRM WhatsApp (9167779696) and incoming Sarv/call leads into Bookings & Leads admin. Does not push anything back to TeleCRM.',
     auth: 'Header x-webhook-secret or Authorization: Bearer <TELECRM_WEBHOOK_SECRET>',
     telecrm_workflow: {
       event: 'WhatsApp → On WhatsApp Received Notification',
@@ -53,6 +54,25 @@ export async function GET() {
       timeout_seconds: 15,
       workflow_hint:
         'Put Call API immediately after Incoming Whatsapp trigger (before tag/assign). Message Text is empty at workflow end.',
+    },
+    incoming_call_template: {
+      name: 'Incoming_Sarv_Admin_Panel_Trigger',
+      method: 'POST',
+      url: 'https://www.myfng.in/api/webhooks/telecrm',
+      headers: {
+        'Content-type': 'application/json',
+        'x-webhook-secret': '<TELECRM_WEBHOOK_SECRET from Bot Flow Env Settings>',
+      },
+      body: {
+        phone: '{{Phone}}',
+        name: '{{Name}}',
+        channel: 'sarv_incoming',
+        lead_source: '{{LeadSource}}',
+        lead_status: '{{Lead Status}}',
+        lead_tag: '{{LEADTAG}}',
+      },
+      workflow_hint:
+        'Trigger: Incoming call / new lead (Sarv). Same URL as WhatsApp. This only copies the lead into MyFNG admin — it does not change TeleCRM.',
     },
     message_debug_hint:
       'POST response includes message_debug.parsed_message — must show real text in Test Template before Publish.',

@@ -165,7 +165,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/lead_manager/leads': {
     title: 'Leads',
     body:
-      'Saari service leads / bookings list — filter, search, assign telecaller, status change.',
+      'Saari service leads / bookings list — website, app, MISA, incoming Sarv call. Filter, search, assign telecaller, status change.',
   },
   '/dashboard/lead_manager/followups': {
     title: 'Reminders',

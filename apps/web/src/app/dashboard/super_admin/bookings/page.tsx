@@ -62,6 +62,7 @@ const SOURCE_OPTIONS = [
   'APP',
   'WEBSITE',
   'MISA',
+  'SARV',
   'WHATSAPP',
   'GOOGLE',
   'META',
@@ -78,6 +79,7 @@ const EDIT_LEAD_SOURCES = [
   'MISA AI (App)',
   'WhatsApp MISA AI',
   'AI Chatbot',
+  'Incoming Sarv Call',
 ] as const;
 
 /** Core list cols default on; detail-only fields default off — toggle via Columns menu. */
@@ -298,6 +300,7 @@ function SourceBadgeIcon({ kind }: { kind: LeadSourceBadgeKind }) {
   if (kind === 'app') return <Smartphone className="h-3.5 w-3.5 shrink-0" />;
   if (kind === 'website') return <Globe className="h-3.5 w-3.5 shrink-0" />;
   if (kind === 'misa') return <Bot className="h-3.5 w-3.5 shrink-0" />;
+  if (kind === 'sarv') return <Phone className="h-3.5 w-3.5 shrink-0" />;
   return <UserRound className="h-3.5 w-3.5 shrink-0" />;
 }
 
@@ -310,6 +313,7 @@ const SOURCE_KIND_INLINE: Partial<Record<LeadSourceBadgeKind, React.CSSPropertie
   app: { backgroundColor: '#D1FAE5', color: '#065F46' },
   website: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
   misa: { backgroundColor: '#EDE9FE', color: '#5B21B6' },
+  sarv: { backgroundColor: '#FFEDD5', color: '#9A3412' },
   other: { backgroundColor: '#F3F4F6', color: '#374151' },
 };
 
@@ -1389,6 +1393,8 @@ function sourceFilterLabel(source: (typeof SOURCE_OPTIONS)[number]) {
       return 'Website';
     case 'MISA':
       return 'MISA AI';
+    case 'SARV':
+      return 'Incoming Sarv Call';
     case 'WHATSAPP':
       return 'WhatsApp';
     case 'GOOGLE':

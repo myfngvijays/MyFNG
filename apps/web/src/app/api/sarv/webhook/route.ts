@@ -577,6 +577,33 @@ export async function POST(request: NextRequest) {
         console.error('[sarv-webhook] telecrm_api insert failed:', telecrmErr?.message || telecrmErr);
       }
 
+      // Copy the same incoming call into MyFNG Bookings. TeleCRM path above is unchanged.
+      const mobileForAdmin = phone10 || digits10(getValue(payload, ['cNumber', 'cnumber']));
+      void Promise.resolve().then(async () => {
+        try {
+          const { upsertServiceLeadFromIncomingSarvCall } = await import(
+            '@/lib/sarv/upsertServiceLeadFromIncomingCall'
+          );
+          const leadResult = await upsertServiceLeadFromIncomingSarvCall({
+            db,
+            phone10: mobileForAdmin,
+            callid,
+            ctype: upsertPayload.ctype,
+            did: upsertPayload.did || null,
+            talkDuration: upsertPayload.talkduration ?? upsertPayload.custanswerduration ?? null,
+            recordingUrl: callRow.recording_url || null,
+            disposition: upsertPayload.disposition || null,
+            assignedUserId: effectiveAssignedUserId,
+            assignedRole: effectiveAssignedRole,
+          });
+          if (!leadResult.ok && !leadResult.skipped) {
+            console.warn('[sarv-webhook] service_leads sync failed:', leadResult.error);
+          }
+        } catch (leadErr: any) {
+          console.error('[sarv-webhook] service_leads sync failed:', leadErr?.message || leadErr);
+        }
+      });
+
       // Auto transcription/summary disabled by default to control OpenAI cost.
       // Set SARV_AUTO_TRANSCRIBE_ENABLED=true to re-enable (after adding
       // per-day limit + retry guard + smaller prompt).

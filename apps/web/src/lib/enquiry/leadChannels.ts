@@ -10,7 +10,7 @@ export const LEAD_DISTRIBUTION_CHANNELS = [
   { id: 'APP_OTP', label: 'App OTP', hint: 'App OTP verified, booking not completed' },
   { id: 'APP_BOOKING', label: 'App Booking', hint: 'Full app service booking' },
   { id: 'MISA', label: 'MISA AI', hint: 'AI chatbot bookings' },
-  { id: 'MANUAL', label: 'Manual / Calls', hint: 'Enquiry API & manual lead create' },
+  { id: 'MANUAL', label: 'Manual / Calls', hint: 'Enquiry API, manual create & incoming Sarv calls' },
   { id: 'ENQUIRY_API', label: 'Lead Source API', hint: 'External / ads enquiry API' },
 ] as const;
 
@@ -57,5 +57,6 @@ export function channelFromEnquiryLeadSource(leadSource?: string | null): LeadDi
   if (/misa|ai chatbot|chatbot/.test(s)) return 'MISA';
   if (/app/.test(s)) return 'APP_BOOKING';
   if (/website|web|delhi_service|google/.test(s)) return 'WEBSITE_BOOKING';
+  if (/sarv|incoming call/.test(s)) return 'MANUAL';
   return 'ENQUIRY_API';
 }
