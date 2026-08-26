@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/smartflo-recordings",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-dial-fresh-hours",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

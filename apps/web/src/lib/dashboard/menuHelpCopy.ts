@@ -57,20 +57,21 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
   '/dashboard/lead_manager/click-to-call': {
     title: 'Click to Call',
     body:
-      'Smartflo click-to-call: har telecaller ka from number set karo aur test call chalao.\n\nFlow: pehle telecaller phone ring → uthaye → customer connect. Gateway / DID / Auto-dial Super Admin manage karta hai.',
+      'Smartflo click-to-call: har telecaller ka from number + shift hours set karo aur test call chalao.\n\nFlow: pehle telecaller phone ring → uthaye → customer connect. Fresh auto-dial sirf assigned hours mein. Gateway / DID Super Admin manage karta hai.',
     tips: [
       'Mahendra jaise agents ke liye users_login.phone = unka mobile (e.g. 9594050288).',
       'Phone missing ho to Call fail hoga — dialer fallback sirf mobile app pe.',
+      'Default window 10:00–19:00 IST Mon–Sat. Per-telecaller shift blank = default.',
     ],
   },
   '/dashboard/super_admin/click-to-call': {
     title: 'Click to Call',
     body:
-      'Sirf gateway URL hit hota hai (?from=&to=&did=&provider=). Call button aur Fresh auto-dial dono same URL.\n\nDID pool + telecaller from-number yahan set karo. Auto-dial Fresh ON = naya lead assign pe turant call.',
+      'Sirf gateway URL hit hota hai (?from=&to=&did=&provider=). Call button aur Fresh auto-dial dono same URL.\n\nDID + from-number + calling hours yahan set karo. Auto-dial Fresh ON = naya lead assign pe call, lekin sirf assigned IST hours mein.',
     tips: [
       'Assigned DID exclusive hai — Ajit / Mahendra ke numbers koi aur use nahi kar sakta.',
-      'Smartflo API token ki zaroorat nahi — sirf tumhara gateway URL.',
-      'System Monitor me bhi is gateway ki health check dikhegi.',
+      'Har telecaller ka alag shift, weekly off, aur leave. Raat/leave pe assign hua lead unke window start pe auto-dial hota hai.',
+      'Manual Call button hours ke bahar bhi chalega — sirf auto-dial rukta hai.',
     ],
   },
   '/dashboard/super_admin/recordings': {

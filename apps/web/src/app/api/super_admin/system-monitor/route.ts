@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
 import {
   getClickToCallConfig,
 } from '@/lib/telecaller/clickToCallConfig';
+import { evaluateAutoDialWindow } from '@/lib/telecaller/clickToCallHours';
 import {
   createHealthAlertTemplate,
   getHealthAlertTemplateStatus,
@@ -1378,6 +1379,7 @@ async function checkFeatureCrons(): Promise<HealthCheck> {
     '/api/cron/telecrm-push',
     '/api/cron/notifications?task=followup_reminder',
     '/api/cron/smartflo-recordings',
+    '/api/cron/auto-dial-fresh-hours',
   ];
 
   if (!cronSecret) {
@@ -1860,7 +1862,7 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
       status: ok ? (responseTime > 5000 ? 'degraded' : 'healthy') : 'degraded',
       responseTime,
       message: ok ? 'Click-to-call gateway host reachable' : 'Gateway probe inconclusive',
-      reason: `Hits gateway URL with ?from=&to=&did=. Assigned DIDs are exclusive (not shared as fallback). Fresh auto-dial uses the same URL when enabled.`,
+      reason: `Hits gateway URL with ?from=&to=&did=. Assigned DIDs are exclusive. Fresh auto-dial respects IST calling hours (${cfg.auto_dial_start || '10:00'}–${cfg.auto_dial_end || '19:00'}); off-hours catch-up via /api/cron/auto-dial-fresh-hours.`,
       lastChecked: new Date().toISOString(),
       quickFix: {
         label: 'Open Click to Call setup',
@@ -1877,6 +1879,11 @@ async function checkSmartfloClickToCall(): Promise<HealthCheck> {
         unassigned_dids: (cfg.did_assignments || []).filter((a) => a.did && !a.telecaller_id)
           .length,
         auto_dial_on_fresh_assign: Boolean(cfg.auto_dial_on_fresh_assign),
+        auto_dial_hours_enabled: Boolean(cfg.auto_dial_hours_enabled),
+        auto_dial_window: `${cfg.auto_dial_start || '10:00'}–${cfg.auto_dial_end || '19:00'} IST`,
+        auto_dial_days: cfg.auto_dial_days,
+        auto_dial_open_now: evaluateAutoDialWindow(cfg, null).allowed,
+        catchup_cron: '/api/cron/auto-dial-fresh-hours',
         has_gateway_key: Boolean(cfg.gateway_key),
         has_smartflo_api_token: Boolean(cfg.smartflo_api_token),
         env: {

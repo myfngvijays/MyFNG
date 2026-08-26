@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -546,6 +547,13 @@ export function LeadManagerTeamScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [hourStarts, setHourStarts] = useState<Record<string, string>>({});
+  const [hourEnds, setHourEnds] = useState<Record<string, string>>({});
+  const [hourDays, setHourDays] = useState<Record<string, number[]>>({});
+  const [leaveFrom, setLeaveFrom] = useState<Record<string, string>>({});
+  const [leaveTo, setLeaveTo] = useState<Record<string, string>>({});
+  const [onLeave, setOnLeave] = useState<Record<string, boolean>>({});
+  const [autoDialOn, setAutoDialOn] = useState<Record<string, boolean>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -554,8 +562,44 @@ export function LeadManagerTeamScreen() {
       const list = (data?.telecallers || []) as any[];
       setRows(list);
       const d: Record<string, string> = {};
-      for (const t of list) d[t.id] = String(t.phone || '').replace(/\D/g, '').slice(-10);
+      const hs: Record<string, string> = {};
+      const he: Record<string, string> = {};
+      const hd: Record<string, number[]> = {};
+      const lf: Record<string, string> = {};
+      const lt: Record<string, string> = {};
+      const ol: Record<string, boolean> = {};
+      const ad: Record<string, boolean> = {};
+      const custom = (data?.config?.telecaller_hours || {}) as Record<
+        string,
+        {
+          start?: string;
+          end?: string;
+          days?: number[];
+          leave_from?: string;
+          leave_to?: string;
+          on_leave?: boolean;
+          auto_dial_enabled?: boolean;
+        }
+      >;
+      const defaultDays = (data?.config?.auto_dial_days || [1, 2, 3, 4, 5, 6]) as number[];
+      for (const t of list) {
+        d[t.id] = String(t.phone || '').replace(/\D/g, '').slice(-10);
+        hs[t.id] = custom[t.id]?.start || t.dial_hours?.start || '10:00';
+        he[t.id] = custom[t.id]?.end || t.dial_hours?.end || '19:00';
+        hd[t.id] = custom[t.id]?.days?.length ? custom[t.id].days! : defaultDays;
+        lf[t.id] = custom[t.id]?.leave_from || '';
+        lt[t.id] = custom[t.id]?.leave_to || '';
+        ol[t.id] = Boolean(custom[t.id]?.on_leave);
+        ad[t.id] = custom[t.id]?.auto_dial_enabled !== false;
+      }
       setDrafts(d);
+      setHourStarts(hs);
+      setHourEnds(he);
+      setHourDays(hd);
+      setLeaveFrom(lf);
+      setLeaveTo(lt);
+      setOnLeave(ol);
+      setAutoDialOn(ad);
     } catch (e: any) {
       Alert.alert('Team', e?.message || 'Failed to load telecallers');
     } finally {
@@ -580,6 +624,21 @@ export function LeadManagerTeamScreen() {
           phone: drafts[id] || '',
         }),
       });
+      await apiFetch('/api/super_admin/click-to-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_telecaller_hours',
+          telecaller_id: id,
+          start: hourStarts[id] || '',
+          end: hourEnds[id] || '',
+          days: hourDays[id] || [1, 2, 3, 4, 5, 6],
+          leave_from: leaveFrom[id] || '',
+          leave_to: leaveTo[id] || '',
+          on_leave: Boolean(onLeave[id]),
+          auto_dial_enabled: autoDialOn[id] !== false,
+        }),
+      });
       await load();
     } catch (e: any) {
       Alert.alert('Save', e?.message || 'Failed');
@@ -591,7 +650,7 @@ export function LeadManagerTeamScreen() {
   return (
     <OpsShell title="Team">
       <Text style={[styles.hint, { paddingTop: 8 }]}>
-        Telecaller calling numbers (click-to-call `from`). Same as website Team / CTC phones.
+        Har telecaller ka from-number, shift, weekly off, aur leave alag set hota hai.
       </Text>
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
@@ -636,6 +695,81 @@ export function LeadManagerTeamScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+              <View style={[styles.phoneRow, { marginTop: 8 }]}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={hourStarts[item.id] || ''}
+                  onChangeText={(v) => setHourStarts((prev) => ({ ...prev, [item.id]: v }))}
+                  placeholder="Start 10:00"
+                  placeholderTextColor="#94A3B8"
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={hourEnds[item.id] || ''}
+                  onChangeText={(v) => setHourEnds((prev) => ({ ...prev, [item.id]: v }))}
+                  placeholder="End 19:00"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <View style={[styles.phoneRow, { marginTop: 8, flexWrap: 'wrap', gap: 6 }]}>
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((label, day) => {
+                  const on = (hourDays[item.id] || []).includes(day);
+                  return (
+                    <TouchableOpacity
+                      key={`${item.id}-${day}`}
+                      style={[styles.dayChip, on && styles.dayChipOn]}
+                      onPress={() =>
+                        setHourDays((prev) => {
+                          const cur = prev[item.id] || [];
+                          const next = cur.includes(day)
+                            ? cur.filter((d) => d !== day)
+                            : [...cur, day].sort((a, b) => a - b);
+                          return { ...prev, [item.id]: next.length ? next : cur };
+                        })
+                      }
+                    >
+                      <Text style={[styles.dayChipText, on && styles.dayChipTextOn]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={[styles.phoneRow, { marginTop: 8 }]}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={leaveFrom[item.id] || ''}
+                  onChangeText={(v) => setLeaveFrom((prev) => ({ ...prev, [item.id]: v }))}
+                  placeholder="Leave from YYYY-MM-DD"
+                  placeholderTextColor="#94A3B8"
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={leaveTo[item.id] || ''}
+                  onChangeText={(v) => setLeaveTo((prev) => ({ ...prev, [item.id]: v }))}
+                  placeholder="Leave to YYYY-MM-DD"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <View style={[styles.phoneRow, { marginTop: 8, justifyContent: 'space-between' }]}>
+                <Text style={styles.meta}>Fresh auto-dial</Text>
+                <Switch
+                  value={autoDialOn[item.id] !== false}
+                  onValueChange={(v) => setAutoDialOn((prev) => ({ ...prev, [item.id]: v }))}
+                />
+              </View>
+              <View style={[styles.phoneRow, { marginTop: 8, justifyContent: 'space-between' }]}>
+                <Text style={styles.meta}>On leave now</Text>
+                <Switch
+                  value={Boolean(onLeave[item.id])}
+                  onValueChange={(v) => setOnLeave((prev) => ({ ...prev, [item.id]: v }))}
+                />
+              </View>
+              <Text style={styles.meta}>
+                {item.on_leave
+                  ? 'On leave — auto-dial off'
+                  : item.dial_open_now
+                    ? 'Auto-dial open now'
+                    : 'Auto-dial paused now'}
+              </Text>
               {!item.is_active ? (
                 <Text style={[styles.badge, styles.badgeOff, { alignSelf: 'flex-start', marginTop: 8 }]}>
                   Inactive
@@ -1026,6 +1160,18 @@ export function LeadManagerClickToCallScreen() {
                   Auto-dial Fresh:{' '}
                   {cfg?.auto_dial_on_fresh_assign ? 'ON' : 'OFF'}
                 </Text>
+                <Text style={styles.meta}>
+                  Calling hours:{' '}
+                  {cfg?.auto_dial_hours_enabled === false
+                    ? '24×7'
+                    : `${cfg?.auto_dial_start || '10:00'}–${cfg?.auto_dial_end || '19:00'} IST ${cfg?.auto_dial_days_label || 'Mon–Sat'}`}
+                </Text>
+                {cfg?.clock ? (
+                  <Text style={styles.meta}>
+                    Now {cfg.clock.weekday_label} {cfg.clock.now_hhmm} IST ·{' '}
+                    {cfg.clock.open ? 'auto-dial open' : 'auto-dial paused'}
+                  </Text>
+                ) : null}
                 <Text style={styles.meta}>
                   Fallback DID: {cfg?.did || '—'}
                 </Text>

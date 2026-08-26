@@ -9,7 +9,18 @@ import {
   Save,
   AlertTriangle,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
+
+const WEEKDAY_CHIPS = [
+  { id: 0, label: 'Sun' },
+  { id: 1, label: 'Mon' },
+  { id: 2, label: 'Tue' },
+  { id: 3, label: 'Wed' },
+  { id: 4, label: 'Thu' },
+  { id: 5, label: 'Fri' },
+  { id: 6, label: 'Sat' },
+] as const;
 
 type DidAssignment = {
   did: string;
@@ -26,6 +37,34 @@ type ConfigPublic = {
   dids: string[];
   did_assignments: DidAssignment[];
   auto_dial_on_fresh_assign?: boolean;
+  auto_dial_hours_enabled?: boolean;
+  auto_dial_start?: string;
+  auto_dial_end?: string;
+  auto_dial_days?: number[];
+  auto_dial_days_label?: string;
+  telecaller_hours?: Record<
+    string,
+    {
+      start: string;
+      end: string;
+      days?: number[] | null;
+      leave_from?: string | null;
+      leave_to?: string | null;
+      on_leave?: boolean;
+      auto_dial_enabled?: boolean;
+    }
+  >;
+  clock?: { now_hhmm: string; weekday_label: string; open: boolean; reason: string };
+};
+
+type HoursDraft = {
+  start: string;
+  end: string;
+  days: number[];
+  leave_from: string;
+  leave_to: string;
+  on_leave: boolean;
+  auto_dial_enabled: boolean;
 };
 
 type TelecallerRow = {
@@ -36,6 +75,18 @@ type TelecallerRow = {
   is_active: boolean;
   missing_from: boolean;
   assigned_did?: string | null;
+  dial_hours?: {
+    start: string;
+    end: string;
+    days?: number[];
+    source?: string;
+    leave_from?: string | null;
+    leave_to?: string | null;
+    on_leave?: boolean;
+  };
+  dial_open_now?: boolean;
+  on_leave?: boolean;
+  auto_dial_enabled?: boolean;
 };
 
 export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEditSecrets?: boolean }) {
@@ -50,6 +101,14 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
   const [provider, setProvider] = useState('smartflo');
   const [enabled, setEnabled] = useState(true);
   const [autoDialFresh, setAutoDialFresh] = useState(true);
+  const [hoursEnabled, setHoursEnabled] = useState(true);
+  const [hoursStart, setHoursStart] = useState('10:00');
+  const [hoursEnd, setHoursEnd] = useState('19:00');
+  const [hoursDays, setHoursDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
+  const [hourDrafts, setHourDrafts] = useState<Record<string, HoursDraft>>({});
+  const [savingHours, setSavingHours] = useState(false);
+  const [savingHoursId, setSavingHoursId] = useState<string | null>(null);
+  const [selectedHoursId, setSelectedHoursId] = useState<string>('');
   const [gatewayKey, setGatewayKey] = useState('');
   const [clearKey, setClearKey] = useState(false);
   const [smartfloToken, setSmartfloToken] = useState('');
@@ -80,6 +139,31 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       setDid(String(cfg.did || ''));
       setProvider(String(cfg.provider || 'smartflo'));
       setAutoDialFresh(Boolean(cfg.auto_dial_on_fresh_assign));
+      setHoursEnabled(cfg.auto_dial_hours_enabled !== false);
+      setHoursStart(String(cfg.auto_dial_start || '10:00'));
+      setHoursEnd(String(cfg.auto_dial_end || '19:00'));
+      setHoursDays(Array.isArray(cfg.auto_dial_days) && cfg.auto_dial_days.length ? cfg.auto_dial_days : [1, 2, 3, 4, 5, 6]);
+      const customHours = cfg.telecaller_hours || {};
+      const defaultStart = String(cfg.auto_dial_start || '10:00');
+      const defaultEnd = String(cfg.auto_dial_end || '19:00');
+      const defaultDays =
+        Array.isArray(cfg.auto_dial_days) && cfg.auto_dial_days.length
+          ? cfg.auto_dial_days
+          : [1, 2, 3, 4, 5, 6];
+      const drafts: Record<string, HoursDraft> = {};
+      for (const t of (data.telecallers || []) as TelecallerRow[]) {
+        const own = customHours[t.id];
+        drafts[t.id] = {
+          start: own?.start || defaultStart,
+          end: own?.end || defaultEnd,
+          days: Array.isArray(own?.days) && own.days.length ? own.days : defaultDays,
+          leave_from: own?.leave_from || '',
+          leave_to: own?.leave_to || '',
+          on_leave: Boolean(own?.on_leave),
+          auto_dial_enabled: own?.auto_dial_enabled !== false,
+        };
+      }
+      setHourDrafts(drafts);
       setDidAssignments(
         Array.isArray(cfg.did_assignments)
           ? cfg.did_assignments.map((a) => ({
@@ -94,6 +178,10 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       setClearSmartfloToken(false);
       const list = (data.telecallers || []) as TelecallerRow[];
       setTelecallers(list);
+      setSelectedHoursId((prev) => {
+        if (prev && list.some((t) => t.id === prev)) return prev;
+        return list.find((t) => t.is_active)?.id || list[0]?.id || '';
+      });
       const d: Record<string, string> = {};
       for (const t of list) d[t.id] = t.phone || '';
       setDrafts(d);
@@ -129,6 +217,10 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           did,
           provider,
           auto_dial_on_fresh_assign: autoDialFresh,
+          auto_dial_hours_enabled: hoursEnabled,
+          auto_dial_start: hoursStart,
+          auto_dial_end: hoursEnd,
+          auto_dial_days: hoursDays,
           gateway_key: canEditSecrets && gatewayKey.trim() ? gatewayKey.trim() : undefined,
           clear_gateway_key: canEditSecrets && clearKey,
           smartflo_api_token:
@@ -177,6 +269,108 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
       setError(e?.message || 'DID save failed');
     } finally {
       setSavingDids(false);
+    }
+  };
+
+  const patchHourDraft = (id: string, patch: Partial<HoursDraft>) => {
+    setHourDrafts((prev) => {
+      const cur = prev[id] || {
+        start: hoursStart,
+        end: hoursEnd,
+        days: hoursDays,
+        leave_from: '',
+        leave_to: '',
+        on_leave: false,
+        auto_dial_enabled: true,
+      };
+      return { ...prev, [id]: { ...cur, ...patch } };
+    });
+  };
+
+  const togglePersonDay = (id: string, day: number) => {
+    const cur = hourDrafts[id]?.days || hoursDays;
+    const next = cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day].sort((a, b) => a - b);
+    if (!next.length) return;
+    patchHourDraft(id, { days: next });
+  };
+
+  const buildHoursMap = () => {
+    const telecaller_hours: Record<string, HoursDraft> = {};
+    for (const t of telecallers) {
+      const d = hourDrafts[t.id];
+      if (!d) continue;
+      telecaller_hours[t.id] = {
+        start: d.start || hoursStart,
+        end: d.end || hoursEnd,
+        days: d.days?.length ? d.days : hoursDays,
+        leave_from: d.leave_from || '',
+        leave_to: d.leave_to || '',
+        on_leave: Boolean(d.on_leave),
+        auto_dial_enabled: d.auto_dial_enabled !== false,
+      };
+    }
+    return telecaller_hours;
+  };
+
+  const saveTelecallerHours = async () => {
+    setSavingHours(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch('/api/super_admin/click-to-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_config',
+          auto_dial_hours_enabled: hoursEnabled,
+          auto_dial_start: hoursStart,
+          auto_dial_end: hoursEnd,
+          auto_dial_days: hoursDays,
+          telecaller_hours: buildHoursMap(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Hours save failed');
+      setMessage(data.message || 'Calling hours saved');
+      setConfig(data.config);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Hours save failed');
+    } finally {
+      setSavingHours(false);
+    }
+  };
+
+  const saveOneTelecallerHours = async (id: string) => {
+    const d = hourDrafts[id];
+    if (!d) return;
+    setSavingHoursId(id);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch('/api/super_admin/click-to-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_telecaller_hours',
+          telecaller_id: id,
+          start: d.start,
+          end: d.end,
+          days: d.days,
+          leave_from: d.leave_from,
+          leave_to: d.leave_to,
+          on_leave: d.on_leave,
+          auto_dial_enabled: d.auto_dial_enabled !== false,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Hours save failed');
+      setMessage(data.message || 'Shift saved');
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Hours save failed');
+    } finally {
+      setSavingHoursId(null);
     }
   };
 
@@ -365,7 +559,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             <span className="font-semibold">Auto-dial Fresh leads</span>
             <span className="block text-xs text-slate-600 mt-0.5">
               Naya Fresh/NEW lead assign hote hi same gateway URL hit — pehle telecaller
-              phone, uthane pe customer (jaise Call button).
+              phone, uthane pe customer (jaise Call button). Calling hours ke bahar skip
+              hota hai; window khulte hi cron catch-up karta hai.
             </span>
           </span>
         </label>
@@ -490,6 +685,292 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save gateway settings
         </button>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-1">
+          <Clock className="w-5 h-5 text-amber-600" />
+          Per-telecaller hours & leave
+        </h2>
+        <p className="text-sm text-slate-500 mb-3">
+          Har telecaller ka apna shift + weekly off + leave. Fresh auto-dial sirf usi
+          person ke window mein. Manual Call kabhi block nahi.
+        </p>
+
+        <label className="mb-4 flex items-start gap-2 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            checked={hoursEnabled}
+            onChange={(e) => setHoursEnabled(e.target.checked)}
+            className="mt-1 rounded border-slate-300"
+          />
+          <span>
+            <span className="font-semibold">Restrict auto-dial to each telecaller&apos;s hours</span>
+            <span className="block text-xs text-slate-600 mt-0.5">
+              Off-hours / leave pe lead pending — unke shift start pe automatic call.
+            </span>
+          </span>
+        </label>
+
+        <details className="mb-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Fallback for new telecallers ({hoursStart}–{hoursEnd} IST)
+          </summary>
+          <div className="grid gap-3 sm:grid-cols-2 mt-3">
+            <label className="block">
+              <span className="text-xs font-medium text-slate-600">Default start</span>
+              <input
+                type="time"
+                value={hoursStart}
+                onChange={(e) => setHoursStart(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-600">Default end</span>
+              <input
+                type="time"
+                value={hoursEnd}
+                onChange={(e) => setHoursEnd(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            disabled={savingHours}
+            onClick={() => void saveTelecallerHours()}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800"
+          >
+            {savingHours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save fallback
+          </button>
+        </details>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setShowInactive(false);
+              const first = activeTelecallers[0];
+              if (first) setSelectedHoursId(first.id);
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-semibold border ${
+              !showInactive
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-600 border-slate-200'
+            }`}
+          >
+            Active ({activeTelecallers.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowInactive(true)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold border ${
+              showInactive
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-600 border-slate-200'
+            }`}
+          >
+            Show inactive ({inactiveTelecallers.length})
+          </button>
+        </div>
+
+        <label className="block mb-4">
+          <span className="text-xs font-medium text-slate-600">Select telecaller</span>
+          <select
+            value={
+              visibleTelecallers.some((t) => t.id === selectedHoursId)
+                ? selectedHoursId
+                : visibleTelecallers[0]?.id || ''
+            }
+            onChange={(e) => setSelectedHoursId(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold"
+          >
+            {visibleTelecallers.length === 0 ? (
+              <option value="">No telecallers</option>
+            ) : null}
+            {visibleTelecallers.map((t) => {
+              const off = hourDrafts[t.id]?.auto_dial_enabled === false;
+              return (
+                <option key={t.id} value={t.id}>
+                  {t.full_name || t.email || t.id}
+                  {!t.is_active ? ' (inactive)' : ''}
+                  {off ? ' · autodial OFF' : ''}
+                </option>
+              );
+            })}
+          </select>
+        </label>
+
+        {(() => {
+          const t =
+            visibleTelecallers.find((row) => row.id === selectedHoursId) ||
+            visibleTelecallers[0] ||
+            null;
+          if (!t) {
+            return <p className="text-sm text-slate-500">No telecaller in this filter.</p>;
+          }
+          const d = hourDrafts[t.id] || {
+            start: hoursStart,
+            end: hoursEnd,
+            days: hoursDays,
+            leave_from: '',
+            leave_to: '',
+            on_leave: false,
+            auto_dial_enabled: true,
+          };
+          const autodialOn = d.auto_dial_enabled !== false;
+          const paused = t.on_leave || t.dial_open_now === false || !autodialOn;
+          return (
+            <div
+              className={`rounded-xl border p-4 ${
+                t.on_leave ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div>
+                  <div className="font-semibold text-slate-900">{t.full_name || t.email || 'Telecaller'}</div>
+                  <div className="text-xs text-slate-500">{t.email}</div>
+                </div>
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+                    !autodialOn
+                      ? 'bg-slate-200 text-slate-700'
+                      : t.on_leave
+                        ? 'bg-rose-100 text-rose-800'
+                        : paused
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {!autodialOn ? 'Autodial off' : t.on_leave ? 'On leave' : paused ? 'Paused now' : 'Open now'}
+                </span>
+              </div>
+
+              <label
+                className={`mb-4 flex items-center justify-between gap-3 rounded-xl border px-3 py-3 ${
+                  autodialOn
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-slate-900">Fresh auto-dial</span>
+                  <span className="block text-xs text-slate-600">
+                    Off = is person ko naya lead assign hone par call nahi jayega. Baaki
+                    telecallers on reh sakte hain.
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autodialOn}
+                  onClick={() => patchHourDraft(t.id, { auto_dial_enabled: !autodialOn })}
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                    autodialOn ? 'bg-emerald-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
+                      autodialOn ? 'left-5' : 'left-0.5'
+                    }`}
+                  />
+                </button>
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600">Start (IST)</span>
+                  <input
+                    type="time"
+                    value={d.start}
+                    onChange={(e) => patchHourDraft(t.id, { start: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600">End (IST)</span>
+                  <input
+                    type="time"
+                    value={d.end}
+                    onChange={(e) => patchHourDraft(t.id, { end: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3">
+                <p className="text-xs font-medium text-slate-600 mb-1.5">Working days</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAY_CHIPS.map((chip) => {
+                    const on = d.days.includes(chip.id);
+                    return (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => togglePersonDay(t.id, chip.id)}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
+                          on
+                            ? 'bg-amber-600 text-white border-amber-600'
+                            : 'bg-white text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {chip.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600">Leave from</span>
+                  <input
+                    type="date"
+                    value={d.leave_from}
+                    onChange={(e) => patchHourDraft(t.id, { leave_from: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-600">Leave to</span>
+                  <input
+                    type="date"
+                    value={d.leave_to}
+                    onChange={(e) => patchHourDraft(t.id, { leave_to: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={d.on_leave}
+                    onChange={(e) => patchHourDraft(t.id, { on_leave: e.target.checked })}
+                    className="rounded border-slate-300"
+                  />
+                  On leave now (no dates needed)
+                </label>
+                <button
+                  type="button"
+                  disabled={savingHoursId === t.id}
+                  onClick={() => void saveOneTelecallerHours(t.id)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-amber-700 disabled:opacity-60"
+                >
+                  {savingHoursId === t.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  Save {t.full_name?.split(' ')[0] || 'shift'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -671,6 +1152,9 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
               : `Show inactive (${inactiveTelecallers.length})`}
           </button>
         ) : null}
+        <p className="mt-3 text-xs text-slate-500">
+          Shift / leave upar &quot;Per-telecaller hours &amp; leave&quot; section mein set karo.
+        </p>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

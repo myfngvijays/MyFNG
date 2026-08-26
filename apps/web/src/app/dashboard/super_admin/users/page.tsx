@@ -54,6 +54,38 @@ function roleSortIndex(roleCode?: string) {
   return idx === -1 ? ROLE_DISPLAY_ORDER.length + 1 : idx;
 }
 
+const ACTION_BTN_TONES = {
+  indigo: 'text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100',
+  blue: 'text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100',
+  orange: 'text-orange-700 bg-orange-50 border-orange-200 hover:bg-orange-100',
+  red: 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100',
+  green: 'text-green-700 bg-green-50 border-green-200 hover:bg-green-100',
+} as const;
+
+function UserActionButton({
+  title,
+  onClick,
+  tone,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  tone: keyof typeof ACTION_BTN_TONES;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${ACTION_BTN_TONES[tone]} transition`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function UserManagementPage() {
   const supabase = getBrowserClient();
   const [users, setUsers] = useState<any[]>([]);
@@ -774,7 +806,7 @@ export default function UserManagementPage() {
                   <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Joined
                   </th>
-                  <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[196px]">
                     Actions
                   </th>
                 </tr>
@@ -838,55 +870,25 @@ export default function UserManagementPage() {
                       <td className="px-4 md:px-6 py-3 md:py-4 text-xs sm:text-sm text-gray-500">
                         {formatDateDMY(user.created_at)}
                       </td>
-                      <td className="px-4 md:px-6 py-3 md:py-4 text-right text-xs sm:text-sm font-medium">
-                        <div className="inline-flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(user)}
-                            title="Edit User"
-                            aria-label="Edit User"
-                            className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 transition"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openRoleModal(user)}
-                            title="Change Role"
-                            aria-label="Change Role"
-                            className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition"
-                          >
-                            <Shield className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openPasswordModal(user)}
-                            title="Reset Password"
-                            aria-label="Reset Password"
-                            className="p-1.5 rounded-lg text-orange-600 hover:bg-orange-50 hover:text-orange-800 transition"
-                          >
-                            <KeyRound className="w-4 h-4" />
-                          </button>
+                      <td className="px-4 md:px-6 py-3 md:py-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <UserActionButton title="Edit User" tone="indigo" onClick={() => openEditModal(user)}>
+                            <Pencil className="h-4 w-4" />
+                          </UserActionButton>
+                          <UserActionButton title="Change Role" tone="blue" onClick={() => openRoleModal(user)}>
+                            <Shield className="h-4 w-4" />
+                          </UserActionButton>
+                          <UserActionButton title="Reset Password" tone="orange" onClick={() => openPasswordModal(user)}>
+                            <KeyRound className="h-4 w-4" />
+                          </UserActionButton>
                           {user.is_active ? (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatus(user.id, user.is_active)}
-                              title="Disable"
-                              aria-label="Disable user"
-                              className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-800 transition"
-                            >
-                              <UserX className="w-4 h-4" />
-                            </button>
+                            <UserActionButton title="Disable" tone="red" onClick={() => handleToggleStatus(user.id, user.is_active)}>
+                              <UserX className="h-4 w-4" />
+                            </UserActionButton>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatus(user.id, user.is_active)}
-                              title="Enable"
-                              aria-label="Enable user"
-                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 hover:text-green-800 transition"
-                            >
-                              <UserCheck className="w-4 h-4" />
-                            </button>
+                            <UserActionButton title="Enable" tone="green" onClick={() => handleToggleStatus(user.id, user.is_active)}>
+                              <UserCheck className="h-4 w-4" />
+                            </UserActionButton>
                           )}
                         </div>
                       </td>
@@ -982,53 +984,23 @@ export default function UserManagementPage() {
                 </div>
 
                 <div className="flex items-center justify-end gap-1.5 pt-3 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(user)}
-                    title="Edit User"
-                    aria-label="Edit User"
-                    className="p-2 rounded-lg text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openRoleModal(user)}
-                    title="Change Role"
-                    aria-label="Change Role"
-                    className="p-2 rounded-lg text-blue-600 border border-blue-200 hover:bg-blue-50 transition"
-                  >
-                    <Shield className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openPasswordModal(user)}
-                    title="Reset Password"
-                    aria-label="Reset Password"
-                    className="p-2 rounded-lg text-orange-600 border border-orange-200 hover:bg-orange-50 transition"
-                  >
-                    <KeyRound className="w-4 h-4" />
-                  </button>
+                  <UserActionButton title="Edit User" tone="indigo" onClick={() => openEditModal(user)}>
+                    <Pencil className="h-4 w-4" />
+                  </UserActionButton>
+                  <UserActionButton title="Change Role" tone="blue" onClick={() => openRoleModal(user)}>
+                    <Shield className="h-4 w-4" />
+                  </UserActionButton>
+                  <UserActionButton title="Reset Password" tone="orange" onClick={() => openPasswordModal(user)}>
+                    <KeyRound className="h-4 w-4" />
+                  </UserActionButton>
                   {user.is_active ? (
-                    <button
-                      type="button"
-                      onClick={() => handleToggleStatus(user.id, user.is_active)}
-                      title="Disable"
-                      aria-label="Disable user"
-                      className="p-2 rounded-lg text-red-600 border border-red-200 hover:bg-red-50 transition"
-                    >
-                      <UserX className="w-4 h-4" />
-                    </button>
+                    <UserActionButton title="Disable" tone="red" onClick={() => handleToggleStatus(user.id, user.is_active)}>
+                      <UserX className="h-4 w-4" />
+                    </UserActionButton>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleToggleStatus(user.id, user.is_active)}
-                      title="Enable"
-                      aria-label="Enable user"
-                      className="p-2 rounded-lg text-green-600 border border-green-200 hover:bg-green-50 transition"
-                    >
-                      <UserCheck className="w-4 h-4" />
-                    </button>
+                    <UserActionButton title="Enable" tone="green" onClick={() => handleToggleStatus(user.id, user.is_active)}>
+                      <UserCheck className="h-4 w-4" />
+                    </UserActionButton>
                   )}
                 </div>
               </div>

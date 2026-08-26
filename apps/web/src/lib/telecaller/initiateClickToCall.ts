@@ -10,6 +10,7 @@ import {
   resolveExclusiveDidForTelecaller,
   type ClickToCallConfig,
 } from '@/lib/telecaller/clickToCallConfig';
+import { evaluateAutoDialWindow } from '@/lib/telecaller/clickToCallHours';
 import { SMARTFLO_API_BASE } from '@/lib/telecaller/smartfloCdr';
 
 export type ClickToCallDialResult = {
@@ -376,6 +377,33 @@ export async function autoDialFreshLeadIfEnabled(input: {
     return { ok: false, skipped: true, reason: 'missing telecaller or customer phone' };
   }
 
+  const hours = evaluateAutoDialWindow(cfg, telecallerId);
+  if (!hours.allowed) {
+    const waitForWindow = hours.reason !== 'auto_dial_off';
+    if (!waitForWindow && input.leadId) {
+      try {
+        await clearAutoDialPending(String(input.leadId));
+      } catch {
+        /* ignore */
+      }
+    }
+    if (waitForWindow && input.leadId) {
+      try {
+        await markAutoDialPending(String(input.leadId), hours.reason);
+      } catch (e) {
+        console.warn('[autoDialFresh] pending mark failed:', e);
+      }
+    }
+    return {
+      ok: false,
+      skipped: true,
+      reason:
+        hours.reason === 'auto_dial_off'
+          ? 'auto_dial_off_for_telecaller'
+          : `outside_calling_hours ${hours.now_hhmm} IST ${hours.weekday_label} (window ${hours.window.start}–${hours.window.end})`,
+    };
+  }
+
   const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
   const { supabaseAdmin } = getSupabaseAdmin();
   if (!supabaseAdmin) {
@@ -413,7 +441,47 @@ export async function autoDialFreshLeadIfEnabled(input: {
       } catch (e) {
         console.warn('[autoDialFresh] pending log insert failed:', e);
       }
+      try {
+        await clearAutoDialPending(String(input.leadId));
+      } catch (e) {
+        console.warn('[autoDialFresh] pending clear failed:', e);
+      }
     }
     return result;
+  });
+}
+
+async function mergeLeadCouponMeta(
+  leadId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const { getSupabaseAdmin } = await import('@/lib/push/supabaseAdmin');
+  const { supabaseAdmin } = getSupabaseAdmin();
+  if (!supabaseAdmin) return;
+  const { data } = await supabaseAdmin
+    .from('service_leads')
+    .select('coupon_meta')
+    .eq('id', leadId)
+    .maybeSingle();
+  const prev =
+    data?.coupon_meta && typeof data.coupon_meta === 'object' && !Array.isArray(data.coupon_meta)
+      ? { ...(data.coupon_meta as Record<string, unknown>) }
+      : {};
+  await supabaseAdmin.from('service_leads').update({ coupon_meta: { ...prev, ...patch } }).eq('id', leadId);
+}
+
+async function markAutoDialPending(leadId: string, reason: string): Promise<void> {
+  await mergeLeadCouponMeta(leadId, {
+    auto_dial_pending: true,
+    auto_dial_skip_reason: reason,
+    auto_dial_skipped_at: new Date().toISOString(),
+  });
+}
+
+export async function clearAutoDialPending(leadId: string): Promise<void> {
+  await mergeLeadCouponMeta(leadId, {
+    auto_dial_pending: false,
+    auto_dial_skip_reason: null,
+    auto_dial_last_at: new Date().toISOString(),
   });
 }

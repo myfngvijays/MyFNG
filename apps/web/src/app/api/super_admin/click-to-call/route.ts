@@ -7,6 +7,7 @@ import {
   saveClickToCallConfig,
   type DidAssignment,
 } from '@/lib/telecaller/clickToCallConfig';
+import { evaluateAutoDialWindow } from '@/lib/telecaller/clickToCallHours';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
     .map((u: any) => {
       const id = String(u.id);
       const assigned = cfg.did_assignments.find((a) => a.telecaller_id === id);
+      const hoursCheck = evaluateAutoDialWindow(cfg, id);
       return {
         id,
         full_name: u.full_name ? String(u.full_name) : null,
@@ -69,6 +71,10 @@ export async function GET(request: NextRequest) {
         is_active: Boolean(u.is_active),
         missing_from: !String(u.phone || '').replace(/\D/g, ''),
         assigned_did: assigned?.did || null,
+        dial_hours: hoursCheck.window,
+        dial_open_now: hoursCheck.allowed,
+        on_leave: hoursCheck.reason.startsWith('on_leave'),
+        auto_dial_enabled: hoursCheck.window.auto_dial_enabled !== false,
       };
     });
 
@@ -110,6 +116,11 @@ export async function POST(request: NextRequest) {
         did_assignments: body.did_assignments,
         dial_mode: body.dial_mode,
         auto_dial_on_fresh_assign: body.auto_dial_on_fresh_assign,
+        auto_dial_hours_enabled: body.auto_dial_hours_enabled,
+        auto_dial_start: body.auto_dial_start,
+        auto_dial_end: body.auto_dial_end,
+        auto_dial_days: body.auto_dial_days,
+        telecaller_hours: body.telecaller_hours,
         gateway_key: canEditSecrets ? body.gateway_key : undefined,
         clear_gateway_key: canEditSecrets ? Boolean(body.clear_gateway_key) : false,
         smartflo_api_token: canEditSecrets ? body.smartflo_api_token : undefined,
@@ -147,6 +158,38 @@ export async function POST(request: NextRequest) {
       });
     } catch (e: any) {
       return NextResponse.json({ error: e?.message || 'Save failed' }, { status: 500 });
+    }
+  }
+
+  if (action === 'save_telecaller_hours') {
+    const telecallerId = String(body.telecaller_id || '').trim();
+    if (!telecallerId) {
+      return NextResponse.json({ error: 'telecaller_id required' }, { status: 400 });
+    }
+    try {
+      const current = await getClickToCallConfig();
+      const nextHours = { ...(current.telecaller_hours || {}) };
+      if (body.clear) {
+        delete nextHours[telecallerId];
+      } else {
+        nextHours[telecallerId] = {
+          start: String(body.start || current.auto_dial_start),
+          end: String(body.end || current.auto_dial_end),
+          days: Array.isArray(body.days) ? body.days : nextHours[telecallerId]?.days || current.auto_dial_days,
+          leave_from: String(body.leave_from || '').trim() || null,
+          leave_to: String(body.leave_to || '').trim() || null,
+          on_leave: Boolean(body.on_leave),
+          auto_dial_enabled: body.auto_dial_enabled === undefined ? true : Boolean(body.auto_dial_enabled),
+        };
+      }
+      const saved = await saveClickToCallConfig({ telecaller_hours: nextHours });
+      return NextResponse.json({
+        success: true,
+        config: publicClickToCallConfig(saved),
+        message: 'Telecaller hours saved',
+      });
+    } catch (e: any) {
+      return NextResponse.json({ error: e?.message || 'Hours save failed' }, { status: 500 });
     }
   }
 

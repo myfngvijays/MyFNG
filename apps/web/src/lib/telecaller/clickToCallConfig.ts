@@ -1,4 +1,14 @@
 import { getSupabaseAdmin } from '@/lib/push/supabaseAdmin';
+import {
+  DEFAULT_AUTO_DIAL_DAYS,
+  DEFAULT_AUTO_DIAL_END,
+  DEFAULT_AUTO_DIAL_START,
+  normalizeDays,
+  normalizeHhmm,
+  normalizeTelecallerHours,
+  publicAutoDialHours,
+  type TelecallerHourOverride,
+} from '@/lib/telecaller/clickToCallHours';
 
 export const CLICK_TO_CALL_SETTING_KEY = 'click_to_call_smartflo';
 
@@ -45,6 +55,14 @@ export type ClickToCallConfig = {
   smartflo_api_token: string;
   /** When Fresh/NEW lead is assigned, auto-start agent-first call. */
   auto_dial_on_fresh_assign: boolean;
+  /** When true, Fresh auto-dial only fires inside the IST window (manual Call stays open). */
+  auto_dial_hours_enabled: boolean;
+  auto_dial_start: string;
+  auto_dial_end: string;
+  /** 0=Sun … 6=Sat */
+  auto_dial_days: number[];
+  /** Per-telecaller start/end override (empty = use global). */
+  telecaller_hours: Record<string, TelecallerHourOverride>;
 };
 
 function digitsOnly(raw: unknown): string {
@@ -121,6 +139,11 @@ export function defaultClickToCallConfig(): ClickToCallConfig {
     dial_mode: 'agent_first',
     smartflo_api_token: String(process.env.SMARTFLO_API_TOKEN || '').trim(),
     auto_dial_on_fresh_assign: true,
+    auto_dial_hours_enabled: true,
+    auto_dial_start: DEFAULT_AUTO_DIAL_START,
+    auto_dial_end: DEFAULT_AUTO_DIAL_END,
+    auto_dial_days: [...DEFAULT_AUTO_DIAL_DAYS],
+    telecaller_hours: {},
   };
 }
 
@@ -165,6 +188,14 @@ function parseConfig(raw: unknown): ClickToCallConfig {
       obj.auto_dial_on_fresh_assign === undefined
         ? base.auto_dial_on_fresh_assign
         : Boolean(obj.auto_dial_on_fresh_assign),
+    auto_dial_hours_enabled:
+      obj.auto_dial_hours_enabled === undefined
+        ? base.auto_dial_hours_enabled
+        : Boolean(obj.auto_dial_hours_enabled),
+    auto_dial_start: normalizeHhmm(obj.auto_dial_start, base.auto_dial_start),
+    auto_dial_end: normalizeHhmm(obj.auto_dial_end, base.auto_dial_end),
+    auto_dial_days: normalizeDays(obj.auto_dial_days, base.auto_dial_days),
+    telecaller_hours: normalizeTelecallerHours(obj.telecaller_hours),
   };
 }
 
@@ -231,6 +262,26 @@ export async function saveClickToCallConfig(
       partial.auto_dial_on_fresh_assign !== undefined
         ? Boolean(partial.auto_dial_on_fresh_assign)
         : current.auto_dial_on_fresh_assign,
+    auto_dial_hours_enabled:
+      partial.auto_dial_hours_enabled !== undefined
+        ? Boolean(partial.auto_dial_hours_enabled)
+        : current.auto_dial_hours_enabled,
+    auto_dial_start:
+      partial.auto_dial_start !== undefined
+        ? normalizeHhmm(partial.auto_dial_start, current.auto_dial_start)
+        : current.auto_dial_start,
+    auto_dial_end:
+      partial.auto_dial_end !== undefined
+        ? normalizeHhmm(partial.auto_dial_end, current.auto_dial_end)
+        : current.auto_dial_end,
+    auto_dial_days:
+      partial.auto_dial_days !== undefined
+        ? normalizeDays(partial.auto_dial_days, current.auto_dial_days)
+        : current.auto_dial_days,
+    telecaller_hours:
+      partial.telecaller_hours !== undefined
+        ? normalizeTelecallerHours(partial.telecaller_hours)
+        : current.telecaller_hours,
   };
 
   if (partial.clear_gateway_key) {
@@ -373,5 +424,6 @@ export function publicClickToCallConfig(cfg: ClickToCallConfig) {
     dial_mode: cfg.dial_mode || 'agent_first',
     has_smartflo_api_token: Boolean(cfg.smartflo_api_token),
     auto_dial_on_fresh_assign: Boolean(cfg.auto_dial_on_fresh_assign),
+    ...publicAutoDialHours(cfg),
   };
 }

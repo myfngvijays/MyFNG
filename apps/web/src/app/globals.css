@@ -59,12 +59,17 @@
   select.select-no-chevron {
     background-image: none;
   }
-  /* Prevent accidental horizontal pan in admin WebViews */
+  /* Prevent accidental horizontal pan in admin WebViews.
+     Do not apply max-width to svg — Lucide icons then shrink to specks
+     inside tight table cells (e.g. Users → Actions). */
   img,
   video,
-  canvas,
-  svg {
+  canvas {
     max-width: 100%;
+  }
+  svg.lucide {
+    max-width: none;
+    flex-shrink: 0;
   }
 }
 
