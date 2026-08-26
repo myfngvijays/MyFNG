@@ -10,12 +10,36 @@ import {
   TextInput,
   Alert,
   Switch,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetch } from '../../../lib/api';
 import { COLORS, SPACING } from '../../../constants/theme';
+
+function istTodayYmd() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function ymdToLocalDate(ymd: string): Date {
+  const [y, m, d] = String(ymd || '').split('-').map(Number);
+  if (!y || !m || !d) return new Date();
+  return new Date(y, m - 1, d);
+}
+
+function localDateToYmd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 function OpsShell({
   title,
@@ -554,7 +578,13 @@ export function LeadManagerTeamScreen() {
   const [leaveTo, setLeaveTo] = useState<Record<string, string>>({});
   const [onLeave, setOnLeave] = useState<Record<string, boolean>>({});
   const [autoDialOn, setAutoDialOn] = useState<Record<string, boolean>>({});
+  const [offCover, setOffCover] = useState<Record<string, string>>({});
+  const [leaveCover, setLeaveCover] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [leavePicker, setLeavePicker] = useState<{ id: string; field: 'from' | 'to' } | null>(
+    null,
+  );
+  const [teamTab, setTeamTab] = useState<'phones' | 'days' | 'leave'>('phones');
 
   const load = useCallback(async () => {
     try {
@@ -569,6 +599,8 @@ export function LeadManagerTeamScreen() {
       const lt: Record<string, string> = {};
       const ol: Record<string, boolean> = {};
       const ad: Record<string, boolean> = {};
+      const oc: Record<string, string> = {};
+      const lc: Record<string, string> = {};
       const custom = (data?.config?.telecaller_hours || {}) as Record<
         string,
         {
@@ -579,6 +611,8 @@ export function LeadManagerTeamScreen() {
           leave_to?: string;
           on_leave?: boolean;
           auto_dial_enabled?: boolean;
+          offday_cover_id?: string;
+          leave_cover_id?: string;
         }
       >;
       const defaultDays = (data?.config?.auto_dial_days || [1, 2, 3, 4, 5, 6]) as number[];
@@ -591,6 +625,8 @@ export function LeadManagerTeamScreen() {
         lt[t.id] = custom[t.id]?.leave_to || '';
         ol[t.id] = Boolean(custom[t.id]?.on_leave);
         ad[t.id] = custom[t.id]?.auto_dial_enabled !== false;
+        oc[t.id] = custom[t.id]?.offday_cover_id || '';
+        lc[t.id] = custom[t.id]?.leave_cover_id || '';
       }
       setDrafts(d);
       setHourStarts(hs);
@@ -600,6 +636,8 @@ export function LeadManagerTeamScreen() {
       setLeaveTo(lt);
       setOnLeave(ol);
       setAutoDialOn(ad);
+      setOffCover(oc);
+      setLeaveCover(lc);
     } catch (e: any) {
       Alert.alert('Team', e?.message || 'Failed to load telecallers');
     } finally {
@@ -612,7 +650,46 @@ export function LeadManagerTeamScreen() {
     void load();
   }, [load]);
 
+  const applyLeaveDate = (id: string, field: 'from' | 'to', ymd: string) => {
+    const today = istTodayYmd();
+    const next = ymd < today ? today : ymd;
+    if (field === 'from') {
+      const currentTo = leaveTo[id] || '';
+      setLeaveFrom((prev) => ({ ...prev, [id]: next }));
+      setLeaveTo((prev) => ({
+        ...prev,
+        [id]: currentTo && currentTo >= next ? currentTo : next,
+      }));
+      return;
+    }
+    const currentFrom = leaveFrom[id] || '';
+    setLeaveTo((prev) => ({ ...prev, [id]: next }));
+    setLeaveFrom((prev) => ({
+      ...prev,
+      [id]: currentFrom && currentFrom <= next ? currentFrom : next,
+    }));
+  };
+
   const savePhone = async (id: string) => {
+    const today = istTodayYmd();
+    let from = leaveFrom[id] || '';
+    let to = leaveTo[id] || '';
+    const emergency = Boolean(onLeave[id]);
+    if (emergency && !from && !to) {
+      from = today;
+      to = today;
+    }
+    if (from && from < today && (!to || to < today)) {
+      Alert.alert('Leave', 'Past date nahi chalegi — aaj ya aage ki date do');
+      return;
+    }
+    if (to && to < today) {
+      Alert.alert('Leave', 'Past date nahi chalegi — aaj ya aage ki date do');
+      return;
+    }
+    if (from && to && from > to) {
+      to = from;
+    }
     setSavingId(id);
     try {
       await apiFetch('/api/super_admin/click-to-call', {
@@ -633,10 +710,12 @@ export function LeadManagerTeamScreen() {
           start: hourStarts[id] || '',
           end: hourEnds[id] || '',
           days: hourDays[id] || [1, 2, 3, 4, 5, 6],
-          leave_from: leaveFrom[id] || '',
-          leave_to: leaveTo[id] || '',
-          on_leave: Boolean(onLeave[id]),
+          leave_from: from,
+          leave_to: to,
+          on_leave: emergency,
           auto_dial_enabled: autoDialOn[id] !== false,
+          offday_cover_id: offCover[id] || '',
+          leave_cover_id: leaveCover[id] || '',
         }),
       });
       await load();
@@ -652,6 +731,23 @@ export function LeadManagerTeamScreen() {
       <Text style={[styles.hint, { paddingTop: 8 }]}>
         Har telecaller ka from-number, shift, weekly off, aur leave alag set hota hai.
       </Text>
+      <View style={[styles.phoneRow, { paddingHorizontal: SPACING.md, flexWrap: 'wrap', gap: 6 }]}>
+        {([
+          { id: 'phones', label: 'From numbers' },
+          { id: 'days', label: 'Working days' },
+          { id: 'leave', label: 'Leave' },
+        ] as const).map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[styles.dayChip, teamTab === tab.id && styles.dayChipOn]}
+            onPress={() => setTeamTab(tab.id)}
+          >
+            <Text style={[styles.dayChipText, teamTab === tab.id && styles.dayChipTextOn]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} />
       ) : (
@@ -672,6 +768,11 @@ export function LeadManagerTeamScreen() {
             <View style={styles.card}>
               <Text style={styles.name}>{item.full_name || item.email || 'Telecaller'}</Text>
               <Text style={styles.meta}>{item.email || '—'}</Text>
+              <Text style={styles.meta}>
+                {item.on_floor || item.punched_in ? 'On floor' : 'Off duty'}
+                {item.on_leave ? ' · On leave' : ''}
+              </Text>
+              {teamTab === 'phones' ? (
               <View style={styles.phoneRow}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
@@ -695,6 +796,9 @@ export function LeadManagerTeamScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+              ) : null}
+              {teamTab === 'days' ? (
+              <>
               <View style={[styles.phoneRow, { marginTop: 8 }]}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
@@ -733,22 +837,6 @@ export function LeadManagerTeamScreen() {
                   );
                 })}
               </View>
-              <View style={[styles.phoneRow, { marginTop: 8 }]}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={leaveFrom[item.id] || ''}
-                  onChangeText={(v) => setLeaveFrom((prev) => ({ ...prev, [item.id]: v }))}
-                  placeholder="Leave from YYYY-MM-DD"
-                  placeholderTextColor="#94A3B8"
-                />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={leaveTo[item.id] || ''}
-                  onChangeText={(v) => setLeaveTo((prev) => ({ ...prev, [item.id]: v }))}
-                  placeholder="Leave to YYYY-MM-DD"
-                  placeholderTextColor="#94A3B8"
-                />
-              </View>
               <View style={[styles.phoneRow, { marginTop: 8, justifyContent: 'space-between' }]}>
                 <Text style={styles.meta}>Fresh auto-dial</Text>
                 <Switch
@@ -756,13 +844,93 @@ export function LeadManagerTeamScreen() {
                   onValueChange={(v) => setAutoDialOn((prev) => ({ ...prev, [item.id]: v }))}
                 />
               </View>
+              </>
+              ) : null}
+              {teamTab === 'leave' ? (
+              <>
+              <Text style={[styles.meta, { marginTop: 8 }]}>
+                Leave from–to = planned (bol ke). Emergency pe bhi date zaroori.
+              </Text>
               <View style={[styles.phoneRow, { marginTop: 8, justifyContent: 'space-between' }]}>
-                <Text style={styles.meta}>On leave now</Text>
+                <Text style={styles.meta}>On leave today (emergency)</Text>
                 <Switch
                   value={Boolean(onLeave[item.id])}
-                  onValueChange={(v) => setOnLeave((prev) => ({ ...prev, [item.id]: v }))}
+                  onValueChange={(v) => {
+                    setOnLeave((prev) => ({ ...prev, [item.id]: v }));
+                    if (!v) return;
+                    const today = istTodayYmd();
+                    const from = leaveFrom[item.id] && leaveFrom[item.id] >= today ? leaveFrom[item.id] : today;
+                    const to = leaveTo[item.id] && leaveTo[item.id] >= from ? leaveTo[item.id] : from;
+                    setLeaveFrom((prev) => ({ ...prev, [item.id]: from }));
+                    setLeaveTo((prev) => ({ ...prev, [item.id]: to }));
+                  }}
                 />
               </View>
+              <View style={[styles.phoneRow, { marginTop: 8 }]}>
+                <TouchableOpacity
+                  style={[styles.input, { flex: 1, justifyContent: 'center' }]}
+                  onPress={() => setLeavePicker({ id: item.id, field: 'from' })}
+                >
+                  <Text style={{ color: leaveFrom[item.id] ? COLORS.text : '#94A3B8' }}>
+                    {leaveFrom[item.id] || 'Leave from'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.input, { flex: 1, justifyContent: 'center' }]}
+                  onPress={() => setLeavePicker({ id: item.id, field: 'to' })}
+                >
+                  <Text style={{ color: leaveTo[item.id] ? COLORS.text : '#94A3B8' }}>
+                    {leaveTo[item.id] || 'Leave to'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              </>
+              ) : null}
+              {teamTab !== 'phones' ? (
+              <>
+              <Text style={[styles.meta, { marginTop: 8 }]}>
+                {teamTab === 'leave' ? 'Leave leads go to' : 'Off-day leads go to'}
+              </Text>
+              <View style={[styles.phoneRow, { marginTop: 6, flexWrap: 'wrap', gap: 6 }]}>
+                {rows
+                  .filter((o) => o.id !== item.id && o.is_active)
+                  .map((o) => {
+                    const selected =
+                      teamTab === 'leave'
+                        ? leaveCover[item.id] === o.id
+                        : offCover[item.id] === o.id;
+                    return (
+                      <TouchableOpacity
+                        key={o.id}
+                        style={[styles.dayChip, selected && styles.dayChipOn]}
+                        onPress={() => {
+                          if (teamTab === 'leave') {
+                            setLeaveCover((prev) => ({ ...prev, [item.id]: o.id }));
+                          } else {
+                            setOffCover((prev) => ({ ...prev, [item.id]: o.id }));
+                          }
+                        }}
+                      >
+                        <Text style={[styles.dayChipText, selected && styles.dayChipTextOn]}>
+                          {String(o.full_name || o.email || 'TC').split(' ')[0]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
+              <TouchableOpacity
+                style={[styles.saveMini, { alignSelf: 'flex-end', marginTop: 10 }]}
+                onPress={() => void savePhone(item.id)}
+                disabled={savingId === item.id}
+              >
+                {savingId === item.id ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveMiniText}>Save</Text>
+                )}
+              </TouchableOpacity>
+              </>
+              ) : null}
               <Text style={styles.meta}>
                 {item.on_leave
                   ? 'On leave — auto-dial off'
@@ -780,6 +948,33 @@ export function LeadManagerTeamScreen() {
           ListEmptyComponent={<Text style={styles.empty}>No telecallers</Text>}
         />
       )}
+      {leavePicker ? (
+        <View>
+          <DateTimePicker
+            value={ymdToLocalDate(
+              leavePicker.field === 'from'
+                ? leaveFrom[leavePicker.id] || istTodayYmd()
+                : leaveTo[leavePicker.id] || leaveFrom[leavePicker.id] || istTodayYmd(),
+            )}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            minimumDate={ymdToLocalDate(istTodayYmd())}
+            onChange={(_event, selected) => {
+              if (Platform.OS !== 'ios') setLeavePicker(null);
+              if (!selected) return;
+              applyLeaveDate(leavePicker.id, leavePicker.field, localDateToYmd(selected));
+            }}
+          />
+          {Platform.OS === 'ios' ? (
+            <TouchableOpacity
+              style={[styles.saveMini, { alignSelf: 'flex-end', marginRight: SPACING.md, marginBottom: 8 }]}
+              onPress={() => setLeavePicker(null)}
+            >
+              <Text style={styles.saveMiniText}>Done</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
     </OpsShell>
   );
 }

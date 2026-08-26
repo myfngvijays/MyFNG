@@ -7,7 +7,7 @@ import {
   saveClickToCallConfig,
   type DidAssignment,
 } from '@/lib/telecaller/clickToCallConfig';
-import { evaluateAutoDialWindow } from '@/lib/telecaller/clickToCallHours';
+import { evaluateAutoDialWindow, sanitizeLeaveRange } from '@/lib/telecaller/clickToCallHours';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -57,6 +57,22 @@ export async function GET(request: NextRequest) {
     .select('id, full_name, phone, email, is_active, roles!role_id(role_code)')
     .order('full_name', { ascending: true });
 
+  const tcIds = (users || [])
+    .filter((u: any) => String(u?.roles?.role_code || '').toUpperCase() === 'TELECALLER')
+    .map((u: any) => String(u.id));
+
+  const punched = new Set<string>();
+  if (tcIds.length) {
+    const { data: openSessions } = await supabaseAdmin
+      .from('telecaller_attendance')
+      .select('telecaller_id')
+      .in('telecaller_id', tcIds)
+      .is('punch_out_at', null);
+    for (const row of openSessions || []) {
+      if (row?.telecaller_id) punched.add(String(row.telecaller_id));
+    }
+  }
+
   const telecallers = (users || [])
     .filter((u: any) => String(u?.roles?.role_code || '').toUpperCase() === 'TELECALLER')
     .map((u: any) => {
@@ -75,6 +91,8 @@ export async function GET(request: NextRequest) {
         dial_open_now: hoursCheck.allowed,
         on_leave: hoursCheck.reason.startsWith('on_leave'),
         auto_dial_enabled: hoursCheck.window.auto_dial_enabled !== false,
+        punched_in: punched.has(id),
+        on_floor: punched.has(id),
       };
     });
 
@@ -172,14 +190,24 @@ export async function POST(request: NextRequest) {
       if (body.clear) {
         delete nextHours[telecallerId];
       } else {
+        const leave = sanitizeLeaveRange({
+          leave_from: body.leave_from,
+          leave_to: body.leave_to,
+          on_leave: Boolean(body.on_leave),
+        });
+        if (leave.error) {
+          return NextResponse.json({ error: leave.error }, { status: 400 });
+        }
         nextHours[telecallerId] = {
           start: String(body.start || current.auto_dial_start),
           end: String(body.end || current.auto_dial_end),
           days: Array.isArray(body.days) ? body.days : nextHours[telecallerId]?.days || current.auto_dial_days,
-          leave_from: String(body.leave_from || '').trim() || null,
-          leave_to: String(body.leave_to || '').trim() || null,
-          on_leave: Boolean(body.on_leave),
+          leave_from: leave.leave_from,
+          leave_to: leave.leave_to,
+          on_leave: leave.on_leave,
           auto_dial_enabled: body.auto_dial_enabled === undefined ? true : Boolean(body.auto_dial_enabled),
+          offday_cover_id: String(body.offday_cover_id || '').trim() || null,
+          leave_cover_id: String(body.leave_cover_id || '').trim() || null,
         };
       }
       const saved = await saveClickToCallConfig({ telecaller_hours: nextHours });

@@ -16,13 +16,17 @@ export type TelecallerHourOverride = {
   start: string;
   end: string;
   days?: number[] | null;
-  /** Inclusive IST dates YYYY-MM-DD */
+  /** Inclusive IST dates YYYY-MM-DD (planned + emergency). */
   leave_from?: string | null;
   leave_to?: string | null;
-  /** Block auto-dial until leave_to (or until unchecked if no dates). */
+  /** Emergency leave. Dates required (defaults to today). Without dates = today only. */
   on_leave?: boolean;
   /** Per-telecaller Fresh auto-dial. Undefined = on. */
   auto_dial_enabled?: boolean;
+  /** Who gets auto-assigned leads on this person's weekly off days. */
+  offday_cover_id?: string | null;
+  /** Who gets auto-assigned leads while this person is on leave. */
+  leave_cover_id?: string | null;
 };
 
 export type DialWindow = {
@@ -96,12 +100,62 @@ export function getIstYmd(now: Date = new Date()): string {
 
 export function isOnLeave(row: TelecallerHourOverride | null | undefined, todayYmd: string): boolean {
   if (!row) return false;
-  const from = normalizeYmd(row.leave_from);
-  const to = normalizeYmd(row.leave_to);
+  let from = normalizeYmd(row.leave_from);
+  let to = normalizeYmd(row.leave_to);
+  if (!from && !to && row.on_leave) {
+    from = todayYmd;
+    to = todayYmd;
+  }
+  if (!from && !to) return false;
   if (from && todayYmd < from) return false;
   if (to && todayYmd > to) return false;
-  if (from || to) return true;
-  return Boolean(row.on_leave);
+  return true;
+}
+
+export type SanitizedLeaveRange = {
+  leave_from: string | null;
+  leave_to: string | null;
+  on_leave: boolean;
+  error?: string;
+};
+
+/** Planned + emergency leave. Past-only ranges are cleared. Emergency without dates = today. */
+export function sanitizeLeaveRange(
+  input: {
+    leave_from?: string | null;
+    leave_to?: string | null;
+    on_leave?: boolean;
+  },
+  todayYmd: string = getIstYmd(),
+): SanitizedLeaveRange {
+  let from = normalizeYmd(input.leave_from);
+  let to = normalizeYmd(input.leave_to);
+  const on_leave = Boolean(input.on_leave);
+
+  if (on_leave && !from && !to) {
+    from = todayYmd;
+    to = todayYmd;
+  }
+  if (from && !to) to = from;
+  if (to && !from) from = to < todayYmd ? todayYmd : to;
+
+  if (!from && !to) {
+    return { leave_from: null, leave_to: null, on_leave: false };
+  }
+
+  if (from && to && from > to) {
+    to = from;
+  }
+
+  const rangeEnded = Boolean(to && to < todayYmd);
+  if (rangeEnded) {
+    if (on_leave) {
+      return { leave_from: todayYmd, leave_to: todayYmd, on_leave: true };
+    }
+    return { leave_from: null, leave_to: null, on_leave: false };
+  }
+
+  return { leave_from: from, leave_to: to, on_leave };
 }
 
 export function normalizeTelecallerHours(
@@ -116,11 +170,18 @@ export function normalizeTelecallerHours(
     const start = normalizeHhmm(row.start, '');
     const end = normalizeHhmm(row.end, '');
     const days = Array.isArray(row.days) ? normalizeDays(row.days) : null;
-    const leave_from = normalizeYmd(row.leave_from);
-    const leave_to = normalizeYmd(row.leave_to);
-    const on_leave = Boolean(row.on_leave);
+    const leave = sanitizeLeaveRange({
+      leave_from: row.leave_from,
+      leave_to: row.leave_to,
+      on_leave: Boolean(row.on_leave),
+    });
+    const leave_from = leave.leave_from;
+    const leave_to = leave.leave_to;
+    const on_leave = leave.on_leave;
     const auto_dial_enabled =
       row.auto_dial_enabled === undefined ? true : Boolean(row.auto_dial_enabled);
+    const offday_cover_id = String(row.offday_cover_id || '').trim() || null;
+    const leave_cover_id = String(row.leave_cover_id || '').trim() || null;
     if (
       !start &&
       !end &&
@@ -128,7 +189,9 @@ export function normalizeTelecallerHours(
       !leave_from &&
       !leave_to &&
       !on_leave &&
-      row.auto_dial_enabled === undefined
+      row.auto_dial_enabled === undefined &&
+      !offday_cover_id &&
+      !leave_cover_id
     ) {
       continue;
     }
@@ -140,6 +203,8 @@ export function normalizeTelecallerHours(
       leave_to,
       on_leave,
       auto_dial_enabled,
+      offday_cover_id,
+      leave_cover_id,
     };
   }
   return out;
@@ -287,4 +352,73 @@ export function publicAutoDialHours(cfg: ClickToCallConfig) {
       reason: global.reason,
     },
   };
+}
+
+export type AssignmentBlockReason = 'ok' | 'off_day' | 'on_leave';
+
+export type AssignmentAvailability = {
+  available: boolean;
+  reason: AssignmentBlockReason;
+  cover_id: string | null;
+  weekday: number;
+  today_ymd: string;
+};
+
+/** Lead assignment (not auto-dial): skip weekly off + leave. Hours / autodial toggle ignored. */
+export function getAssignmentAvailability(
+  cfg: ClickToCallConfig,
+  telecallerId?: string | null,
+  now: Date = new Date(),
+): AssignmentAvailability {
+  const tid = String(telecallerId || '').trim();
+  const window = resolveDialWindow(cfg, tid);
+  const clock = getIstClock(now);
+  const today_ymd = getIstYmd(now);
+  const custom = tid ? cfg.telecaller_hours?.[tid] : null;
+
+  if (tid && isOnLeave(custom || window, today_ymd)) {
+    return {
+      available: false,
+      reason: 'on_leave',
+      cover_id: custom?.leave_cover_id || custom?.offday_cover_id || null,
+      weekday: clock.weekday,
+      today_ymd,
+    };
+  }
+
+  if (tid && !window.days.includes(clock.weekday)) {
+    return {
+      available: false,
+      reason: 'off_day',
+      cover_id: custom?.offday_cover_id || custom?.leave_cover_id || null,
+      weekday: clock.weekday,
+      today_ymd,
+    };
+  }
+
+  return {
+    available: true,
+    reason: 'ok',
+    cover_id: null,
+    weekday: clock.weekday,
+    today_ymd,
+  };
+}
+
+/** Follow cover chain (max 4 hops). Returns null if cover is also unavailable / cycle. */
+export function resolveAvailableCoverId(
+  cfg: ClickToCallConfig,
+  telecallerId: string,
+  now: Date = new Date(),
+): string | null {
+  const seen = new Set<string>();
+  let current = String(telecallerId || '').trim();
+  for (let i = 0; i < 4; i += 1) {
+    if (!current || seen.has(current)) return null;
+    seen.add(current);
+    const avail = getAssignmentAvailability(cfg, current, now);
+    if (avail.available) return i === 0 ? null : current;
+    current = String(avail.cover_id || '').trim();
+  }
+  return null;
 }

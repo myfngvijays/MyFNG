@@ -15,6 +15,11 @@ import {
   normalizeMessageTriggers,
   type MessageTrigger,
 } from '@/lib/enquiry/messageTriggers';
+import { getClickToCallConfig } from '@/lib/telecaller/clickToCallConfig';
+import {
+  getAssignmentAvailability,
+  resolveAvailableCoverId,
+} from '@/lib/telecaller/clickToCallHours';
 
 const ENQUIRY_TABLE = 'enquiry_hub';
 const ALLOCATOR_STATE_KEY = 'GLOBAL';
@@ -228,10 +233,47 @@ export async function pickTelecallerWeightedRoundRobin(
     return { telecallerId: null, reason: 'no_telecaller_for_channel', channel: channel || null };
   }
 
-  const telecallerIds = channelFiltered.map((r) => String(r.telecaller_id));
+  let hoursCfg: Awaited<ReturnType<typeof getClickToCallConfig>> | null = null;
+  try {
+    hoursCfg = await getClickToCallConfig();
+  } catch {
+    hoursCfg = null;
+  }
+
+  const rosterFiltered: AllocationRow[] = [];
+  if (hoursCfg) {
+    for (const row of channelFiltered) {
+      const id = String(row.telecaller_id);
+      const avail = getAssignmentAvailability(hoursCfg, id);
+      if (avail.available) {
+        const existing = rosterFiltered.find((r) => r.telecaller_id === id);
+        if (existing) {
+          existing.allocation_percent += Number(row.allocation_percent || 0);
+        } else {
+          rosterFiltered.push({ ...row });
+        }
+        continue;
+      }
+      const coverId = resolveAvailableCoverId(hoursCfg, id);
+      if (!coverId || coverId === id) continue;
+      const existing = rosterFiltered.find((r) => r.telecaller_id === coverId);
+      if (existing) {
+        existing.allocation_percent += Number(row.allocation_percent || 0);
+      } else {
+        rosterFiltered.push({ ...row, telecaller_id: coverId });
+      }
+    }
+  }
+
+  const pool = hoursCfg ? rosterFiltered : channelFiltered;
+  if (pool.length === 0) {
+    return { telecallerId: null, reason: 'no_telecaller_on_duty', channel: channel || null };
+  }
+
+  const telecallerIds = pool.map((r) => String(r.telecaller_id));
   const counts = await fetchAssignedCountsToday(telecallerIds);
 
-  const eligible = channelFiltered.filter((r) => {
+  const eligible = pool.filter((r) => {
     const limit = r.daily_limit == null ? null : Number(r.daily_limit);
     if (!limit || limit <= 0) return true;
     const assigned = counts.get(String(r.telecaller_id)) || 0;
@@ -289,10 +331,18 @@ export async function pickTelecallerForLead(opts?: {
     const triggers = await fetchMessageTriggers();
     const matched = findMatchingMessageTrigger(messageText, triggers);
     if (matched) {
-      // Exact/contains trigger match → always that telecaller.
-      // Bypasses %, channel allowlist, Active RR pool, and daily limit.
+      let telecallerId = matched.telecaller_id;
+      try {
+        const hoursCfg = await getClickToCallConfig();
+        const avail = getAssignmentAvailability(hoursCfg, telecallerId);
+        if (!avail.available) {
+          telecallerId = resolveAvailableCoverId(hoursCfg, telecallerId) || telecallerId;
+        }
+      } catch {
+        /* keep trigger owner */
+      }
       return {
-        telecallerId: matched.telecaller_id,
+        telecallerId,
         reason: null,
         trigger: matched,
         assignment_mode: 'MESSAGE_TRIGGER',

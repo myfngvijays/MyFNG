@@ -10,7 +10,41 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  CalendarDays,
+  CalendarOff,
+  Hash,
+  PhoneOutgoing,
+  Disc3,
 } from 'lucide-react';
+import PageHelpIcon from '@/components/PageHelpIcon';
+import { getIstYmd, sanitizeLeaveRange } from '@/lib/telecaller/clickToCallHours';
+
+type SectionId = 'gateway' | 'days' | 'leave' | 'did' | 'phones' | 'test' | 'recordings';
+
+const CTC_NAV: {
+  id: SectionId;
+  label: string;
+  icon: typeof Phone;
+  description: string;
+}[] = [
+  { id: 'gateway', label: 'Gateway', icon: PhoneCall, description: 'URL, auto-dial & tokens' },
+  { id: 'days', label: 'Working Days', icon: CalendarDays, description: 'Shift, weekly off & cover' },
+  { id: 'leave', label: 'Leave', icon: CalendarOff, description: 'Emergency / planned leave' },
+  { id: 'did', label: 'DID', icon: Hash, description: 'Exclusive number assignment' },
+  { id: 'phones', label: 'From Numbers', icon: Phone, description: 'Telecaller callback phones' },
+  { id: 'test', label: 'Test Call', icon: PhoneOutgoing, description: 'Place a test call' },
+  { id: 'recordings', label: 'Recordings', icon: Disc3, description: 'Smartflo CDR sync' },
+];
+
+function isSectionId(value: string | null | undefined): value is SectionId {
+  return Boolean(value && CTC_NAV.some((item) => item.id === value));
+}
+
+function readSectionFromUrl(fallback: SectionId): SectionId {
+  if (typeof window === 'undefined') return fallback;
+  const q = new URLSearchParams(window.location.search).get('section');
+  return isSectionId(q) ? q : fallback;
+}
 
 const WEEKDAY_CHIPS = [
   { id: 0, label: 'Sun' },
@@ -52,6 +86,8 @@ type ConfigPublic = {
       leave_to?: string | null;
       on_leave?: boolean;
       auto_dial_enabled?: boolean;
+      offday_cover_id?: string | null;
+      leave_cover_id?: string | null;
     }
   >;
   clock?: { now_hhmm: string; weekday_label: string; open: boolean; reason: string };
@@ -65,6 +101,8 @@ type HoursDraft = {
   leave_to: string;
   on_leave: boolean;
   auto_dial_enabled: boolean;
+  offday_cover_id: string;
+  leave_cover_id: string;
 };
 
 type TelecallerRow = {
@@ -87,6 +125,8 @@ type TelecallerRow = {
   dial_open_now?: boolean;
   on_leave?: boolean;
   auto_dial_enabled?: boolean;
+  punched_in?: boolean;
+  on_floor?: boolean;
 };
 
 export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEditSecrets?: boolean }) {
@@ -124,6 +164,17 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
   const [testing, setTesting] = useState(false);
   const [syncingRec, setSyncingRec] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [section, setSection] = useState<SectionId>(() =>
+    readSectionFromUrl(canEditSecrets ? 'gateway' : 'days'),
+  );
+
+  const goSection = (id: SectionId) => {
+    setSection(id);
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('section', id);
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,6 +212,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           leave_to: own?.leave_to || '',
           on_leave: Boolean(own?.on_leave),
           auto_dial_enabled: own?.auto_dial_enabled !== false,
+          offday_cover_id: own?.offday_cover_id || '',
+          leave_cover_id: own?.leave_cover_id || '',
         };
       }
       setHourDrafts(drafts);
@@ -282,6 +335,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
         leave_to: '',
         on_leave: false,
         auto_dial_enabled: true,
+        offday_cover_id: '',
+        leave_cover_id: '',
       };
       return { ...prev, [id]: { ...cur, ...patch } };
     });
@@ -307,6 +362,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
         leave_to: d.leave_to || '',
         on_leave: Boolean(d.on_leave),
         auto_dial_enabled: d.auto_dial_enabled !== false,
+        offday_cover_id: d.offday_cover_id || '',
+        leave_cover_id: d.leave_cover_id || '',
       };
     }
     return telecaller_hours;
@@ -344,6 +401,15 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
   const saveOneTelecallerHours = async (id: string) => {
     const d = hourDrafts[id];
     if (!d) return;
+    const leave = sanitizeLeaveRange({
+      leave_from: d.leave_from,
+      leave_to: d.leave_to,
+      on_leave: d.on_leave,
+    });
+    if (leave.error) {
+      setError(leave.error);
+      return;
+    }
     setSavingHoursId(id);
     setMessage(null);
     setError(null);
@@ -357,10 +423,12 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           start: d.start,
           end: d.end,
           days: d.days,
-          leave_from: d.leave_from,
-          leave_to: d.leave_to,
-          on_leave: d.on_leave,
+          leave_from: leave.leave_from || '',
+          leave_to: leave.leave_to || '',
+          on_leave: leave.on_leave,
           auto_dial_enabled: d.auto_dial_enabled !== false,
+          offday_cover_id: d.offday_cover_id || '',
+          leave_cover_id: d.leave_cover_id || '',
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -513,9 +581,73 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
     );
   }
 
+  const currentNav = CTC_NAV.find((item) => item.id === section) || CTC_NAV[0];
+  const helpHref =
+    typeof window !== 'undefined' && window.location.pathname.includes('/lead_manager/')
+      ? '/dashboard/lead_manager/click-to-call'
+      : '/dashboard/super_admin/click-to-call';
+
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="space-y-4">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <PhoneCall className="w-6 h-6 text-indigo-600" />
+              Click to Call
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              {currentNav.label} — {currentNav.description}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-200"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
+            </button>
+            <PageHelpIcon href={helpHref} label="Click to Call" />
+          </div>
+        </div>
+        <div className="px-4 sm:px-5 py-2 overflow-x-auto border-t border-slate-100">
+          <div className="flex gap-2 min-w-max pb-1">
+            {CTC_NAV.map((item) => {
+              const Icon = item.icon;
+              const active = section === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => goSection(item.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold border transition ${
+                    active
+                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {message ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          {message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
+      ) : null}
+
+      {section === 'gateway' ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-4xl">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -686,17 +818,21 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           Save gateway settings
         </button>
       </div>
+      ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {section === 'days' || section === 'leave' ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-4xl">
         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-1">
           <Clock className="w-5 h-5 text-amber-600" />
-          Per-telecaller hours & leave
+          {section === 'leave' ? 'Leave & cover' : 'Working days & shift'}
         </h2>
         <p className="text-sm text-slate-500 mb-3">
-          Har telecaller ka apna shift + weekly off + leave. Fresh auto-dial sirf usi
-          person ke window mein. Manual Call kabhi block nahi.
+          {section === 'leave'
+            ? 'Emergency ya planned leave pe nayi lead is person ko nahi — cover telecaller auto-assign.'
+            : 'Weekly off pe nayi lead is person ko nahi jayegi — cover telecaller auto-assign. Fresh auto-dial alag on/off. Manual Call kabhi block nahi.'}
         </p>
 
+        {section === 'days' ? (
         <label className="mb-4 flex items-start gap-2 text-sm text-slate-800">
           <input
             type="checkbox"
@@ -711,7 +847,9 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             </span>
           </span>
         </label>
+        ) : null}
 
+        {section === 'days' ? (
         <details className="mb-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
           <summary className="cursor-pointer text-sm font-semibold text-slate-700">
             Fallback for new telecallers ({hoursStart}–{hoursEnd} IST)
@@ -746,6 +884,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             Save fallback
           </button>
         </details>
+        ) : null}
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <button
@@ -819,6 +958,8 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
             leave_to: '',
             on_leave: false,
             auto_dial_enabled: true,
+            offday_cover_id: '',
+            leave_cover_id: '',
           };
           const autodialOn = d.auto_dial_enabled !== false;
           const paused = t.on_leave || t.dial_open_now === false || !autodialOn;
@@ -832,6 +973,22 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
                 <div>
                   <div className="font-semibold text-slate-900">{t.full_name || t.email || 'Telecaller'}</div>
                   <div className="text-xs text-slate-500">{t.email}</div>
+                  <div className="mt-1">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        t.on_floor
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          t.on_floor ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      {t.on_floor ? 'On floor' : 'Off duty'}
+                    </span>
+                  </div>
                 </div>
                 <span
                   className={`text-[11px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 ${
@@ -848,6 +1005,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
                 </span>
               </div>
 
+              {section === 'days' ? (
               <label
                 className={`mb-4 flex items-center justify-between gap-3 rounded-xl border px-3 py-3 ${
                   autodialOn
@@ -919,41 +1077,147 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
                         {chip.label}
                       </button>
                     );
-                  })}
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-600">Leave from</span>
-                  <input
-                    type="date"
-                    value={d.leave_from}
-                    onChange={(e) => patchHourDraft(t.id, { leave_from: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-600">Leave to</span>
-                  <input
-                    type="date"
-                    value={d.leave_to}
-                    onChange={(e) => patchHourDraft(t.id, { leave_to: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  />
-                </label>
-              </div>
+                {d.days.length < 7 ? (
+                  <label className="mt-3 block rounded-lg border border-amber-100 bg-amber-50/70 p-3">
+                    <span className="text-xs font-semibold text-amber-950">
+                      Off-day leads assign to
+                    </span>
+                    <p className="text-[11px] text-amber-800 mt-0.5 mb-1.5">
+                      Jo din orange nahi (jaise Tuesday off) — us din ki nayi lead is
+                      person ko nahi, neeche wale ko auto-assign.
+                    </p>
+                    <select
+                      value={d.offday_cover_id}
+                      onChange={(e) => patchHourDraft(t.id, { offday_cover_id: e.target.value })}
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="">— Select cover telecaller —</option>
+                      {activeTelecallers
+                        .filter((o) => o.id !== t.id)
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.full_name || o.email || o.id}
+                            {o.on_floor ? ' · on floor' : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ) : null}
+              ) : null}
 
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <label className="inline-flex items-center gap-2 text-sm text-slate-800">
-                  <input
-                    type="checkbox"
-                    checked={d.on_leave}
-                    onChange={(e) => patchHourDraft(t.id, { on_leave: e.target.checked })}
-                    className="rounded border-slate-300"
-                  />
-                  On leave now (no dates needed)
+                {section === 'leave' ? (() => {
+                  const todayYmd = getIstYmd();
+                  const fromMin = todayYmd;
+                  const toMin =
+                    d.leave_from && d.leave_from > todayYmd ? d.leave_from : todayYmd;
+                  return (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                      <p className="text-xs font-semibold text-slate-800">Leave dates</p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Leave from–to wahi planned leave hai jo pehle se bol ke lete hain.
+                        Emergency pe bhi date zaroori — 1 din default, extra din Leave to se.
+                        Past date select nahi hogi.
+                      </p>
+                      <label className="mt-2 inline-flex items-start gap-2 text-sm text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={d.on_leave}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            if (!checked) {
+                              patchHourDraft(t.id, { on_leave: false });
+                              return;
+                            }
+                            const from =
+                              d.leave_from && d.leave_from >= todayYmd ? d.leave_from : todayYmd;
+                            const to =
+                              d.leave_to && d.leave_to >= from ? d.leave_to : from;
+                            patchHourDraft(t.id, {
+                              on_leave: true,
+                              leave_from: from,
+                              leave_to: to,
+                            });
+                          }}
+                          className="mt-0.5 rounded border-slate-300"
+                        />
+                        <span>
+                          On leave today (emergency)
+                          <span className="block text-[11px] text-slate-500">
+                            Tick karte hi aaj ki date aa jayegi. 2 din ho toh sirf Leave to badhao.
+                          </span>
+                        </span>
+                      </label>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="text-xs font-medium text-slate-600">
+                            Leave from
+                          </span>
+                          <input
+                            type="date"
+                            min={fromMin}
+                            value={d.leave_from}
+                            onChange={(e) => {
+                              const from = e.target.value;
+                              const to =
+                                d.leave_to && d.leave_to >= from ? d.leave_to : from;
+                              patchHourDraft(t.id, { leave_from: from, leave_to: to });
+                            }}
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-medium text-slate-600">
+                            Leave to
+                          </span>
+                          <input
+                            type="date"
+                            min={toMin}
+                            value={d.leave_to}
+                            onChange={(e) => {
+                              const to = e.target.value;
+                              const from =
+                                d.leave_from && d.leave_from <= to ? d.leave_from : to;
+                              patchHourDraft(t.id, { leave_from: from, leave_to: to });
+                            }}
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })() : null}
+
+              {section === 'leave' && (d.on_leave || d.leave_from || d.leave_to) ? (
+                <label className="mt-3 block rounded-lg border border-rose-100 bg-rose-50/70 p-3">
+                  <span className="text-xs font-semibold text-rose-950">
+                    Leave leads assign to
+                  </span>
+                  <p className="text-[11px] text-rose-800 mt-0.5 mb-1.5">
+                    On leave / date range mein nayi leads is cover ko jayengi.
+                  </p>
+                  <select
+                    value={d.leave_cover_id || d.offday_cover_id}
+                    onChange={(e) => patchHourDraft(t.id, { leave_cover_id: e.target.value })}
+                    className="w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">— Select cover telecaller —</option>
+                    {activeTelecallers
+                      .filter((o) => o.id !== t.id)
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.full_name || o.email || o.id}
+                          {o.on_floor ? ' · on floor' : ''}
+                        </option>
+                      ))}
+                  </select>
                 </label>
+              ) : null}
+
+              <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
                   disabled={savingHoursId === t.id}
@@ -972,8 +1236,10 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           );
         })()}
       </div>
+      ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {section === 'did' ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-4xl">
         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-1">
           <PhoneCall className="w-5 h-5 text-violet-600" />
           DID assignment
@@ -1043,8 +1309,10 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           Save DID assignments
         </button>
       </div>
+      ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {section === 'phones' ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-4xl">
         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-1">
           <Phone className="w-5 h-5 text-emerald-600" />
           Telecaller from numbers
@@ -1153,11 +1421,16 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           </button>
         ) : null}
         <p className="mt-3 text-xs text-slate-500">
-          Shift / leave upar &quot;Per-telecaller hours &amp; leave&quot; section mein set karo.
+          Shift / leave <button type="button" className="text-indigo-600 font-medium underline" onClick={() => goSection('days')}>Working Days</button>
+          {' '}aur{' '}
+          <button type="button" className="text-indigo-600 font-medium underline" onClick={() => goSection('leave')}>Leave</button>
+          {' '}menu mein set karo.
         </p>
       </div>
+      ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {section === 'test' ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-4xl">
         <h2 className="text-lg font-semibold text-slate-900 mb-1">Test call</h2>
         <p className="text-sm text-slate-500 mb-3">
           Rings <code className="text-xs">from</code> first, then connects <code className="text-xs">to</code>.
@@ -1204,8 +1477,10 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           </button>
         </div>
       </div>
+      ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {section === 'recordings' ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-4xl">
         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-1">
           <RefreshCw className="w-5 h-5 text-sky-600" />
           Call recordings
@@ -1221,7 +1496,7 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
         </p>
         <ul className="text-xs text-slate-600 space-y-1 mb-4 list-disc pl-5">
           <li>
-            Token: Smartflo API token (<code>c2c</code>) upar save hona chahiye
+            Token: Smartflo API token (<code>c2c</code>) Gateway menu mein save hona chahiye
           </li>
           <li>
             Optional webhook:{' '}
@@ -1244,17 +1519,9 @@ export default function ClickToCallSetupPanel({ canEditSecrets = true }: { canEd
           {syncingRec ? 'Syncing (max ~1 min)…' : 'Sync last 6h recordings'}
         </button>
         {!config?.has_smartflo_api_token ? (
-          <p className="mt-2 text-xs text-amber-700">Pehle c2c token save karo, phir sync.</p>
+          <p className="mt-2 text-xs text-amber-700">Pehle c2c token Gateway menu mein save karo, phir sync.</p>
         ) : null}
       </div>
-
-      {message ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          {message}
-        </div>
-      ) : null}
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       ) : null}
     </div>
   );

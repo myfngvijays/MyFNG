@@ -70,7 +70,7 @@ const BY_HREF: Record<string, MenuHelpEntry> = {
       'Sirf gateway URL hit hota hai (?from=&to=&did=&provider=). Call button aur Fresh auto-dial dono same URL.\n\nDID + from-number + calling hours yahan set karo. Auto-dial Fresh ON = naya lead assign pe call, lekin sirf assigned IST hours mein.',
     tips: [
       'Assigned DID exclusive hai — Ajit / Mahendra ke numbers koi aur use nahi kar sakta.',
-      'Har telecaller ka alag shift, weekly off, aur leave. Raat/leave pe assign hua lead unke window start pe auto-dial hota hai.',
+      'Working day / leave pe lead cover telecaller ko auto-assign. Fresh auto-dial alag on/off. On-floor login se dikhta hai.',
       'Manual Call button hours ke bahar bhi chalega — sirf auto-dial rukta hai.',
     ],
   },
